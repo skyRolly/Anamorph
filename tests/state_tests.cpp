@@ -36003,8 +36003,11 @@ static void testTheReportedTailCoversTheRealTail()
 //      against the scope rather than from a report.
 //
 //  Both are the SAME question -- "is this AUDIO or is it the USER'S?" -- so both
-//  live here, and the third leg holds the other end: `ResetScope::everything` must
-//  still flush both, or the narrowing has simply become a leak.
+//  live here, and legs 2 and 3 hold the other end: a re-prepare
+//  (`ResetScope::everything`) must still clear the meters and the matcher's analysis,
+//  and a re-prepare at a NEW sample rate the matcher's published gain as well, or the
+//  narrowing has simply become a leak. (A re-prepare at the SAME rate keeps that gain:
+//  ADR-0007, Amendment of 2026-09-24, F13(2); State test 131 leg (e).)
 //
 //  ---- WHY ONE SILENCE OBSERVATION COVERS FOUR FIELDS -------------------------
 //  Leg 1 asserts one externally visible thing: after a host reset, feeding SILENCE
@@ -36146,26 +36149,38 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
         check (move < 1.0e-6f,
                "R6: a host reset clears the analysis state -- silence moves nothing (ADR-0007)");
 
-        // --- LEG 2. The other end of the line: a re-prepare. prepareToPlay() is the
-        //     product's only route to `everything`. Since ADR-0007's F13(2) amendment a
-        //     re-prepare at the SAME rate, with the same measurement inputs, keeps the
-        //     published result -- it still describes the sound -- and clears the analysis
-        //     as the host reset does; a re-prepare at a NEW rate still flushes the whole
-        //     matcher, published gain included, because the measurement itself changed.
-        //     Re-converge first so there is live analysis state for the re-prepare to clear.
+        // --- LEG 2. The other end of the line, for the matcher. prepareToPlay() is the
+        //     product's only route to `ResetScope::everything`, and since F13(2) (ADR-0007,
+        //     Amendment of 2026-09-24, question 5) it splits the matcher the way a host reset
+        //     does -- where the published gain still describes the sound:
+        //       * a re-prepare at the SAME sample rate whose primed snapshot changes nothing
+        //         the measurement reads KEEPS the published gain bit-exact: the K-weighting
+        //         coefficients and the 0.4 s window are functions of the rate alone, and a
+        //         block size is no input to the measurement. Its ANALYSIS describes audio that
+        //         has stopped and is re-armed, so silence after it moves nothing, exactly as
+        //         after the host reset above. (Flushing that gain restarted the match from the
+        //         predict floor and played it ~2 dB off for ~2 s.)
+        //       * a re-prepare at a NEW sample rate integrates a different band: the whole
+        //         matcher goes, the published gain included.
+        //     If the first ever stops re-arming, or the second ever starts holding, the
+        //     narrowing has turned into a leak. The silence above left the analysis empty, so
+        //     the audio is played again first -- otherwise the re-arm could not be told from
+        //     an analysis that was never live (leg 1's control: 0.023 dB of drift without it).
         converge (p, buf);
         const float live = p.getEngine().getMatchGainDb();
         p.prepareToPlay (sr, block);
-        check (juce::exactlyEqual (p.getEngine().getMatchGainDb(), live),
-               "R6 / F13(2): a same-rate re-prepare keeps the published Level-Match gain bit-exact");
-        const float moveAfterPrepare = worstMoveOverSilence (p, buf, live);
-        std::printf ("  after a same-rate re-prepare the gain moves %.6f dB over the same silence\n",
-                     moveAfterPrepare);
-        check (moveAfterPrepare < 1.0e-6f,
-               "R6 / F13(2): ...and clears the analysis state -- silence moves nothing");
-        p.prepareToPlay (juce::exactlyEqual (sr, 44100.0) ? 48000.0 : 44100.0, block);
+        const float kept = p.getEngine().getMatchGainDb();
+        const float movePrepared = worstMoveOverSilence (p, buf, kept);
+        std::printf ("  a same-rate re-prepare: %+.4f dB -> %+.4f dB, then moves %.6f dB over the same silence\n",
+                     live, kept, movePrepared);
+        check (std::abs (live) > 0.5f, "R6 control: Level Match converged again before the re-prepare");
+        check (juce::exactlyEqual (kept, live),
+               "R6: a same-rate re-prepare keeps the published Level-Match gain bit-exact (ADR-0007, F13(2))");
+        check (movePrepared < 1.0e-6f,
+               "R6: a same-rate re-prepare clears the analysis state -- silence moves nothing (ADR-0007, F13(2))");
+        p.prepareToPlay (44100.0, block);
         check (juce::exactlyEqual (p.getEngine().getMatchGainDb(), 0.0f),
-               "R6: a re-prepare at a new sample rate still flushes the matcher, published gain included");
+               "R6: a re-prepare at a new sample rate still flushes the whole matcher, published gain included");
     }
 
     // --- LEG 3. The held peak is the USER'S, not the audio's. LevelMeters.h calls it
@@ -38428,6 +38443,783 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 131 -- LEVEL MATCH RE-ARMS THE ANALYSIS AN A/B SLOT GAIN NEEDS, AND KEEPS A RESULT A
+//  SAME-RATE RE-PREPARE DID NOT INVALIDATE (ADR-0007, Amendment of 2026-09-24, F13(2); KI-030. The
+//  evidence record is worklog NONFINITE_PARAMETERS_AND_F13.md §K; State test 130 is the engage half)
+//
+//  THE CONTRACT. LoudnessMatch holds an ANALYSIS (the four K-weighting biquads and the two 0.4 s
+//  energy integrators) and a RESULT (the published value and what the predict remembers):
+//  softReset() clears the analysis and keeps the result, reset() flushes both, and the applied gain
+//  (the engine's matchGainSmooth) is neither. The two owner decisions this test pins:
+//    Q1 (P1b) At a switch's silent bottom where an A/B injection is consumed, the analysis is re-armed
+//             before the slot's remembered gain is set when the two slots differ in anything the
+//             measurement reads (measurementInputsDiffer, or a change made live during the switch's
+//             own fade-out). The carried analysis describes the SOURCE slot and used to drag the
+//             restored value away for seconds. Slots that differ only after the tap (Output Gain,
+//             Output Balance, Band Solo, Bypass, Level Match itself) or in an inert guarded field
+//             (Dim-D Style under Haas), and identical slots, are not re-armed by this rule.
+//    Q5 (P4)  A re-prepare at the SAME sample rate, any block size, whose primed snapshot changes no
+//             measurement input keeps the published result bit-exact and re-arms the analysis (the
+//             host-reset treatment); the next audible block's silence -> audio edge lands the applied
+//             gain on it. A new rate, a primed snapshot that moved a measurement input (a restore that
+//             moved Drive), and the first prepare still flush the whole matcher.
+//  Unchanged (Q2-Q4): a forced swap with no injection -- Undo, Redo, a user preset -- is not re-armed
+//  and tracks the same live edit; a Case B engage glides from unity; a Case A engage lands; a host
+//  reset keeps the result and re-arms (State tests 118 / 120).
+//
+//  THE RE-ARM PROBE (State test 120's observation, through the public API). A probe lane shares its
+//  run's whole history and is fed SILENCE from the event block on. A re-armed analysis has empty
+//  integrators, so the matcher's silence gate closes at once and the published value HOLDS (move
+//  < 1e-6 dB over the next second); a carried one keeps the gate open for seconds (the 0.4 s window
+//  decaying from the old energy) and MOVES the value toward the ratio it still holds. The hold is
+//  judged from the duck's bottom block on, because the predict may lower the value inside that block
+//  when Drive rises. A probe that must MOVE starts from a value displaced from that ratio (an
+//  injection or the predict floor), except (c) Drive 10 -> 0, where only the source's own
+//  convergence lag displaces it (measured 0.21 dB against the 1e-3 dB threshold).
+//
+//  THE ACCURACY METRIC. Where the audio matters the run is compared with a FRESH processor prepared
+//  directly at the destination state and fed the identical input from sample 0: D is the run's
+//  published value minus the fresh one's per block, and g the per-block least-squares gain of the
+//  run's output over the fresh one's (sum y_run y_fresh / sum y_fresh^2, dB; Test 66 / State test
+//  130), read with its residual (<= 1e-3: the two outputs differ by one gain).
+//
+//  THE LEGS (48 kHz / 256, Advanced Mode on, Haas 50 % / Width 130 %, Multiband off, Output Gain -3,
+//  one seeded correlated-noise stream). Measured: this tree / the pre-change engine (daa6809).
+//   (a) A/B between slots that differ only in Drive, Level Match on in both, each slot left converged
+//       (2.5 s / 3.5 s), both directions. Route: the bottom block publishes the destination slot's
+//       remembered gain (within 20 % of the jump; the jump >= 1.5 dB; measured within 0.002 dB). Then
+//       over 3 s max|D| <= 0.3 dB and max|g| <= 0.3 dB, and the probe holds. max|D|: Drive 8 -> 2
+//       0.081 / 1.599, 2 -> 8 0.096 / 1.384, 10 -> 0 0.020 / 4.923, 0 -> 10 0.147 / 3.546 dB (max|g|
+//       within 0.02 dB of these); probe 0 / 2.3-6.0 dB.
+//   (b) A/B between slots that differ only in Output Gain, in Level Match (off -> on) or in Dim-D
+//       Style under Haas, the destination slot's memory deliberately stale (left 10 blocks after its
+//       first visit, while still gliding from the 0 dB a never-visited slot injects): the bottom
+//       block publishes the injected value, the probe MOVES >= 0.5 dB (the carried analysis, right
+//       here, pulls the stale memory back: 2.124 dB on both engines), and from the first full-level
+//       block the run is bit-identical to a twin switching between two IDENTICAL slots (measured from
+//       event+0, +8 for Level Match) -- the A/B's own behaviour, the landing included (State test 130
+//       leg (6) measures that landing), is unchanged. The twin's probe moves too. CONTROL: the same
+//       construction with slot A's Width one grid step off -- a measurement input -- is re-armed: its
+//       probe holds (0 / 2.126 dB).
+//   (c) Undo and a user preset moving Drive 0 -> 10 and 10 -> 0, Level Match on in both states,
+//       beside the same live gesture edit: from 0.1 s after the event the published values track the
+//       live edit within 0.5 dB (0.317 / 0.167 dB), and every probe moves (3.90 / 0.21 dB; the live
+//       edit's 3.17 / 0.21): no forced swap is re-armed. Route (0 -> 10): the live edit floors the
+//       value in the event block, a forced swap only at its bottom (event + 2).
+//   (d) Undo of Apply still LANDS (State test 130's M1: max|D| <= 0.1 dB over 0.6 s against a
+//       Level-Match-off twin taking the same forced duck; 0.028) and a user preset that turns Level
+//       Match on with Drive 8 -> 10 still GLIDES (phi >= 0.5; 0.80). State test 130 is the depth.
+//   (e) After 2.5 s at Drive 8 (-6.03 dB), prepareToPlay (48 kHz, 256) again: the published value is
+//       bit-identical (pre-change: 0 dB), the output is one gain times the fresh one's from event+3
+//       (the flushed Haas line refills in 12 ms) and within 0.1 dB of it for 3 s (0.017 / 1.946 dB),
+//       D <= 0.1 dB (0.019 / 1.966), and the probe holds. prepareToPlay (48 kHz, 512) keeps and
+//       re-arms. A restore of Output Gain alone before a same-rate re-prepare keeps; a restore that
+//       moved Drive flushes (exactly 0 dB after it), and so does a new rate (44.1 kHz). Apply right
+//       after a same-rate re-prepare writes the kept value into Output Gain (-6.03; pre-change 0.00).
+//   (f) A settled host reset keeps the published value bit-exact and re-arms (control: 0.097 dB of
+//       drift without it); a host reset one block into (a)'s first A/B fade-out completes it, adopts
+//       the injection one block later and stays within 0.3 dB of the fresh destination (0.080, both).
+//   (g) Apply 0.5 s after (a)'s first A/B writes a value within 0.2 dB of the fresh destination's
+//       match (-2.770 against -2.826; pre-change -4.400, the dragged value); Undo restores Level Match
+//       on at Output Gain -3.
+//  AGAINST THE PRE-CHANGE ENGINE 21 of the 95 checks fail: (a)'s D, g and probe on all four events,
+//  (b)'s CONTROL, (e)'s seven keep / re-arm / Apply checks and (g)'s Apply. Engine variants built from
+//  this tree, each run through this test: no Q1 re-arm (14 fail: (a), (b) CONTROL, (g)); re-arm at
+//  EVERY injection (4: (b)'s twin, Output Gain, Level Match and Dim-D probes); re-arm at every forced
+//  bottom whose measurement inputs differ (8: (c)'s tracking and probes); no Q5 keep (7: (e)); Q5
+//  without its rate test (1: 44.1 kHz) or without its primed-snapshot test (1: the Drive restore);
+//  Q5 keeping the result without re-arming (3: (e)'s probes).
+//  Every lane owns its processor on the heap; the preset files use unique names (State test 8's
+//  pattern: a same-named user file is parked and put back, ours are deleted before and after).
+static void testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept()
+{
+    std::printf ("State test 131: Level Match re-arms what an A/B injects and keeps what a re-prepare did not change"
+                 " (ADR-0007, F13(2))\n");
+
+    using Proc = AnamorphAudioProcessor;
+    using KV   = std::vector<std::pair<const char*, float>>;
+    constexpr double sr = 48000.0;
+    constexpr int block = 256;
+    constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+    constexpr int kNever = std::numeric_limits<int>::max();
+    const int sec  = (int) std::lround (sr / block);   // 188 blocks: one second
+    const int win  = 3 * sec;                          // the 3 s accuracy window
+    const int bot  = 2, full = 8;                      // a forced duck: bottom at event + 2, full level at + 8
+
+    auto setPlain = [] (Proc& p, const char* id, float v)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+    };
+    auto userEdit = [] (Proc& p, const char* id, float v)          // one gesture, one undo step
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->beginChangeGesture(); rp->setValueNotifyingHost (rp->convertTo0to1 (v)); rp->endChangeGesture();
+        p.pollUndoCoalesce();
+    };
+    auto raw = [] (Proc& p, const char* id) { return p.getAPVTS().getRawParameterValue (id)->load(); };
+    auto on  = [&raw] (Proc& p) { return raw (p, "autoGainMatch") > 0.5f; };
+    auto with = [] (KV kv, const KV& edits)
+    {
+        for (const auto& [id, v] : edits)
+        {
+            bool found = false;
+            for (auto& e : kv)
+                if (std::strcmp (e.first, id) == 0) { e.second = v; found = true; }
+            if (! found) kv.push_back ({ id, v });
+        }
+        return kv;
+    };
+    auto make = [&] (const KV& kv)
+    {
+        auto p = std::make_unique<Proc>();                       // heap: State test 59's note
+        for (const auto& [id, v] : kv) setPlain (*p, id, v);
+        p->pollUndoCoalesce();
+        p->prepareToPlay (sr, block);
+        return p;
+    };
+    const KV haas = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "width", 1.3f },
+                      { "mbEnable", 0.0f }, { "outputGain", -3.0f }, { "autoGainMatch", 1.0f } };
+    auto sound = [&] (float drive) { return with (haas, { { "drive", drive } }); };
+
+    // ---- lanes: processors run in lockstep on one seeded stream (silence from `silentFrom`) ----------
+    struct Lane
+    {
+        std::unique_ptr<Proc> p;
+        juce::AudioBuffer<float> out;
+        std::vector<float> pub;                   // the published value after each processed block
+        std::vector<double> energy;               // the output's energy per processed block
+        float rem[2] = { 0.0f, 0.0f };            // what the processor remembers per A/B slot (abMatchGain)
+        int silentFrom = kNever;                  // from this block on the lane is fed silence
+        int endAt      = kNever;                  // from this block on it is no longer processed
+    };
+    struct Cmp                                    // lane `run` against lane `ref`, per block
+    {
+        int run = 0, ref = 0;
+        std::vector<double> gDb, resid;           // least-squares gain (dB) and its residual
+        std::vector<char> same;                   // every sample bit-identical
+    };
+    struct Rig
+    {
+        std::vector<Lane> lane;
+        std::vector<Cmp> cmp;
+        juce::Random rng { 131 };
+        juce::AudioBuffer<float> in;
+        int at = 0;
+    };
+    auto newRig = [] { auto r = std::make_unique<Rig>(); r->in.setSize (2, block); r->lane.reserve (12); return r; };
+    auto addLane = [&make] (Rig& r, const KV& kv)
+    {
+        Lane ln;
+        ln.p = make (kv);
+        ln.out.setSize (2, block);
+        r.lane.push_back (std::move (ln));
+        return (int) r.lane.size() - 1;
+    };
+    auto addCmp = [] (Rig& r, int run, int ref)
+    {
+        Cmp c;
+        c.run = run; c.ref = ref;
+        r.cmp.push_back (std::move (c));
+        return (int) r.cmp.size() - 1;
+    };
+    auto step = [&] (Rig& r, int blocks)
+    {
+        juce::MidiBuffer midi;
+        for (int k = 0; k < blocks; ++k)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = r.rng.nextFloat() - 0.5f, w = r.rng.nextFloat() - 0.5f;
+                r.in.setSample (0, i, v);
+                r.in.setSample (1, i, 0.6f * v + 0.2f * w);
+            }
+            for (auto& ln : r.lane)
+            {
+                if (r.at >= ln.endAt) continue;
+                if (r.at >= ln.silentFrom) ln.out.clear();
+                else for (int ch = 0; ch < 2; ++ch) ln.out.copyFrom (ch, 0, r.in, ch, 0, block);
+                midi.clear();
+                ln.p->processBlock (ln.out, midi);
+                ln.pub.push_back (ln.p->getEngine().getMatchGainDb());
+                double e = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i) e += (double) ln.out.getSample (ch, i) * (double) ln.out.getSample (ch, i);
+                ln.energy.push_back (e);
+            }
+            for (auto& c : r.cmp)
+            {
+                const Lane& a = r.lane[(size_t) c.run];
+                const Lane& b = r.lane[(size_t) c.ref];
+                if (r.at >= a.endAt || r.at >= b.endAt)
+                {
+                    c.gDb.push_back (kNaN); c.resid.push_back (kNaN); c.same.push_back (0);
+                    continue;
+                }
+                double num = 0.0, den = 0.0, ex = 0.0;
+                bool same = true;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                    {
+                        const double x = (double) a.out.getSample (ch, i), y = (double) b.out.getSample (ch, i);
+                        num += x * y; den += y * y; ex += x * x;
+                        same = same && juce::exactlyEqual (a.out.getSample (ch, i), b.out.getSample (ch, i));
+                    }
+                const double g = den > 0.0 ? num / den : 0.0;
+                double res = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                    {
+                        const double d = (double) a.out.getSample (ch, i) - g * (double) b.out.getSample (ch, i);
+                        res += d * d;
+                    }
+                c.gDb.push_back (20.0 * std::log10 (juce::jmax (std::abs (g), 1.0e-12)));
+                c.resid.push_back (ex > 0.0 ? res / ex : 0.0);
+                c.same.push_back (same ? 1 : 0);
+            }
+            ++r.at;
+        }
+    };
+    // A/B through the processor's own switch; returns the gain it injects (the destination's memory).
+    auto abTo = [] (Lane& ln, int slot)
+    {
+        ln.rem[ln.p->abActiveSlot()] = ln.p->getEngine().getMatchGainDb();   // what abSwitchToAdopted stores
+        ln.p->abSwitchTo (slot);
+        return ln.rem[slot];
+    };
+    // The worst |pub[b] - pub[from]| over (from, to]: the probe's move.
+    auto worstMove = [] (const Lane& ln, int from, int to)
+    {
+        double w = 0.0;
+        for (int b = from + 1; b <= to; ++b)
+            w = juce::jmax (w, std::abs ((double) ln.pub[(size_t) b] - (double) ln.pub[(size_t) from]));
+        return w;
+    };
+    auto worstD = [] (const Lane& a, const Lane& f, int from, int to)
+    {
+        double w = 0.0;
+        for (int b = from; b <= to; ++b)
+            w = juce::jmax (w, std::abs ((double) a.pub[(size_t) b] - (double) f.pub[(size_t) b]));
+        return w;
+    };
+    struct Level { double maxG = 0.0, maxResid = 0.0; };
+    auto worstLevel = [] (const Cmp& c, int from, int to)
+    {
+        Level l;
+        for (int b = from; b <= to; ++b)
+        {
+            l.maxG     = juce::jmax (l.maxG, std::abs (c.gDb[(size_t) b]));
+            l.maxResid = juce::jmax (l.maxResid, c.resid[(size_t) b]);
+        }
+        return l;
+    };
+    char what[320];
+
+    // =====================================================================================================
+    //  (a) A/B between slots that differ only in Drive; (f) a host reset inside its fade-out; (g) Apply
+    // =====================================================================================================
+    struct DrivePair { float x = 0.0f, y = 0.0f; bool extras = false; };
+    for (const DrivePair pair : { DrivePair { 2.0f, 8.0f, true }, DrivePair { 0.0f, 10.0f, false } })
+    {
+        auto rig = newRig();
+        Rig& r = *rig;
+        const int run = addLane (r, sound (pair.x)), refX = addLane (r, sound (pair.x)), refY = addLane (r, sound (pair.y));
+        const int probe1 = addLane (r, sound (pair.x)), probe2 = addLane (r, sound (pair.x));
+        const int hostReset = pair.extras ? addLane (r, sound (pair.x)) : -1;
+        const int applyL    = pair.extras ? addLane (r, sound (pair.x)) : -1;
+        std::vector<int> hist { run, probe1, probe2 };
+        if (pair.extras) { hist.push_back (hostReset); hist.push_back (applyL); }
+        const int cX = addCmp (r, run, refX), cY = addCmp (r, run, refY);
+        const int cR = pair.extras ? addCmp (r, hostReset, refX) : -1;
+
+        // Slot A converges at Drive x; slot B is a copy, visited, then moved to Drive y by a live edit
+        // and left to converge -- so each slot is LEFT converged and remembers its own match.
+        step (r, (int) std::lround (2.5 * sec));
+        for (int k : hist) { r.lane[(size_t) k].p->abCopyToOther(); abTo (r.lane[(size_t) k], 1); }
+        step (r, 10);
+        for (int k : hist) userEdit (*r.lane[(size_t) k].p, "drive", pair.y);
+        step (r, (int) std::lround (3.5 * sec));
+
+        // ---- event 1: slot B (Drive y) -> slot A (Drive x) ----
+        const int ev1 = r.at;
+        for (int k : hist) abTo (r.lane[(size_t) k], 0);
+        Lane& R = r.lane[(size_t) run];
+        const float inj1 = R.rem[0];
+        std::snprintf (what, sizeof what, "liveness: (a) Drive %g -> %g: the run is back on slot A (Drive %g, Level Match on)",
+                       (double) pair.y, (double) pair.x, (double) pair.x);
+        check (R.p->abActiveSlot() == 0 && std::abs (raw (*R.p, "drive") - pair.x) < 1.0e-4f && on (*R.p), what);
+        r.lane[(size_t) probe1].silentFrom = ev1;
+        r.lane[(size_t) probe1].endAt      = ev1 + bot + sec + 1;
+        step (r, 1);
+        if (pair.extras) r.lane[(size_t) hostReset].p->reset();          // (f): the host's stop, one block into the fade-out
+        const int applyAt = ev1 + (int) std::lround (0.5 * sec);
+        step (r, applyAt - r.at);
+        float applied = 0.0f, pubAtApply = 0.0f, freshAtApply = 0.0f;
+        bool applyLive = false, undoLive = false;
+        if (pair.extras)                                                  // (g): Apply 0.5 s after the A/B, then Undo
+        {
+            Proc& ap = *r.lane[(size_t) applyL].p;
+            pubAtApply   = ap.getEngine().getMatchGainDb();
+            freshAtApply = r.lane[(size_t) refX].p->getEngine().getMatchGainDb();
+            ap.applyAutoGain(); ap.pollUndoCoalesce();
+            applied   = raw (ap, "outputGain");
+            applyLive = ! on (ap) && ap.canUndo();
+            step (r, 24);
+            ap.undo();
+            undoLive = on (ap) && std::abs (raw (ap, "outputGain") + 3.0f) < 1.0e-4f && ap.canRedo();
+            r.lane[(size_t) applyL].endAt = r.at;
+        }
+        step (r, ev1 + win + 10 - r.at);
+
+        // ---- event 2: slot A (Drive x) -> slot B (Drive y) ----
+        const int ev2 = r.at;
+        for (int k : { run, probe2 }) abTo (r.lane[(size_t) k], 1);
+        const float inj2 = R.rem[1];
+        std::snprintf (what, sizeof what, "liveness: (a) Drive %g -> %g: the run is back on slot B (Drive %g, Level Match on)",
+                       (double) pair.x, (double) pair.y, (double) pair.y);
+        check (R.p->abActiveSlot() == 1 && std::abs (raw (*R.p, "drive") - pair.y) < 1.0e-4f && on (*R.p), what);
+        r.lane[(size_t) refX].endAt   = ev2;
+        r.lane[(size_t) probe2].silentFrom = ev2;
+        r.lane[(size_t) probe2].endAt      = ev2 + bot + sec + 1;
+        if (pair.extras) r.lane[(size_t) hostReset].endAt = ev2;
+        step (r, win + bot + 1);
+
+        auto judge = [&] (int ev, float inj, float from, float to, int refL, int cmpIdx, int probeL)
+        {
+            const Lane& ref = r.lane[(size_t) refL];
+            const Lane& pb  = r.lane[(size_t) probeL];
+            const int b0 = ev + bot, b1 = b0 + win - 1;
+            const double pre = R.pub[(size_t) ev - 1], jump = std::abs ((double) inj - pre);
+            const double injErr  = std::abs ((double) R.pub[(size_t) b0] - inj);
+            const double injErrP = std::abs ((double) pb.pub[(size_t) b0] - inj);
+            const bool sameInj = juce::exactlyEqual (pb.rem[ev == ev1 ? 0 : 1], inj);   // the probe injected the same memory
+            const double maxD = worstD (R, ref, b0, b1);
+            const Level lv = worstLevel (r.cmp[(size_t) cmpIdx], ev + full, b1);
+            const double hold = worstMove (pb, b0, b0 + sec);
+            auto dAt = [&] (double s)
+            {
+                const int b = b0 + (int) std::lround (s * sec);
+                return (double) R.pub[(size_t) b] - (double) ref.pub[(size_t) b];
+            };
+            char leg[96];
+            std::snprintf (leg, sizeof leg, "(a) A/B Drive %g -> %g", (double) from, (double) to);
+            std::printf ("  %-34s: injected %+.3f (source %+.3f, fresh %+.3f), at the bottom %+.3f; D %+.3f/%+.3f/%+.3f/%+.3f/%+.3f"
+                         " at 0/0.1/0.5/1/2 s, max|D| %.3f, max|g| %.3f (resid %.1e); probe %+.3f at the bottom, then moves %.2e\n",
+                         leg, (double) inj, pre, (double) ref.pub[(size_t) b0], (double) R.pub[(size_t) b0],
+                         dAt (0.0), dAt (0.1), dAt (0.5), dAt (1.0), dAt (2.0), maxD, lv.maxG, lv.maxResid,
+                         (double) pb.pub[(size_t) b0], hold);
+            std::snprintf (what, sizeof what, "premise: %s: the injected slot gain is >= 1.5 dB from the source's value", leg);
+            check (jump >= 1.5, what);
+            std::snprintf (what, sizeof what, "route: %s: the bottom block publishes the slot's remembered gain (run and probe,"
+                                              " within 20 %% of the jump)", leg);
+            check (injErr <= 0.2 * jump && injErrP <= 0.2 * jump && sameInj, what);
+            std::snprintf (what, sizeof what, "%s: the published value stays within 0.3 dB of a fresh processor at the "
+                                              "destination for 3 s (F13(2) Q1)", leg);
+            check (maxD <= 0.3, what);
+            std::snprintf (what, sizeof what, "%s: the output stays within 0.3 dB of the fresh processor's for 3 s", leg);
+            check (lv.maxG <= 0.3, what);
+            std::snprintf (what, sizeof what, "non-vacuity: %s: the run is the fresh processor times one gain (resid <= 1e-3)", leg);
+            check (lv.maxResid <= 1.0e-3, what);
+            std::snprintf (what, sizeof what, "%s: the injection re-arms the analysis -- silence after it moves nothing"
+                                              " (< 1e-6 dB)", leg);
+            check (hold < 1.0e-6, what);
+        };
+        judge (ev1, inj1, pair.y, pair.x, refX, cX, probe1);
+        judge (ev2, inj2, pair.x, pair.y, refY, cY, probe2);
+
+        if (pair.extras)
+        {
+            // (f) The host reset one block into the fade-out completes the swap and re-arms; the pending
+            //     injection is consumed by the next block. Liveness: that block differs from the same
+            //     switch without the reset (the two lanes are otherwise one deterministic computation).
+            const Lane& H = r.lane[(size_t) hostReset];
+            const Lane& F = r.lane[(size_t) refX];
+            const int b0 = ev1 + 1, b1 = b0 + win - 1;
+            const double jump = std::abs ((double) inj1 - (double) R.pub[(size_t) ev1 - 1]);
+            const double maxD = worstD (H, F, b0, b1);
+            const Level lv = worstLevel (r.cmp[(size_t) cR], ev1 + full, b1);
+            std::printf ("  %-34s: after the reset %+.3f (injected %+.3f, fresh %+.3f), max|D| %.3f, max|g| %.3f (resid %.1e);"
+                         " energy in the reset block %.4g (no reset: %.4g)\n",
+                         "(f) host reset 1 block into (a)'s A/B", (double) H.pub[(size_t) b0], (double) inj1,
+                         (double) F.pub[(size_t) b0], maxD, lv.maxG, lv.maxResid, H.energy[(size_t) b0], R.energy[(size_t) b0]);
+            check (! juce::exactlyEqual (H.energy[(size_t) b0], R.energy[(size_t) b0]),
+                   "liveness: (f) the host reset reached the engine (its block differs from the same A/B without it)");
+            check (std::abs ((double) H.pub[(size_t) b0] - (double) inj1) <= 0.2 * jump,
+                   "route: (f) the A/B injection is still adopted after the host reset (the block after it)");
+            check (maxD <= 0.3, "(f) a host reset inside the A/B fade-out stays within 0.3 dB of the fresh destination for 3 s");
+            check (lv.maxG <= 0.3 && lv.maxResid <= 1.0e-3,
+                   "(f) ...and so does its output (within 0.3 dB; resid <= 1e-3)");
+
+            // (g) Apply 0.5 s after the A/B writes what is published, which is now the destination's match.
+            std::printf ("  %-34s: wrote Output Gain %+.3f (published %+.3f, fresh %+.3f)\n",
+                         "(g) Apply 0.5 s after (a)'s A/B", (double) applied, (double) pubAtApply, (double) freshAtApply);
+            check (applyLive, "liveness: (g) Apply turned Level Match off (Undo available)");
+            check (std::abs (applied - pubAtApply) <= 0.006f, "(g) Apply writes the published value (to the 0.01 dB grid)");
+            check (std::abs (applied - freshAtApply) <= 0.2f,
+                   "(g) Apply after a continuous-only A/B writes the destination's match (within 0.2 dB of a fresh processor)");
+            check (undoLive, "(g) Undo of that Apply restores Level Match on at Output Gain -3 (Redo available)");
+        }
+    }
+
+    // =====================================================================================================
+    //  (b) A/B between slots that differ only in what the measurement does not read: not re-armed
+    // =====================================================================================================
+    {
+        auto rig = newRig();
+        Rig& r = *rig;
+        const KV kv = sound (8.0f);
+        struct Case
+        {
+            const char* name = nullptr; const char* id = nullptr;
+            float edited = 0.0f, original = 0.0f;
+            bool reArms = false;
+            int run = 0, probe = 0, cmp = 0;
+        };
+        Case cases[4] = { { "Output Gain -9 / -3",        "outputGain",    -9.0f,  -3.0f,   false, 0, 0, 0 },
+                          { "Level Match off / on",       "autoGainMatch",  0.0f,   1.0f,   false, 0, 0, 0 },
+                          { "Dim-D Style under Haas",     "dimMode",        3.0f,   1.0f,   false, 0, 0, 0 },
+                          { "CONTROL: Width 1.301 / 1.3", "width",          1.301f, 1.3f,   true,  0, 0, 0 } };
+        const int twin = addLane (r, kv), twinProbe = addLane (r, kv);
+        for (auto& c : cases) { c.run = addLane (r, kv); c.probe = addLane (r, kv); c.cmp = addCmp (r, c.run, twin); }
+        auto all = [&] (auto&& fn) { for (size_t k = 0; k < r.lane.size(); ++k) fn (r.lane[k]); };
+
+        step (r, (int) std::lround (1.6 * sec));
+        all ([&] (Lane& ln) { ln.p->abCopyToOther(); abTo (ln, 1); });   // slot B: never visited, injects 0 dB
+        step (r, 10);
+        all ([&] (Lane& ln) { abTo (ln, 0); });                          // ...and is left while still gliding
+        step (r, 10);
+        for (const auto& c : cases)
+            for (int k : { c.run, c.probe }) userEdit (*r.lane[(size_t) k].p, c.id, c.edited);   // slot A only
+        step (r, (int) std::lround (0.5 * sec));
+        float before[4] = { 0.0f, 0.0f, 0.0f, 0.0f };                   // each run's field on slot A
+        for (size_t i = 0; i < 4; ++i) before[i] = raw (*r.lane[(size_t) cases[i].run].p, cases[i].id);
+        const int ev = r.at;
+        all ([&] (Lane& ln) { abTo (ln, 1); });
+        for (int k : { cases[0].probe, cases[1].probe, cases[2].probe, cases[3].probe, twinProbe })
+        {
+            r.lane[(size_t) k].silentFrom = ev;
+            r.lane[(size_t) k].endAt      = ev + bot + sec + 1;
+        }
+        step (r, bot + sec + 1);
+
+        const Lane& T = r.lane[(size_t) twin];
+        const int idTo = ev + full + (int) std::lround (0.6 * sec);
+        const double twinMove = worstMove (r.lane[(size_t) twinProbe], ev + bot, ev + bot + sec);
+        std::printf ("  (b) the twin (identical slots): injected %+.3f (source %+.3f), probe moves %.3f dB\n",
+                     (double) T.rem[1], (double) T.pub[(size_t) ev - 1], twinMove);
+        check (twinMove >= 0.5, "(b) an A/B between identical slots is not re-armed either (its probe moves >= 0.5 dB)");
+        for (size_t i = 0; i < 4; ++i)
+        {
+            const Case& c = cases[i];
+            const Lane& L = r.lane[(size_t) c.run];
+            const Lane& P = r.lane[(size_t) c.probe];
+            const Cmp& cm = r.cmp[(size_t) c.cmp];
+            const double inj = (double) L.rem[1], pre = L.pub[(size_t) ev - 1], jump = std::abs (inj - pre);
+            const double move = worstMove (P, ev + bot, ev + bot + sec);
+            int from = idTo + 1;                                          // the first block of the identical tail
+            while (from > ev && cm.same[(size_t) from - 1] != 0) --from;
+            std::printf ("  (b) %-26s: injected %+.3f (source %+.3f), at the bottom %+.3f; probe moves %.3f dB;"
+                         " identical to the twin from event%+d%s\n",
+                         c.name, inj, pre, (double) L.pub[(size_t) ev + bot], move, from - ev,
+                         from > idTo ? " (not at all in the window)" : "");
+            std::snprintf (what, sizeof what, "liveness: (b) %s: the run's two slots differ in that field only (A %g, B %g)",
+                           c.name, (double) c.edited, (double) c.original);
+            check (std::abs (before[i] - c.edited) < 1.0e-4f && std::abs (raw (*L.p, c.id) - c.original) < 1.0e-4f
+                       && L.p->abActiveSlot() == 1 && on (*L.p), what);
+            std::snprintf (what, sizeof what, "premise: (b) %s: the injected (stale) slot gain is >= 1.5 dB from the source's"
+                                              " value", c.name);
+            check (jump >= 1.5, what);
+            std::snprintf (what, sizeof what, "route: (b) %s: the bottom block publishes the injected slot gain (within 20 %% of"
+                                              " the jump)", c.name);
+            check (std::abs ((double) L.pub[(size_t) ev + bot] - inj) <= 0.2 * jump && juce::exactlyEqual (P.rem[1], L.rem[1])
+                       && std::abs ((double) P.pub[(size_t) ev + bot] - inj) <= 0.2 * jump, what);
+            if (! c.reArms)
+            {
+                std::snprintf (what, sizeof what, "(b) %s: NOT re-armed -- the probe moves >= 0.5 dB (F13(2) Q1)", c.name);
+                check (move >= 0.5, what);
+                std::snprintf (what, sizeof what, "(b) %s: the A/B is unchanged -- bit-identical to the identical-slot twin from "
+                                                  "the first full-level block for 0.6 s", c.name);
+                check (from <= ev + full, what);
+            }
+            else
+            {
+                std::snprintf (what, sizeof what, "(b) %s: a measurement input re-arms -- the probe holds (< 1e-6 dB)", c.name);
+                check (move < 1.0e-6, what);
+            }
+        }
+        {
+            const Case& lm = cases[1];
+            check (r.cmp[(size_t) lm.cmp].same[(size_t) ev - 1] == 0,
+                   "non-vacuity: (b) before the switch the Level-Match-off run and the twin differ");
+        }
+    }
+
+    // ---- user presets (the browser's path). The suite writes the REAL preset folder (State test 8) ----
+    const juce::String onName ("__anamorph_st131_match_on__"), offName ("__anamorph_st131_match_off__");
+    const juce::File presetDir = anamorph::PresetManager::presetDirectory();
+    const juce::File onFile  = presetDir.getChildFile (onName  + anamorph::PresetManager::fileSuffix());
+    const juce::File offFile = presetDir.getChildFile (offName + anamorph::PresetManager::fileSuffix());
+    const juce::File parkedOn  = juce::File::createTempFile (".st131on.parked");
+    const juce::File parkedOff = juce::File::createTempFile (".st131off.parked");
+    const bool hadOn = onFile.existsAsFile(), hadOff = offFile.existsAsFile();
+    if (hadOn)  { parkedOn.deleteFile();  onFile.moveFileTo (parkedOn); }
+    if (hadOff) { parkedOff.deleteFile(); offFile.moveFileTo (parkedOff); }
+    auto author = [&] (const KV& kv)             // the destination sound, saved with Level Match on and off
+    {
+        onFile.deleteFile(); offFile.deleteFile();
+        auto a = make (kv);
+        const bool savedOn = opCompleted (a->getPresets().saveUser (onName));
+        setPlain (*a, "autoGainMatch", 0.0f);
+        const bool savedOff = opCompleted (a->getPresets().saveUser (offName));
+        check (savedOn && savedOff && onFile.existsAsFile() && offFile.existsAsFile(),
+               "liveness: the author saved both user presets");
+    };
+    auto loadUser = [&] (Proc& p, const juce::File& f)   // rescan, pick the row, load it
+    {
+        auto& presets = p.getPresets();
+        presets.refresh();
+        int index = -1;
+        for (int i = 0; i < presets.entries().size(); ++i)
+            if (! presets.entries().getReference (i).isFactory && presets.entries().getReference (i).file == f)
+                index = i;
+        return index >= 0 && opCompleted (presets.load (index));
+    };
+
+    // =====================================================================================================
+    //  (c) forced swaps with no injection -- Undo, a user preset -- track the live edit and are not re-armed
+    // =====================================================================================================
+    for (const float to : { 10.0f, 0.0f })
+    {
+        const float from = 10.0f - to;
+        author (sound (to));
+        auto rig = newRig();
+        Rig& r = *rig;
+        const int live = addLane (r, sound (to)), undo = addLane (r, sound (to)), preset = addLane (r, sound (to));
+        const int liveP = addLane (r, sound (to)), undoP = addLane (r, sound (to)), presetP = addLane (r, sound (to));
+        step (r, 1);
+        for (auto& ln : r.lane) userEdit (*ln.p, "drive", from);          // the edit Undo reverts
+        step (r, (int) std::lround (2.0 * sec) - 1);
+        const int ev = r.at;
+        for (int k : { live, liveP }) userEdit (*r.lane[(size_t) k].p, "drive", to);
+        for (int k : { undo, undoP }) r.lane[(size_t) k].p->undo();
+        bool loaded = true;
+        for (int k : { preset, presetP }) loaded = loadUser (*r.lane[(size_t) k].p, onFile) && loaded;
+        for (int k : { liveP, undoP, presetP })
+        {
+            r.lane[(size_t) k].silentFrom = ev;
+            r.lane[(size_t) k].endAt      = ev + bot + sec + 1;
+        }
+        char leg[64];
+        std::snprintf (leg, sizeof leg, "(c) Drive %g -> %g", (double) from, (double) to);
+        bool liveOk = loaded && r.lane[(size_t) undo].p->canRedo();
+        for (int k : { live, undo, preset }) liveOk = liveOk && std::abs (raw (*r.lane[(size_t) k].p, "drive") - to) < 1.0e-4f
+                                                            && on (*r.lane[(size_t) k].p);
+        std::snprintf (what, sizeof what, "liveness: %s: the live edit, Undo (Redo available) and the preset load all "
+                                          "reached Drive %g with Level Match on", leg, (double) to);
+        check (liveOk, what);
+        step (r, bot + 2 * sec);
+
+        const Lane& L = r.lane[(size_t) live];
+        const int j0 = ev + (int) std::lround (0.1 * sec), j1 = ev + bot + 2 * sec - 1;
+        const double moveLive = worstMove (r.lane[(size_t) liveP], ev + bot, ev + bot + sec);
+        struct Forced { const char* name = nullptr; int lane = 0, probe = 0; };
+        for (const Forced fs : { Forced { "Undo", undo, undoP }, Forced { "user preset", preset, presetP } })
+        {
+            const char* name = fs.name;
+            const Lane& F = r.lane[(size_t) fs.lane];
+            const double track = worstD (F, L, j0, j1), trackF = worstD (F, L, ev + full, j1);
+            const double move = worstMove (r.lane[(size_t) fs.probe], ev + bot, ev + bot + sec);
+            std::printf ("  %-18s %-12s: vs the live edit max|dpub| %.3f dB from 0.1 s (%.3f from the full-level block);"
+                         " pub %+.3f -> %+.3f -> %+.3f at event-1/+1/+2 (live %+.3f at the event); probe moves %.3e"
+                         " (live %.3e)\n",
+                         leg, name, track, trackF, (double) F.pub[(size_t) ev - 1], (double) F.pub[(size_t) ev + 1],
+                         (double) F.pub[(size_t) ev + 2], (double) L.pub[(size_t) ev], move, moveLive);
+            if (to > from)
+            {
+                std::snprintf (what, sizeof what, "route: %s %s is a forced swap: the Drive rise is held back to its bottom (the "
+                                                  "live edit floors the value at once, the swap only at event + 2)", leg, name);
+                check (L.pub[(size_t) ev] <= L.pub[(size_t) ev - 1] - 3.0f
+                           && std::abs (F.pub[(size_t) ev + 1] - F.pub[(size_t) ev - 1]) <= 0.05f
+                           && F.pub[(size_t) ev + 2] <= F.pub[(size_t) ev + 1] - 3.0f, what);
+            }
+            std::snprintf (what, sizeof what, "%s %s tracks the same live edit (published within 0.5 dB from 0.1 s on;"
+                                              " F13(2) Q2)", leg, name);
+            check (track <= 0.5, what);
+            std::snprintf (what, sizeof what, "%s %s is NOT re-armed -- its probe moves (> 1e-3 dB), as the live edit's"
+                                              " does", leg, name);
+            check (move > 1.0e-3 && moveLive > 1.0e-3, what);
+        }
+    }
+
+    // =====================================================================================================
+    //  (d) Case A still lands, Case B still glides (State test 130 is the depth)
+    // =====================================================================================================
+    {
+        author (sound (10.0f));
+        auto rig = newRig();
+        Rig& r = *rig;
+        const int aRun = addLane (r, sound (8.0f)), aTwin = addLane (r, sound (8.0f));
+        const int bRun = addLane (r, sound (8.0f)), bTwin = addLane (r, sound (8.0f));
+        const int cA = addCmp (r, aRun, aTwin), cB = addCmp (r, bRun, bTwin);
+        step (r, (int) std::lround (1.6 * sec));
+        for (auto& ln : r.lane) { ln.p->applyAutoGain(); ln.p->pollUndoCoalesce(); }
+        const float m = raw (*r.lane[(size_t) aRun].p, "outputGain");
+        bool appliedAll = true;
+        for (auto& ln : r.lane) appliedAll = appliedAll && juce::exactlyEqual (raw (*ln.p, "outputGain"), m) && ! on (*ln.p);
+        check (appliedAll, "liveness: (d) Apply locked one value into Output Gain in every lane and turned Level Match off");
+        step (r, 24);
+        const int ev = r.at;
+        Proc& A = *r.lane[(size_t) aRun].p;
+        A.undo(); r.lane[(size_t) aTwin].p->getEngine().requestDuck();
+        const bool loaded = loadUser (*r.lane[(size_t) bRun].p, onFile) && loadUser (*r.lane[(size_t) bTwin].p, offFile);
+        check (on (A) && std::abs (raw (A, "outputGain") + 3.0f) < 1.0e-4f && A.canRedo(),
+               "liveness: (d) Undo restored Level Match on at Output Gain -3 (Redo available)");
+        check (loaded && on (*r.lane[(size_t) bRun].p) && ! on (*r.lane[(size_t) bTwin].p)
+                   && std::abs (raw (*r.lane[(size_t) bRun].p, "drive") - 10.0f) < 1.0e-4f,
+               "liveness: (d) the preset turned Level Match on with Drive 10 (the twin's copy: off)");
+        const int F = ev + full, last = F + (int) std::lround (0.6 * sec) - 1;
+        step (r, last + 1 - r.at);
+
+        const Lane& RA = r.lane[(size_t) aRun];
+        double maxD = 0.0, resid = 0.0;
+        for (int b = F; b <= last; ++b)
+        {
+            maxD  = juce::jmax (maxD, std::abs (r.cmp[(size_t) cA].gDb[(size_t) b] + (double) m - (double) RA.pub[(size_t) b]));
+            resid = juce::jmax (resid, r.cmp[(size_t) cA].resid[(size_t) b]);
+        }
+        const Lane& RB = r.lane[(size_t) bRun];
+        const double gT = (double) raw (*r.lane[(size_t) bTwin].p, "outputGain");
+        const double dF = r.cmp[(size_t) cB].gDb[(size_t) F] + gT - (double) RB.pub[(size_t) F];
+        const double phi = dF / (0.0 - (double) RB.pub[(size_t) F]);
+        std::printf ("  (d) Undo of Apply (Case A)           : max|D| %.3f dB (pub_F %+.3f, resid %.1e)\n"
+                     "  (d) preset: Level Match on + Drive 10: D_F %+.3f dB (pub_F %+.3f), phi %.2f (resid %.1e)\n",
+                     maxD, (double) RA.pub[(size_t) F], resid, dF, (double) RB.pub[(size_t) F], phi,
+                     r.cmp[(size_t) cB].resid[(size_t) F]);
+        check (std::abs (RA.pub[(size_t) F]) >= 3.0f && resid <= 1.0e-3,
+               "premise: (d) Case A: the published value is >= 3 dB from unity; the run is the twin times one gain");
+        check (maxD <= 0.1, "(d) Case A: Undo of Apply still lands on the published value (max|D| <= 0.1 dB for 0.6 s)");
+        check (std::abs (RB.pub[(size_t) F]) >= 3.0f && r.cmp[(size_t) cB].resid[(size_t) F] <= 1.0e-3,
+               "premise: (d) Case B: the glide spans >= 3 dB; the run is the twin times one gain");
+        check (phi >= 0.5, "(d) Case B: a preset turning Level Match on with a Drive change still glides from unity (phi >= 0.5)");
+    }
+    onFile.deleteFile(); offFile.deleteFile();
+    check (! onFile.existsAsFile() && ! offFile.existsAsFile(), "the test's preset files are removed");
+    if (hadOn)  parkedOn.moveFileTo (onFile);
+    if (hadOff) parkedOff.moveFileTo (offFile);
+
+    // =====================================================================================================
+    //  (e) a re-prepare keeps a result it did not invalidate; (f) a settled host reset
+    // =====================================================================================================
+    {
+        const KV kv = sound (8.0f);
+        juce::MemoryBlock blobDrive, blobOut;            // a restore that moves Drive / only Output Gain
+        { auto h = make (with (kv, { { "drive", 2.0f } }));      h->getStateInformation (blobDrive); }
+        { auto h = make (with (kv, { { "outputGain", -9.0f } })); h->getStateInformation (blobOut); }
+
+        auto rig = newRig();
+        Rig& r = *rig;
+        const int ref = addLane (r, kv), rp = addLane (r, kv), rpP = addLane (r, kv), rp512P = addLane (r, kv);
+        const int rp441 = addLane (r, kv), rDrive = addLane (r, kv), rOut = addLane (r, kv), rApply = addLane (r, kv);
+        const int hReset = addLane (r, kv), ctl = addLane (r, kv);
+        const int cRp = addCmp (r, rp, ref);
+        step (r, (int) std::lround (2.5 * sec));
+        const int ev = r.at;
+        const float m0 = r.lane[(size_t) ref].pub.back();
+        bool sameHistory = true;                          // every lane is one deterministic computation so far
+        for (const auto& ln : r.lane) sameHistory = sameHistory && juce::exactlyEqual (ln.pub.back(), m0);
+        auto pubOf = [&] (int k) { return r.lane[(size_t) k].p->getEngine().getMatchGainDb(); };
+
+        r.lane[(size_t) rp].p->prepareToPlay (sr, block);
+        const float keptRp = pubOf (rp);
+        r.lane[(size_t) rpP].p->prepareToPlay (sr, block);
+        const float keptRpP = pubOf (rpP);
+        r.lane[(size_t) rp512P].p->prepareToPlay (sr, 512);
+        const float kept512 = pubOf (rp512P);
+        r.lane[(size_t) rp441].p->prepareToPlay (44100.0, block);
+        const float flushed441 = pubOf (rp441);
+
+        Proc& D = *r.lane[(size_t) rDrive].p;
+        D.setStateInformation (blobDrive.getData(), (int) blobDrive.getSize());
+        const bool driveRestored = std::abs (raw (D, "drive") - 2.0f) < 1.0e-4f;
+        const float beforeDrive = pubOf (rDrive);
+        D.prepareToPlay (sr, block);
+        const float flushedDrive = pubOf (rDrive);
+
+        Proc& O = *r.lane[(size_t) rOut].p;
+        O.setStateInformation (blobOut.getData(), (int) blobOut.getSize());
+        const bool outRestored = std::abs (raw (O, "outputGain") + 9.0f) < 1.0e-4f && std::abs (raw (O, "drive") - 8.0f) < 1.0e-4f;
+        const float beforeOut = pubOf (rOut);
+        O.prepareToPlay (sr, block);
+        const float keptOut = pubOf (rOut);
+
+        Proc& AP = *r.lane[(size_t) rApply].p;
+        AP.prepareToPlay (sr, block);
+        AP.applyAutoGain(); AP.pollUndoCoalesce();
+        const float appliedOut = raw (AP, "outputGain");
+        const bool applyOff = ! on (AP);
+
+        r.lane[(size_t) hReset].p->reset();
+        const float keptReset = pubOf (hReset);
+
+        for (int k : { rpP, rp512P, hReset, ctl, rOut })
+        {
+            r.lane[(size_t) k].silentFrom = ev;
+            r.lane[(size_t) k].endAt      = ev + sec + 1;
+        }
+        for (int k : { rp441, rDrive, rApply }) r.lane[(size_t) k].endAt = ev;
+        step (r, win);
+
+        const Lane& RP = r.lane[(size_t) rp];
+        const Lane& RF = r.lane[(size_t) ref];
+        int k0 = ev;                                           // the first block the two outputs are proportional
+        while (k0 < ev + 8 && ! (r.cmp[(size_t) cRp].resid[(size_t) k0] <= 1.0e-3)) ++k0;
+        const Level lv = worstLevel (r.cmp[(size_t) cRp], k0, ev + win - 1);
+        const double maxD = worstD (RP, RF, ev, ev + win - 1);
+        const double holdRp = worstMove (r.lane[(size_t) rpP], ev - 1, ev + sec);   // from the kept value on
+        const double hold512 = worstMove (r.lane[(size_t) rp512P], ev - 1, ev + sec);
+        const double holdOut = worstMove (r.lane[(size_t) rOut], ev - 1, ev + sec);
+        const double holdReset = worstMove (r.lane[(size_t) hReset], ev - 1, ev + sec);
+        const double moveCtl = worstMove (r.lane[(size_t) ctl], ev - 1, ev + sec);
+        std::printf ("  (e) converged %+.4f dB; same-rate re-prepare: kept %+.4f, first block g %+.3f (resid %.1e), "
+                     "proportional from event%+d, then max|g| %.3f, max|D| %.3f over 3 s; probes hold %.1e (256) / %.1e (512)\n",
+                     (double) m0, (double) keptRp, r.cmp[(size_t) cRp].gDb[(size_t) ev], r.cmp[(size_t) cRp].resid[(size_t) ev],
+                     k0 - ev, lv.maxG, maxD, holdRp, hold512);
+        std::printf ("  (e) 44.1 kHz: %+.4f; restore moving Drive: %+.4f -> %+.4f; restore of Output Gain only: %+.4f -> %+.4f"
+                     " (probe %.1e); Apply after the re-prepare wrote %+.3f (fresh %+.4f)\n",
+                     (double) flushed441, (double) beforeDrive, (double) flushedDrive, (double) beforeOut, (double) keptOut,
+                     holdOut, (double) appliedOut, (double) RF.pub[(size_t) ev - 1]);
+        std::printf ("  (f) settled host reset: %+.4f -> %+.4f, probe %.1e (no reset: moves %.3e)\n",
+                     (double) m0, (double) keptReset, holdReset, moveCtl);
+
+        check (std::abs (m0) >= 3.0f && sameHistory,
+               "premise: (e) Level Match converged >= 3 dB from unity before the re-prepares, identically in every lane");
+        check (juce::exactlyEqual (keptRp, m0) && juce::exactlyEqual (keptRpP, m0),
+               "(e) a same-rate re-prepare keeps the published value bit-exact (F13(2) Q5)");
+        check (k0 <= ev + 4 && lv.maxResid <= 1.0e-3,
+               "non-vacuity: (e) the re-prepared output is the fresh one times one gain from its first blocks (resid <= 1e-3)");
+        check (lv.maxG <= 0.1, "(e) ...and plays within 0.1 dB of a converged fresh processor from there for 3 s");
+        check (maxD <= 0.1, "(e) ...and its published value stays within 0.1 dB of the fresh one's for 3 s");
+        check (holdRp < 1.0e-6, "(e) a same-rate re-prepare re-arms the analysis -- silence moves nothing (< 1e-6 dB)");
+        check (juce::exactlyEqual (kept512, m0) && hold512 < 1.0e-6,
+               "(e) a re-prepare at the same rate and a new block size (512) keeps the value and re-arms");
+        check (juce::exactlyEqual (flushed441, 0.0f), "(e) a re-prepare at a NEW rate (44.1 kHz) still flushes (published 0 dB)");
+        check (driveRestored && juce::exactlyEqual (beforeDrive, m0),
+               "liveness: (e) the restore moved Drive to 2 and did not itself touch the published value");
+        check (juce::exactlyEqual (flushedDrive, 0.0f),
+               "(e) a same-rate re-prepare after a restore that moved Drive flushes (published 0 dB)");
+        check (outRestored && juce::exactlyEqual (beforeOut, m0),
+               "liveness: (e) the restore moved Output Gain only (to -9) and did not itself touch the published value");
+        check (juce::exactlyEqual (keptOut, m0) && holdOut < 1.0e-6,
+               "(e) a same-rate re-prepare after a restore of Output Gain only keeps the value and re-arms");
+        check (applyOff && std::abs (appliedOut - m0) <= 0.006f,
+               "(e) Apply right after a same-rate re-prepare writes the kept value into Output Gain (0.01 dB grid)");
+        check (moveCtl > 1.0e-3, "(f) control: without a reset or re-prepare the live analysis DOES move on silence");
+        check (juce::exactlyEqual (keptReset, m0) && holdReset < 1.0e-6,
+               "(f) a settled host reset keeps the published value bit-exact and re-arms (State tests 118 / 120)");
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -38621,6 +39413,7 @@ int main (int argc, char* argv[])
     testANonFiniteVelvetDensityDoesNotFreezeTheDensity();
     testApplyNeverWritesANonFiniteGain();
     testLevelMatchEngagesAtTheLevelItMeasured();
+    testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

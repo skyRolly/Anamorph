@@ -291,6 +291,48 @@ are rejected, each by a named leg — among them an ungated landing, no dirty fl
 Mix, no `!procChanged`, an injection that loses priority, a band guard one band high, a tolerance tighter
 than the drift, and a landing before the bottom block's measurement (leg 11).
 
+**An A/B injection re-arms the Level-Match analysis when the slots differ in what it reads, and a
+same-rate re-prepare keeps the result — Test 67 (2026-09-24; ADR-0007, Amendment of 2026-09-24,
+F13(2) Q1 and Q5; KI-030).** The matcher has an *analysis* (the K-weighting biquads and two 0.4 s
+integrators) and a *result* (`displayedGainDb`, `prevPredictedGainDb`, the published value);
+`softReset()` clears the first and keeps the second. Before this round an A/B injection landed the
+destination slot's gain on the source slot's analysis, which dragged it back toward the source for
+seconds, and every re-prepare flushed a result that still described the sound. Now an injection
+consumed at a duck bottom re-arms the analysis iff the switch changes a measurement input
+(`measurementInputsDiffer`, or `duckMeasDirty` for what an ordinary duck made live) — at the forced
+consumer and at the defensive one — and a `prepare()` at an unchanged rate whose primed snapshot moves
+no measurement input keeps the result bit-exact and re-arms the analysis. **Test 67**
+(`testLevelMatchAbRearmAndSameRateReprepare`, the engine contract) observes a re-arm through the public
+API by feeding silence right after the event: a re-armed analysis closes the matcher's gate at once and
+the published value holds exactly; a stale one keeps the gate open and moves it (HOLD < 1e-6 dB, 0
+measured; MOVE > 1 dB, 1.88–4.67 measured), and every probe first proves its injection was consumed in
+the block it judges. Transients are read against a fresh engine prepared at the destination and fed
+the same seeded input from sample 0 — the published D(t) and a per-block least-squares output gain,
+for 3 s. Legs: (1) an A/B-shaped forced swap for every `EngineParameters` member under four bases
+(Haas; Velvet, 2 bands, Mono Maker; Chorus, 4 bands; Dimension D, 1 band, Mono Maker) plus the
+identical slot — the value holds iff the field is a measurement input or a `processingDiffers` path
+change, and the post-tap, guarded-out and identical rows move; (2) a continuous-only A/B, Drive 2 ↔ 8,
+injecting the fresh destination's converged value — within 0.1 dB of the fresh engine for 3 s (0.018 /
+0.015 dB published, 0.017 / 0.012 dB output); (3) Drive 0 ↔ 10 — the same A/B (0.019 / 0.014 dB), and
+the forced swap without an injection (undo / preset), which does not re-arm and tracks the same edit
+made live within 0.5 dB from the first full-level block (0.348 / 0.167 dB) — pinned as-is (Q2); (4) an
+ordinary duck upgraded to forced by an A/B re-arms when a Drive edit went live during its fade-out,
+and the defensive consumer re-arms at an ordinary bottom that changed a measurement input — neither
+one block before or after that bottom, or without a duck; (5) re-prepare: same rate and block, 256 →
+512, and a primed Output-Gain-only snapshot keep the value bit-exact through the first block (the
+value is displaced off the predict floor first, so a keep that lost `prevPredictedGainDb` is caught),
+then silence holds; the audible run applies −6.080 dB in its first block against the converged
+−6.084 dB and stays within 0.1 dB for 3 s; 48 → 44.1 kHz and a primed Drive change flush to exactly
+0 dB and then match a first prepare bit for bit. The allocation guard is armed around every injection
+bottom (664 calls, zero allocations). 34 checks, ~0.75 s native. Against the pre-change engine
+(`daa6809`) 12 of the 34 fail — the A/B runs sit 1.33 / 1.63 dB off at Drive 2 ↔ 8 and 3.46 / 4.92 dB
+off at 0 ↔ 10, and every re-prepare flushed (2.02 dB off at the first block) — while the path rows,
+the move rows, the forced-without-injection legs, the ordinary controls and the flushes pass on both.
+Nine engine variants are each rejected by a named leg: a re-arm at every injection, no `duckMeasDirty`
+in the rule, a forced bottom that re-arms without an injection, a fallback consumer that always
+re-arms, no defensive re-arm, a keep across a rate change, a keep that ignores the primed snapshot, a
+keep that loses the predict's memory, and a keep that does not re-arm.
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4421,6 +4463,45 @@ restored (State test 8's pattern). 114 checks, ~0.63 s native. Against the pre-f
 fail — both LAND checks on each of the twelve LAND legs (D_F +2.84 to +5.65 dB, +3.34 on the Chorus
 reloads, −4.88 dB at the positive match); a bitwise sound comparison fails Chorus reload #1 (+3.34 dB);
 an injection that loses priority fails leg 6's identity pair.
+
+**Level Match re-arms what an A/B injects and keeps what a re-prepare did not change — State test 131
+(2026-09-24; ADR-0007, Amendment of 2026-09-24, F13(2); KI-030).** The processor half of Test 67,
+through `AnamorphAudioProcessor` exactly as a host and the editor drive it (Advanced Mode on, Haas
+50 % / Width 130 %, Multiband off, Output Gain −3 dB, 48 kHz / 256, one seeded correlated-noise stream,
+every processor on the heap). Two instruments: the **re-arm probe** (State test 120's observation — a
+lane sharing the run's whole history is fed silence from the event on; a re-armed analysis holds the
+published value, < 1e-6 dB over 1 s from the duck's bottom, a carried one moves it) and the **accuracy
+metric** (a fresh processor prepared directly at the destination and fed the identical input from
+sample 0: D per block, and g, the per-block least-squares gain of the outputs, residual ≤ 1e-3).
+Legs: (a) A/B between slots that differ only in Drive (2 ↔ 8, 0 ↔ 10; Level Match on in both, each
+slot left converged) — the bottom block publishes the destination slot's remembered gain, then
+max|D| and max|g| ≤ 0.3 dB for 3 s (0.020–0.147 dB; pre-change 1.38–4.92 dB) and the probe holds;
+(b) A/B between slots that differ only in Output Gain, in Level Match (off → on) or in Dim-D Style
+under Haas, the destination's memory deliberately stale — not re-armed (the probe moves 2.12 dB) and
+bit-identical from the first full-level block to the same switch between identical slots, whose probe
+moves too; control: a Width one grid step off is re-armed (its probe holds); (c) Undo and a user preset
+moving Drive 0 → 10 and 10 → 0 beside the same live edit — within 0.5 dB of the live edit from 0.1 s
+(0.317 / 0.167 dB) and every probe moves, with the route proof that the forced swap adopts the Drive
+rise at its bottom, two blocks after the live edit (Q2, unchanged); (d) Undo of Apply still lands
+(max|D| 0.028 dB) and a user preset that turns Level Match on with Drive 8 → 10 still glides (φ 0.80)
+(Q3, Q4, unchanged; State test 130 is the depth); (e) `prepareToPlay (48 kHz, 256)` again after 2.5 s
+at Drive 8 keeps the published value bit-exact (−6.03 dB; pre-change 0 dB), plays within 0.1 dB of
+the fresh processor from its first proportional block (0.017; pre-change 1.95 dB) and re-arms; a
+512-sample re-prepare and a restore of Output Gain alone keep too; a new rate (44.1 kHz) and a restore
+that moved Drive flush to exactly 0 dB; Apply right after the re-prepare writes the kept value (−6.03;
+pre-change 0.00); (f) a settled host reset keeps and re-arms, and a host reset one block into (a)'s
+fade-out stays within 0.3 dB of the fresh destination (0.080); (g) Apply 0.5 s after (a)'s first A/B
+writes within 0.2 dB of the fresh destination's match (−2.770 against −2.826; pre-change −4.400), and
+Undo restores Level Match on at −3 dB. Preset files use unique names; a same-named user file is parked
+and restored (State test 8's pattern). 95 checks, ~0.65 s native. Against the pre-change engine 21 of
+the 95 fail — (a)'s D, g and probe on all four switches, (b)'s control, (e)'s seven keep / re-arm /
+Apply checks and (g)'s Apply. Seven engine variants are each rejected by the leg that pins what they
+change: no injection re-arm, a re-arm at every injection (leg b), a re-arm at every forced bottom
+whose measurement inputs differ (leg c), no same-rate keep, a keep that ignores the rate or the primed
+snapshot, and a keep that does not re-arm. **State test 120**'s leg 2 now pins the same boundary from
+the R6 side: after re-converging, a same-rate re-prepare keeps the published gain bit-exact and
+silence then moves 0.000000 dB, and a re-prepare at a new rate still flushes the whole matcher (2 of
+its 16 checks fail against the pre-change engine: 0 dB kept, 4.06 dB of movement).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

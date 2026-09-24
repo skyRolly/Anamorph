@@ -8325,6 +8325,741 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Test 67 -- AN A/B INJECTION RE-ARMS THE LEVEL-MATCH ANALYSIS WHEN THE SLOTS DIFFER IN WHAT IT READS,
+//  AND A SAME-RATE RE-PREPARE KEEPS THE PUBLISHED RESULT (ADR-0007, Amendment of 2026-09-24, F13(2) Q1 and
+//  Q5; KI-030. State test 131 is the production-path half.)
+//
+//  THE CLAIM. LoudnessMatch has an ANALYSIS half (the K-weighting biquads and the two 0.4 s integrators) and a
+//  RESULT half (displayedGainDb, prevPredictedGainDb, the published value); softReset() clears the first and
+//  keeps the second.
+//   Q1  An A/B injection consumed at a duck bottom -- the forced consumer, or the defensive one when it meets
+//       an ordinary bottom -- re-arms the analysis iff the switch changes something the measurement reads
+//       (measurementInputsDiffer, or a live change during an ordinary duck's fade-out: duckMeasDirty). The
+//       injected value then plays on the destination slot's own sound instead of being dragged back toward
+//       the source slot's for seconds. Slots that differ only after the tap, in a guarded-out field, or not at
+//       all keep the converged analysis; an injection consumed without a bottom never re-arms;
+//       processingDiffers still re-arms a discrete path change, injection or not.
+//   Q2  UNCHANGED: a forced swap WITHOUT an injection (preset, undo, redo) does not re-arm and tracks the
+//       same edit made live.
+//   Q5  prepare() at the SAME rate, for a snapshot whose measurement inputs primeParameters() saw unchanged,
+//       keeps the result bit-exact (any block size) and re-arms the analysis; the first audible block's
+//       silence->audio edge snap lands the applied gain on it. A new rate, a primed snapshot that moves a
+//       measurement input, and a first prepare still flush (published 0 dB, then the predict floor).
+//
+//  THE PROBE (State tests 118 / 120's technique). A re-armed analysis starts from near-zero integrators, so
+//  on SILENCE the matcher's gate closes at once and the published value HOLDS exactly; a stale one keeps the
+//  gate open for seconds (the 0.4 s integrators decay from the old energy, their ratio -- the old sound's
+//  target -- unchanged) and the value MOVES toward it. Each probe injects 6 dB away from the published value;
+//  HOLD is a move < 1e-6 dB over 0.3 s of silence (0 measured), MOVE > 1 dB (1.88-4.67 measured). The silence
+//  starts 8 blocks (43 ms) before the event, so no processing tail (Haas <= 35 ms) reaches the tap after the
+//  bottom even on an ordinary duck, which clears nothing. Every probe first proves its injection was consumed
+//  in the block judged: the published value is within 1 dB of it there and >= 4 dB from it one block earlier.
+//  TRANSIENT ACCURACY: the run against a FRESH engine prepared at the destination state and fed the identical
+//  seeded input from sample 0 (converged), as published difference D(t) and as a per-block least-squares
+//  gain of run output against fresh output (residual <= 1e-9 measured), for 3 s after the event.
+//
+//  LEGS (48 kHz / 256, Haas / Amount 0.5 / Width 1.3 / Level Match on unless stated; bottom at event + 2):
+//   (1) THE PREDICATE, per field: an A/B-shaped forced swap (requestDuck, the slot's snapshot, an injection
+//       6 dB below the published value) changing ONE EngineParameters member (all 36; the structured binding
+//       makes the count a compile error to get wrong) under four bases -- H (Haas, Multiband off, Mono Maker
+//       off), V (Velvet, Multiband 2 bands, Mono Maker on), C (Chorus, Multiband 4 bands) and D (Dimension D,
+//       Multiband 1 band, Mono Maker on) -- plus the identical slot. HOLD iff the field is a measurement input
+//       for that base ("meas") or a processingDiffers path change ("m+p" / "path": these hold before and
+//       after the change -- haasSide off Haas and mbBands with Multiband off are "path" only); the post-tap
+//       fields ("post": Output Gain / Balance, Band Solo, Bypass, the Level Match switch), the guarded-out
+//       ones ("off": Haas fields off Haas, Chorus fields off Chorus -- Dimension D included --, Velvet density
+//       off Velvet, dimMode off Dimension D, a crossover or band width with too few bands or Multiband off,
+//       Mono Maker Freq with it off) and the identical slot MOVE.
+//   (2) Continuous-only A/B, Drive 2 -> 8 and 8 -> 2, injecting what a fresh destination engine converged to
+//       (the slot's remembered gain, -6.08 / -2.78 dB): published D(t) and output gain within 0.1 dB of the
+//       fresh engine over 3 s (0.018 / 0.015 and 0.017 / 0.012 dB measured); its silence twin holds the
+//       injected value bit-exact from the bottom block.
+//   (3) Drive 0 <-> 10: the same A/B (0.019 / 0.014 dB); and the forced swap WITHOUT an injection (the undo /
+//       preset shape), which must NOT re-arm -- its silence probe moves 3.13 / 1.88 dB (on the rise the predict
+//       floor at the bottom opens the gap; on the fall, where the predict leaves the value alone, an un-ducked
+//       injection one block before the event displaces it first) -- and must track the same edit made live:
+//       published trajectories within 0.5 dB from the first full-level block for 3 s (0.348 / 0.167 measured;
+//       at the bottom block itself 0.742 on the rise, where the live edit's predict fired two blocks earlier).
+//       Both still lag the fresh engine by the measure's design (+4.0 / -7.1 dB at 0.1 s; Q2, pinned as is).
+//   (4) Ordinary ducks, opened by the Level Match switch (neither a path nor a measurement change): upgraded
+//       to forced by an A/B one block in, the injection re-arms when a Drive edit went live DURING the
+//       fade-out (duckMeasDirty; p already carries it, so the bottom's own comparison sees nothing), and when
+//       the upgrading snapshot carries it; not when nothing the measurement reads moved. The DEFENSIVE
+//       consumer: an injection meeting an ordinary bottom re-arms iff that duck changed a measurement input;
+//       the same injection one block before or after the bottom, or with no duck at all, never does.
+//   (5) Re-prepare, engine level (the processor's primeParameters -> prepare -> setParameters sequence):
+//       the audible run at the same rate and block keeps -6.0838 dB bit-exact; its applied gain -- read
+//       against a Level-Match-off twin re-prepared alike (residual 2e-10) -- is -6.080 dB in the first block
+//       against the converged fresh engine's -6.084, and applied, published and output stay within 0.1 dB of
+//       it for 3 s (0.025 / 0.019 / 0.017 measured; output from block 3, once the 12 ms Haas line refilled).
+//       Silence probes, displaced 6 dB UP (above the Drive-8 predict floor, so a keep that lost
+//       prevPredictedGainDb would floor it): same rate and block, block 256 -> 512, and a primed snapshot
+//       differing only in Output Gain KEEP the value bit-exact through the first block after prepare; from
+//       there silence holds (re-armed) where the same run without the re-prepare moves 4.60 dB. 48 -> 44.1 kHz
+//       and a primed Drive 8 -> 10 FLUSH: exactly 0 dB after prepare, then a trajectory bit-identical to a
+//       fresh engine first-prepared there on the same input (which publishes exactly 0 dB too).
+//  The allocation guard (tests/AllocationGuard.h, Test 38's pattern) is armed around setParameters + process
+//  from every A/B / injection event to the block after its bottom in legs (1)-(4) (664 calls, zero
+//  allocations measured).
+//
+//  MEASURED BEFORE THE CHANGE (engine daa6809, this test): 12 of the 34 checks fail -- the "meas" rows of (1)
+//  move 2.72-4.67 dB; the (2) / (3) A/B runs sit up to 1.33 / 1.63 dB (Drive 2 -> 8 / 8 -> 2) and 3.46 / 4.92
+//  dB (0 -> 10 / 10 -> 0) off the fresh engine, their silence twins drift 1.8-5.8 dB off the injected value;
+//  the (4) upgrade and defensive legs move; and every re-prepare flushed (the audible run's first block played
+//  -4.066 dB against -6.084, 2.02 dB off; each keep read 0 dB, then the predict floor). The path rows, the MOVE rows, the
+//  forced-without-injection legs of (3), the controls of (4), (5)'s flushes and its re-arm check, and every
+//  premise pass on both engines by design.
+//  ENGINE VARIANTS REJECTED (each built from this tree and run through this test): a re-arm at every
+//  injection (P1a: (1)'s post-tap / guarded-out / identical rows, (4)'s controls, and (3)'s fall probe, whose
+//  displacing injection then re-arms); an injection rule without duckMeasDirty ((4) upgrade and defensive);
+//  a forced bottom that re-arms without an injection (P1: (3) no-re-arm and tracks-the-live-edit); a
+//  fallback consumer that always re-arms ((3), (4)); no defensive re-arm ((4)); a keep across a rate change
+//  and a keep that ignores the primed snapshot ((5) flushes); a keep through loudness.reset() plus a restored
+//  published value, which loses prevPredictedGainDb, and a keep that does not re-arm ((5) keeps, re-arm).
+static void testLevelMatchAbRearmAndSameRateReprepare()
+{
+    std::printf ("Test 67: an A/B injection re-arms the Level-Match analysis when the slots differ in what it reads; "
+                 "a same-rate re-prepare keeps the result (ADR-0007, F13(2))\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    using anamorph::AnamorphEngine;
+    using anamorph::Algorithm;
+    using anamorph::HaasSide;
+    using anamorph::OversampleFactor;
+    using anamorph::SoloMode;
+    using Params = anamorph::EngineParameters;
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256, nch = 2, blk = bs * nch;
+
+    // THE DUCK'S TIMING, from its documented lengths (~6 ms out, ~28 ms in; Test 66 re-derives both from the
+    // engine's output): the silent bottom at event + 2, the first full-level block at event + 8.
+    const int fadeOut = (int) std::lround (0.006 * sr), fadeIn = (int) std::lround (0.028 * sr);
+    const int kBot  = fadeOut / bs + 1;
+    const int kFull = kBot + (fadeIn + bs - 1) / bs;
+    const int sec   = (int) std::lround (sr / bs);                 // blocks per second
+
+    // ONE FIELD COUNT, CHECKED BY THE COMPILER (Test 66's binding): leg (1) needs a row for every member.
+    {
+        const Params probe;
+        [[maybe_unused]] const auto& [f01, f02, f03, f04, f05, f06, f07, f08, f09, f10, f11, f12,
+                                      f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24,
+                                      f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36] = probe;
+    }
+
+    const auto guard = anamorph::testing::selfCheck();
+    const bool guardLive = guard.newLive || guard.mallocLive;
+    if (! guardLive)
+        std::printf ("::warning::the allocation guard is compiled out in this build -- Test 67's re-arms are "
+                     "NOT allocation-checked by it in this run (RealtimeSanitizer, where present, covers them).\n");
+
+    // ---- one seeded input stream: block b is the same samples in every lane that reads it ----------------
+    const int E  = 3 * sec, post = 3 * sec;                          // the long lanes: 3 s in, 3 s after
+    const int streamBlocks = E + post + 2;
+    std::vector<float> stream ((size_t) streamBlocks * blk);
+    {
+        juce::Random rng (6701);
+        for (size_t i = 0; i < stream.size(); i += 2)
+        {
+            const float v = rng.nextFloat() - 0.5f, w = rng.nextFloat() - 0.5f;
+            stream[i] = v;
+            stream[i + 1] = 0.6f * v + 0.2f * w;
+        }
+    }
+
+    struct Lane
+    {
+        Params pre;                                                  // the snapshot from block 0
+        std::function<void (int, AnamorphEngine&, Params&)> at;      // per block, before setParameters
+        int    blocks = 0, silentFrom = 1 << 30, offset = 0;             // 1 << 30: never
+        int    keepFrom = 1 << 30, armFrom = 1 << 30, armTo = -1;
+        double rate = 48000.0;
+        float  pub0 = 0.0f;                                          // published right after the first prepare
+        std::unique_ptr<AnamorphEngine> e;
+        std::vector<float> pub, y;                                   // published dB per block; output from keepFrom
+    };
+
+    long worstNew = 0, worstMalloc = 0;
+    int  armedCalls = 0;
+    const auto run = [&] (Lane& ln)
+    {
+        ln.e = std::make_unique<AnamorphEngine>();                   // heap: Test 59's note (1 MB-stack lane)
+        ln.e->primeParameters (ln.pre);
+        ln.e->prepare (ln.rate, bs);
+        ln.e->setParameters (ln.pre);
+        ln.pub0 = ln.e->getMatchGainDb();
+        ln.pub.assign ((size_t) ln.blocks, 0.0f);
+        ln.y.assign (ln.keepFrom < ln.blocks ? (size_t) (ln.blocks - ln.keepFrom) * blk : 0, 0.0f);
+        juce::AudioBuffer<float> buf (nch, bs);
+        for (int b = 0; b < ln.blocks; ++b)
+        {
+            Params snap = ln.pre;
+            if (ln.at) ln.at (b, *ln.e, snap);
+            const float* src = stream.data() + (size_t) (b + ln.offset) * blk;
+            const bool quiet = b >= ln.silentFrom;
+            for (int i = 0; i < bs; ++i)
+            {
+                buf.setSample (0, i, quiet ? 0.0f : src[2 * i]);
+                buf.setSample (1, i, quiet ? 0.0f : src[2 * i + 1]);
+            }
+            if (b >= ln.armFrom && b <= ln.armTo)
+            {
+                anamorph::testing::resetCounts();
+                {
+                    anamorph::testing::Armed arm;
+                    ln.e->setParameters (snap);
+                    ln.e->process (buf);
+                }
+                ++armedCalls;
+                worstNew    = juce::jmax (worstNew,    anamorph::testing::newCount.load());
+                worstMalloc = juce::jmax (worstMalloc, anamorph::testing::mallocCount.load());
+            }
+            else
+            {
+                ln.e->setParameters (snap);
+                ln.e->process (buf);
+            }
+            ln.pub[(size_t) b] = ln.e->getMatchGainDb();
+            if (b >= ln.keepFrom)
+            {
+                float* out = ln.y.data() + (size_t) (b - ln.keepFrom) * blk;
+                for (int i = 0; i < bs; ++i) { out[2 * i] = buf.getSample (0, i); out[2 * i + 1] = buf.getSample (1, i); }
+            }
+        }
+    };
+
+    // The largest move of the published value over blocks (from, to], relative to block `from`.
+    const auto moveAfter = [] (const Lane& ln, int from, int to)
+    {
+        double m = 0.0;
+        for (int b = from + 1; b <= to; ++b)
+            m = juce::jmax (m, std::abs ((double) ln.pub[(size_t) b] - (double) ln.pub[(size_t) from]));
+        return m;
+    };
+    // Per-block least-squares gain of `r` against `t` (both recorded at block b): 20 log10 g^ and the residual
+    // a pure gain leaves, normalised by the run's energy.
+    struct Fit { double gDb = 0.0, resid = 1.0; bool ok = false; };
+    const auto fit = [&] (const Lane& r, const Lane& t, int b) -> Fit
+    {
+        const float* x = r.y.data() + (size_t) (b - r.keepFrom) * blk;
+        const float* z = t.y.data() + (size_t) (b - t.keepFrom) * blk;
+        double num = 0.0, den = 0.0, ex = 0.0;
+        for (int i = 0; i < blk; ++i) { num += (double) x[i] * z[i]; den += (double) z[i] * z[i]; ex += (double) x[i] * x[i]; }
+        if (! (den > 1.0e-20 && ex > 1.0e-20)) return {};
+        const double g = num / den;
+        double res = 0.0;
+        for (int i = 0; i < blk; ++i) { const double d = (double) x[i] - g * z[i]; res += d * d; }
+        return { 20.0 * std::log10 (juce::jmax (1.0e-12, std::abs (g))), res / ex, true };
+    };
+
+    const auto base = [] (Algorithm a, float drive)
+    {
+        Params p;
+        p.algorithm = a; p.algoAmount = 0.5f; p.width = 1.3f; p.driveDb = drive; p.autoGainMatch = true;
+        return p;
+    };
+
+    // The short probe lanes: 0.5 s of audio, silence from S1, the event at E1, judged over 0.3 s after it.
+    const int E1 = sec / 2, S1 = E1 - 8, B1 = E1 + kBot, P1 = B1 + (int) std::lround (0.3 * sr / bs);
+    constexpr double kHold = 1.0e-6, kMove = 1.0, kInjOff = 6.0;
+    // A probe's verdict. `ib`: the block whose process consumed the injection `v`.
+    struct Probe { double v = 0.0, atInj = 0.0, before = 0.0, move = 0.0; };
+    const auto probeOf = [&] (const Lane& ln, double v, int ib)
+    {
+        Probe q;
+        q.v      = v;
+        q.atInj  = std::abs ((double) ln.pub[(size_t) ib] - v);
+        q.before = std::abs ((double) ln.pub[(size_t) ib - 1] - v);
+        q.move   = moveAfter (ln, ib, P1);
+        return q;
+    };
+    const auto consumed = [] (const Probe& q) { return q.atInj <= 1.0 && q.before >= 4.0; };
+
+    // =====================================================================================================
+    //  LEG (1) -- THE PREDICATE, per field, under four bases
+    // =====================================================================================================
+    {
+        enum : int { kOff = 0, kMeas = 1, kPath = 2, kPost = 4 };
+        struct Row
+        {
+            const char* name = nullptr;
+            void (*set) (Params&) = nullptr;
+            int  (*kind) (const Params&) = nullptr;     // for the base: kMeas / kPath / kPost / kOff (guarded out)
+        };
+        static const Row rows[] = {
+            { "channelMode",     [] (Params& s) { s.channelMode = anamorph::ChannelMode::LeftOnly; },
+                                 [] (const Params&) { return kMeas | kPath; } },
+            { "monoSum",         [] (Params& s) { s.monoSum = true; },               [] (const Params&) { return kMeas | kPath; } },
+            { "swapLR",          [] (Params& s) { s.swapLR = true; },                [] (const Params&) { return kMeas | kPath; } },
+            { "inputBalance",    [] (Params& s) { s.inputBalance = 0.3f; },          [] (const Params&) { return (int) kMeas; } },
+            { "polarityL",       [] (Params& s) { s.polarityL = true; },             [] (const Params&) { return (int) kMeas; } },
+            { "polarityR",       [] (Params& s) { s.polarityR = true; },             [] (const Params&) { return (int) kMeas; } },
+            { "msMode",          [] (Params& s) { s.msMode = true; },                [] (const Params&) { return kMeas | kPath; } },
+            { "driveDb",         [] (Params& s) { s.driveDb += 1.0f; },              [] (const Params&) { return (int) kMeas; } },
+            { "algorithm",       [] (Params& s) { s.algorithm = s.algorithm == Algorithm::Haas ? Algorithm::Velvet : Algorithm::Haas; },
+                                                                                      [] (const Params&) { return kMeas | kPath; } },
+            { "algoAmount",      [] (Params& s) { s.algoAmount += 0.2f; },           [] (const Params&) { return (int) kMeas; } },
+            { "haasDelayMs",     [] (Params& s) { s.haasDelayMs = 18.0f; },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::Haas ? (int) kMeas : (int) kOff; } },
+            { "haasSide",        [] (Params& s) { s.haasSide = HaasSide::Right; },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::Haas ? kMeas | kPath : (int) kPath; } },
+            { "velvetDensity",   [] (Params& s) { s.velvetDensity = 0.8f; },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::Velvet ? (int) kMeas : (int) kOff; } },
+            { "chorusRate",      [] (Params& s) { s.chorusRate = 2.0f; },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::Chorus ? (int) kMeas : (int) kOff; } },
+            { "chorusDepth",     [] (Params& s) { s.chorusDepth = 0.8f; },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::Chorus ? (int) kMeas : (int) kOff; } },
+            { "dimMode",         [] (Params& s) { s.dimMode = 3; },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::DimensionD ? kMeas | kPath : (int) kOff; } },
+            { "width",           [] (Params& s) { s.width += 0.3f; },                [] (const Params&) { return (int) kMeas; } },
+            { "mbEnable",        [] (Params& s) { s.mbEnable = ! s.mbEnable; },      [] (const Params&) { return kMeas | kPath; } },
+            { "mbBands",         [] (Params& s) { s.mbBands = s.mbBands == 3 ? 2 : 3; },
+                                 [] (const Params& b) { return b.mbEnable ? kMeas | kPath : (int) kPath; } },
+            { "mbSolo",          [] (Params& s) { s.mbSolo = 0x2; },                 [] (const Params&) { return (int) kPost; } },
+            { "mbFreqLow",       [] (Params& s) { s.mbFreqLow = 300.0f; },
+                                 [] (const Params& b) { return b.mbEnable && b.mbBands >= 2 ? (int) kMeas : (int) kOff; } },
+            { "mbFreqMid",       [] (Params& s) { s.mbFreqMid = 1200.0f; },
+                                 [] (const Params& b) { return b.mbEnable && b.mbBands >= 3 ? (int) kMeas : (int) kOff; } },
+            { "mbFreqHigh",      [] (Params& s) { s.mbFreqHigh = 5000.0f; },
+                                 [] (const Params& b) { return b.mbEnable && b.mbBands >= 4 ? (int) kMeas : (int) kOff; } },
+            { "mbWidthLow",      [] (Params& s) { s.mbWidthLow = 1.6f; },
+                                 [] (const Params& b) { return b.mbEnable ? (int) kMeas : (int) kOff; } },
+            { "mbWidthMid",      [] (Params& s) { s.mbWidthMid = 1.6f; },
+                                 [] (const Params& b) { return b.mbEnable && b.mbBands >= 2 ? (int) kMeas : (int) kOff; } },
+            { "mbWidthHiMid",    [] (Params& s) { s.mbWidthHiMid = 1.6f; },
+                                 [] (const Params& b) { return b.mbEnable && b.mbBands >= 3 ? (int) kMeas : (int) kOff; } },
+            { "mbWidthHigh",     [] (Params& s) { s.mbWidthHigh = 1.6f; },
+                                 [] (const Params& b) { return b.mbEnable && b.mbBands >= 4 ? (int) kMeas : (int) kOff; } },
+            { "monoMakerEnable", [] (Params& s) { s.monoMakerEnable = ! s.monoMakerEnable; },
+                                 [] (const Params&) { return kMeas | kPath; } },
+            { "monoMakerFreq",   [] (Params& s) { s.monoMakerFreq = 250.0f; },
+                                 [] (const Params& b) { return b.monoMakerEnable ? (int) kMeas : (int) kOff; } },
+            { "mix",             [] (Params& s) { s.mix = 0.8f; },                   [] (const Params&) { return (int) kMeas; } },
+            { "outputGainDb",    [] (Params& s) { s.outputGainDb = -6.0f; },         [] (const Params&) { return (int) kPost; } },
+            { "outputBalance",   [] (Params& s) { s.outputBalance = 0.3f; },         [] (const Params&) { return (int) kPost; } },
+            { "autoGainMatch",   [] (Params& s) { s.autoGainMatch = false; },        [] (const Params&) { return (int) kPost; } },
+            { "solo",            [] (Params& s) { s.solo = SoloMode::Mid; },         [] (const Params&) { return kMeas | kPath; } },
+            { "oversample",      [] (Params& s) { s.oversample = OversampleFactor::x2; }, [] (const Params&) { return kMeas | kPath; } },
+            { "bypass",          [] (Params& s) { s.bypass = true; },                [] (const Params&) { return (int) kPost; } },
+        };
+        constexpr int nRows = (int) (sizeof (rows) / sizeof (rows[0]));
+        check (nRows == 36, "premise: leg (1) has one row per EngineParameters member (36, the binding above)");
+
+        Params bH = base (Algorithm::Haas, 8.0f);
+        Params bV = base (Algorithm::Velvet, 8.0f);     bV.mbEnable = true; bV.mbBands = 2; bV.monoMakerEnable = true;
+        Params bC = base (Algorithm::Chorus, 8.0f);     bC.mbEnable = true;
+        Params bD = base (Algorithm::DimensionD, 8.0f); bD.mbEnable = true; bD.mbBands = 1; bD.monoMakerEnable = true;
+        const Params* const bases[] = { &bH, &bV, &bC, &bD };
+        const char* const baseNames[] = { "H", "V", "C", "D" };
+        constexpr int nBases = 4;
+
+        // each probe's move, [base][row]; row nRows is the identical slot
+        std::vector<double> moves ((size_t) nBases * (nRows + 1));
+        bool allConsumed = true, measHold = true, pathHold = true, restMove = true, classes = true;
+        for (int bi = 0; bi < nBases; ++bi)
+        {
+            int nMeasOnly = 0, nPathOnly = 0, nOff = 0;
+            for (int k = 0; k <= nRows; ++k)
+            {
+                const Row* row = k < nRows ? &rows[k] : nullptr;
+                double v = 0.0;
+                Lane ln;
+                ln.pre = *bases[bi];
+                ln.blocks = P1 + 1; ln.silentFrom = S1; ln.armFrom = E1; ln.armTo = B1 + 1;
+                ln.at = [&] (int b, AnamorphEngine& e, Params& s)
+                {
+                    if (b >= E1 && row != nullptr) row->set (s);
+                    if (b == E1) { v = e.getMatchGainDb() - kInjOff; e.requestDuck(); e.injectMatchGainDb ((float) v); }
+                };
+                run (ln);
+                const Probe q = probeOf (ln, v, B1);
+                moves[(size_t) (bi * (nRows + 1) + k)] = q.move;
+                allConsumed = allConsumed && consumed (q);
+                const int kind = row != nullptr ? row->kind (*bases[bi]) : (int) kOff;
+                if ((kind & kPath) != 0)      pathHold = pathHold && q.move < kHold;
+                else if ((kind & kMeas) != 0) measHold = measHold && q.move < kHold;
+                else                          restMove = restMove && q.move > kMove;
+                nMeasOnly += kind == kMeas ? 1 : 0;
+                nPathOnly += kind == kPath ? 1 : 0;
+                nOff      += kind == kOff && row != nullptr ? 1 : 0;
+            }
+            classes = classes && nMeasOnly >= 8 && nPathOnly == 1 && nOff >= 4;
+        }
+        const auto tag = [] (int kind)
+        {
+            return kind == (kMeas | kPath) ? "m+p " : kind == kMeas ? "meas" : kind == kPath ? "path" : kind == kPost ? "post" : "off ";
+        };
+        for (int k = 0; k <= nRows; ++k)
+        {
+            std::printf ("  (1) %-15s", k < nRows ? rows[k].name : "identical slot");
+            for (int bi = 0; bi < nBases; ++bi)
+            {
+                const double mv = moves[(size_t) (bi * (nRows + 1) + k)];
+                const int kind = k < nRows ? rows[k].kind (*bases[bi]) : (int) kOff;
+                std::printf (" | %s %s %4.2f %s", baseNames[bi], k < nRows ? tag (kind) : "--  ", mv,
+                             mv < kHold ? "HOLD" : "move");
+            }
+            std::printf ("\n");
+        }
+        double worstHold = 0.0, leastMove = 1.0e9;
+        for (int bi = 0; bi < nBases; ++bi)
+            for (int k = 0; k <= nRows; ++k)
+            {
+                const double m = moves[(size_t) (bi * (nRows + 1) + k)];
+                const int kind = k < nRows ? rows[k].kind (*bases[bi]) : (int) kOff;
+                if ((kind & (kMeas | kPath)) != 0) worstHold = juce::jmax (worstHold, m);
+                else                               leastMove = juce::jmin (leastMove, m);
+            }
+        std::printf ("  (1) move: the largest change of the published value over the 0.3 s of silence after the bottom (dB); "
+                     "largest on a HOLD row %.1e, smallest on a move row %.2f\n", worstHold, leastMove);
+        check (allConsumed, "premise: every leg-(1) injection was consumed in its bottom block (the published value "
+                            "reaches it there, within 1 dB, and not one block earlier, >= 4 dB)");
+        check (classes, "non-vacuity: every base meets >= 8 measurement-only rows, exactly one path-only row and >= 4 "
+                        "guarded-out rows");
+        check (measHold, "an A/B injection re-arms the analysis when the slots differ in a measurement input the path "
+                         "re-arm does not see (continuous fields, polarity, the guarded fields their module hears): the "
+                         "injected value holds on silence (move < 1e-6 dB)");
+        check (pathHold, "a discrete path change (processingDiffers) still re-arms at an A/B bottom: holds");
+        check (restMove, "slots that differ only after the tap (Output Gain / Balance, Band Solo, Bypass, Level Match), "
+                         "in a guarded-out field, or not at all keep the converged analysis: the injected value moves "
+                         "(> 1 dB) toward the source's measurement on silence");
+    }
+    // =====================================================================================================
+    //  LEGS (2) and (3) -- continuous-only A/B transients against a fresh destination engine (Drive 2 <-> 8,
+    //  0 <-> 10), and at 0 <-> 10 the forced swap WITHOUT an injection against the same edit made live
+    // =====================================================================================================
+    {
+        struct Tr { float from = 0.0f, to = 0.0f; bool forced = false; };
+        const Tr trs[] = { { 2.0f, 8.0f, false }, { 8.0f, 2.0f, false }, { 0.0f, 10.0f, true }, { 10.0f, 0.0f, true } };
+        const int B = E + kBot, F = E + kFull, last = E + post;
+        const int cps[] = { B + (int) std::lround (0.1 * sr / bs), E + (int) std::lround (0.5 * sr / bs), E + sec, E + 2 * sec };
+        bool abConsumed = true, abHolds = true, abPub = true, abOut = true, abFit = true;
+        bool fMoves = true, fLive = true, fTracks = true;
+        for (const auto& tr : trs)
+        {
+            Lane fresh;
+            fresh.pre = base (Algorithm::Haas, tr.to); fresh.blocks = last + 1; fresh.keepFrom = F;
+            run (fresh);
+            const float vDest = fresh.pub[(size_t) E - 1];               // the slot's remembered gain
+
+            Lane ab;
+            ab.pre = base (Algorithm::Haas, tr.from); ab.blocks = last + 1; ab.keepFrom = F; ab.armFrom = E; ab.armTo = B + 1;
+            ab.at = [&] (int b, AnamorphEngine& e, Params& s)
+            { if (b >= E) s.driveDb = tr.to; if (b == E) { e.requestDuck(); e.injectMatchGainDb (vDest); } };
+            run (ab);
+            Lane abS;                                                      // its silence twin
+            abS.pre = base (Algorithm::Haas, tr.from); abS.blocks = P1 + 1; abS.silentFrom = S1; abS.armFrom = E1; abS.armTo = B1 + 1;
+            abS.at = [&] (int b, AnamorphEngine& e, Params& s)
+            { if (b >= E1) s.driveDb = tr.to; if (b == E1) { e.requestDuck(); e.injectMatchGainDb (vDest); } };
+            run (abS);
+
+            double maxD = 0.0, maxG = 0.0, maxRes = 0.0;
+            for (int b = B; b <= last; ++b) maxD = juce::jmax (maxD, std::abs ((double) ab.pub[(size_t) b] - fresh.pub[(size_t) b]));
+            for (int b = F; b <= last; ++b)
+            {
+                const Fit f = fit (ab, fresh, b);
+                abFit  = abFit && f.ok;
+                maxG   = juce::jmax (maxG, std::abs (f.gDb));
+                maxRes = juce::jmax (maxRes, f.resid);
+            }
+            const double atBot = std::abs ((double) ab.pub[(size_t) B] - vDest), gap = std::abs ((double) ab.pub[(size_t) B - 1] - vDest);
+            double holdS = 0.0;
+            for (int b = B1; b <= P1; ++b) holdS = juce::jmax (holdS, std::abs ((double) abS.pub[(size_t) b] - vDest));
+            char nm[96];
+            std::snprintf (nm, sizeof nm, "(%d) A/B Drive %g -> %g, inject the fresh %+.2f", tr.forced ? 3 : 2,
+                           (double) tr.from, (double) tr.to, (double) vDest);
+            std::printf ("  %-50s: pub(bot-1) %+6.2f pub(bot) %+6.2f | max|D| %.3f  max|g_out| %.3f (resid %.1e) | silence twin "
+                         "max|pub-v| %.1e\n", nm, (double) ab.pub[(size_t) B - 1], (double) ab.pub[(size_t) B], maxD, maxG, maxRes, holdS);
+            abConsumed = abConsumed && atBot <= 1.0 && gap >= 2.0;
+            abHolds    = abHolds && holdS < kHold;
+            abPub      = abPub && maxD <= 0.1;
+            abOut      = abOut && maxG <= 0.1;
+
+            if (! tr.forced) continue;
+            // the undo / preset shape: requestDuck + the snapshot, no injection; and the same edit made live
+            Lane fs, lv;
+            fs.pre = lv.pre = base (Algorithm::Haas, tr.from);
+            fs.blocks = lv.blocks = last + 1;
+            fs.at = [&] (int b, AnamorphEngine& e, Params& s) { if (b >= E) s.driveDb = tr.to; if (b == E) e.requestDuck(); };
+            lv.at = [&] (int b, AnamorphEngine&, Params& s)   { if (b >= E) s.driveDb = tr.to; };
+            run (fs);
+            run (lv);
+            double maxBot = 0.0, maxFL = 0.0;                              // from the bottom / from full level
+            for (int b = B; b <= last; ++b)
+            {
+                const double d = std::abs ((double) fs.pub[(size_t) b] - lv.pub[(size_t) b]);
+                maxBot = juce::jmax (maxBot, d);
+                if (b >= F) maxFL = juce::jmax (maxFL, d);
+            }
+            // its silence probe: on the fall the predict leaves the value alone, so an un-ducked injection one block
+            // before the event displaces it first (consumed outside any bottom: no re-arm of its own)
+            double v = 0.0;
+            const bool fall = tr.to < tr.from;
+            Lane fp;
+            fp.pre = base (Algorithm::Haas, tr.from); fp.blocks = P1 + 1; fp.silentFrom = S1; fp.armFrom = E1; fp.armTo = B1 + 1;
+            fp.at = [&] (int b, AnamorphEngine& e, Params& s)
+            {
+                if (b >= E1) s.driveDb = tr.to;
+                if (b == E1) e.requestDuck();
+                if (fall && b == E1 - 1) { v = e.getMatchGainDb() - kInjOff; e.injectMatchGainDb ((float) v); }
+            };
+            run (fp);
+            const double mv = moveAfter (fp, B1, P1);
+            const bool live = fall ? consumed (probeOf (fp, v, E1 - 1))
+                                   : (double) fp.pub[(size_t) B1 - 1] - fp.pub[(size_t) B1] >= 3.0;   // the predict floor at the bottom
+            std::snprintf (nm, sizeof nm, "(3) forced Drive %g -> %g, no injection", (double) tr.from, (double) tr.to);
+            std::printf ("  %-50s: vs live max|D| %.3f from the bottom, %.3f from full level; forced / live - fresh at "
+                         "0.1/0.5/1/2 s", nm, maxBot, maxFL);
+            for (const int c : cps)
+                std::printf (" %+.2f/%+.2f", (double) fs.pub[(size_t) c] - fresh.pub[(size_t) c],
+                             (double) lv.pub[(size_t) c] - fresh.pub[(size_t) c]);
+            std::printf (" | silence probe move %.2f (%s)\n", mv, fall ? "displaced 6 dB first" : "predict floor at the bottom");
+            fMoves  = fMoves && mv > kMove;
+            fLive   = fLive && live;
+            fTracks = fTracks && maxFL <= 0.5;
+        }
+        check (abConsumed, "premise: each A/B run's injection was consumed at its bottom (published there within 1 dB of "
+                           "the injected value, >= 2 dB from it one block earlier)");
+        check (abFit, "premise: every A/B output block from the first full-level block on has a least-squares gain against "
+                      "the fresh engine");
+        check (abHolds, "a continuous-only A/B re-arms the analysis: its silence twin holds the injected value bit-exact from "
+                        "the bottom block (Drive 2 <-> 8, 0 <-> 10)");
+        check (abPub, "a continuous-only A/B plays the slot's own measurement: published within 0.1 dB of the fresh "
+                      "destination engine from the bottom for 3 s (Drive 2 <-> 8, 0 <-> 10)");
+        check (abOut, "...and its output level within 0.1 dB of the fresh destination engine's from the first full-level "
+                      "block for 3 s (per-block least-squares gain)");
+        check (fLive, "liveness: each forced-swap probe's route was reached (the rise's predict floor lowers the value >= 3 dB "
+                      "in the bottom block; the fall's displacement was consumed where injected)");
+        check (fMoves, "a forced swap WITHOUT an injection (undo / preset) does not re-arm: its silence probe moves (> 1 dB)");
+        check (fTracks, "...and it tracks the same edit made live: published trajectories within 0.5 dB from the first "
+                        "full-level block for 3 s (Drive 0 <-> 10)");
+    }
+
+    // =====================================================================================================
+    //  LEG (4) -- ordinary ducks: the upgrade to forced, and the defensive consumer
+    // =====================================================================================================
+    {
+        struct L4
+        {
+            const char* name = nullptr;
+            int  ib = 0;                // the block whose process consumes the injection
+            int  cls = 0;               // 0: control (must move), 1: upgrade (must hold), 2: defensive (must hold)
+            std::function<void (int, AnamorphEngine&, Params&)> at;
+        };
+        double v = 0.0;
+        const auto inject = [&] (AnamorphEngine& e) { v = e.getMatchGainDb() - kInjOff; e.injectMatchGainDb ((float) v); };
+        const L4 legs[] = {
+            { "upgrade; Drive 8->10 went live mid-fade-out", B1, 1, [&] (int b, AnamorphEngine& e, Params& s)
+              {
+                  if (b == E1) s.autoGainMatch = false;                          // the opener: an ordinary duck
+                  if (b == E1 + 1)
+                  {
+                      Params mid = s; mid.autoGainMatch = false; mid.driveDb = 10.0f;
+                      e.setParameters (mid);                                     // live: p carries Drive 10 now
+                      e.requestDuck(); inject (e);                               // then the A/B upgrades the duck
+                  }
+                  if (b >= E1 + 1) s.driveDb = 10.0f;
+              } },
+            { "upgrade; Drive 8->10 in the upgrading snapshot", B1, 1, [&] (int b, AnamorphEngine& e, Params& s)
+              {
+                  if (b == E1) s.autoGainMatch = false;
+                  if (b == E1 + 1) { e.requestDuck(); inject (e); }
+                  if (b >= E1 + 1) s.driveDb = 10.0f;
+              } },
+            { "upgrade; nothing the measurement reads", B1, 0, [&] (int b, AnamorphEngine& e, Params& s)
+              {
+                  if (b == E1) s.autoGainMatch = false;
+                  if (b == E1 + 1) { e.requestDuck(); inject (e); }
+              } },
+            { "defensive; Level Match off + Drive 10, inject at bottom", B1, 2, [&] (int b, AnamorphEngine& e, Params& s)
+              { if (b >= E1) { s.autoGainMatch = false; s.driveDb = 10.0f; } if (b == B1) inject (e); } },
+            { "defensive; Level Match off only, inject at bottom", B1, 0, [&] (int b, AnamorphEngine& e, Params& s)
+              { if (b >= E1) s.autoGainMatch = false; if (b == B1) inject (e); } },
+            { "defensive; the dirty duck, inject at bottom-1", B1 - 1, 0, [&] (int b, AnamorphEngine& e, Params& s)
+              { if (b >= E1) { s.autoGainMatch = false; s.driveDb = 10.0f; } if (b == B1 - 1) inject (e); } },
+            { "defensive; the dirty duck, inject at bottom+1", B1 + 1, 0, [&] (int b, AnamorphEngine& e, Params& s)
+              { if (b >= E1) { s.autoGainMatch = false; s.driveDb = 10.0f; } if (b == B1 + 1) inject (e); } },
+            { "no duck; Drive 8->10 live, inject 2 blocks later", E1 + kBot, 0, [&] (int b, AnamorphEngine& e, Params& s)
+              { if (b >= E1) s.driveDb = 10.0f; if (b == E1 + kBot) inject (e); } },
+        };
+        bool live4 = true, upHold = true, defHold = true, ctlMove = true;
+        for (const auto& lg : legs)
+        {
+            Lane ln;
+            ln.pre = base (Algorithm::Haas, 8.0f); ln.blocks = P1 + 1; ln.silentFrom = S1; ln.armFrom = E1; ln.armTo = B1 + 1;
+            ln.at = lg.at;
+            run (ln);
+            const Probe q = probeOf (ln, v, lg.ib);
+            std::printf ("  (4) %-52s: injected %+6.2f at bot%+d, pub there %+6.2f | move %.2f %s\n", lg.name, q.v, lg.ib - B1,
+                         (double) ln.pub[(size_t) lg.ib], q.move, q.move < kHold ? "HOLD" : "move");
+            live4 = live4 && consumed (q);
+            if (lg.cls == 0)      ctlMove = ctlMove && q.move > kMove;
+            else if (lg.cls == 1) upHold  = upHold && q.move < kHold;
+            else                  defHold = defHold && q.move < kHold;
+        }
+        check (live4, "premise: every leg-(4) injection was consumed in the block judged (within 1 dB there, >= 4 dB one "
+                      "block earlier)");
+        check (upHold, "an ordinary duck upgraded to forced by an A/B re-arms at the injection when a measurement input "
+                       "changed -- made live during the fade-out (duckMeasDirty) or carried by the upgrading snapshot");
+        check (defHold, "the DEFENSIVE consumer: an injection meeting an ordinary bottom that changed a measurement input "
+                        "re-arms (holds)");
+        check (ctlMove, "...and no re-arm without one: an upgrade or ordinary bottom that changed nothing the measurement "
+                        "reads, and an injection one block before / after the bottom or with no duck at all, move");
+    }
+
+    // =====================================================================================================
+    //  LEG (5) -- re-prepare: primeParameters -> prepare -> setParameters (the processor's prepareToPlay)
+    // =====================================================================================================
+    {
+        struct Prep { float before = 0.0f, after = 0.0f; };
+        const auto reprepare = [] (AnamorphEngine& e, const Params& s, double rate, int block, Prep& pr)
+        {
+            pr.before = e.getMatchGainDb();
+            e.primeParameters (s);
+            e.prepare (rate, block);
+            e.setParameters (s);
+            pr.after = e.getMatchGainDb();
+        };
+        const Params h8 = base (Algorithm::Haas, 8.0f);
+        Params h8Off = h8; h8Off.autoGainMatch = false;
+        const int last = E + post;
+
+        // (a) the audible run, its Level-Match-off twin re-prepared alike, and the converged fresh engine
+        Prep prRun, prTwin;
+        Lane fresh, rn, tw;
+        fresh.pre = h8; fresh.blocks = last + 1; fresh.keepFrom = E;
+        rn.pre = h8;    rn.blocks = last + 1;    rn.keepFrom = E;
+        tw.pre = h8Off; tw.blocks = last + 1;    tw.keepFrom = E;
+        rn.at = [&] (int b, AnamorphEngine& e, Params& s) { if (b == E) reprepare (e, s, sr, bs, prRun); };
+        tw.at = [&] (int b, AnamorphEngine& e, Params& s) { if (b == E) reprepare (e, s, sr, bs, prTwin); };
+        run (fresh); run (rn); run (tw);
+        double dPub = 0.0, dApp = 0.0, gOut = 0.0, resTw = 0.0, resFr = 0.0;
+        for (int b = E; b <= last; ++b)
+        {
+            dPub = juce::jmax (dPub, std::abs ((double) rn.pub[(size_t) b] - fresh.pub[(size_t) b]));
+            const Fit a = fit (rn, tw, b);                                   // the applied gain (twin at 0 dB)
+            dApp  = juce::jmax (dApp, std::abs (a.gDb - fresh.pub[(size_t) b]));
+            resTw = juce::jmax (resTw, a.resid);
+            if (b >= E + 3)                                                  // the Haas line (12 ms) has refilled
+            {
+                const Fit g = fit (rn, fresh, b);
+                gOut  = juce::jmax (gOut, std::abs (g.gDb));
+                resFr = juce::jmax (resFr, g.resid);
+            }
+        }
+        const Fit first = fit (rn, tw, E);
+        std::printf ("  (5) same rate and block, audible: published %+.4f -> %+.4f across the re-prepare (bit-identical: %s); "
+                     "first block applied %+.3f vs fresh pub %+.3f\n", (double) prRun.before, (double) prRun.after,
+                     std::memcmp (&prRun.before, &prRun.after, sizeof (float)) == 0 ? "yes" : "no", first.gDb,
+                     (double) fresh.pub[(size_t) E]);
+        std::printf ("  (5)   over 3 s: max|pub - fresh| %.3f  max|applied - fresh pub| %.3f (twin resid %.1e)  "
+                     "max|g_out vs fresh| %.3f from block 3 (resid %.1e)\n", dPub, dApp, resTw, gOut, resFr);
+        check (std::memcmp (&prRun.before, &prRun.after, sizeof (float)) == 0 && std::abs (prRun.before) >= 3.0f,
+               "a same-rate, same-block re-prepare keeps the published Level-Match value bit-exact (premise: >= 3 dB from 0)");
+        check (resTw <= 1.0e-3, "premise: the Level-Match-off twin explains the run as a pure gain (residual <= 1e-3)");
+        check (dApp <= 0.1 && dPub <= 0.1,
+               "...and the first audible block lands the applied gain on it: applied and published within 0.1 dB of the "
+               "converged fresh engine's value from the first block for 3 s");
+        check (gOut <= 0.1, "...and the output level within 0.1 dB of the converged fresh engine's from the moment the Haas "
+                            "line has refilled (block 3) for 3 s");
+
+        // (b) silence probes: displaced 6 dB UP by an un-ducked injection one block before -- above the Drive-8 predict
+        // floor (-4.06 dB), so a keep that lost the predict's memory (prevPredictedGainDb) would floor it in the first
+        // block -- then re-prepared, and silent from the re-prepare on
+        struct Keep { const char* name = nullptr; int block = 0; bool og = false, prep = true; };
+        const Keep keeps[] = { { "same rate, block 256", bs, false, true }, { "same rate, block 256 -> 512", 2 * bs, false, true },
+                               { "same rate, primed Output Gain -6 dB", bs, true, true }, { "control: no re-prepare", bs, false, false } };
+        bool keepBits = true, keep512 = true, keepOg = true, probeHold = true, probeLive = true, ctrlMove = true;
+        for (const auto& kp : keeps)
+        {
+            Prep pr;
+            double v = 0.0;
+            Lane ln;
+            ln.pre = h8; ln.blocks = P1 + 1; ln.silentFrom = E1;
+            ln.at = [&] (int b, AnamorphEngine& e, Params& s)
+            {
+                if (kp.og && b >= E1) s.outputGainDb = -6.0f;
+                if (b == E1 - 1) { v = e.getMatchGainDb() + kInjOff; e.injectMatchGainDb ((float) v); }
+                if (b == E1 && kp.prep) reprepare (e, s, sr, kp.block, pr);
+            };
+            run (ln);
+            const Probe q = probeOf (ln, v, E1 - 1);
+            // the analysis: silence from the first block after the re-prepare on (a flush's first block applies the
+            // predict floor, a result matter judged below)
+            const double mv = moveAfter (ln, E1, P1);
+            // the result: kept bit-exact across prepare() AND through the first block
+            const bool bits = std::memcmp (&pr.before, &pr.after, sizeof (float)) == 0
+                           && std::memcmp (&pr.after, &ln.pub[(size_t) E1], sizeof (float)) == 0;
+            if (kp.prep)
+                std::printf ("  (5) %-40s: published %+.4f -> %+.4f -> first block %+.4f (bit-identical: %s); then silence "
+                             "moves %.1e dB\n", kp.name, (double) pr.before, (double) pr.after, (double) ln.pub[(size_t) E1],
+                             bits ? "yes" : "no", mv);
+            else
+                std::printf ("  (5) %-40s: silence moves %.2f dB (the analysis still live)\n", kp.name, mv);
+            probeLive = probeLive && consumed (q);
+            if (! kp.prep) { ctrlMove = ctrlMove && mv > kMove; continue; }
+            probeHold = probeHold && mv < kHold;
+            if (kp.og)                 keepOg  = keepOg && bits;
+            else if (kp.block != bs)   keep512 = keep512 && bits;
+            else                       keepBits = keepBits && bits;
+        }
+        check (probeLive, "premise: each re-prepare probe's displacing injection was consumed where injected");
+        check (keepBits, "a same-rate, same-block re-prepare keeps the (displaced) published value bit-exact, predict memory "
+                         "included: the first block after it publishes the same value");
+        check (keep512, "a same-rate re-prepare at a new block size (256 -> 512) keeps it the same way: a block size is no "
+                        "input to the measurement");
+        check (keepOg, "a primed snapshot that differs only after the tap (Output Gain) keeps it the same way");
+        check (probeHold && ctrlMove, "a re-prepare re-arms the analysis: from the first block after it, silence holds the "
+                                      "published value (< 1e-6 dB) where the same run without the re-prepare moves (> 1 dB)");
+
+        // (c) the flushes: a new rate, a primed measurement input, a first prepare -- each a first prepare
+        struct Flush { const char* name = nullptr; double rate = 48000.0; float drive = 8.0f; };
+        const Flush flushes[] = { { "48 -> 44.1 kHz", 44100.0, 8.0f }, { "primed Drive 8 -> 10", 48000.0, 10.0f } };
+        const int nAfter = (int) std::lround (0.3 * sr / bs);
+        bool flushZero = true, flushFirst = true, flushPremise = true, firstZero = true;
+        for (const auto& fl : flushes)
+        {
+            Prep pr;
+            Lane ln, ref;
+            ln.pre = h8; ln.blocks = E1 + nAfter;
+            ln.at = [&] (int b, AnamorphEngine& e, Params& s)
+            {
+                if (b >= E1) s.driveDb = fl.drive;
+                if (b == E1) reprepare (e, s, fl.rate, bs, pr);
+            };
+            ref.pre = base (Algorithm::Haas, fl.drive); ref.rate = fl.rate; ref.offset = E1; ref.blocks = nAfter;
+            run (ln); run (ref);
+            bool same = true;
+            for (int k = 0; k < nAfter; ++k)
+                same = same && std::memcmp (&ln.pub[(size_t) (E1 + k)], &ref.pub[(size_t) k], sizeof (float)) == 0;
+            std::printf ("  (5) %-40s: published %+.4f -> %+.4f; then %+.3f, %+.3f ... bit-identical to a first prepare "
+                         "there: %s\n", fl.name, (double) pr.before, (double) pr.after, (double) ln.pub[(size_t) E1],
+                         (double) ln.pub[(size_t) E1 + 1], same ? "yes" : "no");
+            flushPremise = flushPremise && std::abs (pr.before) >= 3.0f;
+            flushZero    = flushZero && std::memcmp (&pr.after, &ref.pub0, sizeof (float)) == 0 && juce::exactlyEqual (pr.after, 0.0f);
+            flushFirst   = flushFirst && same;
+            firstZero    = firstZero && juce::exactlyEqual (ref.pub0, 0.0f);
+        }
+        check (flushPremise, "premise: each flushing re-prepare had a published value >= 3 dB from 0 to flush");
+        check (firstZero, "a first prepare publishes exactly 0 dB");
+        check (flushZero, "a re-prepare at a new rate, or after a primed snapshot that moves a measurement input, flushes: "
+                          "published exactly 0 dB right after prepare");
+        check (flushFirst, "...and is a first prepare: the published trajectory is bit-identical to a fresh engine's first-"
+                           "prepared there on the same input");
+    }
+
+    // ---- the allocation guard, around every A/B / injection event to the block after its bottom ---------
+    std::printf ("  allocation guard: %d armed setParameters+process calls (legs 1-4: event to bottom+1); worst per call: "
+                 "new=%ld malloc=%ld\n", armedCalls, worstNew, worstMalloc);
+    check (armedCalls > 0, "liveness: the allocation guard was armed around the re-arming bottoms");
+    if (guardLive)
+    {
+        check (worstNew == 0, "no operator-new allocation while an injection re-arms the Level-Match analysis");
+        if (guard.mallocLive)
+            check (worstMalloc == 0, "no malloc-family allocation while an injection re-arms the Level-Match analysis");
+    }
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -8574,6 +9309,7 @@ int main (int argc, char* argv[])
     testNonFiniteGlideTargetsDoNotLatch();
     testNonFiniteBurstKeepsLevelMatchAudible();
     testLevelMatchEngagesAtTheLevelItMeasured();
+    testLevelMatchAbRearmAndSameRateReprepare();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

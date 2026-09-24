@@ -186,9 +186,10 @@ edge above must not be read as release non-blocking.
   **scalar** engine state (`dryDelayWrite`, `pendingForced`), cleared by assignment rather than by a
   call and covered by State tests 57 and 118–120 instead; and **which** reset a module takes —
   `reset()` and `softReset()` both count, so swapping them between scopes passes (measured: the
-  host-reset half of that swap fails State tests 118, 120 and 121; the re-prepare half alone fails
-  nothing because it changes nothing — `prepare()` has already zeroed the matcher through
-  `loudness.prepare()`, and removing both flushes fails State test 120). A **partial** reset, `levels.resetLive()`, is deliberately not counted, so the
+  host-reset half of that swap fails State tests 118, 120 and 121; the re-prepare half is pinned
+  by behaviour since ADR-0007's F13(2) amendment — `prepare()` keeps the published gain only at an
+  unchanged rate with unchanged measurement inputs and flushes it otherwise, which State test 120
+  (leg 2), State test 131 and Test 67 assert). A **partial** reset, `levels.resetLive()`, is deliberately not counted, so the
   full `levels.reset()` still cannot return to the host-reset path unseen; State test 122 pins the
   partial one.
   Each of the five runs its own `--self-test` **first**, in this job and ahead of the lint it
