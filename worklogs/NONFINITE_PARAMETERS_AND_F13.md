@@ -403,9 +403,9 @@ was run.
 - **Suites, final tree (Release, GCC):** DSP 524 / 0, state 4802 / 0 — also under `ulimit -s 1024`.
   Every printed line outside the new tests and Test 59's Level-Match-on legs is identical to the
   baseline; the state suite differs only in its thread-timing counters.
-- **ASan + UBSan (Clang 18)** and **FMA contraction** (`-march=haswell -ffp-contract=on`): both
-  suites passed with the non-finite guards, Test 64 (first 30 legs) and State test 128, 0 runtime
-  errors; the final tree is covered by CI's sanitizer and arm64 lanes, not re-run here.
+- **ASan + UBSan (Clang 18), final tree:** DSP 522 / 0 (this build config runs 2 fewer checks, as in
+  earlier rounds), state 4802 / 0, 0 runtime errors. **FMA contraction** (`-march=haswell
+  -ffp-contract=on`, the arm64-float stand-in), final tree: DSP 524 / 0, state 4802 / 0.
 - **Gates:** `check-realtime`, `check-dispatch`, `check-portability`, `check-docs` (+ self-test),
   `check-state-coverage` (+ self-test), `check-citations` (+ self-test; `--check` against `HEAD`,
   `HEAD~3` and `659ca0a`): all exit 0. GCC with the warning gate's flags and Clang with the
