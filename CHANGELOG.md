@@ -145,6 +145,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   in as soon as the host sends a valid value. Chorus and Dimension D were never affected, and nothing
   changes for ordinary automation. Decision: ADR-0009 (Implementation note, 2026-09-22). Regression
   coverage: State test 123 and Test 59. Evidence: PR #155. [Verified]
+- **An invalid Velvet Density value no longer freezes the Density control until the plug-in is
+  re-initialised.** Typing "nan" into the Density value box — or a host sending a value that is not a
+  number — left Velvet's density smoothing stuck. The sound did not drop out, so nothing flagged it,
+  but the **Density** control stopped doing anything: turning it, stopping the transport and a host
+  reset all left the sound where it was, until the host re-initialised the plug-in. A
+  re-initialisation while the value was still invalid switched Velvet's decorrelation off completely,
+  at any Amount. Velvet now ignores an invalid density and keeps the last valid one, so the next
+  valid value takes effect as usual. Nothing changes for ordinary values. Decision: ADR-0009
+  (Implementation note, 2026-09-24). Regression coverage: State test 128 and Test 64. Evidence:
+  PR #156. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own
