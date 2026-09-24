@@ -4334,6 +4334,19 @@ Premise controls: the NaN reaches the raw parameter, "nan" parses to NaN, and a 
 Maker Freq lands finite (500 Hz) — which is why Test 64's Mono Maker half is engine-only. Against the
 pre-fix code all four legs differ (from the finite move, or from the re-prepare).
 
+**Level Match Apply never writes a NaN into Output Gain — State test 129 (2026-09-24).** The matcher
+publishes NaN for the few microseconds between a non-finite input sample and the self-heal's reset,
+and Apply locked it into Output Gain: silence through a host reset and a re-prepare, `value="nan"` in
+the saved session, and an Undo to 0 dB instead of the user's value. **State test 129**
+(`testApplyNeverWritesANonFiniteGain`) reproduces the real window: an audio thread runs
+`processBlock` on noise with a NaN every 97th sample (4096-sample blocks, so a serialising checker
+still switches threads inside it) while the main thread calls `applyAutoGain` the instant it reads the
+published gain as NaN. Asserted: Output Gain never goes non-finite, the saved state never holds
+"nan", the plug-in still plays on clean input afterwards, and a finite Apply still locks the measured
+gain. Premise controls: the audio thread ran, and the published gain was seen NaN with Apply called
+inside that window. Against the pre-fix code three checks fail (the first Apply inside the window
+wrote NaN).
+
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
 `AnamorphStateTests --write-snapshot` and let the snapshot diff be reviewed in the PR. An

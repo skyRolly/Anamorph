@@ -155,6 +155,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   valid value takes effect as usual. Nothing changes for ordinary values. Decision: ADR-0009
   (Implementation note, 2026-09-24). Regression coverage: State test 128 and Test 64. Evidence:
   PR #156. [Verified]
+- **Apply Gain can no longer silence the plug-in.** If the audio coming into Anamorph contained an
+  invalid sample — not a number, typically from a misbehaving plug-in earlier in the chain — Level
+  Match's measurement was invalid for a few microseconds until the plug-in's protection reset it. A
+  click on **Apply Gain** landing in that moment wrote the invalid value into **Output Gain**: the
+  plug-in went silent and stayed silent through stopping the transport and a host reset, the project
+  saved the invalid value, and Undo brought Output Gain back to 0 dB instead of your own setting.
+  Measured: silent on the first click inside that window. Apply now ignores an invalid measurement
+  and changes nothing; every valid Apply is exactly as before. Decision: ADR-0007 (note, 2026-09-24).
+  Regression coverage: State test 129. Evidence: PR #156. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

@@ -462,11 +462,11 @@ void AnamorphAudioProcessor::applyAutoGain()
     const auto admit = admitStateCommand ([this] { applyAutoGain(); });
     if (! admit.admitted()) return;
 
-    // "Apply": OVERRIDE Output Gain with the measured loudness compensation as a
-    // fixed value (feedback #18). The match gain is measured pre-output-gain, so
-    // setting Output Gain = matchDb makes the output sit at the dry loudness.
-    // (Override, not add -- otherwise repeated Apply presses keep dropping it.)
+    // "Apply": OVERRIDE (not add -- repeated presses would keep dropping it) Output Gain with the measured,
+    // pre-output-gain loudness compensation, so the output sits at the dry loudness (feedback #18). NaN is
+    // no measurement and the one value `jlimit` below cannot bound; it made Output Gain NaN (State test 129).
     const float matchDb = engine.getMatchGainDb();
+    if (std::isnan (matchDb)) return;
 
     // ADR-0008, ROUND 23. THESE TWO STORES SAY WHAT THEY PRODUCED (Devin R1117-1119).
     // Apply is a USER ACTION with its own change gesture, and until this round it was the last bare
