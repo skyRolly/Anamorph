@@ -49,13 +49,18 @@ latency==0 with OS off; the engaged wrap's bypass delay matches the reported lat
 `testOversamplingLatencyIsFactorOnly` (Test 52: the whole {factor}×{algorithm}×{drive} grid; a live
 Drive sweep across the engagement threshold; reported == actual with the wrap skipped; and the
 skipped state's output bit-identical to the OS-off output delayed, which is what proves the wrap is
-genuinely not running).
+genuinely not running). Both of those measure through a ring delayed BY the reported number, so
+neither checks the oversampler against it: that is `testEngagedWrapCarriesTheReportedLatency`
+(Test 60, road-map R7 — with the wrap running, the processed path's phase delay at 300 Hz equals the
+reported latency within 0.01 samples at 2×/4×/8× and 44.1/48/96 kHz; built without the
+integer-latency flag the wrap sat up to 0.43 samples off its number and both suites had passed).
 
 ## Reported latency (current values)
 
 `getLatencySamples()` returns `latency2/4/8` for the selected factor, and 0 for Off. The concrete
-sample counts depend on JUCE's half-band filter orders (1/2/3 for 2×/4×/8×) and the sample rate;
-they are computed at `prepare()` time, not hard-coded. Measured at 48 kHz on JUCE 9.0.1 and proven
+sample counts depend on JUCE's half-band filter orders (1/2/3 for 2×/4×/8×), not on the sample rate
+(measured 2026-09-22: the same three numbers at 44.1, 48, 88.2, 96 and 192 kHz — this line said
+"and the sample rate" until then); they are computed at `prepare()` time, not hard-coded. Measured at 48 kHz on JUCE 9.0.1 and proven
 unchanged at the pinned 9.0.2 by ADR-0054's twin dump, which hashes the reported latency beside the
 output:
 **2× = 4, 4× = 6, 8× = 6** samples (Test 52 prints the row; Test 38's landing census records the
@@ -64,8 +69,9 @@ same three numbers and notes that 4× and 8× are equal, so an x4 → x8 switch 
 Evidence [Verified]: src/dsp/AnamorphEngine.cpp:69-71 (`latency2` / `latency4` / `latency8`, the
 only writes, made at `prepare()` time).
 
-`TODO: tabulate the measured latency2/4/8 sample counts at 44.1/96/192 kHz from a built
-binary (requires running the plugin; not statically provable here).`
+The rates the TODO here asked for were measured on 2026-09-22 (road-map R7) from a built binary: 4 / 6 / 6
+at 44.1, 48, 88.2, 96 and 192 kHz. Test 60 pins those numbers at 44.1, 48 and 96 kHz, so a change
+to them — a reported-latency change, and a hard-stop for review — fails the suite.
 
 ## Host compensation behaviour
 
@@ -151,7 +157,7 @@ binary (requires running the plugin; not statically provable here).`
   Oversampling Setting inside an off-thread `setStateInformation` (RISK-007) can still change the
   value from a non-message thread.
 
-Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:277-282,
+Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:393-398,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

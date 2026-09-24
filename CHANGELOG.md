@@ -18,9 +18,133 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.9] — 2026-09-19
+## [0.9.9] — 2026-09-22
 
 ### Fixed
+- **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
+  was replacing.** Anamorph writes a preset to a temporary file and then swaps it into place, which is
+  meant to make a save all-or-nothing. The swap, however, only checked that the temporary file
+  *existed* — not that the whole preset had reached it. So if the disk filled up, or a quota or a
+  file-size limit cut the write short, the half-written file was swapped over your existing preset and
+  the save was reported as **successful**: the preset stayed selected, the edited-since-saved marker
+  cleared, and nothing suggested trying again. Measured on a full disk, saving over a valid preset
+  left a **zero-byte file** — and a file Anamorph could no longer read, so the preset was simply gone.
+  With a little space left it left a file cut off part-way through instead. Now a write that cannot
+  complete reports a failure, the preset already on disk is left **byte-for-byte untouched**, and the
+  edited marker stays on so you know the save did not happen. A save that completes behaves exactly as
+  before and writes exactly the same file. Regression coverage: State test 117. Evidence: PR #155. [Verified]
+- **Stopping the transport now clears the plug-in's delay lines and filters, as your host asks it
+  to.** Hosts send a reset when they stop processing — a request to drop anything still ringing.
+  Anamorph was not listening for it, so echoes, filter ringing and any in-progress fade survived a
+  stop and could be heard at the start of the next thing you played. The reset now reaches the audio
+  engine: silence in, silence out. Normal processing after a stop is unchanged, and this is not a
+  latency change — what your host reports for delay compensation is untouched. Regression coverage:
+  State test 118. Evidence: PR #155. [Verified]
+- **The Level Match readout no longer creeps while the transport is stopped.** Level Match measures
+  how much louder or quieter the effect makes your track and holds that figure steady through
+  silence — that is what lets you stop, start and A/B without the level lurching. The host reset
+  added above cleared the audio but left the measurement's own filters and energy running, so for
+  several seconds after a stop the matcher still believed it was hearing the last thing you played
+  and kept easing the figure toward a target computed from it. Measured at **0.024 dB** of movement
+  over the first 1.4 s of silence and still moving 4 s later. The reset now re-arms the measurement
+  instead: the analysis is cleared and the published match figure is carried across **exactly** as
+  it was, so a stop freezes the number rather than nudging it. Measured post-fix: **0.000 dB** of
+  movement. Regression coverage: State test 120. Evidence: PR #155. [Verified]
+- **Stopping the transport no longer wipes the peak numbers under the meters.** The number beside
+  each meter is a held peak — the loudest sample since you last cleared it — and clearing it is
+  supposed to be your decision, made by clicking it. The host reset added above was clearing it too,
+  so on every transport stop a reading you were keeping (measured: **−0.92 dB**) dropped to
+  **−100.00 dB** before you could act on it. Transport stops now leave the peak numbers and their clip
+  colours alone; the reading still clears when you click it, and when the plug-in is re-initialised at
+  a new sample rate, where the old number no longer means anything. Regression coverage: State test
+  120. Evidence: PR #155. [Verified]
+- **...and starting playback again now clears them, in every host.** The held peak is meant to clear
+  when playback restarts, and Anamorph found that restart by watching for the first playing block
+  after a non-playing one. Hosts that simply *stop calling the plug-in* while the transport is
+  stopped — which is what a VST3 host does when it suspends processing — never sent that
+  non-playing block, so the restart was invisible and the previous take's peak was still sitting
+  there over the new one. It only looked right in hosts that return the playhead to the start,
+  where a different check happened to catch it. Measured: a held **−0.92 dB** survived a stop and
+  a resume from the same spot. The peak now clears on the restart in every host — and still
+  **not** at the stop itself, so it is there to read while you are stopped. Regression coverage:
+  State test 121. Evidence: PR #155. [Verified]
+- **The meters no longer freeze on the last thing you played when the transport stops.** The meters
+  only move while the plug-in is processing audio, and hosts that stop calling the plug-in while the
+  transport is stopped — which is what a VST3 host does when it suspends processing — left the bars,
+  the RMS numbers and the phase and balance pointers exactly where the music left them for as long as
+  you stayed stopped. Starting again did not fully clear them either: for a second or more the peak
+  tick and the RMS numbers still showed the old take. And if the old take had pushed an RMS number
+  over 0 dBFS, clearing its amber clip colour — by clicking it, or by starting playback — lit it again
+  on the very first block. The bars and RMS numbers now drop to silence at the stop and the phase and
+  balance pointers glide back to centre, while the held peak numbers and their clip colours stay until
+  you click them or playback restarts, as above. Measured through the plug-in: a bar and RMS number
+  that stayed at **−0.92 dB** and **−10.87 dB** after the stop now read silence at once, beside a held
+  peak of **−0.92 dB** that is still there. Regression coverage: State test 122. Evidence: PR #155.
+  [Verified]
+- **Level Match no longer re-measures when nothing about the sound changed.** Level Match watches
+  the difference your processing makes and holds that reading steady so A/B-ing does not lurch. It
+  re-measures whenever the signal path really moves — a different algorithm, a routing change — and
+  that is right. It was also re-measuring for a change to **Dim-D Style** when Dimension D is not
+  the selected algorithm, where that control reaches nothing at all. On its own the stray reading
+  was already harmless, but two ordinary actions carried it in: switching **A/B** or recalling a
+  **preset** whose only difference is that control, and toggling **Level Match itself** with that
+  control also different — both threw away a converged reading and started again. Dim-D Style now
+  only counts as a change to the sound when Dimension D is actually in use, matching how the same
+  control already behaves elsewhere. Changing it *while* Dimension D is selected still re-measures,
+  because then it really is audible. Regression coverage: Test 58. Evidence: PR #155. [Verified]
+- **Anamorph now tells your host how long its sound really takes to decay.** The reported tail length
+  was a fixed 0.1 s, and the chain can ring for considerably longer than that — measured at up to
+  0.25 s, with the low crossover settings and Band Solo that produce it. Hosts use that figure to
+  decide how long to keep the plug-in running after a sound stops, so freezing, bouncing or rendering
+  a track could clip the last of a decay. The reported value is now 0.5 s, chosen to cover the longest
+  decay measured with room to spare. Nothing about the sound itself changes, and this is not the
+  latency figure. Regression coverage: State test 119. Evidence: PR #155. [Verified]
+- **Automating Dim-D Style no longer ducks the sound when Dimension D is not the selected
+  algorithm.** Dim-D Style is read only by the Dimension D algorithm, but moving it counted as a
+  structural change whatever algorithm was selected — so an automation lane crossing one of its four
+  steps opened the full transition fade every time, on a control that could not change the sound at
+  all. Under a lane crossing a step every few milliseconds that held the output well below where it
+  belonged: 42 dB down at one crossing every 2.7 ms, 30 dB at 5.3 ms, 19 dB at 10.7 ms, and audible
+  at any crossing closer together than about 130 ms. It was never permanent — the level came back
+  about 25 ms after the automation stopped — but for as long as the lane kept moving, it stayed
+  down. Moving Dim-D Style while another algorithm is selected is now completely silent: the output
+  is sample-for-sample identical to leaving the control alone, at every sample rate and buffer size.
+  The value is still adopted, so switching to Dimension D afterwards gives you the voicing you
+  chose; and moving it **while** Dimension D is selected still transitions exactly as before, as do
+  band count, algorithm, oversampling factor and Band Solo. Decision: ADR-0004 (Correction,
+  2026-09-21). Regression coverage: Test 55. Evidence: PR #155. [Verified]
+- **Turning the Multiband on or off at a partial Mix no longer clicks.** With Mix anywhere between
+  0 % and 100 % and more than one band, the dry half of the mix was swapped between two versions of
+  itself in a single sample, at a buffer boundary about 12 ms after the toggle — the crossfade
+  covered the processed signal but not the dry one. The result was a genuine click, and a loud one:
+  on a steady tone at four bands it reached the signal's own peak level and up to ninety times the
+  step the signal itself was making. It was worst at low Mix settings and on low-frequency material,
+  and it happened in both directions. The dry signal now crosses over on the same short fade as the
+  rest, so the toggle is inaudible. An exact-0 % Mix, an exact-100 % Mix and a single-band setting
+  were never affected and are bit-for-bit unchanged. Decision: ADR-0005 (Correction, 2026-09-21).
+  Regression coverage: Test 56. Evidence: PR #155. [Verified]
+- **Switching algorithm immediately after another control no longer carries the old algorithm's
+  sound into the new one.** When a change to another structural control — the band count, say — was
+  followed within a few milliseconds by an algorithm change, the transition adopted the new
+  algorithm without clearing the previous one's delay lines. Between Chorus and Dimension D, which
+  share the same modulation engine, the incoming voice started on a line still full of the outgoing
+  one's audio, and the artefact was as loud as the signal itself. Changing algorithm the moment
+  after another control now sounds exactly the same as changing both together. Decision: ADR-0004
+  (Correction, 2026-09-21). Regression coverage: Test 57. Evidence: PR #155. [Verified]
+- **One invalid automation value no longer silences Haas and Velvet until the plug-in is
+  re-initialised.** A host can hand a plug-in a parameter value that is not a number at all — a host
+  bug or a damaged automation lane — and it reaches the audio engine, whose protection against
+  invalid audio catches the result, replaces it with silence and resets the processing so it can
+  carry on. With **Haas** or **Velvet** selected it could not carry on: the invalid **Amount** stayed
+  stuck inside the effect's own smoothing, so the output stayed silent after the host went back to
+  sending ordinary values — through stopping and restarting the transport, and through a host reset
+  — until the host re-initialised the plug-in, for example when the audio settings changed or the
+  project was reopened. Measured through the plug-in: silence (**−180 dB**) one second after the
+  host's values were valid again, on material that had been coming out at **−11.7 dB**. The reset
+  now clears that state too: the output drops out for one buffer at most and the effect glides back
+  in as soon as the host sends a valid value. Chorus and Dimension D were never affected, and nothing
+  changes for ordinary automation. Decision: ADR-0009 (Implementation note, 2026-09-22). Regression
+  coverage: State test 123 and Test 59. Evidence: PR #155. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

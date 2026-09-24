@@ -168,29 +168,131 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // the twelfth): Haas 0.17, Velvet 0.09, Chorus 0.29, Dimension-D 0.39 and the
     // Mono Maker crossover 0.35 of their settled values.
     //
-    // Placed HERE, not inside reset() and not inside snapSmoothers(): reset() also
-    // runs at the silent bottom of a switch duck and on the NaN self-heal, and
-    // snapSmoothers() is called from that duck path too (see the switch handler),
-    // so folding this in would change how live edits settle. prepare() is the one
-    // moment where snapping is unambiguously right -- all delay and filter state
-    // has just been cleared, so there is nothing for a glide to protect.
+    // Placed HERE, not inside the modules' reset() and not inside snapSmoothers():
+    // the resets also run at a duck's silent bottom and on the NaN self-heal, and
+    // snapSmoothers() at a forced duck's bottom, so folding this in would change how
+    // live edits settle. Here all delay and filter state has just been cleared: no
+    // glide to protect. A host reset is the one other such moment; it re-seeds the
+    // one module whose reset() zeroes its sound -- the chorus (end of reset()).
     haas.snapToTargets();
     velvet.snapToTargets();
     chorus.snapToTargets();
     monoMaker.snapToTargets();
 }
 
-void AnamorphEngine::reset()
+void AnamorphEngine::reset (ResetScope resetScope)
 {
+    // RESOLVE AN IN-FLIGHT SWITCH DUCK FIRST, in the order its own silent bottom uses
+    // (process(): adopt pendingP, updateDerived(), snapSmoothers() if FORCED, then clear
+    // the nodes), so the node resets below snap onto the ADOPTED targets -- the Haas
+    // delay, the crossovers, the band widths -- and not onto the outgoing ones.
+    //  * A FORCED swap (A/B, preset load, undo, redo) completes here exactly as its bottom
+    //    would have completed it: it holds its continuous controls back in pendingP to be
+    //    applied SNAPPED (ADR-0004, decision 1), so they are snapped here too. Adopted
+    //    after the node resets and unsnapped, as it used to be, a host reset inside the
+    //    ~6 ms fade-out glided Mix / Width / Output / balance in over 20 ms (Drive 32 ms,
+    //    polarity 5 ms), and the Haas delay and the crossovers from the OLD values -- the
+    //    delay then stalling short of its target for good (Test 63, State test 127).
+    //  * An ORDINARY duck adopts its discrete change only: its continuous controls went
+    //    live when it opened (copyContinuous), so the reset treats them exactly as it
+    //    treats a live edit with no duck at all.
+    // So a host reset clears every audio tail, lands any duck on its target, and lands the
+    // glides a node's own reset() snaps (the Haas delay, crossovers, band widths, Band Solo
+    // split; on this scope the Chorus wet and depth, below). It snaps no other glide still
+    // in flight -- the engine's smoothers after a live edit, the Haas / Velvet amount,
+    // Velvet density, Mono Maker cutoff -- and it keeps the Level-Match gain (ADR-0007). It
+    // equals a clean start only where none of those was moving.
+    if (switchState != SwitchState::Normal)
+    {
+        p = pendingP;
+        updateDerived();
+        if (pendingForced)
+            snapSmoothers();
+    }
+
     haas.reset();
     velvet.reset();
     chorus.reset();
     multiband.reset();
     monoMaker.reset();
     soloMonitor.reset();
-    loudness.reset();
+    // THE MEASUREMENT HALF, and the one place the two scopes genuinely differ.
+    //
+    // `everything` is prepare()'s flush: a new sample rate or block size invalidates
+    // the K-weighting coefficients and every integrator, so the whole matcher goes --
+    // including the PUBLISHED gain, because there is no longer a measurement behind it.
+    //
+    // `audioTailsOnly` is a host reset, and it takes `softReset()` instead. The
+    // distinction is not cosmetic and neither half of it is optional:
+    //
+    //   * the K-weighting filter states and the energy integrators describe AUDIO THAT
+    //     HAS STOPPED, so they must go. Leaving them is not merely untidy: the silence
+    //     gate is judged FROM those integrators (`meanSqDry < 1e-6 && meanSqWet < 1e-6`)
+    //     against a tau = 0.4 s window, so stale energy makes `silent` read FALSE for
+    //     SECONDS of real silence and MEASURE keeps gliding the published gain toward a
+    //     target computed from pre-reset audio. Measured through the wrapper before this
+    //     line existed: the gain was still moving 4 s after the reset -- 0.024158 dB
+    //     over the first 1.4 s at Drive 8 / Mix 1 / Width 0.3 / Amount 0.4, and
+    //     0.04-0.09 dB over 4 s at higher Drive. Small, unbounded within the window,
+    //     and exactly the "No drift on silence" ADR-0007 lists under Consequences.
+    //
+    //   * `displayedGainDb`, `prevPredictedGainDb` and the published `matchGainDb` must
+    //     SURVIVE, which is why this is `softReset()` and not `reset()`. ADR-0007's
+    //     Decision is that on silence the measure holds the last trusted value; R5's
+    //     first attempt at the host-reset path used the wholesale flush and turned a
+    //     converged -5.158 dB into 0.000 dB on every transport stop -- the "slammed loud
+    //     on the next play" symptom in that ADR's Context. State test 118 holds both
+    //     halves: the analysis state must clear AND the published gain must not. State
+    //     test 118's last leg holds the published half on its own; State test 120 holds
+    //     both, and measured 0.024158 dB of drift over 1.4 s of silence against the
+    //     pre-fix engine and 0.000000 dB against this one.
+    //
+    // This is not a new semantic. It is the one the duck bottom already uses when the
+    // processing changed (`if (procChanged) loudness.softReset()`), applied to the entry
+    // point R5 added.
+    if (resetScope == ResetScope::everything) loudness.reset();
+    else                                      loudness.softReset();
+
+    // THE DISPLAY METERS. Two halves, and `audioTailsOnly` takes exactly one of them.
+    //
+    // THE USER'S LATCHES SURVIVE. `LevelMeters::reset()` clears `peakHoldL/R`, which
+    // LevelMeters.h documents as "a held PEAK number (max sample peak since the last
+    // reset, never falls)" and whose reset rule that header states outright: "on a
+    // number click or a playback RESTART". There are exactly TWO such paths in the
+    // product and a transport stop is neither -- `src/gui/LevelMeter.h:27` (mouseDown on
+    // the readout) and `PluginProcessor.cpp:442` (a PLAY edge or a seek). Stopping to
+    // LOOK at the number is what the latch is for. R5's host-reset override made the
+    // whole-meter flush reachable from every transport stop, and measured through the
+    // wrapper a held peak of -0.92 dB became -100.00 dB on the stop (State test 120).
+    //
+    // THE LIVE DISPLAY DOES NOT, and this corrects what R6 wrote here. The reasoning
+    // was: "they do not need a reset to fall: the bar and numeric readouts have
+    // hold-then-fall ballistics of their own and decay on silence, while `Correlation`
+    // is running averages that do the same." True only while the host keeps calling
+    // `processBlock` -- those ballistics run inside `process()` / `publish()`, and the
+    // GUI applies none of its own (gui/LevelMeter.h: "ballistics are all audio-side").
+    // A host that resets and then STOPS calling `processBlock` -- VST3
+    // `setProcessing(false)` -- froze every readout at its last active frame for as long
+    // as it stayed stopped. MEASURED through the wrapper, -6 dBFS noise: dim -6.13,
+    // bright -11.17, bar -0.92, RMS -10.87 dB, unchanged 2 s later. With the right
+    // channel at 0.4x the left, the correlation meter's `energy` stayed at 9.663e-02, so
+    // the GUI never saw the silence that triggers its own glide to centre and held phase
+    // +1.000 / balance -0.724. Resumed playback then inherited the pre-stop bar tick and
+    // RMS hold, and the frozen RMS NUMBER re-latched the RMS clip on the first block after
+    // a click or a play edge had cleared it (State test 122).
+    //
+    // So: `resetLive()` on a host reset (envelopes, bar tick, RMS number, their holds;
+    // published) and the whole meter only on a re-prepare, which invalidates every
+    // readout. `correlation` has no user latch, so it is reset on both scopes, and its
+    // `reset()` publishes so the GUI's glide runs. Neither changes a sample: both meters
+    // are DISPLAY ONLY, written by the audio path and never read back by it. The rule:
+    // a host reset clears AUDIO and the LIVE DISPLAY describing audio that has ended,
+    // and leaves the user's LATCHES and the Level-Match RESULT alone.
     correlation.reset();
-    levels.reset();
+    if (resetScope == ResetScope::everything)
+        levels.reset();
+    else
+        levels.resetLive();
     if (os2) os2->reset();
     if (os4) os4->reset();
     if (os8) os8->reset();
@@ -203,13 +305,7 @@ void AnamorphEngine::reset()
     osCompDelayWrite = 0;
     prevInputSilent = true;
 
-    // Flush any in-flight switch duck straight to its target so a host reset
-    // lands in a clean steady state (bit-exact transparent from sample 0).
-    if (switchState != SwitchState::Normal)
-    {
-        p = pendingP;
-        updateDerived();
-    }
+    // The duck was resolved at the top of this function; retire its bookkeeping.
     pendingP = p;
     pendingAlgoReset = false;
     switchState = SwitchState::Normal;
@@ -231,6 +327,26 @@ void AnamorphEngine::reset()
     // as the Bypass and Multiband Enable crossfades are settled above.
     osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
     osRunning = osActiveFor (p); // reset() cleared the oversamplers: warm iff engaged
+
+    // ...AND THE USER'S MODULATION SOUND, on a host reset. `chorus.reset()` above zeroes the
+    // Chorus / Dimension-D wet blend and modulation depth along with the delay line. That is
+    // right for its direct callers -- the duck bottoms, the OS-path restart and the NaN
+    // self-heal, where a fade masks it or the glide must go -- and prepare() re-seeds both
+    // (ER-DSP-09). The host reset had nothing that did, so every transport stop (and every AU
+    // Reset(), which JUCE runs right after prepareToPlay()) faded the sound back in from dry
+    // over ~50 ms and left the depth glide stalled short of its target. With this, a host reset of
+    // a settled session is a clean start from the first sample, Level Match aside (State test
+    // 126, Test 62).
+    //  * LAST, after the duck flush: a forced swap in flight holds the Amount in pendingP.
+    //  * audioTailsOnly only: `everything` is prepare()'s flush, and prepare() snaps itself.
+    //  * Chorus / Dimension-D only: an idle chorus is left exactly as it was, so a host reset
+    //    changes nothing a later algorithm switch would hear.
+    //  * finite Amount only: a NaN target stays parked at the 0 chorus.reset() gave it
+    //    (ADR-0009 -- the rule R7 put in HaasProcessor / VelvetNoise::reset()).
+    if (resetScope == ResetScope::audioTailsOnly
+        && isModAlgorithm (p.algorithm)
+        && std::isfinite (p.algoAmount))
+        chorus.snapToTargets();
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +414,35 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.solo             != b.solo
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
-        || a.dimMode          != b.dimMode
+        // dimMode is READ BY ONE LINE, and only under one algorithm:
+        // src/dsp/AnamorphEngine.cpp:813 (`chorus.setDimMode`), inside
+        // `else if (p.algorithm == Algorithm::DimensionD)`.
+        // With any other algorithm adopted the value reaches no module, so a duck for it
+        // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
+        // -42.2 dB of steady output under a host lane toggling it once per 128-sample
+        // block, identical to the attenuation an AUDIBLE discrete change produces. That
+        // is the whole of this exclusion: not that the duck is wrong, but that this
+        // change is not one of the changes it is for.
+        //
+        // The condition is symmetric and deliberately conservative. If EITHER side is
+        // DimensionD the duck still fires -- and when only one side is, `algorithm`
+        // already differs two lines up, so the guard changes nothing there. The one
+        // behaviour it removes is a duck for a dimMode move between two non-DimensionD
+        // states, which no module can observe.
+        //
+        // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
+        // (src/dsp/AnamorphEngine.cpp:385 (`a.dimMode`)),
+        // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
+        // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
+        // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
+        // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
+        //
+        // haasSide is NOT given the same treatment, and the asymmetry is the point:
+        // src/dsp/AnamorphEngine.cpp:798 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // whatever the algorithm is. The test for this exclusion is "does the field reach
+        // a module", not "does the algorithm use it".
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
+                                    || b.algorithm == Algorithm::DimensionD))
         || a.mbBands          != b.mbBands
         // Multiband Enable is NOT listed: like Bypass it is now a click-free OUTPUT
         // crossfade (mbEnableBlend) with the crossover bank kept warm, NOT a duck-to-
@@ -330,8 +474,34 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
 {
     return a.channelMode != b.channelMode || a.monoSum  != b.monoSum  || a.swapLR   != b.swapLR
         || a.msMode      != b.msMode      || a.solo     != b.solo     || a.algorithm != b.algorithm
-        || a.haasSide    != b.haasSide    || a.dimMode  != b.dimMode  || a.mbEnable  != b.mbEnable
+        || a.haasSide    != b.haasSide    || a.mbEnable != b.mbEnable
         || a.mbBands     != b.mbBands
+        // dimMode carries THE SAME Dimension-D relevance guard `discreteDiffers` has, and
+        // for the same one-line reason: `chorus.setDimMode (p.dimMode)` is the only reader
+        // and it sits inside `else if (p.algorithm == Algorithm::DimensionD)`. With any
+        // other algorithm adopted the value reaches no module, so the SIGNAL PATH did not
+        // change and re-arming the Level-Match measurement for it throws away a converged
+        // reading for nothing.
+        //
+        // WHY THIS WAS REACHABLE AT ALL, since R4's guard means an inert dimMode move opens
+        // no duck of its own and this function is read only at the duck BOTTOM. Two routes,
+        // both measured (Test 58, tests/dsp_tests.cpp):
+        //   * a FORCED duck -- A/B, preset load, undo (`requestDuck`, PluginProcessor.cpp)
+        //     -- ducks regardless of what differs, so a slot or preset whose only
+        //     processing delta is dimMode reached this line and re-armed.
+        //   * `autoGainMatch` is the ONE field in `discreteDiffers` but not here, so
+        //     toggling Level Match itself opens a duck; an inert dimMode riding in the same
+        //     snapshot made `procChanged` true. That defeats the rule the call site states
+        //     three lines below -- "Toggling Level Match / Bypass must NOT re-measure".
+        // Measured on the engine, Haas + Level Match, converged then silent: the analysis
+        // survived (0.030 dB of ordinary drift) on the plain dimMode move, and was thrown
+        // away (0.000 dB, frozen) on both of those routes. With the guard, both preserve.
+        //
+        // Symmetric and conservative, exactly as in `discreteDiffers`: if EITHER side is
+        // DimensionD this still fires, and when only one side is, `algorithm` already
+        // differs on the line above, so the guard changes nothing there.
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
+                                    || b.algorithm == Algorithm::DimensionD))
         || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample;
 }
 
@@ -482,6 +652,43 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             pendingForced = true;
             dryDuck       = false;
         }
+        else
+        {
+            // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
+            // the fourth path into `pendingP` and the only one that used to leave
+            // `pendingAlgoReset` alone. The other three -- the forced entry
+            // (src/dsp/AnamorphEngine.cpp:577), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:589) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:624) -- all recompute
+            // it; this one did not, because the re-arm guard above tests
+            // `switchState == FadeIn` and a change arriving during FADE-OUT
+            // therefore falls straight through to `pendingP = np` at the top.
+            //
+            // So a sequence that is entirely ordinary --
+            //     block N    : change the band count   -> duck opens, flag = false
+            //     block N+1  : change the algorithm    -> pendingP retargeted
+            // -- reached the silent bottom, adopted the new algorithm with
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1075) and skipped `haas/velvet/chorus.reset()`
+            // because the flag still described the FIRST change. The incoming
+            // algorithm then started on the outgoing one's delay-line and LFO
+            // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
+            // Haas -> Chorus produced a worst step of 0.1335 against 0.1026 for
+            // the identical end state reached by the entry route (1.30x), and
+            // Haas -> Dimension D 0.0525 against 0.0455 (1.15x). With this line
+            // in place both routes are BIT-IDENTICAL, which is what identifies
+            // the flag -- not the arrival timing -- as the whole of the
+            // difference. Haas -> Velvet was already identical either way.
+            //
+            // The recompute is the same expression the other three use, against
+            // the same reference (`p`, the state still being heard). This branch
+            // is reached only with an ordinary duck in flight: a forced one takes
+            // the `pendingForced` tighten above, a new forced request the upgrade
+            // above it, and a FadeIn re-arm the branch above that -- each of which
+            // sets the flag itself. It is also reached from FadeIn when nothing
+            // discrete differs, where the bottom has already passed and the flag
+            // is false; writing false again is a no-op there.
+            pendingAlgoReset = (np.algorithm != p.algorithm);
+        }
 
         // A forced swap defers everything to the silent bottom; otherwise keep
         // continuous controls live during the duck.
@@ -493,9 +700,10 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     }
 }
 
-// Snap every continuous smoother straight to its (new) target. Only called at the
-// silent bottom of a forced duck, where it's inaudible -- so the post-fade-in
-// state is already settled and a big level change never swells (#1).
+// Snap every continuous smoother straight to its (new) target. Called where it is
+// inaudible: the silent bottom of a forced duck -- so the post-fade-in state is
+// already settled and a big level change never swells (#1) -- prepare(), and a host
+// reset() that completes a forced swap in flight in the bottom's place.
 void AnamorphEngine::snapSmoothers() noexcept
 {
     auto snap = [] (juce::SmoothedValue<float>& s) { s.setCurrentAndTargetValue (s.getTargetValue()); };
@@ -1346,11 +1554,44 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         {
             const float* pmL = preMbScratch.getReadPointer (0);
             const float* pmR = preMbScratch.getReadPointer (1);
+            // The DRY reconstruction rides the SAME curve, and it has to. `dryAligned`
+            // is a BLOCK constant -- it is set only inside this `if (mbActive)`, and
+            // mbActive is evaluated once per block -- while the Mix stage picks its dry
+            // source straight off it (`aL = dryAligned ? dryAlignScratch : dL`) and
+            // blends with ts = 1 for any Mix >= kAlignMix. Without the line below the
+            // dry term therefore JUMPED from A(dry) to the clean dry in one sample at
+            // the block boundary where mbActive flipped: a step of (1-Mix)*|A(dry)-dry|,
+            // uncrossfaded, in the middle of a control a user toggles from the UI.
+            // Measured at 48 kHz, 4 bands, crossovers 200/900/3500: +3.9 dBFS and 18x
+            // the signal's own slew (1 kHz, Mix 0.05), -13.4 dBFS and 24x (100 Hz,
+            // Mix 0.25), up to 89x at block 64 -- and exactly zero at Mix 0 (ts = 0,
+            // the aligned dry is never read), at Mix 1 (the H4 gate drops the dry term
+            // altogether) and at one band (no crossover, so A(dry) == dry).
+            //
+            // Gliding A(dry) toward the clean dry on `b` moves the source switch to the
+            // instant the two are already equal: on a DISABLE the blend reaches 0 while
+            // mbActive is still true, so by the boundary where it flips the buffer holds
+            // the clean dry and the switch is a no-op; on an ENABLE the blend starts at
+            // 0, so the buffer starts AT the clean dry the previous block was using.
+            // `blending` implies `! fullWetIdle` implies `dryAligned`, so the write is
+            // always to a buffer the multiband just filled -- no guard is needed. At a
+            // settled blend this loop does not run at all, so every fully-enabled and
+            // fully-disabled state stays BIT-EXACT (ADR-0005's Mix=0 null included).
+            //
+            // ADR-0005 also makes A(dry) the Level-Match dry reference; for the ~12 ms
+            // of the fade that reference now follows the dry actually being mixed,
+            // which is the quantity Match is supposed to measure against.
+            float* aLw = dryAlignScratch.getWritePointer (0);
+            float* aRw = dryAlignScratch.getWritePointer (1);
+            const float* cdL = dryScratch.getReadPointer (0);
+            const float* cdR = dryScratch.getReadPointer (1);
             for (int i = 0; i < n; ++i)
             {
                 const float b = mbEnableBlend.getNextValue();
                 L[i] = pmL[i] + b * (L[i] - pmL[i]);
                 R[i] = pmR[i] + b * (R[i] - pmR[i]);
+                aLw[i] = cdL[i] + b * (aLw[i] - cdL[i]);
+                aRw[i] = cdR[i] + b * (aRw[i] - cdR[i]);
             }
         }
     }

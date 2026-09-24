@@ -17,7 +17,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
-| Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. |
+| Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. The meter and correlation resets also publish once each — `reset()` from a prepare, `levels.resetLive()` / `correlation.reset()` from a host reset — on the host's thread, which the format contract keeps from running concurrently with `processBlock` (`THREAD_MODEL.md` host rows). |
 | Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
 | Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | The one ordering-critical pair besides the scope ring: the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously when the caller IS the message thread. |
 | Audio → GUI (view-param / InternalState generations, Wave 2 / H15) | `std::atomic<uint32> viewParamGen`; `InternalState::gen` (relaxed) | The identical staleness-hint pattern, extended so the editor's 60 Hz micro-anim poll re-arms on counter loads instead of hashing every animated widget per frame: `viewParamGen` is bumped by a dedicated no-gesture listener on the view params (Bypass), `InternalState::gen` by its property-change callback (Settings values, incl. session restore). No payload, no ordering role. |
@@ -315,7 +315,7 @@ relies on.
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
-- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
+- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:150-241; src/dsp/Correlation.h:62-202;
   src/PluginProcessor.cpp:162-184, 395; src/InternalState.h:175, 548-571
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,

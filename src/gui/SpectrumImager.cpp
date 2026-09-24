@@ -659,7 +659,7 @@ void SpectrumImager::captureGestureSound() noexcept
 // own normalised value is the stronger version stamp: per-parameter, content-addressed, needing
 // no writer cooperation, and self-stamped at the store. Every writer of these parameters is
 // either this class or somebody outside it -- the engine only reads them
-// (AnamorphEngine.cpp:609) -- so "it moved and I did not move it" is exact and needs no plumbing.
+// (src/dsp/AnamorphEngine.cpp:817 (`multiband.setCrossovers`)) -- so "it moved and I did not move it" is exact and needs no plumbing.
 bool SpectrumImager::soundMovedUnderGesture() const noexcept
 {
     if (gestureBands < 0) return false;

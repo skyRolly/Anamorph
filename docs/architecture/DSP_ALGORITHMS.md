@@ -17,10 +17,13 @@ Invariant: encode→decode is gain/phase exact; mono compatibility by constructi
 ## HaasProcessor — `src/dsp/HaasProcessor.{h,cpp}`
 
 Precedence (Haas) widening: a single fractional delay line per channel (power-of-two circular
-buffer, linear-interpolated read, `.cpp:34-43`). The delayed side is dry/wet blended:
+buffer, linear-interpolated read, `.cpp:45-54`). The delayed side is dry/wet blended:
 `right[n] += amount·(delayed − right[n])` (`.cpp:62`). Both delay length and wet amount are
 one-pole smoothed (`smooth=0.0005`, `aSmooth=0.001`). Linear → stays **outside** oversampling.
-Invariant: `amount 0 = identity`. Buffer sized for ~40 ms (covers the 35 ms max).
+Invariant: `amount 0 = identity`. Buffer sized for ~40 ms (covers the 35 ms max). `reset()` also
+reseeds a **non-finite** wet glide to 0 (parked identity) and leaves a finite one alone: a NaN
+`amount` target makes the glide NaN for good, and the engine's NaN self-heal needs it gone
+(ADR-0009, Implementation note 2026-09-22; State test 123).
 
 ## VelvetNoise — `src/dsp/VelvetNoise.{h,cpp}`
 
@@ -33,10 +36,11 @@ into the stored weight — ALG-4, Wave 2, bit-identical), then `Side' = Side + d
 (`.cpp:243-251`). With the density glide settled and no stop fade in flight, the gather runs
 tap-outer over a linear image of the history (H5, Wave 2): one contiguous unit-stride run per
 tap into a per-sample accumulator that keeps the original ascending-tap summation order —
-bit-identical output, streaming instead of 64 random-index reads per sample (`.cpp:99-180`).
+bit-identical output, streaming instead of 64 random-index reads per sample (`.cpp:104-185`).
 The density-glide, stop-fade and parked paths keep the original per-sample loop verbatim. A presence follower + fixed-time gate fades the tail; a play→stop edge applies
 a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
-Invariant: `amount 0 = identity`.
+Invariant: `amount 0 = identity`. `reset()` reseeds a non-finite wet glide to 0, as `HaasProcessor`
+does and for the same reason (ADR-0009, Implementation note 2026-09-22).
 
 ## ChorusEngine — `src/dsp/ChorusEngine.{h,cpp}`
 
@@ -186,7 +190,9 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
 
 Two parallel one-pole smoothers (fast 120 ms / slow 600 ms) of `l·r`, `l·l`, `r·r`. Pearson
 correlation `c = lr/√(ll·rr)` clamped ±1; also publishes L/R balance and fast energy. Silent/idle
-reads 0 (decorrelated), not +1. Audio writes `publish()`, GUI reads via relaxed atomics.
+reads 0 (decorrelated), not +1. Audio writes `publish()`, GUI reads via relaxed atomics. `reset()`
+publishes too — that idle state, `energy` 0 — so the GUI's glide to centre starts at a reset
+without waiting for a block that a stopped host never sends (ADR-0007, Correction 2026-09-22).
 
 **Two separate non-finite contracts, and they must not be confused.** `publish()`'s `sanitize()`
 flushes any accumulator that has gone non-finite back to 0 — the recovery for a genuinely
@@ -220,7 +226,7 @@ The three contracts are independent, and so are their regression tests: **Test 4
 poisoned accumulator, **Test 50** the phase denominator, **Test 51** the balance sum. The published
 `energy` (`llFast + rrFast`) can also reach +Inf in this regime and is deliberately left alone —
 traced to its only consumer, a `< 6e-9` silence predicate in `gui/CorrelationMeter.cpp`, which
-`+Inf` answers correctly as "not silent". Evidence [Verified]: src/dsp/Correlation.h:129-179.
+`+Inf` answers correctly as "not silent". Evidence [Verified]: src/dsp/Correlation.h:141-191.
 
 ## LevelMeters — `src/dsp/LevelMeters.h`
 
@@ -228,7 +234,10 @@ Per channel: dim **peak** envelope (instant attack, ~300 ms release), bright **R
 (~160/130 ms), rate-limited RMS number (fast rise, 1.2 s hold, 8 dB/s fall), peak-hold bar tick
 (1 s hold then ~100 ms fall), clip latches at 0 dBFS. **NaN self-heal**: per-sample finite clamp
 + `sanitize()` flush so a non-finite burst can never latch an envelope at NaN (0.8.2 Issue 8).
-Held peak never falls until clicked/replay.
+Held peak never falls until clicked/replay. Two resets, both publishing at once: `reset()` (a
+re-prepare) clears the whole meter; `resetLive()` (a host reset) clears only the live display —
+the envelopes, the bar tick, the RMS number and their holds — and keeps the held peak and both
+clip latches (ADR-0007, Correction 2026-09-22; State test 122).
 
 ## ScopeBuffer — `src/dsp/ScopeBuffer.h`
 

@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1002-1008` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1210-1216` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3464` and `.github/workflows/build.yml:3549`, this round being
+`.github/workflows/build.yml:3482` and `.github/workflows/build.yml:3567`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1876,7 +1876,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:685` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:703` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1916,10 +1916,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:208-215`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:205-211`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:851-971`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1059-1179`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1625-1675` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1866-1916` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -6043,7 +6043,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:166`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:171`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
@@ -6413,7 +6413,7 @@ marked rather than erased.
 
 ## The A7-9 near-silent scope correction + the cross-slice record parser (2026-08-30)
 
-A review pass against `src/dsp/VelvetNoise.cpp:158` asked what happens to **near-silent NONZERO**
+A review pass against `src/dsp/VelvetNoise.cpp:163` asked what happens to **near-silent NONZERO**
 input at the stalled fixpoints, and the measured answer corrected a claim every A7-9 record carried:
 "the residual appears only on digital silence" was this programme's *observation*, never a property.
 The absorption `x + residual == x` needs `|x| >= 2^24 × |residual|`; a twin-binary A/B against the
@@ -10949,7 +10949,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2830` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2834` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -13003,6 +13003,108 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 75th pass — 2026-09-23, PR #155 (a host reset inside a forced swap; merge readiness)
+
+**Scope.** PR #155's merge-readiness items and the host reset that lands inside a forced swap
+(A/B, preset load, undo, redo), measured before any change
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §V).
+
+**Merge readiness.** PREfast C26495 on Test 62's `Swap` members: default member initializers, no
+suppression. The seven bare `:NNN` anchors in `AnamorphEngine.cpp`'s comments were all this PR's
+and all stale; each is now a full-path anchor re-derived from the code it names, under the gate.
+`API_REFERENCE.md`'s `reset` row: the real signature and semantics.
+
+**One product defect, fixed; no contract changed.** A host reset inside a forced swap's fade-out
+cleared the nodes before adopting the target and never snapped the smoothers, so Mix / Width /
+Output / balance glided in over 20 ms (Drive 32 ms, polarity 5 ms) and the Haas delay, crossovers
+and band widths glided from the OLD values (the delay stalling short for good). `reset()` now resolves the
+duck first, in the bottom's order, snapping only a forced one — ADR-0004 decision 1 carried out on
+the reset path. Ordinary ducks and live glides behave exactly as before.
+
+**Tests.** DSP Test 63 (22 checks; 15 fail pre-fix, every in-fade leg) and State test 127 (15
+checks through all five routes; 10 fail pre-fix). Each rejected variant fails a named leg.
+
+**Documents changed.** The reset comment (the "bit-exact transparent from sample 0" promise
+replaced by the invariant the code keeps), the Chorus re-seed, `snapSmoothers()` and
+`PluginProcessor.h` comments; `API_REFERENCE.md`; `procedures/TESTING.md` (both entries); this
+entry and the 74th pass's settled-session qualifier; the worklog's §V with markers in §U and §K;
+`check-state-coverage.py`'s text; two UNMAPPABLE anchors re-aimed by hand and declared in
+`check-citations.py`; 68 citations re-anchored by `--fix`. No ADR; no CHANGELOG entry (the
+host-reset path never shipped).
+
+**Recorded, not fixed.** A NaN Mono Maker cutoff present at `prepare()` silences the output until
+a re-prepare (an ADR-0009 gap, the road map's next item); NaN crossovers are admitted but recover;
+the natural forced swap's own module glides; a Level-Match drift after a continuous-only forced
+swap (unverified, adjacent to F13).
+
+**Counts.** DSP **518 / 0** (496 + 22), State **4 791 / 0** (4 776 + 15). [Verified]
+
+## 74th pass — 2026-09-23, PR #155 (a host reset faded the chorus back in)
+
+**Scope.** The review finding "Chorus fades in after host reset", measured before any change
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §U). Confirmed: `ResetScope::audioTailsOnly`
+ran `chorus.reset()`, which zeroes the Chorus / Dimension-D wet and modulation depth, and nothing on
+the host path re-seeded them as `prepare()` does (ER-DSP-09). In a settled session every other
+module was already bit-identical to a clean start (a forced swap in flight: the 75th pass).
+
+**One product defect, fixed; the contract unchanged.** `AnamorphEngine::reset()` now ends with
+`chorus.snapToTargets()` on the host scope, for a modulation algorithm with a finite Amount, after
+the duck flush. ADR-0007's rule and THREAD_MODEL's *Host reset* row already required it, so no ADR
+changes; the defect never shipped (the host-reset override is this PR's), so no CHANGELOG entry.
+
+**Tests.** DSP Test 62 (where the seed runs, and where it must not); State test 126 (the configured
+sound from the first sample, tails still cleared, `prepare()` and the AU order unchanged). Against
+the pre-fix engine 2 and 8 of their checks fail; each guard has its own mutant in the worklog.
+
+**Documents changed.** The `prepare()` comment in `AnamorphEngine.cpp` (it said `reset()` itself
+runs at the duck bottom and on the self-heal; those call `chorus.reset()` directly);
+`procedures/TESTING.md` (both entries); this entry; the worklog's §U and two correction markers
+(R6's state inventory, §T's reset-semantics pass); and 61 citations (118 line numbers, 19 documents
+and one source comment) re-anchored by `check-citations.py --fix` — the fix shifted every later line of `AnamorphEngine.cpp` by 19, and
+each was verified as exactly that shift with no text change.
+
+**Drift reported, not fixed.** `architecture/API_REFERENCE.md`'s `reset` row (signature `void ()`,
+stale since `ResetScope`; "settles smoothers", where `reset()` settles the three crossfades); the
+bare same-file anchors in `AnamorphEngine.cpp`'s comments (`:269`, `:433`, `:445`, `:480`, `:590`,
+`:603`, `:894`), already stale at `8b0850b`; and a host reset inside a forced swap's fade-out, which
+adopts the new Mix / Width / Output without snapping them (a separate finding, recorded in §U).
+
+**Counts.** DSP **496 / 0** (492 + 4), State **4 776 / 0** (4 760 + 16). [Verified]
+
+## 73rd pass — 2026-09-22, PR #155, road-map R7 (production paths no test had run)
+
+**Scope.** The global review's road-map item R7, in PR #155 (not the PR's own seventh round, the
+play edge), after the owner's architecture approval of the R9 reset change (recorded in ADR-0007). The historical R7 candidate list was re-assessed against the tree under gcov, not
+implemented wholesale; each candidate's decision and evidence is in
+`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`.
+
+**One product defect, fixed.** ADR-0009's self-heal could not recover Haas or Velvet from one
+non-finite `amount` target: the wet glide stayed NaN and the guard zeroed every block until a
+re-prepare (measured −180 dB through a stop and play, and through a host reset).
+`HaasProcessor::reset()` and `VelvetNoise::reset()` now reseed a non-finite glide to 0; finite
+state is untouched.
+
+**Tests.** DSP Tests 59 (a non-finite burst), 60 (the engaged wrap's PDC) and 61 (the scope ring);
+State tests 123 (a host NaN parameter), 124 (the documented I/O contract) and 125 (the transport
+machine without a sample clock). Each fails on a mutant of the code it guards and passes on the
+tree; the mutants and their failure counts are tabled in the worklog.
+
+**Documents changed.** ADR-0009 (Implementation note); `CHANGELOG.md` `[0.9.9]` (one Fixed entry);
+`LATENCY_MODEL.md` (Test 60; its "and the sample rate" corrected by measurement; its TODO answered);
+`COMPATIBILITY_MATRIX.md` (State test 124 on the three I/O rows); `DSP_ALGORITHMS.md` (the reseed,
+and the two bare anchors this change shifted); `procedures/TESTING.md` (both entries); this entry;
+the new worklog.
+
+**Drift reported, not fixed** — outside this round's remit, each already present at the merge base
+unless stated: the `COMPATIBILITY_MATRIX.md` I/O-row anchors into `PluginProcessor.cpp` (its
+`:76-86`, `:120-121` and `:204-208`); `DSP_ALGORITHMS.md`'s Haas `.cpp:62` and Velvet `.cpp:243-251`;
+`procedures/TESTING.md`'s "53 DSP tests"; no `TESTING.md` entry for Tests 55–58 or State tests
+117–122, and no pass entry here for PR #155's rounds R4–R9 (both this PR's own); and
+`THREAD_MODEL.md`'s "No direct cross-thread access to non-atomic shared state", which does not
+describe the scope ring's lapped-frame overwrite (worklog §F15-ScopeBuffer).
+
+**Counts.** DSP **492 / 0** (479 + 13), State **4 760 / 0** (4 732 + 28). [Verified]
+
 ## 72nd pass — 2026-09-19, round 52 (the depth cap enforces the depth definition; the probe's oracle consolidated)
 
 **Scope.** Three confirmed review items on the round-51 work, plus the linux CI failure it shipped
@@ -13283,10 +13385,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15545` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -13302,7 +13404,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19064`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19068`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -13331,7 +13433,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13701` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13705` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -13627,7 +13729,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13701`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13705`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at

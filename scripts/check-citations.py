@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:496-499"): "parameterValueChanged",
+     "src/PluginProcessor.h:618-621"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:701"): "parameterValueChanged",
+     "src/PluginProcessor.h:823"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:611"): "UndoStacks",
+     "src/PluginProcessor.h:733"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -447,7 +447,7 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1403-1580"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:611"): "UndoStacks",
+     "src/PluginProcessor.h:733"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
      "src/PluginProcessor.cpp:3085-3184"): "setStateInformation",
@@ -596,7 +596,7 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1403-1579"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PresetManager.cpp:776",
-     "src/PresetManager.cpp:1209"): "copyState",
+     "src/PresetManager.cpp:1277"): "copyState",
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:470-847",
      "src/PluginProcessor.cpp:524-984"): "syncCommitted",
@@ -652,6 +652,29 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:1135, 1483-1487",
      "src/PluginProcessor.cpp:1328, 1773-1777"): "openGestures",
+    #
+    # 2026-09-23 (PR #155, the host reset inside a forced swap): FOUR ENTRIES -- two documents, two
+    # old spellings each -- for ONE EDIT, and each needs the table for the reason it exists. Both documents cite `reset()`'s duck flush for the
+    # same unchanged claim -- "`reset()` flushes an in-flight duck straight to its target" -- and
+    # that flush was MOVED to the top of `reset()` (so the node resets snap onto the adopted
+    # targets) and given a snap for a forced swap. The cited span was itself edited, so the line
+    # map returns `None` and the run reports UNMAPPABLE. The claim is still true, so each anchor is
+    # re-aimed by hand onto the adoption block at the top of the function, which is what the
+    # sentence describes. The token is resolved at the new spelling. The merge base and
+    # `origin/main` carry `:208-215` for the same sentence; that transition is declared too, since
+    # a declaration answers only for the base that carries its old spelling.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/dsp/AnamorphEngine.cpp:282-289",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+    ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
+     "src/dsp/AnamorphEngine.cpp:282-289",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/dsp/AnamorphEngine.cpp:208-215",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+    ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
+     "src/dsp/AnamorphEngine.cpp:208-215",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

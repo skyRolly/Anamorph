@@ -1143,6 +1143,74 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 // Everything `saveUser` used to do once the name had proved itself. `legalName` has already been
 // through `createLegalFileName` and is non-empty, so the deferred execution re-derives nothing --
 // the name the user typed is the name that gets written, whenever the write happens.
+// ----------------------------------------------------------------------------
+//  A preset write that is only reported as successful when the bytes are on disk.
+//
+//  WHY THIS EXISTS instead of `File::replaceWithText`. That function's write is
+//  UNCHECKED, in the pinned JUCE (9.0.2, 72782788ce) at juce_File.cpp:798-803:
+//
+//      TemporaryFile tempFile (*this, useHiddenFile);
+//      tempFile.getFile().appendText (...);          // <-- bool result DISCARDED
+//      return tempFile.overwriteTargetFileWithTemporary();
+//
+//  and what it promotes is decided by juce_TemporaryFile.cpp:100 --
+//  `if (temporaryFile.exists())` -- which asks whether the file EXISTS, not
+//  whether it holds the bytes. Two more layers drop the same answer:
+//  `~FileOutputStream` (juce_FileOutputStream.cpp:47-51) calls `flushBuffer()`
+//  and discards its bool, and `flush()` (:80-84) does the same. The default
+//  stream buffer is 16384 bytes (juce_FileOutputStream.h:79) while an Anamorph
+//  preset is ~1.5 KB, so the WHOLE preset sits in that buffer: `writeText`
+//  returns true without touching the disk, and the only real write happens in
+//  the destructor, after every error path has been discarded.
+//
+//  MEASURED, not argued. On a full filesystem (a 2 MB tmpfs filled to 100%, with
+//  the preset folder redirected there through HOME -- juce_Files_linux.cpp:135
+//  resolves userApplicationDataDirectory through `~/.config`), saving over a
+//  valid 1539-byte preset left a ZERO-BYTE file that does not parse, while
+//  `saveUser`'s completion reported ok=TRUE, the preset stayed selected and the
+//  dirty indicator read CLEAN. With a few KB free instead of none, the same save
+//  left a file truncated at the free-space boundary -- 8192 bytes of a 20000-byte
+//  document -- again reported as success. `PresetManager.h`'s own contract for
+//  `saveUser` says "the write itself can only fail during I/O, so that failure
+//  travels on `onComplete`"; this is what makes that true.
+//
+//  WHY A SIZE CHECK AND NOT ONLY `getStatus()`. A short write is not an error the
+//  stream records: `FileOutputStream::writeInternal` sets `status` only when
+//  ::write returns -1 (juce_SharedCode_posix.h:527-538), so a write that stores
+//  4096 of 8000 bytes returns a positive count, leaves the status OK, and is
+//  visible ONLY as a file shorter than the bytes the stream accepted. Both checks
+//  are therefore load-bearing and neither subsumes the other.
+//
+//  THE ATOMICITY IS UNCHANGED, deliberately. This is the same `TemporaryFile`
+//  with the same `useHiddenFile` flag that `replaceWithText` constructs, so the
+//  temp file is still the hidden sibling built from `target.getParentDirectory()`
+//  (juce_TemporaryFile.cpp:60-68) -- which is what the tilde-path reasoning above
+//  `writeUserPreset` depends on, and it still holds. A write that fails is never
+//  promoted, and `~TemporaryFile` removes it, so the preset already on disk is
+//  left exactly as it was. The argument list below is `replaceWithText`'s own
+//  default set (juce_File.h:802-805), so a successful save writes byte-for-byte
+//  what it wrote before this change.
+static bool writeTextVerified (const juce::File& target, const juce::String& text)
+{
+    juce::TemporaryFile temp (target, juce::TemporaryFile::useHiddenFile);
+
+    juce::int64 accepted = 0;
+    {
+        juce::FileOutputStream out (temp.getFile());
+        if (out.failedToOpen()) return false;
+        if (! out.writeText (text, false, false, "\r\n")) return false;
+
+        out.flush();                              // push the buffer, then fsync
+        if (out.getStatus().failed()) return false;
+
+        accepted = out.getPosition();             // bytes the stream took from us
+    }                                             // closed here: nothing can still be in flight
+
+    if (temp.getFile().getSize() != accepted) return false;   // the short-write case
+
+    return temp.overwriteTargetFileWithTemporary();
+}
+
 bool PresetManager::writeUserPreset (const juce::String& name)
 {
     auto dir = presetDirectory();
@@ -1208,7 +1276,7 @@ bool PresetManager::writeUserPreset (const juce::String& name)
 
     const auto savedSound = apvts.copyState();
     const auto xml = savedSound.createXml();
-    if (xml == nullptr || ! file.replaceWithText (xml->toString())) return false;
+    if (xml == nullptr || ! writeTextVerified (file, xml->toString())) return false;
 
     refresh();
     current = name;

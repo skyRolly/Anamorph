@@ -56,6 +56,10 @@
 #include <algorithm>
 #include <random>
 #include <vector>
+#include <csignal>
+#if ! JUCE_WINDOWS
+ #include <sys/resource.h>
+#endif
 #include <functional>
 #include <limits>
 
@@ -35583,6 +35587,1879 @@ namespace
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 117 -- A PRESET SAVE THAT DID NOT LAND REPORTS FAILURE, AND LEAVES
+//  THE PRESET THAT WAS THERE ALONE (R5 / F4)
+//
+//  `PresetManager.h` says of `saveUser`: "the write itself can only fail during
+//  I/O, so that failure travels on `onComplete`". It did not. `writeUserPreset`
+//  checked what `File::replaceWithText` returned, but that function does not
+//  check its own write -- in the pinned JUCE (juce_File.cpp:798-803) it calls
+//  `appendText` and DISCARDS the bool, then promotes whatever exists, because
+//  `TemporaryFile::overwriteTargetFileWithTemporary` asks
+//  `if (temporaryFile.exists())` (juce_TemporaryFile.cpp:100) rather than
+//  whether the file holds the bytes.
+//
+//  MEASURED on a real full filesystem before the fix: saving over a valid
+//  1539-byte preset left a ZERO-BYTE file that does not parse, while the
+//  completion reported ok=TRUE, the preset stayed selected, and the dirty
+//  indicator read CLEAN -- so the user was told their preset was saved, the file
+//  was destroyed, and nothing prompted a retry.
+//
+//  HOW THIS TEST FAILS THE WRITE, and why this injector and not another. The
+//  failure has to arrive at the same syscall the real one does --
+//  `FileOutputStream::writeInternal`'s `::write` (juce_SharedCode_posix.h:527-538)
+//  -- or it tests a different contract. `RLIMIT_FSIZE` does exactly that: the
+//  write is cut off at the limit by the kernel, in the same call, with no root
+//  and no mount. It also reproduces the WORST version of the defect, the one a
+//  status check alone cannot see: measured with a 512-byte limit and a
+//  7105-character document, `writeText` returned true, `getStatus().failed()`
+//  was FALSE, the stream reported position 7407 -- and the file on disk was 512
+//  bytes. A short write sets no status, because `writeInternal` records one only
+//  when ::write returns -1. The size comparison is what catches it, and this
+//  test is what keeps that comparison.
+//
+//  POSIX ONLY. `RLIMIT_FSIZE` has no Windows equivalent, so the injected-failure
+//  legs are compiled out there and the test says so rather than reporting a pass
+//  it did not perform. The success leg runs everywhere.
+static void testAFailedPresetWriteReportsFailure()
+{
+    std::printf ("State test 117: a preset save that did not land reports failure (F4)\n");
+
+    // The preset folder is userApplicationDataDirectory/RollyTech/Anamorph/Presets
+    // (PresetManager.cpp:76-80) and on Linux that resolves through `~/.config`
+    // (juce_Files_linux.cpp:135), so the test cannot simply redirect it. It works
+    // on the real folder, under a name no human would pick, and removes it after.
+    const auto dir  = anamorph::PresetManager::presetDirectory();
+    const juce::String probeName ("__anamorph_r5_f4_probe__");
+    const auto file = dir.getChildFile (probeName + ".anamorph");
+    file.deleteFile();
+
+    const auto procOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+    auto& proc = *procOwner;
+    proc.prepareToPlay (48000.0, 256);
+    auto& pm = proc.getPresets();
+
+    // --- leg A: an ordinary save still succeeds, and the file is usable.
+    if (auto* w = proc.getAPVTS().getParameter ("width"))
+        w->setValueNotifyingHost (w->convertTo0to1 (1.6f));
+
+    bool sawOk = false, called = false;
+    pm.saveUser (probeName, [&] (bool ok) { called = true; sawOk = ok; });
+    check (called, "F4: the save reports a result");
+    check (sawOk, "F4: a save with room available succeeds");
+    check (file.existsAsFile(), "F4: the preset file exists after a successful save");
+    const auto goodText  = file.loadFileAsString();
+    const auto goodBytes = file.getSize();
+    check (juce::parseXML (goodText) != nullptr, "F4: a successfully saved preset parses");
+    check (goodBytes > 0, "F4: a successfully saved preset is not empty");
+
+   #if JUCE_WINDOWS
+    std::printf ("  (the injected-failure legs need RLIMIT_FSIZE and are POSIX-only -- NOT run here)\n");
+   #else
+    // --- leg B: the same save, with the kernel cutting the write short.
+    //     SIGXFSZ's default action terminates the process, so it is ignored for
+    //     the duration; the limit is restored before leaving either way.
+    struct rlimit saved {};
+    const bool haveLimit = (getrlimit (RLIMIT_FSIZE, &saved) == 0);
+    check (haveLimit, "F4: the harness can read RLIMIT_FSIZE");
+
+    if (haveLimit)
+    {
+        auto* const prevXfsz = std::signal (SIGXFSZ, SIG_IGN);
+
+        struct rlimit tight = saved;
+        tight.rlim_cur = 512;                       // shorter than any real preset
+        const bool set = (setrlimit (RLIMIT_FSIZE, &tight) == 0);
+        check (set, "F4: the harness can tighten RLIMIT_FSIZE");
+
+        if (set)
+        {
+            // Move the sound so the save has something new to write.
+            if (auto* w = proc.getAPVTS().getParameter ("width"))
+                w->setValueNotifyingHost (w->convertTo0to1 (0.6f));
+
+            bool sawOk2 = false, called2 = false;
+            pm.saveUser (probeName, [&] (bool ok) { called2 = true; sawOk2 = ok; });
+
+            struct rlimit restore = saved;
+            setrlimit (RLIMIT_FSIZE, &restore);
+            std::signal (SIGXFSZ, prevXfsz);
+
+            check (called2, "F4: a failed save still reports a result");
+            check (! sawOk2, "F4: a write that could not complete reports FAILURE");
+
+            // The invariant that matters to a user: the preset they already had
+            // is still the preset they have.
+            check (file.existsAsFile(), "F4: the existing preset still exists after a failed save");
+            check (file.getSize() == goodBytes,
+                   "F4: the existing preset is unchanged in size after a failed save");
+            check (file.loadFileAsString() == goodText,
+                   "F4: the existing preset is byte-for-byte unchanged after a failed save");
+            check (juce::parseXML (file.loadFileAsString()) != nullptr,
+                   "F4: the existing preset still parses after a failed save");
+
+            // And the failure must not be dressed up as a save: the dirty marker
+            // is what tells the user to try again.
+            check (pm.isDirty(), "F4: the sound reads DIRTY after a failed save");
+        }
+        else
+        {
+            std::signal (SIGXFSZ, prevXfsz);
+        }
+    }
+   #endif
+
+    file.deleteFile();
+}
+
+// ---------------------------------------------------------------------------
+//  State test 118 -- A HOST RESET REACHES THE ENGINE (R5 / F2)
+//
+//  `AudioProcessor::reset` is documented as the request a host makes to "stop
+//  any tails or sounds that have been left running"
+//  (juce_AudioProcessor.h:939-944) and its default implementation does nothing.
+//  `AnamorphAudioProcessor` did not override it, so the request reached no state.
+//
+//  It is a live entry point, not a formality: the pinned JUCE VST3 wrapper calls
+//  `getPluginInstance().reset()` from `setProcessing(false)`
+//  (juce_audio_plugin_client_VST3.cpp:3475-3479) and the AU wrapper from
+//  `Reset()` (juce_audio_plugin_client_AU_1.mm:255-263), and neither is followed
+//  by a `prepareToPlay` -- the VST3 side re-prepares with `CallPrepareToPlay::no`.
+//
+//  WHAT THIS ASSERTS is the externally meaningful thing, through the WRAPPER
+//  rather than by calling the engine directly: fill the chain with audio, ask the
+//  PROCESSOR to reset, then feed silence and require silence back. A tail that
+//  survives the reset is the defect; a tail that does not is the contract. The
+//  Haas line is used because it is a plain delay -- what comes out after the
+//  reset is audio that was put in before it, with nothing to argue about.
+static void testAHostResetReachesTheEngine()
+{
+    std::printf ("State test 118: a host reset reaches the engine (F2)\n");
+
+    const double sr = 48000.0; const int block = 256;
+    const auto procOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+    auto& proc = *procOwner;
+
+    auto setPlain = [&proc] (const char* id, float v)
+    {
+        if (auto* p = proc.getAPVTS().getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+    };
+
+    proc.prepareToPlay (sr, block);
+    setPlain ("advancedMode", 1.0f);
+    setPlain ("algorithm", 0.0f);      // Haas: a delay line, so the tail is literal
+    setPlain ("amount",    1.0f);
+    setPlain ("haasDelay", 35.0f);     // the longest the parameter allows
+    setPlain ("width",     1.6f);
+
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midi;
+    juce::Random rng (4242);
+
+    auto runNoise = [&] (int blocks)
+    {
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, rng.nextFloat() * 1.6f - 0.8f);
+                buf.setSample (1, i, rng.nextFloat() * 1.6f - 0.8f);
+            }
+            midi.clear();
+            proc.processBlock (buf, midi);
+        }
+    };
+    auto runSilenceAndPeak = [&] (int blocks)
+    {
+        double peak = 0.0;
+        for (int b = 0; b < blocks; ++b)
+        {
+            buf.clear(); midi.clear();
+            proc.processBlock (buf, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                    peak = juce::jmax (peak, (double) std::abs (buf.getSample (ch, i)));
+        }
+        return peak;
+    };
+
+    // --- CONTROL: with no reset, silence after audio DOES carry a tail. Without
+    //     this leg the test could pass on a chain that never had a tail at all.
+    runNoise (40);
+    const double tailWithoutReset = runSilenceAndPeak (2);
+    check (tailWithoutReset > 1.0e-4,
+           "F2 control: without a reset the chain does carry a tail into silence");
+
+    // --- THE ASSERTION: the same setup, but the host asks for a reset first.
+    runNoise (40);
+    proc.reset();                                   // the host-level request
+    const double tailAfterReset = runSilenceAndPeak (2);
+    std::printf ("  tail peak into silence: no reset %.3e, after reset %.3e\n",
+                 tailWithoutReset, tailAfterReset);
+    check (tailAfterReset <= 1.0e-9,
+           "F2: a host reset flushes the chain -- silence in, silence out");
+
+    // --- AND processing must still be correct afterwards, not merely silent.
+    runNoise (20);
+    double live = 0.0;
+    for (int i = 0; i < block; ++i)
+    {
+        buf.setSample (0, i, 0.5f);
+        buf.setSample (1, i, -0.5f);
+    }
+    midi.clear();
+    proc.processBlock (buf, midi);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < block; ++i)
+            live = juce::jmax (live, (double) std::abs (buf.getSample (ch, i)));
+    check (live > 1.0e-3, "F2: the plug-in still processes normally after a reset");
+
+    // --- A reset before any prepare must be harmless, because a host may send one.
+    {
+        const auto freshOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& fresh = *freshOwner;
+        fresh.reset();
+        check (true, "F2: a reset before prepareToPlay does not crash");
+    }
+
+    // --- AND IT MUST NOT THROW AWAY THE LEVEL-MATCH MEASUREMENT. ADR-0007's
+    //     Decision is that on silence the measure HOLDS the last trusted value, and
+    //     its Consequences are "no drift on silence ... no slam" -- a transport stop
+    //     is the canonical silence. Routing a host reset into the engine's WHOLESALE
+    //     flush would call `loudness.reset()` and zero the measured gain, which is
+    //     read by the readout (PluginEditor.cpp), by Apply (which writes it into
+    //     Output Gain) and by the per-slot A/B match. That is why the override
+    //     passes `ResetScope::audioTailsOnly`. Without this leg the narrowing has
+    //     nothing holding it in place.
+    {
+        const auto lmOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& lm = *lmOwner;
+        lm.prepareToPlay (sr, block);
+        auto setP = [&lm] (const char* id, float v)
+        {
+            if (auto* p = lm.getAPVTS().getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+        setP ("advancedMode", 1.0f);
+        setP ("autoGainMatch", 1.0f); // Level Match on
+        setP ("drive",    8.0f);      // something for it to measure
+
+        juce::AudioBuffer<float> b2 (2, block);
+        juce::MidiBuffer m2;
+        juce::Random r2 (777);
+        for (int n = 0; n < 400; ++n)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                b2.setSample (0, i, r2.nextFloat() * 1.2f - 0.6f);
+                b2.setSample (1, i, r2.nextFloat() * 1.2f - 0.6f);
+            }
+            m2.clear();
+            lm.processBlock (b2, m2);
+        }
+        const float converged = lm.getEngine().getMatchGainDb();
+        lm.reset();                                   // the host stops the transport
+        const float afterReset = lm.getEngine().getMatchGainDb();
+        std::printf ("  Level Match: converged %.3f dB, after a host reset %.3f dB\n",
+                     converged, afterReset);
+        check (std::abs (converged) > 0.01f,
+               "F2 control: Level Match converged to something before the reset");
+        check (std::abs (afterReset - converged) < 1.0e-6f,
+               "F2: a host reset HOLDS the Level-Match measurement (ADR-0007)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 119 -- THE REPORTED TAIL IS NEVER SHORTER THAN THE REAL ONE (R5 / F3)
+//
+//  `getTailLengthSeconds()` is handed straight to the host: the VST3 wrapper
+//  converts it in `getTailSamples()` (juce_audio_plugin_client_VST3.cpp:3482-3493),
+//  and that is what decides how long a host keeps calling `processBlock` after a
+//  source stops. Under-reporting truncates an audible decay.
+//
+//  It returned a hard-coded 0.1 s. MEASURED worst case on this chain: 0.250 s at
+//  a -60 dB floor, 0.318 s at -100 dB -- four bands with every split at the 20 Hz
+//  floor of `logFreqRange (20, 20000)` (PluginParameters.cpp:238-240), Band Solo
+//  and Mid Solo (which mirror the same splits into a SECOND bank in series),
+//  Mono Maker at 20 Hz, a 35 ms Haas line, x8 oversampling and Mix 0.5. Being
+//  filter-dominated the figure is sample-rate independent: 0.232-0.250 s across
+//  44.1/48/96/192 kHz.
+//
+//  WHAT THIS ASSERTS is the DIRECTION the contract cares about -- reported >=
+//  actual -- measured rather than assumed, and at the configuration that produces
+//  the longest tail rather than at the defaults (where the tail is 0.000 s and
+//  any value at all would pass).
+static void testTheReportedTailCoversTheRealTail()
+{
+    std::printf ("State test 119: the reported tail is never shorter than the real one (F3)\n");
+
+    const int block = 256;
+    const auto procOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+    auto& proc = *procOwner;
+
+    auto setPlain = [&proc] (const char* id, float v)
+    {
+        if (auto* p = proc.getAPVTS().getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+    };
+
+    // Measure the tail at one rate: drive with noise, then feed silence and find
+    // the last sample above a floor set relative to the steady peak that made it.
+    auto measureTail = [&] (double sr) -> double
+    {
+        proc.prepareToPlay (sr, block);
+        proc.reset();
+
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng (99);
+
+        const int driveBlocks = (int) std::ceil (1.5 * sr / block);
+        double steadyPeak = 0.0;
+        for (int b = 0; b < driveBlocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, rng.nextFloat() * 2.0f - 1.0f);
+                buf.setSample (1, i, rng.nextFloat() * 2.0f - 1.0f);
+            }
+            midi.clear();
+            proc.processBlock (buf, midi);
+            if (b > driveBlocks / 2)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                        steadyPeak = juce::jmax (steadyPeak, (double) std::abs (buf.getSample (ch, i)));
+        }
+
+        const double floor60 = steadyPeak * 1.0e-3;
+        const int silBlocks = (int) std::ceil (2.0 * sr / block);
+        long long n = 0, last = -1;
+        for (int b = 0; b < silBlocks; ++b)
+        {
+            buf.clear(); midi.clear();
+            proc.processBlock (buf, midi);
+            for (int i = 0; i < block; ++i, ++n)
+            {
+                const double v = juce::jmax (std::abs ((double) buf.getSample (0, i)),
+                                             std::abs ((double) buf.getSample (1, i)));
+                if (v > floor60) last = n;
+            }
+        }
+        return last < 0 ? 0.0 : (double) (last + 1) / sr;
+    };
+
+    // The configuration that produces the longest tail. Every value here is at a
+    // bound the parameter itself allows, so none of it is out of reach.
+    setPlain ("advancedMode",  1.0f);
+    setPlain ("mbEnable",      1.0f);
+    setPlain ("mbBands",       4.0f);
+    setPlain ("mbFreqLow",    20.0f);
+    setPlain ("mbFreqMid",    22.0f);
+    setPlain ("mbFreqHigh",   25.0f);
+    setPlain ("monoMaker",     1.0f);
+    setPlain ("monoMakerFreq", 20.0f);
+    setPlain ("algorithm",     0.0f);     // Haas
+    setPlain ("amount",        1.0f);
+    setPlain ("haasDelay",    35.0f);
+    setPlain ("mix",           0.5f);
+    // Band Solo and Mid Solo are what make this the WORST case rather than
+    // merely a long one: the SoloMonitor mirrors the multiband's splits into a
+    // second crossover bank, so at the 20 Hz floor there are two such banks in
+    // series and the tail roughly doubles -- 0.108 s without them, 0.250 s with
+    // them and the rest of this configuration. Leaving them out would let the
+    // guard pass against a chain half as long as the one a user can build.
+    setPlain ("mbSolo",        1.0f);     // solo band 1
+    setPlain ("solo",          1.0f);     // Mid
+
+    const double reported = proc.getTailLengthSeconds();
+    double worst = 0.0;
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+        worst = juce::jmax (worst, measureTail (sr));
+
+    std::printf ("  reported %.3f s; worst measured tail %.3f s (44.1/48/96 kHz)\n", reported, worst);
+    check (worst > 0.05,
+           "F3 control: the configuration under test really does have a long tail");
+    check (reported >= worst,
+           "F3: the reported tail is never shorter than the measured tail");
+    check (reported < 5.0,
+           "F3: the reported tail is a bound, not an arbitrary large number");
+}
+
+// ---------------------------------------------------------------------------
+//  State test 120 -- A HOST RESET CLEARS AUDIO AND LEAVES THE USER'S STATE (R6)
+//
+//  R5 gave `AudioProcessor::reset()` a destination (State test 118) and drew the
+//  line with `ResetScope::audioTailsOnly`. This test is about where that line
+//  actually falls, and it exists because the line was drawn in TWO places wrongly
+//  and in opposite directions:
+//
+//    * TOO NARROW -- the LoudnessMatch ANALYSIS state (K-weighting filters and the
+//      energy integrators) was left running across a host reset. Reported by review
+//      and confirmed by measurement below.
+//    * TOO WIDE -- `LevelMeters::reset()` was reached on that path and wiped
+//      `peakHoldL/R`, the user's held peak. Found by inventorying this function
+//      against the scope rather than from a report.
+//
+//  Both are the SAME question -- "is this AUDIO or is it the USER'S?" -- so both
+//  live here, and the third leg holds the other end: `ResetScope::everything` must
+//  still flush both, or the narrowing has simply become a leak.
+//
+//  ---- WHY ONE SILENCE OBSERVATION COVERS FOUR FIELDS -------------------------
+//  Leg 1 asserts one externally visible thing: after a host reset, feeding SILENCE
+//  must not move the published match gain AT ALL. That single observation fails if
+//  ANY of four pieces of state is handled wrongly, which is why it is asserted
+//  instead of the private fields. Measured, LoudnessMatch driven directly, 4 s of
+//  true silence after a 3 s convergence (Drive told to PREDICT 8 dB, floor
+//  -4.0572 dB, real wet-vs-dry difference +2 dB):
+//
+//      host-reset variant                        at reset   after 4 s   max move
+//      nothing (what R5 shipped)                  -2.0673    -2.0008     0.0666
+//      softReset()            (what R6 ships)     -2.0673    -2.0673     0.0000
+//      integrators cleared, FILTERS LEFT WARM     -2.0673    -2.0202     0.0471
+//      softReset + prevPredictedGainDb ZEROED     -2.0673    -4.0572     1.9898
+//      softReset + displayedGainDb ZEROED         -2.0673    +0.0000     2.0673
+//      reset()                (the R5 mistake)    +0.0000    -4.0572     4.0572
+//
+//  Each row is a distinct mechanism:
+//    * energy integrators kept -> the silence gate is computed FROM them
+//      (`meanSqDry < 1e-6 && meanSqWet < 1e-6`) against a tau = 0.4 s window, so
+//      `silent` reads FALSE for seconds and MEASURE keeps gliding toward a target
+//      derived from pre-reset audio. This is ADR-0007's "No drift on silence".
+//    * K filters kept but integrators cleared -> the biquads RING into the silence
+//      and push the cleared integrators back over the gate. Still drifts (0.0471),
+//      which is what makes this observation a real test of the filter clearing too.
+//    * prevPredictedGainDb zeroed -> the next block sees `predictDelta < 0` and the
+//      PREDICT floor slams the gain down to -4.0572 dB. A spurious pre-duck.
+//    * displayedGainDb zeroed -> the published gain is simply gone.
+//
+//  The parameter set below is picked so that last mechanism is observable: with
+//  Drive 8 / Mix 1 / Width 0.3 / Amount 0.4 the chain converges to -2.76 dB while
+//  the PREDICT floor sits at -4.06 dB, a 1.30 dB margin. At the more obvious
+//  Width 1.4 / Amount 0.8 the measurement converges BELOW the floor, `min()` is a
+//  no-op and that leg would silently test nothing.
+//
+//  Measured through AnamorphAudioProcessor against the pre-fix and post-fix engine:
+//      pre-fix   worst move over 1.4 s of silence = 0.024158 dB, held peak -100.00 dB
+//      post-fix  worst move                       = 0.000000 dB, held peak   -0.92 dB
+static void testAHostResetClearsAudioAndKeepsTheUsersState()
+{
+    std::printf ("State test 120: a host reset clears audio and keeps the user's state (R6)\n");
+
+    const double sr = 48000.0; const int block = 256;
+    const int convergeBlocks = (int) std::ceil (3.0 * sr / block);   // 3.00 s
+    const int silenceBlocks  = (int) std::ceil (1.4 * sr / block);   // 1.40 s
+
+    // Drive 8 / Mix 1 / Width 0.3 / Amount 0.4 -- see the note above on why these
+    // and not something louder: the converged measurement has to sit ABOVE the
+    // PREDICT floor for the prevPredictedGainDb mechanism to be visible.
+    auto arm = [] (AnamorphAudioProcessor& p)
+    {
+        auto set = [&p] (const char* id, float v)
+        {
+            if (auto* rp = p.getAPVTS().getParameter (id))
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+        };
+        set ("advancedMode",  1.0f);
+        set ("autoGainMatch", 1.0f);   // Level Match engaged
+        set ("drive",         8.0f);
+        set ("mix",           1.0f);
+        set ("width",         0.3f);
+        set ("amount",        0.4f);
+    };
+
+    auto converge = [&] (AnamorphAudioProcessor& p, juce::AudioBuffer<float>& buf)
+    {
+        juce::MidiBuffer midi;
+        juce::Random rng (777);
+        for (int b = 0; b < convergeBlocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, rng.nextFloat() * 1.2f - 0.6f);
+                buf.setSample (1, i, rng.nextFloat() * 1.2f - 0.6f);
+            }
+            midi.clear();
+            p.processBlock (buf, midi);
+        }
+    };
+
+    // The worst excursion of the published gain away from `from` over pure silence.
+    auto worstMoveOverSilence = [&] (AnamorphAudioProcessor& p,
+                                     juce::AudioBuffer<float>& buf, float from)
+    {
+        juce::MidiBuffer midi;
+        float worst = 0.0f;
+        for (int b = 0; b < silenceBlocks; ++b)
+        {
+            buf.clear(); midi.clear();
+            p.processBlock (buf, midi);
+            worst = juce::jmax (worst, std::abs (p.getEngine().getMatchGainDb() - from));
+        }
+        return worst;
+    };
+
+    juce::AudioBuffer<float> buf (2, block);
+
+    // --- LEG 1 CONTROL. Without a reset the matcher DOES keep moving on silence,
+    //     because its integrators still hold the music. This is the pre-fix
+    //     behaviour of the host-reset path itself -- R5 called nothing on this
+    //     scope, so for the matcher a host reset and no reset were the same thing.
+    //     Without this leg the assertion could pass on a chain that never moved.
+    float controlMove = 0.0f;
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& p = *o;
+        p.prepareToPlay (sr, block);
+        arm (p);
+        converge (p, buf);
+        const float conv = p.getEngine().getMatchGainDb();
+        controlMove = worstMoveOverSilence (p, buf, conv);
+        std::printf ("  Level Match converged %+.4f dB; without a reset it moves %.6f dB over %.2f s of silence\n",
+                     conv, controlMove, silenceBlocks * (double) block / sr);
+        check (std::abs (conv) > 0.5f,
+               "R6 control: Level Match converged to something before the silence");
+        check (controlMove > 1.0e-3f,
+               "R6 control: with the analysis state alive the gain DOES drift on silence");
+    }
+
+    // --- LEG 1 ASSERTION. The same run with the host's reset in between. Two
+    //     things must hold and they pull in opposite directions: the published
+    //     gain must be carried across untouched (ADR-0007 holds the last trusted
+    //     value), and the analysis behind it must be gone (so silence is silent).
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& p = *o;
+        p.prepareToPlay (sr, block);
+        arm (p);
+        converge (p, buf);
+        const float conv = p.getEngine().getMatchGainDb();
+
+        p.reset();                                      // the host stops the transport
+        const float atReset = p.getEngine().getMatchGainDb();
+        check (juce::exactlyEqual (atReset, conv),
+               "R6: a host reset carries the published Level-Match gain across untouched");
+
+        const float move = worstMoveOverSilence (p, buf, atReset);
+        std::printf ("  after a host reset the gain moves %.6f dB over the same silence\n", move);
+        check (move < 1.0e-6f,
+               "R6: a host reset clears the analysis state -- silence moves nothing (ADR-0007)");
+
+        // --- LEG 2. The other end of the line: `everything` must still flush the
+        //     matcher completely. prepareToPlay() is the product's only route to it,
+        //     and after a re-prepare there is no measurement behind the number, so
+        //     the published gain has to go too. If this ever starts holding, the
+        //     narrowing above has turned into a leak.
+        p.prepareToPlay (sr, block);
+        check (juce::exactlyEqual (p.getEngine().getMatchGainDb(), 0.0f),
+               "R6: ResetScope::everything still flushes the matcher, published gain included");
+    }
+
+    // --- LEG 3. The held peak is the USER'S, not the audio's. LevelMeters.h calls it
+    //     "max sample peak since the last reset, never falls" and states its reset
+    //     rule outright: "on a number click or a playback RESTART". There are exactly
+    //     two paths in the product, and neither is a transport stop --
+    //     `src/gui/LevelMeter.h:27` (mouseDown on the readout) and
+    //     `src/PluginProcessor.cpp:442` (a PLAY edge or a seek).
+    //
+    //     So a stop must KEEP the reading -- stopping to look at it is what the latch
+    //     is for -- while the next play must still clear it. Leg 3 asserts the first
+    //     and that a re-prepare (which genuinely invalidates the reading) still clears
+    //     it; leg 4 drives a real `AudioPlayHead` and asserts the second, because a
+    //     narrowing that kept the peak by breaking the play-edge clear would pass
+    //     every other check here.
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& p = *o;
+        p.prepareToPlay (sr, block);
+
+        juce::MidiBuffer midi;
+        for (int b = 0; b < 40; ++b)                    // quiet material with ONE transient
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = (b == 4 && i == 7) ? 0.9f : 0.02f;
+                buf.setSample (0, i, v); buf.setSample (1, i, v);
+            }
+            midi.clear();
+            p.processBlock (buf, midi);
+        }
+        const float held = p.getEngine().getLevels().output.getPeakHoldL();
+        check (held > -20.0f, "R6 control: the transient left a held peak to lose");
+
+        p.reset();                                      // the host stops the transport
+        const float afterReset = p.getEngine().getLevels().output.getPeakHoldL();
+        buf.clear(); midi.clear();
+        p.processBlock (buf, midi);                     // ...and one block of silence after it
+        const float afterABlock = p.getEngine().getLevels().output.getPeakHoldL();
+        std::printf ("  held peak %.2f dB -> after a host reset %.2f dB -> after a block %.2f dB\n",
+                     held, afterReset, afterABlock);
+        check (juce::exactlyEqual (afterReset, held) && juce::exactlyEqual (afterABlock, held),
+               "R6: a host reset leaves the user's held peak alone");
+
+        p.prepareToPlay (sr, block);
+        check (p.getEngine().getLevels().output.getPeakHoldL() < -99.0f,
+               "R6: ResetScope::everything still clears the meters");
+    }
+
+    // --- LEG 4. The OTHER half of the latch's contract, through a real transport.
+    //     `PluginProcessor.cpp:442` clears the held peak on a play edge and on a seek;
+    //     that is the behaviour LevelMeters.h calls "a playback restart" and it must be
+    //     untouched by leg 3's narrowing. Measured: -0.92 dB kept across the stop,
+    //     cleared to the quiet material's own -33.98 dB by the next play and by a seek.
+    {
+        struct Head : juce::AudioPlayHead
+        {
+            bool playing = false;
+            juce::int64 pos = 0;
+            juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+            {
+                juce::AudioPlayHead::PositionInfo info;
+                info.setIsPlaying (playing);
+                info.setTimeInSamples (pos);
+                return info;
+            }
+        };
+
+        const auto o = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& p = *o;
+        Head head;
+        p.setPlayHead (&head);
+        p.prepareToPlay (sr, block);
+
+        juce::MidiBuffer midi;
+        auto run = [&] (int blocks, bool transient)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = (transient && b == 4 && i == 7) ? 0.9f : 0.02f;
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                p.processBlock (buf, midi);
+                head.pos += block;
+            }
+        };
+
+        head.playing = true;
+        run (40, true);
+        const float playing = p.getEngine().getLevels().output.getPeakHoldL();
+        check (playing > -20.0f, "R6 control: the transport leg built a held peak too");
+
+        head.playing = false;                       // the host stops...
+        p.reset();                                  // ...and issues the reset
+        run (4, false);
+        check (juce::exactlyEqual (p.getEngine().getLevels().output.getPeakHoldL(), playing),
+               "R6: a transport STOP keeps the held peak");
+
+        head.playing = true;                        // ...and plays again
+        run (4, false);
+        const float replayed = p.getEngine().getLevels().output.getPeakHoldL();
+        std::printf ("  transport: %.2f dB held across the stop, %.2f dB after the next play\n",
+                     playing, replayed);
+        check (replayed < playing - 10.0f,
+               "R6: the next PLAY edge still clears it (PluginProcessor.cpp:442)");
+
+        run (40, true);                             // a fresh peak, then a seek
+        const float fresh = p.getEngine().getLevels().output.getPeakHoldL();
+        check (fresh > -20.0f, "R6 control: a fresh held peak before the seek");
+        head.pos += (juce::int64) sr;               // a jump no block size explains
+        run (4, false);
+        check (p.getEngine().getLevels().output.getPeakHoldL() < fresh - 10.0f,
+               "R6: a SEEK still clears it");
+
+        p.setPlayHead (nullptr);
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 121 -- A HOST RESET ARMS THE NEXT RESTART (R7 / the Devin finding)
+//
+//  State test 120 settled WHAT a host reset clears. This one is about the state it
+//  has to INVALIDATE so that the next thing the host does is read correctly.
+//
+//  The held peak is cleared on a "playback restart" (LevelMeters.h:82-84), and
+//  `processBlock` finds that restart as the rising edge `playing && ! prevPlaying`
+//  (PluginProcessor.cpp). An edge needs a falling half, and the falling half only
+//  exists if the plug-in SAW a non-playing block.
+//
+//  THE HOST CLASS THIS OVERRIDE EXISTS FOR IS THE ONE THAT SENDS NONE. VST3
+//  `setProcessing(false)` calls `reset()` and then stops calling `process`
+//  (juce_audio_plugin_client_VST3.cpp:3475-3479); `setProcessing(true)` simply
+//  resumes, and neither side re-prepares -- `preparePlugin` is called with
+//  `CallPrepareToPlay::no` (:3469). AU `Reset()` is the same shape
+//  (juce_audio_plugin_client_AU_1.mm:255-263). So `prevPlaying` was still true when
+//  playback returned, the edge never happened, and the held peak survived a restart
+//  it is supposed to be cleared by.
+//
+//  MEASURED through the wrapper with a real AudioPlayHead, before the fix -- a held
+//  peak of -0.92 dB, `reset()` with NO processBlock in between, then a resume:
+//
+//      resume where the transport left off       -0.92 dB   restart MISSED
+//      resume at the last block's own start      -0.92 dB   restart MISSED
+//      resume at 0 (host returned to start)     -33.98 dB   cleared
+//      a host that kept calling process         -33.98 dB   cleared
+//
+//  The third and fourth rows are why this is a REAL inconsistency rather than a
+//  theory, and they are the reason the test carries them as controls. Neither is
+//  the play edge doing its job on the reset: row 3 is the SEEK detector firing
+//  because that host moved the playhead to zero, and row 4 is a host that never
+//  took the path at all. The same user action -- stop, then play -- therefore
+//  cleared the number or did not, depending on the host's processing model.
+//
+//  WHAT THE FIX IS NOT. Calling `resetHold()` from `reset()` would clear the number
+//  at the STOP, which is State test 120's finding in reverse: stopping to read it is
+//  what the latch is for. What is stale is the EDGE DETECTOR, not the meter.
+//
+//  `prevPosValid` is deliberately left alone, and legs C and A together are the
+//  measurement behind that: with `prevPlaying` false the first playing block fires
+//  the edge whether the seek verdict is true (C, the playhead moved) or false
+//  (A, it did not), so a stale position cannot change any outcome.
+static void testAHostResetArmsTheNextRestart()
+{
+    std::printf ("State test 121: a host reset arms the next restart (Devin/R7)\n");
+
+    const double sr = 48000.0; const int block = 256;
+
+    struct Head : juce::AudioPlayHead
+    {
+        bool playing = false;
+        juce::int64 pos = 0;
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo info;
+            info.setIsPlaying (playing);
+            info.setTimeInSamples (pos);
+            return info;
+        }
+    };
+
+    // One rig per leg, each on the heap (State test 59's note), so no leg inherits
+    // another's transport memory -- which is the very state under test.
+    struct Rig
+    {
+        const std::unique_ptr<AnamorphAudioProcessor> owner
+            { std::make_unique<AnamorphAudioProcessor>() };            // heap: State test 59's note
+        AnamorphAudioProcessor& proc { *owner };
+        Head head;
+        juce::AudioBuffer<float> buf;
+        juce::MidiBuffer midi;
+
+        Rig (double sampleRate, int blockSize) : buf (2, blockSize)
+        {
+            proc.setPlayHead (&head);
+            proc.prepareToPlay (sampleRate, blockSize);
+        }
+        ~Rig() { proc.setPlayHead (nullptr); }
+
+        // Quiet material with one loud sample in block 4, so there is a held peak
+        // well above what the quiet material alone would latch.
+        void run (int blocks, bool transient = false)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const float v = (transient && b == 4 && i == 7) ? 0.9f : 0.02f;
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                proc.processBlock (buf, midi);
+                if (head.playing) head.pos += buf.getNumSamples();
+            }
+        }
+        float held() const { return proc.getEngine().getLevels().output.getPeakHoldL(); }
+    };
+
+    // `cleared` is judged against the peak the leg actually latched, not a constant:
+    // the quiet material settles around -33.98 dB, so a 10 dB margin below the held
+    // -0.92 dB separates "the latch was dropped" from "the latch is still there"
+    // without pinning either number.
+    auto leg = [&] (const char* what, float before, float after, bool wantCleared)
+    {
+        const bool cleared = after < before - 10.0f;
+        std::printf ("  %-44s %+7.2f -> %+7.2f  %s\n", what, before, after,
+                     cleared ? "cleared" : "held");
+        check (cleared == wantCleared, what);
+    };
+
+    // --- THE DEFECT: a reset with NO processBlock in between, then a resume. The
+    //     three resume positions are the three a host can plausibly report.
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (40, true);
+        const float before = r.held();
+        check (before > -20.0f, "R7 control: the transient latched a held peak");
+
+        const juce::int64 stopped = r.head.pos;
+        r.head.playing = false;
+        r.proc.reset();                    // the host's reset, and NO block after it
+        check (juce::exactlyEqual (r.held(), before),
+               "R7: the reset itself does not clear the held peak (State test 120)");
+
+        r.head.playing = true;
+        r.head.pos = variant == 0 ? stopped                 // resumed where it stopped
+                   : variant == 1 ? stopped - block         // resumed at the last block
+                                  : 0;                      // host returned to start
+        r.run (4);
+        leg (variant == 0 ? "R7: resume where the transport left off"
+           : variant == 1 ? "R7: resume at the last block's own start"
+                          : "R7 control: resume at 0 (a seek as well)",
+             before, r.held(), true);
+    }
+
+    // --- WHAT MUST NOT CHANGE. Each of these passed before the fix; a fix that
+    //     broke one of them would be trading one defect for another.
+    {   // the host that keeps calling processBlock while stopped -- the path that
+        // already produced the edge, and still must.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.head.playing = false; r.run (3); r.proc.reset();
+        r.head.playing = true; r.run (4);
+        leg ("R7: non-playing blocks, reset, then play", before, r.held(), true);
+    }
+    {   // State test 120's finding: stopped and reset, and STAYING stopped, keeps it.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.head.playing = false; r.proc.reset(); r.run (6);
+        leg ("R7: stopped and reset, still stopped, HOLDS", before, r.held(), false);
+    }
+    {   // and continuous playback must not acquire a spurious clear.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.run (400);
+        leg ("R7: 400 more blocks of playback, HOLDS", before, r.held(), false);
+    }
+    {   // the seek detector is untouched...
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.head.pos += (juce::int64) sr; r.run (4);
+        leg ("R7: a seek while playing still clears", before, r.held(), true);
+    }
+    {   // ...and so is the GUI's own path.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.proc.getEngine().getLevels().resetHold(); r.run (2);
+        leg ("R7: the GUI readout click still clears", before, r.held(), true);
+    }
+    {   // A host with no playhead at all reports nothing to restart FROM, so the
+        //     number stays -- and the reset must still not crash.
+        Rig r (sr, block);
+        r.proc.setPlayHead (nullptr);
+        r.run (40, true);
+        const float before = r.held();
+        r.proc.reset(); r.run (4);
+        leg ("R7: no playhead: nothing restarts, HOLDS", before, r.held(), false);
+    }
+
+    // --- AND ADR-0007 IS UNTOUCHED BY ALL OF IT. The published Level-Match gain
+    //     still crosses the reset bit-exactly and still freezes on the silence after
+    //     it; this leg is State test 120's first one re-run through the transport, so
+    //     a change to reset() cannot quietly cost the measurement.
+    {
+        Rig r (sr, block);
+        auto set = [&r] (const char* id, float v)
+        {
+            if (auto* p = r.proc.getAPVTS().getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+        set ("advancedMode", 1.0f); set ("autoGainMatch", 1.0f);
+        set ("drive", 8.0f); set ("mix", 1.0f); set ("width", 0.3f); set ("amount", 0.4f);
+
+        r.head.playing = true;
+        juce::Random rng (777);
+        const int converge = (int) std::ceil (3.0 * sr / block);
+        for (int b = 0; b < converge; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                r.buf.setSample (0, i, rng.nextFloat() * 1.2f - 0.6f);
+                r.buf.setSample (1, i, rng.nextFloat() * 1.2f - 0.6f);
+            }
+            r.midi.clear();
+            r.proc.processBlock (r.buf, r.midi);
+            r.head.pos += block;
+        }
+        const float conv = r.proc.getEngine().getMatchGainDb();
+        check (std::abs (conv) > 0.5f, "R7 control: Level Match converged through the transport");
+
+        r.head.playing = false;
+        r.proc.reset();
+        const float at = r.proc.getEngine().getMatchGainDb();
+        check (juce::exactlyEqual (at, conv),
+               "R7: the reset still carries the Level-Match gain across (ADR-0007)");
+
+        float worst = 0.0f;
+        const int silence = (int) std::ceil (1.4 * sr / block);
+        for (int b = 0; b < silence; ++b)
+        {
+            r.buf.clear(); r.midi.clear();
+            r.proc.processBlock (r.buf, r.midi);
+            worst = juce::jmax (worst, std::abs (r.proc.getEngine().getMatchGainDb() - at));
+        }
+        std::printf ("  Level Match %+.4f dB across the reset, %.6f dB of movement on silence\n",
+                     conv, worst);
+        check (worst < 1.0e-6f,
+               "R7: and still freezes on the silence after it (ADR-0007)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 122 -- A HOST RESET CLEARS THE LIVE METERS, AND ONLY THE LIVE METERS
+//
+//  State test 120 established that a host reset must leave the user's meter LATCHES
+//  alone, and R6 met that by not resetting the meters on that path at all. That was one
+//  half right. The other half rested on a premise this test disproves: that the live
+//  readouts "do not need a reset to fall: the bar and numeric readouts have
+//  hold-then-fall ballistics of their own and decay on silence". They decay only inside
+//  `process()` / `publish()`, on the audio thread, and the GUI applies no ballistics of
+//  its own -- gui/LevelMeter.h: "ballistics are all audio-side"; it draws the published
+//  atomics. So a host that calls `reset()` and then STOPS calling `processBlock` --
+//  VST3 `setProcessing(false)`, juce_audio_plugin_client_VST3.cpp:3475-3479 -- froze
+//  every readout at the last active frame for as long as it stayed stopped.
+//
+//  MEASURED through the wrapper before the fix, -6 dBFS noise with one 0.9 transient:
+//      dim -6.13, bright -11.17, bar -0.92, RMS -10.87 dB   straight after reset()
+//      ...the same four values 2 s later, nothing having run
+//  and the correlation meter's `energy` stayed at 1.659e-01, above the GUI's
+//  `energy < 6e-9` silence test (gui/CorrelationMeter.cpp), so the phase and balance
+//  pointers never began their glide to centre. On RESUME, the bar tick (1 s hold) and
+//  the RMS number (1.2 s hold) still carried the pre-stop values -- the hold timers had
+//  never advanced, because no audio-thread time had passed.
+//
+//  The frozen RMS NUMBER also defeated both ways of clearing a clip latch. The number,
+//  not the latch, is what `stepRmsNumber` latches on, and neither the GUI click nor the
+//  play edge (`resetHold()`) clears the number. After a host reset from +3.52 dB
+//  material, measured before the fix:
+//      click, then one block of silence       rclip 1   RMS number +3.30 dB
+//      play edge, then four blocks at -34 dB  rclip 1   RMS number +3.30 dB
+//  -- the first block the host ran cleared the latch and re-latched it from pre-stop
+//  state. With no host reset the same click cleared it (RMS number -11.04 dB by then).
+//
+//  WHAT THIS ASSERTS, all of it through the published atomics the GUI reads:
+//    A  host reset, NO block after it: every live readout at its floor, and the
+//       correlation `energy` at 0 so the GUI's own glide can run.
+//    B  the same reset: the held peak and BOTH clip latches exactly as they were.
+//    C  resume: the live readouts describe the NEW audio, not the old; the play edge
+//       still clears the held peak, which then latches the new material normally; and
+//       a click or a play edge after the reset clears the clip latches for good.
+//    D  a re-prepare (`ResetScope::everything`): the whole meter, latches included.
+//    E  the paths this must not disturb: the GUI click with no host reset, and ordinary
+//       decay on silence.
+//  The floor is exactly -100 by construction (`db()` returns -100 below 1e-6), so the
+//  live assertions are equality, not a threshold.
+static void testAHostResetClearsTheLiveMeters()
+{
+    std::printf ("State test 122: a host reset clears the live meters, and only the live meters\n");
+
+    const double sr = 48000.0; const int block = 256;
+
+    struct Head : juce::AudioPlayHead
+    {
+        bool playing = false;
+        juce::int64 pos = 0;
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo info;
+            info.setIsPlaying (playing);
+            info.setTimeInSamples (pos);
+            return info;
+        }
+    };
+
+    struct Rig
+    {
+        const std::unique_ptr<AnamorphAudioProcessor> owner
+            { std::make_unique<AnamorphAudioProcessor>() };            // heap: State test 59's note
+        AnamorphAudioProcessor& proc { *owner };
+        Head head;
+        juce::AudioBuffer<float> buf;
+        juce::MidiBuffer midi;
+        juce::Random rng { 99 };
+
+        Rig (double sampleRate, int blockSize) : buf (2, blockSize)
+        {
+            proc.setPlayHead (&head);
+            proc.prepareToPlay (sampleRate, blockSize);
+        }
+        ~Rig() { proc.setPlayHead (nullptr); }
+
+        // `gen (block, sample)` gives the sample; the playhead advances only while playing.
+        // (std::function: a local class cannot declare a member template.)
+        void run (int blocks, const std::function<float (int, int)>& gen)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const float v = gen (b, i);
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                proc.processBlock (buf, midi);
+                if (head.playing) head.pos += buf.getNumSamples();
+            }
+        }
+        // -6 dBFS-ish noise with one 0.9 transient: a live meter well off the floor and a
+        // held peak (-0.92 dB) far above what the noise alone latches.
+        void loud (int blocks)
+        {
+            run (blocks, [this] (int b, int i)
+                 { return (b == 20 && i == 7) ? 0.9f : (rng.nextFloat() * 2.0f - 1.0f) * 0.5f; });
+        }
+        void level (int blocks, float v) { run (blocks, [v] (int, int) { return v; }); }
+
+        const anamorph::StereoLevel& out() const { return proc.getEngine().getLevels().output; }
+        const anamorph::StereoLevel& in()  const { return proc.getEngine().getLevels().input; }
+    };
+
+    auto liveAtFloor = [] (const anamorph::StereoLevel& m)
+    {
+        return juce::exactlyEqual (m.getDimL(), -100.0f) && juce::exactlyEqual (m.getDimR(), -100.0f)
+            && juce::exactlyEqual (m.getBriL(), -100.0f) && juce::exactlyEqual (m.getBriR(), -100.0f)
+            && juce::exactlyEqual (m.getBarL(), -100.0f) && juce::exactlyEqual (m.getBarR(), -100.0f)
+            && juce::exactlyEqual (m.getRmsNumL(), -100.0f) && juce::exactlyEqual (m.getRmsNumR(), -100.0f);
+    };
+    const int oneSecond = (int) std::ceil (sr / block);
+
+    // --- A + B: the reset with no block after it, sub-0 dB material ---------------------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.loud (oneSecond);
+        const float held = r.out().getPeakHoldL();
+        std::printf ("  active:      dim %+.2f bright %+.2f bar %+.2f RMS %+.2f | held %+.2f | energy %.3e\n",
+                     r.out().getDimL(), r.out().getBriL(), r.out().getBarL(), r.out().getRmsNumL(),
+                     held, r.proc.getEngine().getCorrelation().getEnergy());
+        check (r.out().getBriL() > -30.0f && r.out().getRmsNumL() > -30.0f,
+               "R9 control: the live meter was well off its floor before the reset");
+        check (held > -3.0f, "R9 control: the transient latched a distinct held peak");
+
+        const juce::int64 stopped = r.head.pos;
+        r.head.playing = false;
+        r.proc.reset();                            // ...and the host calls nothing after it
+
+        const float energy = r.proc.getEngine().getCorrelation().getEnergy();
+        std::printf ("  after reset: dim %+.2f bright %+.2f bar %+.2f RMS %+.2f | held %+.2f | energy %.3e\n",
+                     r.out().getDimL(), r.out().getBriL(), r.out().getBarL(), r.out().getRmsNumL(),
+                     r.out().getPeakHoldL(), energy);
+        check (liveAtFloor (r.out()), "R9 A: a host reset clears the OUTPUT live meters, no block needed");
+        check (liveAtFloor (r.in()),  "R9 A: a host reset clears the INPUT live meters, no block needed");
+        check (juce::exactlyEqual (energy, 0.0f),
+               "R9 A: the correlation meter publishes silence, so the GUI's glide can run");
+        check (juce::exactlyEqual (r.out().getPeakHoldL(), held),
+               "R9 B: the held peak survives the host reset (State test 120)");
+
+        // --- C: the host resumes where it stopped -----------------------------------------
+        r.head.playing = true; r.head.pos = stopped;
+        r.level (4, 0.02f);                        // -33.98 dB material
+        std::printf ("  resumed:     dim %+.2f bright %+.2f bar %+.2f RMS %+.2f | held %+.2f\n",
+                     r.out().getDimL(), r.out().getBriL(), r.out().getBarL(), r.out().getRmsNumL(),
+                     r.out().getPeakHoldL());
+        check (r.out().getBarL() < -30.0f,
+               "R9 C: the resumed bar tick describes the new audio, not the pre-stop hold");
+        check (r.out().getRmsNumL() < -30.0f,
+               "R9 C: the resumed RMS number describes the new audio, not the pre-stop hold");
+        check (r.out().getPeakHoldL() < -30.0f,
+               "R9 C: the play edge still clears the held peak on resume (State test 121)");
+        r.run (8, [] (int b, int i) { return (b == 2 && i == 3) ? 0.7f : 0.02f; });
+        check (std::abs (r.out().getPeakHoldL() - juce::Decibels::gainToDecibels (0.7f)) < 0.05f,
+               "R9 C: after the resume the held peak latches new material as normal");
+    }
+
+    // Over-0 dBFS material sets both clip latches: +3.52 dB peak, +3.52 dB RMS.
+    const auto hot = [] (int, int i) { return (i & 1) ? 1.5f : -1.5f; };
+    const auto latches = [] (const char* when, const anamorph::StereoLevel& m)
+    {
+        std::printf ("  %-24s pclip %d rclip %d | held %+.2f RMS %+.2f\n", when,
+                     (int) m.getPeakClipL(), (int) m.getRmsClipL(), m.getPeakHoldL(), m.getRmsNumL());
+    };
+    const auto latchesClear = [] (const anamorph::StereoLevel& m)
+    {
+        return ! m.getPeakClipL() && ! m.getPeakClipR() && ! m.getRmsClipL() && ! m.getRmsClipR()
+            && m.getPeakHoldL() < -30.0f && m.getPeakHoldR() < -30.0f;
+    };
+
+    // --- B: the CLIP latches ---------------------------------------------------------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        check (r.out().getPeakClipL() && r.out().getRmsClipL(),
+               "R9 control: +3.5 dB material set both clip latches");
+        const float held = r.out().getPeakHoldL();
+        r.head.playing = false;
+        r.proc.reset();
+        latches ("clip, after reset:", r.out());
+        check (r.out().getPeakClipL() && r.out().getPeakClipR(),
+               "R9 B: the PEAK clip latch survives the host reset");
+        check (r.out().getRmsClipL() && r.out().getRmsClipR(),
+               "R9 B: the RMS clip latch survives the host reset");
+        check (juce::exactlyEqual (r.out().getPeakHoldL(), held),
+               "R9 B: ...and so does the held peak behind the peak latch");
+        check (liveAtFloor (r.out()), "R9 B: while the live readouts beside them are cleared");
+
+        // --- C: the GUI click made while stopped. It is consumed by the first block the host
+        //     runs, and that block must not re-latch the RMS clip from the pre-stop RMS number
+        //     (`stepRmsNumber` latches on the NUMBER, which the click does not clear).
+        r.proc.getEngine().getLevels().resetHold(); // the GUI's click raises this flag
+        r.level (1, 0.0f);
+        latches ("clip, click + 1 block:", r.out());
+        check (latchesClear (r.out()),
+               "R9 C: a click after the host reset clears both clip latches, and nothing stale re-latches them");
+    }
+
+    // --- C: the PLAY EDGE after a host reset from over-0 dB material (State test 121's path) ---
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        const juce::int64 stopped = r.head.pos;
+        r.head.playing = false;
+        r.proc.reset();
+        r.head.playing = true; r.head.pos = stopped;   // resume where it stopped: the play edge
+        r.level (4, 0.02f);
+        latches ("clip, play edge + 4:", r.out());
+        check (latchesClear (r.out()),
+               "R9 C: the restart after the host reset clears both clip latches, and nothing stale re-latches them");
+    }
+
+    // --- E: the GUI click with no host reset, once the hot material has ended ----------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        r.head.playing = false;
+        r.level (3 * oneSecond, 0.0f);             // the RMS number's 1.2 s hold + 8 dB/s fall
+        r.proc.getEngine().getLevels().resetHold();
+        r.level (1, 0.0f);
+        latches ("clip, no reset, click:", r.out());
+        check (latchesClear (r.out()),
+               "R9 E: with no host reset the GUI click clears both clip latches, as before");
+    }
+
+    // --- D: a re-prepare is the WHOLE meter ------------------------------------------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        check (r.out().getPeakClipL() && r.out().getRmsClipL(), "R9 control: latches set before the re-prepare");
+        r.proc.prepareToPlay (sr, block);          // ResetScope::everything
+        check (liveAtFloor (r.out()) && liveAtFloor (r.in()),
+               "R9 D: ResetScope::everything clears the live meters");
+        check (r.out().getPeakHoldL() < -99.0f && ! r.out().getPeakClipL() && ! r.out().getRmsClipL(),
+               "R9 D: ...AND the user's latches, which a new sample rate invalidates");
+        check (juce::exactlyEqual (r.proc.getEngine().getCorrelation().getEnergy(), 0.0f),
+               "R9 D: ...and publishes a silent correlation meter");
+    }
+
+    // --- E: ordinary decay is untouched -- the host that keeps calling processBlock ----------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.loud (oneSecond);
+        const float held = r.out().getPeakHoldL();
+        r.head.playing = false;
+        r.level (3 * oneSecond, 0.0f);             // no reset at all: 3 s of silent blocks
+        std::printf ("  3 s of silence, no reset: dim %+.2f bar %+.2f | held %+.2f\n",
+                     r.out().getDimL(), r.out().getBarL(), r.out().getPeakHoldL());
+        check (r.out().getDimL() < -80.0f && juce::exactlyEqual (r.out().getBarL(), -100.0f),
+               "R9 E: without a reset the live meters still decay on silence as before");
+        check (juce::exactlyEqual (r.out().getPeakHoldL(), held),
+               "R9 E: ...and the held peak still holds, as before");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 123 -- A NON-FINITE PARAMETER VALUE FROM THE HOST DOES NOT LATCH THE CHAIN
+//  (ADR-0009; F14's second half, R7)
+//
+//  REACHABLE, measured rather than assumed. A host's parameter change arrives through
+//  JUCE's VST3 wrapper as `setValueAndNotifyIfChanged`, which calls
+//  `setValueNotifyingHost (newValue)`. Its `approximatelyEqual` early-out is false for
+//  NaN, `NormalisableRange::clampTo0To1` is `jlimit`, which passes NaN, and
+//  `ParamPointers::toEngine` forwards the raw atomic -- so a host's NaN becomes
+//  `EngineParameters::algoAmount == NaN`. NaN is not a legal VST3 value; a host that sends
+//  one is buggy. ADR-0009 exists for exactly that class: it already defends the chain
+//  against pathological host AUDIO.
+//
+//  THE LATCH. Haas and Velvet glide their wet amount exponentially,
+//  `currentAmount += k * (target - currentAmount)`. One NaN target makes `currentAmount`
+//  NaN, and a later finite target cannot bring it back: NaN plus anything is NaN. The
+//  output goes non-finite, and the engine's self-heal (ADR-0009) catches it every block,
+//  zeroes it and resets the modules -- but `HaasProcessor::reset()` and
+//  `VelvetNoise::reset()` never touched the glide, so the next block is NaN again. The
+//  global review's root cause 5: one module-reset list serving two recovery paths.
+//  MEASURED through this wrapper, amount 0.7, one NaN point, then 0.7 again:
+//      Haas, Velvet     -180.00 dB 1 s and 2 s later -- silent until a re-prepare
+//      Chorus, Dim-D    recovered (they carry no such glide)
+//  "The plugin self-heals instead of needing a Multiband off/on" is ADR-0009's own
+//  consequence; here only a re-prepare helped -- a stop and play, or a host reset, did not.
+//
+//  WHAT THIS ASSERTS, per algorithm, through the processor exactly as a host drives it:
+//  the host never receives a non-finite sample, and one second after the host sends a
+//  finite value again the output is back within 6 dB of where it was before (Chorus and
+//  Dim-D restart their LFO phase in the self-heal, measured up to ~2.7 dB). A control
+//  checks that the NaN really reaches the raw parameter -- if JUCE ever starts rejecting
+//  it, this test must say its premise has gone rather than pass for the wrong reason.
+static void testAHostNanParameterDoesNotLatchTheChain()
+{
+    std::printf ("State test 123: a non-finite parameter value from the host does not latch the chain (F14)\n");
+
+    const double sr = 48000.0; const int block = 256;
+    const char* names[] = { "Haas", "Velvet", "Chorus", "Dim-D" };
+
+    auto rmsDb = [] (const juce::AudioBuffer<float>& b)
+    {
+        double s = 0.0;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double v = b.getSample (c, i);
+                s += v * v;
+            }
+        const double r = std::sqrt (s / (2.0 * b.getNumSamples()));
+        return r > 1.0e-9 ? 20.0 * std::log10 (r) : -180.0;
+    };
+
+    for (int algo = 0; algo < 4; ++algo)
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& p = *o;
+        p.prepareToPlay (sr, block);
+
+        auto* amount = p.getAPVTS().getParameter ("amount");
+        auto* alg    = p.getAPVTS().getParameter ("algorithm");
+        alg->setValueNotifyingHost (alg->convertTo0to1 ((float) algo));
+        amount->setValueNotifyingHost (amount->convertTo0to1 (0.7f));
+
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng (3);
+        bool finite = true;
+        auto run = [&] (int blocks)
+        {
+            double last = -180.0;
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    buf.setSample (0, i, rng.nextFloat() - 0.5f);
+                    buf.setSample (1, i, rng.nextFloat() - 0.5f);
+                }
+                midi.clear();
+                p.processBlock (buf, midi);
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < block; ++i)
+                        if (! std::isfinite (buf.getSample (c, i))) finite = false;
+                last = rmsDb (buf);
+            }
+            return last;
+        };
+
+        const double before = run ((int) std::ceil (0.5 * sr / block));
+        amount->setValueNotifyingHost (std::numeric_limits<float>::quiet_NaN());   // the host's bad point
+        const bool reached = std::isnan (p.getAPVTS().getRawParameterValue ("amount")->load());
+        run (1);
+        amount->setValueNotifyingHost (amount->convertTo0to1 (0.7f));              // ...and its next, finite one
+        const double after = run ((int) std::ceil (1.0 * sr / block));
+
+        std::printf ("  %-6s: before %6.2f dB, 1 s after the host is finite again %7.2f dB, output finite %d\n",
+                     names[algo], before, after, (int) finite);
+        char what[160];
+        std::snprintf (what, sizeof what, "F14 control (%s): the host's NaN reaches the raw parameter", names[algo]);
+        check (reached, what);
+        std::snprintf (what, sizeof what, "F14 (%s): the host never receives a non-finite sample", names[algo]);
+        check (finite, what);
+        std::snprintf (what, sizeof what, "F14 (%s): one NaN point does not latch the chain -- back within 6 dB", names[algo]);
+        check (std::abs (after - before) < 6.0, what);
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 124 -- THE DOCUMENTED I/O CONTRACT: STEREO->STEREO AND MONO->STEREO (R7, F15)
+//
+//  "Turn mono into stereo" is the product's first README bullet, and the contract is
+//  written down twice: README "stereo->stereo and mono->stereo (output is always stereo;
+//  mono->mono is not supported)", COMPATIBILITY_MATRIX "mono -> stereo ... mono duplicated to
+//  both channels". Measured under gcov, neither half ran anywhere: `isBusesLayoutSupported`
+//  zero times in both suites, and the up-mix -- `buffer.copyFrom (1, 0, buffer, 0, ...)` in
+//  `processBlock` -- zero times. pluginval walks layouts in CI, but only for crashes.
+//
+//  A mono-input track hands the plug-in a 2-channel buffer whose second channel is
+//  OUTPUT-ONLY: whatever the host left in it is not audio. So the up-mix is not a courtesy,
+//  it is what keeps that junk out of the widener. This asserts, through the real
+//  negotiation and the real processBlock: the four layouts the documents name are accepted
+//  or refused as they say, and a mono->stereo processor fed a junk-filled second channel
+//  produces output BIT-IDENTICAL to a stereo->stereo one fed the same signal on both
+//  sides -- with widening engaged, so the equality is not the trivial one of a transparent
+//  default. Nothing beyond the documents is asserted: surround and disabled-input layouts
+//  are refused by the code too, but no document states it, so this does not pin it.
+static void testTheDocumentedIoContract()
+{
+    std::printf ("State test 124: the documented I/O contract -- stereo->stereo and mono->stereo\n");
+
+    using CS = juce::AudioChannelSet;
+    auto layout = [] (const CS& in, const CS& out)
+    {
+        juce::AudioProcessor::BusesLayout l;
+        l.inputBuses.add (in);
+        l.outputBuses.add (out);
+        return l;
+    };
+
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        check (o->checkBusesLayoutSupported (layout (CS::stereo(), CS::stereo())),
+               "R7 I/O: stereo->stereo is accepted (README)");
+        check (o->checkBusesLayoutSupported (layout (CS::mono(), CS::stereo())),
+               "R7 I/O: mono->stereo is accepted (README)");
+        check (! o->checkBusesLayoutSupported (layout (CS::mono(), CS::mono())),
+               "R7 I/O: mono->mono is refused (README: \"not supported\")");
+        check (! o->checkBusesLayoutSupported (layout (CS::stereo(), CS::mono())),
+               "R7 I/O: stereo->mono is refused (README: \"output is always stereo\")");
+    }
+
+    const double sr = 48000.0; const int block = 256;
+    auto engage = [] (AnamorphAudioProcessor& p)
+    {
+        auto set = [&p] (const char* id, float v)
+        {
+            if (auto* rp = p.getAPVTS().getParameter (id))
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+        };
+        set ("algorithm", 0.0f);   // Haas
+        set ("amount",    0.7f);
+        set ("width",     1.6f);
+        set ("drive",     4.0f);
+    };
+
+    const auto monoOwner   = std::make_unique<AnamorphAudioProcessor>();
+    const auto stereoOwner = std::make_unique<AnamorphAudioProcessor>();
+    auto& mono = *monoOwner;
+    auto& stereo = *stereoOwner;
+    const bool monoSet = mono.setBusesLayout (layout (CS::mono(), CS::stereo()));
+    check (monoSet && mono.getMainBusNumInputChannels() == 1 && mono.getMainBusNumOutputChannels() == 2,
+           "R7 I/O: the host's mono->stereo request is taken (setBusesLayout)");
+    for (auto* p : { &mono, &stereo })
+    {
+        p->prepareToPlay (sr, block);
+        engage (*p);
+    }
+
+    juce::AudioBuffer<float> m (2, block), st (2, block);
+    juce::MidiBuffer midi;
+    juce::Random rng (11);
+    bool identical = true, widened = false;
+    for (int b = 0; b < 200; ++b)
+    {
+        for (int i = 0; i < block; ++i)
+        {
+            const float x = rng.nextFloat() - 0.5f;
+            m.setSample (0, i, x);
+            m.setSample (1, i, 0.9f * std::sin (0.37f * (float) (b * block + i)));  // output-only junk
+            st.setSample (0, i, x);
+            st.setSample (1, i, x);
+        }
+        midi.clear(); mono.processBlock (m, midi);
+        midi.clear(); stereo.processBlock (st, midi);
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < block; ++i)
+                if (! juce::exactlyEqual (m.getSample (c, i), st.getSample (c, i))) identical = false;
+        for (int i = 0; i < block && ! widened; ++i)
+            widened = std::abs (m.getSample (0, i) - m.getSample (1, i)) > 1.0e-3f;
+    }
+    std::printf ("  mono->stereo vs stereo->stereo, 200 blocks, widening engaged: %s; output L != R: %s\n",
+                 identical ? "bit-identical" : "DIFFERENT", widened ? "yes" : "no");
+    check (widened, "R7 I/O control: the chain really widens the mono input (L != R at the output)");
+    check (identical, "R7 I/O: mono->stereo output equals stereo->stereo fed L = R -- the junk never reaches it");
+}
+
+// ---------------------------------------------------------------------------
+//  State test 125 -- THE TRANSPORT MACHINE WITHOUT A SAMPLE CLOCK (R7, F15)
+//
+//  `processBlock` finds a playback restart (and a seek) to clear the held peak. It prefers
+//  the host's sample clock and, when a host reports none, derives the position from the
+//  musical one: `ppq * 60 / bpm * sampleRate`. State tests 120-122 drive a playhead that
+//  always reports samples, so under gcov that derivation ran ZERO times, and so did the
+//  branch for a host that reports play state with no position at all.
+//
+//  The derivation is the fragile half. A seek is "the position moved by more than one
+//  block from where continuous playback puts it", so a conversion off by any factor makes
+//  ORDINARY playback read as a seek on every block, and the held peak -- the user's latch
+//  -- would be cleared continuously instead of on a real jump. This drives a ppq-only
+//  playhead at 123.4 BPM (a non-integer number of samples per beat, so the per-block
+//  position is fractional and truncates differently each block) and asserts, through the
+//  published meter: continuous playback keeps the held peak; a jump clears it; a stop and
+//  a restart clear it. Then the same for a playhead reporting play state only, where there
+//  is nothing to seek against and only the play edge can clear.
+static void testTheTransportMachineWithoutASampleClock()
+{
+    std::printf ("State test 125: the transport machine without a sample clock (ppq only; no position)\n");
+
+    const double sr = 48000.0; const int block = 256; const double bpm = 123.4;
+
+    struct Head : juce::AudioPlayHead
+    {
+        bool playing = false, withPpq = true;
+        double ppq = 0.0, bpm = 120.0;
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo info;       // no setTimeInSamples: that is the point
+            info.setIsPlaying (playing);
+            if (withPpq) { info.setPpqPosition (ppq); info.setBpm (bpm); }
+            return info;
+        }
+    };
+
+    struct Rig
+    {
+        const std::unique_ptr<AnamorphAudioProcessor> owner
+            { std::make_unique<AnamorphAudioProcessor>() };            // heap: State test 59's note
+        AnamorphAudioProcessor& proc { *owner };
+        Head head;
+        juce::AudioBuffer<float> buf;
+        juce::MidiBuffer midi;
+        juce::Random rng { 17 };
+        double rate;
+        // setRateAndBufferSizeDetails FIRST, as every JUCE wrapper does before prepareToPlay:
+        // the ppq derivation reads getSampleRate(), which a bare prepareToPlay leaves at 0 --
+        // and then every derived position is 0, no jump is ever seen, and the continuous leg
+        // below would pass for the wrong reason (measured while writing this test).
+        Rig (double sampleRate, int blockSize) : buf (2, blockSize), rate (sampleRate)
+        {
+            proc.setPlayHead (&head);
+            proc.setRateAndBufferSizeDetails (sampleRate, blockSize);
+            proc.prepareToPlay (sampleRate, blockSize);
+        }
+        ~Rig() { proc.setPlayHead (nullptr); }
+        // `transient` puts one 0.9 sample in the first block; the rest is noise at 0.02.
+        void run (int blocks, bool transient = false)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const float v = (transient && b == 0 && i == 7) ? 0.9f
+                                                                    : (rng.nextFloat() * 2.0f - 1.0f) * 0.02f;
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                proc.processBlock (buf, midi);
+                if (head.playing)
+                    head.ppq += buf.getNumSamples() * head.bpm / (60.0 * rate);
+            }
+        }
+        float held() const { return proc.getEngine().getLevels().output.getPeakHoldL(); }
+    };
+
+    for (int withPpq = 1; withPpq >= 0; --withPpq)
+    {
+        const char* kind = withPpq ? "ppq only" : "play state only";
+        char what[160];
+
+        {   // continuous playback keeps the latch -- the leg a wrong conversion breaks
+            Rig r (sr, block);
+            r.head.withPpq = (withPpq == 1); r.head.bpm = bpm; r.head.ppq = 3.0;
+            r.head.playing = true;
+            r.run (4);                                   // the play edge, spent
+            r.run (1, true);                             // latch a distinct peak
+            const float latched = r.held();
+            r.run (400);                                 // ~2.1 s of ordinary playback
+            std::printf ("  %-15s continuous playback: held %+.2f dB -> %+.2f dB\n", kind, latched, r.held());
+            std::snprintf (what, sizeof what, "R7 transport control (%s): the transient latched a peak", kind);
+            check (latched > -3.0f, what);
+            std::snprintf (what, sizeof what, "R7 transport (%s): continuous playback does not read as a seek", kind);
+            check (juce::exactlyEqual (r.held(), latched), what);
+        }
+        if (withPpq)
+        {   // a jump while playing clears it
+            Rig r (sr, block);
+            r.head.bpm = bpm; r.head.ppq = 3.0; r.head.playing = true;
+            r.run (4); r.run (1, true);
+            const float latched = r.held();
+            r.head.ppq += 8.0;                           // the user clicks two bars ahead
+            r.run (2);
+            std::printf ("  %-15s seek while playing: held %+.2f dB -> %+.2f dB\n", kind, latched, r.held());
+            std::snprintf (what, sizeof what, "R7 transport (%s): a seek clears the held peak", kind);
+            check (r.held() < -20.0f, what);
+        }
+        {   // a stop and a restart clear it -- the play edge, which needs no position
+            Rig r (sr, block);
+            r.head.withPpq = (withPpq == 1); r.head.bpm = bpm; r.head.ppq = 3.0;
+            r.head.playing = true;
+            r.run (4); r.run (1, true);
+            const float latched = r.held();
+            r.head.playing = false; r.run (8);           // stopped, the host keeps calling
+            const float whileStopped = r.held();
+            r.head.playing = true;  r.run (2);           // resume where it stopped
+            std::printf ("  %-15s stop, then play: held %+.2f -> %+.2f while stopped -> %+.2f dB\n",
+                         kind, latched, whileStopped, r.held());
+            std::snprintf (what, sizeof what, "R7 transport (%s): the stop itself keeps the held peak", kind);
+            check (juce::exactlyEqual (whileStopped, latched), what);
+            std::snprintf (what, sizeof what, "R7 transport (%s): the restart clears it", kind);
+            check (r.held() < -20.0f, what);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 126 -- A HOST RESET KEEPS THE CONFIGURED CHORUS AND DIMENSION-D SOUND
+//  (Devin review of PR #155: "Chorus fades in after host reset")
+//
+//  `ChorusEngine::reset()` zeroes its wet and depth glides. That is right where it was
+//  written for -- the silent bottom of a switch duck and the NaN self-heal, where the
+//  output fades back in anyway -- and `prepare()` calls it and then re-seeds both glides
+//  from the snapshot (`snapToTargets()`, ER-DSP-09). The HOST reset (R5) called it with no
+//  re-seed, so after every VST3 `setProcessing (false)` / AU `Reset()` the configured sound
+//  restarted from dry and glided back. MEASURED at 48 kHz, Oversampling Off: the effective
+//  wet at the first sample after the reset was 0.2 % of the configured Amount and 39.5 % of
+//  it 5 ms later, for Chorus and Dimension-D alike; at Amount 1.0 the listener heard the dry
+//  signal where the configured sound is silence until the delayed tap arrives; and the
+//  output still differed from a clean start by -47 dB (Chorus) / -53 dB (Dim-D) two seconds
+//  later, where the depth glide had stalled short of its target. On AU the same happened at
+//  every session start: JUCE's `Reset()` runs prepareToPlay() and then reset(). In a settled
+//  session every other module was already a clean start after a host reset (worklog
+//  R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §U; a forced swap in flight is State test 127).
+//
+//  WHAT THIS ASSERTS, through the processor exactly as a host drives it, for both voices:
+//    A. the configured Amount is the effective wet from the first sample after the reset:
+//       while the delay line is still empty, out = x * (1 - Amount);
+//    B. a host reset is a clean start -- the output is bit-identical to a freshly prepared
+//       processor with the same settings (Oversampling Off and 2x, Amount 1.0 and 0.7),
+//       which also pins the modulation depth the wet check cannot see;
+//    C. the tails are still cleared: silence in after the reset is exact silence out,
+//       where the same material with no reset rings on (control);
+//    D. prepare() is unchanged: a fresh prepare starts at the configured wet, and a
+//       re-prepare is a clean start too;
+//    E. the AU order -- prepareToPlay() and then reset() at once -- is the clean start
+//       prepareToPlay() alone gives.
+//  Settings are applied BEFORE prepareToPlay, as a restored session's are, so the fresh
+//  twin does not begin inside an algorithm-change duck.
+static void testAHostResetKeepsTheConfiguredChorusSound()
+{
+    std::printf ("State test 126: a host reset keeps the configured Chorus and Dimension-D sound\n");
+
+    const double sr = 48000.0; const int block = 256;       // one block = 5.3 ms, inside every base delay
+    const char* voiceName[] = { "Chorus", "Dim-D" };
+
+    // A processor holding one configuration: algorithm (2 Chorus, 3 Dimension-D), Amount,
+    // Oversampling combo id (1 Off, 2 2x). Heap: State test 59's note.
+    auto make = [&] (int algorithm, float amount, int osCombo)
+    {
+        auto p = std::make_unique<AnamorphAudioProcessor>();
+        p->getInternal().oversampleValue().setValue (osCombo);
+        for (auto [id, v] : { std::pair<const char*, float> { "algorithm", (float) algorithm },
+                              std::pair<const char*, float> { "amount", amount } })
+            if (auto* rp = p->getAPVTS().getParameter (id))
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+        p->prepareToPlay (sr, block);
+        return p;
+    };
+    // `blocks` blocks of seeded noise (or of `level`, when given), outputs appended to `out`.
+    auto run = [&] (AnamorphAudioProcessor& p, int blocks, unsigned seed, std::vector<float>* out,
+                    const float* level = nullptr)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng ((juce::int64) seed);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = level != nullptr ? *level : rng.nextFloat() - 0.5f;
+                buf.setSample (0, i, v);
+                buf.setSample (1, i, level != nullptr ? v : 0.6f * v + 0.2f * (rng.nextFloat() - 0.5f));
+            }
+            midi.clear();
+            p.processBlock (buf, midi);
+            if (out != nullptr)
+                for (int i = 0; i < block; ++i)
+                    for (int ch = 0; ch < 2; ++ch)
+                        out->push_back (buf.getSample (ch, i));
+        }
+    };
+    const int oneSecond = (int) (sr / block), probe = oneSecond / 2;
+
+    for (int v = 0; v < 2; ++v)
+    {
+        const int algorithm = 2 + v;
+        char what[200];
+
+        // --- A: the configured wet, immediately --------------------------------------
+        for (float amount : { 1.0f, 0.7f })
+        {
+            const auto p = make (algorithm, amount, 1);
+            run (*p, oneSecond, 7, nullptr);
+            p->reset();                                            // the host's request
+            const float half = 0.5f;
+            std::vector<float> out;
+            run (*p, 1, 0, &out, &half);
+            double worst = 0.0;
+            for (float s : out) worst = juce::jmax (worst, std::abs ((double) s - 0.5 * (1.0 - amount)));
+            std::printf ("  %-6s Amount %.1f: first block after the host reset, worst |out - x(1 - Amount)| %.3e\n",
+                         voiceName[v], amount, worst);
+            std::snprintf (what, sizeof what,
+                           "%s A (Amount %.1f): the configured wet is there from the first sample after a host reset",
+                           voiceName[v], amount);
+            check (worst < 1.0e-6, what);
+        }
+
+        // --- B: a host reset is a clean start ----------------------------------------
+        bool identical = true;
+        for (int osCombo : { 1, 2 })
+            for (float amount : { 1.0f, 0.7f })
+            {
+                const auto reset = make (algorithm, amount, osCombo);
+                const auto fresh = make (algorithm, amount, osCombo);
+                run (*reset, oneSecond, 7, nullptr);
+                reset->reset();
+                std::vector<float> a, b;
+                run (*reset, probe, 99, &a);
+                run (*fresh, probe, 99, &b);
+                int differing = 0;
+                for (size_t i = 0; i < a.size(); ++i)
+                    if (! juce::exactlyEqual (a[i], b[i])) ++differing;
+                std::printf ("  %-6s OS %s Amount %.1f: host reset vs fresh prepare, %d of %d samples differ\n",
+                             voiceName[v], osCombo == 1 ? "Off" : "2x ", amount, differing, (int) a.size());
+                identical = identical && differing == 0;
+            }
+        std::snprintf (what, sizeof what,
+                       "%s B: after a host reset the output is bit-identical to a clean start (OS Off/2x, Amount 1.0/0.7)",
+                       voiceName[v]);
+        check (identical, what);
+
+        // --- C: the tails are still cleared -------------------------------------------
+        for (bool withReset : { false, true })
+        {
+            const auto p = make (algorithm, 1.0f, 1);
+            run (*p, oneSecond, 7, nullptr);
+            if (withReset) p->reset();
+            const float zero = 0.0f;
+            std::vector<float> out;
+            run (*p, 8, 0, &out, &zero);
+            double peak = 0.0;
+            for (float s : out) peak = juce::jmax (peak, (double) std::abs (s));
+            std::printf ("  %-6s silence after loud material, %s: peak %.3e\n",
+                         voiceName[v], withReset ? "after a host reset" : "no reset (control)", peak);
+            std::snprintf (what, sizeof what, withReset
+                               ? "%s C: a host reset still clears the tail -- silence in, exact silence out"
+                               : "%s C control: without a reset the chorus line does ring into silence",
+                           voiceName[v]);
+            check (withReset ? juce::exactlyEqual (peak, 0.0) : peak > 1.0e-3, what);
+        }
+
+        // --- D: prepare() is unchanged -------------------------------------------------
+        {
+            const auto fresh = make (algorithm, 0.7f, 1);
+            const float half = 0.5f;
+            std::vector<float> out;
+            run (*fresh, 1, 0, &out, &half);
+            double worst = 0.0;
+            for (float s : out) worst = juce::jmax (worst, std::abs ((double) s - 0.5 * 0.3));
+            std::snprintf (what, sizeof what, "%s D: a fresh prepare starts at the configured wet, as before",
+                           voiceName[v]);
+            check (worst < 1.0e-6, what);
+
+            const auto again = make (algorithm, 0.7f, 2);
+            const auto freshToo = make (algorithm, 0.7f, 2);
+            run (*again, oneSecond, 7, nullptr);
+            again->prepareToPlay (sr, block);                      // a re-prepare, not a host reset
+            std::vector<float> a, b;
+            run (*again, probe, 99, &a);
+            run (*freshToo, probe, 99, &b);
+            bool same = a.size() == b.size();
+            for (size_t i = 0; same && i < a.size(); ++i) same = juce::exactlyEqual (a[i], b[i]);
+            std::snprintf (what, sizeof what, "%s D: a re-prepare is still a clean start", voiceName[v]);
+            check (same, what);
+        }
+
+        // --- E: the AU order ---------------------------------------------------------
+        {
+            const auto au = make (algorithm, 0.7f, 1);
+            au->reset();                                           // JUCE's AU Reset(): right after prepare
+            const auto freshToo = make (algorithm, 0.7f, 1);
+            std::vector<float> a, b;
+            run (*au, probe, 99, &a);
+            run (*freshToo, probe, 99, &b);
+            bool same = a.size() == b.size();
+            for (size_t i = 0; same && i < a.size(); ++i) same = juce::exactlyEqual (a[i], b[i]);
+            std::printf ("  %-6s prepareToPlay() then reset() (the AU order): %s prepareToPlay() alone\n",
+                         voiceName[v], same ? "bit-identical to" : "DIFFERENT from");
+            std::snprintf (what, sizeof what, "%s E: prepareToPlay() then reset(), the AU order, is a clean start",
+                           voiceName[v]);
+            check (same, what);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 127 -- A HOST RESET INSIDE AN A/B, PRESET, UNDO OR REDO SWAP LANDS SETTLED
+//  (PR #155; Test 63 is the engine-level half, with the timing and entry-path legs)
+//
+//  All four routes raise `engine.requestDuck()` (PluginProcessor.cpp: the preset manager's
+//  onAboutToLoad, undo(), redo(), abSwitchToAdopted()), so each one is a FORCED swap: the old
+//  sound plays out a ~6 ms fade and the new one is applied, snapped, at the silent bottom. A
+//  host reset -- `reset()`, what VST3 setProcessing(false) and AU Reset() call -- landing in
+//  that fade used to adopt the new state without the snap and after the node resets: Mix /
+//  Width / Output glided in over ~20 ms and the Haas delay glided from the OLD value for
+//  ~0.3 s, then stalled a fraction of a sample short for good.
+//
+//  Each route moves Mix, Width, Output and the Haas delay together, on a Haas sound (Advanced
+//  Mode on: without it Mix and Output never reach the engine; the preset route leaves Output
+//  alone, see `base` below). The host reset lands 64
+//  samples (near the start) and 287 samples (the fade is 288) after the route; a third leg
+//  lets the swap finish first. ORACLE: a processor holding the post-route parameters, set
+//  before prepareToPlay, fed the same input from the reset on -- bit-exact. None of the
+//  legs moves a glide the swap's own bottom leaves running (Haas amount, Mono Maker cutoff).
+static void testAHostResetInsideAForcedSwapLandsSettled()
+{
+    std::printf ("State test 127: a host reset inside an A/B, preset, undo or redo swap lands settled\n");
+
+    const double sr = 48000.0; const int block = 256;
+    using KV = std::vector<std::pair<const char*, float>>;
+
+    // One seeded input stream, so every processor reads the same samples at the same position.
+    std::vector<float> inL, inR;
+    {
+        juce::Random rng (12345);
+        const size_t total = (size_t) (12.0 * sr);
+        inL.resize (total); inR.resize (total);
+        for (size_t i = 0; i < total; ++i)
+        {
+            const float v = rng.nextFloat() - 0.5f;
+            inL[i] = v; inR[i] = 0.6f * v + 0.2f * (rng.nextFloat() - 0.5f);
+        }
+    }
+    // Process `n` samples from stream position `pos` in blocks of `block` (and a remainder).
+    auto feed = [&] (AnamorphAudioProcessor& p, size_t& pos, int n, std::vector<float>* out)
+    {
+        juce::MidiBuffer midi;
+        while (n > 0)
+        {
+            const int len = juce::jmin (n, block);
+            juce::AudioBuffer<float> buf (2, len);
+            for (int i = 0; i < len; ++i)
+            {
+                buf.setSample (0, i, inL[pos + (size_t) i]);
+                buf.setSample (1, i, inR[pos + (size_t) i]);
+            }
+            midi.clear();
+            p.processBlock (buf, midi);
+            if (out != nullptr)
+                for (int i = 0; i < len; ++i)
+                    for (int ch = 0; ch < 2; ++ch)
+                        out->push_back (buf.getSample (ch, i));
+            pos += (size_t) len; n -= len;
+        }
+    };
+    auto set = [] (AnamorphAudioProcessor& p, const KV& kv, bool asEdit)
+    {
+        for (const auto& [id, v] : kv)
+            if (auto* rp = p.getAPVTS().getParameter (id))
+            {
+                if (asEdit) rp->beginChangeGesture();
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+                if (asEdit) rp->endChangeGesture();
+            }
+        if (asEdit) p.pollUndoCoalesce();                       // close the undo step now
+    };
+    // Both ends of every route sit AWAY from the neutral values a fresh engine starts its
+    // smoothers at (Mix 1, Width 1, 0 dB). Where a platform contracts to FMA (the arm64 runner),
+    // 0 dB round-trips normalised -> plain to -5.4e-7 dB, and JUCE's SmoothedValue declines a
+    // target within approximatelyEqual of its current one: the clean start keeps its neutral
+    // 1.0 while a processor that came back from -6 dB takes the exact 0.99999994 -- one ulp of
+    // gain, which is not the defect (measured on the runner; reproduced with clang
+    // -march=haswell -ffp-contract=on). A preset load returns every parameter the preset
+    // omits to its default, so that route's edit leaves Output alone.
+    const KV base = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "haasDelay", 9.0f },
+                      { "mix", 0.8f }, { "width", 1.3f }, { "outputGain", -3.0f } };
+    const KV edit = { { "mix", 0.5f }, { "width", 1.8f }, { "outputGain", -6.0f }, { "haasDelay", 20.0f } };
+    const KV presetEdit = { { "mix", 0.5f }, { "width", 1.8f }, { "haasDelay", 20.0f } };
+    const int settle = (int) (0.5 * sr);
+    const char* routeName[] = { "A/B, edited B -> A", "A/B, A -> edited B", "preset reload", "undo", "redo" };
+
+    for (int route = 0; route < 5; ++route)
+        for (int leg = 0; leg < 3; ++leg)                        // reset @64, reset @287, swap finished first
+        {
+            auto p = std::make_unique<AnamorphAudioProcessor>();    // heap: State test 59's note
+            // A Haas factory preset, found by its immutable id so the preset route reaches the
+            // Haas delay too ("Drum Spread": algorithm Haas, delay 9 ms).
+            int factory = -1;
+            {
+                const auto& entries = p->getPresets().entries();
+                for (int i = 0; i < entries.size(); ++i)
+                    if (entries.getReference (i).isFactory && entries.getReference (i).factoryId == "drumSpread")
+                        factory = i;
+            }
+            if (route == 2 && factory < 0) { check (false, "State test 127 needs the Drum Spread factory preset"); continue; }
+            if (route == 2) { p->getPresets().load (factory); set (*p, { { "advancedMode", 1.0f } }, false); }
+            else            set (*p, base, false);
+            p->prepareToPlay (sr, block);
+            size_t pos = 0;
+            feed (*p, pos, settle, nullptr);
+            std::function<void()> go;
+            switch (route)
+            {
+                case 0: p->abCopyToOther(); p->abSwitchTo (1); feed (*p, pos, settle, nullptr);
+                        set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->abSwitchTo (0); };                                   break;
+                case 1: p->abCopyToOther(); p->abSwitchTo (1); feed (*p, pos, settle, nullptr);
+                        set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        p->abSwitchTo (0);     feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->abSwitchTo (1); };                                   break;
+                case 2: set (*p, presetEdit, true); feed (*p, pos, settle, nullptr);
+                        go = [&p, factory] { p->getPresets().load (factory); };             break;
+                case 3: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->undo(); };                                          break;
+                default: set (*p, edit, true); feed (*p, pos, settle, nullptr);
+                        p->undo();             feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->redo(); };                                          break;
+            }
+            go();
+            feed (*p, pos, leg == 0 ? 64 : leg == 1 ? 287 : (int) (0.1 * sr), nullptr);
+            p->reset();                                                     // the host's stop
+
+            // The oracle: the post-route parameters, set before prepareToPlay.
+            auto fresh = std::make_unique<AnamorphAudioProcessor>();
+            {
+                auto& from = p->getParameters();
+                auto& to   = fresh->getParameters();
+                for (int i = 0; i < from.size(); ++i) to[i]->setValueNotifyingHost (from[i]->getValue());
+            }
+            fresh->prepareToPlay (sr, block);
+            std::vector<float> a, b;
+            size_t freshPos = pos;
+            feed (*p, pos, settle, &a);
+            feed (*fresh, freshPos, settle, &b);
+            double worst = 0.0; long last = -1;
+            for (size_t i = 0; i < a.size(); ++i)
+                if (! juce::exactlyEqual (a[i], b[i]))
+                {
+                    worst = juce::jmax (worst, (double) std::abs (a[i] - b[i]));
+                    last = (long) (i / 2);
+                }
+            const char* when = leg == 0 ? "reset 64 samples in" : leg == 1 ? "reset 287 samples in" : "reset after it finished";
+            if (last < 0) std::printf ("  %-20s %-24s: bit-identical to a fresh processor\n", routeName[route], when);
+            else          std::printf ("  %-20s %-24s: max|d| %.4f, last difference %.1f ms after the reset\n",
+                                       routeName[route], when, worst, (double) last * 1000.0 / sr);
+            char what[160];
+            std::snprintf (what, sizeof what, "%s, %s: the output is a clean start at the new settings",
+                           routeName[route], when);
+            check (last < 0 && ! a.empty(), what);
+        }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -35762,6 +37639,17 @@ int main (int argc, char* argv[])
     testTheDeferredFlushNeverWaitsForAReplacement();
     testATimerRetryNeverRunsACommandInsideADispatch();
     testADeferredPresetOperationReportsItsRealResult();
+    testAFailedPresetWriteReportsFailure();
+    testAHostResetReachesTheEngine();
+    testTheReportedTailCoversTheRealTail();
+    testAHostResetClearsAudioAndKeepsTheUsersState();
+    testAHostResetArmsTheNextRestart();
+    testAHostResetClearsTheLiveMeters();
+    testAHostNanParameterDoesNotLatchTheChain();
+    testTheDocumentedIoContract();
+    testTheTransportMachineWithoutASampleClock();
+    testAHostResetKeepsTheConfiguredChorusSound();
+    testAHostResetInsideAForcedSwapLandsSettled();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

@@ -143,7 +143,19 @@ backing the older ones have.
 > unterminated quotes only in attribute-*value* position, which is the safe case. The name-position
 > case was found by the fleet's `xml-boundary` finder and then reproduced above.
 
-### F2 — `AudioProcessor::reset()` is not overridden, so a host flush request reaches nothing
+### F2 — `AudioProcessor::reset()` is not overridden, so a host flush request reaches nothing  ·  **RESOLVED (R5)**
+
+> **R5, 2026-09-21 — confirmed and fixed.** The two wrapper call sites are quoted from the pinned
+> JUCE — VST3 `setProcessing(false)` (`juce_audio_plugin_client_VST3.cpp:3475-3479`) and AU `Reset()`
+> (`juce_audio_plugin_client_AU_1.mm:255-263`) — and **neither is followed by a `prepareToPlay`**: the
+> VST3 side re-prepares with `CallPrepareToPlay::no`. `AnamorphEngine::reset()` was written for this
+> request (its own comment says "so a host reset lands in a clean steady state") and had **exactly one
+> caller in the product**, inside `prepare()`. Fixed with `void reset() override { engine.reset(); }`,
+> under the same non-concurrency contract `THREAD_MODEL.md` already gives `prepareToPlay`; no
+> synchronisation added, no latency write. Measured at the wrapper level: tail peak into silence
+> 2.125 without a reset, **0.000** with one. The "how often do shipped hosts call it" question is
+> still **not established**, and the fix does not depend on it.
+> State test 118. See `R5_CI_AND_HOST_CONTRACT.md` §D.
 
 - **Classification:** confirmed bug. **Severity:** medium. **Confidence:** high — **[verified
   first-hand]**
@@ -164,7 +176,19 @@ backing the older ones have.
 - **Unresolved:** how often shipped hosts call it. The wrapper call sites are proven; host behaviour on
   transport stop is not, and cannot be from this repository.
 
-### F3 — `getTailLengthSeconds()` under-reports the chain's ring
+### F3 — `getTailLengthSeconds()` under-reports the chain's ring  ·  **RESOLVED (R5), with the figure revised UPWARD**
+
+> **R5, 2026-09-21 — confirmed, and the prior 0.18 s was low.** Re-measured across a sweep rather than
+> one signal: worst **0.250 s** at a −60 dB floor and **0.318 s** at −100 dB, at four bands with every
+> split at the 20 Hz floor of `logFreqRange (20, 20000)` plus Band Solo (which mirrors the same splits
+> into a second crossover bank in series), Mono Maker at 20 Hz, a 35 ms Haas line, x8 oversampling and
+> Mix 0.5. Filter-dominated, so **sample-rate independent** (0.232–0.250 s across 44.1–192 kHz); at the
+> shipped defaults it is 0.000 s, which is why the constant survived. The VST3 wrapper hands the value
+> to the host as `getTailSamples()` (`VST3.cpp:3482-3493`), so under-reporting truncates a decay while
+> over-reporting only costs processing — the contract is a bound and the safe direction is up. Set to
+> **0.5 s**, an explicit ~1.6× margin over the deepest floor measured. Not a latency change:
+> `ARCHITECTURE_REVIEW_GATE`'s item names `LATENCY_MODEL.md`, which does not mention tail.
+> State test 119. See `R5_CI_AND_HOST_CONTRACT.md` §E.
 
 - **Classification:** confirmed bug. **Severity:** medium. **Confidence:** high for the constant
   **[verified first-hand]**, medium for the 0.18 s figure (finder measurement, not re-run here)
@@ -175,7 +199,20 @@ backing the older ones have.
   as F2: host-contract members other than `processBlock` were written once and never revisited.
 - **Current protection.** None; no test asserts the reported tail against the measured one.
 
-### F4 — `writeUserPreset` reports success for a write that failed or was truncated
+### F4 — `writeUserPreset` reports success for a write that failed or was truncated  ·  **RESOLVED (R5)**
+
+> **R5, 2026-09-21 — confirmed, and the finding's LOCATION corrected.** `writeUserPreset` did check
+> what it was given; the discarded `appendText` result is inside JUCE
+> (`juce_File.cpp:798-803`), and `TemporaryFile::overwriteTargetFileWithTemporary` promotes on
+> `if (temporaryFile.exists())` (`juce_TemporaryFile.cpp:100`) — existence, not content. A third
+> discard in `~FileOutputStream` (`juce_FileOutputStream.cpp:47-51`) plus a 16384-byte default buffer
+> against a ~1.5 KB preset means the whole write happens in the destructor, after every error path is
+> gone. Reproduced on a real full filesystem through `AnamorphAudioProcessor`: a valid 1539-byte
+> preset became a **0-byte unreadable file** while the completion reported **ok=TRUE** and the dirty
+> marker cleared. Impact is now **Verified**. Fixed by `writeTextVerified`, which keeps the same
+> `TemporaryFile` atomicity and argument defaults and adds a size check — load-bearing, because a
+> short write sets no stream status. State test 117.
+> See `R5_CI_AND_HOST_CONTRACT.md` §C.
 
 - **Classification:** confirmed bug. **Severity:** high impact / low likelihood → medium.
   **Confidence:** high — **[verified first-hand in JUCE's source]**
@@ -270,10 +307,20 @@ backing the older ones have.
   whole body — and ADR-0029 §5/§8 records the RTSan scope decision and the trigger that would change
   it. The defect is the Policy's claim, not the code.
 
-### F8 — Multiband Enable at Mix < 1 steps the Mix's dry source in a single sample
+### F8 — Multiband Enable at Mix < 1 steps the Mix's dry source in a single sample  ·  **RESOLVED (R4)**
+
+> **R4, 2026-09-21 — measured and fixed.** Impact is now **Verified**: up to **+3.9 dBFS** and 89×
+> the signal's own slew (1 kHz / 4 bands / Mix 0.05 and 100 Hz / 4 bands / Mix 0.25 / block 64), on
+> both edges, following `(1 − Mix)` exactly as the Evidence below predicts, and identically zero at
+> Mix 0, at Mix 1 and at one band. Fixed by gliding `A(dry)` toward the clean dry on
+> `mbEnableBlend`'s own curve. ADR-0005 Correction 2026-09-21; Test 56.
+> **A refutation of this finding was published in chat during R4 and is withdrawn** — it was an
+> artefact of a harness that called `prepare()` before `primeParameters`, which left the engine
+> running with default module settings so `A(dry)` equalled the clean dry. See
+> `R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md` §A.2 and §C.
 
 - **Classification:** confirmed bug. **Severity:** high. **Confidence:** high (finder + verifier
-  confirmed; magnitude not measured — this round is read-only)
+  confirmed; magnitude **measured in R4**)
 - **Subsystems:** engine chain · multiband · dry reconstruction (ADR-0005)
 - **Evidence.** `mbEnableBlend` crossfades the wet path only; the Mix stage's dry source switches
   between the phase-matched `A(dry)` and the clean dry in one sample, so the transition is
@@ -317,9 +364,21 @@ backing the older ones have.
   unconditionally. Every re-entrant window the guard was built for is still open through the other
   three.
 
-### F11 — A host automation lane crossing a discrete step faster than ~1 per 3 blocks holds the plug-in in a perpetual duck
+### F11 — A host automation lane crossing a discrete step faster than ~1 per 3 blocks holds the plug-in in a perpetual duck  ·  **RESOLVED (R4), with the title corrected twice**
 
-- **Classification:** confirmed risk. **Severity:** high. **Confidence:** high (round 2, confirmed)
+> **R4, 2026-09-21 — measured and fixed, and the finding is wrong in two details.**
+> **(1) The cadence is an interval in milliseconds, not a block count.** 2.667 ms between crossings
+> reads −42.21 dB at 48 kHz/256, 96 kHz/512 and 192 kHz/1024 alike, to two decimals. Audible below
+> ~130 ms; −3 dB at ~50 ms; −20 dB at ~13 ms.
+> **(2) It is not perpetual.** The level returns to within 0.5 dB in 8–10 blocks (21–27 ms) once the
+> automation stops. It is a sustained attenuation while the lane moves, not a latch.
+> Fixed by narrowing `discreteDiffers`' `dimMode` term rather than by changing the re-arm, because
+> for a change that genuinely rewires the graph the duck is ADR-0004's deliberate trade. ADR-0004
+> Correction 2026-09-21; Test 55. The companion below is fixed too (Test 57) and is a **distinct**
+> mechanism. See `R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md` §B and §D.
+
+- **Classification:** confirmed risk. **Severity:** high. **Confidence:** high (round 2, confirmed;
+  impact **measured in R4**, which corrected the cadence and the persistence)
 - **Evidence.** The `FadeIn → FadeOut` re-arm resumes the fade-out from the current phase, so a lane
   that re-triggers before the fade completes never reaches the silent bottom.
 - **Why it matters.** Automating any discrete parameter at block cadence — an ordinary thing for a host
@@ -513,7 +572,7 @@ this round's scratchpad is fork-based and Linux-only, which suits the `linux` jo
 **Complete when:** it fails on the pre-R1 code and passes after, and its liveness case is asserted.
 **Stop if:** isolation proves unportable — then keep it Linux-only and say so, rather than dropping it.
 
-### R4 — The two automation-cadence DSP defects (F11, F8)
+### R4 — The two automation-cadence DSP defects (F11, F8)  ·  **DONE (2026-09-21)** — see `R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md`
 
 **Problem:** a perpetual duck under ordinary automation; a dry-source step at Mix < 1.
 **Why here:** highest-impact audible defects, but each needs a measurement this read-only round could
@@ -527,7 +586,15 @@ the plug-in still produces output; then fix.
 **Complete when:** the new tests fail before and pass after, and ADR-0004 records the repeated-transition
 case.
 
-### R5 — Host contract and user data (F4, F2, F3)
+### R5 — Host contract and user data (F4, F2, F3)  ·  **DONE (2026-09-21)** — see `R5_CI_AND_HOST_CONTRACT.md`
+
+> **A correction to this item's own premise.** It grouped the three as "one theme (`AudioProcessor`
+> members other than `processBlock`)". F4 is not an `AudioProcessor` member — it is message-thread file
+> I/O in `PresetManager` — so the grouping was a scheduling convenience rather than a shared cause. The
+> one real connection found is between **F2 and F3**: `AudioProcessor::reset`'s documented job is to
+> stop "any tails … left running", which is the same tail `getTailLengthSeconds()` reports, so the
+> plug-in was under-reporting the tail *and* ignoring the request to stop it. That shared subject still
+> did not justify a shared fix, and none was made.
 
 **Problem:** a save that lies, a flush that does nothing, a tail that under-reports.
 **Why here:** small independent diffs, no prerequisites, each with a clear completion test. Do them
@@ -575,7 +642,23 @@ four resolved entries; the stale test counts in four documents including `TESTIN
 the "adopted, not audited" problem, and it is a project of its own. Correct the six oldest ADRs' anchors
 only where a road-map item already touches them.
 
-### Round-53 outcome, and what the next item is
+### R4 outcome (2026-09-21), and what the next item is
+
+R4 is complete: F8, F11 and F11's companion are measured, fixed and covered by Tests 56, 55 and 57
+(73 new checks; 59 of them fail against the pre-fix engine). Two of the three findings needed
+correcting on the evidence rather than merely closing — F11's cadence and persistence, and F8's
+verdict, which this round first got wrong. The full record is
+`R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md`.
+
+**The next item is R5** (F4, F2, F3), unchanged in scope and now the cheapest high-value work on the
+list. **R6 gained its second measured instance:** `discreteDiffers`, `sameParameters`,
+`processingDiffers` and `copyContinuous` are four hand-maintained field lists over one struct, and
+R4 found a defect in two of them — a member that should not have been in one list, and a derived
+flag missing from one of four paths into the variable it describes. R7 is partly addressed: Test 56
+drives the multiband dry bank at partial Mix, one of F15's named holes. R8 gains nothing here: every DSP
+test count in the documents sits inside a dated round record and stays correct as written.
+
+### Round-53 outcome, and what the next item was then
 
 R1, R2 and R3 are complete; R8's R1/R2-adjacent items are done. **The next item is R4** (F11 and F8),
 and the confidence recalibration in §7 sharpens its shape rather than changing its place: both are

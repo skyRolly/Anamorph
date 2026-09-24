@@ -177,7 +177,57 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **Oversampling → Off handoff guard**
+**Road-map R7's production-path coverage — Tests 59–61 (PR #155, 2026-09-22).** Three paths every host runs
+and no test had executed, found under gcov and each proven live by mutation
+(`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`). **Test 59** (`testNonFiniteBurstSelfHeals`) feeds one
+block of NaN / +Inf through `AnamorphEngine::process` — the ADR-0009 guard's scrub-and-reset block
+had run zero times — and asserts, over the four algorithms × Oversampling Off / 2× × Level Match
+off / on, that no non-finite sample reaches the host, that the published Level-Match gain stays
+finite, and that the chain is not left latched (within 6 dB of a twin fed zeros; Haas and Velvet
+back within 0.1 dB). **Test 60** (`testEngagedWrapCarriesTheReportedLatency`) measures the engaged
+oversampling wrap's processed-path phase delay at 300 Hz against the reported latency (within 0.01
+samples) and pins the reported 4 / 6 / 6 at 44.1 / 48 / 96 kHz; Tests 3+4 and 52 measure only rings
+delayed BY that number. Its 0.35 fs control is also the only check in either suite that Drive
+engages the wrap at all. **Test 61** (`testScopeRingHandsTheNewestFramesOldestFirst`) drives
+`ScopeBuffer` single-threaded at 441-frame blocks across 2.7 laps: `readLatest` returns exactly the
+newest frames, oldest first, including through the second copy segment a straddling block takes;
+the cross-thread half is deliberately not tested (the worklog says why). Tests 55–58, from the same
+PR's earlier rounds, have no entry here yet; their evidence is in CHANGELOG `[0.9.9]` and the ADR
+corrections those entries cite.
+
+**The host reset's chorus re-seed — Test 62 (PR #155, 2026-09-23).** A host reset
+(`ResetScope::audioTailsOnly`) now re-seeds the Chorus / Dimension-D wet and depth, as `prepare()`
+does (ER-DSP-09); State test 126 below proves the sound. **Test 62**
+(`testHostResetChorusSeedIsScoped`) pins where that seed sits and when it must not run, at engine
+level: a host reset inside a forced swap (Chorus 0.3 → 0.9) and inside an ordinary duck (Haas →
+Dimension-D) is bit-identical to a fresh engine at the NEW settings, so the seed runs after the duck
+flush; a NaN Amount pending at the reset is not seeded, so no block is self-healed when the host
+recovers (ADR-0009); and a Haas session host-reset then switched to Chorus is bit-identical to the
+same session with no reset, so an idle chorus is left alone. Against the pre-fix engine: 2 of its 4
+checks fail (the forced swap and the duck). Each guard is proven live by its own mutant
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §U).
+
+**A host reset inside a forced swap lands where the swap's bottom would — Test 63 (PR #155,
+2026-09-23).** A forced swap (A/B, preset load, undo, redo) applies its new state at the silent
+bottom of a ~6 ms fade, smoothers snapped and every node cleared (ADR-0004, decision 1). A host
+reset landing before that bottom adopted the new state after the node resets and without the snap,
+so Mix / Width / Output / balance glided in over 20 ms (Drive 32 ms, polarity 5 ms) and the Haas delay and the
+multiband crossovers and widths glided from the OLD values, the delay stalling short of its target
+for good. **Test 63** (`testHostResetInAForcedSwapLandsSettled`) compares, bit-exactly over 1 s,
+a host reset inside the fade with a fresh engine at the target: the engine smoothers in both
+directions with the reset 1, 64 and 289 samples in (289: silent, bottom not yet run); the Haas delay
+both ways; crossover, band width and Band Solo; a latency-changing Oversampling Off → 2× swap with
+Drive; swaps into Chorus and Dimension-D (with Test 62's re-seed); and the other three ways into a
+forced fade-out (an ordinary duck upgraded, a re-arm from the fade-in, a retarget). Its adversarial
+legs pass on both engines: a swap finished before the reset, a reset in the fade-in, a live edit's
+glide (engine smoothers, Haas amount, Mono Maker cutoff, Velvet density) and an ordinary duck's
+riders left gliding (oracle: the same controls on silent history, no reset), and an unconsumed duck
+request commuting with the reset. Against the pre-fix engine 15 of
+its 22 checks fail, every in-fade leg; each rejected variant (the snap alone, the reorder alone, a
+snap on every duck or every reset, a module-glide snap on every reset) fails a named leg
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §V).
+
+Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
 
@@ -2011,10 +2061,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15545` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -2029,7 +2079,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:19064`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19068`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -4033,11 +4083,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15545` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15549` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4076,7 +4126,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14626`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14630`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
@@ -4211,6 +4261,51 @@ KI-007 records that the GPU-less Windows runner cannot host editor GUI tests at 
 instrument this test feeds is a Linux job, so the scoping costs no coverage. Widening it needs one
 green run on the other two, not an argument.
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
+
+**Road-map R7's production-path coverage in the processor — State tests 123–125 (PR #155,
+2026-09-22)**,
+each driven through `AnamorphAudioProcessor` as a host drives it and proven live by mutation
+(`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`). **State test 123**
+(`testAHostNanParameterDoesNotLatchTheChain`) sends one NaN `amount` through
+`setValueNotifyingHost` — the call JUCE's VST3 wrapper makes, which passes NaN to the raw parameter
+(a control asserts that premise, so a JUCE that starts rejecting NaN says so instead of passing) —
+and requires every algorithm back within 6 dB one second after the host is finite again. Before the
+`HaasProcessor` / `VelvetNoise` `reset()` reseed (ADR-0009, Implementation note 2026-09-22) Haas and
+Velvet stayed at −180 dB until a re-prepare. **State test 124** (`testTheDocumentedIoContract`)
+checks the README / `COMPATIBILITY_MATRIX.md` I/O contract through the real negotiation — stereo →
+stereo and mono → stereo accepted, mono → mono and stereo → mono refused — and that a mono → stereo
+processor fed junk in its output-only second channel produces output bit-identical to stereo →
+stereo fed L = R, with widening engaged. **State test 125**
+(`testTheTransportMachineWithoutASampleClock`) drives a ppq-only playhead at 123.4 BPM, and one that
+reports play state only: continuous playback keeps the held peak, a seek clears it (ppq only), a
+stop keeps it and the restart clears it. Its rig calls `setRateAndBufferSizeDetails` before
+`prepareToPlay`, as every JUCE wrapper does: without it `getSampleRate()` is 0, every derived
+position is 0, and the continuous-playback leg passes for the wrong reason.
+
+**The host reset keeps the configured modulation sound — State test 126 (PR #155, 2026-09-23).**
+**State test 126** (`testAHostResetKeepsTheConfiguredChorusSound`) drives
+`AnamorphAudioProcessor::reset()` — the call VST3 `setProcessing(false)` and AU `Reset()` make —
+for Chorus and Dimension-D. It asserts that the configured Amount (1.0 and 0.7) is the effective wet
+from the first sample after the reset; that the output is bit-identical to a fresh processor for
+0.5 s at Oversampling Off and 2× × Amount 1.0 and 0.7; that audio tails are still cleared (silence
+after loud material is exactly 0, against a no-reset control that rings); that `prepare()` is
+unchanged; and that the AU order, `prepareToPlay()` then `reset()`, is bit-identical to
+`prepareToPlay()` alone. Before the fix a host reset zeroed the chorus's wet and depth, so every
+transport stop faded the sound back in from dry over ~50 ms and left the depth glide stalled short
+of its target (−47 dB at 48 kHz); 8 of its 16 checks fail against that engine. Its rig sets the
+parameters before `prepareToPlay`: set after it, they open a discrete duck the fresh twin does not
+have.
+
+**A host reset inside an A/B, preset, undo or redo swap lands settled — State test 127 (PR #155,
+2026-09-23).** **State test 127** (`testAHostResetInsideAForcedSwapLandsSettled`) drives each route
+that raises a forced swap — A/B in both directions, a reload of the Haas factory preset "Drum Spread"
+(found by id), undo and redo — with Advanced Mode on and an edit that moves Mix, Width, Output (not on
+the preset route) and the Haas delay, both ends kept off the smoothers' neutral values, and calls
+`AnamorphAudioProcessor::reset()` 64 samples and 287 samples (the fade is 288) after the route, and
+again after the swap has finished. Every leg must be bit-identical to a processor holding
+the post-route parameters, set before `prepareToPlay`, over the next 0.5 s. Against the pre-fix
+engine the ten in-fade legs fail (max|d| 0.15–0.44; every one still differs at the end of the 0.5 s
+window, where the Haas delay stalled) and the five finished-swap legs pass.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
@@ -4465,7 +4560,7 @@ event — where it is the only job that runs at all.)
 | Job | Run it locally as |
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
-| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, `python3 scripts/check-dispatch.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
+| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, `python3 scripts/check-dispatch.py --self-test` then that lint, `python3 scripts/check-state-coverage.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux` (the ADR-0048 step) | `./build/.../AnamorphStateTests --add-target-probe 300` — exits non-zero if any click is clamped into a band it was not aimed at. Self-tested in both directions: exit 1 on the pre-fix tree, 0 on this one |
 | `linux` (the ADR-0046 completion step) | `./build/.../AnamorphStateTests --band-move-probe 300` — exits non-zero if a band move sizes its plan from a reading nothing proves, so a split outside the pressed layout is written inside the user's gesture. Self-tested in both directions: exit 1 on the pre-fix tree (40 / 3600), 0 on this one |
 | `linux` (the ADR-0051 step) | `./build/.../AnamorphStateTests --add-edge-probe 300` — the same question with the band COUNT held fixed and a split moving across the click instead. Exits non-zero if the click's band index and that band's EDGES came from two readings of the split row. Self-tested in both directions: exit 1 on the pre-fix tree (75 / 1600), 0 on this one |

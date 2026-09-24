@@ -46,7 +46,32 @@ public:
     AnamorphEngine() = default;
 
     void prepare (double sampleRate, int maxBlockSize);
-    void reset();
+    // WHAT A FLUSH IS ALLOWED TO THROW AWAY. `everything` is the flush `prepare()`
+    // performs: a new sample rate or block size invalidates every measurement as
+    // well as every buffer, so the Level-Match integrators go with them.
+    //
+    // `audioTailsOnly` is the HOST-RESET flush (R5/F2), and the difference is not a
+    // refinement -- it is ADR-0007. A host's reset asks the plug-in to "stop any
+    // tails or sounds that have been left running" (juce_AudioProcessor.h), and a
+    // LOUDNESS MEASUREMENT is neither. ADR-0007's Decision is that on silence the
+    // measure "holds the last trusted" value, and its Consequences are "no drift on
+    // silence; no ratchet; no Mix=100% slam" -- the whole point being that the match
+    // survives a quiet passage so the next entry does not slam. A transport stop is
+    // the canonical silence, so clearing `loudness` there would re-create precisely
+    // the "slammed loud on the next play" symptom ADR-0007's Context records, and
+    // would contradict what Test 16 (`testLevelMatchSilenceFreeze`) asserts.
+    enum class ResetScope
+    {
+        everything,       // prepare(): buffers AND the whole matcher, published gain included
+        audioTailsOnly    // a host reset: AUDIO and the LIVE DISPLAY -- buffers, filters,
+                          // rings, the duck, the matcher's analysis state, and the meter
+                          // envelopes / bars / RMS readouts that describe audio that has
+                          // ended. Never the matcher's published gain, and never the
+                          // user's meter LATCHES (held peak, clip latches -- cleared by
+                          // the GUI click or a playback restart)
+    };
+
+    void reset (ResetScope resetScope = ResetScope::everything);
 
     // Adopt a snapshot WHOLESALE -- no duck, no ramp, nothing deferred -- for
     // the one case where that is the correct thing to do: before prepare(),

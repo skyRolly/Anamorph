@@ -20,8 +20,8 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 | `MultibandWidth` | **Verified** — capped cutoff moves (0.8.10: per-sample coeff recompute while tracking under the R(f) = 4·max(1, f/300) oct/s slew cap; one ~12 ms dual-bank crossfade with 2× filter ticks on a discrete target step), no alloc/lock/IO | prepare(): scalar only (24× `LR4Xover.prepare`, flat state — no heap since Wave 2 / H6) | MultibandWidth.cpp (prepare/reset/glide + fade trigger/processBlock) |
 | `SoloMonitor` | **Verified** — capped cutoff moves (0.8.10, as MultibandWidth) + `SmoothedValue`, no alloc | prepare(): 6× flat-state filter + smoother reset | SoloMonitor.cpp (prepare/reset/glide + fade trigger/process) |
 | `LoudnessMatch` | **Verified** — fixed nested biquad structs; `pow/log10/tanh`; no alloc | prepare(): coeff compute only | LoudnessMatch.cpp:47-156 |
-| `CorrelationMeter` | **Verified** — scalar one-poles only | none | Correlation.h:36-95 |
-| `LevelMeters` | **Verified** — scalar envelopes; NaN self-heal per sample | none | LevelMeters.h:60-167 |
+| `CorrelationMeter` | **Verified** — scalar one-poles only | none | Correlation.h:48-107 |
+| `LevelMeters` | **Verified** — scalar envelopes; NaN self-heal per sample | none | LevelMeters.h:85-192 |
 | `ScopeBuffer` | **Verified** — fixed `std::array`, lock-free SPSC | none | ScopeBuffer.h:28-57 |
 
 ## Cross-cutting findings (Verified)
@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: src/dsp/AnamorphEngine.cpp:1625-1675.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:1866-1916.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 
@@ -94,11 +94,11 @@ calls per run) rather than once in a session.
 
 **The SWITCH is armed as well as the steady state, since 2026-08-19, and until then it was not.**
 Each of the 32 configurations is now applied *inside* the armed region, so the block that adopts a
-discrete change — `src/dsp/AnamorphEngine.cpp:851-971`: algorithm tails cleared, the three
+discrete change — `src/dsp/AnamorphEngine.cpp:1059-1179`: algorithm tails cleared, the three
 oversamplers and the chorus reset on an oversampling-path change, the crossover cleared on a
 topology change — runs with the counters watching. Before that the configuration was applied and
 then `reset()` *outside* the armed region, and `reset()` flushes an in-flight duck straight to its
-target (`src/dsp/AnamorphEngine.cpp:208-215`), so every armed block sat in the steady-state
+target (`src/dsp/AnamorphEngine.cpp:205-211`), so every armed block sat in the steady-state
 no-change gate and the gate proved the audio path allocation-free only while nothing was changing.
 Measured both ways with one allocation seeded into that adopt block: invisible then (3,840 armed
 calls, worst `new` 0, green), a failure now (worst `new` 2, worst `malloc` 2). The test also counts

@@ -23,7 +23,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 | `abSwitchTo` / `abCopyToOther` / `abActiveSlot` | A/B API | A/B compare living in the processor (survives editor close). |
 | `abToggle` | `void ()` | The A/B toggle as its own operation (ADR-0036 §18). Drains any pending host restore, then derives the destination as the other slot of the **post-drain** active slot. The editor's toggle calls this; it used to compute `abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` from a read taken before the drain, which a restore flipping the active slot turned into a no-op. `abSwitchTo (int)` stays the primitive for an explicit target, which is intent rather than a stale derivation. |
 
-Evidence [Verified]: src/PluginProcessor.h:25-466.
+Evidence [Verified]: src/PluginProcessor.h:25-588.
 
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
@@ -32,7 +32,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | Member | Signature | Responsibility |
 |---|---|---|
 | `prepare` | `void (double sampleRate, int maxBlockSize)` | Allocates all buffers/oversamplers; resets; **then snaps every smoothed value onto the current snapshot's targets** — the engine's own via `snapSmoothers()`, and each module's via its `snapToTargets()`, which the modules' own `prepare()` cannot do because it runs before the snapshot is pushed in (ER-DSP-09). A restored session therefore opens IN its sound instead of gliding into it. (Allocation happens here, never in `process`.) |
-| `reset` | `void ()` | Settles smoothers/crossfades; clears delay lines; re-latches OS engagement. |
+| `reset` | `void (ResetScope resetScope = ResetScope::everything)` | Lands an in-flight switch duck on its target FIRST — a forced swap (A/B, preset load, undo, redo) exactly as its silent bottom would, smoothers snapped; an ordinary duck's live controls keep gliding — then clears every audio tail (module delay lines and filter banks, the oversamplers, the four delay rings, the Level-Match analysis), settles the Bypass / Multiband Enable / oversampling crossfades and re-latches the oversampling engagement. `everything` (called only from `prepare()`) also clears the whole Level-Match matcher and the meters. `audioTailsOnly` (the host reset, `AnamorphAudioProcessor::reset()`) keeps the published Level-Match gain and the meter latches, clears the live meter display, and re-seeds the Chorus / Dimension-D wet and depth. The node resets land the glides they snap (Haas delay, crossovers, band widths, Band Solo split); no other glide a live edit left in flight is snapped — the engine's smoothers, the Haas / Velvet amount, Velvet density and Mono Maker cutoff keep gliding — so a host reset equals a clean start (Level Match aside) only when none of those is moving. |
 | `setParameters` | `void (const EngineParameters&) noexcept` | Adopts a snapshot; continuous live, discrete ducked. |
 | `setTransportPlaying` | `void (bool) noexcept` | Feeds transport edge (Velvet tail kill). |
 | `process` | `void (juce::AudioBuffer<float>&) noexcept` | Runs the full serial chain in place. |
@@ -42,7 +42,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | `injectMatchGainDb` | `void (float) noexcept` | A/B per-slot Level-Match restore (atomic). |
 | `requestDuck` | `void () noexcept` | Force a masking duck around a bulk param swap (atomic). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.h:46-142.
+Evidence [Verified]: src/dsp/AnamorphEngine.h:46-167.
 
 ## `ParamPointers` / layout — `src/PluginParameters.h`
 
