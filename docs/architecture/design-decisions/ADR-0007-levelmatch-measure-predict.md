@@ -188,6 +188,49 @@ and the published Level-Match gain survive it; a re-prepare still resets all of 
 | 3 | if the change is a decision, an ADR is added/updated | this Correction; `THREAD_MODEL.md` (the two host rows, and the *Level meters*, *Correlation* and *Meter hold reset* rows); `THREADING_POLICY.md` (the Audio → GUI row) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
 
+## Note, 2026-09-24 — F13 measured: what a forced swap carries, and Apply with no measurement
+
+F13 of the v0.9.9 global review said Level Match state survives transitions that should invalidate
+it. Measured through the processor and the engine (worklog `NONFINITE_PARAMETERS_AND_F13.md` §E),
+against a fresh instance at the destination state:
+
+- **Preset load, undo and redo that move only continuous controls behave like the same live edit.**
+  The published gain is carried (this ADR's `softReset` rule keeps the result), the predict floor is
+  re-applied, and the measure re-converges with its own time constants: within 0.27–0.45 dB of the
+  live edit after 0.1 s, the same end state. The "≈0.6 dB for ≈4 s" figure from R6 is that
+  re-convergence for one A/B setup (0.63 dB, within 0.1 dB at 2.75 s), not a fixed drift: across
+  deltas and levels it is 0.22–5.8 dB on A/B, and on preset / undo / redo it is the live edit's own.
+- **`matchGainSmooth` left out of `snapSmoothers()`** changes nothing when Level Match is on in both
+  states (the smoother sits within 0.003 dB of its target at the bottom). It matters only when a
+  forced swap turns Level Match on, and then it is identical to a plain engage, whose glide is
+  documented as intended.
+- **An A/B switch whose slots differ only in continuous controls undoes its own injection.** The
+  injected slot gain is right (0.03 dB from the converged value), but the analysis is not re-armed
+  (`processingDiffers` asks only about discrete fields), so the stale integrators pull the gain away
+  within ~100 ms and it takes 1.8–4.5 s to come back. Re-arming at an injection keeps it within
+  0.022–0.042 dB. That is a change to this ADR's "re-armed in exactly one place" rule.
+- **Apply locked a NaN.** The matcher publishes NaN for the few microseconds between a non-finite
+  input sample and the self-heal's `loudness.reset()` (ADR-0009), and `applyAutoGain`'s `jlimit`
+  passes NaN: Output Gain became NaN (silence through a host reset and a re-prepare, `value="nan"`
+  saved, Undo to 0 dB instead of the user's value). "Apply locks the measured gain" has nothing to
+  lock there, so Apply now does nothing (`src/PluginProcessor.cpp:469`); every finite Apply is
+  unchanged. State test 129.
+
+**Recorded for the owner, not decided here** (each is a change to this ADR, not a defect of it):
+1. At a forced swap's silent bottom, should the applied match gain land on the matcher's value like
+   every other smoother, or keep its 120 ms glide? Options: keep and document (no behaviour change);
+   snap it in `snapSmoothers()` (fixes only the engage-inside-a-swap case, and also changes
+   `prepare()` and the host-reset path); snap it after `loudness.process` in the bottom block (also
+   cuts a Drive 0 → 10 dB swap's excess from +7.82 to +4.77 dB).
+2. Should the measure also re-arm when an A/B slot's remembered gain is injected (measured above), or
+   whenever any continuous sound field differs? Re-arming on every forced duck is ruled out: it
+   contradicts the dimMode rows of the note above and fails Test 58.
+
+The comments that said an A/B swap glides or re-arms (`AnamorphEngine.cpp:78`, `:1111-1113`,
+`:1816`; `LoudnessMatch.h:52-54`) now say what the code does. This ADR's *Related code* anchors
+(`AnamorphEngine.cpp:1201-1234`, `PluginProcessor.cpp:402-424`) are stale; reported for the
+documentation pass.
+
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.

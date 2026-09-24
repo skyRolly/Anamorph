@@ -75,7 +75,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     widthSmooth     .reset (sr, ramp);
     mixSmooth       .reset (sr, ramp);
     outGainSmooth   .reset (sr, ramp);
-    matchGainSmooth .reset (sr, 0.12); // gentle so an A/B level-match swap glides (#16)
+    matchGainSmooth .reset (sr, 0.12); // gentle, so a live match change glides (#16); A/B injects + snaps (#23)
     balanceSmooth   .reset (sr, ramp);
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
@@ -1108,9 +1108,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
             osRunning = osActiveFor (p);
         }
-        // Re-arm the loudness match ONLY when the processing actually changed (A/B
-        // swap, algorithm, ...). Toggling Level Match / Bypass must NOT re-measure,
-        // or enabling Match with a big boost slams loud for a moment (#1).
+        // Re-arm the loudness match ONLY when the processing actually changed: a DISCRETE field
+        // (`processingDiffers`), so a swap moving only Drive / Mix / Width does not re-arm (F13). Toggling
+        // Level Match / Bypass must NOT re-measure, or enabling Match with a big boost slams loud (#1).
         if (procChanged) loudness.softReset();
         updateDerived();
 
@@ -1813,7 +1813,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // When Level Match is engaged the matched gain REPLACES Output Gain, so
         // the Output knob no longer shifts the matched level (feedback #1). Both
         // smoothers advance every sample so toggling Match (a ducked switch) is
-        // seamless. Match's smoother is slow, so an A/B swap glides (feedback #16).
+        // seamless. Match's smoother is slow, so a live match change glides (feedback #16).
         const float og = outGainSmooth.getNextValue();
         const float mg = matchGainSmooth.getNextValue();
         const float g  = p.autoGainMatch ? mg : og;
