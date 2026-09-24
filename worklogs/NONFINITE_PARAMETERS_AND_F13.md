@@ -242,7 +242,19 @@ F13_PENDING
 
 ## F. Remaining findings
 
-F_PENDING
+Each is recorded, not fixed, with the reason.
+
+| finding | evidence | status | why not now |
+|---|---|---|---|
+| **What a non-finite parameter means on ingress** (the mutes of §B3 class 2, the Level-Match wipe by the self-heal) | §B2, §B3, §C; stateless `toEngine` guard measured | **owner decision** (§G) | chooses a meaning for a host-visible value (ADR_POLICY); the audible cost of "default" is a louder Output Gain |
+| **Text entry accepts "nan"** — the value boxes and VST3 `fromString` (`pctFrom`, `hzFrom`, `khzFrom`, `balFrom`, JUCE's default parser) | §B5; State test 128 premise control | owner decision, with the above | one change at the parsers would cover the editor and host text entry, but what "nan" should become is the same question |
+| **Mono Maker Freq launders NaN to 500 Hz**, saved as a legitimate value; a NaN in a session restores 120 Hz | §B1 | owner decision, with the above | the range's inverse lambda decides it; the default-vs-maximum choice is the same parameter-semantics question |
+| **Restore window**: `value="nan"` with a usable `raw` leaves the raw atomic NaN inside the restore and is re-saved on every load | §B5 (lens-measured with a seam, not under real concurrency) | investigate further | touches the serialized-value repair path (`PluginParameters.h:185`); needs its own measurement under the real restore |
+| **Float → int UB** at `HaasProcessor.cpp:49`, `ChorusEngine.cpp:48` for a NaN delay / rate / depth | UBSan float-cast-overflow; no crash on x86-64 | defer | resolved by any ingress rule; a module guard alone would be the "modify every module" pattern the task warned against. AArch64 not run |
+| **Discrete parameters read NaN as index 0 / off** (algorithm → Haas, `mbBands` → 1, `advancedMode` → Simple); `roundToInt (NaN)` depends on the bit pattern | §B3 | preserve | finite, bounded, no latch; the same owner decision covers it |
+| **The first large step after a NaN crossover glides** (586.7 ms instead of 16 ms) | §B2 | preserve | only after a non-finite episode; audible effect not measured |
+| **Stale citations** — ADR-0009 *Related code* (`MultibandWidth.cpp:55-71`, `MonoMaker.h:36-39`), `DSP_POLICY.md:55`, `THREAD_MODEL.md:99` (`toEngine` also runs on the prepare and message threads), State test 123's header premise ("a host that sends one is buggy") | read against the code | documentation pass | reported, not rewritten (no general cleanup this round) |
+F13_REMAINING
 
 ## G. Road map
 
