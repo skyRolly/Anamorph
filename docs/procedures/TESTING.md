@@ -4342,13 +4342,14 @@ publishes NaN for the few microseconds between a non-finite input sample and the
 and Apply locked it into Output Gain: silence through a host reset and a re-prepare, `value="nan"` in
 the saved session, and an Undo to 0 dB instead of the user's value. **State test 129**
 (`testApplyNeverWritesANonFiniteGain`) reproduces the real window: an audio thread runs
-`processBlock` on noise with a NaN every 97th sample (4096-sample blocks, so a serialising checker
-still switches threads inside it) while the main thread calls `applyAutoGain` the instant it reads the
-published gain as NaN. Asserted: Output Gain never goes non-finite, the saved state never holds
-"nan", the plug-in still plays on clean input afterwards, and a finite Apply still locks the measured
-gain. Premise controls: the audio thread ran, and the published gain was seen NaN with Apply called
-inside that window. Against the pre-fix code three checks fail (the first Apply inside the window
-wrote NaN).
+`processBlock` on noise with a NaN every 97th sample while the main thread calls `applyAutoGain` the
+instant it reads the published gain as NaN. Asserted: Output Gain never goes non-finite, the saved
+state never holds "nan", the plug-in still plays on clean input afterwards, and a finite Apply still
+locks the measured gain. Whether the window was reached is printed, not asserted: no public API can
+plant the NaN, and a serialised scheduler does not reach it reliably (valgrind 0 times in 610
+blocks; one pinned CPU missed it in 2 of 3 runs), so on those runs the leg is vacuous and says so. On
+a multi-core machine the window is reached every run, and against the pre-fix code three checks fail
+(the first Apply inside the window wrote NaN).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
