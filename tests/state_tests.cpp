@@ -36160,8 +36160,9 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
         //         has stopped and is re-armed, so silence after it moves nothing, exactly as
         //         after the host reset above. (Flushing that gain restarted the match from the
         //         predict floor and played it ~2 dB off for ~2 s.)
-        //       * a re-prepare at a NEW sample rate integrates a different band: the whole
-        //         matcher goes, the published gain included.
+        //       * a re-prepare at a NEW sample rate rebuilds the coefficients and, by decision
+        //         (ADR-0007's F13(2) amendment keeps Q5 to the same rate), flushes the whole
+        //         matcher, the published gain included.
         //     If the first ever stops re-arming, or the second ever starts holding, the
         //     narrowing has turned into a leak. The silence above left the analysis empty, so
         //     the audio is played again first -- otherwise the re-arm could not be told from

@@ -1015,10 +1015,65 @@ measurement-input change, a finite published value) → `loudness.prepare` skipp
 `reset()` call. No parameter, schema, threading, signal-order or latency change; no allocation, lock
 or wait; `prepare()` never runs concurrently with `process()` or `reset()`.
 
-### L3. Scope of Q5: why a new sample rate still flushes
+### L3. Scope of Q5: a new sample rate keeps the flush, by decision
 
-The result is a ratio of two K-weighted loudnesses, and the band those integrate is `fs / 2`: at a
-higher rate the wet's harmonics above the lower rate's Nyquist (Drive, oversampling) are integrated,
-at a lower rate they are not, so the same sound measures differently. The ADR's own reason for the
-flush (:39-40) is exactly this, and the owner limited P4 to the same rate. The measurements for the
-rate pairs are recorded below (§L4).
+The first draft of this section argued that a new rate invalidates the *result* because the band the
+measurement integrates is `fs / 2`. Measured (§L4), that is not so: carried across a rate change, the
+result lands 0.02–0.13 dB from the destination's converged value, and the measurement adds no rate
+dependence of its own — the published value equals minus the per-rate K-weighted out / in ratio
+within 0.012 dB at every rate. What differs across rates is the sound: at the default 12 ms Haas
+delay 44.1 kHz reads a fractional delay (529.2 samples) that the Haas line's linear interpolation
+low-passes (0.05 dB quieter on pink noise, 0.20 dB on white noise to 18 kHz; with Amount 0 every rate
+agrees within 0.002 dB), and harmonics above the lower rate's Nyquist add at most 0.085 dB. So the
+*analysis* is invalid in kind at a new rate (its coefficients are functions of the rate) and the
+*result* is merely stale by the sound's own rate dependence — the category of a small live edit.
+
+The flush is kept anyway: the authorization limits P4 to the same rate (*"Do not automatically
+generalize this to different-rate re-prepare."*), the evidence covers Haas only on stationary noise
+and multisine programmes (not Velvet, Chorus, Dimension D, Multiband, 4× / 8× oversampling, music or
+transients), and a rate change is rare next to a same-rate re-prepare. Keeping across a rate change
+is a candidate for a later owner decision, with this evidence; the engine's and State test 120's
+comments now say "by decision" instead of the band argument.
+
+### L4. Measurements on the implementation
+
+**The family, before (`daa6809`) and after** (the §K shared harness plus §K5's X rows, 48 kHz / 256,
+pink noise; `pkX` / `dipX` in dB, `set01f` in ms, and run − fresh at 100 ms / 500 ms / 1 s / 2 s).
+Exactly five rows changed, all expected; the other 44 are byte-identical line for line:
+
+| row | before | after |
+|---|---|---|
+| A/B Drive 2 → 8 (`S7b_AtoB`) | +1.59 / +1.14 / 2,448; +0.67 / +1.59 / +1.12 / +0.29 | +0.10 / +0.07 / 124; +0.07 / +0.09 / +0.06 / +0.02 |
+| A/B Drive 8 → 2 (`S7b_BtoA`) | −0.00 / −1.84 / 2,548; −0.42 / −1.84 / −1.48 / −0.41 | +0.06 / +0.04 / 125; +0.05 / +0.06 / +0.04 / +0.01 |
+| A/B that turns Level Match on while Drive changes (`X8`) | +1.63 / +1.21 / 2,452 | +0.07 / +0.20 / 124 |
+| re-prepare, same rate (`S11`) | +2.46 / +0.04 / 2,215; +2.35 / +1.29 / +0.67 / +0.15 | +0.04 / −0.09 / 0; +0.02 / +0.02 / −0.00 / −0.00 |
+| re-prepare, block 256 → 512 | +2.41 / +0.04 / 2,217 | +0.04 / −0.09 / 0 |
+
+Byte-identical, among others: Undo Drive 0 ↔ 10 (`S9a` / `S9b`, +6.73 / −7.89), preset and redo
+Drive 0 ↔ 10, the rate change (`f_sr441`, +2.40), both host-reset rows, every O4g engage row (0.00),
+the Level-Match-only A/B (`S7a`), the identical-slot A/B (`X1`), the discrete A/B (`X5`, already
+re-armed by `processingDiffers`), live edits, and the Case-A-converging and Case-B rows. The kept
+re-prepare still shows a −2.63 dB `eMin` at 21 ms: the flushed delay lines refilling, not the gain
+(applied −6.795 against the fresh −6.805 dB at that moment); the flush used to hide it under +2.7 dB.
+The re-arm's own wobble after a kept re-prepare is 0.042–0.059 dB at ~0.4 s.
+
+**The rate pairs** (Haas, Amount 0.5, Width 1.3, Level Match on; converged published match of fresh
+processors, and the transient after `prepareToPlay` at a new rate; a scratch "keep across the rate"
+variant rebuilds the coefficients, flushes the analysis, and restores `displayedGainDb` and
+`prevPredictedGainDb`):
+
+| | 48 − 44.1 kHz | 96 − 48 kHz | 96 − 44.1 kHz |
+|---|---|---|---|
+| multisine to 18 kHz | −0.092 dB | 0.000 | −0.093 |
+| multisine to 0.45 fs | −0.094 to −0.108 | −0.017 to +0.068 | −0.026 to −0.125 |
+| white noise to 18 kHz | −0.221 | −0.003 to −0.014 | −0.224 to −0.237 |
+
+Current flush after 96 → 44.1 or 48 → 44.1 kHz: +2.66 to +2.78 dB at Drive 8 and +3.07 to +3.31 dB at
+Drive 10 (−0.45 to −0.64 dB at Drive 0), above 0.1 dB for ~3 s. The keep variant: 0.02–0.13 dB stale,
+applied-gain error ≤ 0.143 dB, and never above 0.1 dB in 30 of its 36 rows. Evidence, not a change
+(§L3).
+
+**State test 31's remembered slot-B gain** moved from −1.040 dB to +2.078 dB because the switch into
+slot B now re-arms. Slot B's converged match, from the same run kept playing and from a fresh
+processor at its exact state, is +2.97 dB: the new value is 0.89 dB off it, the old one 4.01 dB and of
+the wrong sign — the stale analysis was dragging the value the slot then remembered.

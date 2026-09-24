@@ -158,7 +158,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1156 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1158 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -1042,12 +1042,16 @@ engine API) are fixed.
 > **RESOLVED 2026-09-24 (ADR-0007, Amendment of 2026-09-24, F13(2); worklog §K–§L).**
 > - **The A/B drift — fixed.** Where the destination slot's gain is restored, the engine now re-arms
 >   the loudness analysis whenever the two slots differ in anything it reads, so the correct restored
->   value is no longer dragged back toward the previous slot: +1.59 / −1.84 dB → +0.10 / +0.04 dB against a fresh instance at the destination, settling in ~0.12 s instead of ~2.5 s on a Drive 2 ↔ 8 switch (Test 67, State test 131).
->   Slots that differ only in Output Gain, Level Match itself or nothing at all keep their settled
->   analysis, as before.
+>   value is no longer dragged back toward the previous slot: +1.59 / −1.84 dB → +0.10 / +0.04 dB
+>   against a fresh instance at the destination, settling in ~0.12 s instead of ~2.5 s on a Drive
+>   2 ↔ 8 switch (Test 67, State test 131). Slots that differ only in Output Gain, Level Match itself
+>   or nothing at all keep their settled analysis, as before.
 > - **A re-prepare at an unchanged sample rate — fixed.** The match is kept (bit-identical) and only
->   the analysis restarts: +2.46 dB for ~2.2 s → +0.04 dB at Drive 8. A new sample rate, or a re-prepare after a restore that
->   changed what the measurement reads, still measures afresh by decision.
+>   the analysis restarts: +2.46 dB for ~2.2 s → +0.04 dB at Drive 8. A re-prepare after a restore
+>   that changed what the measurement reads still measures afresh. So does a **new sample rate**, by
+>   decision: it plays +2.7 to +3.3 dB off at Drive 8–10 for ~3 s, where carrying the value across
+>   measured within 0.13 dB on Haas programmes — recorded as a candidate, not adopted (ADR-0007,
+>   F13(2) Q5; worklog §L3–§L4).
 > - **The engage cases — decided, not defects.** A Level Match engage that also changes the sound still
 >   starts from unity (from the slot's gain at an A/B switch), and a gain-only engage made shortly
 >   after a sound change lands on a value that is still converging; forced swaps without an A/B

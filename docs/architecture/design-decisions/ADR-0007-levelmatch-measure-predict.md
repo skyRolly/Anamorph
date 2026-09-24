@@ -428,8 +428,14 @@ flush (:39-40) is the sample rate. The flush is now kept only where that reason 
    (`measurementInputsDiffer` — a restore that moved Drive between two prepares flushes; one that
    moved only Output Gain keeps);
 4. the published value is finite.
-Otherwise it flushes as before. A new sample rate is not generalised to: the band the measurement
-integrates changes with it (worklog §L).
+Otherwise it flushes as before. **A new sample rate keeps the flush, by decision.** The analysis
+must be rebuilt there (its coefficients are functions of the rate); the result need not be — carried
+across a rate change on Haas programmes it measured 0.02–0.13 dB from the destination's converged
+value, against the flush's +2.7 to +3.3 dB for ~3 s (worklog §L4), because the measurement adds no
+rate dependence of its own and what differs is the sound itself (Haas's fractional delay at 44.1 kHz,
+harmonics above the lower Nyquist). The authorization limits P4 to the same rate, the evidence covers
+one algorithm and stationary programmes, and a rate change is rare; extending the keep is recorded as
+a candidate, not adopted.
 
 **What this changes in the text above.**
 - *Note of 2026-09-22*, "The measure is re-armed in exactly one place: the silent duck bottom" (:101):
@@ -455,17 +461,18 @@ integrates changes with it (worklog §L).
   does; one at the same rate with the same measurement inputs keeps the published gain and re-arms
   the analysis. State test 120's leg 2 now pins both halves.
 
-**Measured** (processor level, 48 kHz / 256, pink noise; `pkX` / `dipX` against the two
-counterfactual trajectories, as in worklog §E; scratch builds of these exact two rules, worklog §K5):
+**Measured on the implementation** (processor level, 48 kHz / 256, pink noise; `pkX` / `dipX`
+against the two counterfactual trajectories, as in worklog §E; worklog §L4 — the same figures the
+scratch builds of §K5 gave):
 
 | route | before | after |
 |---|---|---|
 | A/B, slots differ only in Drive 2 → 8 / 8 → 2 (Level Match on in both) | +1.59 / −1.84 dB, settle 2,448 / 2,548 ms | +0.10 / +0.04 dB, 124 / 125 ms |
 | A/B that turns Level Match on while Drive changes (the slot's gain is injected) | +1.63 dB | +0.07 dB |
 | re-prepare, same rate, same or doubled block size | +2.46 dB, settle 2,215 ms | +0.04 dB, 0 ms |
-| re-prepare at a new rate (48 → 44.1 kHz) | +2.40 dB | unchanged (flushes by decision) |
+| re-prepare at a new rate (48 → 44.1 kHz) | +2.40 dB | unchanged (flushes by decision; see Q5) |
 | A/B between identical slots, or slots differing only in Level Match | — | unchanged (not re-armed) |
-| Undo / preset / redo Drive 0 ↔ 10, live edits, Case A and Case B engages, host reset, Apply | — | unchanged (every row byte-identical) |
+| Undo / preset / redo Drive 0 ↔ 10, live edits, Case A and Case B engages, host reset | — | unchanged (44 of 49 harness rows byte-identical; the five above are the changes) |
 
 **Architecture Review Gate — owner authorization of 2026-09-24.**
 

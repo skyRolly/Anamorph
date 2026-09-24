@@ -130,12 +130,12 @@ same A/B bottom — the analysis is re-armed there when the two slots differ in 
 ADR-0007's F13(2) amendment of the same date; it does not move the applied gain.)
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:375-402` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
+- `src/dsp/AnamorphEngine.cpp:377-404` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:375-402, 1359-1570; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:377-404, 1361-1572; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree,
   testInertDiscreteChangeDoesNotDuck, testAlgoResetSurvivesMidFadeRetarget
