@@ -630,3 +630,120 @@ measurement question (F13(2), KI-030), not this one.
 - Scope: Linux x86-64, GCC; stationary noise and one programme-like signal; 44.1 / 48 / 96 kHz,
   64–2048-sample blocks for the headline rows only; Haas only for the matrix (one Velvet row). No
   DAW, no music.
+
+## J. F13(1b) implemented: the owner's ruling (O4g), the derived predicate, and its tests
+
+Round after `e9deabe`, same branch (PR #156). The owner ruled on §I6: *"Use O4g as the working
+direction for this round"*, with the predicate to be derived from the engine's state graph rather
+than a name list, tolerant of harmless float representation differences, and with a sound-changing
+engage kept as it is until F13(2) is resolved. §I is not edited; two of its plan lines are superseded
+here: the "same sound except output" comparison (§I6) is replaced by the derived predicate below, and
+"CHANGELOG `[Unreleased]`" is not available (no tag exists; CHANGELOG_POLICY puts unreleased work in the
+dated `[0.9.9]` entry).
+
+### J1. The invariant
+
+At a switch's silent bottom that turns Level Match on, the applied gain `matchGainSmooth` is landed —
+current and target — on the value the matcher publishes right after that block's `loudness.process`
+(Case A) if and only if:
+
+1. `! measurementInputsDiffer (p, pendingP)` — nothing the measurement reads differs between the state
+   heard before the switch and the state adopted at the bottom;
+2. `! duckMeasDirty` — no such change was made live during the switch's own fade-out (an ORDINARY duck
+   applies continuous controls at once through `copyContinuous`, so by the bottom `p` already carries
+   them; measured on the naive version: a Drive change riding the engage left a 4.54 dB error);
+3. `! procChanged` — the bottom does not re-arm the measure (a re-armed measure is moving: probe R3
+   measured up to 0.277 dB at the bottom and 0.512 dB over 3 s off-Haas / Multiband-off);
+4. no A/B injection is consumed in that block (the slot's gain keeps priority);
+5. the reading is finite (ADR-0009).
+
+Anything else (Case B) is the pre-ruling behaviour: the smoother starts at unity and glides.
+
+### J2. Deriving `measurementInputsDiffer`
+
+The measurement reads three things: the wet at the tap (L/R after Mono Maker), the dry reference
+`loudnessRefScratch` (A(dry), or the delay-aligned clean dry under the H4 gate), and the predict's
+inputs (`setDriveDb`, `setMix`). Two independent derivations, then a reconciliation:
+
+- **Code reading**, every reader of every field traced to the tap; checked with a harness comparing the
+  whole matcher state bitwise after one field changed (84 rows, 0 disagreements).
+- **Measurement**, independently: pairs of engines differing in one field, compared bitwise on the
+  matcher's biquads, integrators, published and predicted values and on the exact arrays handed to
+  `LoudnessMatch::process` — 240 configurations (4 algorithms × Multiband × Mono Maker × Mix ×
+  oversampling × band count, Level Match off, on and switching), 23,744 runs, 288/288 A/A controls
+  identical.
+- **Reconciliation**: 30 of 36 fields agreed outright; the rest were settled by reading and probes:
+  - `driveDb`, `mix` are compared **exactly**: the predict's rise test fires on any rise — a +1 ulp
+    Drive rise with bit-identical audio moved the published value 1.08 dB in one block (R4).
+  - `haasSide` (off Haas) and `mbBands` (Multiband off) never reach the tap but make `processingDiffers`
+    re-arm; the predicate guards them and condition 3 covers the re-arm.
+  - Ordinary ducks: condition 2 (above).
+  - A Multiband on/off crossfade still running when an ordinary engage opens (≤ 12 ms) reaches the tap;
+    a latch for it was prototyped and **not adopted**: without it the worst stale landing measured
+    1.65e-4 dB over 3 s (32 probe rows), below the accepted H4 difference.
+- **Name traps confirmed**: `solo` (M/S solo, input conditioning) moves the published value by
+  0.17–0.24 dB and is compared; `mbSolo` (Band Solo, post-everything) moves nothing and is not.
+
+Result — compared exactly: `channelMode`, `monoSum`, `swapLR`, `polarityL/R`, `msMode`, `solo`,
+`algorithm`, `mbEnable`, `monoMakerEnable`, `oversample`, `driveDb`, `mix`; to a relative 1e-5:
+`inputBalance`, `algoAmount`, `width`; guarded: `haasDelayMs`, `haasSide` (Haas either side),
+`velvetDensity` (Velvet), `chorusRate`, `chorusDepth` (Chorus only — not Dimension D), `dimMode`
+(Dimension D), `mbBands`, `mbWidthLow` (Multiband either side), `mbFreqLow`/`mbWidthMid`,
+`mbFreqMid`/`mbWidthHiMid`, `mbFreqHigh`/`mbWidthHigh` (and ≥ 2 / 3 / 4 bands), `monoMakerFreq` (Mono
+Maker either side); not compared: `outputGainDb`, `outputBalance`, `mbSolo`, `bypass`, `autoGainMatch`.
+
+**Tolerance.** Round trips measured through the processor (3,008 random trials plus curated values,
+2,000 × 25-generation drift chains): only the three log-mapped crossovers and `monoMakerFreq` moved
+through preset save / load (≤ 14 ulp, relative ≤ 1.6e-6, settling by the second generation), and
+`chorusRate` at its default moved 1 ulp on a fresh instance (JUCE's unsnapped initial raw value).
+`driveDb`, `mix`, `width` and every other float came back bit-identical through every path. 1e-5 is
+six times the largest drift and under a tenth of any snapped parameter's half grid step; the gridless
+crossovers' worst hidden change would move the published value by ≈ 4e-6 dB.
+
+**Accepted, bounded:** the H4 reference switch (`bypass` and the Level Match switch itself reach the
+dry reference while Level Match is off, Multiband on, Mix exactly 1): ≤ 0.0064 dB at the bottom; the
+forced bottom's module restarts: ≤ 0.009 dB over 3 s.
+
+### J3. Implementation (`f20212d`)
+
+`src/dsp/AnamorphEngine.cpp`: `measurementInputsDiffer` beside `processingDiffers`; `duckMeasDirty`
+(cleared at every fresh fade-out entry and by `reset()`, set at the ordinary-duck entry and by every
+live copy during an ordinary duck); the decision at the bottom; the two injection consumers clear it;
+the landing after the level-match stage's `setTargetValue`. No header layout concern beyond one bool
+member; audio-thread only; no allocation, lock or wait (Test 66 arms the allocation guard around every
+landing). `scripts/check-state-coverage.py` gains `MEASUREMENT_INPUTS` / `MEASUREMENT_INPUTS_EXCLUDED`,
+total over the struct, checked for form and exact guard text term by term, with the predict's inputs
+derived from the code; its self-test re-creates each defect on the real source (110 cases).
+
+Measured on the implementation (the §I shared matrix, 48 kHz / 256, pink noise):
+
+| route | before | after |
+|---|---|---|
+| Undo of Apply, Drive 4 / 8 / 10 | +2.32 / +4.45 / +5.67 dB, settle 523–647 ms | 0.00 dB, settle 127 ms |
+| hand re-engage after Apply; engage from Output Gain −12 dB | +4.44 / +4.51 | 0.00 / 0.00 |
+| user preset that only turns Level Match on | +0.72 | 0.00 |
+| Undo of Apply at a positive match (+0.69 dB) | −0.35 dip | +0.02 (none) |
+| engage from a louder Output Gain (0 / +6 dB) | 607 ms glide down | lands, 127 ms |
+| A/B, Apply, Redo, disengage, re-prepare, Level Match on in both states | — | identical to before (byte-identical rows) |
+| preset turning Level Match on with Drive 10→0 / + algorithm / Drive 0→10 (Case B) | −7.72 / −1.06 / +7.43 | identical to before |
+
+The reconciler's probes (G, R1–R4, S) against the implementation are line-identical to its prototype
+except the 32 R1 rows the omitted crossfade latch lands on (≤ 1.65e-4 dB, above). Both suites unchanged
+(timing lines aside) before the new tests were added.
+
+### J4. The F13(2) boundary, measured
+
+A sound change made shortly **before** a gain-only engage is outside the switch, so the engage lands on a
+published value still converging on the new sound (probe S, ordinary engage k blocks after the change,
+mean |applied − the destination's settled value| over the first 500 ms):
+
+| before the engage | 16 ms | 500 ms | 1 s | 2 s |
+|---|---|---|---|---|
+| Drive 12 → 6 live (quieter) | 4.46 dB | 3.33 | 2.22 | 0.83 |
+| forced Drive 12 → 6 + Width (quieter) | 5.72 | 3.91 | 2.50 | 0.97 |
+| forced Drive 6 → 12 + Width (louder) | 4.62 | 2.63 | 1.62 | 0.56 |
+
+Before the ruling the same engages glided from unity (same probe, same metric, at 16 ms): 2.73 dB (live,
+quieter) and 3.37 dB (forced, quieter) — closer than landing — and 6.25 dB (forced, louder) — further.
+Neither is right; the lag is the measure's own convergence, which is the F13(2) question (§K). No
+convergence guard was added: that would be an F13(2) rule chosen silently.

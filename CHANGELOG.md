@@ -173,6 +173,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Match on, 0–2 with it off. Level Match now keeps its last gain through an invalid reading, so the
   sound carries on at the matched level; nothing changes for valid audio. Decision: ADR-0009
   (Implementation note, 2026-09-24). Regression coverage: Test 65. Evidence: PR #156. [Verified]
+- **Turning Level Match on no longer briefly plays louder than both the level before and the level
+  after.** Undoing **Apply Gain**, switching Level Match back on by hand after Apply, or switching it
+  on while Output Gain was below the matched level brought the sound back from the switch's short
+  fade at its unmatched level and let it ease down to the matched level over about half a second —
+  measured at **+2.3 / +4.5 / +5.7 dB** above both levels at Drive 4 / 8 / 10 on pink noise, loudest
+  about 130 ms after the action (with a matched gain above 0 dB it was a small dip instead). When
+  the switch changes nothing about the sound itself — only Level Match, Output Gain, Output Balance,
+  Bypass or Band Solo — the sound now comes back from the fade already at the matched level, and
+  switching Level Match on from an Output Gain above the matched level lands on it the same way
+  instead of easing down. A switch that turns Level Match on **and** changes the sound — a preset,
+  undo or redo that also moves Drive, Mix or the algorithm — still eases in as before, because Level
+  Match's measurement at that moment still describes the previous sound. A/B, Apply itself, Redo,
+  switching Level Match off, and Level Match's measurement are unchanged. Decision: ADR-0007
+  (Amendment, 2026-09-24). Regression coverage: Test 66 and State test 130. Evidence: PR #156.
+  [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

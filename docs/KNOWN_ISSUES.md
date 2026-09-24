@@ -147,7 +147,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 | KI-029 | A **non-finite parameter value** — the text "nan" typed into a knob's value box, or a NaN from a host — mutes or changes several controls **while it is present** (Width, Haas Delay, Chorus Rate / Depth, Output Gain and the multiband widths / crossovers mute; Mix plays fully wet; the Level-Match gain is discarded) | Low | Confirmed; recovers as soon as a valid value arrives. What a NaN value should mean is an **owner decision** (ADR-0009 note 2026-09-24) |
 | KI-030 | After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back | Medium | Confirmed; the fix changes ADR-0007's re-arm rule, so it is an **owner decision** / ADR amendment (ADR-0007 note 2026-09-24) |
-| KI-031 | **Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it (by hand, undo / redo or a preset) while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after: +2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10 on the measured programme, peaking ~130 ms after the action and settled in ~0.6 s | Medium | Confirmed; every fix changes how the Level-Match engage sounds, which ADR-0007 reserves for the owner — **owner decision** (ADR-0007 note 2026-09-24, question 1) |
+| KI-031 | ~~**Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after (+2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10)~~ | — | **RESOLVED 2026-09-24** (owner ruling O4g; ADR-0007, Amendment 2026-09-24). A switch that turns Level Match on and changes nothing its measurement reads now starts at the matched level (Test 66, State test 130). An engage that also changes the sound still glides from unity: a measurement-staleness case, tracked with F13(2) under KI-030 |
 
 ---
 
@@ -1051,8 +1051,24 @@ that change a discrete field, preset loads, undo and redo are not affected in th
   within 0.042 dB, but it changes ADR-0007's "re-armed in exactly one place" rule and reverses the A/B
   row of its dimMode table — an ADR amendment and an owner decision.
 - **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §E; ADR-0007, note 2026-09-24.
+- **The same staleness, at a Level Match engage (2026-09-24):** since KI-031's resolution a switch that
+  turns Level Match on starts at the published value only when nothing the measurement reads changes.
+  An engage that also changes the sound still starts from unity (measured −7.72 to +7.43 dB against a
+  fresh instance at its worst), and a gain-only engage within ~2 s of a sound change lands on a value
+  still converging (4.5–5.7 dB mean error over the first 500 ms at 16 ms after the change). Both wait
+  on the same F13(2) decision (worklog §J4, §K).
 
 ## KI-031 — turning Level Match on can briefly play louder than before and after
+
+> **RESOLVED 2026-09-24 (owner ruling O4g; ADR-0007, Amendment 2026-09-24).** A switch that turns
+> Level Match on and changes nothing Level Match's measurement reads — Undo of Apply, re-engaging by
+> hand after Apply, an engage from a low Output Gain, a preset or undo that only turns Level Match on —
+> now starts at the matched level: +2.3 / +4.5 / +5.7 dB → 0.00 dB at Drive 4 / 8 / 10, and the dip at
+> a positive match is gone (Test 66, State test 130; worklog §J). What remains is not this issue's
+> mechanism but the measurement's: an engage that also changes the sound still starts from unity,
+> because the published value describes the previous sound, and a gain-only engage made shortly after
+> a sound change lands on a value that is still converging. Both are F13(2), recorded under KI-030.
+> Everything below is the pre-ruling record.
 
 While Level Match is off, the gain it would apply rests at unity (0 dB). When a switch turns it on,
 the output hands over from Output Gain to that gain at the silent bottom of the switch's fade, and

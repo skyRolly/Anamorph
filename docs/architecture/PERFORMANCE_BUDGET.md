@@ -50,7 +50,9 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   Measure readout follows the delay-aligned clean dry while gated, so a Match engage right after a
   gated stretch starts from a reference without the multiband reconstruction ripple (measured
   0.53 dB worst-case level offset on a near-crossover synthetic, converging over the loudness
-  window; always duck+glide smoothed). Both dry delay rings stay warm; re-engage is comb-free
+  window; the engage is always ducked, and since ADR-0007's Amendment of 2026-09-24 one that
+  changes only the gain lands at the silent bottom on that published value rather than gliding).
+  Both dry delay rings stay warm; re-engage is comb-free
   (`testDryAlignGateRecomb`). Evidence [Verified]: src/dsp/AnamorphEngine.cpp (gate + invariant
   comment); CHANGELOG [0.8.9].
 - **The LR4 crossovers are a local flat-state clone (Wave 2 / H6).** All ten
