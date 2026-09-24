@@ -42,7 +42,7 @@ architecture docs, and the ADRs. These must hold across releases.
 
 6. **Mono compatibility by construction.** Width/decorrelation modify only the Side; `L+R = 2·Mid`
    always. Band-split stages are Linkwitz-Riley applied identically to L and R (allpass-flat Mid).
-   Evidence: MidSide.h:38-40; VelvetNoise.h:13-18; MultibandWidth.h:24-27.
+   Evidence: MidSide.h:38-40; VelvetNoise.h:14-19; MultibandWidth.h:24-27.
 
 7. **The dry path is delay-compensated and phase-matched** to the wet (A(dry)); `Mix=0` is a
    bit-exact null. (ADR-0005) Evidence: AnamorphEngine.cpp:726-759; test `testMultibandMonoCompat`.
