@@ -257,6 +257,40 @@ that the output stays finite, that Level Match on leaves no more silent blocks t
 its burst level is the off level moved by the pre-burst match gain (within 3 dB). Against the pre-fix
 engine both level checks fail: 164–165 of 187 blocks silent with Level Match on, 0–2 with it off.
 
+**Level Match engages at the level it measured when the switch changes only its gain — Test 66
+(2026-09-24; ADR-0007, Amendment 2026-09-24, owner ruling O4g; KI-031).** While Level Match is off its
+applied gain rests at unity, so every engage faded in at unity and glided to the published value over
+~0.6 s — up to +7 dB above both ends of the switch, or a mirror dip at a positive match. A switch that
+turns Level Match on and changes nothing the measurement reads now lands the applied gain on the value
+published right after the bottom block's measurement (`measurementInputsDiffer`, and `duckMeasDirty`
+for what an ordinary duck made live on the way down); any other switch keeps the glide, pending F13(2).
+**Test 66** (`testLevelMatchEngagesAtTheLevelItMeasured`, the engine contract) reads the applied gain
+against an event-matched twin — same seeded noise and history, the SAME duck, Level Match off at a known
+Output Gain — as a per-block least-squares gain whose residual must stay ≤ 1e-3. LAND is max|D| ≤ 0.1 dB
+for 0.6 s from the first full-level block, no excursion over 0.2 dB outside [pre-switch gain, published],
+and an un-ducked −20 dB injection proving Level Match is on; NOT LAND is glide fraction φ ≥ 0.5
+(0.797–0.806 measured). Legs: (1) forced Undo of Apply at Drive 4 / 8 / 10; (2) a positive match;
+(3) hand engages at Output Gain m, from −12 / 0 / +6, with Output Gain, Output Balance, Band Solo and
+Bypass riding the snapshot, and a re-engage that re-ducks a dirty disengage's fade-in; (4) every
+tolerant field at ±1 ulp (the log-mapped crossovers and Mono Maker Freq at ±2e-6, just over the 1.6e-6
+preset drift that sizes the tolerance) under Haas / Multiband / Mono Maker, Chorus and Velvet — LAND;
+(5) 31 Case-B legs, forced and ordinary-same-snapshot: Drive +0.01 dB and +1 ulp, Mix −0.001 and −1 ulp,
+Width +0.001, each discrete change, Drive edits arriving or returning mid-fade-out, an ordinary engage
+upgraded to forced, and the discrete edits that change no sample but re-arm — NOT LAND; (6) the A/B
+injection at a forced bottom and at the defensive (ordinary) consumer, (7) Redo and Apply, (9) a host
+reset in the fade-out and in the fade-in — each bit-identical to its unchanged twin; (8) Level Match on
+in both states, Drive 0 → 10 — φ ≥ 0.3 (0.755), pinning current behaviour pending F13(2); (10) a field
+sweep over every `EngineParameters` member (a structured binding makes the count a compile error to get
+wrong) and five bases, where a pair of Level-Match-off engines decides "measurement-inert" by a
+bit-identical published trajectory and the engaging engine must land exactly when the field is inert;
+(11) WHEN it lands: an ordinary engage while the matcher moves ~0.66 dB per block, |D| ≤ 0.1 dB in the
+bottom block itself. The allocation guard is armed around every landing (2,916 calls, 55 of 55 landings,
+zero allocations). 29 checks, ~1.07 s native. Against the pre-fix engine 6 of the 29 fail (D at the first
+full-level block +2.95 to +6.66 dB, −4.95 dB at the positive match). All 21 engine variants of worklog §J
+are rejected, each by a named leg — among them an ungated landing, no dirty flag, a tolerant Drive or
+Mix, no `!procChanged`, an injection that loses priority, a band guard one band high, a tolerance tighter
+than the drift, and a landing before the bottom block's measurement (leg 11).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4365,6 +4399,28 @@ real window: an audio thread on NaN-laced input, the main thread applying the in
 corroboration only, reported rather than required. Pre-fix (guard removed): A fails five checks with
 its liveness satisfied, and C fails; with Apply disabled, A's and B's liveness checks fail. Legs A
 and B run identically on one pinned CPU.
+
+**Level Match engages at the level it measured, on every production path — State test 130
+(2026-09-24; ADR-0007, Amendment 2026-09-24; KI-031).** The processor half of Test 66, through
+`AnamorphAudioProcessor` (Advanced Mode on, Haas, Drive 8, Output Gain −3 dB, 48 kHz / 256, seeded
+continuous noise), with the same metric: a twin processor takes the same forced duck at the same block
+(the same user-preset load, or `getEngine().requestDuck()`) and keeps Level Match off. Legs: (1) Undo of
+Apply cycled Apply → Undo → Redo → Undo at Drive 8 (Redo keeps the applied Output Gain within 0.02 dB),
+and Undo of Apply at Drive 4 and 10 — LAND; (2) Level Match on by hand after Apply, and from Output Gain
+−12 dB — LAND; (3) a positive match — LAND, no dip; (4) a user preset that turns Level Match on with the
+sound unchanged, under Haas (Drive 8) and Chorus (Drive 10), reloaded twice — LAND, with Chorus Rate's
+one-ulp reload drift reported (a `::warning::` if it ever moves 0 ulp); (5) Case B — a user preset with
+Level Match on and Drive 10, and Advanced Mode turned on with the Level Match parameter on at Mix 0.5 —
+glides (φ 0.80), with the Mix 1 / Multiband-off toggle as the landing control; (6) A/B from slot B (off)
+to slot A (on) — max|D| ≤ 0.1 dB, and on a Multiband-off base bit-identical from the first full-level
+block to the same switch between two Level-Match-on slots; (7) a host reset one block into the
+Undo-of-Apply fade-out and inside its fade-in — max|D| ≤ 0.1 dB, with liveness: the reset block's energy
+differs from the same Undo without the reset; (8) Level Match on in both states, an Undo moving Drive 0 →
+10 — glides (φ 0.71), pending F13(2). Preset files use unique names; a same-named user file is parked and
+restored (State test 8's pattern). 114 checks, ~0.63 s native. Against the pre-fix engine 24 of the 114
+fail — both LAND checks on each of the twelve LAND legs (D_F +2.84 to +5.65 dB, +3.34 on the Chorus
+reloads, −4.88 dB at the positive match); a bitwise sound comparison fails Chorus reload #1 (+3.34 dB);
+an injection that loses priority fails leg 6's identity pair.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

@@ -37820,6 +37820,602 @@ static void testApplyNeverWritesANonFiniteGain()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 130 -- LEVEL MATCH ENGAGES AT THE LEVEL IT MEASURED, ON EVERY PRODUCTION PATH
+//  (ADR-0007, Amendment 2026-09-24; KI-031. Test 66 is the engine half, with the entry-path,
+//  representation-tolerance and field legs)
+//
+//  THE CONTRACT. A switch that turns Level Match on and changes nothing the Level-Match
+//  measurement reads (Case A: it moves only Level Match, Output Gain, Output Balance, Bypass or
+//  Band Solo, all of which act after the loudness tap) starts its fade-in at the value the matcher
+//  publishes -- no swell, no dip. A switch that turns it on AND changes something the measurement
+//  reads (Case B) keeps today's glide from unity, pending F13(2) (KI-030). Level Match already on,
+//  an A/B injection, Apply, Redo and a host reset inside the switch are unchanged.
+//
+//  MEASURED BEFORE THE FIX, through these legs (the pre-fix engine linked into this test). While
+//  Level Match is off its gain rests at unity; the engage handed the output to it at the silent
+//  bottom and it glided to the published value over ~0.6 s, so the fade-in started unmatched.
+//  D_F (below) was +2.84 / +4.70 / +5.65 dB for Undo of Apply at Drive 4 / 8 / 10 and +4.89 for
+//  the cycle's second Undo, +4.70 for the hand re-engage, +4.67 from Output Gain -12 dB,
+//  +4.70 / +4.85 for the two Haas preset reloads, +3.34 / +3.37 for the Chorus ones (Drive 10) and
+//  +4.67 for the Advanced Mode control; with a positive match (+7.5 dB) it dipped instead, D_F -4.88.
+//  24 of the 114 checks fail there -- two on each LAND leg -- and every other leg passes on both.
+//
+//  THE METRIC (M1). Each leg runs the processor under test (RUN) beside a TWIN fed the same
+//  seeded noise that takes the SAME forced duck at the same block -- the same user-preset load,
+//  or `getEngine().requestDuck()` with nothing changed -- and keeps Level Match off at a known
+//  Output Gain g_t. The shared duck shares the bottom's resets, the dry fill and the fade, so per
+//  256-sample block ghat = sum (y_run y_twin) / sum y_twin^2 over both channels is the run's
+//  output-stage gain over the twin's: g_run = 20 log10 ghat + g_t, and D = g_run - pub, pub being
+//  `getEngine().getMatchGainDb()` after the block. An engage by hand or by the Advanced Mode
+//  toggle is the run's own ORDINARY duck; its twin takes none. F, the first full-level block, is
+//  event + 8 at 48 kHz / 256 (a 288-sample fade-out, the bottom at + 2, the 1344-sample fade-in
+//  ending in + 7). Every evaluated block also asserts resid = sum (y_run - ghat y_twin)^2 /
+//  sum y_run^2 <= 1e-3 (measured <= 4.1e-9 when it lands, <= 3.3e-5 while it glides).
+//    LAND    max|D| <= 0.1 dB for 0.6 s from F, and from the event on ghat stays within 0.2 dB of
+//            the level before (0 dB) and after (pub - g_t over the window, which still drifts):
+//            both ways where the duck is shared, upward only where the run's own duck dips it.
+//            PREMISE |pub_F| >= 3 dB, the distance from the unity the pre-fix fade-in started at,
+//            so the pre-fix glide misses by >= ~2.4 dB.
+//    GLIDES  phi = D_F / (g_pre - pub_F) >= 0.5 with g_pre = 0 dB (measured 0.80); >= 0.3 where
+//            Level Match was already on and g_pre is the value published before (measured 0.71).
+//
+//  THE LEGS, and the engine mutant each one kills (each measured alone, legs listed failing):
+//    (1) Undo of Apply at Drive 8 cycled Apply -> Undo -> Redo -> Undo (TESTING_POLICY 3a), and at
+//        Drive 4 and 10: LAND. Redo, the cycle's middle step: the applied gain is the applied
+//        Output Gain within 0.02 dB (measured 0.0000). Kills the pre-fix glide.
+//    (2) Level Match turned on by hand after Apply, and from Output Gain -12 dB: ordinary ducks,
+//        LAND. Kills a landing wired into the forced bottom only (with (5)'s control).
+//    (3) Undo of Apply where the match is POSITIVE (+7.5 dB: Width 0 on anti-correlated noise):
+//        LAND, no dip. Kills a landing that only ever turns the gain down.
+//    (4) A user preset loaded from the browser (rescan, row, load) that turns Level Match on with
+//        the sound unchanged, under Haas at Drive 8 and under Chorus at Drive 10, twice each.
+//        Chorus is authored at Drive 10 for the premise's margin: it publishes -4.25 / -4.28 dB
+//        there, 1.25 dB clear of 3 dB (at Drive 8 it published -3.11, 0.11 dB clear). LAND. The
+//        FIRST reload moves Chorus Rate by one ulp here -- the initial raw value is the default's
+//        UNSNAPPED 0-1 round trip, the reloaded one the snapped value the file stores -- and the
+//        second moves nothing. That ulp is one libm rounding, so it is REPORTED, not asserted (a
+//        ::warning:: when it moved 0 ulp); a drift above 1e-6 relative fails as a premise. Where it
+//        moved, Chorus #1 kills a bitwise sound comparison (D_F +3.34); Test 66's ulp legs are the
+//        engine half everywhere.
+//    (5) Case B, GLIDES: a user preset with Level Match on and Drive 10 (a forced duck), and
+//        turning Advanced Mode on with the Level Match parameter on and Mix 0.5 -- an ORDINARY
+//        duck whose Mix goes live at its entry, so by the bottom nothing differs. The preset kills
+//        "land whenever Level Match turns on" (phi 0.00); the toggle also kills a comparison made
+//        only at the bottom, without what the duck made live (phi 0.00). Its CONTROL, the same
+//        toggle at Mix 1 with Multiband off, LANDS: the Mix is what refuses the landing.
+//    (6) A/B, slot B (off) -> slot A (on), same sound: max|D| <= 0.1 dB, the slot's remembered gain
+//        adopted as before. That pair cannot tell the injection from a landing (they differ by
+//        ~0.01 dB here), so a second pair on Multiband off (no H4 reference switch) gives the twin
+//        a slot B that KEPT Level Match on: its B -> A switch arms no landing, and the run must be
+//        the twin bit for bit (every sample exactlyEqual) from F -- measured from event + 8. Kills
+//        an injection at the forced bottom that leaves the landing armed (that clear deleted, or
+//        both consumers' clears: the run still differs at event + 120, the window's last block).
+//    (7) A host reset one block into the Undo-of-Apply fade-out, and inside its fade-in: max|D|
+//        <= 0.1 dB from the reset on. Unchanged (the pre-fix engine passes too). LIVENESS: a second
+//        pair takes the same Undo and no reset -- without the reset the two are one deterministic
+//        computation -- and the run's energy in the reset block must differ from it (measured
+//        25.98 vs 7.191, 28.12 vs 12.49). With both reset calls deleted max|D| still passes (0.054
+//        / 0.029 dB) and only these two checks fail.
+//    (8) Level Match on in both states, an Undo that moves Drive 0 -> 10: GLIDES (phi >= 0.3).
+//        This pins today's behaviour pending F13(2). Kills a landing at every Level-Match-on
+//        bottom (phi -0.43).
+//  LIVENESS on every leg: the parameter state after the action (Level Match, Output Gain, the
+//  moved field), canUndo / canRedo, and the premises above. Preset files: unique names, a
+//  same-named user file is parked and put back (State test 8's pattern), ours are deleted before
+//  and after; no other user preset is touched.
+static void testLevelMatchEngagesAtTheLevelItMeasured()
+{
+    std::printf ("State test 130: Level Match engages at the level it measured (ADR-0007 amendment, KI-031)\n");
+
+    using Proc = AnamorphAudioProcessor;
+    using KV   = std::vector<std::pair<const char*, float>>;
+    const double sr = 48000.0; const int block = 256;
+    const int conv = 300;           // 1.6 s: the matcher has converged to within ~0.3 dB
+    const int gap  = 24;            // 0.125 s from Apply to the switch (Apply's own duck is 34 ms)
+    const int full = 8;             // F = event + 8: bottom at +2, the 1344-sample fade-in ends in +7
+    const int win  = 113;           // 0.6 s evaluated from F
+
+    // One seeded, CONTINUOUS stream (a silent stretch would hit the silence -> audio snap and land
+    // even on the pre-fix engine). antiR is an anti-correlated right channel: at Width 0 its side
+    // cancels, which makes the matched gain POSITIVE (leg 3).
+    const size_t total = (size_t) (3.8 * sr);                   // the longest leg reads 687 blocks
+    std::vector<float> inL (total), inR (total), antiR (total);
+    {
+        juce::Random rng (130);
+        for (size_t i = 0; i < total; ++i)
+        {
+            const float v = rng.nextFloat() - 0.5f, w = rng.nextFloat() - 0.5f;
+            inL[i] = v; inR[i] = 0.6f * v + 0.2f * w; antiR[i] = -0.5f * v + 0.5f * w;
+        }
+    }
+
+    auto setPlain = [] (Proc& p, const char* id, float v)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+    };
+    auto userEdit = [] (Proc& p, const char* id, float v)          // one gesture, one undo step
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->beginChangeGesture(); rp->setValueNotifyingHost (rp->convertTo0to1 (v)); rp->endChangeGesture();
+        p.pollUndoCoalesce();
+    };
+    auto raw = [] (Proc& p, const char* id) { return p.getAPVTS().getRawParameterValue (id)->load(); };
+    auto on  = [&raw] (Proc& p) { return raw (p, "autoGainMatch") > 0.5f; };
+    auto with = [] (KV kv, const KV& edits)
+    {
+        for (const auto& [id, v] : edits)
+        {
+            bool found = false;
+            for (auto& e : kv)
+                if (std::strcmp (e.first, id) == 0) { e.second = v; found = true; }
+            if (! found) kv.push_back ({ id, v });
+        }
+        return kv;
+    };
+    auto make = [&] (const KV& kv)
+    {
+        auto p = std::make_unique<Proc>();                       // heap: State test 59's note
+        for (const auto& [id, v] : kv) setPlain (*p, id, v);
+        p->pollUndoCoalesce();
+        p->prepareToPlay (sr, block);
+        return p;
+    };
+
+    // The run and its twin, fed the same samples block by block; one record per block (runEnergy is
+    // sum y_run^2; same says every run sample equals the twin's, the bit-identity of (6)).
+    struct Blk { double gHatDb, pub, resid, runEnergy; bool same; };
+    struct Pair
+    {
+        std::unique_ptr<Proc> run, twin;
+        const std::vector<float>* right = nullptr;
+        size_t pos = 0;
+        std::vector<Blk> t;
+        int at() const { return (int) t.size(); }
+    };
+    auto makePair = [&] (const KV& runKv, const KV& twinKv, const std::vector<float>& right)
+    {
+        Pair q;
+        q.run = make (runKv); q.twin = make (twinKv); q.right = &right;
+        q.t.reserve (720);
+        return q;
+    };
+    auto step = [&] (Pair& q, int blocks)
+    {
+        juce::AudioBuffer<float> a (2, block), b (2, block);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < blocks; ++k)
+        {
+            if (q.pos + (size_t) block > total) { check (false, "State test 130 ran past its input"); return; }
+            for (int i = 0; i < block; ++i)
+            {
+                const size_t s = q.pos + (size_t) i;
+                a.setSample (0, i, inL[s]); a.setSample (1, i, (*q.right)[s]);
+                b.setSample (0, i, inL[s]); b.setSample (1, i, (*q.right)[s]);
+            }
+            midi.clear(); q.run->processBlock (a, midi);
+            midi.clear(); q.twin->processBlock (b, midi);
+            double num = 0.0, den = 0.0, er = 0.0;
+            bool same = true;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const double x = (double) a.getSample (ch, i), y = (double) b.getSample (ch, i);
+                    num += x * y; den += y * y; er += x * x;
+                    same = same && juce::exactlyEqual (a.getSample (ch, i), b.getSample (ch, i));
+                }
+            const double g = den > 0.0 ? num / den : 0.0;
+            double res = 0.0;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const double e = (double) a.getSample (ch, i) - g * (double) b.getSample (ch, i);
+                    res += e * e;
+                }
+            q.t.push_back ({ 20.0 * std::log10 (juce::jmax (std::abs (g), 1.0e-12)),
+                             (double) q.run->getEngine().getMatchGainDb(), er > 0.0 ? res / er : 0.0, er, same });
+            q.pos += (size_t) block;
+        }
+    };
+
+    // M1 over one event. g_run = ghat + gT; D = g_run - pub. D is read from `from` (the first
+    // full-level block) to `to`. The envelope is read from the event on: ghat stays between the
+    // level before (0 dB: run and twin agree until the event) and the level after (pub - gT, over
+    // the published values of the window, which still drift), both ways where the twin shares the
+    // duck and upward only where the run's own ordinary duck dips it.
+    struct Verdict { double dF, pubF, gRunF, maxAbsD, envOut, resid, minGhat; };
+    auto measure = [] (const Pair& q, int ev, int from, int to, double gT, bool sharedDuck)
+    {
+        Verdict v { 0.0, q.t[(size_t) from].pub, q.t[(size_t) from].gHatDb + gT, 0.0, 0.0, 0.0, 1.0e9 };
+        v.dF = v.gRunF - v.pubF;
+        double lo = 0.0, hi = 0.0;
+        for (int b = ev; b <= to; ++b)
+        {
+            lo = juce::jmin (lo, q.t[(size_t) b].pub - gT);
+            hi = juce::jmax (hi, q.t[(size_t) b].pub - gT);
+        }
+        for (int b = ev; b <= to; ++b)
+        {
+            const Blk& r = q.t[(size_t) b];
+            v.envOut = juce::jmax (v.envOut, r.gHatDb - hi, sharedDuck ? lo - r.gHatDb : 0.0);
+            if (b < from) { v.minGhat = juce::jmin (v.minGhat, r.gHatDb); continue; }
+            v.maxAbsD = juce::jmax (v.maxAbsD, std::abs (r.gHatDb + gT - r.pub));
+            v.resid   = juce::jmax (v.resid, r.resid);
+        }
+        return v;
+    };
+    char what[320];
+    auto expectLand = [&] (const char* leg, const Pair& q, int ev, int from, double gT, bool sharedDuck)
+    {
+        const Verdict v = measure (q, ev, from, from + win - 1, gT, sharedDuck);
+        std::printf ("  %-58s: LAND   D_F %+.3f dB (g_run %+.3f, pub %+.3f), max|D| %.3f, envelope %+.3f,"
+                     " resid %.1e\n",
+                     leg, v.dF, v.gRunF, v.pubF, v.maxAbsD, v.envOut, v.resid);
+        std::snprintf (what, sizeof what, "%s: Level Match lands on the published value (max|D| <= 0.1 dB for 0.6 s)",
+                       leg);
+        check (v.maxAbsD <= 0.1, what);
+        std::snprintf (what, sizeof what, "%s: no swell and no dip (within 0.2 dB of the levels before and after)", leg);
+        check (v.envOut <= 0.2, what);
+        std::snprintf (what, sizeof what, "premise: %s: the published value is >= 3 dB from the unity the pre-fix "
+                                          "fade-in started at", leg);
+        check (std::abs (v.pubF) >= 3.0, what);
+        std::snprintf (what, sizeof what, "non-vacuity: %s: the run is the twin times one gain (resid <= 1e-3)", leg);
+        check (v.resid <= 1.0e-3, what);
+        if (! sharedDuck)
+        {
+            std::snprintf (what, sizeof what, "non-vacuity: %s: the run's own ordinary duck is visible (<= -20 dB)", leg);
+            check (v.minGhat <= -20.0, what);
+        }
+    };
+    auto expectGlide = [&] (const char* leg, const Pair& q, int ev, double gT, double gPre, double minPhi,
+                            double minSpan, bool sharedDuck)
+    {
+        const Verdict v = measure (q, ev, ev + full, ev + full, gT, sharedDuck);
+        const double phi = v.dF / (gPre - v.pubF);
+        std::printf ("  %-58s: GLIDES D_F %+.3f dB (g_run %+.3f, pub %+.3f, from %+.3f), phi %.2f, resid %.1e\n",
+                     leg, v.dF, v.gRunF, v.pubF, gPre, phi, v.resid);
+        std::snprintf (what, sizeof what, "%s: Level Match still glides from where it was (phi >= %.1f; F13(2))",
+                       leg, minPhi);
+        check (phi >= minPhi, what);
+        std::snprintf (what, sizeof what, "premise: %s: the glide spans >= %.1f dB", leg, minSpan);
+        check (std::abs (gPre - v.pubF) >= minSpan, what);
+        std::snprintf (what, sizeof what, "non-vacuity: %s: the run is the twin times one gain (resid <= 1e-3)", leg);
+        check (v.resid <= 1.0e-3, what);
+    };
+    // Apply in both: the twin locks the same value, so both are Level Match off at Output Gain m.
+    auto applyBoth = [&] (Pair& q)
+    {
+        q.run->applyAutoGain();  q.run->pollUndoCoalesce();
+        q.twin->applyAutoGain(); q.twin->pollUndoCoalesce();
+        const float m = raw (*q.run, "outputGain");
+        check (juce::exactlyEqual (m, raw (*q.twin, "outputGain")) && ! on (*q.run) && ! on (*q.twin)
+                   && q.run->canUndo(),
+               "liveness: Apply locked one value into Output Gain in the run and the twin and turned Level Match off");
+        return m;
+    };
+    // An Undo of Apply in the run; the same forced duck, nothing else, in the twin.
+    auto undoApply = [&] (Pair& q, float m, bool again)
+    {
+        const int ev = q.at();
+        q.run->undo(); q.twin->getEngine().requestDuck();
+        check (on (*q.run) && std::abs (raw (*q.run, "outputGain") + 3.0f) < 1.0e-4f && q.run->canRedo()
+                   && ! on (*q.twin) && juce::exactlyEqual (raw (*q.twin, "outputGain"), m),
+               again ? "liveness: the second Undo restored Level Match on at Output Gain -3 (Redo available)"
+                     : "liveness: Undo restored Level Match on at Output Gain -3 (Redo available); the twin kept m");
+        return ev;
+    };
+
+    const KV haas = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "width", 1.3f },
+                      { "drive", 8.0f }, { "outputGain", -3.0f }, { "autoGainMatch", 1.0f } };
+
+    // ---- (1) Undo of Apply, cycled Apply -> Undo -> Redo -> Undo at Drive 8 (TESTING_POLICY 3a) ----
+    {
+        auto q = makePair (haas, haas, inR);
+        step (q, conv);
+        const float m = applyBoth (q);
+        step (q, gap);
+        int ev = undoApply (q, m, false);
+        step (q, full + win);
+        expectLand ("(1) Drive 8: Undo of Apply", q, ev, ev + full, (double) m, true);
+
+        ev = q.at();
+        q.run->redo(); q.twin->getEngine().requestDuck();
+        check (! on (*q.run) && juce::exactlyEqual (raw (*q.run, "outputGain"), m)
+                   && ! q.run->canRedo() && q.run->canUndo(),
+               "liveness: Redo restored Level Match off at the applied Output Gain (Undo available, Redo spent)");
+        step (q, full + win);
+        double worst = 0.0;
+        for (int b = ev + full; b < ev + full + win; ++b)
+            worst = juce::jmax (worst, std::abs (q.t[(size_t) b].gHatDb + (double) m
+                                                     - (double) raw (*q.run, "outputGain")));
+        std::printf ("  %-58s: applied gain - Output Gain, worst %.4f dB\n",
+                     "(1) Drive 8: Redo (Level Match off again)", worst);
+        check (worst <= 0.02, "(1) Redo: the applied gain is the applied Output Gain (within 0.02 dB) -- unchanged");
+
+        ev = undoApply (q, m, true);
+        step (q, full + win);
+        expectLand ("(1) Drive 8: Undo again after Redo (the cycle)", q, ev, ev + full, (double) m, true);
+    }
+    for (const float drive : { 4.0f, 10.0f })
+    {
+        auto q = makePair (with (haas, { { "drive", drive } }), with (haas, { { "drive", drive } }), inR);
+        step (q, conv);
+        const float m = applyBoth (q);
+        step (q, gap);
+        const int ev = undoApply (q, m, false);
+        step (q, full + win);
+        expectLand (drive < 5.0f ? "(1) Drive 4: Undo of Apply" : "(1) Drive 10: Undo of Apply",
+                    q, ev, ev + full, (double) m, true);
+    }
+
+    // ---- (2) Level Match engaged by hand: an ORDINARY duck (the twin takes none) ----
+    {
+        auto q = makePair (haas, haas, inR);
+        step (q, conv);
+        const float m = applyBoth (q);
+        step (q, gap);
+        const int ev = q.at();
+        userEdit (*q.run, "autoGainMatch", 1.0f);
+        check (on (*q.run) && juce::exactlyEqual (raw (*q.run, "outputGain"), m) && q.run->canUndo(),
+               "liveness: the hand re-engage turned Level Match on and left Output Gain at the applied value");
+        step (q, full + win);
+        expectLand ("(2) hand re-engage after Apply", q, ev, ev + full, (double) m, false);
+    }
+    {
+        const KV kv = with (haas, { { "outputGain", -12.0f }, { "autoGainMatch", 0.0f } });
+        auto q = makePair (kv, kv, inR);
+        step (q, conv);
+        const int ev = q.at();
+        userEdit (*q.run, "autoGainMatch", 1.0f);
+        check (on (*q.run) && ! on (*q.twin) && std::abs (raw (*q.run, "outputGain") + 12.0f) < 1.0e-4f && q.run->canUndo(),
+               "liveness: the hand engage turned Level Match on at Output Gain -12 dB");
+        step (q, full + win);
+        expectLand ("(2) hand engage from Output Gain -12 dB", q, ev, ev + full, -12.0, false);
+    }
+
+    // ---- (3) a POSITIVE match: Width 0 on the anti-correlated stream ----
+    {
+        const KV kv = with (haas, { { "amount", 0.0f }, { "width", 0.0f }, { "drive", 0.0f } });
+        auto q = makePair (kv, kv, antiR);
+        step (q, conv);
+        const float m = applyBoth (q);
+        check (m >= 3.0f, "premise: (3) the matched gain Apply locked is positive (>= +3 dB): the pre-fix fade-in dipped");
+        step (q, gap);
+        const int ev = undoApply (q, m, false);
+        step (q, full + win);
+        expectLand ("(3) positive match: Undo of Apply", q, ev, ev + full, (double) m, true);
+    }
+
+    // ---- (4)/(5) user presets. The suite writes the REAL preset folder (State test 8): unique names,
+    //      a same-named user file is parked and put back, ours are deleted before and after. ----
+    const juce::String onName ("__anamorph_st130_match_on__"), offName ("__anamorph_st130_match_off__");
+    const juce::File presetDir = anamorph::PresetManager::presetDirectory();
+    const juce::File onFile  = presetDir.getChildFile (onName  + anamorph::PresetManager::fileSuffix());
+    const juce::File offFile = presetDir.getChildFile (offName + anamorph::PresetManager::fileSuffix());
+    const juce::File parkedOn  = juce::File::createTempFile (".st130on.parked");
+    const juce::File parkedOff = juce::File::createTempFile (".st130off.parked");
+    const bool hadOn = onFile.existsAsFile(), hadOff = offFile.existsAsFile();
+    if (hadOn)  { parkedOn.deleteFile();  onFile.moveFileTo (parkedOn); }
+    if (hadOff) { parkedOff.deleteFile(); offFile.moveFileTo (parkedOff); }
+    auto author = [&] (const KV& kv)             // the destination sound, saved with Level Match on and off
+    {
+        onFile.deleteFile(); offFile.deleteFile();
+        auto a = make (kv);
+        const bool savedOn = opCompleted (a->getPresets().saveUser (onName));
+        setPlain (*a, "autoGainMatch", 0.0f);
+        const bool savedOff = opCompleted (a->getPresets().saveUser (offName));
+        check (savedOn && savedOff && onFile.existsAsFile() && offFile.existsAsFile(),
+               "liveness: the author saved both user presets");
+    };
+    auto loadUser = [&] (Proc& p, const juce::File& f)   // the browser's path: rescan, pick the row, load it
+    {
+        auto& presets = p.getPresets();
+        presets.refresh();
+        int index = -1;
+        for (int i = 0; i < presets.entries().size(); ++i)
+            if (! presets.entries().getReference (i).isFactory && presets.entries().getReference (i).file == f)
+                index = i;
+        return index >= 0 && opCompleted (presets.load (index));
+    };
+
+    for (const float algo : { 0.0f, 2.0f })                      // Haas at Drive 8, Chorus at Drive 10
+    {
+        // Chorus publishes only -3.11 dB at Drive 8, 0.11 dB clear of the 3 dB premise; Drive 10: -4.25.
+        const KV kv = with (haas, { { "algorithm", algo }, { "drive", algo < 1.0f ? 8.0f : 10.0f } });
+        author (kv);
+        auto q = makePair (kv, kv, inR);
+        step (q, conv);
+        for (int reload = 1; reload <= 2; ++reload)
+        {
+            const float m = applyBoth (q);
+            step (q, gap);
+            const float rateBefore = raw (*q.run, "chorusRate");
+            const int ev = q.at();
+            const bool loaded = loadUser (*q.run, onFile) && loadUser (*q.twin, offFile);
+            const float rateAfter = raw (*q.run, "chorusRate");
+            juce::int32 ib = 0, ia = 0;
+            std::memcpy (&ib, &rateBefore, sizeof ib); std::memcpy (&ia, &rateAfter, sizeof ia);
+            check (loaded && on (*q.run) && std::abs (raw (*q.run, "outputGain") + 3.0f) < 1.0e-4f
+                       && ! on (*q.twin) && std::abs (raw (*q.twin, "outputGain") + 3.0f) < 1.0e-4f
+                       && ! juce::exactlyEqual (m, raw (*q.run, "outputGain")),
+                   "liveness: the reload turned Level Match on at Output Gain -3 (the twin's copy: off at -3)");
+            if (reload == 1)
+            {
+                check (std::abs (rateAfter - rateBefore) <= 1.0e-6f * std::abs (rateBefore),
+                       "premise: the first reload moves Chorus Rate by a representation difference at most (the file "
+                       "stores the denormalised value; Test 66's ulp legs are the engine half)");
+                if (ia == ib)                                    // reported, not asserted: one libm rounding
+                    std::printf ("  ::warning::(4) %s reload #1 moved Chorus Rate by 0 ulp on this platform (the "
+                                 "default's unsnapped 0-1 round trip returned 0.5 exactly with this libm), so Chorus #1 "
+                                 "does not test a bitwise sound comparison here; Test 66's ulp legs still do\n",
+                                 algo < 1.0f ? "Haas" : "Chorus");
+            }
+            step (q, full + win);
+            char leg[96];
+            std::snprintf (leg, sizeof leg, "(4) %s user preset reload #%d (Chorus Rate %+d ulp)",
+                           algo < 1.0f ? "Haas" : "Chorus", reload, (int) (ia - ib));
+            expectLand (leg, q, ev, ev + full, (double) raw (*q.twin, "outputGain"), true);
+        }
+    }
+
+    // ---- (5) Case B: Level Match turns on AND the sound changes -- still glides (F13(2)) ----
+    {
+        author (with (haas, { { "drive", 10.0f } }));
+        auto q = makePair (haas, haas, inR);
+        step (q, conv);
+        applyBoth (q);
+        step (q, gap);
+        const int ev = q.at();
+        const bool loaded = loadUser (*q.run, onFile) && loadUser (*q.twin, offFile);
+        check (loaded && on (*q.run) && ! on (*q.twin) && std::abs (raw (*q.run, "drive") - 10.0f) < 1.0e-4f
+                   && std::abs (raw (*q.twin, "drive") - 10.0f) < 1.0e-4f
+                   && std::abs (raw (*q.run, "outputGain") + 3.0f) < 1.0e-4f,
+               "liveness: the preset turned Level Match on and Drive to 10 (the twin's copy: Drive 10, off)");
+        step (q, full + 1);
+        expectGlide ("(5) user preset: Level Match on + Drive 8 -> 10", q, ev,
+                     (double) raw (*q.twin, "outputGain"), 0.0, 0.5, 3.0, true);
+    }
+    onFile.deleteFile(); offFile.deleteFile();
+    check (! onFile.existsAsFile() && ! offFile.existsAsFile(), "the test's preset files are removed");
+    if (hadOn)  parkedOn.moveFileTo (onFile);
+    if (hadOff) parkedOff.moveFileTo (offFile);
+
+    for (const float mix : { 0.5f, 1.0f })
+    {
+        // Advanced Mode off: Level Match, Output Gain and Mix do not reach the engine. Turning it on
+        // hands them over in one snapshot -- an ORDINARY duck whose Mix goes live at its entry.
+        const KV twinKv = { { "advancedMode", 0.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "width", 1.3f },
+                            { "drive", 8.0f }, { "outputGain", -3.0f }, { "mix", mix }, { "mbEnable", 0.0f },
+                            { "autoGainMatch", 0.0f } };
+        auto q = makePair (with (twinKv, { { "autoGainMatch", 1.0f } }), twinKv, inR);
+        step (q, conv);
+        const int ev = q.at();
+        userEdit (*q.run, "advancedMode", 1.0f); userEdit (*q.twin, "advancedMode", 1.0f);
+        check (raw (*q.run, "advancedMode") > 0.5f && raw (*q.twin, "advancedMode") > 0.5f && on (*q.run)
+                   && ! on (*q.twin) && std::abs (raw (*q.run, "mix") - mix) < 1.0e-4f
+                   && std::abs (raw (*q.twin, "outputGain") + 3.0f) < 1.0e-4f,
+               "liveness: Advanced Mode is on in both, the Level Match parameter on in the run only, Output Gain -3");
+        if (mix < 1.0f)
+        {
+            step (q, full + 1);
+            expectGlide ("(5) Advanced Mode on, Level Match param on, Mix 0.5", q, ev, -3.0, 0.0, 0.5, 3.0, false);
+        }
+        else
+        {
+            step (q, full + win);
+            expectLand ("(5) control: the same toggle at Mix 1, Multiband off", q, ev, ev + full, -3.0, false);
+        }
+    }
+
+    // ---- (6) A/B: slot B (Level Match off) -> slot A (Level Match on), the same sound ----
+    {
+        auto q = makePair (haas, haas, inR);
+        step (q, conv);
+        for (Proc* p : { q.run.get(), q.twin.get() })
+        {
+            p->abCopyToOther(); p->abSwitchTo (1);
+            userEdit (*p, "autoGainMatch", 0.0f);                // slot B: Level Match off at Output Gain -3
+        }
+        step (q, gap);
+        const int ev = q.at();
+        q.run->abSwitchTo (0); q.twin->getEngine().requestDuck();
+        check (q.run->abActiveSlot() == 0 && on (*q.run) && q.twin->abActiveSlot() == 1 && ! on (*q.twin)
+                   && std::abs (raw (*q.run, "outputGain") + 3.0f) < 1.0e-4f
+                   && std::abs (raw (*q.twin, "outputGain") + 3.0f) < 1.0e-4f,
+               "liveness: the run is back on slot A (Level Match on); the twin stays on slot B (off); Output Gain -3");
+        step (q, full + win);
+        const Verdict v = measure (q, ev, ev + full, ev + full + win - 1, -3.0, true);
+        std::printf ("  %-58s: D_F %+.3f dB (g_run %+.3f, pub %+.3f), max|D| %.3f, resid %.1e\n",
+                     "(6) A/B slot B (off) -> slot A (on), same sound", v.dF, v.gRunF, v.pubF, v.maxAbsD, v.resid);
+        check (v.maxAbsD <= 0.1,
+               "(6) A/B B -> A: the slot's remembered gain is adopted (max|D| <= 0.1 dB) -- unchanged");
+        check (v.resid <= 1.0e-3, "non-vacuity: (6) the run is the twin times one gain (resid <= 1e-3)");
+    }
+    // The injection's priority over a landing. Multiband off, so the Level Match switch moves no H4
+    // dry reference; only the RUN turns Level Match off on slot B. Both switch back to slot A and both
+    // inject its remembered gain, but only the run's switch turns Level Match on and arms a landing:
+    // an injection that keeps priority leaves the run the twin, bit for bit, from F.
+    {
+        const KV kv = with (haas, { { "mbEnable", 0.0f } });
+        auto q = makePair (kv, kv, inR);
+        step (q, conv);
+        for (Proc* p : { q.run.get(), q.twin.get() }) { p->abCopyToOther(); p->abSwitchTo (1); }
+        userEdit (*q.run, "autoGainMatch", 0.0f);                // the run's slot B only
+        step (q, gap);
+        const bool differed = ! q.t.back().same;
+        const int ev = q.at();
+        q.run->abSwitchTo (0); q.twin->abSwitchTo (0);
+        check (q.run->abActiveSlot() == 0 && q.twin->abActiveSlot() == 0 && on (*q.run) && on (*q.twin)
+                   && std::abs (raw (*q.run, "outputGain") + 3.0f) < 1.0e-4f
+                   && std::abs (raw (*q.twin, "outputGain") + 3.0f) < 1.0e-4f,
+               "liveness: (6) Multiband off: both are back on slot A (Level Match on, Output Gain -3)");
+        step (q, full + win);
+        int from = ev + full + win;                              // the first block of the identical tail
+        while (from > ev && q.t[(size_t) from - 1].same)
+            --from;
+        if (from < ev + full + win)
+            std::printf ("  %-58s: the run is the twin (slot B kept on) bit for bit from event%+d\n",
+                         "(6) A/B B (off) -> A (on), Multiband off", from - ev);
+        else
+            std::printf ("  %-58s: the run still differs from the twin at event%+d, the window's last block\n",
+                         "(6) A/B B (off) -> A (on), Multiband off", full + win - 1);
+        check (differed, "non-vacuity: (6) Multiband off: before the switch the run (slot B off) and the twin "
+                         "(slot B on) differ");
+        check (from <= ev + full, "(6) A/B B -> A, Multiband off: the slot's injected gain keeps priority over the "
+                                  "landing (the run is the twin bit for bit from F)");
+    }
+
+    // ---- (7) a host reset one block into the Undo-of-Apply fade-out, and inside its fade-in ----
+    for (const int after : { 1, 4 })
+    {
+        auto q  = makePair (haas, haas, inR);
+        auto qn = makePair (haas, haas, inR);                    // the same Undo, no reset: liveness
+        step (q, conv); step (qn, conv);
+        const float m = applyBoth (q); applyBoth (qn);
+        step (q, gap); step (qn, gap);
+        const int ev = undoApply (q, m, false); undoApply (qn, m, false);
+        step (q, after); step (qn, after);
+        q.run->reset(); q.twin->reset();                         // the host's stop
+        const int from = q.at();
+        step (q, win); step (qn, 1);
+        const Verdict v = measure (q, ev, from, from + win - 1, (double) m, true);
+        const double eReset = q.t[(size_t) from].runEnergy, eNone = qn.t[(size_t) from].runEnergy;
+        char leg[96];
+        std::snprintf (leg, sizeof leg, "(7) host reset %d block%s after Undo of Apply (%s)", after, after > 1 ? "s" : "",
+                       after < 2 ? "fade-out" : "fade-in");
+        std::printf ("  %-58s: D %+.3f dB at the reset (g_run %+.3f, pub %+.3f), max|D| %.3f, resid %.1e;"
+                     " run energy in the reset block %.4g (no reset: %.4g)\n",
+                     leg, v.dF, v.gRunF, v.pubF, v.maxAbsD, v.resid, eReset, eNone);
+        std::snprintf (what, sizeof what, "%s: the gain is the published value from the reset on (max|D| <= 0.1 dB)"
+                                          " -- unchanged", leg);
+        check (v.maxAbsD <= 0.1, what);
+        std::snprintf (what, sizeof what, "non-vacuity: %s: the run is the twin times one gain (resid <= 1e-3)", leg);
+        check (v.resid <= 1.0e-3, what);
+        // Without the reset the two runs are the same deterministic computation, bit for bit.
+        std::snprintf (what, sizeof what, "liveness: %s: the reset reached the engine (the reset block differs from "
+                                          "the same Undo without it)", leg);
+        check (! juce::exactlyEqual (eReset, eNone), what);
+    }
+
+    // ---- (8) Level Match on in both states, an Undo that moves Drive 0 -> 10: still glides (F13(2)) ----
+    {
+        const KV kv = with (haas, { { "drive", 10.0f } });
+        auto q = makePair (kv, with (kv, { { "autoGainMatch", 0.0f }, { "outputGain", 0.0f } }), inR);
+        step (q, 1);
+        userEdit (*q.run, "drive", 0.0f); userEdit (*q.twin, "drive", 0.0f);   // the edit Undo reverts
+        step (q, conv - 1);
+        const double gPre = q.t.back().pub;
+        const int ev = q.at();
+        q.run->undo(); q.twin->undo();
+        check (on (*q.run) && ! on (*q.twin) && std::abs (raw (*q.run, "drive") - 10.0f) < 1.0e-4f
+                   && std::abs (raw (*q.twin, "drive") - 10.0f) < 1.0e-4f && q.run->canRedo(),
+               "liveness: Undo put Drive back to 10 in both (Redo available), Level Match on in the run");
+        step (q, full + 1);
+        expectGlide ("(8) Level Match on in both states, Undo: Drive 0 -> 10", q, ev, 0.0, gPre, 0.3, 1.5, true);
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -38012,6 +38608,7 @@ int main (int argc, char* argv[])
     testAHostResetInsideAForcedSwapLandsSettled();
     testANonFiniteVelvetDensityDoesNotFreezeTheDensity();
     testApplyNeverWritesANonFiniteGain();
+    testLevelMatchEngagesAtTheLevelItMeasured();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

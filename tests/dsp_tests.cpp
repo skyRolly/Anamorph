@@ -7392,6 +7392,939 @@ static void testNonFiniteBurstKeepsLevelMatchAudible()
     check (levelKept,   "...and plays at the Level-Match-off level moved by the pre-burst match gain (within 3 dB)");
 }
 
+// ---------------------------------------------------------------------------
+//  Test 66 -- LEVEL MATCH ENGAGES AT THE LEVEL IT MEASURED WHEN THE SWITCH CHANGES ONLY ITS GAIN
+//  (ADR-0007, Amendment 2026-09-24 -- owner ruling O4g; resolves KI-031, Case B pends on F13(2) / KI-030.
+//  State test 130 is the production-path half.)
+//
+//  THE CLAIM. A duck that turns Level Match on and changes nothing the measurement reads -- only Level
+//  Match itself, Output Gain, Output Balance, Bypass or Band Solo (all after the tap), or a tolerant field by
+//  a representation-sized amount (relative 1e-5) -- starts its fade-in at the published value: no swell, no
+//  dip (Case A). The landing happens at the silent bottom, right after that block's loudness.process, on the
+//  value that block publishes. The same engage carrying anything the measurement reads (the wet at the
+//  tap, the dry reference, the predict's Drive and Mix, compared EXACTLY because any rise pre-ducks), or a
+//  discrete edit that re-arms it, keeps the old start at unity and the glide (Case B, pending F13(2)).
+//  Level Match already on, an A/B injection, Apply, Redo, disengage and a host reset are unchanged.
+//
+//  MEASURED BEFORE THE FIX (engine e9deabe, this test): every Case-A engage glided in from unity. D at the
+//  first full-level block was +2.95 / +4.85 / +5.79 dB for the Undo of Apply at Drive 4 / 8 / 10, -4.95 dB
+//  for the positive match (the mirror dip), +4.85 dB for each hand engage, +6.28 dB with the post-tap
+//  riders and +5.08 / +3.85 / +6.66 dB for the ulp legs; wherever the pre-switch gain sat below the
+//  published value (Undo of Apply, re-engage, from -12 dB, riders) the fade-in also overshot [pre-switch
+//  gain, published] by +3.0 to +7.2 dB; and the (11) bottom block started from unity (D -18.8 / -18.3 dB).
+//  6 of the 29 checks fail there (553 / 6 for the whole suite): LAND, the (3) re-duck (max|D| 1.29 dB),
+//  (11), the sweep's iff, the sweep's post-tap rows and the armed-landing count. The Case-B,
+//  unchanged-path, defensive-consumer and premise checks pass on both engines by design.
+//
+//  THE ORACLE (M1). Each run has an event-matched twin: the same seeded noise and history, the SAME duck
+//  (requestDuck at the same block, the same discrete change, or -- for an ordinary engage whose only
+//  discrete change is Level Match -- an inert opener: a band-count move with Multiband off, a Haas-side
+//  move under Velvet), and Level Match OFF at a known Output Gain g_t. Per 256-sample block the
+//  least-squares gain g^ = sum(run * twin) / sum(twin^2) gives the run's applied gain g = 20 log10 g^ + g_t,
+//  and D = g - the run's published value after that block. The residual a pure gain leaves must be <= 1e-3
+//  wherever D is judged (measured <= 2e-9 landed, <= 1e-4 gliding).
+//    LAND      max|D| <= 0.1 dB over 0.6 s from the first full-level block; from the event on, the applied
+//              gain never leaves [pre-switch gain, published] by more than 0.2 dB (a swell or a dip inside
+//              the fade-in); and an un-ducked -20 dB injection after the window moves the run to -20 dB, so
+//              Level Match is really on (with it off, the Undo-of-Apply shape still reads D = m - pub, 0.11 dB).
+//    NOT LAND  glide fraction phi = D_F / (0 dB - pub_F) >= 0.5 (0.797-0.806 measured, before and after).
+//    UNCHANGED bit-identical, from the first full-level block, to a twin in which no landing can happen.
+//  Premise: every published value judged is >= 3 dB from unity, where the old glide started. The timing
+//  (bottom event+2, first full-level block event+8 at 48 kHz / 256) is computed from the duck's documented
+//  lengths and re-derived from the engine's output: an ordinary-duck twin against the lane with no event --
+//  its last exact zero, and the first block from which the two are bit-identical.
+//
+//  LEGS, and the engine variants they reject (each built from this tree and run through this test; phi and
+//  D quoted under a variant are its failing values):
+//   (1) Undo of Apply, forced, Drive 4 / 8 / 10 (Level Match off at Output Gain m -> on, Output Gain -3).
+//   (2) The positive match (Width 0 on anti-correlated input, m +7.4 dB): the mirror dip.
+//   (3) Ordinary (hand) engages: re-engage at Output Gain m; from -12 / 0 / +6; and one snapshot carrying
+//       Output Gain, Output Balance 0.3, Band Solo band 2 (Multiband on) and Bypass on -> off (measured once
+//       its crossfade settles). Every lane's history opens one DIRTY ordinary duck (msMode + Drive) long
+//       before its event, so an ordinary entry that ORs the flag instead of assigning it fails here; so does
+//       a predicate comparing Output Gain ((1)-(3)) or Band Solo, or comparing mbSolo in M/S Solo's place.
+//       And a hand re-engage four blocks into the fade-in of a DIRTY disengage (Level Match off with Width
+//       +1e-4): a FadeIn re-duck, whose fresh fade-out must clear the flag it inherits. Rejects a re-duck
+//       entry that keeps it (max|D| 1.29 dB).
+//   (4) Every tolerant field in ONE forced engage (a single field over its tolerance refuses it): width, Haas
+//       delay, amount, input balance and four band widths at +/-1 ulp, and the three crossovers and the Mono
+//       Maker frequency -- the log-mapped fields -- at +/-2e-6 relative, just over the 1.6e-6 preset round
+//       trip drift that sizes the 1e-5 tolerance (Haas, Multiband, Mono Maker); then rate, depth, width,
+//       amount and balance under Chorus, and density, width, amount and balance under Velvet, at +/-1 ulp.
+//       Rejects an all-exact compare, an exact velvetDensity compare (Velvet D_F +6.66 dB), a tolerance
+//       tightened below the drift (1e-6 and 2e-7: Haas D_F +5.08 dB), and a forced entry that keeps a stale
+//       flag.
+//   (5) Case B, forced and ordinary-same-snapshot: Drive +0.01 dB and +1 ulp, Width +0.001, Mix -0.001 and
+//       -1 ulp, algorithm, M/S solo, msMode, band count (Multiband on), Mono Maker, Oversampling factor, Drive
+//       8 -> 10; a Drive edit arriving mid-fade-out, and one that returns to its start before the bottom; an
+//       ordinary Drive 8 -> 10 engage upgraded to forced one block into its fade-out (Multiband off); and
+//       the discrete edits that change no sample but re-arm (Haas side under Velvet, band count with
+//       Multiband off). Rejects, in turn: no dirty flag (ordinary legs), no mid-duck marking (mid-fade-out
+//       legs), no measurement predicate (forced legs), a tolerant Drive compare (Drive +1 ulp), a tolerant
+//       Mix compare alone (Mix -1 ulp), Width not compared, an upgrade to forced that clears the dirty flag
+//       (the upgrade leg), and no !procChanged term (re-arm legs). phi was <= 0.008 on every leg a variant
+//       broke.
+//   (6) A/B shape (requestDuck + inject m-5 / m+4 + Level Match on): bit-identical from the first full-level
+//       block to the same switch between two Level-Match-on slots. And the DEFENSIVE consumer: an ordinary
+//       engage whose bottom block also takes an injection (m-5, no forced duck), bit-identical from the
+//       first full-level block to the same injection with Level Match on throughout. A landing that
+//       overrides the injection is never identical inside the window: rejects either consumer leaving the
+//       landing armed (the defensive one alone: identical only from event+122). Non-vacuity: each injection
+//       is >= 1 dB off the published value.
+//   (7) Redo (forced on -> off) and Apply (ordinary on -> off): bit-identical to a twin already off.
+//   (8) Level Match on on both sides, forced Drive 0 -> 10: phi >= 0.3 (0.755). This PINS CURRENT BEHAVIOUR
+//       pending F13(2); it does not claim the glide is right.
+//   (9) A host reset one block into the fade-out and one block into the fade-in: bit-identical from the
+//       reset block to the same reset inside a Level-Match-on-both duck, and max|D| <= 0.1 dB.
+//  (10) FIELD SWEEP, derived from the engine rather than from a name list. For each base and each
+//       EngineParameters member (the structured binding below makes the member count a compile error to get
+//       wrong), a pair of Level-Match-OFF engines sharing one forced duck and differing only in that field
+//       decides "measurement-inert" by a bit-identical published trajectory, and the engaging engine must
+//       land (phi < 0.25) exactly when it is. Bases: H (Haas, Multiband off, Mono Maker off), C (Chorus,
+//       Multiband 4 bands, Mono Maker on, Mix 1), and M / M2 / M3 (Multiband on with ONE / TWO / THREE
+//       bands; Multiband rows only, where the band-count guards decide). The post-tap fields are the
+//       contract's declared exclusions: they must land, and their published effect must be nil or -- Bypass
+//       and the switch itself, with Multiband on at Mix 100% -- the documented H4 reference switch
+//       (<= 0.0064 dB; 2e-4 measured). Rejects unguarded Haas fields (C), unguarded Multiband fields (H), a
+//       missing band-count guard (M), a guard threshold one band too high (the low crossover / mid width
+//       at >= 3 bands: they move yet land in M2; the mid crossover / hi-mid width at >= 4: in M3), an
+//       unguarded dimMode, and every predicate variant above.
+//  (11) WHEN the landing happens. An ordinary gain-only engage while the matcher converges fast: Width 0,
+//       amount 0, Drive 0, Multiband off, the input anti-phase (R = -L: the wet vanishes and the match climbs
+//       past +22 dB) until 1 / 2 blocks before the event, then correlated, so the published value moves
+//       ~0.65 dB across the bottom block itself (non-vacuity: >= 0.3 dB). The twin opens the same duck with
+//       an inert band-count move. The bottom block must play at the value that block publishes, |D| <= 0.1
+//       dB (0.000 measured). After the bottom the applied gain follows the moving published value through
+//       Level Match's smoother and trails it (D(bot+1) +0.66, D_F +3.5 dB here), so only the bottom block is
+//       judged. Rejects landing on the previous block's published value, before the measurement (D(bot)
+//       +0.63 / +0.66 dB).
+//  The allocation guard (tests/AllocationGuard.h, Test 38's pattern) is armed around setParameters + process
+//  from every event to its first full-level block, and a landing counts only when |D| <= 0.1 dB at that
+//  armed block: the gain could only have left unity at the bottom inside the armed run of blocks. (The
+//  (11) bottom blocks lie inside the same armed run.)
+//
+//  NOT REJECTED, by construction: dropping a DISCRETE field from the predicate (each is also a re-arm
+//  trigger, so !procChanged refuses it first -- Mono Maker Enable measured). A sound change made live
+//  BEFORE the engage duck opens (the F13(2) boundary) is not asserted here.
+static void testLevelMatchEngagesAtTheLevelItMeasured()
+{
+    std::printf ("Test 66: Level Match engages at the level it measured when the switch changes only its gain (ADR-0007)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    using anamorph::AnamorphEngine;
+    using anamorph::Algorithm;
+    using anamorph::HaasSide;
+    using anamorph::OversampleFactor;
+    using anamorph::SoloMode;
+    using Params = anamorph::EngineParameters;
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256, nch = 2, blk = bs * nch;
+
+    // THE DUCK'S TIMING, from its documented lengths (AnamorphEngine::prepare: ~6 ms out, ~28 ms in) and
+    // re-derived from the engine's own output in group A (premise): 288 samples of fade-out put the silent
+    // bottom at event + 2, and 1344 samples of fade-in from there make event + 8 the first full-level block.
+    const int fadeOut = (int) std::lround (0.006 * sr), fadeIn = (int) std::lround (0.028 * sr);
+    const int kBot  = fadeOut / bs + 1;
+    const int kFull = kBot + (fadeIn + bs - 1) / bs;
+    const int kWin  = (int) std::lround (0.6 * sr / bs);           // the 0.6 s evaluation window
+    const int hist  = (int) std::lround (0.1 * sr / bs);           // the dirty history duck (below)
+
+    // ONE FIELD COUNT, CHECKED BY THE COMPILER. The sweep (group S) needs a row for every EngineParameters
+    // member; this binding stops compiling the day the struct gains or loses one.
+    {
+        const Params probe;
+        [[maybe_unused]] const auto& [f01, f02, f03, f04, f05, f06, f07, f08, f09, f10, f11, f12,
+                                      f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24,
+                                      f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36] = probe;
+    }
+
+    const auto guard = anamorph::testing::selfCheck();
+    const bool guardLive = guard.newLive || guard.mallocLive;
+    if (! guardLive)
+        std::printf ("::warning::the allocation guard is compiled out in this build -- Test 66's landings are "
+                     "NOT allocation-checked by it in this run (RealtimeSanitizer, where present, covers them).\n");
+
+    // ---- lanes: engines run in lockstep on one seeded input stream ------------------------------------
+    struct Lane
+    {
+        Params pre;                                              // the pre-event snapshot
+        std::function<void (int, AnamorphEngine&, Params&)> at;  // per block, before setParameters
+        int last = 0, keep = 0;
+        std::unique_ptr<AnamorphEngine> e;
+        juce::AudioBuffer<float> buf;
+        std::vector<float> pub, y;                               // published dB per block; output from `keep`
+    };
+    // Every lane's history opens one DIRTY ordinary duck -- msMode and Drive in one snapshot -- long before
+    // its event, so a flag that outlived that duck would refuse every landing below.
+    const auto applyHistory = [hist] (int b, Params& s) { if (b < hist) { s.msMode = ! s.msMode; s.driveDb += 1.0f; } };
+
+    long worstNew = 0, worstMalloc = 0;
+    int  armedCalls = 0;
+    // anti: anti-correlated input throughout. antiPhaseUntil (group G): the blocks before it carry R = -L
+    // exactly, the blocks from it the ordinary correlated input.
+    const auto runLanes = [&] (std::vector<Lane>& lanes, int ev, bool anti, int seed, int antiPhaseUntil = -1)
+    {
+        int blocks = 0;
+        for (auto& ln : lanes)
+        {
+            Params s0 = ln.pre;
+            applyHistory (0, s0);
+            ln.e = std::make_unique<AnamorphEngine>();   // heap: Test 59's note (1 MB-stack lane)
+            ln.e->primeParameters (s0);
+            ln.e->prepare (sr, bs);
+            ln.e->setParameters (s0);
+            ln.keep = ev - 1;
+            ln.buf.setSize (nch, bs);
+            ln.pub.reserve ((size_t) ln.last + 1);
+            ln.y.reserve ((size_t) (ln.last + 1 - ln.keep) * blk);
+            blocks = juce::jmax (blocks, ln.last + 1);
+        }
+        juce::Random rng (seed);
+        juce::AudioBuffer<float> in (nch, bs);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < bs; ++i)
+            {
+                const float v = rng.nextFloat() - 0.5f, w = rng.nextFloat() - 0.5f;
+                in.setSample (0, i, v);
+                in.setSample (1, i, b < antiPhaseUntil ? -v : anti ? -0.5f * v + 0.5f * w : 0.6f * v + 0.2f * w);
+            }
+            for (auto& ln : lanes)
+            {
+                if (b > ln.last) continue;
+                Params snap = ln.pre;
+                applyHistory (b, snap);
+                ln.at (b, *ln.e, snap);
+                for (int c = 0; c < nch; ++c) ln.buf.copyFrom (c, 0, in, c, 0, bs);
+                if (b >= ev && b <= ev + kFull)          // the event, its bottom (the landing) and the fade-in
+                {
+                    anamorph::testing::resetCounts();
+                    {
+                        anamorph::testing::Armed arm;
+                        ln.e->setParameters (snap);
+                        ln.e->process (ln.buf);
+                    }
+                    ++armedCalls;
+                    worstNew    = juce::jmax (worstNew,    anamorph::testing::newCount.load());
+                    worstMalloc = juce::jmax (worstMalloc, anamorph::testing::mallocCount.load());
+                }
+                else
+                {
+                    ln.e->setParameters (snap);
+                    ln.e->process (ln.buf);
+                }
+                ln.pub.push_back (ln.e->getMatchGainDb());
+                if (b >= ln.keep)
+                    for (int i = 0; i < bs; ++i) { ln.y.push_back (ln.buf.getSample (0, i)); ln.y.push_back (ln.buf.getSample (1, i)); }
+            }
+        }
+    };
+
+    // ---- M1: the applied gain of run `r`, read against an event-matched twin `t` --------------------
+    struct Fit { double gDb = 0.0, resid = 0.0; bool ok = false; };
+    const auto fit = [&] (const Lane& r, const Lane& t, int b) -> Fit
+    {
+        const float* x = r.y.data() + (size_t) (b - r.keep) * blk;
+        const float* z = t.y.data() + (size_t) (b - t.keep) * blk;
+        double num = 0.0, den = 0.0, ex = 0.0;
+        for (int i = 0; i < blk; ++i) { num += (double) x[i] * z[i]; den += (double) z[i] * z[i]; ex += (double) x[i] * x[i]; }
+        if (! (den > 1.0e-20 && ex > 1.0e-20)) return { 0.0, 0.0, false };
+        const double g = num / den;
+        double res = 0.0;
+        for (int i = 0; i < blk; ++i) { const double d = (double) x[i] - g * z[i]; res += d * d; }
+        return { 20.0 * std::log10 (juce::jmax (1.0e-12, std::abs (g))), res / ex, true };
+    };
+    const auto sameBlock = [&] (const Lane& a, const Lane& c, int b)
+    {
+        return std::memcmp (a.y.data() + (size_t) (b - a.keep) * blk, c.y.data() + (size_t) (b - c.keep) * blk,
+                            sizeof (float) * (size_t) blk) == 0;
+    };
+    // First block from which `a` and `c` are bit-identical through `to` (to + 1: not even the last one).
+    const auto identicalFrom = [&] (const Lane& a, const Lane& c, int from, int to)
+    {
+        int k = to + 1;
+        while (k > from && sameBlock (a, c, k - 1)) --k;
+        return k;
+    };
+
+    struct Judged { double gPre = 0.0, pubF = 0.0, dF = 0.0, phi = 0.0, maxD = 0.0, exc = -1.0e9, resid = 0.0; bool ok = true; };
+    // gT: the twin's applied gain (its Output Gain; Level Match off). wasOn: Level Match was on before the event.
+    const auto judge = [&] (const Lane& r, const Lane& t, double gT, int ev, bool wasOn, int to) -> Judged
+    {
+        Judged j;
+        const Fit f0 = fit (r, t, ev - 1);
+        j.ok   = f0.ok;
+        j.gPre = f0.gDb + gT;                                     // the run's applied gain before the event
+        const int F = ev + kFull;
+        j.pubF = r.pub[(size_t) F];
+        for (int b = ev; b <= to; ++b)
+        {
+            const Fit f = fit (r, t, b);
+            const double g = f.gDb + gT, pb = r.pub[(size_t) b];
+            if (f.ok && b <= ev + kWin)
+                j.exc = juce::jmax (j.exc, juce::jmin (j.gPre, pb) - g, g - juce::jmax (j.gPre, pb));
+            if (b >= F)
+            {
+                j.ok = j.ok && f.ok;
+                if (b == F) j.dF = g - pb;
+                j.maxD  = juce::jmax (j.maxD, std::abs (g - pb));
+                j.resid = juce::jmax (j.resid, f.resid);
+            }
+        }
+        j.phi = j.dF / ((wasOn ? j.gPre : 0.0) - j.pubF);          // off: the smoother held unity (0 dB)
+        return j;
+    };
+    const auto lands = [] (const Judged& j) { return j.ok && j.maxD <= 0.1 && j.exc <= 0.2 && j.resid <= 1.0e-3; };
+
+    int landLegs = 0, armedLandings = 0;
+    const auto countArmed = [&] (const Judged& j) { ++landLegs; if (std::abs (j.dF) <= 0.1) ++armedLandings; };
+    const auto printLand = [] (const char* name, const Judged& j)
+    {
+        std::printf ("  %-58s: pub_F %+6.2f  D_F %+6.3f  max|D| %.3f  excursion %+6.3f  resid %.1e  phi %.3f\n",
+                     name, j.pubF, j.dF, j.maxD, j.exc, j.resid, j.phi);
+    };
+
+    const auto base = [] (Algorithm a, float drive)
+    {
+        Params p;
+        p.algorithm = a; p.algoAmount = 0.5f; p.width = 1.3f; p.driveDb = drive;
+        return p;
+    };
+    const auto matchOn = [] (Params& s) { s.autoGainMatch = true; s.outputGainDb = -3.0f; };
+
+    // =====================================================================================================
+    //  GROUP A -- Haas, Drive 8. Legs (1) at Drive 8, (3), (6), (7), (9), and the timing derivation.
+    // =====================================================================================================
+    const int U = (int) std::lround (2.0 * sr / bs), A = (int) std::lround (1.5 * sr / bs);
+    const int probeB = U + kFull + kWin + 1;                      // the injection probe, read one block later
+    const int lastL  = probeB + 1;
+    const int winTo = U + kFull + kWin;
+
+    bool allLand = true, premises = true, probesLive = true;
+    const auto probeAt = [probeB] (int b, AnamorphEngine& e) { if (b == probeB) e.injectMatchGainDb (-20.0f); };
+    const auto probeOk = [&] (const Lane& r, const Lane& t, double gT)
+    {
+        const Fit f = fit (r, t, probeB + 1);
+        return f.ok && std::abs (f.gDb + gT + 20.0) <= 0.5;
+    };
+
+    // An Apply-then-Undo lane pair (Level Match on until A, then off at Output Gain m; forced Undo at U).
+    struct ApplyMemo { float m = 0.0f; bool set = false, agree = true; };
+    const auto applied = [] (ApplyMemo& memo, int aBlock, int b, AnamorphEngine& e, Params& s)
+    {
+        if (b < aBlock) return;
+        if (b == aBlock)
+        {
+            const float v = e.getMatchGainDb();
+            if (memo.set && ! juce::exactlyEqual (v, memo.m)) memo.agree = false;
+            memo.m = v; memo.set = true;
+        }
+        s.autoGainMatch = false;
+        s.outputGainDb  = memo.m;
+    };
+
+    ApplyMemo mA;
+    {
+        const Params h8 = base (Algorithm::Haas, 8.0f);
+        Params onPre = h8; matchOn (onPre);
+        std::vector<Lane> L;
+        L.reserve (24);
+        const auto add = [&L, lastL] (const Params& pre, std::function<void (int, AnamorphEngine&, Params&)> fn)
+        { Lane ln; ln.pre = pre; ln.at = std::move (fn); ln.last = lastL; L.push_back (std::move (ln)); };
+
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s) { applied (mA, A, b, e, s); if (b == U) e.requestDuck(); });   // 0 tForced
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s)                                                              // 1 rUndo
+             { applied (mA, A, b, e, s); if (b >= U) { if (b == U) e.requestDuck(); matchOn (s); } probeAt (b, e); });
+        for (const float off : { -5.0f, 4.0f })
+        {
+            add (onPre, [&, off] (int b, AnamorphEngine& e, Params& s)                                                     // 2/4 rInj
+                 {
+                     applied (mA, A, b, e, s);
+                     if (b == U) { e.requestDuck(); e.injectMatchGainDb (mA.m + off); }
+                     if (b >= U) matchOn (s);
+                 });
+            add (onPre, [&, off] (int b, AnamorphEngine& e, Params&)                                                       // 3/5 tInj
+                 { if (b == U) { e.requestDuck(); e.injectMatchGainDb (mA.m + off); } });
+        }
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s)                                                              // 6 rRedo
+             { if (b >= U) { if (b == U) e.requestDuck(); s.autoGainMatch = false; s.outputGainDb = mA.m; } });
+        add (onPre, [&] (int b, AnamorphEngine&, Params& s)                                                                // 7 rApplyShape
+             { if (b >= U) { s.autoGainMatch = false; s.outputGainDb = mA.m; } });
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s) { applied (mA, A, b, e, s); });                              // 8 tNone
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s)                                                              // 9 rReengage
+             { applied (mA, A, b, e, s); if (b >= U) s.autoGainMatch = true; probeAt (b, e); });
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s) { applied (mA, A, b, e, s); if (b >= U) s.mbBands = 3; });   // 10 tOrd
+        for (const float og : { -12.0f, 0.0f, 6.0f })                                                                      // 11-13 rHand
+        {
+            Params offPre = h8; offPre.outputGainDb = og;
+            add (offPre, [&] (int b, AnamorphEngine& e, Params& s) { if (b >= U) s.autoGainMatch = true; probeAt (b, e); });
+        }
+        for (const int at : { U + 1, U + kBot + 1 })                                                                       // 14-19 reset
+        {
+            const auto duckAndReset = [U, at] (int b, AnamorphEngine& e)
+            {
+                if (b == U)  e.requestDuck();
+                if (b == at) e.reset (AnamorphEngine::ResetScope::audioTailsOnly);
+            };
+            add (onPre, [&, duckAndReset] (int b, AnamorphEngine& e, Params& s)       // run: Apply, then the engaging Undo
+                 { applied (mA, A, b, e, s); duckAndReset (b, e); if (b >= U) matchOn (s); });
+            add (onPre, [duckAndReset] (int b, AnamorphEngine& e, Params&) { duckAndReset (b, e); });   // Level Match on both
+            add (onPre, [&, duckAndReset] (int b, AnamorphEngine& e, Params& s)       // M1 twin: Level Match off at m
+                 { applied (mA, A, b, e, s); duckAndReset (b, e); });
+        }
+        // (6) the DEFENSIVE consumer: an ordinary engage whose bottom block also takes an injection (no forced
+        // duck). Twin: Level Match on throughout, the same injection, no duck.
+        add (onPre, [&] (int b, AnamorphEngine& e, Params& s)                                                              // 20 rInjOrd
+             { applied (mA, A, b, e, s); if (b >= U) s.autoGainMatch = true; if (b == U + kBot) e.injectMatchGainDb (mA.m - 5.0f); });
+        add (onPre, [&] (int b, AnamorphEngine& e, Params&) { if (b == U + kBot) e.injectMatchGainDb (mA.m - 5.0f); });    // 21 tInjOrd
+        // (3) a DIRTY ordinary disengage (Width +1e-4 with Level Match off), then a hand re-engage four blocks
+        // into its fade-in -- a FadeIn re-duck. Twin: Level Match off at -3, the same two ducks opened by inert
+        // band-count moves (Multiband off).
+        add (onPre, [&] (int b, AnamorphEngine&, Params& s)                                                                // 22 rReduck
+             { if (b >= U) { s.autoGainMatch = false; s.width += 1.0e-4f; } if (b >= U + kBot + 4) s.autoGainMatch = true; });
+        {
+            Params offM3 = h8; offM3.outputGainDb = -3.0f;
+            add (offM3, [&] (int b, AnamorphEngine&, Params& s)                                                            // 23 tReduck
+                 { if (b >= U) { s.mbBands = 3; s.width += 1.0e-4f; } if (b >= U + kBot + 4) s.mbBands = 2; });
+        }
+        runLanes (L, U, false, 6601);
+        const double m = mA.m;
+
+        // Timing, derived: the ordinary-duck twin (an inert band-count move, Multiband off) against the lane
+        // with no event. Last exact-zero sample -> the bottom; first bit-identical block -> full level.
+        const int fullAt = identicalFrom (L[10], L[8], U, winTo);
+        int lastZero = -1;
+        for (int b = U; b < fullAt; ++b)
+            for (int i = 0; i < blk; ++i)
+                if (juce::exactlyEqual (L[10].y[(size_t) (b - L[10].keep) * blk + (size_t) i], 0.0f)) lastZero = b;
+        std::printf ("  %-58s: bottom event%+d, first full-level block event%+d (documented: %+d / %+d)\n",
+                     "duck timing, derived from the engine's output", lastZero + 1 - U, fullAt - U, kBot, kFull);
+        check (lastZero + 1 == U + kBot && fullAt == U + kFull,
+               "premise: the duck's bottom and first full-level block, read from the engine's output, are event+2 / event+8");
+        check (mA.agree, "premise: every Apply lane locked the same value (the lanes share one history)");
+
+        // (1) forced engage in the Undo-of-Apply shape, Drive 8
+        {
+            const Judged j = judge (L[1], L[0], m, U, false, winTo);
+            char nm[96]; std::snprintf (nm, sizeof nm, "(1) Undo of Apply, forced, Drive 8 (m %+.2f)", m);
+            printLand (nm, j);
+            allLand = allLand && lands (j); premises = premises && std::abs (j.pubF) >= 3.0;
+            probesLive = probesLive && probeOk (L[1], L[0], m);
+            countArmed (j);
+        }
+        // (3) ordinary engages: re-engage at Output Gain m, and from Output Gain -12 / 0 / +6
+        {
+            const Judged j = judge (L[9], L[10], m, U, false, winTo);
+            printLand ("(3) hand re-engage after Apply, ordinary (Output Gain m)", j);
+            allLand = allLand && lands (j); premises = premises && std::abs (j.pubF) >= 3.0;
+            probesLive = probesLive && probeOk (L[9], L[10], m);
+            countArmed (j);
+            const float ogs[] = { -12.0f, 0.0f, 6.0f };
+            for (int k = 0; k < 3; ++k)
+            {
+                const Judged jh = judge (L[(size_t) (11 + k)], L[10], m, U, false, winTo);
+                char nm[96]; std::snprintf (nm, sizeof nm, "(3) hand engage, ordinary, from Output Gain %+.0f", (double) ogs[k]);
+                printLand (nm, jh);
+                allLand = allLand && lands (jh) && std::abs (jh.gPre - ogs[k]) <= 0.01;
+                premises = premises && std::abs (jh.pubF) >= 3.0;
+                probesLive = probesLive && probeOk (L[(size_t) (11 + k)], L[10], m);
+                countArmed (jh);
+            }
+            // the FadeIn re-duck: its fresh fade-out clears the dirty flag of the duck it interrupts
+            const int ev2 = U + kBot + 4;
+            const Judged jr = judge (L[22], L[23], -3.0, ev2, false, winTo);
+            printLand ("(3) hand re-engage 4 blocks into a dirty disengage's fade-in", jr);
+            premises = premises && std::abs (jr.pubF) >= 3.0;
+            check (lands (jr), "a hand re-engage that re-ducks a dirty duck's fade-in lands (the fresh fade-out clears "
+                               "the flag it inherited)");
+        }
+        // (6) A/B: requestDuck + inject + Level Match on == the same switch between two Level-Match-on slots
+        bool abSame = true, abVisible = true;
+        for (int k = 0; k < 2; ++k)
+        {
+            const Lane& r = L[(size_t) (2 + 2 * k)];
+            const int from = identicalFrom (r, L[(size_t) (3 + 2 * k)], U, winTo);
+            const Judged j = judge (r, L[0], m, U, false, winTo);
+            std::printf ("  %-58s: bit-identical to the Level-Match-on twin from event%+d; D_F %+.3f dB\n",
+                         k == 0 ? "(6) A/B shape, injection m-5 dB" : "(6) A/B shape, injection m+4 dB", from - U, j.dF);
+            abSame = abSame && from <= U + kFull;
+            abVisible = abVisible && std::abs (j.dF) >= 1.0;
+        }
+        {   // the defensive consumer, at an ORDINARY engaging bottom
+            const int from = identicalFrom (L[20], L[21], U, winTo);
+            const Judged j = judge (L[20], L[10], m, U, false, winTo);
+            std::printf ("  %-58s: bit-identical to the Level-Match-on twin from event%+d; D_F %+.3f dB\n",
+                         "(6) ordinary engage, injection m-5 dB at its bottom block", from - U, j.dF);
+            abVisible = abVisible && std::abs (j.dF) >= 1.0;
+            check (from <= U + kFull, "an injection consumed at an ORDINARY engaging bottom (the defensive consumer) keeps "
+                                      "priority: bit-identical from the first full-level block to the same injection with "
+                                      "Level Match on throughout");
+        }
+        check (abSame, "an A/B injection consumed at a Level-Match-engaging bottom keeps priority: bit-identical from "
+                       "the first full-level block to the same switch between two Level-Match-on slots");
+        check (abVisible, "non-vacuity: the injected gain is >= 1 dB from the published value at the first full-level block");
+        // (7) Redo (forced on -> off) and Apply (ordinary on -> off): unchanged
+        {
+            const int redo = identicalFrom (L[6], L[0], U, winTo), apply = identicalFrom (L[7], L[8], U, winTo);
+            std::printf ("  %-58s: bit-identical to the twin already off from event%+d / event%+d\n",
+                         "(7) Redo (forced on->off) / Apply (ordinary on->off)", redo - U, apply - U);
+            check (redo <= U + kFull && apply <= U + kFull,
+                   "a switch that turns Level Match OFF is unchanged: bit-identical from the first full-level block to a twin already off");
+            check (! sameBlock (L[6], L[0], U - 1) && ! sameBlock (L[7], L[8], U - 1),
+                   "non-vacuity: before the switch the Level-Match-on run and its twin differ");
+        }
+        // (9) host reset one block into the fade-out and one block into the fade-in
+        {
+            bool same = true, near = true, live = true;
+            const int ats[] = { U + 1, U + kBot + 1 };
+            for (int k = 0; k < 2; ++k)
+            {
+                const Lane& r = L[(size_t) (14 + 3 * k)];
+                const int from = identicalFrom (r, L[(size_t) (15 + 3 * k)], ats[k], winTo);
+                double maxD = 0.0;
+                for (int b = ats[k]; b <= ats[k] + kWin; ++b)
+                {
+                    const double g = fit (r, L[(size_t) (16 + 3 * k)], b).gDb + m;
+                    maxD = juce::jmax (maxD, std::abs (g - r.pub[(size_t) b]));
+                }
+                std::printf ("  %-58s: bit-identical to the Level-Match-on-both reset from event%+d; max|D| %.3f dB\n",
+                             k == 0 ? "(9) host reset one block into the fade-out" : "(9) host reset one block into the fade-in",
+                             from - U, maxD);
+                same = same && from <= ats[k];
+                near = near && maxD <= 0.1;
+                live = live && ! sameBlock (r, L[1], ats[k]);
+            }
+            check (same, "a host reset inside an engaging duck lands where the same reset inside a Level-Match-on-both duck does");
+            check (near, "...and the applied gain is the published value from the reset block on (max|D| <= 0.1 dB)");
+            check (live, "liveness: the reset reached the engine (its block differs from the same engage without the reset)");
+        }
+    }
+
+    // =====================================================================================================
+    //  GROUPS B / C -- (1) at Drive 4 and 10, (2) the positive match (Width 0 on anti-correlated input)
+    // =====================================================================================================
+    struct Shape { const char* name = nullptr; Params p; bool anti = false; };
+    Params pos = base (Algorithm::Haas, 0.0f); pos.algoAmount = 0.0f; pos.width = 0.0f;
+    const Shape shapes[] = { { "(1) Undo of Apply, forced, Drive 4", base (Algorithm::Haas, 4.0f), false },
+                             { "(1) Undo of Apply, forced, Drive 10", base (Algorithm::Haas, 10.0f), false },
+                             { "(2) Undo of Apply, forced, positive match (Width 0)", pos, true } };
+    for (const auto& sh : shapes)
+    {
+        ApplyMemo memo;
+        Params onPre = sh.p; matchOn (onPre);
+        std::vector<Lane> L (2);
+        L[0].pre = onPre; L[0].last = lastL;
+        L[0].at  = [&] (int b, AnamorphEngine& e, Params& s) { applied (memo, A, b, e, s); if (b == U) e.requestDuck(); };
+        L[1].pre = onPre; L[1].last = lastL;
+        L[1].at  = [&] (int b, AnamorphEngine& e, Params& s)
+                   { applied (memo, A, b, e, s); if (b >= U) { if (b == U) e.requestDuck(); matchOn (s); } probeAt (b, e); };
+        runLanes (L, U, sh.anti, 6602);
+        const Judged j = judge (L[1], L[0], memo.m, U, false, winTo);
+        char nm[96]; std::snprintf (nm, sizeof nm, "%s (m %+.2f)", sh.name, (double) memo.m);
+        printLand (nm, j);
+        allLand = allLand && lands (j);
+        premises = premises && std::abs (j.pubF) >= 3.0 && (! sh.anti || memo.m >= 3.0f);
+        probesLive = probesLive && probeOk (L[1], L[0], memo.m);
+        countArmed (j);
+    }
+
+    // =====================================================================================================
+    //  GROUP D -- (3) post-tap riders in the engaging snapshot: Output Gain, Output Balance 0.3, Band Solo,
+    //  Bypass (on before the event, off in the snapshot, measured once its crossfade has settled).
+    // =====================================================================================================
+    {
+        Params v = base (Algorithm::Velvet, 8.0f); v.mbEnable = true;
+        v.bypass = true; v.outputGainDb = -12.0f;
+        std::vector<Lane> L (2);
+        L[0].pre = v; L[0].last = lastL;                          // twin: the same riders, opened by an inert Haas-side move
+        L[0].at  = [&] (int b, AnamorphEngine&, Params& s)
+                   { if (b >= U) { s.haasSide = HaasSide::Right; s.outputBalance = 0.3f; s.mbSolo = 0x2; s.bypass = false; } };
+        L[1].pre = v; L[1].last = lastL;
+        L[1].at  = [&] (int b, AnamorphEngine& e, Params& s)
+                   {
+                       if (b >= U)
+                       { s.autoGainMatch = true; s.outputGainDb = 6.0f; s.outputBalance = 0.3f; s.mbSolo = 0x2; s.bypass = false; }
+                       probeAt (b, e);
+                   };
+        runLanes (L, U, false, 6603);
+        const Judged j = judge (L[1], L[0], -12.0, U, false, winTo);
+        printLand ("(3) ordinary engage + Output Gain/Balance, Band Solo, Bypass", j);
+        allLand = allLand && lands (j);
+        premises = premises && std::abs (j.pubF) >= 3.0;
+        probesLive = probesLive && probeOk (L[1], L[0], -12.0);
+        countArmed (j);
+    }
+
+    // =====================================================================================================
+    //  GROUP E -- (4) representation tolerance: every tolerant field in ONE forced engage (a single field over
+    //  the tolerance would refuse it), at +/-1 ulp -- the log-mapped crossovers and Mono Maker frequency at
+    //  +/-2e-6 relative, the preset round trip's drift. Haas + Multiband + Mono Maker, Chorus, and Velvet.
+    // =====================================================================================================
+    {
+        const auto ulp = [] (float& x, float dir) { x = std::nextafter (x, dir * std::numeric_limits<float>::infinity()); };
+        Params hm = base (Algorithm::Haas, 8.0f); hm.inputBalance = 0.2f; hm.mbEnable = true; hm.monoMakerEnable = true;
+        Params ch = base (Algorithm::Chorus, 10.0f); ch.inputBalance = 0.2f;
+        const auto hmUlp = [ulp] (Params& s, float d)
+        {
+            ulp (s.width, d); ulp (s.haasDelayMs, -d); ulp (s.algoAmount, d); ulp (s.inputBalance, -d);
+            // the log-mapped fields by the preset round trip's measured drift (1.6e-6 relative), not 1 ulp
+            s.mbFreqLow *= 1.0f + d * 2.0e-6f; s.mbFreqMid *= 1.0f - d * 2.0e-6f; s.mbFreqHigh *= 1.0f + d * 2.0e-6f;
+            s.monoMakerFreq *= 1.0f + d * 2.0e-6f;
+            ulp (s.mbWidthLow, d); ulp (s.mbWidthMid, -d); ulp (s.mbWidthHiMid, d); ulp (s.mbWidthHigh, -d);
+        };
+        const auto chUlp = [ulp] (Params& s, float d)
+        { ulp (s.chorusRate, d); ulp (s.chorusDepth, -d); ulp (s.width, d); ulp (s.algoAmount, -d); ulp (s.inputBalance, d); };
+        Params vv = base (Algorithm::Velvet, 8.0f); vv.inputBalance = 0.2f;
+        const auto vvUlp = [ulp] (Params& s, float d)
+        { ulp (s.velvetDensity, d); ulp (s.width, -d); ulp (s.algoAmount, d); ulp (s.inputBalance, -d); };
+        struct UlpLeg { const char* name = nullptr; Params p; std::function<void (Params&, float)> f; };
+        const UlpLeg legs[] = { { "(4) 1 ulp / 2e-6: width haasDelay amount balance 3 xover 4 mbWidth MM", hm, hmUlp },
+                                { "(4) +/-1 ulp under Chorus: rate depth width amount balance",          ch, chUlp },
+                                { "(4) +/-1 ulp under Velvet: density width amount balance",            vv, vvUlp } };
+        for (const auto& lg : legs)
+        {
+            std::vector<Lane> L (4);
+            for (int k = 0; k < 2; ++k)
+            {
+                const float d = k == 0 ? 1.0f : -1.0f;
+                Lane& t = L[(size_t) (2 * k)];
+                Lane& r = L[(size_t) (2 * k + 1)];
+                t.pre = r.pre = lg.p;
+                t.last = r.last = lastL;
+                t.at = [&, d] (int b, AnamorphEngine& e, Params& s) { if (b == U) e.requestDuck(); if (b >= U) lg.f (s, d); };
+                r.at = [&, d] (int b, AnamorphEngine& e, Params& s)
+                       { if (b == U) e.requestDuck(); if (b >= U) { s.autoGainMatch = true; lg.f (s, d); } probeAt (b, e); };
+            }
+            runLanes (L, U, false, 6604);
+            for (int k = 0; k < 2; ++k)
+            {
+                const Judged j = judge (L[(size_t) (2 * k + 1)], L[(size_t) (2 * k)], 0.0, U, false, winTo);
+                char nm[96]; std::snprintf (nm, sizeof nm, "%s %s", lg.name, k == 0 ? "(+)" : "(-)");
+                printLand (nm, j);
+                allLand = allLand && lands (j);
+                premises = premises && std::abs (j.pubF) >= 3.0;
+                probesLive = probesLive && probeOk (L[(size_t) (2 * k + 1)], L[(size_t) (2 * k)], 0.0);
+                countArmed (j);
+            }
+        }
+    }
+    check (premises, "premise: every LAND leg's published value is >= 3 dB from unity, where the old glide started "
+                     "(and the positive-match leg's match is >= +3 dB)");
+    check (allLand, "a Level-Match switch that changes only the gain starts at the published value: max|D| <= 0.1 dB over "
+                    "0.6 s from the first full-level block, no excursion beyond [pre-switch gain, published] by > 0.2 dB "
+                    "anywhere in the switch, residual <= 1e-3");
+    check (probesLive, "liveness: Level Match is engaged in every LAND run after its switch (an un-ducked -20 dB "
+                       "injection after the window puts the next block at -20 dB within 0.5 dB)");
+
+    // =====================================================================================================
+    //  GROUP F -- (5) Case B: the same engage carrying a change the measurement reads. NOT LAND: the fade-in
+    //  starts at unity and glides (pending F13(2)). A short pre-roll: the verdict is read at the first
+    //  full-level block, and the predict has put the published value >= 3 dB from unity from the first block.
+    // =====================================================================================================
+    const int UB = (int) std::lround (0.4 * sr / bs);
+    bool caseBGlides = true, caseBPremise = true;
+    {
+        struct Chg { const char* name = nullptr; std::function<void (Params&)> f; };
+        const Chg hmChanges[] = {
+            { "Drive +0.01 dB",           [] (Params& s) { s.driveDb += 0.01f; } },
+            { "Drive +1 ulp",             [] (Params& s) { s.driveDb = std::nextafter (s.driveDb, 100.0f); } },
+            { "Width +0.001",             [] (Params& s) { s.width += 0.001f; } },
+            { "Mix -0.001",               [] (Params& s) { s.mix -= 0.001f; } },
+            { "Mix -1 ulp",               [] (Params& s) { s.mix = std::nextafter (s.mix, 0.0f); } },
+            { "algorithm Haas->Velvet",   [] (Params& s) { s.algorithm = Algorithm::Velvet; } },
+            { "M/S solo Mid",             [] (Params& s) { s.solo = SoloMode::Mid; } },
+            { "msMode on",                [] (Params& s) { s.msMode = true; } },
+            { "mbBands 4->3, Multiband on",[] (Params& s) { s.mbBands = 3; } },
+            { "Mono Maker on",            [] (Params& s) { s.monoMakerEnable = true; } },
+            { "Oversampling Off->2x",     [] (Params& s) { s.oversample = OversampleFactor::x2; } },
+            { "Drive 8->10",              [] (Params& s) { s.driveDb = 10.0f; } },
+        };
+        Params hm = base (Algorithm::Haas, 8.0f); hm.mbEnable = true;
+        std::vector<Lane> L;
+        L.reserve (64);
+        std::vector<juce::String> names;
+        const auto addPair = [&] (juce::String name, std::function<void (int, AnamorphEngine&, Params&)> twinAt,
+                                  std::function<void (int, AnamorphEngine&, Params&)> runAt, const Params& pre)
+        {
+            Lane t; t.pre = pre; t.last = UB + kFull; t.at = std::move (twinAt); L.push_back (std::move (t));
+            Lane r; r.pre = pre; r.last = UB + kFull; r.at = std::move (runAt);  L.push_back (std::move (r));
+            names.push_back (std::move (name));
+        };
+        // One Case-B pair: the twin makes the change with Level Match off, the run makes it with the engage.
+        // (The change is held by pointer: the tables outlive the lanes.)
+        const auto addChange = [&] (const Chg& c, bool forced, const Params& pre)
+        {
+            const auto at = [fn = &c.f, forced, UB] (bool engage)
+            {
+                const int mode = (forced ? 1 : 0) | (engage ? 2 : 0);
+                return [fn, UB, mode] (int b, AnamorphEngine& e, Params& s)
+                {
+                    if (b == UB && (mode & 1) != 0) e.requestDuck();
+                    if (b >= UB) { (*fn) (s); if ((mode & 2) != 0) s.autoGainMatch = true; }
+                };
+            };
+            addPair (juce::String (forced ? "(5) forced + " : "(5) ordinary, same snapshot + ") + c.name, at (false), at (true), pre);
+        };
+        for (const auto& c : hmChanges)
+            for (const bool forced : { true, false })
+                addChange (c, forced, hm);
+        addPair ("(5) ordinary; Drive 8->10 arrives mid-fade-out",
+                 [UB] (int b, AnamorphEngine&, Params& s) { if (b > UB) s.driveDb = 10.0f; },
+                 [UB] (int b, AnamorphEngine&, Params& s) { if (b >= UB) s.autoGainMatch = true; if (b > UB) s.driveDb = 10.0f; }, hm);
+        addPair ("(5) ordinary; Drive 8->10->8 mid-fade-out, back before the bottom",
+                 [UB] (int b, AnamorphEngine&, Params& s) { if (b == UB + 1) s.driveDb = 10.0f; },
+                 [UB] (int b, AnamorphEngine&, Params& s) { if (b >= UB) s.autoGainMatch = true; if (b == UB + 1) s.driveDb = 10.0f; },
+                 hm);
+        // An ordinary engage carrying Drive 8 -> 10 (a dirty duck), upgraded to forced one block into its
+        // fade-out (Multiband off). The twin opens the same ordinary duck with an inert band-count move and
+        // takes the same upgrade.
+        {
+            const Params h = base (Algorithm::Haas, 8.0f);
+            addPair ("(5) ordinary Drive 8->10 + engage, upgraded to forced at +1",
+                     [UB] (int b, AnamorphEngine& e, Params& s) { if (b >= UB) { s.mbBands = 3; s.driveDb = 10.0f; } if (b == UB + 1) e.requestDuck(); },
+                     [UB] (int b, AnamorphEngine& e, Params& s) { if (b >= UB) { s.autoGainMatch = true; s.driveDb = 10.0f; } if (b == UB + 1) e.requestDuck(); },
+                     h);
+        }
+        // Discrete edits that change no sample the measurement reads but re-arm it (processingDiffers): Velvet.
+        const Params vo = base (Algorithm::Velvet, 8.0f);
+        const Chg rearm[] = { { "Haas side under Velvet (re-arms)",      [] (Params& s) { s.haasSide = HaasSide::Right; } },
+                              { "mbBands 4->3, Multiband off (re-arms)", [] (Params& s) { s.mbBands = 3; } } };
+        for (const auto& c : rearm)
+            for (const bool forced : { true, false })
+                addChange (c, forced, vo);
+        runLanes (L, UB, false, 6605);
+        for (size_t k = 0; k < names.size(); ++k)
+        {
+            const Judged j = judge (L[2 * k + 1], L[2 * k], 0.0, UB, false, UB + kFull);
+            std::printf ("  %-58s: pub_F %+6.2f  D_F %+6.3f  phi %.3f  resid %.1e\n", names[k].toRawUTF8(), j.pubF, j.dF, j.phi, j.resid);
+            caseBGlides  = caseBGlides && j.ok && j.phi >= 0.5 && j.resid <= 1.0e-3;
+            caseBPremise = caseBPremise && std::abs (j.pubF) >= 3.0;
+        }
+    }
+    check (caseBPremise, "premise: every Case-B leg's published value is >= 3 dB from unity");
+    check (caseBGlides, "a Level-Match engage that also changes what the measurement reads keeps the glide from unity "
+                        "(phi >= 0.5 at the first full-level block; F13(2) pending)");
+
+    // =====================================================================================================
+    //  GROUP G -- (11) WHEN the landing happens: right after the bottom block's loudness.process, on the value
+    //  that block publishes. An ordinary gain-only engage while the matcher converges fast: Width 0, amount 0,
+    //  Drive 0, Multiband off; the input is anti-phase (R = -L: the wet vanishes and the match climbs to its
+    //  clamp) until `lead` blocks before the event, then correlated, so the published value still moves
+    //  ~0.65 dB across the bottom block itself. The twin opens the same duck with an inert band-count move.
+    // =====================================================================================================
+    {
+        Params w0 = base (Algorithm::Haas, 0.0f); w0.algoAmount = 0.0f; w0.width = 0.0f;
+        bool atBottom = true, whenPremise = true, stepSeen = true;
+        for (const int lead : { 1, 2 })
+        {
+            std::vector<Lane> L (2);
+            L[0].pre = w0; L[0].last = U + kFull;
+            L[0].at  = [U] (int b, AnamorphEngine&, Params& s) { if (b >= U) s.mbBands = 3; };
+            L[1].pre = w0; L[1].last = U + kFull;
+            L[1].at  = [U] (int b, AnamorphEngine&, Params& s) { if (b >= U) s.autoGainMatch = true; };
+            runLanes (L, U, false, 6608, U - lead);
+            const int bot = U + kBot;
+            const Fit f = fit (L[1], L[0], bot);
+            const double pubBot = L[1].pub[(size_t) bot], step = pubBot - L[1].pub[(size_t) bot - 1];
+            const double dBot = f.gDb - pubBot;
+            const double dNext = fit (L[1], L[0], bot + 1).gDb - L[1].pub[(size_t) bot + 1];
+            const double dF = fit (L[1], L[0], U + kFull).gDb - L[1].pub[(size_t) (U + kFull)];
+            char nm[96]; std::snprintf (nm, sizeof nm, "(11) ordinary engage, input turns correlated %d blk before", lead);
+            std::printf ("  %-58s: pub(bot) %+6.2f  step %+6.3f  D(bot) %+6.3f  resid %.1e | D(bot+1) %+6.3f  D_F %+6.3f\n",
+                         nm, pubBot, step, dBot, f.resid, dNext, dF);
+            atBottom    = atBottom && f.ok && std::abs (dBot) <= 0.1 && f.resid <= 1.0e-3;
+            whenPremise = whenPremise && std::abs (pubBot) >= 3.0;
+            stepSeen    = stepSeen && std::abs (step) >= 0.3;
+        }
+        check (whenPremise, "premise: the (11) engages publish >= 3 dB from unity at the bottom block");
+        check (stepSeen, "non-vacuity: the published value moves >= 0.3 dB across the bottom block itself (a landing "
+                         "on the previous block's value would miss by more than the 0.1 dB tolerance)");
+        check (atBottom, "the landing happens right after the bottom block's measurement: the bottom block plays at the "
+                         "value that block publishes (|D| <= 0.1 dB, residual <= 1e-3)");
+    }
+
+    // =====================================================================================================
+    //  GROUP H -- (8) Level Match on on both sides, forced Drive 0 -> 10: PINS current behaviour (F13(2)).
+    // =====================================================================================================
+    {
+        const Params h0 = base (Algorithm::Haas, 0.0f);
+        Params on0 = h0; on0.autoGainMatch = true;
+        std::vector<Lane> L (2);
+        L[0].pre = h0;  L[0].last = UB + kFull;
+        L[0].at  = [UB] (int b, AnamorphEngine& e, Params& s) { if (b >= UB) { if (b == UB) e.requestDuck(); s.driveDb = 10.0f; } };
+        L[1].pre = on0; L[1].last = UB + kFull;
+        L[1].at  = L[0].at;
+        runLanes (L, UB, false, 6606);
+        const Judged j = judge (L[1], L[0], 0.0, UB, true, UB + kFull);
+        std::printf ("  %-58s: pre %+6.2f  pub_F %+6.2f  D_F %+6.3f  phi %.3f  resid %.1e\n",
+                     "(8) Level Match on both sides, forced Drive 0->10", j.gPre, j.pubF, j.dF, j.phi, j.resid);
+        check (std::abs (j.pubF - j.gPre) >= 2.0, "premise: the Drive swap moves the published value >= 2 dB");
+        check (j.ok && j.phi >= 0.3 && j.resid <= 1.0e-3,
+               "Level Match already on: a forced sound change still glides (phi >= 0.3) -- current behaviour, F13(2)");
+    }
+
+    // =====================================================================================================
+    //  GROUP S -- (10) FIELD SWEEP. Per base and field: a pair of Level-Match-OFF engines sharing one forced
+    //  duck, differing only in that field, decides "measurement-inert" by a bit-identical published
+    //  trajectory; the engaging engine must land exactly when it is.
+    // =====================================================================================================
+    {
+        struct Row
+        {
+            const char* name = nullptr;
+            std::function<void (Params&)> set;
+            bool postTap = false, bypassPre = false, isSwitch = false;
+        };
+        const auto otherAlgorithm = [] (Params& s) { s.algorithm = s.algorithm == Algorithm::Haas ? Algorithm::Velvet : Algorithm::Haas; };
+        const Row rows[] = {
+            { "channelMode",     [] (Params& s) { s.channelMode = anamorph::ChannelMode::LeftOnly; }, false, false, false },
+            { "monoSum",         [] (Params& s) { s.monoSum = true; },                  false, false, false },
+            { "swapLR",          [] (Params& s) { s.swapLR = true; },                   false, false, false },
+            { "inputBalance",    [] (Params& s) { s.inputBalance = 0.3f; },             false, false, false },
+            { "polarityL",       [] (Params& s) { s.polarityL = true; },                false, false, false },
+            { "polarityR",       [] (Params& s) { s.polarityR = true; },                false, false, false },
+            { "msMode",          [] (Params& s) { s.msMode = true; },                   false, false, false },
+            { "driveDb",         [] (Params& s) { s.driveDb += 1.0f; },                 false, false, false },
+            { "algorithm",       otherAlgorithm,                                         false, false, false },
+            { "algoAmount",      [] (Params& s) { s.algoAmount += 0.2f; },              false, false, false },
+            { "haasDelayMs",     [] (Params& s) { s.haasDelayMs = 18.0f; },             false, false, false },
+            { "haasSide",        [] (Params& s) { s.haasSide = HaasSide::Right; },      false, false, false },
+            { "velvetDensity",   [] (Params& s) { s.velvetDensity = 0.8f; },            false, false, false },
+            { "chorusRate",      [] (Params& s) { s.chorusRate = 2.0f; },               false, false, false },
+            { "chorusDepth",     [] (Params& s) { s.chorusDepth = 0.8f; },              false, false, false },
+            { "dimMode",         [] (Params& s) { s.dimMode = 3; },                     false, false, false },
+            { "width",           [] (Params& s) { s.width += 0.3f; },                   false, false, false },
+            { "mbEnable",        [] (Params& s) { s.mbEnable = ! s.mbEnable; },         false, false, false },
+            { "mbBands",         [] (Params& s) { s.mbBands = s.mbBands == 3 ? 2 : 3; }, false, false, false },
+            { "mbSolo",          [] (Params& s) { s.mbSolo = 0x2; },                    true,  false, false },
+            { "mbFreqLow",       [] (Params& s) { s.mbFreqLow = 300.0f; },              false, false, false },
+            { "mbFreqMid",       [] (Params& s) { s.mbFreqMid = 1200.0f; },             false, false, false },
+            { "mbFreqHigh",      [] (Params& s) { s.mbFreqHigh = 5000.0f; },            false, false, false },
+            { "mbWidthLow",      [] (Params& s) { s.mbWidthLow = 1.6f; },               false, false, false },
+            { "mbWidthMid",      [] (Params& s) { s.mbWidthMid = 1.6f; },               false, false, false },
+            { "mbWidthHiMid",    [] (Params& s) { s.mbWidthHiMid = 1.6f; },             false, false, false },
+            { "mbWidthHigh",     [] (Params& s) { s.mbWidthHigh = 1.6f; },              false, false, false },
+            { "monoMakerEnable", [] (Params& s) { s.monoMakerEnable = ! s.monoMakerEnable; }, false, false, false },
+            { "monoMakerFreq",   [] (Params& s) { s.monoMakerFreq = 250.0f; },          false, false, false },
+            { "mix",             [] (Params& s) { s.mix = 0.8f; },                      false, false, false },
+            { "outputGainDb",    [] (Params& s) { s.outputGainDb = -6.0f; },            true,  false, false },
+            { "outputBalance",   [] (Params& s) { s.outputBalance = 0.3f; },            true,  false, false },
+            { "autoGainMatch",   [] (Params&) {},                                        true,  false, true  },
+            { "solo",            [] (Params& s) { s.solo = SoloMode::Mid; },            false, false, false },
+            { "oversample",      [] (Params& s) { s.oversample = OversampleFactor::x2; }, false, false, false },
+            { "bypass",          [] (Params& s) { s.bypass = false; },                  true,  true,  false },
+        };
+        constexpr int nRows = (int) (sizeof (rows) / sizeof (rows[0]));
+        check (nRows == 36, "premise: the sweep has one row per EngineParameters member (36, the binding above)");
+
+        const int US = (int) std::lround (0.3 * sr / bs), lastS = US + kFull + 8;
+        Params sh = base (Algorithm::Haas, 8.0f);
+        Params sc = base (Algorithm::Chorus, 10.0f); sc.mbEnable = true; sc.monoMakerEnable = true;
+        Params sm = base (Algorithm::Haas, 8.0f);    sm.mbEnable = true; sm.mbBands = 1;
+        Params sm2 = sm; sm2.mbBands = 2;
+        Params sm3 = sm; sm3.mbBands = 3;
+        // H and C are the two states the contract names; M, M2 and M3 (Multiband on with ONE, TWO and THREE
+        // bands) run the Multiband rows only, where the band-count guards decide: with one band no crossover
+        // and no upper width is heard, with two the low crossover and the mid width are, with three the mid
+        // crossover and the hi-mid width too -- so each guard's threshold, not only its presence, is pinned.
+        struct SweepBase { const char* name = nullptr; Params p; bool mbRowsOnly = false; int minInert = 0, minLive = 0; };
+        const SweepBase bases[] = { { "H", sh, false, 3, 15 }, { "C", sc, false, 3, 15 }, { "M", sm, true, 3, 2 },
+                                    { "M2", sm2, true, 3, 2 }, { "M3", sm3, true, 2, 2 } };
+        constexpr int nBases = (int) (sizeof (bases) / sizeof (bases[0]));
+        const auto mbRow = [] (const char* n) { return std::strncmp (n, "mb", 2) == 0; };
+        bool iff = true, postTapOk = true, sweepPremise = true, classesSeen = true;
+        char verdict[nBases][nRows][48] = {};
+        for (int bi = 0; bi < nBases; ++bi)
+        {
+            std::vector<Lane> L;
+            L.reserve (2 * nRows + 4);
+            const auto lane = [&L, lastS] (Params pre, std::function<void (int, AnamorphEngine&, Params&)> fn)
+            { Lane ln; ln.pre = pre; ln.last = lastS; ln.at = std::move (fn); L.push_back (std::move (ln)); return (int) L.size() - 1; };
+            const auto forcedAt = [US] (const std::function<void (Params&)>* fn, bool on)   // fn: a row's, held by pointer
+            {
+                return [fn, US, on] (int b, AnamorphEngine& e, Params& s)
+                { if (b >= US) { if (b == US) e.requestDuck(); if (fn != nullptr) (*fn) (s); if (on) s.autoGainMatch = true; } };
+            };
+            const Params pb = bases[bi].p;
+            Params pbBy = pb; pbBy.bypass = true;
+            const int ref   = lane (pb,   forcedAt (nullptr, false));
+            const int refBy = lane (pbBy, forcedAt (nullptr, false));
+            int twinOf[nRows] = {}, runOf[nRows] = {}, refOf[nRows] = {};
+            for (int k = 0; k < nRows; ++k)
+            {
+                if (bases[bi].mbRowsOnly && ! mbRow (rows[k].name)) continue;
+                const Params pre = rows[k].bypassPre ? pbBy : pb;
+                refOf[k]  = rows[k].bypassPre ? refBy : ref;
+                twinOf[k] = rows[k].isSwitch ? ref : lane (pre, forcedAt (&rows[k].set, false));
+                runOf[k]  = lane (pre, forcedAt (&rows[k].set, true));
+            }
+            runLanes (L, US, false, 6607);
+            int inertN = 0, liveN = 0;
+            double minPub = 1.0e9;
+            for (int k = 0; k < nRows; ++k)
+            {
+                char* v = verdict[bi][k];
+                if (bases[bi].mbRowsOnly && ! mbRow (rows[k].name)) { std::snprintf (v, sizeof verdict[bi][k], "-"); continue; }
+                const Lane& r  = L[(size_t) runOf[k]];
+                const Lane& t  = L[(size_t) twinOf[k]];
+                const Lane& rf = L[(size_t) refOf[k]];
+                // the oracle: the field's own change, Level Match off on both sides (for the switch row, the
+                // switch itself against the lane that never engages)
+                const Lane& changed = rows[k].isSwitch ? r : t;
+                bool inert = true; double dPub = 0.0;
+                for (size_t b = 0; b < rf.pub.size(); ++b)
+                {
+                    if (std::memcmp (&changed.pub[b], &rf.pub[b], sizeof (float)) != 0) inert = false;
+                    dPub = juce::jmax (dPub, (double) std::abs (changed.pub[b] - rf.pub[b]));
+                }
+                Params dst = rows[k].bypassPre ? pbBy : pb; rows[k].set (dst);        // the twin's Output Gain
+                const Judged j = judge (r, t, (double) dst.outputGainDb, US, false, lastS);
+                const bool landed = j.ok && j.phi < 0.25;
+                sweepPremise = sweepPremise && std::abs (j.pubF) >= 3.0 && j.ok && j.resid <= 1.0e-3;
+                if (rows[k].postTap)
+                    postTapOk = postTapOk && landed && (inert || (bases[bi].p.mbEnable && dPub <= 0.0064));
+                else
+                {
+                    iff = iff && (landed == inert);
+                    (inert ? inertN : liveN) += 1;
+                }
+                if (landed) countArmed (j);
+                const char* how = landed ? "LANDS" : "glide";
+                if (inert) std::snprintf (v, sizeof verdict[bi][k], "inert        %-5s phi %6.3f", how, j.phi);
+                else       std::snprintf (v, sizeof verdict[bi][k], "moves %.0e %-5s phi %6.3f", dPub, how, j.phi);
+                minPub = juce::jmin (minPub, std::abs (j.pubF));
+            }
+            classesSeen = classesSeen && inertN >= bases[bi].minInert && liveN >= bases[bi].minLive;
+            std::printf ("  (10) sweep base %s: %d inert and %d measurement-reading real changes (post-tap rows apart); "
+                         "min |pub_F| %.2f dB\n", bases[bi].name, inertN, liveN, minPub);
+        }
+        for (int k = 0; k < nRows; ++k)
+            std::printf ("  (10) %-15s H: %s | C: %s | M: %s | M2: %s | M3: %s\n", rows[k].name, verdict[0][k], verdict[1][k],
+                         verdict[2][k], verdict[3][k], verdict[4][k]);
+        check (sweepPremise, "premise: every sweep engage publishes >= 3 dB from unity, and its twin explains it (residual <= 1e-3)");
+        check (classesSeen, "non-vacuity: the sweep meets both classes in every base (H and C: >= 3 inert, >= 15 "
+                            "measurement-reading; M and M2: >= 3 inert, >= 2 reading; M3: >= 2 inert, >= 2 reading)");
+        check (iff, "field sweep: for every real change the engaging engine lands IFF a Level-Match-off engine pair shows "
+                    "the change leaves the published trajectory bit-identical");
+        check (postTapOk, "field sweep: the post-tap fields (Output Gain/Balance, Band Solo, Bypass, the switch) always land; "
+                          "their published effect is nil, or the documented H4 reference switch (<= 0.0064 dB) with Multiband on");
+    }
+
+    // ---- the allocation guard, around every event-to-full-level window above ----------------------------
+    std::printf ("  allocation guard: %d armed setParameters+process calls (event to first full-level block), "
+                 "%d of %d landings observed inside them; worst per call: new=%ld malloc=%ld\n",
+                 armedCalls, armedLandings, landLegs, worstNew, worstMalloc);
+    check (landLegs > 0 && armedLandings == landLegs,
+           "liveness: every landing was observed inside the armed blocks (|D| <= 0.1 dB at the first full-level block, "
+           "itself armed like every block back to the event)");
+    if (guardLive)
+    {
+        check (worstNew == 0, "no operator-new allocation while a Level-Match landing is processed");
+        if (guard.mallocLive)
+            check (worstMalloc == 0, "no malloc-family allocation while a Level-Match landing is processed");
+    }
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -7640,6 +8573,7 @@ int main (int argc, char* argv[])
     testHostResetInAForcedSwapLandsSettled();
     testNonFiniteGlideTargetsDoNotLatch();
     testNonFiniteBurstKeepsLevelMatchAudible();
+    testLevelMatchEngagesAtTheLevelItMeasured();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
