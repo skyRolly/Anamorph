@@ -164,6 +164,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Measured: silent on the first click inside that window. Apply now ignores an invalid measurement
   and changes nothing; every valid Apply is exactly as before. Decision: ADR-0007 (note, 2026-09-24).
   Regression coverage: State test 129. Evidence: PR #156. [Verified]
+- **A burst of invalid input samples no longer silences Anamorph when Level Match is on.** If the
+  audio coming in carried invalid samples — not a number, from a misbehaving plug-in earlier in the
+  chain — Anamorph's protection already replaced them and kept the sound going, and with Level Match
+  off it still does. With Level Match on, each invalid sample briefly made the match reading invalid,
+  and that was turned into a gain of zero: a sustained burst faded the output to silence for as long
+  as it lasted. Measured over one second of such input: 164–165 of 187 buffers silent with Level
+  Match on, 0–2 with it off. Level Match now keeps its last gain through an invalid reading, so the
+  sound carries on at the matched level; nothing changes for valid audio. Decision: ADR-0009
+  (Implementation note, 2026-09-24). Regression coverage: Test 65. Evidence: PR #156. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

@@ -247,6 +247,16 @@ removing either guard alone fails it, and so
 does the first version of the Mono Maker guard, which kept the cutoff unclamped across the rate drop
 (`worklogs/NONFINITE_PARAMETERS_AND_F13.md`).
 
+**A sustained non-finite input burst does not silence the output with Level Match on — Test 65
+(2026-09-24).** The matcher publishes NaN from a non-finite input sample until the self-heal's
+`loudness.reset()` later in the same block, and the engine made that reading its match target —
+`decibelsToGain (NaN)` = 0, a finite value the self-heal never sees. **Test 65**
+(`testNonFiniteBurstKeepsLevelMatchAudible`) feeds a NaN in every 97th sample for 1 s to twin engines
+with Level Match off and on (Haas, Velvet, Chorus × Oversampling Off / 2×, Drive 6 dB), and asserts
+that the output stays finite, that Level Match on leaves no more silent blocks than off (+2), and that
+its burst level is the off level moved by the pre-burst match gain (within 3 dB). Against the pre-fix
+engine both level checks fail: 164–165 of 187 blocks silent with Level Match on, 0–2 with it off.
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4346,10 +4356,11 @@ the saved session, and an Undo to 0 dB instead of the user's value. **State test
 instant it reads the published gain as NaN. Asserted: Output Gain never goes non-finite, the saved
 state never holds "nan", the plug-in still plays on clean input afterwards, and a finite Apply still
 locks the measured gain. Whether the window was reached is printed, not asserted: no public API can
-plant the NaN, and a serialised scheduler does not reach it reliably (valgrind 0 times in 610
-blocks; one pinned CPU missed it in 2 of 3 runs), so on those runs the leg is vacuous and says so. On
-a multi-core machine the window is reached every run, and against the pre-fix code three checks fail
-(the first Apply inside the window wrote NaN).
+plant the NaN, and a serialised scheduler rarely reaches it (valgrind reached it in 1 of 4 runs, at
+block 408, past this test's 400-block cap; one pinned CPU missed it in 7 of 8 runs), so there the leg
+is vacuous — it cannot detect the defect — and says so. On a multi-core machine the window is
+reached every run, and against the pre-fix code three checks fail (the first Apply inside the window
+wrote NaN).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

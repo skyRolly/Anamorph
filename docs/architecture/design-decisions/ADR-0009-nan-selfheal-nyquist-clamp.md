@@ -73,6 +73,15 @@ cutoff glide in flight); a fresh engine keeps the module's initial value (densit
 Regression coverage: Test 64 (the engine) and State test 128 (the parameter path, including the
 value-box text).
 
+- **Level Match — a node the guard did not reach.** `LoudnessMatch` publishes NaN from a non-finite
+  input sample until the guard's `loudness.reset()` later in the same `process()` call, and in
+  between the engine made that reading its match target: `decibelsToGain (NaN)` is 0, finite, so the
+  guard never saw it, and it does not reset `matchGainSmooth`. A burst (a NaN in every 97th sample
+  for 1 s) therefore ramped the applied gain to silence with Level Match on — 164–165 of 187 blocks
+  exact zeros against 0–2 with it off. A NaN reading now keeps the current target
+  (`src/dsp/AnamorphEngine.cpp:1736-1737`); every finite reading is unchanged. Test 65. The gain the
+  full `loudness.reset()` discards after the burst is the owner question below, not changed.
+
 **Recorded, not changed:**
 - **Decision bullet 1 holds for finite values only.** `jlimit` passes NaN, so the crossover clamp
   does not bound a NaN split. A NaN crossover (Multiband, Band Solo) is inert while live, mutes
@@ -99,7 +108,7 @@ Evidence [Verified]:
 - Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:1866-1916; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples,
   testNonFiniteBurstSelfHeals (Test 59), testAHostNanParameterDoesNotLatchTheChain (State test 123),
-  testNonFiniteGlideTargetsDoNotLatch (Test 64),
+  testNonFiniteGlideTargetsDoNotLatch (Test 64), testNonFiniteBurstKeepsLevelMatchAudible (Test 65),
   testANonFiniteVelvetDensityDoesNotFreezeTheDensity (State test 128)
 - History [Partially Verified]: CHANGELOG.md [0.8.2], [0.8.3]
 - Related incidents: `../../POSTMORTEMS.md` INC-003 (crossover explosion), INC-004 (meter NaN-latch)

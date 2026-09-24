@@ -37630,11 +37630,12 @@ static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
 //  can plant the NaN (`injectMatchGainDb` ignores one), and the window lives inside
 //  `engine.process()`, so only a second thread can land in it. Measured, the window is seen
 //  natively on a multi-core machine every run (pre-fix: the first Apply in it wrote NaN), but
-//  NOT reliably where threads are serialised: valgrind (which keeps running the audio thread
-//  until it sleeps, outside the window) saw it 0 times in 610 blocks, and one pinned CPU missed it
-//  in 2 of 3 runs. So whether the window was reached is PRINTED, and asserted only as "the race
-//  ran"; the assertions below hold whether or not it was reached, and on a multi-core run they are
-//  what fails against the pre-fix code. Asserted: Output Gain never goes non-finite, the saved
+//  rarely where threads are serialised: valgrind (which keeps running the audio thread until it
+//  sleeps, outside the window) reached it in 1 of 4 runs, at block 408 -- past the cap below --
+//  and one pinned CPU missed it in 7 of 8 runs. So whether the window was
+//  reached is PRINTED, and asserted only as "the race ran"; the assertions below hold whether or
+//  not it was reached -- on a serialised run the leg cannot detect the defect -- and on a
+//  multi-core run they are what fails against the pre-fix code. Asserted: Output Gain never goes non-finite, the saved
 //  state never holds "nan", the plug-in still plays afterwards, and a finite Apply still locks the
 //  measured gain.
 static void testApplyNeverWritesANonFiniteGain()

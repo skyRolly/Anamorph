@@ -179,6 +179,8 @@ not choose a meaning for NaN beyond "ignored", which is what `MonoMaker::process
 
 ## D. Fixes
 
+### D1. Non-finite parameters (§B)
+
 ### Fix boundary
 
 | criterion | Mono Maker `snapToTargets` guard | Velvet `setDensity` guard |
@@ -257,9 +259,102 @@ preset loads, host reset and re-prepare mid-glide; 9 direct module legs). Every 
 line the DSP suite prints is identical before and after; the state suite differs only in its
 known thread-timing counters. No smoothing constant changed.
 
+### D2. From F13
+
+Apply's NaN guard and the match-target guard — measured and decided in §E3, specified in §E4.
+
 ## E. F13 — Level Match carry
 
-F13_PENDING
+ADR-0007 was read first (including its three notes and two corrections). Five lenses — processor
+routes, engine decomposition with counterfactual variants, the contract, non-finite Level Match, and
+an adversarial check of §D's guards — then a synthesis that re-ran every deciding number, then a
+refuter that rebuilt its own harnesses. Oracle: a fresh instance at the destination state, same
+input, converged. Stationary seeded noise at two levels, 48 kHz / 256 and 44.1 kHz / 512; no music,
+transients or silence gaps; Linux x86-64 only.
+
+### E1. What each transition carries
+
+| transition | integrators / K-filters | published gain | `prevPredictedGainDb` | `matchGainSmooth` |
+|---|---|---|---|---|
+| forced swap, continuous-only (preset / undo / redo) | **carried** (`procChanged` false, no re-arm) | carried | carried | carried; target = carried published gain |
+| forced swap, discrete | cleared (`softReset`) | carried | carried | carried |
+| live continuous edit (no duck) | carried | carried | carried | carried |
+| A/B (forced + injection) | carried if continuous-only, cleared if discrete | **overwritten** by the slot's value | carried | **snapped** to the slot's value |
+
+### E2. Trajectories (processor, 48 kHz / 256; dB, seconds after the route)
+
+| delta (G*) | route | bottom pub / applied | overshoot 0–0.3 s | t0.5 / t0.1 | residual 6 s |
+|---|---|---|---|---|---|
+| Drive 0→8 (−6.164) | live | −3.714 / −0.156 | +5.10 | 2.31 / 3.77 | +0.008 |
+| | user preset | −3.727 / −0.156 | +4.99 | 2.30 / 3.77 | +0.008 |
+| | undo, redo | −3.727 / −0.30 | +4.89 | 2.30 / 3.77 | +0.008 |
+| | A/B (inj −6.138) | −5.630 / −6.114 | +2.63 | 2.23 / 3.69 | +0.008 |
+| R6 edit→base (−5.456) | live | −7.588 / −7.587 | min −2.13 | 1.88 / 3.36 | −0.006 |
+| | preset, undo, redo | −7.59…−7.56 | min −2.9 | 1.87 / 3.35 | −0.005 |
+| | A/B (inj −5.428) | −5.611 / −5.436 | min −1.01 | 1.10 / 2.75 | −0.003 |
+
+Preset, undo and redo that move only continuous controls stay within 0.27–0.45 dB of the same live
+edit after 0.1 s and land on the same end state. **Factory presets turn Level Match off**: the load
+returns every omitted parameter to its default and `autoGainMatch` defaults to off, so "Level Match
+on through a preset" needs a user preset.
+
+### E3. Decisions
+
+- **F13(1a) — the published gain carried across a forced swap: preserve (intended).** A
+  continuous-only swap re-arms nothing, so the result is untouched; a discrete one `softReset`s,
+  which keeps the result by ADR-0007's rule. The forced route tracks the live edit.
+- **F13(1b) — `matchGainSmooth` left out of `snapSmoothers()`: owner decision.** It changes nothing
+  when Level Match is on in both states (the smoother sits 0.003 dB from its target at the bottom;
+  snapping it gives identical output). It matters when a forced swap turns Level Match **on** — in
+  production, **Undo of Apply** — where the smoother, parked at unity while Level Match was off,
+  swells the output **+4.0 dB (Drive 8) / +4.8 dB (Drive 10) above both endpoints**, peaking 128 ms
+  after the undo; a hand re-engage after Apply swells the same way through a non-forced duck. No test
+  covers it. The exclusion is a deliberate carve-out in the code (`AnamorphEngine.cpp:724`), ADR-0004
+  says "snap smoothers" without naming it, and the documents that call the engage smoothed promise no
+  click, not this — so the evidence points one way, but the rule is the owner's. Options and measured
+  effects: ADR-0007 note 2026-09-24, question 1. **Reopen:** an owner ruling; this is the one F13
+  item with an audible, everyday trigger.
+- **F13(2) — continuous-only swaps do not re-arm; the "0.56–0.6 dB / ~4 s" claim.** CONFIRMED only for
+  R6's A/B setup (0.63 dB off G* at 0.57 s, within 0.1 dB at 2.75 s, 0.023 dB at 4 s); REFUTED as a
+  general statement: on A/B it is 0.22–5.8 dB depending on the delta and the programme, and on preset
+  / undo / redo it is the live edit's own re-convergence. The one route-specific defect is **A/B
+  between slots that differ only in continuous controls**: the injected gain is right (0.03 dB from
+  G*) and the stale integrators pull it away within ~100 ms for 1.8–4.5 s. Re-arming at the injection
+  (B1) holds it within 0.013–0.042 dB and passes both suites, but it changes ADR-0007's "re-armed in
+  exactly one place" rule and reverses the A/B row of its dimMode table (identical slots re-arm) —
+  **owner decision, hard stop (conflict with an Accepted ADR)**. Re-arming on every forced duck fails
+  Test 58 and is ruled out. **Reopen:** an approved ADR-0007 amendment.
+- **F13(3) — no non-finite guard in `LoudnessMatch`.**
+  - **(3a) the in-block NaN is published:** preserve. It is never non-finite after `process()`
+    returns (0 of 117 configurations, 0 of 12,288 late-NaN runs): the self-heal's full reset follows
+    in the same call. Guarding the store instead hides Test 59's check on that reset (measured).
+  - **(3b) a NaN seen only by the dry reference:** refuted across 12,288 configurations.
+  - **(3c) Apply locks a NaN into Output Gain: confirm and fix** (§D2). A clear violation of
+    ADR-0007 ("Apply locks the measured gain") and of ADR-0008's Undo rule.
+  - **(3d) the in-block NaN became the match target: confirm and fix** (§D2). `decibelsToGain (NaN)` is
+    0 — finite, so the self-heal never saw it, and it never resets `matchGainSmooth`. A sustained
+    burst silenced the output with Level Match on (164–165 of 187 blocks against 0–2 off, 13.7–14.5 dB
+    under the matched level). The same class R7 fixed: a stateful node the self-heal does not reach.
+    One stray NaN costs only a −0.39 dB dip either way.
+
+### E4. Fixes from F13 (§D2)
+
+- `src/PluginProcessor.cpp:469` — `applyAutoGain` returns when the published gain is NaN (`std::isnan`:
+  ±Inf cannot be published, and the `jlimit` still bounds it). Every finite Apply bit-identical
+  (writes, notifications, undo step, saved-state hash) over 14 gains incl. ±24, ±30, ±1e-30, −0.
+  **State test 129**: a real audio thread on NaN-laced input, Apply called the instant the published
+  gain reads NaN. Pre-fix: Output Gain NaN, "nan" saved, output silent (3 checks); post-fix 0. The
+  window is only reachable from a second thread and a serialised scheduler rarely reaches it
+  (valgrind 1 of 4 runs, pinned CPU 1 of 8), so the window count is printed, not asserted — on such a
+  run the leg is vacuous and says so. An earlier version asserted it and would have failed CI's
+  valgrind lane on correct code; the synthesis caught it.
+- `src/dsp/AnamorphEngine.cpp:1736-1737` — a NaN reading keeps the current match target (TG).
+  **Test 65**: pre-fix both level checks fail; post-fix silent blocks equal Level Match off's and the
+  burst plays at the off level plus the pre-burst match gain (e.g. −13.71 − 5.12 = −18.83 dB). Test
+  59's Level-Match-on lines move 0.51–2.83 → 0.54–2.80 dB (bound 6 dB); nothing else in either suite
+  moves. With the self-heal's `loudness.reset()` removed, Test 59 still fails (1 check), so TG keeps
+  the detection a `LoudnessMatch`-side guard would lose.
+- Four comments that said an A/B swap glides or re-arms now say what the code does (comment-only).
 
 ## F. Remaining findings
 
@@ -275,8 +370,53 @@ Each is recorded, not fixed, with the reason.
 | **Discrete parameters read NaN as index 0 / off** (algorithm → Haas, `mbBands` → 1, `advancedMode` → Simple); `roundToInt (NaN)` depends on the bit pattern | §B3 | preserve | finite, bounded, no latch; the same owner decision covers it |
 | **The first large step after a NaN crossover glides** (586.7 ms instead of 16 ms) | §B2 | preserve | only after a non-finite episode; audible effect not measured |
 | **Stale citations** — ADR-0009 *Related code* (`MultibandWidth.cpp:55-71`, `MonoMaker.h:36-39`), `DSP_POLICY.md:55`, `THREAD_MODEL.md:99` (`toEngine` also runs on the prepare and message threads), State test 123's header premise ("a host that sends one is buggy") | read against the code | documentation pass | reported, not rewritten (no general cleanup this round) |
-F13_REMAINING
+| **F13(1b) the Undo-of-Apply swell** (+4.0 / +4.8 dB, 128 ms) and the hand re-engage swell | §E3 | **owner decision** | changing the forced-bottom or engage behaviour of the match smoother is ADR-0007 / ADR-0004 territory; no test covers it yet |
+| **F13(2) A/B between continuous-only slots** re-converges for 1.8–4.5 s after a correct injection | §E3 | **owner decision; hard stop** | B1 conflicts with ADR-0007's re-arm rule and its dimMode table |
+| **Level Match gain discarded by the self-heal** (full `loudness.reset()`), after a NaN parameter or a NaN burst | §B2, §E3 | owner decision (ADR-0009's existing question) | unchanged by TG, which only keeps the target during the burst |
+| **Level Match convergence after any large Drive change** (+5 dB for ~2.5 s on a Drive 0 → 8 raise, live or forced) | §E2 | preserve | ADR-0007 design: the predict floor anticipates part of the boost, the measure glides at τ 0.9 s |
+| **Factory presets turn Level Match off** | §E2 | preserve (record) | presets restore every omitted parameter's default; a product question, not a defect |
+| **Engine-API finite overflow** −3e38 → +3e38 still latches the Velvet density (the glide overflows to NaN) | guard check | defer | the parameter range is [0, 1]; no production path |
+| **State test 39 failed once** (6 preset-identity checks) in 12 local runs while workflow harnesses ran concurrently; 0 failures in 5 idle runs afterwards | §G note | investigate on recurrence | loads presets by index from a list that includes the shared user folder; consistent with a concurrent writer there, not proven |
+| **Stale anchor** `DSP_ALGORITHMS.md` Mono Maker recombine `.cpp:39-45` (the recombine is at `:49-51`; wrong before this round) | read against the code | documentation pass | pre-existing |
 
 ## G. Road map
 
-G_PENDING
+| item | decision | reason | reopen when |
+|---|---|---|---|
+| Velvet density latch; Mono Maker cutoff latch | **done** (§D1) | module glides that absorbed NaN; finite unchanged | a new glide shape without a reseed |
+| Apply locks NaN; NaN match target | **done** (§E4) | clear violations of ADR-0007 / ADR-0009 | — |
+| Multiband / Band Solo NaN | **preserve** | inside ADR-0009's self-heal; recovers in one block | the owner rules on ingress |
+| **What a non-finite parameter means on ingress** (`toEngine` default vs hold-last vs status quo; text parsers accepting "nan"; Mono Maker's 500 Hz; the self-heal's Level-Match wipe) | **owner decision** | parameter semantics (ADR_POLICY); the measured candidate plays an Output Gain NaN at 0 dB | an owner ruling — then one stateless change in `toEngine`, plus the parsers if chosen |
+| **F13(1b) Undo-of-Apply swell** | **owner decision — recommended next** | +4–5 dB above both endpoints on an everyday action; snapping at the forced bottom fixes the undo route (+0.05 dB) with both suites unchanged | an owner ruling (and a test for the swell either way) |
+| **F13(2) A/B continuous-only re-arm (B1)** | **owner decision; hard stop** | conflicts with ADR-0007's re-arm rule and dimMode table | an approved ADR-0007 amendment |
+| Restore window (`value="nan"` + usable `raw`) | **investigate** | lens-measured through a seam only | a measurement under the real restore |
+| Float → int UB (Haas delay, Chorus) on NaN | **defer** | resolved by any ingress rule | the ingress decision, or an AArch64 run |
+| F12 (Advanced Mode host write), F10 (re-entrant mouseUp), F9 (adoption under the held lock), R6a–R6d | **preserve unchanged** | outside this round | as recorded in the R6 / R7 worklogs |
+| The standalone documentation pass | **defer** | stale anchors reported here (ADR-0007, ADR-0009, DSP_POLICY, THREAD_MODEL, DSP_ALGORITHMS) | its own round |
+| ScopeBuffer race, vectorscope stop-state | **preserve unchanged** | outside this round | as recorded |
+
+## H. Validation
+
+Linux x86-64 only; macOS, Windows, AArch64 and MSVC are CI's. No DAW, AU host or Standalone build
+was run.
+
+- **Suites, final tree (Release, GCC):** DSP 524 / 0, state 4802 / 0 — also under `ulimit -s 1024`.
+  Every printed line outside the new tests and Test 59's Level-Match-on legs is identical to the
+  baseline; the state suite differs only in its thread-timing counters.
+- **ASan + UBSan (Clang 18)** and **FMA contraction** (`-march=haswell -ffp-contract=on`): both
+  suites passed with the non-finite guards, Test 64 (first 30 legs) and State test 128, 0 runtime
+  errors; the final tree is covered by CI's sanitizer and arm64 lanes, not re-run here.
+- **Gates:** `check-realtime`, `check-dispatch`, `check-portability`, `check-docs` (+ self-test),
+  `check-state-coverage` (+ self-test), `check-citations` (+ self-test; `--check` against `HEAD`,
+  `HEAD~3` and `659ca0a`): all exit 0. GCC with the warning gate's flags and Clang with the
+  project's warning set: 0 warnings on any added line.
+- **Pre-fix proof:** Test 64 32 / 40 legs, State test 128 4 / 4 legs, State test 129 3 checks,
+  Test 65 2 checks — each against the code it guards (genuine `659ca0a` objects for Test 64).
+  Mutants and rejected alternatives: §D1, §E4.
+- **Finite bit-identity:** 186 legs here and 945 in the independent check (§D1); Apply over 14
+  finite gains (§E4); TG leaves every suite line unchanged but Test 59's non-finite legs.
+- **State test 39** failed once (6 preset-identity checks) in 12 local runs made while workflow
+  harnesses were running on the same machine, and passed in 5 idle runs afterwards; recorded in §F.
+- **Hard-stop classes:** none touched — no parameter ID, range, default or schema change, no
+  threading or DSP-order change, no latency change; the ADR-0007 re-arm question that would conflict
+  with an Accepted ADR is recorded, not implemented.

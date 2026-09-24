@@ -1733,8 +1733,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // Multiband is off.
     loudness.process (loudnessRefScratch.getReadPointer (0), loudnessRefScratch.getReadPointer (1),
                       L, R, n);
-    const float matchTarget = p.autoGainMatch
-        ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f;
+    const float matchTarget = ! p.autoGainMatch ? 1.0f : std::isnan (loudness.getMatchGainDb()) ? matchGainSmooth.getTargetValue()
+        : juce::Decibels::decibelsToGain (loudness.getMatchGainDb()); // a NaN reading keeps the target (ADR-0009, Test 65)
     matchGainSmooth.setTargetValue (matchTarget);
 
     // Silence -> audio edge: SNAP the applied match gain to its (already pre-ducked)

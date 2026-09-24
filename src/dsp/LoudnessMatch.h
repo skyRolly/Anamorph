@@ -50,8 +50,8 @@ public:
     void reset();
 
     // Re-arm the measurement (clear filter state + integrators) WITHOUT zeroing
-    // the published gain, so a re-arm (a swap that changes the signal path) re-converges
-    // smoothly from the current value instead of snapping (feedback #16).
+    // the published gain, so a re-arm (a swap that changes the signal path, or a host reset)
+    // re-converges smoothly from the current value instead of snapping (feedback #16).
     void softReset() noexcept;
 
     // Feeds both signals; updates the published match gain. Audio-thread safe.

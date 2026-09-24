@@ -195,15 +195,19 @@ it. Measured through the processor and the engine (worklog `NONFINITE_PARAMETERS
 against a fresh instance at the destination state:
 
 - **Preset load, undo and redo that move only continuous controls behave like the same live edit.**
-  The published gain is carried (this ADR's `softReset` rule keeps the result), the predict floor is
-  re-applied, and the measure re-converges with its own time constants: within 0.27–0.45 dB of the
-  live edit after 0.1 s, the same end state. The "≈0.6 dB for ≈4 s" figure from R6 is that
+  The published gain is carried — such a swap does not re-arm at all (`procChanged` is false), so
+  nothing touches the result — the predict floor is re-applied, and the measure re-converges with its
+  own time constants: within 0.27–0.45 dB of the live edit after 0.1 s, the same end state. The "≈0.6 dB for ≈4 s" figure from R6 is that
   re-convergence for one A/B setup (0.63 dB, within 0.1 dB at 2.75 s), not a fixed drift: across
   deltas and levels it is 0.22–5.8 dB on A/B, and on preset / undo / redo it is the live edit's own.
 - **`matchGainSmooth` left out of `snapSmoothers()`** changes nothing when Level Match is on in both
-  states (the smoother sits within 0.003 dB of its target at the bottom). It matters only when a
-  forced swap turns Level Match on, and then it is identical to a plain engage, whose glide is
-  documented as intended.
+  states (the smoother sits within 0.003 dB of its target at the bottom). It matters when a forced
+  swap turns Level Match ON — in production, **Undo of Apply** — and there it swells: the smoother
+  sits at unity while Level Match is off, so the undo overshoots both endpoint levels by +4.0 dB
+  (Drive 8) and +4.8 dB (Drive 10), peaking 128 ms after the undo. Re-engaging Level Match by hand
+  after Apply (a ducked, non-forced switch) swells the same way. `snapSmoothers()`'s own comment gives
+  its purpose as "a big level change never swells (#1)"; the documents that call the engage
+  smoothed promise no click, not this. No test covers it.
 - **An A/B switch whose slots differ only in continuous controls undoes its own injection.** The
   injected slot gain is right (0.03 dB from the converged value), but the analysis is not re-armed
   (`processingDiffers` asks only about discrete fields), so the stale integrators pull the gain away
@@ -218,18 +222,26 @@ against a fresh instance at the destination state:
 
 **Recorded for the owner, not decided here** (each is a change to this ADR, not a defect of it):
 1. At a forced swap's silent bottom, should the applied match gain land on the matcher's value like
-   every other smoother, or keep its 120 ms glide? Options: keep and document (no behaviour change);
-   snap it in `snapSmoothers()` (fixes only the engage-inside-a-swap case, and also changes
-   `prepare()` and the host-reset path); snap it after `loudness.process` in the bottom block (also
-   cuts a Drive 0 → 10 dB swap's excess from +7.82 to +4.77 dB).
+   every other smoother, or keep its 120 ms glide? Options: keep and document (no behaviour change;
+   the Undo-of-Apply swell stays); snap it in `snapSmoothers()` (Undo of Apply to +0.05 dB, both
+   suites unchanged; `prepare()` is unaffected by construction, a host reset completing a forced swap
+   in flight is not; the hand re-engage keeps its swell); snap it after `loudness.process` in the
+   bottom block (the same, and a Drive 0 → 10 dB swap's excess falls from +7.82 to +4.77 dB). A fix
+   for the hand re-engage as well means landing the smoother at any duck bottom that engages Level
+   Match — a wider change to the engage than this ADR's current text describes.
 2. Should the measure also re-arm when an A/B slot's remembered gain is injected (measured above), or
-   whenever any continuous sound field differs? Re-arming on every forced duck is ruled out: it
-   contradicts the dimMode rows of the note above and fails Test 58.
+   whenever any continuous sound field differs? Re-arming at every injection also re-arms an A/B
+   switch between identical slots (0.030 → 0.000454 dB, the re-armed signature), which reverses the
+   A/B row of the dimMode table in the note above — no suite catches it, because Test 58 never
+   injects. Re-arming on every forced duck is ruled out outright: it fails Test 58.
+
+Separately, a NaN reading no longer becomes the match target (ADR-0009, note of the same date;
+Test 65): the target stays where it was, this ADR's rule for a reading it cannot trust.
 
 The comments that said an A/B swap glides or re-arms (`AnamorphEngine.cpp:78`, `:1111-1113`,
 `:1816`; `LoudnessMatch.h:52-54`) now say what the code does. This ADR's *Related code* anchors
-(`AnamorphEngine.cpp:1201-1234`, `PluginProcessor.cpp:402-424`) are stale; reported for the
-documentation pass.
+(`AnamorphEngine.cpp:1201-1234`, `PluginProcessor.cpp:402-424`, and `LoudnessMatch.cpp:131-156`,
+which is the PREDICT block, not measure / hold) are stale; reported for the documentation pass.
 
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.

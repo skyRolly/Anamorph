@@ -7299,6 +7299,99 @@ static void testNonFiniteGlideTargetsDoNotLatch()
     check (allAudible, "control: the finite move is audible in every leg (the equality is not the trivial one)");
 }
 
+// ---------------------------------------------------------------------------
+//  Test 65 -- A SUSTAINED NON-FINITE INPUT BURST DOES NOT SILENCE THE OUTPUT WITH LEVEL MATCH ON
+//  (ADR-0009; F13's third item -- Test 59 is one bad block, this is a burst)
+//
+//  ADR-0009's self-heal zeroes non-finite samples and resets the stateful nodes, so "a stray
+//  non-finite sample must not poison the output". `LoudnessMatch` has no guard of its own: a NaN
+//  in the block makes it publish NaN until the self-heal's `loudness.reset()` later in the same
+//  `process()` call -- and in between, the engine turned that reading into its match TARGET,
+//  `decibelsToGain (NaN)` = 0. That target is finite, so the self-heal never sees it, and it does
+//  not reset `matchGainSmooth`. One bad block costs a dip; a burst re-sets the target to 0 every
+//  block and ramps the applied gain to silence. MEASURED on the pre-fix engine, a NaN in every
+//  97th sample for 1 s (this test's configs): Level Match on, 164-165 of 187 blocks exact silence,
+//  the burst 13.7-14.5 dB below where it should play; Level Match off, 0-2 blocks. A NaN reading
+//  is no measurement, so the target now stays where it was -- ADR-0007's own rule for a reading
+//  it cannot trust ("holds the last trusted value").
+//
+//  ASSERTED per config (Haas, Velvet, Chorus x Oversampling Off / 2x; Drive 6 dB so the match gain
+//  is not unity): the output stays finite; with Level Match on, the burst leaves no more silent
+//  blocks than with it off (+2); and the burst's level with Level Match on is the Level-Match-off
+//  level moved by the pre-burst match gain, within 3 dB -- so the burst is not quietly turned down
+//  either. What the burst does to the gain AFTERWARDS (the self-heal's full `loudness.reset()`
+//  discards it) is ADR-0009's recorded owner question and is not asserted here.
+static void testNonFiniteBurstKeepsLevelMatchAudible()
+{
+    std::printf ("Test 65: a sustained non-finite input burst does not silence the output with Level Match on (ADR-0009)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256;
+    using anamorph::Algorithm;
+    using anamorph::OversampleFactor;
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus };
+    const char* names[]     = { "Haas", "Velvet", "Chorus" };
+    const int settle = (int) (2.0 * sr / bs), burst = (int) (1.0 * sr / bs);
+
+    bool finite = true, notSilenced = true, levelKept = true;
+    for (int a = 0; a < 3; ++a)
+        for (auto os : { OversampleFactor::Off, OversampleFactor::x2 })
+        {
+            int zeroBlocks[2] = { 0, 0 };
+            double burstSq[2] = { 0.0, 0.0 };
+            float matchDb = 0.0f;
+            for (int lm = 0; lm <= 1; ++lm)
+            {
+                anamorph::EngineParameters p;
+                p.algorithm = algos[a]; p.algoAmount = 0.6f; p.oversample = os;
+                p.driveDb = 6.0f; p.autoGainMatch = (lm == 1);
+                auto e = std::make_unique<anamorph::AnamorphEngine>();   // heap: Test 59's note
+                e->primeParameters (p);
+                e->prepare (sr, bs);
+                e->setParameters (p);
+
+                juce::AudioBuffer<float> buf (2, bs);
+                juce::Random rng (6565);
+                for (int b = 0; b < settle + burst; ++b)
+                {
+                    const bool inBurst = b >= settle;
+                    for (int i = 0; i < bs; ++i)
+                    {
+                        const float l = 0.5f * (rng.nextFloat() - 0.5f);
+                        const bool bad = inBurst && ((b * bs + i) % 97) == 0;
+                        buf.setSample (0, i, bad ? std::numeric_limits<float>::quiet_NaN() : l);
+                        buf.setSample (1, i, 0.6f * l);
+                    }
+                    if (b == settle && lm == 1) matchDb = e->getMatchGainDb();
+                    e->process (buf);
+                    bool allZero = true;
+                    for (int c = 0; c < 2; ++c)
+                        for (int i = 0; i < bs; ++i)
+                        {
+                            const float v = buf.getSample (c, i);
+                            if (! std::isfinite (v)) finite = false;
+                            if (! juce::exactlyEqual (v, 0.0f)) allZero = false;
+                            if (inBurst) burstSq[lm] += (double) v * v;
+                        }
+                    if (inBurst && allZero) ++zeroBlocks[lm];
+                }
+            }
+            const auto db = [&] (double sq) { return 10.0 * std::log10 (juce::jmax (1.0e-30, sq / (2.0 * burst * bs))); };
+            const double offDb = db (burstSq[0]), onDb = db (burstSq[1]);
+            std::printf ("  %-6s OS %s: silent burst blocks  Level Match off %3d / on %3d of %d;  burst level off %6.2f dB,"
+                         " on %6.2f dB (pre-burst match %+.2f dB)\n",
+                         names[a], os == OversampleFactor::Off ? "off" : "2x ", zeroBlocks[0], zeroBlocks[1], burst,
+                         offDb, onDb, (double) matchDb);
+            notSilenced = notSilenced && zeroBlocks[1] <= zeroBlocks[0] + 2;
+            levelKept   = levelKept && std::abs (onDb - (offDb + matchDb)) < 3.0;
+        }
+
+    check (finite,      "a sustained non-finite burst never reaches the output");
+    check (notSilenced, "with Level Match on, a non-finite burst leaves no more silent blocks than with it off");
+    check (levelKept,   "...and plays at the Level-Match-off level moved by the pre-burst match gain (within 3 dB)");
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -7546,6 +7639,7 @@ int main (int argc, char* argv[])
     testHostResetChorusSeedIsScoped();
     testHostResetInAForcedSwapLandsSettled();
     testNonFiniteGlideTargetsDoNotLatch();
+    testNonFiniteBurstKeepsLevelMatchAudible();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
