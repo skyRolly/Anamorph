@@ -73,8 +73,9 @@ Sums the low bands to mono (`monoLow = (lowL+lowR)/2`), recombines `L = highL + 
 (`.cpp:39-45`).
 Cutoff glided per sample (`glideCoeff = exp2(8/sr)`, ~8 oct/s) to avoid pitch wobble.
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` — for finite values: the clamp passes NaN, the
-glide ignores a NaN target, and `snapToTargets()` (every `prepare()`) keeps the current cutoff
-instead of copying it (ADR-0009, Implementation note 2026-09-24; Test 64). Applied **post-Mix, in
+glide ignores a NaN target, and `snapToTargets()` (every `prepare()`) keeps the current cutoff,
+re-clamped for the new rate, instead of copying it (ADR-0009, Implementation note 2026-09-24;
+Test 64). Applied **post-Mix, in
 place** (0.8.0).
 
 ## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`

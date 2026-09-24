@@ -234,14 +234,17 @@ through a finite value, a host reset and a forced swap until a finite re-prepare
 density froze the density (and a re-prepare while NaN built zero taps) with the output finite, so
 the self-heal never fired. **Test 64** (`testNonFiniteGlideTargetsDoNotLatch`) drives the engine
 API — Mono Maker's parameter range maps a host NaN to 500 Hz, so that half is the engine's own
-contract — through six legs (bad at the first prepare, live then a re-prepare, and Mono Maker off
-at prepare then switched on; the same three for Velvet) × five spellings (quiet NaN, a payload NaN,
-−NaN, ±Inf), then a finite value, a host reset and a forced swap. Each leg must be bit-identical,
-block for block, to a twin engine that kept the last finite target (a fresh engine: 120 Hz /
-density 0.5; ±Inf on Mono Maker: the clamped 0.45·sr / 20 Hz), with a control proving the finite
-move is audible. Against the pre-fix code its equality check fails in 24 of the 30 legs (Mono
-Maker NaN muted 248–270 of 260–320 blocks; Velvet differs from the finite move on, or from the
-±Inf block); removing either guard alone fails it
+contract — through eight legs (bad at the first prepare, live then a re-prepare, Mono Maker off at
+prepare then switched on, and a re-prepare from 96 to 44.1 kHz with a 30 kHz cutoff; for Velvet the
+first two, a re-prepare, and a NaN landing on a density glide in flight) × five spellings (quiet
+NaN, a payload NaN, −NaN, ±Inf), then a finite value, a host reset and a forced swap. Each leg must
+be bit-identical, block for block, to a twin engine that kept the last finite value (a fresh engine:
+120 Hz / density 0.5; ±Inf on Mono Maker: ±FLT_MAX, which the clamp maps to the same range ends),
+with a control proving the finite move is audible. Against the pre-fix code its equality check
+fails in 32 of the 40 legs (Mono Maker NaN muted 248–270 of 260–320 blocks; Velvet differs from the
+finite move on, or from the bad block itself — ±Inf on the live legs, every spelling mid-glide);
+removing either guard alone fails it, and so
+does the first version of the Mono Maker guard, which kept the cutoff unclamped across the rate drop
 (`worklogs/NONFINITE_PARAMETERS_AND_F13.md`).
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**

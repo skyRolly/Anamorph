@@ -32,7 +32,7 @@ itself. Unless stated, 48 kHz / 256-sample blocks; "muted" = a block the self-he
   1. `MonoMaker::setFrequency` (`MonoMaker.h:41-44`) is a `jlimit`, which passes NaN: `targetFreq`
      becomes NaN. ±Inf are clamped (+Inf → 0.45·sr, −Inf → 20 Hz).
   2. A **live** NaN is harmless: the glide test `abs (currentFreq − targetFreq) > 0.05f`
-     (`MonoMaker.cpp:37`) is false, so the filter keeps its last finite cutoff (0 muted).
+     (`MonoMaker.cpp:38`) is false, so the filter keeps its last finite cutoff (0 muted).
   3. `snapToTargets()` — run by `MonoMaker::prepare` and by `AnamorphEngine::prepare` (`:180`) —
      copied the NaN into `currentFreq` and the crossover coefficients.
   4. From then on the glide test is false for every target, so a finite value never reaches the
@@ -105,10 +105,12 @@ the host.** Classes:
   **editor's value box** (the parameter's own text parser `pctFrom` returns NaN; JUCE's VST3
   `fromString` returns it too).
 - **Impact.** Live: output sample-identical to a processor that never left the old density while the
-  twin moved (|A − B| 0.707) — the Density knob is dead. It survives a host reset, an algorithm
+  twin moved (|A − B| 0.707 in the contract lens's setup, 0.508 in the guard check's) — the Density
+  knob is dead. It survives a host reset, an algorithm
   switch, a forced duck and every knob move. A re-prepare while NaN builds **zero taps**: Velvet
   silent at any Amount. Only a re-prepare that sees a finite value clears it. CPU: the fast path is
-  never taken again (11.3 → 14.8 µs per 256-sample block, rough).
+  never taken again (11.3 → 14.8 µs per 256-sample block in one measurement, 10.4 → 12.5 µs in
+  another; rough).
 - **Confidence.** High.
 - **Decision: confirm and fix**, §D.
 
@@ -183,7 +185,7 @@ not choose a meaning for NaN beyond "ignored", which is what `MonoMaker::process
 |---|---|---|
 | all production paths | n/a in production (ingress launders); every engine path (both prepares, the forced-swap snap) | every path: the setter is the only writer of `targetDensity`; the snap and the glide read only it |
 | finite unchanged | yes — the guard is true for every finite value | yes — same |
-| deterministic NaN/Inf | yes: NaN keeps the current cutoff; ±Inf still clamped by `setFrequency` | yes: NaN and ±Inf keep the last finite target |
+| deterministic NaN/Inf | yes: NaN keeps the current cutoff, re-clamped for the rate; ±Inf still clamped by `setFrequency` | yes: NaN and ±Inf keep the last finite target |
 | no duplication | one line, where the NaN entered | one line, where the NaN entered |
 | realtime-safe | no allocation, lock or wait (`std::isfinite`) | same |
 | parameter semantics | unchanged: the parameter still holds and reports NaN | unchanged |
@@ -198,19 +200,27 @@ clamp.
 
 ### Code
 
-- `src/dsp/MonoMaker.cpp:21` — `snapToTargets()` copies the target only if it is finite.
+- `src/dsp/MonoMaker.cpp:21-22` — `snapToTargets()` copies the target only if it is finite, and
+  otherwise keeps the current cutoff re-clamped to `[20, max(1000, 0.45·sr)]` for the rate being
+  prepared. The first version kept it unclamped; the adversarial guard check found that a 30 kHz
+  cutoff set at 96 kHz, then NaN, then a re-prepare at 44.1 kHz sat above Nyquist and made the LR4
+  unstable while finite (max |x| up to 2.47e38, the self-heal never fired — INC-003's class; the
+  pre-fix code muted instead). Engine API only. The re-clamp closes it and Test 64 now has the leg.
 - `src/dsp/VelvetNoise.h:38-40` — `setDensity()` stores the target only if it is finite (+ `<cmath>`).
 
 ### Tests (each fails before the fix)
 
 - **Test 64** (`testNonFiniteGlideTargetsDoNotLatch`, DSP suite, engine API — documents the engine's
-  own contract, since production cannot deliver a NaN cutoff). Six legs (bad at the first prepare;
-  live then a re-prepare; Mono Maker off at prepare then switched on; the same three for Velvet) ×
-  five spellings (quiet NaN, payload NaN `0x7fc00001`, −NaN, +Inf, −Inf), each followed by a finite
-  value, a host reset and a forced swap; bit-identical to a twin that kept the last finite target,
-  plus an audibility control. Pre-fix: 24 of 30 legs differ — Mono Maker NaN muted 260/260, 270/320
-  and 248/260 blocks; Velvet differs from the finite move on (NaN) or from the bad block (±Inf).
-  Post-fix: 30/30 bit-identical, 0 muted.
+  own contract, since production cannot deliver a NaN cutoff). Eight legs (Mono Maker: bad at the
+  first prepare; live then a re-prepare; off at prepare then switched on; a re-prepare from 96 to
+  44.1 kHz with a 30 kHz cutoff. Velvet: bad at the first prepare; live; live then a re-prepare; a
+  NaN landing on a density glide in flight) × five spellings (quiet NaN, payload NaN `0x7fc00001`,
+  −NaN, +Inf, −Inf), each followed by a finite value, a host reset and a forced swap; bit-identical
+  to a twin that kept the last finite value, plus an audibility control. Pre-fix (genuine `659ca0a`
+  engine objects): 32 of 40 legs differ — Mono Maker NaN muted 248–270 of 260–320 blocks; Velvet
+  differs from the finite move on, or from the bad block itself (±Inf on the live legs, every
+  spelling mid-glide). The first, unclamped Mono Maker guard fails the rate-drop leg. Post-fix:
+  40/40 bit-identical, 0 muted.
 - **State test 128** (`testANonFiniteVelvetDensityDoesNotFreezeTheDensity`, the real parameter
   lifecycle): host NaN live, the value-box text "nan" live, NaN before `prepareToPlay`, NaN then a
   re-prepare; then 0.9 and a host reset. Premise controls: the NaN reaches the raw parameter, "nan"
@@ -225,14 +235,25 @@ clamp.
 | Velvet guard removed | Test 64 fails | State test 128 fails |
 | Velvet: reseed `currentDensity` in `reset()` instead | Test 64 fails | State test 128 fails |
 | Mono Maker: reseed in `reset()` instead | Test 64 fails | passes (as above) |
+| Mono Maker: the first guard, current cutoff kept unclamped | Test 64 fails (rate-drop leg, 3 NaN spellings) | not run |
+
+The four rows above ran the full suites against the 30-leg Test 64; the last row ran the DSP suite
+against the 40-leg version. The guard check also built nine plausible wrong fixes: every one that
+changes behaviour is caught by Test 64 except three that differ only when a NaN lands mid-glide —
+which is why the mid-glide leg was added — and a guard moved into the engine's `updateDerived`,
+which is equivalent on every leg run.
 
 ### Finite behaviour, bit-identical
 
-A separate harness hashed the output of 186 finite legs on the pre-fix and post-fix builds: Velvet
+A separate harness hashed the output of 186 finite legs on the pre-fix and post-fix builds (re-run
+after the re-clamp, still identical): Velvet
 density {0, 0.001, 0.3, 0.5, 1, −0, 1e-30, 2, −1} and Mono Maker {20, 120, 500, 0, −5, 1e-30, 3e38,
 21600, 30000, −0, 200} Hz with Mono Maker on and off, at 44.1 / 48 / 96 kHz × 256 / 64 blocks, each
 through prepare, a live jump (glide), a host reset, a re-prepare, a forced swap, another glide and a
-re-prepare at 96 kHz / 64. **All 186 hashes identical** (all distinct from each other). Every other
+re-prepare at 96 kHz / 64. **All 186 hashes identical.** The adversarial guard check built its own
+pre-fix objects from `git archive 659ca0a` and found 945 more finite legs identical (648 engine legs
+over 22.05–192 kHz, blocks 1–4096, Oversampling Off–8×; 288 processor legs through A/B, undo / redo,
+preset loads, host reset and re-prepare mid-glide; 9 direct module legs). Every other
 line the DSP suite prints is identical before and after; the state suite differs only in its
 known thread-timing counters. No smoothing constant changed.
 

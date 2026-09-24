@@ -61,12 +61,17 @@ non-finite target**, the rule `MonoMaker::process()`'s own glide already followe
   the engine sees it (and −Inf to 20 Hz), so no production path delivers one. Through the engine
   API, `snapToTargets()` — run by every `prepare()` — copied a NaN target and the output was muted
   through a finite value, a host reset and a forced swap until a finite re-prepare. It now keeps
-  the current cutoff (`src/dsp/MonoMaker.cpp:21`); the ±Inf clamp is unchanged.
+  the current cutoff, re-clamped to `[20, max(1000, 0.45·sr)]` for the rate being prepared
+  (`src/dsp/MonoMaker.cpp:21-22`) — kept unclamped across a 96 → 44.1 kHz re-prepare, a 30 kHz
+  cutoff sat above Nyquist and the output went unstable while finite (INC-003's class, measured
+  on the first version of the guard). The ±Inf clamp is unchanged.
 
-Finite values are bit-identical (186 finite legs, 44.1–96 kHz, hashed before and after). Both
-guards hold the last finite value, so what a non-finite value produces depends on history — a
-fresh engine keeps the module's initial target (120 Hz, density 0.5). Regression coverage: Test 64
-(the engine) and State test 128 (the parameter path, including the value-box text).
+Finite values are bit-identical (186 finite legs hashed before and after here; an independent
+check found 945 more identical). What a non-finite value produces depends on history: Velvet keeps
+its last finite density target, and Mono Maker keeps its current cutoff (a live NaN already froze a
+cutoff glide in flight); a fresh engine keeps the module's initial value (density 0.5, 120 Hz).
+Regression coverage: Test 64 (the engine) and State test 128 (the parameter path, including the
+value-box text).
 
 **Recorded, not changed:**
 - **Decision bullet 1 holds for finite values only.** `jlimit` passes NaN, so the crossover clamp

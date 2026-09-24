@@ -7137,7 +7137,8 @@ static void testHostResetInAForcedSwapLandsSettled()
 //      value box (State test 128).
 //  The rule both modules now follow is the one Mono Maker's live glide already had: a
 //  non-finite target is ignored, so the module keeps what it had -- Mono Maker its current
-//  cutoff (`snapToTargets`), Velvet its last finite density target (`setDensity`).
+//  cutoff (`snapToTargets`), re-clamped for the rate being prepared, and Velvet its last
+//  finite density target (`setDensity`).
 //
 //  ORACLE: a twin engine driven identically except that it never receives the non-finite
 //  value -- it keeps the finite value A held before (for a fresh engine: the module's own
@@ -7145,8 +7146,12 @@ static void testHostResetInAForcedSwapLandsSettled()
 //  first block, through the finite value, a host reset, a re-prepare and a forced swap. A
 //  control twin that never moves proves the finite move is audible, so the equality is not
 //  the trivial one. Five non-finite spellings (quiet NaN, a payload NaN, -NaN, +Inf, -Inf)
-//  must all land identically: Mono Maker's clamp turns +/-Inf into 0.45 * sr / 20 Hz (finite,
-//  so those two legs compare against those cutoffs), Velvet ignores all five.
+//  must all land identically: Mono Maker's clamp turns +/-Inf into its range ends (finite, so
+//  those twins hold +/-FLT_MAX, which the clamp maps to the same ends), Velvet ignores all
+//  five. Two legs pin the details: a NaN that lands on a density glide in flight (the glide
+//  goes on to its last finite target), and a re-prepare from 96 to 44.1 kHz with a 30 kHz
+//  cutoff -- kept unclamped, that cutoff sat above Nyquist and the LR4 went unstable (finite
+//  output up to 2.5e38, INC-003's class, measured on the first version of this guard).
 static void testNonFiniteGlideTargetsDoNotLatch()
 {
     std::printf ("Test 64: a non-finite glide target does not latch Mono Maker or the Velvet density (ADR-0009)\n");
@@ -7164,10 +7169,10 @@ static void testNonFiniteGlideTargetsDoNotLatch()
                                std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity() };
     const char* badName[]  = { "NaN", "NaN 0x7fc00001", "-NaN", "+Inf", "-Inf" };
 
-    auto activate = [] (Engine& e, const Params& p)
+    auto activate = [] (Engine& e, const Params& p, double rate)
     {
         e.primeParameters (p);                                  // the wrapper's order (Test 55)
-        e.prepare (sr, bs);
+        e.prepare (rate, bs);
         e.setParameters (p);
     };
 
@@ -7176,7 +7181,9 @@ static void testNonFiniteGlideTargetsDoNotLatch()
     //   phase 0  `pre`   blocks at `start` (A and B identical; skipped when start is bad)
     //   phase 1  `bad`   blocks with the target bad in A, `held` in B -- entered through a
     //                    prepare when `prepareInBad` (A primed with the bad value, as the
-    //                    wrapper primes whatever the parameter holds)
+    //                    wrapper primes whatever the parameter holds), at `reRate`; when
+    //                    `midGlide`, the three first glide toward `held` for 3 blocks, so
+    //                    the bad value lands on a glide in flight
     //   phase 2  the finite `to` for A and B, then a host reset, then a forced swap to
     //            `swapTo` -- C stays at `held` throughout.
     struct Leg
@@ -7186,15 +7193,22 @@ static void testNonFiniteGlideTargetsDoNotLatch()
         bool        freshBad;                      // bad value present at the FIRST prepare
         bool        prepareInBad;                  // a re-prepare while the value is bad
         bool        enableLate;                    // Mono Maker off at prepare, switched on at phase 2
+        bool        midGlide;                      // the bad value lands on a glide toward `held`
         float       start, held, to;
+        double      rate, reRate;                  // the first prepare's rate, the re-prepare's
     };
+    // The rate-drop leg: a cutoff legal at 96 kHz (30 kHz) is above Nyquist at 44.1 kHz. The
+    // kept cutoff must be re-clamped for the new rate, as `setFrequency` clamps a finite one --
+    // unclamped it made the LR4 unstable (finite output up to 2.5e38: INC-003's class).
     const Leg legs[] = {
-        { "Mono Maker: bad at the first prepare",      true,  true,  false, false, 0.0f,   120.0f, 200.0f },
-        { "Mono Maker: live bad, then a re-prepare",   true,  false, true,  false, 150.0f, 150.0f, 200.0f },
-        { "Mono Maker: bad while off, switched on",    true,  true,  false, true,  0.0f,   120.0f, 200.0f },
-        { "Velvet density: live bad",                  false, false, false, false, 0.3f,   0.3f,   0.9f   },
-        { "Velvet density: bad at the first prepare",  false, true,  false, false, 0.0f,   0.5f,   0.9f   },
-        { "Velvet density: live bad, then a re-prepare", false, false, true, false, 0.3f,  0.3f,   0.9f   },
+        { "Mono Maker: bad at the first prepare",      true,  true,  false, false, false, 0.0f,   120.0f,   200.0f, sr, sr },
+        { "Mono Maker: live bad, then a re-prepare",   true,  false, true,  false, false, 150.0f, 150.0f,   200.0f, sr, sr },
+        { "Mono Maker: bad while off, switched on",    true,  true,  false, true,  false, 0.0f,   120.0f,   200.0f, sr, sr },
+        { "Mono Maker: bad, re-prepare 96 -> 44.1 kHz", true, false, true,  false, false, 30000.0f, 30000.0f, 200.0f, 96000.0, 44100.0 },
+        { "Velvet density: live bad",                  false, false, false, false, false, 0.3f,   0.3f,   0.9f,   sr, sr },
+        { "Velvet density: bad at the first prepare",  false, true,  false, false, false, 0.0f,   0.5f,   0.9f,   sr, sr },
+        { "Velvet density: live bad, then a re-prepare", false, false, true, false, false, 0.3f,  0.3f,   0.9f,   sr, sr },
+        { "Velvet density: bad mid-glide",             false, false, false, false, true,  0.3f,   0.9f,   0.5f,   sr, sr },
     };
 
     bool allSame = true, allFinite = true, allAudible = true;
@@ -7207,16 +7221,17 @@ static void testNonFiniteGlideTargetsDoNotLatch()
             base.monoMakerEnable = leg.monoMaker && ! leg.enableLate;
             auto with = [&] (float v) { Params q = base; (leg.monoMaker ? q.monoMakerFreq : q.velvetDensity) = v; return q; };
 
-            // Mono Maker clamps +/-Inf to a finite cutoff before any glide sees it: the twin
-            // for those two holds the clamped value (0.45 * sr / 20 Hz), which is what the
-            // engine actually adopts -- the clamp is unchanged, only NaN reaches the snap.
+            // Mono Maker clamps +/-Inf to a finite cutoff before any glide sees it: the twin for
+            // those two holds +/-FLT_MAX, which the same clamp maps to the same end of the range
+            // at every rate -- the clamp is unchanged, only NaN reaches the snap.
             float heldB = leg.held;
-            if (leg.monoMaker && std::isinf (bad[k])) heldB = bad[k] > 0.0f ? (float) (0.45 * sr) : 20.0f;
+            if (leg.monoMaker && std::isinf (bad[k]))
+                heldB = bad[k] > 0.0f ? std::numeric_limits<float>::max() : -std::numeric_limits<float>::max();
 
             auto a = std::make_unique<Engine>(), b = std::make_unique<Engine>(), c = std::make_unique<Engine>();
-            activate (*a, leg.freshBad ? with (bad[k]) : with (leg.start));
-            activate (*b, leg.freshBad ? with (heldB)  : with (leg.start));
-            activate (*c, leg.freshBad ? with (leg.held) : with (leg.start));
+            activate (*a, leg.freshBad ? with (bad[k]) : with (leg.start), leg.rate);
+            activate (*b, leg.freshBad ? with (heldB)  : with (leg.start), leg.rate);
+            activate (*c, leg.freshBad ? with (leg.held) : with (leg.start), leg.rate);
 
             juce::AudioBuffer<float> A (2, bs), B (2, bs), C (2, bs);
             juce::Random rng (6464);
@@ -7249,10 +7264,12 @@ static void testNonFiniteGlideTargetsDoNotLatch()
             const Params pBad = with (bad[k]), pHeldB = with (heldB), pHeld = with (leg.held);
             if (! leg.freshBad)
                 for (int n = 0; n < 40; ++n) step (with (leg.start), with (leg.start), with (leg.start), false);
+            if (leg.midGlide)
+                for (int n = 0; n < 3; ++n) step (pHeld, pHeld, pHeld, false);
             for (int n = 0; n < 10; ++n) step (pBad, pHeldB, pHeld, false);
             if (leg.prepareInBad)
             {
-                activate (*a, pBad); activate (*b, pHeldB); activate (*c, pHeld);
+                activate (*a, pBad, leg.reRate); activate (*b, pHeldB, leg.reRate); activate (*c, pHeld, leg.reRate);
                 for (int n = 0; n < 20; ++n) step (pBad, pHeldB, pHeld, false);
             }
             Params pTo = with (leg.to), pCtl = pHeld;

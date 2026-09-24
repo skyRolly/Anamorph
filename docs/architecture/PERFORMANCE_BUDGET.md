@@ -31,7 +31,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   (jump fades / resets) copy instead of recomputing. Session-local: −35…−50 % engine cost on
   continuous-drag scenarios (with the solo-monitor gate below).
   Evidence [Verified]: src/dsp/MultibandWidth.cpp (glide + resync + setBankCutoffs);
-  src/dsp/LR4Xover.h (copyCoefficientsFrom); MonoMaker.cpp:32-36; SoloMonitor.cpp;
+  src/dsp/LR4Xover.h (copyCoefficientsFrom); MonoMaker.cpp:33-37; SoloMonitor.cpp;
   worklogs/performance/WAVE3_INVESTIGATION.md.
 - **The Drive waveshaper's tanh is a minimax rational kernel (Wave 2 / H3).** The two per-sample
   libm `tanh` calls (~55 % of every oversampling delta in the Round-2 attribution; their range
