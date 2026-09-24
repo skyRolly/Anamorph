@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <array>
+#include <cmath>
 #include <random>
 
 namespace anamorph
@@ -34,7 +35,9 @@ public:
     // "settled" means (ER-DSP-09).
     void snapToTargets() noexcept { currentDensity = targetDensity; currentAmount = targetAmount; }
 
-    void setDensity (float d) noexcept { targetDensity = d; }
+    // ADR-0009: a non-finite density is ignored. The glide cannot leave NaN, reset() does not
+    // reseed it, and the output stays finite, so the self-heal never fires (Test 64).
+    void setDensity (float d) noexcept { if (std::isfinite (d)) targetDensity = d; }
     void setAmount  (float a) noexcept { targetAmount  = a; } // 0 = identity
 
     // Host transport state, fed once per block by the wrapper. The pause burst

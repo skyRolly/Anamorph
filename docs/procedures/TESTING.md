@@ -227,6 +227,23 @@ its 22 checks fail, every in-fade leg; each rejected variant (the snap alone, th
 snap on every duck or every reset, a module-glide snap on every reset) fails a named leg
 (`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §V).
 
+**A non-finite glide target does not latch Mono Maker or the Velvet density — Test 64
+(2026-09-24).** Two module glides had R7's latch shape (`current += k·(target − current)`, a
+`reset()` that never reseeds it). A NaN Mono Maker cutoff at any `prepare()` muted the output
+through a finite value, a host reset and a forced swap until a finite re-prepare; a NaN Velvet
+density froze the density (and a re-prepare while NaN built zero taps) with the output finite, so
+the self-heal never fired. **Test 64** (`testNonFiniteGlideTargetsDoNotLatch`) drives the engine
+API — Mono Maker's parameter range maps a host NaN to 500 Hz, so that half is the engine's own
+contract — through six legs (bad at the first prepare, live then a re-prepare, and Mono Maker off
+at prepare then switched on; the same three for Velvet) × five spellings (quiet NaN, a payload NaN,
+−NaN, ±Inf), then a finite value, a host reset and a forced swap. Each leg must be bit-identical,
+block for block, to a twin engine that kept the last finite target (a fresh engine: 120 Hz /
+density 0.5; ±Inf on Mono Maker: the clamped 0.45·sr / 20 Hz), with a control proving the finite
+move is audible. Against the pre-fix code its equality check fails in 24 of the 30 legs (Mono
+Maker NaN muted 248–270 of 260–320 blocks; Velvet differs from the finite move on, or from the
+±Inf block); removing either guard alone fails it
+(`worklogs/NONFINITE_PARAMETERS_AND_F13.md`).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4306,6 +4323,16 @@ again after the swap has finished. Every leg must be bit-identical to a processo
 the post-route parameters, set before `prepareToPlay`, over the next 0.5 s. Against the pre-fix
 engine the ten in-fade legs fail (max|d| 0.15–0.44; every one still differs at the end of the 0.5 s
 window, where the Haas delay stalled) and the five finished-swap legs pass.
+
+**A non-finite Velvet density does not freeze the density — State test 128 (2026-09-24).**
+**State test 128** (`testANonFiniteVelvetDensityDoesNotFreezeTheDensity`) is Test 64's Velvet half
+through the processor: a host's NaN and the text "nan" through the parameter's own text parser (the
+editor's value box and a host's text entry both call it) reach `velvetDensity`'s raw value, live, before
+`prepareToPlay`, and before a re-prepare; then the host sends 0.9 and resets. Every leg must be
+bit-identical to a processor that never received the NaN, with a control proving the move audible.
+Premise controls: the NaN reaches the raw parameter, "nan" parses to NaN, and a host NaN on Mono
+Maker Freq lands finite (500 Hz) — which is why Test 64's Mono Maker half is engine-only. Against the
+pre-fix code all four legs differ (from the finite move, or from the re-prepare).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

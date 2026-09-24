@@ -40,7 +40,10 @@ bit-identical output, streaming instead of 64 random-index reads per sample (`.c
 The density-glide, stop-fade and parked paths keep the original per-sample loop verbatim. A presence follower + fixed-time gate fades the tail; a play→stop edge applies
 a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
 Invariant: `amount 0 = identity`. `reset()` reseeds a non-finite wet glide to 0, as `HaasProcessor`
-does and for the same reason (ADR-0009, Implementation note 2026-09-22).
+does and for the same reason (ADR-0009, Implementation note 2026-09-22). A non-finite **density**
+target is ignored (`setDensity` keeps the last finite one): the density glide cannot leave NaN,
+`reset()` does not reseed it, and the output stays finite, so the self-heal never fires — it froze
+the density until a re-prepare (ADR-0009, Implementation note 2026-09-24; Test 64, State test 128).
 
 ## ChorusEngine — `src/dsp/ChorusEngine.{h,cpp}`
 
@@ -69,7 +72,10 @@ Phase-coherent low-frequency mono via a 4th-order Linkwitz-Riley crossover
 Sums the low bands to mono (`monoLow = (lowL+lowR)/2`), recombines `L = highL + monoLow`
 (`.cpp:39-45`).
 Cutoff glided per sample (`glideCoeff = exp2(8/sr)`, ~8 oct/s) to avoid pitch wobble.
-Nyquist-safe clamp `[20, max(1000, 0.45·sr)]`. Applied **post-Mix, in place** (0.8.0).
+Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` — for finite values: the clamp passes NaN, the
+glide ignores a NaN target, and `snapToTargets()` (every `prepare()`) keeps the current cutoff
+instead of copying it (ADR-0009, Implementation note 2026-09-24; Test 64). Applied **post-Mix, in
+place** (0.8.0).
 
 ## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`
 

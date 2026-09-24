@@ -37460,6 +37460,156 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
         }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 128 -- A NON-FINITE VELVET DENSITY FROM THE HOST OR THE VALUE BOX DOES NOT
+//  FREEZE THE DENSITY (ADR-0009; Test 64 is the engine's own contract)
+//
+//  REACHABLE, measured: a host's NaN reaches `velvetDensity`'s raw value exactly as State
+//  test 123's reaches `amount`, and so does the text "nan" -- the parameter's own text parser
+//  (`pctFrom`, what the editor's value box and a host's text entry both call) returns NaN
+//  for it. `ParamPointers::toEngine` forwards the raw value.
+//
+//  THE LATCH, measured through this wrapper on the pre-fix code. The density glide absorbed
+//  the NaN, `updateWeights` never ran again, and the output stayed finite, so ADR-0009's
+//  self-heal never fired and nothing reseeded it: after the host sent a finite density again,
+//  Velvet kept the density it had when the NaN arrived -- through a host reset and every later
+//  knob move -- until a prepare that saw a finite value. A prepare while NaN built zero taps:
+//  Velvet silent at any Amount. Never a mute, so State test 123's level check cannot see it.
+//
+//  WHAT THIS ASSERTS, through the processor exactly as a host drives it: a twin processor
+//  that never receives the NaN (it keeps the density it had -- for a fresh instance, the
+//  default) produces BIT-IDENTICAL output from the first block, through the finite value, a
+//  host reset and a re-prepare; a control processor that never moves proves the move is
+//  audible. Controls check both premises: the NaN reaches the raw parameter, and "nan" parses
+//  to NaN -- if either stops holding, the test says so rather than pass for the wrong reason.
+//  And the Mono Maker half of Test 64 stays an engine contract: a host NaN on Mono Maker Freq
+//  never reaches its raw value as NaN (the parameter's range maps it to a finite cutoff).
+static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
+{
+    std::printf ("State test 128: a non-finite Velvet density does not freeze the density (ADR-0009)\n");
+
+    const double sr = 48000.0; const int block = 256;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    struct Leg { const char* name; bool viaText, beforePrepare, rePrepare; };
+    const Leg legs[] = {
+        { "host NaN, live",                  false, false, false },
+        { "value box \"nan\", live",         true,  false, false },
+        { "host NaN before prepareToPlay",   false, true,  false },
+        { "host NaN, then a re-prepare",     false, false, true  },
+    };
+
+    bool allSame = true, allFinite = true, allAudible = true, reached = true, parses = true;
+    for (const auto& leg : legs)
+    {
+        // A receives the non-finite value, B (the twin) keeps what it had, C never moves.
+        auto a = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto b = std::make_unique<AnamorphAudioProcessor>();
+        auto c = std::make_unique<AnamorphAudioProcessor>();
+        AnamorphAudioProcessor* procs[] = { a.get(), b.get(), c.get() };
+
+        auto set = [] (AnamorphAudioProcessor& p, const char* id, float plain)
+        {
+            auto* prm = p.getAPVTS().getParameter (id);
+            prm->setValueNotifyingHost (prm->convertTo0to1 (plain));
+        };
+        auto poison = [&] (AnamorphAudioProcessor& p)
+        {
+            auto* prm = p.getAPVTS().getParameter ("velvetDensity");
+            const float v = leg.viaText ? prm->getValueForText ("nan") : nan;
+            if (! std::isnan (v)) parses = false;
+            prm->setValueNotifyingHost (v);
+            if (! std::isnan (p.getAPVTS().getRawParameterValue ("velvetDensity")->load())) reached = false;
+        };
+
+        for (auto* p : procs)
+        {
+            set (*p, "algorithm", 1.0f);                        // Velvet
+            set (*p, "amount", 0.8f);
+            if (! leg.beforePrepare) set (*p, "velvetDensity", 0.3f);
+        }
+        if (leg.beforePrepare) poison (*a);
+        for (auto* p : procs) p->prepareToPlay (sr, block);
+
+        juce::AudioBuffer<float> A (2, block), B (2, block), C (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng (128);
+        int firstDiff = -1, blockNo = 0;
+        bool finite = true;
+        double moved = 0.0;
+        auto run = [&] (int blocks, bool afterMove)
+        {
+            for (int n = 0; n < blocks; ++n, ++blockNo)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    const float l = rng.nextFloat() - 0.5f, r = 0.3f * (rng.nextFloat() - 0.5f);
+                    for (auto* buf : { &A, &B, &C }) { buf->setSample (0, i, l); buf->setSample (1, i, r); }
+                }
+                midi.clear(); a->processBlock (A, midi);
+                midi.clear(); b->processBlock (B, midi);
+                midi.clear(); c->processBlock (C, midi);
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                    {
+                        const float x = A.getSample (ch, i), y = B.getSample (ch, i);
+                        if (! std::isfinite (x)) finite = false;
+                        if (std::memcmp (&x, &y, sizeof x) != 0 && firstDiff < 0) firstDiff = blockNo;
+                        if (afterMove) moved = juce::jmax (moved, (double) std::abs (y - C.getSample (ch, i)));
+                    }
+            }
+        };
+
+        const int half = (int) std::ceil (0.5 * sr / block);
+        if (! leg.beforePrepare)
+        {
+            run (half, false);
+            poison (*a);
+            run (10, false);
+        }
+        else
+            run (20, false);
+        if (leg.rePrepare)
+        {
+            for (auto* p : procs) p->prepareToPlay (sr, block);
+            run (20, false);
+        }
+        set (*a, "velvetDensity", 0.9f);                        // the host's next, finite value
+        set (*b, "velvetDensity", 0.9f);
+        run (2 * half, true);
+        for (auto* p : procs) p->reset();                       // a host reset
+        run (half / 2, true);
+
+        const bool same = firstDiff < 0;
+        char at[32] = "";
+        if (! same) std::snprintf (at, sizeof at, " from block %d", firstDiff);
+        std::printf ("  %-32s %s the twin%s, output finite %d, control moved %.3f\n", leg.name,
+                     same ? "bit-identical to" : "DIFFERENT from", at, (int) finite, moved);
+        allSame    = allSame && same;
+        allFinite  = allFinite && finite;
+        allAudible = allAudible && moved > 1.0e-3;
+    }
+
+    // The Mono Maker premise: Test 64's Mono Maker legs are the engine's contract only.
+    bool mmFinite = true;
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();
+        auto* mm = o->getAPVTS().getParameter ("monoMakerFreq");
+        mm->setValueNotifyingHost (nan);
+        mmFinite = std::isfinite (o->getAPVTS().getRawParameterValue ("monoMakerFreq")->load());
+        std::printf ("  control: a host NaN on Mono Maker Freq lands as %.1f Hz\n",
+                     (double) o->getAPVTS().getRawParameterValue ("monoMakerFreq")->load());
+    }
+
+    check (reached,    "control: the non-finite density reaches the raw parameter");
+    check (parses,     "control: the density's own text parser turns \"nan\" into NaN (the value-box route)");
+    check (mmFinite,   "control: a host NaN on Mono Maker Freq reaches its raw value finite (Test 64 is engine-only)");
+    check (allFinite,  "a non-finite Velvet density never reaches the output");
+    check (allSame,    "a non-finite Velvet density is ignored: bit-identical to the twin that kept its density, "
+                       "through the finite value, a host reset and a re-prepare");
+    check (allAudible, "control: the density move is audible (the equality is not the trivial one)");
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -37650,6 +37800,7 @@ int main (int argc, char* argv[])
     testTheTransportMachineWithoutASampleClock();
     testAHostResetKeepsTheConfiguredChorusSound();
     testAHostResetInsideAForcedSwapLandsSettled();
+    testANonFiniteVelvetDensityDoesNotFreezeTheDensity();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

@@ -18,7 +18,7 @@ void MonoMaker::prepare (double sampleRate, int maxBlock)
 
 void MonoMaker::snapToTargets() noexcept
 {
-    currentFreq = targetFreq;
+    if (std::isfinite (targetFreq)) currentFreq = targetFreq; // ADR-0009: a NaN target is ignored, as process()'s glide ignores it
     xover.setCutoffFrequency (currentFreq);
 }
 

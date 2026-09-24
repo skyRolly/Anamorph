@@ -7115,6 +7115,173 @@ static void testHostResetInAForcedSwapLandsSettled()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Test 64 -- A NON-FINITE GLIDE TARGET DOES NOT LATCH THE MONO MAKER CUTOFF OR THE VELVET
+//  DENSITY (ADR-0009; the engine's own contract -- State test 128 is the parameter path)
+//
+//  R7 found one glide shape that a single NaN latched: `current += k * (target - current)`
+//  cannot leave NaN, and a module whose reset() never reseeds it stays poisoned after the
+//  target is finite again. Two more glides had it, measured on the pre-fix engine:
+//    * Mono Maker. `setFrequency` is a `jlimit`, which passes NaN; process()'s glide already
+//      ignores a NaN target (`abs (current - NaN) > 0.05` is false), but `snapToTargets()` --
+//      run by every prepare() -- copied it. A NaN cutoff at a prepare muted the output
+//      (the self-heal zeroed every block) through a finite 200 Hz, a host reset, a forced
+//      swap and a knob move, until a prepare that saw a finite value: 20/20 blocks, then
+//      200/200. Engine API only: the parameter's own range maps a host NaN to 500 Hz before
+//      the engine sees it (worklog NONFINITE_PARAMETERS_AND_F13.md §B1), so this documents the
+//      ENGINE's contract.
+//    * Velvet density. The glide absorbed NaN, `updateWeights` never ran again
+//      (`abs (NaN - w) > 0` is false) and the output stayed finite, so the self-heal never
+//      fired: the density froze until a finite re-prepare, and a re-prepare while NaN built
+//      zero taps (Velvet silent at any Amount). Reachable from a host and from the editor's
+//      value box (State test 128).
+//  The rule both modules now follow is the one Mono Maker's live glide already had: a
+//  non-finite target is ignored, so the module keeps what it had -- Mono Maker its current
+//  cutoff (`snapToTargets`), Velvet its last finite density target (`setDensity`).
+//
+//  ORACLE: a twin engine driven identically except that it never receives the non-finite
+//  value -- it keeps the finite value A held before (for a fresh engine: the module's own
+//  initial target, Mono Maker 120 Hz, density 0.5). Output must be BIT-IDENTICAL from the
+//  first block, through the finite value, a host reset, a re-prepare and a forced swap. A
+//  control twin that never moves proves the finite move is audible, so the equality is not
+//  the trivial one. Five non-finite spellings (quiet NaN, a payload NaN, -NaN, +Inf, -Inf)
+//  must all land identically: Mono Maker's clamp turns +/-Inf into 0.45 * sr / 20 Hz (finite,
+//  so those two legs compare against those cutoffs), Velvet ignores all five.
+static void testNonFiniteGlideTargetsDoNotLatch()
+{
+    std::printf ("Test 64: a non-finite glide target does not latch Mono Maker or the Velvet density (ADR-0009)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256;
+    using anamorph::Algorithm;
+    using Params = anamorph::EngineParameters;
+    using Engine = anamorph::AnamorphEngine;
+    constexpr auto host = Engine::ResetScope::audioTailsOnly;
+
+    auto bits = [] (std::uint32_t u) { float f; std::memcpy (&f, &u, sizeof f); return f; };
+    const float bad[]      = { std::numeric_limits<float>::quiet_NaN(), bits (0x7FC00001u), bits (0xFFC00000u),
+                               std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity() };
+    const char* badName[]  = { "NaN", "NaN 0x7fc00001", "-NaN", "+Inf", "-Inf" };
+
+    auto activate = [] (Engine& e, const Params& p)
+    {
+        e.primeParameters (p);                                  // the wrapper's order (Test 55)
+        e.prepare (sr, bs);
+        e.setParameters (p);
+    };
+
+    // One scripted session run on three engines at once: A (receives the bad value), B (the
+    // twin, receives `held` instead) and C (the control: `held` throughout, never moves).
+    //   phase 0  `pre`   blocks at `start` (A and B identical; skipped when start is bad)
+    //   phase 1  `bad`   blocks with the target bad in A, `held` in B -- entered through a
+    //                    prepare when `prepareInBad` (A primed with the bad value, as the
+    //                    wrapper primes whatever the parameter holds)
+    //   phase 2  the finite `to` for A and B, then a host reset, then a forced swap to
+    //            `swapTo` -- C stays at `held` throughout.
+    struct Leg
+    {
+        const char* name;
+        bool        monoMaker;                     // else: Velvet density
+        bool        freshBad;                      // bad value present at the FIRST prepare
+        bool        prepareInBad;                  // a re-prepare while the value is bad
+        bool        enableLate;                    // Mono Maker off at prepare, switched on at phase 2
+        float       start, held, to;
+    };
+    const Leg legs[] = {
+        { "Mono Maker: bad at the first prepare",      true,  true,  false, false, 0.0f,   120.0f, 200.0f },
+        { "Mono Maker: live bad, then a re-prepare",   true,  false, true,  false, 150.0f, 150.0f, 200.0f },
+        { "Mono Maker: bad while off, switched on",    true,  true,  false, true,  0.0f,   120.0f, 200.0f },
+        { "Velvet density: live bad",                  false, false, false, false, 0.3f,   0.3f,   0.9f   },
+        { "Velvet density: bad at the first prepare",  false, true,  false, false, 0.0f,   0.5f,   0.9f   },
+        { "Velvet density: live bad, then a re-prepare", false, false, true, false, 0.3f,  0.3f,   0.9f   },
+    };
+
+    bool allSame = true, allFinite = true, allAudible = true;
+    for (const auto& leg : legs)
+        for (int k = 0; k < 5; ++k)
+        {
+            Params base;
+            base.algorithm = leg.monoMaker ? Algorithm::Haas : Algorithm::Velvet;
+            base.algoAmount = 0.8f;
+            base.monoMakerEnable = leg.monoMaker && ! leg.enableLate;
+            auto with = [&] (float v) { Params q = base; (leg.monoMaker ? q.monoMakerFreq : q.velvetDensity) = v; return q; };
+
+            // Mono Maker clamps +/-Inf to a finite cutoff before any glide sees it: the twin
+            // for those two holds the clamped value (0.45 * sr / 20 Hz), which is what the
+            // engine actually adopts -- the clamp is unchanged, only NaN reaches the snap.
+            float heldB = leg.held;
+            if (leg.monoMaker && std::isinf (bad[k])) heldB = bad[k] > 0.0f ? (float) (0.45 * sr) : 20.0f;
+
+            auto a = std::make_unique<Engine>(), b = std::make_unique<Engine>(), c = std::make_unique<Engine>();
+            activate (*a, leg.freshBad ? with (bad[k]) : with (leg.start));
+            activate (*b, leg.freshBad ? with (heldB)  : with (leg.start));
+            activate (*c, leg.freshBad ? with (leg.held) : with (leg.start));
+
+            juce::AudioBuffer<float> A (2, bs), B (2, bs), C (2, bs);
+            juce::Random rng (6464);
+            bool same = true, finite = true;
+            double moved = 0.0;                    // max |B - C| after the finite move (the control)
+            int firstDiff = -1, blockNo = 0, muted = 0;   // muted: A silent where the twin is not
+            auto step = [&] (const Params& pa, const Params& pb, const Params& pc, bool afterMove)
+            {
+                for (int i = 0; i < bs; ++i)
+                {
+                    const float l = rng.nextFloat() - 0.5f, r = 0.3f * (rng.nextFloat() - 0.5f);
+                    A.setSample (0, i, l); A.setSample (1, i, r);
+                    B.setSample (0, i, l); B.setSample (1, i, r);
+                    C.setSample (0, i, l); C.setSample (1, i, r);
+                }
+                a->setParameters (pa); b->setParameters (pb); c->setParameters (pc);
+                a->process (A); b->process (B); c->process (C);
+                if (A.getMagnitude (0, bs) <= 0.0f && B.getMagnitude (0, bs) > 0.0f) ++muted;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < bs; ++i)
+                    {
+                        const float x = A.getSample (ch, i), y = B.getSample (ch, i);
+                        if (! std::isfinite (x)) finite = false;
+                        if (std::memcmp (&x, &y, sizeof x) != 0 && firstDiff < 0) firstDiff = blockNo;
+                        if (afterMove) moved = juce::jmax (moved, (double) std::abs (y - C.getSample (ch, i)));
+                    }
+                ++blockNo;
+            };
+
+            const Params pBad = with (bad[k]), pHeldB = with (heldB), pHeld = with (leg.held);
+            if (! leg.freshBad)
+                for (int n = 0; n < 40; ++n) step (with (leg.start), with (leg.start), with (leg.start), false);
+            for (int n = 0; n < 10; ++n) step (pBad, pHeldB, pHeld, false);
+            if (leg.prepareInBad)
+            {
+                activate (*a, pBad); activate (*b, pHeldB); activate (*c, pHeld);
+                for (int n = 0; n < 20; ++n) step (pBad, pHeldB, pHeld, false);
+            }
+            Params pTo = with (leg.to), pCtl = pHeld;
+            if (leg.enableLate) { pTo.monoMakerEnable = true; pCtl.monoMakerEnable = true; }
+            for (int n = 0; n < 150; ++n) step (pTo, pTo, pCtl, true);
+            a->reset (host); b->reset (host); c->reset (host);
+            for (int n = 0; n < 40; ++n) step (pTo, pTo, pCtl, true);
+            Params pSwap = pTo, pSwapC = pCtl;                        // a forced swap: the A/B, preset, undo route
+            pSwap.algorithm = pSwapC.algorithm = leg.monoMaker ? Algorithm::Velvet : Algorithm::Haas;
+            a->requestDuck(); b->requestDuck(); c->requestDuck();
+            for (int n = 0; n < 60; ++n) step (pSwap, pSwap, pSwapC, true);
+
+            same = firstDiff < 0;
+            char at[32] = "";
+            if (! same) std::snprintf (at, sizeof at, " from block %d", firstDiff);
+            std::printf ("  %-44s %-15s %s the twin%s, muted blocks %3d/%d, output finite %d, control moved %.3f\n",
+                         leg.name, badName[k], same ? "bit-identical to" : "DIFFERENT from", at,
+                         muted, blockNo, (int) finite, moved);
+            allSame    = allSame && same;
+            allFinite  = allFinite && finite;
+            allAudible = allAudible && moved > 1.0e-3;
+        }
+
+    check (allFinite,  "a non-finite Mono Maker / Velvet density target never reaches the output");
+    check (allSame,    "a non-finite glide target is ignored: every leg is bit-identical to the twin that kept "
+                       "the last finite target, through the finite value, a host reset, a re-prepare and a forced swap");
+    check (allAudible, "control: the finite move is audible in every leg (the equality is not the trivial one)");
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -7361,6 +7528,7 @@ int main (int argc, char* argv[])
     testScopeRingHandsTheNewestFramesOldestFirst();
     testHostResetChorusSeedIsScoped();
     testHostResetInAForcedSwapLandsSettled();
+    testNonFiniteGlideTargetsDoNotLatch();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
