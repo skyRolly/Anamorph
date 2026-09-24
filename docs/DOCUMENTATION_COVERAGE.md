@@ -13016,7 +13016,7 @@ pattern), hands Apply's reading to the test by reference. Leg A substitutes a Na
 seam to fire once (liveness) before its checks; leg B is the finite control (Apply writes the
 measured value, Level Match turns off, the host sees values and a gesture); leg C keeps the real
 two-thread race as corroboration and says when it was not reached. The guard removed: leg A fails
-its 6 checks with liveness met; Apply disabled: legs A and B fail liveness (`reached 0`).
+five checks with liveness met, and leg C a sixth; Apply disabled: legs A and B fail liveness (`reached 0`).
 
 **Finding 2 — this audit.** The round's `TESTING.md` entries shipped without a coverage entry; the
 76th pass is that entry (entered late, labelled as such), with KI-029 / KI-030 for the two
