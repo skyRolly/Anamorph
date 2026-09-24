@@ -4350,17 +4350,21 @@ pre-fix code all four legs differ (from the finite move, or from the re-prepare)
 **Level Match Apply never writes a NaN into Output Gain — State test 129 (2026-09-24).** The matcher
 publishes NaN for the few microseconds between a non-finite input sample and the self-heal's reset,
 and Apply locked it into Output Gain: silence through a host reset and a re-prepare, `value="nan"` in
-the saved session, and an Undo to 0 dB instead of the user's value. **State test 129**
-(`testApplyNeverWritesANonFiniteGain`) reproduces the real window: an audio thread runs
-`processBlock` on noise with a NaN every 97th sample while the main thread calls `applyAutoGain` the
-instant it reads the published gain as NaN. Asserted: Output Gain never goes non-finite, the saved
-state never holds "nan", the plug-in still plays on clean input afterwards, and a finite Apply still
-locks the measured gain. Whether the window was reached is printed, not asserted: no public API can
-plant the NaN, and a serialised scheduler rarely reaches it (valgrind reached it in 1 of 4 runs, at
-block 408, past this test's 400-block cap; one pinned CPU missed it in 7 of 8 runs), so there the leg
-is vacuous — it cannot detect the defect — and says so. On a multi-core machine the window is
-reached every run, and against the pre-fix code three checks fail (the first Apply inside the window
-wrote NaN).
+the saved session, and an Undo to 0 dB instead of the user's value. That window lives inside
+`engine.process()`: no public API can plant the NaN, and a serialised scheduler almost never lets a
+click land in it (valgrind reached it in 1 of 4 runs, one pinned CPU in 1 of 8), so the first
+version of this test could pass without Apply ever reading a NaN (Devin review). **State test 129**
+(`testApplyNeverWritesANonFiniteGain`) therefore has three legs. **A** — the processor's test seam
+`seams.atApplyMeasurement` (empty in production) hands Apply the NaN; the seam must fire exactly once,
+which proves Apply ran to its measurement, and then Output Gain must keep the user's value bit for
+bit, Level Match stay on, the host see no notification or gesture, the saved Output Gain stay
+unchanged, and the plug-in keep playing. **B** — the control: the same seam with the matcher's own
+finite reading, which Apply must lock (Output Gain = the reading, Level Match off, a host
+notification inside a gesture), so a pass of A means "refused a NaN", not "does nothing". **C** — the
+real window: an audio thread on NaN-laced input, the main thread applying the instant it reads NaN;
+corroboration only, reported rather than required. Pre-fix (guard removed): A fails five checks with
+its liveness satisfied, and C fails; with Apply disabled, A's and B's liveness checks fail. Legs A
+and B run identically on one pinned CPU.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

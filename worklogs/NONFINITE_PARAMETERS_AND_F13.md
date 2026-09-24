@@ -342,12 +342,13 @@ on through a preset" needs a user preset.
 - `src/PluginProcessor.cpp:469` — `applyAutoGain` returns when the published gain is NaN (`std::isnan`:
   ±Inf cannot be published, and the `jlimit` still bounds it). Every finite Apply bit-identical
   (writes, notifications, undo step, saved-state hash) over 14 gains incl. ±24, ±30, ±1e-30, −0.
-  **State test 129**: a real audio thread on NaN-laced input, Apply called the instant the published
-  gain reads NaN. Pre-fix: Output Gain NaN, "nan" saved, output silent (3 checks); post-fix 0. The
-  window is only reachable from a second thread and a serialised scheduler rarely reaches it
-  (valgrind 1 of 4 runs, pinned CPU 1 of 8), so the window count is printed, not asserted — on such a
-  run the leg is vacuous and says so. An earlier version asserted it and would have failed CI's
-  valgrind lane on correct code; the synthesis caught it.
+  **State test 129** (revised after the Devin review, §I): leg A hands Apply the NaN through the
+  processor's test seam `seams.atApplyMeasurement` and requires the seam to fire (Apply ran to its
+  measurement) and nothing to be written; leg B is the finite control through the same seam; leg C
+  is the real window, reported as corroboration. Pre-fix: leg A fails five checks with its liveness
+  satisfied; Apply disabled: A's and B's liveness fail. An earlier version relied on the real window
+  alone and could pass vacuously on a serialised scheduler (valgrind 1 of 4 runs reached it, one
+  pinned CPU 1 of 8).
 - `src/dsp/AnamorphEngine.cpp:1736-1737` — a NaN reading keeps the current match target (TG).
   **Test 65**: pre-fix both level checks fail; post-fix silent blocks equal Level Match off's and the
   burst plays at the off level plus the pre-burst match gain (e.g. −13.71 − 5.12 = −18.83 dB). Test

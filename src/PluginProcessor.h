@@ -570,8 +570,8 @@ public:
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
                                         atRelativeDecision, insideSoundReplacement,
-                                        insideDurableCapture,
-                                        betweenStateSetApplyAndMeta, insidePollBody; };   // ADR-0037: proves no live read
+                                        insideDurableCapture, betweenStateSetApplyAndMeta, insidePollBody; // ADR-0037: proves no live read
+                   std::function<void (float&)> atApplyMeasurement; };   // Apply's reading, by reference (State test 129)
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.

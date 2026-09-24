@@ -37489,7 +37489,7 @@ static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
     std::printf ("State test 128: a non-finite Velvet density does not freeze the density (ADR-0009)\n");
 
     const double sr = 48000.0; const int block = 256;
-    const float nan = std::numeric_limits<float>::quiet_NaN();
+    constexpr float nan = std::numeric_limits<float>::quiet_NaN();
 
     struct Leg { const char* name; bool viaText, beforePrepare, rePrepare; };
     const Leg legs[] = {
@@ -37624,120 +37624,200 @@ static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
 //  its own host-visible parameter, so this is not the open question of what a NaN from a host
 //  should mean: with no measurement to lock, Apply now does nothing.
 //
-//  THE WINDOW IS REAL, NOT SIMULATED. An audio thread runs `processBlock` on noise with a NaN in
-//  every 97th sample; the main thread (the message thread here) watches the published gain and
-//  calls Apply the instant it reads NaN, as a click landing in that window would. No public API
-//  can plant the NaN (`injectMatchGainDb` ignores one), and the window lives inside
-//  `engine.process()`, so only a second thread can land in it. Measured, the window is seen
-//  natively on a multi-core machine every run (pre-fix: the first Apply in it wrote NaN), but
-//  rarely where threads are serialised: valgrind (which keeps running the audio thread until it
-//  sleeps, outside the window) reached it in 1 of 4 runs, at block 408 -- past the cap below --
-//  and one pinned CPU missed it in 7 of 8 runs. So whether the window was
-//  reached is PRINTED, and asserted only as "the race ran"; the assertions below hold whether or
-//  not it was reached -- on a serialised run the leg cannot detect the defect -- and on a
-//  multi-core run they are what fails against the pre-fix code. Asserted: Output Gain never goes non-finite, the saved
-//  state never holds "nan", the plug-in still plays afterwards, and a finite Apply still locks the
-//  measured gain.
+//  WHY THE WINDOW ITSELF CANNOT CARRY THE TEST. The NaN lives inside `engine.process()`, between
+//  `loudness.process` and the self-heal's reset: no public API plants it (`injectMatchGainDb`
+//  ignores a NaN), and only a second thread can land a click in it. Natively on a multi-core
+//  machine a watcher sees it every run, but a serialised scheduler almost never lets the main
+//  thread run inside it -- valgrind keeps the audio thread until it sleeps, outside the window
+//  (reached in 1 of 4 runs, at block 408), and one pinned CPU missed it in 7 of 8. An earlier
+//  version asserted only that the audio thread ran, so on those schedulers it could pass
+//  without Apply ever reading a NaN (Devin review).
+//
+//  THREE LEGS, so the test cannot pass without the event it is about:
+//    A  DETERMINISTIC: `seams.atApplyMeasurement` hands Apply the NaN the matcher publishes.
+//       LIVENESS: the seam must fire exactly once -- Apply ran to its measurement (a refused or
+//       disabled Apply never reaches it). Then Output Gain keeps the user's value bit for bit,
+//       Level Match stays on, the host sees no notification and no gesture, the saved Output
+//       Gain is untouched, and the plug-in still plays. Pre-fix: Output Gain NaN.
+//    B  CONTROL: the same seam, reading left as the matcher measured it (finite): Apply must
+//       lock it into Output Gain, turn Level Match off and notify the host -- so a leg-A pass
+//       means "refused a NaN", not "does nothing at all".
+//    C  THE REAL WINDOW: an audio thread on NaN-laced input, the main thread applying the
+//       instant it reads NaN. Corroboration only: whether it was reached is printed, and its
+//       assertions (never non-finite, never saved as "nan", still playing) cannot fail on a
+//       run that did not reach it. Legs A and B carry the contract on every scheduler.
 static void testApplyNeverWritesANonFiniteGain()
 {
     std::printf ("State test 129: Level Match Apply never writes a NaN into Output Gain (ADR-0007, F13)\n");
 
     const double sr = 48000.0; const int block = 4096;
-    const auto p = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
-    auto set = [&] (const char* id, float plain)
+    struct Probe : juce::AudioProcessorParameter::Listener
     {
-        auto* prm = p->getAPVTS().getParameter (id);
-        prm->setValueNotifyingHost (prm->convertTo0to1 (plain));
+        int values = 0, gestures = 0;
+        void parameterValueChanged (int, float) override            { ++values; }
+        void parameterGestureChanged (int, bool) override           { ++gestures; }
     };
-    set ("advancedMode", 1.0f);                                  // Output Gain / Level Match reach the engine
-    set ("drive", 6.0f);
-    set ("outputGain", -3.0f);                                   // the user's own value
-    set ("autoGainMatch", 1.0f);
-    p->prepareToPlay (sr, block);
-    auto* og = p->getAPVTS().getRawParameterValue ("outputGain");
-
-    std::atomic<bool> stop { false };
-    std::atomic<int>  blocks { 0 };
-    std::thread audio ([&]
+    auto make = [&]
+    {
+        auto p = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto set = [&p] (const char* id, float plain)
+        {
+            auto* prm = p->getAPVTS().getParameter (id);
+            prm->setValueNotifyingHost (prm->convertTo0to1 (plain));
+        };
+        set ("advancedMode", 1.0f);                              // Output Gain / Level Match reach the engine
+        set ("drive", 6.0f);
+        set ("outputGain", -3.0f);                               // the user's own value
+        set ("autoGainMatch", 1.0f);
+        p->prepareToPlay (sr, block);
+        return p;
+    };
+    auto feedClean = [&] (AnamorphAudioProcessor& p, int blocks, juce::uint32 seed)
     {
         juce::AudioBuffer<float> buf (2, block);
         juce::MidiBuffer midi;
-        juce::Random rng (129);
-        d2::Pace pace;
-        while (! stop.load (std::memory_order_acquire))
+        juce::Random rng ((juce::int64) seed);
+        double lastRms = 0.0;
+        for (int b = 0; b < blocks; ++b)
         {
             for (int i = 0; i < block; ++i)
             {
                 const float l = rng.nextFloat() - 0.5f;
-                buf.setSample (0, i, (i % 97) == 11 ? std::numeric_limits<float>::quiet_NaN() : l);
-                buf.setSample (1, i, 0.6f * l);
+                buf.setSample (0, i, l); buf.setSample (1, i, 0.6f * l);
             }
             midi.clear();
-            p->processBlock (buf, midi);
-            blocks.fetch_add (1, std::memory_order_relaxed);
-            pace.rest();
+            p.processBlock (buf, midi);
+            lastRms = buf.getRMSLevel (0, 0, block);
         }
-    });
-
-    int seen = 0, applied = 0;
-    bool wroteNonFinite = false;
-    const auto began = std::chrono::steady_clock::now();
-    while (applied < 20 && blocks.load (std::memory_order_relaxed) < 400
-           && std::chrono::steady_clock::now() - began < std::chrono::seconds (10))
-    {
-        if (! std::isnan (p->getEngine().getMatchGainDb())) { std::this_thread::yield(); continue; }
-        ++seen;
-        p->applyAutoGain();                                      // a click inside the window
-        ++applied;
-        if (! std::isfinite (og->load())) { wroteNonFinite = true; break; }
-    }
-    stop.store (true, std::memory_order_release);
-    audio.join();
-    std::printf ("  audio blocks %d, published NaN seen %d time(s), Apply inside the window %d time(s)%s\n",
-                 blocks.load(), seen, applied,
-                 seen > 0 ? "" : " -- window not reached on this scheduler (serialised threads?)");
-
-    juce::MemoryBlock state;
-    p->getStateInformation (state);
-    bool savedNan = false;
-    std::function<void (const juce::XmlElement&)> scan = [&] (const juce::XmlElement& e)
-    {
-        if (e.hasTagName ("PARAM") && e.getStringAttribute ("id") == "outputGain"
-            && (e.getStringAttribute ("value").containsIgnoreCase ("nan")
-                || e.getStringAttribute ("raw").containsIgnoreCase ("nan")))
-            savedNan = true;
-        for (auto* c : e.getChildIterator()) scan (*c);
+        return lastRms;
     };
-    if (const auto xml = BlobCodec::unwrap (state)) scan (*xml);
-
-    // Clean input afterwards: the plug-in must still play, and a finite Apply must still lock.
-    juce::AudioBuffer<float> buf (2, block);
-    juce::MidiBuffer midi;
-    juce::Random rng (1290);
-    double lastRms = 0.0;
-    for (int b = 0; b < 24; ++b)
+    auto savedOutputGain = [] (AnamorphAudioProcessor& p)          // the saved PARAM's text, "" if absent
     {
-        for (int i = 0; i < block; ++i)
+        juce::MemoryBlock state;
+        p.getStateInformation (state);
+        juce::String found;
+        std::function<void (const juce::XmlElement&)> scan = [&] (const juce::XmlElement& e)
         {
-            const float l = rng.nextFloat() - 0.5f;
-            buf.setSample (0, i, l); buf.setSample (1, i, 0.6f * l);
-        }
-        midi.clear();
-        p->processBlock (buf, midi);
-        lastRms = buf.getRMSLevel (0, 0, block);
-    }
-    const float measured = p->getEngine().getMatchGainDb();
-    p->applyAutoGain();
-    const float locked = og->load();
-    std::printf ("  afterwards: Output Gain %.3f dB, output RMS %.4f, finite Apply of %.3f dB locked %.3f dB\n",
-                 (double) og->load(), lastRms, (double) measured, (double) locked);
+            if (e.hasTagName ("PARAM") && e.getStringAttribute ("id") == "outputGain")
+                found = e.getStringAttribute ("value") + "|" + e.getStringAttribute ("raw");
+            for (auto* c : e.getChildIterator()) scan (*c);
+        };
+        if (const auto xml = BlobCodec::unwrap (state)) scan (*xml);
+        return found;
+    };
 
-    check (blocks.load() > 0,  "non-vacuity: the audio thread processed NaN-laced blocks");
-    check (! wroteNonFinite,   "Apply never writes a non-finite value into Output Gain");
-    check (! savedNan,         "the saved session never holds a NaN Output Gain");
-    check (lastRms > 1.0e-3,   "the plug-in still plays after Apply presses inside the window");
-    check (std::isfinite (measured) && std::abs (locked - juce::jlimit (-24.0f, 24.0f, measured)) < 0.01f,
-           "control: a finite Apply still locks the measured gain into Output Gain");
+    // ---- Leg A: Apply handed the NaN the matcher publishes (deterministic) ----
+    {
+        auto p = make();
+        feedClean (*p, 24, 129);                                 // converge the matcher
+        auto* og = p->getAPVTS().getRawParameterValue ("outputGain");
+        auto* lm = p->getAPVTS().getRawParameterValue ("autoGainMatch");
+        auto* ogParam = p->getAPVTS().getParameter ("outputGain");
+        Probe probe;
+        ogParam->addListener (&probe);
+        const float ogBefore = og->load();
+        const auto savedBefore = savedOutputGain (*p);
+        int reached = 0;
+        float replaced = 0.0f;
+        p->seams.atApplyMeasurement = [&] (float& db) { ++reached; replaced = db; db = std::numeric_limits<float>::quiet_NaN(); };
+        p->applyAutoGain();
+        p->seams.atApplyMeasurement = nullptr;
+        ogParam->removeListener (&probe);
+        const float ogAfter = og->load();
+        const auto savedAfter = savedOutputGain (*p);
+        const double rms = feedClean (*p, 8, 1291);
+        std::printf ("  A  Apply handed NaN (matcher had %.3f dB): reached %d, Output Gain %.3f -> %.3f dB,"
+                     " Level Match %s, host notifications %d / gestures %d, saved \"%s\", then RMS %.4f\n",
+                     (double) replaced, reached, (double) ogBefore, (double) ogAfter, lm->load() > 0.5f ? "on" : "OFF",
+                     probe.values, probe.gestures, savedAfter.toRawUTF8(), rms);
+        check (reached == 1, "liveness: Apply ran to its measurement read (the seam fired once)");
+        check (juce::exactlyEqual (ogAfter, ogBefore),
+               "Apply handed a NaN measurement leaves Output Gain at the user's own value, bit for bit");
+        check (lm->load() > 0.5f, "...and leaves Level Match on");
+        check (probe.values == 0 && probe.gestures == 0, "...with no host notification and no gesture");
+        check (savedAfter == savedBefore && ! savedAfter.containsIgnoreCase ("nan"),
+               "...and the saved Output Gain is unchanged, never \"nan\"");
+        check (rms > 1.0e-3, "...and the plug-in still plays");
+    }
+
+    // ---- Leg B: the control -- the same seam, the matcher's own finite reading ----
+    {
+        auto p = make();
+        feedClean (*p, 24, 129);
+        auto* og = p->getAPVTS().getRawParameterValue ("outputGain");
+        auto* lm = p->getAPVTS().getRawParameterValue ("autoGainMatch");
+        auto* ogParam = p->getAPVTS().getParameter ("outputGain");
+        Probe probe;
+        ogParam->addListener (&probe);
+        int reached = 0;
+        float measured = std::numeric_limits<float>::quiet_NaN();
+        p->seams.atApplyMeasurement = [&] (float& db) { ++reached; measured = db; };
+        p->applyAutoGain();
+        p->seams.atApplyMeasurement = nullptr;
+        ogParam->removeListener (&probe);
+        const float expect = ogParam->convertFrom0to1 (ogParam->convertTo0to1 (juce::jlimit (-24.0f, 24.0f, measured)));
+        std::printf ("  B  Apply of the matcher's own %.3f dB: reached %d, Output Gain %.3f dB (expect %.3f),"
+                     " Level Match %s, host notifications %d / gestures %d\n",
+                     (double) measured, reached, (double) og->load(), (double) expect,
+                     lm->load() > 0.5f ? "on" : "off", probe.values, probe.gestures);
+        check (reached == 1, "control liveness: the finite Apply ran to its measurement read");
+        check (std::isfinite (measured) && measured < -0.5f,
+               "control premise: the converged matcher measured a real, non-trivial finite gain");
+        check (std::abs (og->load() - expect) < 1.0e-4f, "control: a finite Apply locks the measurement into Output Gain");
+        check (lm->load() < 0.5f && probe.values > 0 && probe.gestures > 0,
+               "control: ...turns Level Match off and notifies the host inside a gesture");
+    }
+
+    // ---- Leg C: the real window, corroboration only (see the header) ----
+    {
+        auto p = make();
+        auto* og = p->getAPVTS().getRawParameterValue ("outputGain");
+        std::atomic<bool> stop { false };
+        std::atomic<int>  blocks { 0 };
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            juce::MidiBuffer midi;
+            juce::Random rng (129);
+            d2::Pace pace;
+            while (! stop.load (std::memory_order_acquire))
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    const float l = rng.nextFloat() - 0.5f;
+                    buf.setSample (0, i, (i % 97) == 11 ? std::numeric_limits<float>::quiet_NaN() : l);
+                    buf.setSample (1, i, 0.6f * l);
+                }
+                midi.clear();
+                p->processBlock (buf, midi);
+                blocks.fetch_add (1, std::memory_order_relaxed);
+                pace.rest();
+            }
+        });
+
+        int seen = 0;
+        bool wroteNonFinite = false;
+        const auto began = std::chrono::steady_clock::now();
+        while (seen < 20 && blocks.load (std::memory_order_relaxed) < 400
+               && std::chrono::steady_clock::now() - began < std::chrono::seconds (10))
+        {
+            if (! std::isnan (p->getEngine().getMatchGainDb())) { std::this_thread::yield(); continue; }
+            ++seen;
+            p->applyAutoGain();                                  // a click inside the window
+            if (! std::isfinite (og->load())) { wroteNonFinite = true; break; }
+        }
+        stop.store (true, std::memory_order_release);
+        audio.join();
+        const bool savedNan = savedOutputGain (*p).containsIgnoreCase ("nan");
+        const double rms = feedClean (*p, 8, 1290);
+        std::printf ("  C  real window: %d audio blocks, published NaN seen and applied %d time(s)%s;"
+                     " Output Gain %.3f dB, then RMS %.4f\n", blocks.load(), seen,
+                     seen > 0 ? "" : " (not reached on this scheduler -- legs A/B carry the contract)",
+                     (double) og->load(), rms);
+        check (blocks.load() > 0, "C non-vacuity: the audio thread processed NaN-laced blocks");
+        check (! wroteNonFinite && ! savedNan && rms > 1.0e-3,
+               "C: Apply inside the real window never writes, saves or plays a NaN Output Gain");
+    }
 }
 
 int main (int argc, char* argv[])

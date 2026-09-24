@@ -464,8 +464,8 @@ void AnamorphAudioProcessor::applyAutoGain()
 
     // "Apply": OVERRIDE (not add -- repeated presses would keep dropping it) Output Gain with the measured,
     // pre-output-gain loudness compensation, so the output sits at the dry loudness (feedback #18). NaN is
-    // no measurement and the one value `jlimit` below cannot bound; it made Output Gain NaN (State test 129).
-    const float matchDb = engine.getMatchGainDb();
+    float matchDb = engine.getMatchGainDb();   // no measurement, and the one value `jlimit` below cannot bound
+    if (seams.atApplyMeasurement) seams.atApplyMeasurement (matchDb);   // test seam: State test 129
     if (std::isnan (matchDb)) return;
 
     // ADR-0008, ROUND 23. THESE TWO STORES SAY WHAT THEY PRODUCED (Devin R1117-1119).
