@@ -13025,13 +13025,30 @@ test is named here; a scratch cross-check (every `Test N` / `State test N` added
 base named in `TESTING.md` and in a pass) passes on this tree and fails with 1 missing when one
 entry is removed. Not a general cleanup: the 73rd–75th passes' header gap is noted, not back-filled.
 
+**F13(1b) — reproduced, not changed.** Any switch that turns Level Match on without an A/B injection
+starts the applied gain at unity: Undo of Apply +2.3 / +4.5 / +5.7 dB above both endpoints at Drive
+4 / 8 / 10 (~130 ms, ~0.6 s to settle), the same for a hand re-engage after Apply or an engage from a
+low Output Gain, a small dip at a positive match. A smoother artefact; the measurement is untouched.
+Six candidate behaviours were measured as scratch variants (all leave the measurement, A/B and both
+suites unchanged) and the choice is put to the owner, since ADR-0007's note reserves it; no owner
+ruling exists in the repository. New user-visible limitation → KI-031.
+
 **Also.** State test 128's NaN constant made `constexpr` (PREfast con.5 on the previous head).
 
-**Documents changed.** `procedures/TESTING.md` (State test 129); `KNOWN_ISSUES.md` (KI-029, KI-030);
-this file (76th and 77th passes, the *Last updated* line); the worklog (§E4 revised). **Triggers not
-fired, decided:** `THREAD_MODEL.md` (the seam runs on the message thread inside Apply, adds no
+**Documents changed.** `procedures/TESTING.md` (State test 129); `KNOWN_ISSUES.md` (KI-029, KI-030,
+KI-031); this file (76th and 77th passes, the *Last updated* line); the worklog (§E4 revised; §E3,
+§F, §G pointed at the new §I, the round and the F13(1b) decision record); ADR-0007's note of
+2026-09-24, corrected in place (the smoother's lag at a Match-on-both bottom is 0.02–0.06 dB, not
+"within 0.003 dB"; the swell scales with the match gain; question 1's measured options). **Triggers
+not fired, decided:** `THREAD_MODEL.md` (the seam runs on the message thread inside Apply, adds no
 thread and no shared state); `API_REFERENCE.md` (`Seams` is a test surface, as are the other
-D-2 seams it does not list).
+D-2 seams it does not list); `TESTING.md` for F13(1b) (no test added: the behaviour a test would pin
+is the owner's to choose); `CHANGELOG.md` (no behaviour change).
+
+**Drift reported, not fixed** (pre-existing): `AnamorphEngine.cpp:703-705` ("a big level change never
+swells") and `:1814-1816` ("toggling Match … is seamless") are false for an engage; ADR-0007:101 "re-armed
+in exactly one place" holds for the switch path only; ADR-0004 D1 and ADR-0035 do not name the
+match smoother's exclusion from `snapSmoothers()`.
 
 **Counts.** DSP **524 / 0** (unchanged), State **4 809 / 0** (4 802 + 7: State test 129 has 12
 checks, was 5). [Verified]

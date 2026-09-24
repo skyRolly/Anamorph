@@ -200,12 +200,14 @@ against a fresh instance at the destination state:
   own time constants: within 0.27–0.45 dB of the live edit after 0.1 s, the same end state. The "≈0.6 dB for ≈4 s" figure from R6 is that
   re-convergence for one A/B setup (0.63 dB, within 0.1 dB at 2.75 s), not a fixed drift: across
   deltas and levels it is 0.22–5.8 dB on A/B, and on preset / undo / redo it is the live edit's own.
-- **`matchGainSmooth` left out of `snapSmoothers()`** changes nothing when Level Match is on in both
-  states (the smoother sits within 0.003 dB of its target at the bottom). It matters when a forced
-  swap turns Level Match ON — in production, **Undo of Apply** — and there it swells: the smoother
-  sits at unity while Level Match is off, so the undo overshoots both endpoint levels by +4.0 dB
-  (Drive 8) and +4.8 dB (Drive 10), peaking 128 ms after the undo. Re-engaging Level Match by hand
-  after Apply (a ducked, non-forced switch) swells the same way. `snapSmoothers()`'s own comment gives
+- **`matchGainSmooth` left out of `snapSmoothers()`** changes almost nothing when Level Match is on in
+  both states (the smoother sits 0.02–0.06 dB from its target at the bottom; 0.9 dB right after a
+  large live Drive move). It matters when a forced swap turns Level Match ON — in production, **Undo of
+  Apply** — and there it swells: the smoother sits at unity while Level Match is off, so the undo
+  overshoots both endpoint levels by +4.0 / +4.8 dB (Drive 8 / 10) on the programme first measured and
+  +4.5 / +5.7 dB on a second — the size scales with the match gain — peaking ~130 ms after the undo.
+  Re-engaging Level Match by hand after Apply (a ducked, non-forced switch) swells the same way, as
+  does any engage from an Output Gain below the matched gain (worklog §I; KI-031). `snapSmoothers()`'s own comment gives
   its purpose as "a big level change never swells (#1)"; the documents that call the engage
   smoothed promise no click, not this. No test covers it.
 - **An A/B switch whose slots differ only in continuous controls undoes its own injection.** The
@@ -221,14 +223,22 @@ against a fresh instance at the destination state:
   unchanged. State test 129.
 
 **Recorded for the owner, not decided here** (each is a change to this ADR, not a defect of it):
-1. At a forced swap's silent bottom, should the applied match gain land on the matcher's value like
-   every other smoother, or keep its 120 ms glide? Options: keep and document (no behaviour change;
-   the Undo-of-Apply swell stays); snap it in `snapSmoothers()` (Undo of Apply to +0.05 dB, both
-   suites unchanged; `prepare()` is unaffected by construction, a host reset completing a forced swap
-   in flight is not; the hand re-engage keeps its swell); snap it after `loudness.process` in the
-   bottom block (the same, and a Drive 0 → 10 dB swap's excess falls from +7.82 to +4.77 dB). A fix
-   for the hand re-engage as well means landing the smoother at any duck bottom that engages Level
-   Match — a wider change to the engage than this ADR's current text describes.
+1. At a silent duck bottom that turns Level Match on, what applied gain should the fade-in carry —
+   unity (today), the matcher's value, or the gain that was playing? Measured (worklog §I5; every
+   candidate leaves the published value, the analysis, A/B and both suites unchanged): keep and
+   document (the swell stays, KI-031); snap it in `snapSmoothers()` (forced routes only — Undo of
+   Apply and a preset to 0 dB; the hand engage keeps its swell); snap it after `loudness.process` in
+   the forced bottom block (the same, and a continuous-only Drive 0 → 10 swap's excess falls from +6.7
+   to +4.6 dB, so that route no longer tracks the live edit); land it after `loudness.process` at any
+   bottom that turns Level Match on — a wider change to the engage than this ADR's current text
+   describes — (every route to 0 dB; an engage from a louder Output Gain lands instead of gliding
+   down; an engage that also changes the sound lands on a published value that describes the old
+   sound, up to 4.5 dB further off than today); the same only when nothing but Level Match / Output
+   Gain / Output Balance changes (every route to 0 dB, sound-changing engages as today; needs a
+   complete comparison that tolerates a preset round trip); start it from the gain that was playing
+   (every route, by a glide; slower from a boosted Output Gain); track the matcher while Level Match
+   is off (every route; ~3 % more engine time while off). Re-measuring on engage is not an option: it
+   contradicts the re-arm rule above and measured worse.
 2. Should the measure also re-arm when an A/B slot's remembered gain is injected (measured above), or
    whenever any continuous sound field differs? Re-arming at every injection also re-arms an A/B
    switch between identical slots (0.030 → 0.000454 dB, the re-armed signature), which reverses the

@@ -313,7 +313,8 @@ on through a preset" needs a user preset.
   says "snap smoothers" without naming it, and the documents that call the engage smoothed promise no
   click, not this — so the evidence points one way, but the rule is the owner's. Options and measured
   effects: ADR-0007 note 2026-09-24, question 1. **Reopen:** an owner ruling; this is the one F13
-  item with an audible, everyday trigger.
+  item with an audible, everyday trigger. Re-measured, widened (any engage without an A/B injection)
+  and put to the owner with six measured behaviours in §I (decision record §I6).
 - **F13(2) — continuous-only swaps do not re-arm; the "0.56–0.6 dB / ~4 s" claim.** CONFIRMED only for
   R6's A/B setup (0.63 dB off G* at 0.57 s, within 0.1 dB at 2.75 s, 0.023 dB at 4 s); REFUTED as a
   general statement: on A/B it is 0.22–5.8 dB depending on the delta and the programme, and on preset
@@ -371,7 +372,7 @@ Each is recorded, not fixed, with the reason.
 | **Discrete parameters read NaN as index 0 / off** (algorithm → Haas, `mbBands` → 1, `advancedMode` → Simple); `roundToInt (NaN)` depends on the bit pattern | §B3 | preserve | finite, bounded, no latch; the same owner decision covers it |
 | **The first large step after a NaN crossover glides** (586.7 ms instead of 16 ms) | §B2 | preserve | only after a non-finite episode; audible effect not measured |
 | **Stale citations** — ADR-0009 *Related code* (`MultibandWidth.cpp:55-71`, `MonoMaker.h:36-39`), `DSP_POLICY.md:55`, `THREAD_MODEL.md:99` (`toEngine` also runs on the prepare and message threads), State test 123's header premise ("a host that sends one is buggy") | read against the code | documentation pass | reported, not rewritten (no general cleanup this round) |
-| **F13(1b) the Undo-of-Apply swell** (+4.0 / +4.8 dB, 128 ms) and the hand re-engage swell | §E3 | **owner decision** | changing the forced-bottom or engage behaviour of the match smoother is ADR-0007 / ADR-0004 territory; no test covers it yet |
+| **F13(1b) the Undo-of-Apply swell** (+4.0 / +4.8 dB, 128 ms) and the hand re-engage swell — every engage without an A/B injection (§I: +2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10) | §E3, §I | **owner decision** (KI-031; record §I6) | changing the forced-bottom or engage behaviour of the match smoother is ADR-0007 / ADR-0004 territory; no test covers it yet |
 | **F13(2) A/B between continuous-only slots** re-converges for 1.8–4.5 s after a correct injection | §E3 | **owner decision; hard stop** | B1 conflicts with ADR-0007's re-arm rule and its dimMode table |
 | **Level Match gain discarded by the self-heal** (full `loudness.reset()`), after a NaN parameter or a NaN burst | §B2, §E3 | owner decision (ADR-0009's existing question) | unchanged by TG, which only keeps the target during the burst |
 | **Level Match convergence after any large Drive change** (+5 dB for ~2.5 s on a Drive 0 → 8 raise, live or forced) | §E2 | preserve | ADR-0007 design: the predict floor anticipates part of the boost, the measure glides at τ 0.9 s |
@@ -388,7 +389,7 @@ Each is recorded, not fixed, with the reason.
 | Apply locks NaN; NaN match target | **done** (§E4) | clear violations of ADR-0007 / ADR-0009 | — |
 | Multiband / Band Solo NaN | **preserve** | inside ADR-0009's self-heal; recovers in one block | the owner rules on ingress |
 | **What a non-finite parameter means on ingress** (`toEngine` default vs hold-last vs status quo; text parsers accepting "nan"; Mono Maker's 500 Hz; the self-heal's Level-Match wipe) | **owner decision** | parameter semantics (ADR_POLICY); the measured candidate plays an Output Gain NaN at 0 dB | an owner ruling — then one stateless change in `toEngine`, plus the parsers if chosen |
-| **F13(1b) Undo-of-Apply swell** | **owner decision — recommended next** | +4–5 dB above both endpoints on an everyday action; snapping at the forced bottom fixes the undo route (+0.05 dB) with both suites unchanged | an owner ruling (and a test for the swell either way) |
+| **F13(1b) Undo-of-Apply swell** | **owner decision — recommended next** (§I6: O4g recommended, O4 / O2 alternatives) | +2.3–5.7 dB above both endpoints on an everyday action; every candidate that lands the gain leaves both suites and the measurement unchanged | an owner ruling (and a test for the swell either way) |
 | **F13(2) A/B continuous-only re-arm (B1)** | **owner decision; hard stop** | conflicts with ADR-0007's re-arm rule and dimMode table | an approved ADR-0007 amendment |
 | Restore window (`value="nan"` + usable `raw`) | **investigate** | lens-measured through a seam only | a measurement under the real restore |
 | Float → int UB (Haas delay, Chorus) on NaN | **defer** | resolved by any ingress rule | the ingress decision, or an AArch64 run |
@@ -421,3 +422,207 @@ was run.
 - **Hard-stop classes:** none touched — no parameter ID, range, default or schema change, no
   threading or DSP-order change, no latency change; the ADR-0007 re-arm question that would conflict
   with an Accepted ADR is recorded, not implemented.
+
+## I. Devin-review round (2026-09-24): State test 129, the coverage audit, F13(1b)
+
+Round after `57c2967` on the same branch (PR #156). Two review findings first, then F13(1b)
+reproduced and put to the owner. No behaviour change in this section.
+
+### I1. Review findings
+
+- **State test 129 could pass without Apply reading a NaN.** The window is inside `engine.process()`
+  (between `loudness.process` and the self-heal's reset); a serialised scheduler almost never lands a
+  click in it, and the test required only that the audio thread ran. Fixed in the test and a
+  message-thread seam (§E4; `docs/procedures/TESTING.md`). Pre-fix: leg A fails five checks with its
+  liveness met, leg C a sixth; Apply disabled: A's and B's liveness fail (`reached 0`); one pinned CPU
+  twice: 4809 / 0 with A and B reached.
+- **No coverage entry for the round.** Added (`DOCUMENTATION_COVERAGE.md` 76th and 77th passes),
+  with KI-029 / KI-030 for the two owner-decision limitations. The repository has no gate that
+  checks a new test is named in a pass; a scratch cross-check (every `Test N` / `State test N` added
+  since `659ca0a` named in `TESTING.md` and in a pass) passes on the tree and reports each entry
+  removed from it (Test 65, State test 128).
+- **Non-finite fixes on the new head:** DSP 524 / 0, state 4809 / 0; the DSP log is byte-identical to
+  the previous round's, the state log differs only in thread-timing counters and State test 129's new
+  leg; the 186 finite legs hash identically to the pre-fix build.
+
+### I2. F13(1b) reproduced
+
+Measured through `AnamorphAudioProcessor` on this head: 48 kHz / 256, stereo pink noise at −18 dBFS
+RMS, Haas 0.5, Width 1.3, Advanced on, oversampling off. **Excess** = level above BOTH the same run
+without the event and a fresh instance at the destination (K-weighted, 100 ms window; this cancels
+the programme's own 0.5–0.8 dB fluctuation). **Settle** = time until within 0.1 dB of the fresh
+instance.
+
+| route (Drive 8 unless stated) | published match | excess, peak time | settle |
+|---|---|---|---|
+| Undo of Apply, Drive 4 / 8 / 10 | −3.89 / −6.87 / −8.45 dB | **+2.32 / +4.45 / +5.67 dB**, 128–130 ms | 523 / 610 / 647 ms |
+| hand re-engage after Apply | −6.87 | **+4.44**, 128 ms | 606 |
+| hand engage from Output Gain −12 dB (no Apply) | −6.80 | **+4.51**, 129 ms | 607 |
+| user preset that only turns Level Match on, from Output Gain −3 dB | −6.80 | **+0.72**, 128 ms | 613 |
+| hand engage from Output Gain 0 / +6 dB | −6.80 | none (glides down from 0 dB) | 607 |
+| Undo of Apply at a positive match (Drive 0, Width 0) | +0.69 | none; a **−0.35 dB dip** below both | 288 |
+| Apply; Redo; hand disengage; A/B either way; host reset inside the swap | — | none | 104–127 |
+
+Independent reproductions: 44.1 kHz / 512 with a different signal and metric, +5.14 / +6.55 dB at
+Drive 8 / 10 (+3.87 / +4.70 at three times the level — within 0.13 dB of the earlier +4.0 / +4.8);
+96 kHz / 64 +5.26 dB; a third harness +4.10–4.62 dB across four rate / block / signal
+configurations. The peak time (123–130 ms with a 100 ms window) is robust; the size scales with the
+match gain (0.58–0.69 × |match|).
+
+### I3. Mechanism
+
+Trace of the Drive 8 Undo, per block (end-of-block values):
+
+| ms after Undo | state | published | `matchGainSmooth` current → target | `outGainSmooth` | applied |
+|---|---|---|---|---|---|
+| −5.3 | settled after Apply, Match off | −6.872 | 0.000 → 0.000 | −6.800 | −6.800 (Output Gain) |
+| 0.0 / 5.3 | forced fade-out, dry fill latched at −6.80 | −6.871 | 0.000 → 0.000 | −6.800 | −6.800 |
+| 10.7 | **bottom**; Match on | −6.871 | −0.214 → −6.871 | −3.000 (snapped) | −0.214 |
+| 37.3 | end of fade-in | −6.869 | −1.214 → −6.869 | −3.000 | −1.214 (5.7 dB hot) |
+| 128 / 200 / 400 | | −6.86 | −3.80 / −5.11 / −6.50 | | |
+
+1. While Level Match is off, the smoother's target is 1.0 (`AnamorphEngine.cpp:833-835`, `:1736`),
+   so after Apply it ramps to 0 dB and parks there. The matcher keeps measuring (`loudness.process`
+   is ungated).
+2. Undo is a forced duck. At the bottom `procChanged` is false (`autoGainMatch` is not in
+   `processingDiffers`), so nothing re-arms: published, displayed and predicted gains and the
+   integrators are unchanged. `updateDerived()` sets the target to the published −6.87 dB;
+   `snapSmoothers()` lands every other smoother but not this one (`:724`); an Undo carries no A/B
+   injection; the input is continuous, so the silence→audio snap (`:1770-1771`) does not fire.
+3. The output stage switches its gain from Output Gain (−6.80) to the smoother (0 dB) — a step of
+   the match gain's size, which the fade-in reveals.
+4. The smoother's 120 ms linear ramp is restarted every block, because the published value moves
+   slightly each block and `SmoothedValue::setTargetValue` restarts on any change. It behaves as a
+   one-pole with τ ≈ 120 ms, so the excess takes ~0.6 s to decay rather than 120 ms.
+
+The measurement is not involved: every analysis field is continuous across the Undo, and a
+diagnostic that lands the smoother at every duck bottom removes all four rows above while leaving
+the published value identical. What lands it today: the A/B injection (`:1161-1166`), the
+silence→audio edge, and a host reset, which sets `prevInputSilent` so the next audible block snaps
+(measured +0.19 dB, no swell).
+
+### I4. The existing contract
+
+| | code (this head) | Accepted ADR / owner ruling | implementation detail | unspecified |
+|---|---|---|---|---|
+| Apply | ordinary duck; Output Gain := published, Level Match off, one undo step | ADR-0007 "Apply locks the measured gain"; ADR-0008 (one step, Redo restores it) | the duck, the 20 ms Output Gain ramp | how Apply should sound |
+| Undo of Apply / any forced swap that turns Match on | fade-in starts from unity, glides to the published value | none decides it; ADR-0004 D1 "snap smoothers there so nothing pops mid-fade" (exclusion unnamed); ADR-0008 "`requestDuck()` masks the level jump" | the `:724` carve-out (origin before this clone's history) | the applied gain an engaging forced fade-in should carry |
+| hand engage | ordinary duck, same unity start | ADR-0007: toggling must **not re-measure** (`:124-125`) | CHANGELOG [0.8.9] "always duck- and glide-smoothed, never a click"; `:1816` "toggling Match … is seamless" | the level an engage starts from |
+| A/B | injection lands published and smoother | ADR-0007 notes (injection value, dimMode row) | the injection | (F13(2), KI-030) |
+| continuous-only forced swap, Match on in both | carried, glides with the measure | ADR-0007 note 2026-09-24: behaves like the live edit (F13(1a), preserved) | | |
+| host reset / prepare | reset: published kept, edge snap lands the smoother; prepare: full flush | ADR-0007 notes 2026-09-21/22 and the R9 approval (published survives a reset) | | the applied gain across a reset |
+| silence→audio edge | snaps the applied gain | ADR-0007 Decision — the only Accepted sentence about the applied gain | the −60 dBFS gate | whether other silent points (a duck bottom) should snap |
+
+**No owner ruling exists** on how an engage should sound, on the Undo-of-Apply swell, or on landing
+the smoother at a bottom (docs, worklogs, CHANGELOG and `git log --all` searched; the repository is a
+shallow clone, so the carve-out's origin and the text of feedback #1 / #16 / #23 cannot be
+recovered). ADR-0007's note of 2026-09-24 reserves the question for the owner.
+
+### I5. Candidate behaviours, measured
+
+Each is a scratch engine variant built against this head's objects; none is in the repository. For
+every variant both suites pass (524 / 0, 4809 / 0) with no changed line other than thread-timing
+counters, and the published value, the displayed value and the analysis are identical to this head
+in every scenario (none adds a `reset`, `softReset` or `setDisplayedGainDb`). No variant needs a
+parameter, schema, signal-order, latency or threading change. Excess in dB (48 kHz / 256, as §I2).
+
+| | O1 keep | O2 snap in `snapSmoothers()` | O3 land after the measure, forced bottom | O4 land after the measure, any Match-on bottom | **O4g** O4 when only Level Match / Output Gain / Output Balance change | O5 start from the heard gain | O6 track the matcher while off |
+|---|---|---|---|---|---|---|---|
+| Undo of Apply D4 / D8 / D10 | +2.32 / +4.45 / +5.67 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
+| hand re-engage after Apply | +4.44 | +4.44 | +4.44 | 0 | 0 | 0 | 0 |
+| hand engage from −12 dB | +4.51 | +4.51 | +4.51 | 0 | 0 | 0 (monotonic rise, 494 ms) | 0 |
+| hand engage from 0 / +6 dB, settle | 607 ms glide down | same | same | lands, 127 ms | lands, 127 ms | 607 / 730 ms (starts at +6: up to 10.2 dB above the destination) | lands, 127 ms |
+| preset that only turns Match on | +0.72 | 0 | 0 | 0 | 0 | 0 (glide, 524 ms) | 0 |
+| Undo 60 ms after Apply | +2.48 at 100 ms | — | — | 0 | 0 | 0 | — |
+| re-engage 80 ms after a disengage (OG 0) | +3.00 at 100 ms | — | — | 0 | 0 | +4.18 | — |
+| Undo of Apply at a positive match (+0.69 dB): dip | −0.35 | — | — | +0.02 (none) | +0.02 (none) | — | — |
+| **engage + sound change** (user preset, Match on, Drive 10→0), run − fresh at 100 ms / min | −3.59 / −7.72 at 377 ms | not measured (as O4 by reading) | not measured | **−8.90 / −8.90 at 70 ms** | −3.59 / −7.72 (= O1) | −5.69 / −8.07 | not measured |
+| same + algorithm change, min | −1.06 | — | — | **−5.53** | −1.06 (= O1) | −2.35 | — |
+| engage + Drive 0→10, max | +7.43 | — | — | +5.05 | +7.43 (= O1) | +5.33 | — |
+| continuous-only Drive 0→10, Match on both | +6.73 | +6.77 | **+4.55** | +6.73 | +6.73 | +6.73 | +6.73 |
+| A/B (both directions, injection) | — | identical | identical | identical | identical | identical | identical |
+| host reset inside the fade-in, settle | 120 ms | 126 | 126 | 126 | 126 | 126 | 126 |
+| re-prepare | +2.46 (measurement) | identical | identical | identical | identical | identical | identical |
+| cost | — | none | none | none | a "same sound" comparison with a float tolerance (a preset round trip moved `chorusRate` by one ulp) | none | ~3 % more engine time while Match is off (fast path lost); part-way after a large match move |
+| ADR-0007 note's options | "keep" | listed | listed | listed ("wider change to the engage") | not listed (O4 narrowed) | not listed | not listed |
+
+**O7, re-measure on engage** (a full `loudness.reset()` at a Match-on bottom, then a snap): Undo of
+Apply +2.80 / +4.97 / +6.16 dB at Drive 4 / 8 / 10 (worse than O1) with the snap before the
+measure, +1.41 / +2.29 / +2.66 dB with 2.1–2.2 s to settle with it after — a smaller swell traded
+for a multi-second one — and it contradicts ADR-0007 (`:101` re-armed in one place; `:124-125` toggling
+must not re-measure). Ruled out: a hard stop, and no better.
+
+**Engage + sound change is a different problem.** While Level Match is off the published value
+describes the sound being played; a forced swap that turns Match on AND changes the sound therefore
+lands (O4) on a stale value, the same staleness a Match-on-both swap shows (continuous-only Drive
+10→0 with Match on in both: −8.72 dB, unchanged by every option). O1's unity start is accidentally
+close in one direction (X1) and far in the other (X2). Neither is right; the right answer is a
+measurement question (F13(2), KI-030), not this one.
+
+### I6. Owner decision record — F13(1b)
+
+- **Observed.** Turning Level Match on without an A/B switch starts the applied gain at unity instead
+  of at the matched gain, so the output steps by the match gain at the silent bottom and returns over
+  ~0.6 s. When the level before and the matched level are both below unity — Undo of Apply, a hand
+  re-engage after Apply, an engage from a low Output Gain — that is a swell above both: +2.3 / +4.5 /
+  +5.7 dB at Drive 4 / 8 / 10 on the measured programme, peaking ~130 ms after the action. When both
+  are above unity it is a dip (−0.35 dB at +0.69 dB). An everyday trigger; no test covers it.
+- **Contract.** Only the silence→audio snap is decided for the applied gain (ADR-0007 Decision).
+  ADR-0004 D1 and `snapSmoothers()`'s comment ("a big level change never swells (#1)") point one way
+  but do not name this smoother; the CHANGELOG and a code comment call the engage glide-smoothed and
+  seamless. ADR-0007's note of 2026-09-24 reserves the question: "each is a change to this ADR, not a
+  defect of it". No owner ruling exists.
+- **Question.** At a switch's silent bottom that turns Level Match on, what applied gain should the
+  fade-in carry — unity (today), the matcher's value, or the gain that was playing? And should the
+  answer hold when the same switch also changes the sound?
+- **Allowed choices.** O1 keep and document; O2; O3; O4; O4g; O5; O6 (§I5). Not allowed: O7 (conflicts
+  with ADR-0007, and is worse).
+- **Recommendation: O4g**, with **O4** as the simpler alternative and **O2** as the narrowest.
+  - O4g removes every measured instance: Undo of Apply, the hand re-engage, an engage from a low
+    Output Gain, a preset or undo that only turns Level Match on, and the mirror dip.
+  - It changes nothing where Level Match is already on (so F13(1a)'s "forced tracks the live edit"
+    stands), nothing on A/B, nothing in the measurement, no suite line and no CPU.
+  - It leaves an engage that also changes the sound exactly as today. That case needs a measurement
+    answer (F13(2)), and O4 makes it worse by up to 4.5 dB (X1b) while improving the opposite
+    direction.
+  - Its one audible change beyond the fix: an engage from a louder Output Gain lands at the silent
+    bottom instead of gliding down over ~0.6 s, the same treatment every other control gets at a
+    forced bottom.
+  - Its cost is a "same sound except output" comparison that must stay complete as parameters are
+    added and must tolerate a preset round trip. A defaulted comparison on `EngineParameters` beside
+    `processingDiffers`, plus a test that fails if a field is missed, would carry it.
+  - O4 needs no gate and is the ADR note's own "wider" option.
+  - O2 is one line and fixes only the forced routes (Undo of Apply, preset); the hand engages keep
+    their swell.
+  - O1 is defensible only as a documented limitation (KI-031).
+- **What changes under O4g (or O4).**
+  - Code: `AnamorphEngine.cpp` — a block-local flag set at a Match-on duck bottom (cleared by an
+    injection), a landing right after the level-match stage's `setTargetValue`, and for O4g the
+    comparison. Comments `:78`, `:155-156`, `:703-705`, `:724`, `:1814-1816`.
+  - Tests: a DSP test through the engine (forced and ordinary engage from Output Gain = match; a
+    sound-changing engage and an A/B injection unchanged) and a State test through the processor
+    (Undo of Apply and the hand re-engage within a stated bound of both endpoints over 0–0.6 s).
+  - Docs: an ADR-0007 owner-ruling note and an ADR-0004 note naming the smoother; CHANGELOG
+    `[Unreleased]` Fixed; KI-031 resolved; `TESTING.md`; `DOCUMENTATION_COVERAGE.md`;
+    `PERFORMANCE_BUDGET.md:50-53` ("always duck+glide smoothed").
+  - Hard-stop classes: none mechanical. It is an ADR-0007 amendment, so it needs the owner.
+- **What changes under O1.** Correct the comments that are false today (`:703-705`, `:1814-1816`),
+  add a test that pins the behaviour, and note the exclusion in ADR-0004 D1. KI-031 stays.
+
+### I7. Recorded, not changed
+
+- ADR-0007 note 2026-09-24 corrected in place (same PR): the smoother's lag at a Match-on-both bottom
+  is 0.024–0.063 dB (0.94 dB right after a large live Drive move), not "within 0.003 dB"; the swell's
+  size scales with the match gain; the route list and the measured options (this section).
+- Drift reported, not edited (pre-existing): `AnamorphEngine.cpp:703-705` ("a big level change never
+  swells") and `:1814-1816` ("toggling Match … is seamless") are false for an engage; ADR-0007:101
+  "re-armed in exactly one place" is scoped to the switch (the host reset `softReset`s and the
+  self-heal `reset`s); ADR-0035 "every other control is already snapped" and ADR-0004 D1 do not name
+  the match smoother.
+- The per-block ramp restart (§I3 item 4) lengthens every Level-Match glide to ~0.6 s; a separate
+  lever, not decided here.
+- The measurement family is unchanged by every option (A/B continuous-only +1.59 dB, Drive 0↔10
+  +6.73 / −8.72 dB, re-prepare +2.46 dB): F13(1a), F13(2) and §F as already recorded.
+- Scope: Linux x86-64, GCC; stationary noise and one programme-like signal; 44.1 / 48 / 96 kHz,
+  64–2048-sample blocks for the headline rows only; Haas only for the matrix (one Velvet row). No
+  DAW, no music.

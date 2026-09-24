@@ -147,6 +147,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 | KI-029 | A **non-finite parameter value** — the text "nan" typed into a knob's value box, or a NaN from a host — mutes or changes several controls **while it is present** (Width, Haas Delay, Chorus Rate / Depth, Output Gain and the multiband widths / crossovers mute; Mix plays fully wet; the Level-Match gain is discarded) | Low | Confirmed; recovers as soon as a valid value arrives. What a NaN value should mean is an **owner decision** (ADR-0009 note 2026-09-24) |
 | KI-030 | After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back | Medium | Confirmed; the fix changes ADR-0007's re-arm rule, so it is an **owner decision** / ADR amendment (ADR-0007 note 2026-09-24) |
+| KI-031 | **Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it (by hand, undo / redo or a preset) while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after: +2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10 on the measured programme, peaking ~130 ms after the action and settled in ~0.6 s | Medium | Confirmed; every fix changes how the Level-Match engage sounds, which ADR-0007 reserves for the owner — **owner decision** (ADR-0007 note 2026-09-24, question 1) |
 
 ---
 
@@ -1051,3 +1052,23 @@ that change a discrete field, preset loads, undo and redo are not affected in th
   row of its dimMode table — an ADR amendment and an owner decision.
 - **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §E; ADR-0007, note 2026-09-24.
 
+## KI-031 — turning Level Match on can briefly play louder than before and after
+
+While Level Match is off, the gain it would apply rests at unity (0 dB). When a switch turns it on,
+the output hands over from Output Gain to that gain at the silent bottom of the switch's fade, and
+the gain then glides to the matched value, within 0.1 dB after about 0.6 s. The fade-in therefore
+starts at the processed signal's unmatched level. When the level before and the matched level are
+both below that — **Undo of Apply** (Apply set Output Gain to the matched gain), re-engaging Level
+Match by hand after Apply, or engaging it with Output Gain below the matched gain — the output swells
+above both. Measured through the processor (48 kHz / 256, pink noise at −18 dBFS, Haas):
++2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10 for Undo of Apply, peaking ~130 ms after the action;
++4.4 dB for the hand re-engage; +4.5 dB for an engage from Output Gain −12 dB; +0.7 dB for a user
+preset that turns Level Match on from −3 dB. With a matched gain above 0 dB it is a small dip instead
+(−0.35 dB at +0.7 dB). The size scales with the matched gain. An A/B switch, turning Level Match
+off, Apply itself and Redo are not affected, and a host reset during the switch lands the gain.
+
+- **Why it is not fixed here:** every fix changes how the Level-Match engage sounds, which ADR-0007's
+  note of 2026-09-24 reserves for the owner. Six behaviours were measured; all leave the measurement,
+  A/B and both suites unchanged, and they differ in which engages they fix and what else they touch.
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §I (decision record §I6);
+  ADR-0007, note 2026-09-24.
