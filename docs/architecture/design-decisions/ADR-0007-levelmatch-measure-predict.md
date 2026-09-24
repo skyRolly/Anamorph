@@ -279,7 +279,8 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   4. no A/B injection is consumed in that block — the slot's remembered gain keeps priority (#23);
   5. the reading is a number (ADR-0009): otherwise the stage keeps its target and nothing lands.
 - **Case B — anything else.** Exactly the behaviour before this amendment: the smoother starts where
-  it rests while Level Match is off (unity) and glides to the matcher's value. When the switch also
+  it rests while Level Match is off (unity) and glides to the matcher's value — or, at an A/B switch
+  (condition 4), starts on the slot's injected gain. When the switch also
   changes the sound, the published value describes the sound *before* the switch; landing on it
   would align the gain to a stale result — worklog §I5 measured that at up to 4.5 dB further from a
   fresh instance than gliding. The right gain there is a measurement question (question 2 above,

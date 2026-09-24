@@ -123,7 +123,8 @@ because where it lands is ADR-0007's to decide, and its target is fresh only aft
 loudness measurement. ADR-0007's Amendment of 2026-09-24 decides it: at a bottom that turns Level
 Match on and changes nothing the measurement reads, the smoother is landed on the published value
 right after that block's measurement — at a forced bottom and, new for mechanism 1, at an ordinary
-one (the Level Match toggle), which otherwise snaps nothing. At any other bottom it keeps gliding. The
+one (the Level Match toggle), which otherwise snaps nothing. At an A/B bottom the injected slot gain
+sets it, as before (ADR-0007, #23); at any other bottom it keeps gliding. The
 three mechanisms, and which control belongs to which, are unchanged.
 
 ## Related code

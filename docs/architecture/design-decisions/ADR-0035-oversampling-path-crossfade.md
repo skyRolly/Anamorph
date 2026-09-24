@@ -163,7 +163,8 @@ Two independent sources fed it, one in each direction:
 Point 10's "where every other control is already snapped" holds for the controls `snapSmoothers()`
 names; `matchGainSmooth` is not one of them. Since ADR-0007's Amendment of 2026-09-24 it is landed
 later in the same block — after the level-match stage's measurement, which runs after this stage —
-when the swap turns Level Match on and changes nothing the measurement reads; otherwise it glides.
+when the swap turns Level Match on and changes nothing the measurement reads; an A/B swap sets it to
+the injected slot gain instead (ADR-0007, #23); otherwise it glides.
 Point 10's measurement and reasoning concern the drive smoothers and `osBlend`, and are unaffected.
 
 ## Related code

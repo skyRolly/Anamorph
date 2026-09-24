@@ -1886,10 +1886,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     {
         // When Level Match is engaged the matched gain REPLACES Output Gain, so
         // the Output knob no longer shifts the matched level (feedback #1). Both
-        // smoothers advance every sample. Turning Match on is a ducked switch: when it
-        // changes only the gain, the match smoother was landed on the published value at
-        // the silent bottom, so the fade-in starts matched; when it also changes the sound
-        // it starts from unity and glides (ADR-0007, Amendment 2026-09-24; KI-030).
+        // smoothers advance every sample. Turning Match on is a ducked switch: at its silent
+        // bottom the match smoother takes an injected A/B slot gain, or the published value
+        // when the switch changes only the gain, so the fade-in starts matched; otherwise it
+        // starts from unity and glides (ADR-0007, Amendment 2026-09-24; KI-030).
         // Match's smoother is slow, so a live match change glides (feedback #16).
         const float og = outGainSmooth.getNextValue();
         const float mg = matchGainSmooth.getNextValue();

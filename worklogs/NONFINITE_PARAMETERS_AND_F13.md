@@ -634,10 +634,11 @@ measurement question (F13(2), KI-030), not this one.
 ## J. F13(1b) implemented: the owner's ruling (O4g), the derived predicate, and its tests
 
 Round after `e9deabe`, same branch (PR #156). The owner ruled on §I6: *"Use O4g as the working
-direction for this round"*, with the predicate to be derived from the engine's state graph rather
-than a name list, tolerant of harmless float representation differences, and with a sound-changing
-engage kept as it is until F13(2) is resolved. §I is not edited; two of its plan lines are superseded
-here: the "same sound except output" comparison (§I6) is replaced by the derived predicate below, and
+direction for this round"*; *"Derive it from the actual engine/state graph and signal-path
+dependencies."*; *"The predicate must tolerate harmless floating-point representation differences"*;
+*"Preserve current behavior for sound-changing Level Match engages until F13(2) is explicitly
+resolved."* (the same quotations as ADR-0007's review-gate row). §I is not edited; two of its plan
+lines are superseded here: the "same sound except output" comparison (§I6) is replaced by the derived predicate below, and
 "CHANGELOG `[Unreleased]`" is not available (no tag exists; CHANGELOG_POLICY puts unreleased work in the
 dated `[0.9.9]` entry).
 
