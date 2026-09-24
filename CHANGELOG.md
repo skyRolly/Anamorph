@@ -188,6 +188,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   switching Level Match off, and Level Match's measurement are unchanged. Decision: ADR-0007
   (Amendment, 2026-09-24). Regression coverage: Test 66 and State test 130. Evidence: PR #156.
   [Verified]
+- **Switching A/B between two versions that differ in Drive, Mix, Width or another tone setting no
+  longer lets Level Match wander away from the slot's own level.** With Level Match on, each A/B slot
+  remembers its matched level and gets it back on the switch — correctly — but Level Match's
+  loudness measurement was still listening to the other slot and pulled the level off it again for
+  two to three seconds: measured at **+1.6 / −1.8 dB** on pink noise for a Drive 2 ↔ 8 switch. The measurement
+  now starts afresh on the new slot's sound whenever the two slots differ in anything it listens to;
+  a switch that changes only Output Gain, Level Match itself or nothing at all keeps its settled
+  measurement, as before. Decision: ADR-0007 (Amendment of 2026-09-24, F13(2)). Regression coverage:
+  Test 67 and State test 131. Evidence: PR #156. [Verified]
+- **Re-preparing Anamorph at the same sample rate no longer throws away the Level Match level.**
+  Hosts re-prepare a plug-in when, for example, the audio buffer size changes or the plug-in is
+  re-activated. With Level Match on, the matched level was discarded and rebuilt from an estimate, so
+  the output played about **2–3 dB** away from the matched level for about two seconds afterwards. At an
+  unchanged sample rate, with the sound's settings unchanged, the matched level is now kept; a
+  sample-rate change, or a re-prepare after loading a state that changes the sound, still measures it
+  afresh. Decision: ADR-0007 (Amendment of 2026-09-24, F13(2)). Regression coverage: Test 67, State
+  test 131 and State test 120. Evidence: PR #156. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

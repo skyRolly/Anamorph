@@ -183,13 +183,22 @@ of the transparent engine floor.
 
 Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(dry) − LUFS(wet)`.
 - **K-weighting (ITU-R BS.1770)**: stage-1 high-shelf (f0≈1681.97 Hz, ~+4 dB, Q≈0.707) +
-  stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`.cpp:15-43`). Mean-square loudness
-  integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
+  stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`src/dsp/LoudnessMatch.cpp:16-46`).
+  Mean-square loudness integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
 - **MEASURE**: one-pole toward `clamp(dLufs − wLufs, ±24)` with adaptive tau (0.06 s if |Δ|>2 dB
-  else 0.9 s); on silence it **holds** (no drift) (`.cpp:131-154`).
+  else 0.9 s); on silence it **holds** (no drift) (`src/dsp/LoudnessMatch.cpp:158-182`).
 - **PREDICT**: absolute feed-forward `estBoost(drive, mix)` from the tanh-Drive makeup
-  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled; floor-only pre-duck
-  `displayed = min(displayed, predicted)` only when the estimate **rises** (`.cpp:74-95,136-144`).
+  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled (`src/dsp/LoudnessMatch.cpp:77-98`); floor-only
+  pre-duck `displayed = min(displayed, predicted)` only when the estimate **rises**
+  (`src/dsp/LoudnessMatch.cpp:131-156`).
+- **Two halves, and who clears which** (ADR-0007): the *analysis* (the four K-weighting biquads and
+  both integrators) and the *result* (`displayedGainDb`, `prevPredictedGainDb`, the published
+  `matchGainDb`). `softReset()` clears the analysis and keeps the result; `reset()` clears both;
+  `setDisplayedGainDb()` overwrites the result. The engine re-arms (`softReset`) at a switch bottom
+  that changes the signal path, at an A/B injection whose slots differ in anything the measurement
+  reads, on every host reset, and on a re-prepare at an unchanged sample rate whose measurement
+  inputs did not change; it flushes (`reset`, via `prepare`) on any other re-prepare and in the NaN
+  self-heal. An A/B switch overwrites the result with the slot's remembered gain.
 - Invariants: predict only ever lowers gain; absolute (non-accumulating) → cannot ratchet;
   measure freezes on silence; both clamped ±24 dB; IIR → essentially zero latency.
 

@@ -91,12 +91,12 @@ table nobody reads is a table nobody maintains.
 
 It sees WHETHER a module is reset under a scope, not WHICH reset.  `reset()` and `softReset()` both
 count, so swapping them between the two scopes still reads `both` and passes.  Measured: that
-swap's host-reset half fails State tests 118, 120 and 121.  Its re-prepare half ALONE fails nothing,
-and correctly -- it changes no behaviour.  `reset (everything)` has one caller, `prepare()`, which
-has already zeroed the matcher through `loudness.prepare()` -> `LoudnessMatch::reset()`; the two
-flushes are redundant.  Removing BOTH is what would let a re-prepare keep the published gain, and
-State test 120 (leg 2) fails on that.  So no behaviour hides behind this blind spot today; telling
-the methods apart would mean declaring one per module per scope, and nothing measured asks for it.
+swap's host-reset half fails State tests 118, 120 and 121.  The re-prepare half is not a free choice
+either: since ADR-0007's F13(2) amendment `prepare()` keeps the published gain only on a same-rate
+re-prepare whose measurement inputs did not change (it skips `loudness.prepare()` and `reset
+(everything)` takes `softReset()`), and flushes it on any other -- State test 120 (leg 2), State test
+131 and Test 67 pin both halves.  So no behaviour hides behind this blind spot today; telling the
+methods apart would mean declaring one per module per scope, and nothing measured asks for it.
 
 A PARTIAL reset is deliberately NOT counted.  `levels.resetLive()` clears the live display and
 keeps the user's latches; counting it as a reset would make the Round-6 defect -- a full

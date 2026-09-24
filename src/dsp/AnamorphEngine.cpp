@@ -42,6 +42,18 @@ static bool osActiveFor (const EngineParameters& e) noexcept
 // ---------------------------------------------------------------------------
 void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 {
+    // THE LEVEL-MATCH RESULT ACROSS A RE-PREPARE (ADR-0007, Amendment of 2026-09-24, F13(2) Q5).
+    // A re-prepare at the SAME sample rate, for a snapshot whose measurement inputs are the ones
+    // the matcher was measuring (primeParameters() records any change), keeps the published result:
+    // it still describes the sound, the K-weighting coefficients and the 0.4 s window are functions
+    // of the rate alone, and a block size is no input to the measurement. The analysis still goes
+    // (reset() below re-arms it: the audio it describes has stopped). Flushing a valid result
+    // restarted the match from the predict floor and played it up to ~3 dB off for ~2 s. A NEW
+    // rate still flushes: the band the measurement integrates changes with it. The first prepare
+    // (no oversampler yet) always flushes -- there is nothing measured to keep.
+    const bool keepMatch = os2 != nullptr && juce::exactlyEqual (sampleRate, sr)
+                        && ! primeMeasChanged && std::isfinite (loudness.getMatchGainDb());
+    primeMeasChanged = false;
     sr = sampleRate;
     maxBlock = juce::jmax (1, maxBlockSize);
 
@@ -52,7 +64,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     multiband.prepare (sr, maxBlock);
     monoMaker.prepare (sr, maxBlock);
     soloMonitor.prepare (sr, maxBlock);
-    loudness.prepare (sr);
+    if (! keepMatch) loudness.prepare (sr);   // same rate: the same coefficients (see above)
     correlation.prepare (sr);
     levels.prepare (sr);
 
@@ -142,7 +154,9 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     loudnessRefScratch.setSize (2, maxBlock);
 
     updateDerived();
+    keepMatchResult = keepMatch;
     reset();
+    keepMatchResult = false;
 
     // Settle every continuous smoother at the target updateDerived() just armed
     // from the live snapshot p. Without this, the neutral constants written
@@ -219,9 +233,13 @@ void AnamorphEngine::reset (ResetScope resetScope)
     soloMonitor.reset();
     // THE MEASUREMENT HALF, and the one place the two scopes genuinely differ.
     //
-    // `everything` is prepare()'s flush: a new sample rate or block size invalidates
-    // the K-weighting coefficients and every integrator, so the whole matcher goes --
-    // including the PUBLISHED gain, because there is no longer a measurement behind it.
+    // `everything` is prepare()'s flush: a new sample rate invalidates the K-weighting
+    // coefficients and every integrator, so the whole matcher goes -- including the
+    // PUBLISHED gain, because there is no longer a measurement behind it. A re-prepare at
+    // the SAME rate whose measurement inputs did not change keeps that result
+    // (`keepMatchResult`, set by prepare() only; ADR-0007, Amendment of 2026-09-24, F13(2)):
+    // there the matcher takes the host-reset treatment below -- a block size is no input to
+    // the measurement.
     //
     // `audioTailsOnly` is a host reset, and it takes `softReset()` instead. The
     // distinction is not cosmetic and neither half of it is optional:
@@ -251,8 +269,8 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // This is not a new semantic. It is the one the duck bottom already uses when the
     // processing changed (`if (procChanged) loudness.softReset()`), applied to the entry
     // point R5 added.
-    if (resetScope == ResetScope::everything) loudness.reset();
-    else                                      loudness.softReset();
+    if (resetScope == ResetScope::everything && ! keepMatchResult) loudness.reset();
+    else                                                         loudness.softReset();
 
     // THE DISPLAY METERS. Two halves, and `audioTailsOnly` takes exactly one of them.
     //
@@ -417,7 +435,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:868 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:886 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -433,14 +451,14 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // states, which no module can observe.
         //
         // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
-        // (src/dsp/AnamorphEngine.cpp:387 (`a.dimMode`)),
+        // (src/dsp/AnamorphEngine.cpp:405 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
         // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:853 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:871 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -707,9 +725,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:624), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:637) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:624) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:642), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:655) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:642) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -718,7 +736,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1143) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1167) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
@@ -1113,6 +1131,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // where the applied gain is landed on the value just published. Block-local: the bottom and
     // the level-match stage run in the same call with no return between them.
     bool landMatchAfterMeasure = false;
+    // Set at a duck bottom when the switch changes anything the Level-Match measurement reads --
+    // adopted there, or made live during an ordinary duck's fade-out (duckMeasDirty). One answer,
+    // two consumers: the Case-A landing above needs it false, and an A/B injection consumed in the
+    // same block re-arms the analysis when it is true (ADR-0007, Amendment of 2026-09-24, F13(2)).
+    bool measChangedAtBottom = false;
 
     // ---- Click-free switch machine: once the duck has reached silence, adopt
     //      the deferred discrete change (clearing stale algorithm tails) and
@@ -1120,13 +1143,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     if (switchState == SwitchState::FadeOut && switchPhase <= 0.0f)
     {
         const bool procChanged = processingDiffers (pendingP, p);
+        measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP);
         // An engage that changes only the gain may START at the published value: that value
         // still describes the sound that will play. Not when the measure re-arms here, when
         // anything it reads changes across the switch, or when an ordinary duck already made
         // such a change live (duckMeasDirty) -- then the published value is stale and the
-        // fade-in glides from unity as before (F13(2), KI-030).
+        // fade-in glides from unity as before (Case B).
         landMatchAfterMeasure = ! p.autoGainMatch && pendingP.autoGainMatch && ! procChanged
-                             && ! duckMeasDirty && ! measurementInputsDiffer (p, pendingP);
+                             && ! measChangedAtBottom;
         // A change to the Multiband topology (band added/removed, or the module
         // toggled) needs its crossover filters cleared, captured before p is moved.
         const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
@@ -1179,6 +1203,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // Re-arm the loudness match ONLY when the processing actually changed: a DISCRETE field
         // (`processingDiffers`), so a swap moving only Drive / Mix / Width does not re-arm (F13). Toggling
         // Level Match / Bypass must NOT re-measure, or enabling Match with a big boost slams loud (#1).
+        // (An A/B injection below adds one case: slots that differ in a measurement input.)
         if (procChanged) loudness.softReset();
         updateDerived();
 
@@ -1230,6 +1255,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
             {
+                // The injected value describes the DESTINATION slot; the analysis still holds
+                // the source slot's audio. When the two slots differ in anything the measurement
+                // reads, that analysis would drag the restored value back toward the source for
+                // seconds (KI-030), so re-arm it: the result is the slot's, the analysis starts
+                // on the slot's sound. Identical slots, and slots that differ only after the tap
+                // (Output Gain, Level Match itself), keep a converged analysis (ADR-0007,
+                // Amendment of 2026-09-24, F13(2) Q1).
+                if (measChangedAtBottom) loudness.softReset();
                 loudness.setDisplayedGainDb (inj);
                 matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
                 landMatchAfterMeasure = false;   // the slot's own gain takes priority (#23)
@@ -1265,6 +1298,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
         if (inj > kNoInject + 1.0f)
         {
+            if (measChangedAtBottom) loudness.softReset();   // same rule; false without a bottom
             loudness.setDisplayedGainDb (inj);
             matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
             landMatchAfterMeasure = false;

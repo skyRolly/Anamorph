@@ -36146,14 +36146,26 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
         check (move < 1.0e-6f,
                "R6: a host reset clears the analysis state -- silence moves nothing (ADR-0007)");
 
-        // --- LEG 2. The other end of the line: `everything` must still flush the
-        //     matcher completely. prepareToPlay() is the product's only route to it,
-        //     and after a re-prepare there is no measurement behind the number, so
-        //     the published gain has to go too. If this ever starts holding, the
-        //     narrowing above has turned into a leak.
+        // --- LEG 2. The other end of the line: a re-prepare. prepareToPlay() is the
+        //     product's only route to `everything`. Since ADR-0007's F13(2) amendment a
+        //     re-prepare at the SAME rate, with the same measurement inputs, keeps the
+        //     published result -- it still describes the sound -- and clears the analysis
+        //     as the host reset does; a re-prepare at a NEW rate still flushes the whole
+        //     matcher, published gain included, because the measurement itself changed.
+        //     Re-converge first so there is live analysis state for the re-prepare to clear.
+        converge (p, buf);
+        const float live = p.getEngine().getMatchGainDb();
         p.prepareToPlay (sr, block);
+        check (juce::exactlyEqual (p.getEngine().getMatchGainDb(), live),
+               "R6 / F13(2): a same-rate re-prepare keeps the published Level-Match gain bit-exact");
+        const float moveAfterPrepare = worstMoveOverSilence (p, buf, live);
+        std::printf ("  after a same-rate re-prepare the gain moves %.6f dB over the same silence\n",
+                     moveAfterPrepare);
+        check (moveAfterPrepare < 1.0e-6f,
+               "R6 / F13(2): ...and clears the analysis state -- silence moves nothing");
+        p.prepareToPlay (juce::exactlyEqual (sr, 44100.0) ? 48000.0 : 44100.0, block);
         check (juce::exactlyEqual (p.getEngine().getMatchGainDb(), 0.0f),
-               "R6: ResetScope::everything still flushes the matcher, published gain included");
+               "R6: a re-prepare at a new sample rate still flushes the matcher, published gain included");
     }
 
     // --- LEG 3. The held peak is the USER'S, not the audio's. LevelMeters.h calls it

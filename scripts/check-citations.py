@@ -663,19 +663,43 @@ DELIBERATE_REAIMS = {
     # sentence describes. The token is resolved at the new spelling. The merge base and
     # `origin/main` carry `:208-215` for the same sentence; that transition is declared too, since
     # a declaration answers only for the base that carries its old spelling. (PR #156's O4g round
-    # moved the same block down one line, so the target spelling is now `:206-212`.)
+    # moved the same block down one line, to `:206-212`; its F13(2) round, which added the Level-Match
+    # keep decision to prepare(), fourteen more, so the target spelling is now `:220-226`.)
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:220-226"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:220-226"): "pendingP",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:220-226"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:220-226"): "pendingP",
+    #
+    # 2026-09-24 (PR #156, F13(2)): ADR-0007's *Related code* list was stale before this PR -- its
+    # own Note of 2026-09-24 reported it -- and the line map carried the stale spellings along
+    # faithfully, still aimed at the wrong code: `:15-43` stopped short of the K-weighting's last
+    # coefficient, the engine span landed on the injection fallback and the bypass capture, and
+    # `:402-424` is no longer `applyAutoGain`. Each is re-aimed by hand onto what its line says it
+    # cites. The two bases (the branch's previous head and the merge base) spell the engine span
+    # differently, so that one is declared twice; the other three spell the same on both.
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/LoudnessMatch.cpp:15-43",
+     "src/dsp/LoudnessMatch.cpp:16-46"): "setSampleRate",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1272-1305",
+     "src/dsp/AnamorphEngine.cpp:1719-1720"): "loudnessRefScratch",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1201-1234",
+     "src/dsp/AnamorphEngine.cpp:1719-1720"): "loudnessRefScratch",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/PluginProcessor.cpp:402-424",
+     "src/PluginProcessor.cpp:455"): "applyAutoGain",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/LoudnessMatch.cpp:15-156",
+     "src/dsp/LoudnessMatch.cpp:16-186"): "displayedGainDb",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

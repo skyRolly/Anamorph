@@ -11,7 +11,7 @@ Plugin delay compensation (PDC) model.
 
 The oversamplers are minimum-phase polyphase IIR half-band filters, constructed with the
 "integer latency" flag so PDC is exact.
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:57-71 (`latency2` — the three oversamplers built
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:69-83 (`latency2` — the three oversamplers built
 with the integer-latency flag, and their latencies stored).
 
 ## The reported latency is a function of the SELECTED FACTOR (ADR-0034)
@@ -66,7 +66,7 @@ output:
 **2× = 4, 4× = 6, 8× = 6** samples (Test 52 prints the row; Test 38's landing census records the
 same three numbers and notes that 4× and 8× are equal, so an x4 → x8 switch moves no latency).
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:69-71 (`latency2` / `latency4` / `latency8`, the
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:81-83 (`latency2` / `latency4` / `latency8`, the
 only writes, made at `prepare()` time).
 
 The rates the TODO here asked for were measured on 2026-09-22 (road-map R7) from a built binary: 4 / 6 / 6
@@ -157,7 +157,7 @@ to them — a reported-latency change, and a hard-stop for review — fails the 
   Oversampling Setting inside an off-thread `setStateInformation` (RISK-007) can still change the
   value from a non-message thread.
 
-Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:395-400,
+Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:413-418,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

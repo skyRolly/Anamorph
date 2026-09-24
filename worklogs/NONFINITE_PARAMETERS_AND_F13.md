@@ -965,3 +965,60 @@ but does not move the applied gain, which dominates the first ~300 ms of (b) and
   paraphrased the owner.
 - The per-block restart of the applied-gain ramp (§I3, §I7) is measured again here as an exponential of
   τ ≈ 120 ms that owns the first ~300 ms of every glide; still a separate lever, deferred.
+
+## L. F13(2) decided and implemented: the A/B re-arm (P1b) and the same-rate re-prepare (P4)
+
+Round after `daa6809`, same branch (PR #156). The owner authorized this round to take the §K6
+decisions: *"You are explicitly authorized to make the owner decisions for the unresolved F13(2)
+questions based on your own investigation, measured evidence, and the recommendations already
+recorded in the worklog."* — with Q1 *"Adopt **P1b**"*, Q2–Q4 *"Keep the existing behavior."* /
+*"Keep the current behavior."*, and Q5 *"Adopt **P4**"* limited by *"Do not automatically generalize
+this to different-rate re-prepare."* The contract is ADR-0007's Amendment (F13(2)); this section is
+the evidence behind it.
+
+### L1. The evidence re-checked against the code before any edit
+
+- **Q1.** The injection is consumed at the forced bottom (`AnamorphEngine.cpp`, inside
+  `if (pendingForced)`) and, defensively, by a consumer that runs whenever no forced duck is pending
+  — after a host reset that resolved the swap, the pending injection is adopted there on the next
+  block, on an analysis the reset has already re-armed (§K3 (g)). A forced duck from Normal makes
+  nothing live, so `measurementInputsDiffer (p, pendingP)` at the bottom is the whole change; an
+  ordinary duck UPGRADED to forced mid-fade-out (the `forceDuck` branch of `setParameters`) keeps
+  `duckMeasDirty` from its ordinary entry, and `p` already carries its live continuous edits — so the
+  re-arm reads the same `duckMeasDirty || measurementInputsDiffer (p, pendingP)` the Case-A landing
+  reads. §K5's scratch P1b read the comparison alone; the implementation adds `duckMeasDirty`, which
+  changes nothing on the shared harness (no upgrade there) and closes the upgrade case.
+- **Q5.** `AnamorphAudioProcessor::prepareToPlay` calls `primeParameters (e)`, `prepare`, then
+  `setParameters (e)`; `primeParameters` overwrites `p`, so a restore between two prepares (the
+  VST3/AU order: setState, then setActive) is invisible to `prepare()` unless `primeParameters`
+  records it. §K5's scratch P4 kept the result on any same-rate re-prepare; the implementation keeps
+  it only when `primeParameters` saw no measurement-input change (`primeMeasChanged`), so a restore
+  that moved Drive still flushes and one that moved only Output Gain keeps. The K-weighting
+  coefficients, the 0.4 s window and the glide constants depend on the rate alone
+  (`LoudnessMatch::prepare`, `KWeighting::setSampleRate`); the glide coefficients re-key on each
+  block's length (`coeffForN`), so a block size is no input. The engine's comments saying a block size
+  invalidates the coefficients (`AnamorphEngine.h`, `ResetScope`; `reset()`'s scope comment) were
+  wrong and are corrected.
+- **The R9 sentence.** ADR-0007:182 (*"a re-prepare still resets all of it"*) is the ADR's statement of
+  what the reset / thread-model approval covered at `c5f3d8f`; the owner's own words (:187) approve
+  that change and say nothing about the re-prepare, and the note's reason for the flush (:39-40) is
+  the sample rate. Read as descriptive, and narrowed by the Amendment.
+
+### L2. Implementation
+
+`src/dsp/AnamorphEngine.{h,cpp}`: `measChangedAtBottom` (block-local, one answer for the Case-A landing
+and the re-arm); `if (measChangedAtBottom) loudness.softReset();` before `setDisplayedGainDb (inj)` at
+both injection consumers; `primeMeasChanged` (set by `primeParameters`, read and cleared by
+`prepare`); `keepMatch` in `prepare()` (prepared before, bit-identical rate, no primed
+measurement-input change, a finite published value) → `loudness.prepare` skipped and `reset
+(everything)` takes `softReset()` through `keepMatchResult`, a flag set only around `prepare()`'s own
+`reset()` call. No parameter, schema, threading, signal-order or latency change; no allocation, lock
+or wait; `prepare()` never runs concurrently with `process()` or `reset()`.
+
+### L3. Scope of Q5: why a new sample rate still flushes
+
+The result is a ratio of two K-weighted loudnesses, and the band those integrate is `fs / 2`: at a
+higher rate the wet's harmonics above the lower rate's Nyquist (Drive, oversampling) are integrated,
+at a lower rate they are not, so the same sound measures differently. The ADR's own reason for the
+flush (:39-40) is exactly this, and the owner limited P4 to the same rate. The measurements for the
+rate pairs are recorded below (§L4).

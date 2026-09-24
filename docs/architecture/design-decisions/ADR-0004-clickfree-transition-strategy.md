@@ -125,15 +125,17 @@ Match on and changes nothing the measurement reads, the smoother is landed on th
 right after that block's measurement — at a forced bottom and, new for mechanism 1, at an ordinary
 one (the Level Match toggle), which otherwise snaps nothing. At an A/B bottom the injected slot gain
 sets it, as before (ADR-0007, #23); at any other bottom it keeps gliding. The
-three mechanisms, and which control belongs to which, are unchanged.
+three mechanisms, and which control belongs to which, are unchanged. (The measurement side of the
+same A/B bottom — the analysis is re-armed there when the two slots differ in anything it reads — is
+ADR-0007's F13(2) amendment of the same date; it does not move the applied gain.)
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:357-384` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
+- `src/dsp/AnamorphEngine.cpp:375-402` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:357-384, 1325-1536; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:375-402, 1359-1570; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree,
   testInertDiscreteChangeDoesNotDuck, testAlgoResetSurvivesMidFadeRetarget

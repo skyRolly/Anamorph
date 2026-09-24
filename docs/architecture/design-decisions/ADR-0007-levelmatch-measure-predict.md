@@ -268,7 +268,7 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
 - **Case A — the switch changes nothing the Level-Match measurement reads.** The published value
   still describes the sound that plays after the bottom, so the fade-in starts from it: right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1810`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1844`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
@@ -361,21 +361,140 @@ records the ruling and the implementation, not an approval of the code.
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment; ADR-0004 and ADR-0035 (notes of the same date) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes |
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:527` (`measurementInputsDiffer`),
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:545` (`measurementInputsDiffer`),
 `:638` and `:747` (`duckMeasDirty`), `:1128` (the decision at the bottom), `:1810` (the landing);
 `scripts/check-state-coverage.py` (`MEASUREMENT_INPUTS`).
+
+## Amendment, 2026-09-24 — F13(2): an A/B injection re-arms a stale analysis, and a same-rate re-prepare keeps a valid result
+
+This answers question 2 of the note above and the five F13(2) questions of the decision record
+(worklog `NONFINITE_PARAMETERS_AND_F13.md` §K6), on the owner's authorization (at the end of this
+section). It adds one re-arm point and removes one flush. It does not change what is measured, the
+measure's time constants, the predict, or where the applied gain lands.
+
+**Where the matcher's two halves stand after every transition.** The *analysis* (K-weighting filter
+states and the two energy integrators) describes the audio heard over the last ~0.4 s; the *result*
+(`displayedGainDb`, `prevPredictedGainDb`, the published `matchGainDb`) is what that analysis has
+concluded so far; the applied gain (`matchGainSmooth`) is the engine's, not the matcher's. The
+contract, by transition:
+
+| transition | analysis | result | applied gain |
+|---|---|---|---|
+| live edit, any field | carried | carried; re-converges with the measure's time constants (the lag the Context accepts) | glides |
+| switch bottom, the signal path changes (`processingDiffers`) | **re-armed** (`softReset`) | carried | glides (Case B, or Case A excluded by condition 3) |
+| forced swap without an injection — preset load, undo, redo — that changes only continuous controls | carried | carried | glides; behaves like the same live edit (**Q2: unchanged**) |
+| Level Match engage that changes only the gain (Case A) | carried | carried | lands on the published value (the amendment above) |
+| Level Match engage together with a sound change (Case B) | carried (re-armed if the path changes) | carried — it describes the sound before the switch | starts at unity and glides; at an A/B switch, on the injected slot gain (**Q3: unchanged**) |
+| Case-A engage shortly after a sound change | carried, still converging | carried, still converging | lands on it, converged or not (**Q4: unchanged** — no convergence guard) |
+| **A/B switch whose slots differ in anything the measurement reads** | **re-armed** (new) | overwritten by the destination slot's remembered gain | lands on that gain |
+| A/B switch whose slots differ only in what the measurement does not read (Output Gain, Output Balance, Bypass, Band Solo, the Level Match switch, an inert guarded field), or not at all | carried (re-armed only if the path changes) | overwritten by the slot's remembered gain | lands on that gain |
+| host reset (R9) | re-armed | carried | lands at the next silence→audio edge |
+| **re-prepare at the same sample rate, measurement inputs unchanged** | **re-armed** | **carried** (new) | lands at the next silence→audio edge |
+| re-prepare at a new sample rate, or after a primed snapshot that changes a measurement input, or the first prepare | flushed | flushed (0 dB, then the predict floor) | lands at the next silence→audio edge |
+| NaN self-heal (ADR-0009) | flushed | flushed (ADR-0009's own owner question) | glides |
+
+**Q1 — the A/B injection (new).** An A/B switch injects the destination slot's remembered gain into
+the result at the switch's silent bottom (#23). When the two slots differ in anything the measurement
+reads, the carried analysis still describes the *source* slot's audio and drags that correct value
+toward the source for seconds — the one transition where the two halves disagree in the wrong
+direction (worklog §K3–§K4, KI-030). The analysis is now re-armed there: at the bottom the engine
+computes `measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP)` — the same
+answer the Case-A landing uses, now held once for both — and an injection consumed in that block
+calls `softReset()` before it writes the slot's value. Slots that differ in nothing the measurement
+reads keep a converged analysis, so the Note of 2026-09-22's dimMode table keeps its A/B row, and a
+Level Match or Bypass toggle alone still re-measures nothing. The re-arm clears the analysis only: the
+injected result is written after it and survives, so this is not a re-measure (:240-241, :344) and
+an A/B that also turns Level Match on does not slam (:124-125). An injection consumed in a block with
+no switch bottom (the defensive consumer; after a host reset the pending injection is adopted there,
+on an analysis the reset has already re-armed) re-arms nothing.
+
+**Q2, Q3, Q4 — unchanged, decided.** A forced swap without an injection keeps its analysis and tracks
+the same live edit; the Drive 0 ↔ 10 undo figures (+6.73 / −7.89 dB) are that live edit's own lag and
+the rise-only predict (worklog §K3), not a route defect, and every alternative measured traded one
+direction for the other or made the forced route diverge from the live edit (§K5). A Case-B engage
+keeps its unity start. A Case-A engage keeps landing on whatever is published.
+
+**Q5 — a same-rate re-prepare keeps a valid result (new).** `prepare()` used to flush the whole
+matcher. The review gate's scope sentence below — *"a re-prepare still resets all of it"* (:182) —
+describes what the reset/thread-model change of `c5f3d8f` left in place; the owner's words there
+(:187) approve that change and say nothing about the re-prepare, and this note's own reason for the
+flush (:39-40) is the sample rate. The flush is now kept only where that reason holds: a re-prepare
+**keeps** the result, and re-arms the analysis as a host reset does, when all of these hold —
+1. the engine was prepared before (there is a result to keep);
+2. the sample rate is bit-identical to the previous one — the K-weighting coefficients, the 0.4 s
+   window and the glide constants are functions of the rate alone, and a block size is no input to
+   the measurement (the glide coefficients re-key on each block's length);
+3. the snapshot `primeParameters()` adopted before it changes nothing the measurement reads
+   (`measurementInputsDiffer` — a restore that moved Drive between two prepares flushes; one that
+   moved only Output Gain keeps);
+4. the published value is finite.
+Otherwise it flushes as before. A new sample rate is not generalised to: the band the measurement
+integrates changes with it (worklog §L).
+
+**What this changes in the text above.**
+- *Note of 2026-09-22*, "The measure is re-armed in exactly one place: the silent duck bottom" (:101):
+  historical, and already too narrow before this amendment (the host reset re-arms, `prepare()` and
+  the self-heal flush). The re-arm and flush points are the table above: the switch bottom when the
+  path changes, an A/B injection when the slots' measurement inputs differ, every host reset, a
+  same-rate re-prepare that keeps its result; the flushes are any other re-prepare and the self-heal.
+  Its dimMode table and "Toggling Level Match / Bypass must NOT re-measure" (:124-125) stand.
+- *Note of 2026-09-24*, third bullet ("An A/B switch whose slots differ only in continuous controls
+  undoes its own injection"): resolved — a Drive 2 → 8 switch now stays within 0.10 dB of a fresh
+  instance at the destination (from +1.59 dB), settling in 124 ms instead of ~2.4 s. Its "within 0.022–0.042 dB" was re-arming at
+  *every* injection, which this is not.
+- *Question 2*: answered — yes at an injection whose slots differ in a measurement input; no for
+  forced swaps without an injection.
+- *Amendment above*, condition 3 ("`processingDiffers` still alone decides the `softReset()`") and
+  "`measurementInputsDiffer` is not a re-arm trigger" (:330-333): at a bottom that consumes an A/B
+  injection it now is one. Case A is untouched — an injection block never lands (condition 4) — and
+  the landing and the re-arm read the same `measChangedAtBottom`, so they cannot disagree about
+  whether the switch changed what the measurement reads.
+- *The wholesale flush* (:39-40, "which `prepare()` still performs, because a new sample rate
+  invalidates the measurement too"): now performed at a new rate only, or when the inputs changed.
+- *Review gate R9*, "a re-prepare still resets all of it" (:182): a re-prepare at a new rate still
+  does; one at the same rate with the same measurement inputs keeps the published gain and re-arms
+  the analysis. State test 120's leg 2 now pins both halves.
+
+**Measured** (processor level, 48 kHz / 256, pink noise; `pkX` / `dipX` against the two
+counterfactual trajectories, as in worklog §E; scratch builds of these exact two rules, worklog §K5):
+
+| route | before | after |
+|---|---|---|
+| A/B, slots differ only in Drive 2 → 8 / 8 → 2 (Level Match on in both) | +1.59 / −1.84 dB, settle 2,448 / 2,548 ms | +0.10 / +0.04 dB, 124 / 125 ms |
+| A/B that turns Level Match on while Drive changes (the slot's gain is injected) | +1.63 dB | +0.07 dB |
+| re-prepare, same rate, same or doubled block size | +2.46 dB, settle 2,215 ms | +0.04 dB, 0 ms |
+| re-prepare at a new rate (48 → 44.1 kHz) | +2.40 dB | unchanged (flushes by decision) |
+| A/B between identical slots, or slots differing only in Level Match | — | unchanged (not re-armed) |
+| Undo / preset / redo Drive 0 ↔ 10, live edits, Case A and Case B engages, host reset, Apply | — | unchanged (every row byte-identical) |
+
+**Architecture Review Gate — owner authorization of 2026-09-24.**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #156 body and the implementing commit message: a change to an **Accepted ADR** (this one's Note of 2026-09-22 and the review-gate scope sentence) |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's authorization of 2026-09-24**: *"You are explicitly authorized to make the owner decisions for the unresolved F13(2) questions based on your own investigation, measured evidence, and the recommendations already recorded in the worklog."* Q1: *"Adopt **P1b**"* — *"Re-arm the analysis at an A/B injection only when the two slots differ in something the Level Match measurement actually reads."* Q2–Q4: *"Keep the existing behavior."* / *"Keep the current behavior."* Q5: *"Adopt **P4**"* — *"Preserve the existing published Level Match result across a same-rate `re-prepare` when that result remains valid."* and *"Do not automatically generalize this to different-rate re-prepare."* Review of the implementation: pending, PR #156 |
+| 3 | if the change is a decision, an ADR is added/updated | this Amendment, in place, as the one above (ADR_POLICY's "a reversed decision adds a new ADR" read with this ADR's own precedent: the decision stands, two of its notes are narrowed) |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes (`primeMeasChanged` and `keepMatchResult` are written and read on the prepare path, which JUCE never runs concurrently with `process()` or `reset()`) |
+
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1146` (`measChangedAtBottom`, one
+answer for the Case-A landing and the injection re-arm), `:1265` and `:1301` (the re-arm at the
+two injection consumers), `:54` (`keepMatch`), `:67` and `:157` (the kept matcher skips
+`loudness.prepare` and takes `softReset`), `:272` (`reset (everything)`); `src/dsp/AnamorphEngine.h:122`
+(`primeParameters` records `primeMeasChanged`).
 
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.
 
 ## Related code
-- `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:1272-1305` (A(dry) ref + silence-edge snap)
-- `src/PluginProcessor.cpp:402-424` (`applyAutoGain`)
+- `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:77-98` and `:131-156` (predict), `:158-182`
+  (measure/hold), `:100-106` (`softReset`: the analysis only), `:64-71` (`reset`: both halves)
+- `src/dsp/AnamorphEngine.cpp:1719-1720` (A(dry) reference), `:1839` (the measurement), `:1878-1879`
+  (silence-edge snap)
+- `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 
 Evidence [Verified]:
-- Source: src/dsp/LoudnessMatch.cpp:15-156
+- Source: src/dsp/LoudnessMatch.cpp:16-186
 - Tests: testLevelMatchUnity, testLevelMatchNoRatchet, testLevelMatchMixCouplingNoSlam,
   testLevelMatchSilenceFreeze, testMultibandUnityMatch
 - History [Partially Verified]: CHANGELOG.md [0.8.1]

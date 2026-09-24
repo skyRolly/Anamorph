@@ -47,8 +47,11 @@ public:
 
     void prepare (double sampleRate, int maxBlockSize);
     // WHAT A FLUSH IS ALLOWED TO THROW AWAY. `everything` is the flush `prepare()`
-    // performs: a new sample rate or block size invalidates every measurement as
-    // well as every buffer, so the Level-Match integrators go with them.
+    // performs: every buffer and the Level-Match analysis go, and so does the published
+    // Level-Match result -- unless prepare() found it still valid (the same sample rate and
+    // the same measurement inputs; a block size is no input to the measurement), in which
+    // case the matcher is re-armed rather than flushed (ADR-0007, Amendment of 2026-09-24,
+    // F13(2)).
     //
     // `audioTailsOnly` is the HOST-RESET flush (R5/F2), and the difference is not a
     // refinement -- it is ADR-0007. A host's reset asks the plug-in to "stop any
@@ -63,6 +66,7 @@ public:
     enum class ResetScope
     {
         everything,       // prepare(): buffers AND the whole matcher, published gain included
+                          // unless prepare() keeps it (same rate, same measurement inputs)
         audioTailsOnly    // a host reset: AUDIO and the LIVE DISPLAY -- buffers, filters,
                           // rings, the duck, the matcher's analysis state, and the meter
                           // envelopes / bars / RMS readouts that describe audio that has
@@ -109,8 +113,13 @@ public:
     // `prepare()` on the very next line, which resizes and clears all four rings
     // and ends in `reset()`, which re-latches. A future mid-stream call would read
     // stale history at a new offset; if one is ever wanted, it has to clear too.
+    //
+    // It also records whether the snapshot it adopts changes anything the Level-Match
+    // measurement reads, for prepare() to decide whether the published result still describes
+    // the sound (ADR-0007, Amendment of 2026-09-24, F13(2) Q5).
     void primeParameters (const EngineParameters& np) noexcept
     {
+        primeMeasChanged = primeMeasChanged || measurementInputsDiffer (p, np);
         p = np;
         pendingP = np;
         duckRequest.store (0, std::memory_order_relaxed);
@@ -200,8 +209,10 @@ private:
     // True when a switch from `a` to `b` can change anything the Level-Match measurement reads
     // -- the wet at the loudness tap, the dry reference, or the predict's inputs -- so the
     // published value no longer describes the sound that will play. A different question from
-    // processingDiffers (re-arm): this one decides whether a Level-Match-engaging bottom may
-    // land the applied gain on the published value (ADR-0007, Amendment 2026-09-24).
+    // processingDiffers (the path re-arm): this one decides whether a Level-Match-engaging bottom
+    // may land the applied gain on the published value (ADR-0007, Amendment 2026-09-24), whether
+    // an A/B injection re-arms the analysis, and whether a same-rate re-prepare keeps the
+    // published result (both ADR-0007, Amendment of 2026-09-24, F13(2)).
     static bool measurementInputsDiffer (const EngineParameters& a, const EngineParameters& b) noexcept;
     // Copies only the continuous (smoothed) fields, leaving discrete ones intact.
     static void copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept;
@@ -272,6 +283,13 @@ private:
     // cleared at every fresh fade-out entry and by reset(). A forced duck makes nothing live,
     // so the bottom's own (p, pendingP) comparison is complete there.
     bool  duckMeasDirty = false;
+    // Set by primeParameters() when the snapshot it adopts changes a Level-Match measurement
+    // input; read and cleared by prepare(), which keeps the published result only if it did not.
+    bool  primeMeasChanged = false;
+    // True only while prepare() runs its reset() for a re-prepare that KEEPS the Level-Match
+    // result (same sample rate, same measurement inputs): reset() then re-arms the matcher's
+    // analysis (softReset) instead of flushing it (ADR-0007, Amendment of 2026-09-24, F13(2) Q5).
+    bool  keepMatchResult = false;
     // Dry-fill for the FORCED duck: while a forced duck is in flight the output is
     // crossfaded against the delay-aligned RAW input (the true-bypass ring, whose
     // writes are always warm -- H9) instead of dipping to silence, so an undo /
