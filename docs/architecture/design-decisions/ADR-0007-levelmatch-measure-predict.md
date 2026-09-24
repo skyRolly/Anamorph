@@ -268,14 +268,14 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
 - **Case A — the switch changes nothing the Level-Match measurement reads.** The published value
   still describes the sound that plays after the bottom, so the fade-in starts from it: right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1844`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1846`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
-     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:527`);
+     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:547`);
   2. no such change was made live during the switch's own fade-out — `! duckMeasDirty`: an ORDINARY
      duck applies its continuous controls at once (`copyContinuous`), so by the bottom `p` already
-     carries them and the comparison above cannot see them (`:638`, `:747`);
+     carries them and the comparison above cannot see them (`:658`, `:767`);
   3. the bottom does not re-arm the measure — `! procChanged` (`processingDiffers` still alone
      decides the `softReset()`; a re-armed measure is moving, so it is not landed on);
   4. no A/B injection is consumed in that block — the slot's remembered gain keeps priority (#23);
@@ -361,8 +361,8 @@ records the ruling and the implementation, not an approval of the code.
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment; ADR-0004 and ADR-0035 (notes of the same date) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes |
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:545` (`measurementInputsDiffer`),
-`:638` and `:747` (`duckMeasDirty`), `:1128` (the decision at the bottom), `:1810` (the landing);
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:547` (`measurementInputsDiffer`),
+`:658` and `:767` (`duckMeasDirty`), `:1154` (the decision at the bottom), `:1846` (the landing);
 `scripts/check-state-coverage.py` (`MEASUREMENT_INPUTS`).
 
 ## Amendment, 2026-09-24 — F13(2): an A/B injection re-arms a stale analysis, and a same-rate re-prepare keeps a valid result
@@ -483,10 +483,10 @@ scratch builds of §K5 gave):
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment, in place, as the one above (ADR_POLICY's "a reversed decision adds a new ADR" read with this ADR's own precedent: the decision stands, two of its notes are narrowed) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes (`primeMeasChanged` and `keepMatchResult` are written and read on the prepare path, which JUCE never runs concurrently with `process()` or `reset()`) |
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1146` (`measChangedAtBottom`, one
-answer for the Case-A landing and the injection re-arm), `:1265` and `:1301` (the re-arm at the
-two injection consumers), `:54` (`keepMatch`), `:67` and `:157` (the kept matcher skips
-`loudness.prepare` and takes `softReset`), `:272` (`reset (everything)`); `src/dsp/AnamorphEngine.h:122`
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1148` (`measChangedAtBottom`, one
+answer for the Case-A landing and the injection re-arm), `:1267` and `:1303` (the re-arm at the
+two injection consumers), `:56` (`keepMatch`), `:69` and `:159` (the kept matcher skips
+`loudness.prepare` and takes `softReset`), `:274` (`reset (everything)`); `src/dsp/AnamorphEngine.h:122`
 (`primeParameters` records `primeMeasChanged`).
 
 ## Consequences
@@ -496,7 +496,7 @@ two injection consumers), `:54` (`keepMatch`), `:67` and `:157` (the kept matche
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:77-98` and `:131-156` (predict), `:158-182`
   (measure/hold), `:100-106` (`softReset`: the analysis only), `:64-71` (`reset`: both halves)
-- `src/dsp/AnamorphEngine.cpp:1719-1720` (A(dry) reference), `:1839` (the measurement), `:1878-1879`
+- `src/dsp/AnamorphEngine.cpp:1721-1722` (A(dry) reference), `:1841` (the measurement), `:1880-1881`
   (silence-edge snap)
 - `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 
