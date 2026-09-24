@@ -193,9 +193,16 @@ private:
     // EngineParameters field: a new field MUST be added here too, or an edit
     // to it would be ignored while nothing else changes.
     static bool sameParameters (const EngineParameters& a, const EngineParameters& b) noexcept;
-    // True when the actual PROCESSING differs (excludes Level-Match / Bypass),
-    // i.e. when the loudness measurement is genuinely stale and must re-arm (#1).
+    // True when the SIGNAL PATH differs in a discrete field (excludes Level-Match / Bypass):
+    // the trigger for re-arming the loudness measurement at a duck bottom (#1). Continuous
+    // changes are not compared (F13(2), KI-030).
     static bool processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // True when a switch from `a` to `b` can change anything the Level-Match measurement reads
+    // -- the wet at the loudness tap, the dry reference, or the predict's inputs -- so the
+    // published value no longer describes the sound that will play. A different question from
+    // processingDiffers (re-arm): this one decides whether a Level-Match-engaging bottom may
+    // land the applied gain on the published value (ADR-0007, Amendment 2026-09-24).
+    static bool measurementInputsDiffer (const EngineParameters& a, const EngineParameters& b) noexcept;
     // Copies only the continuous (smoothed) fields, leaving discrete ones intact.
     static void copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept;
 
@@ -259,6 +266,12 @@ private:
     // forced bottom, dry-fill stays off -- see the FadeOut upgrade branch in
     // setParameters); landing during FadeIn it re-ducks via beginForcedDuck.
     bool  pendingForced = false;
+    // An ORDINARY duck makes its continuous controls live at once (copyContinuous), so by the
+    // bottom `p` already holds them and cannot show what changed. Set when any snapshot made
+    // live during this duck changed a Level-Match measurement input (measurementInputsDiffer);
+    // cleared at every fresh fade-out entry and by reset(). A forced duck makes nothing live,
+    // so the bottom's own (p, pendingP) comparison is complete there.
+    bool  duckMeasDirty = false;
     // Dry-fill for the FORCED duck: while a forced duck is in flight the output is
     // crossfaded against the delay-aligned RAW input (the true-bypass ring, whose
     // writes are always warm -- H9) instead of dipping to silence, so an undo /

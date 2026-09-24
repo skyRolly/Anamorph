@@ -253,13 +253,122 @@ The comments that said an A/B swap glides or re-arms (`AnamorphEngine.cpp:78`, `
 (`AnamorphEngine.cpp:1201-1234`, `PluginProcessor.cpp:402-424`, and `LoudnessMatch.cpp:131-156`,
 which is the PREDICT block, not measure / hold) are stale; reported for the documentation pass.
 
+## Amendment, 2026-09-24 — an engage that changes only the gain starts at the published value (F13(1b), O4g)
+
+This answers question 1 of the note above, on the owner's ruling (at the end of this section). It
+adds one point at which the applied gain lands. It does not change what is measured, when the measure
+re-arms, or A/B.
+
+**The rule.** At a switch's silent bottom that turns Level Match **on** — `p.autoGainMatch` false
+before the bottom and true after it, whether the switch is forced (A/B, preset, undo, redo) or
+ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of two paths:
+
+- **Case A — the switch changes nothing the Level-Match measurement reads.** The published value
+  still describes the sound that plays after the bottom, so the fade-in starts from it: right after
+  that block's `loudness.process` the smoother is landed, current and target, on the target the
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1810`). This is an **alignment
+  of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
+  written or read differently. Case A holds only when all of these do:
+  1. nothing the measurement reads differs between the state heard before the switch and the state
+     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:527`);
+  2. no such change was made live during the switch's own fade-out — `! duckMeasDirty`: an ORDINARY
+     duck applies its continuous controls at once (`copyContinuous`), so by the bottom `p` already
+     carries them and the comparison above cannot see them (`:638`, `:747`);
+  3. the bottom does not re-arm the measure — `! procChanged` (`processingDiffers` still alone
+     decides the `softReset()`; a re-armed measure is moving, so it is not landed on);
+  4. no A/B injection is consumed in that block — the slot's remembered gain keeps priority (#23);
+  5. the reading is a number (ADR-0009): otherwise the stage keeps its target and nothing lands.
+- **Case B — anything else.** Exactly the behaviour before this amendment: the smoother starts where
+  it rests while Level Match is off (unity) and glides to the matcher's value. When the switch also
+  changes the sound, the published value describes the sound *before* the switch; landing on it
+  would align the gain to a stale result — worklog §I5 measured that at up to 4.5 dB further from a
+  fresh instance than gliding. The right gain there is a measurement question (question 2 above,
+  F13(2), KI-030) and is not decided here. A host reset or a silence→audio edge still lands the gain
+  in both cases, through the Decision's edge snap, as before.
+
+**`measurementInputsDiffer`** is derived from the engine's signal graph (worklog
+`NONFINITE_PARAMETERS_AND_F13.md` §J), not from a list of names, and each answer was checked by
+measuring the matcher's state bitwise with one field changed. The measurement reads three things: the
+wet at the tap (after Mono Maker), the dry reference `loudnessRefScratch`, and the predict's inputs
+(`setDriveDb`, `setMix`). A field counts when a change to it can reach one of them, under the
+condition that its module's **output** reaches the tap:
+
+| class | fields |
+|---|---|
+| always, exact | `channelMode`, `monoSum`, `swapLR`, `polarityL/R`, `msMode`, `solo` (M/S solo is input conditioning, before the tap), `algorithm`, `mbEnable`, `monoMakerEnable`, `oversample`; **`driveDb`, `mix`** — the predict's inputs, whose rise test fires on any rise, one ulp included (measured: +1 ulp of Drive moved the published value 1.08 dB) |
+| always, tolerant | `inputBalance`, `algoAmount`, `width` |
+| guarded | `haasDelayMs`, `haasSide` (Haas on either side); `velvetDensity` (Velvet); `chorusRate`, `chorusDepth` (Chorus); `dimMode` (Dimension D); `mbBands`, `mbWidthLow` (Multiband on either side), `mbFreqLow`/`mbWidthMid`, `mbFreqMid`/`mbWidthHiMid`, `mbFreqHigh`/`mbWidthHigh` (and at least 2 / 3 / 4 bands); `monoMakerFreq` (Mono Maker on either side) |
+| not compared | `outputGainDb`, `outputBalance`, `bypass`, `mbSolo` (after the tap), `autoGainMatch` (the switch itself) |
+
+"Tolerant" is a relative 1e-5: six times the largest representation drift a preset round trip
+produced (1.6e-6, on the log-mapped crossovers and Mono Maker Freq; State test 8's snap-equivalence),
+and under a tenth of any snapped parameter's half grid step, so a round trip is not a change and a
+real edit is. It is not an equality over the whole struct: that version refused to land on a
+preset whose Chorus Rate — inert under Haas — came back one ulp off. `scripts/check-state-coverage.py`
+holds the function to a declaration for every `EngineParameters` field (`MEASUREMENT_INPUTS`), as it
+does for the four lists before it, and derives from the code that the predict's inputs are exact.
+
+**Accepted, bounded, and stated rather than hidden** (all measured, worklog §J): `bypass` and the Level
+Match switch itself move the H4 dry reference while Level Match is off (the 0.8.9 Class-B difference;
+≤ 0.0064 dB at an engage); a Multiband on/off crossfade still running when an ordinary engage opens
+(≤ 12 ms) reaches the tap by ≤ 1.7e-4 dB; the forced bottom's module restarts leave ≤ 0.009 dB.
+
+**The boundary with F13(2).** Case A asks about the *switch*. A sound change made **before** the switch
+(Level Match off, Drive moved, then Level Match turned on within the measure's settling time) is not
+part of it: the published value is still converging on the new sound, and a Case-A engage lands on
+it — the value a Level Match that had been on throughout would be following, since the matcher runs
+whether or not Level Match is on. That lag is the measure's own time constants (question 2, F13(2)),
+measured in worklog §J, and is not decided here.
+
+**What this changes in the text above.**
+- *Decision* ("A silence→audio edge snaps the applied gain …"): still true, and no longer the only
+  point where the applied gain lands — it now lands at a silence→audio edge, at an A/B injection, and
+  at a Case-A bottom. Everywhere else it glides.
+- *Note of 2026-09-22* ("re-armed in exactly one place"; "must NOT re-measure"): unchanged. A Case-A
+  landing re-arms nothing, and `measurementInputsDiffer` is not a re-arm trigger. The two functions ask
+  different questions — *did the signal path change* (re-arm) and *does the published value still
+  describe the sound that will play* (land).
+- *Note of 2026-09-24, second bullet* — "there it swells", "re-engaging Level Match by hand after
+  Apply … swells the same way, as does any engage from an Output Gain below the matched gain", "No
+  test covers it" — describes the engine before this amendment. For Case A (Undo of Apply, the hand
+  re-engage after Apply, an engage from a low Output Gain, a preset or undo that only turns Level
+  Match on) the swell is gone: +2.32 / +4.45 / +5.67 dB at Drive 4 / 8 / 10 → 0.00 dB, settling in
+  127 ms instead of 523–647 ms (Test 66, State test 130). For Case B it stands, with Case B's own
+  reason (above). The bullet's first half, Level Match on in both states, is unchanged — and its
+  "within 0.003 dB" was corrected in place to 0.02–0.06 dB.
+- *Question 1*: answered with its option "the same only when nothing but Level Match / Output Gain /
+  Output Balance changes", with the set derived rather than named (it also admits `bypass` and
+  `mbSolo`, which act after the tap). Re-measuring on engage stays excluded.
+- *The comment list* (`AnamorphEngine.cpp:78`, the re-arm comment and `:1816` of that note): rewritten
+  again, together with the `prepare()` and `snapSmoothers()` comments.
+
+**One audible change beyond the fix**, stated rather than hidden: a Case-A engage from an Output Gain
+*above* the matched gain used to glide down from the unmatched level over ~0.6 s; it now lands at the
+silent bottom, which is what every other control already does at a forced bottom.
+
+**Architecture Review Gate — owner ruling of 2026-09-24.** The owner selected this behaviour ("O4g")
+from the decision record (worklog §I6) and directed that it be implemented and recorded here. Review
+of the implemented predicate and landing is the owner's review of PR #156; until then this section
+records the ruling and the implementation, not an approval of the code.
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #156 body and the implementing commit message, naming the gated class: a change to an **Accepted ADR** (`AI_AGENT_POLICY.md` Hard Stop) — the note above reserved the engage for the owner, "each is a change to this ADR, not a defect of it" |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-24**: *"Use O4g as the working direction for this round"*, with the directions that the predicate be derived from the engine/state graph and tolerate harmless float representation differences, that a sound-changing engage keep today's behaviour until F13(2) is resolved, and *"Because this changes documented Level Match behavior, update the repository's ADR/decision record consistently and preserve the historical reasoning."* Review of the implementation: pending, PR #156 |
+| 3 | if the change is a decision, an ADR is added/updated | this Amendment; ADR-0004 and ADR-0035 (notes of the same date) |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes |
+
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:527` (`measurementInputsDiffer`),
+`:638` and `:747` (`duckMeasDirty`), `:1128` (the decision at the bottom), `:1810` (the landing);
+`scripts/check-state-coverage.py` (`MEASUREMENT_INPUTS`).
+
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.
 
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:1201-1234` (A(dry) ref + silence-edge snap)
+- `src/dsp/AnamorphEngine.cpp:1272-1305` (A(dry) ref + silence-edge snap)
 - `src/PluginProcessor.cpp:402-424` (`applyAutoGain`)
 
 Evidence [Verified]:

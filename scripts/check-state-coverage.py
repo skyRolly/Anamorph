@@ -15,7 +15,10 @@ Both of this lint's targets have produced measured defects:
     when no module could observe the change, and `pendingAlgoReset` was set on one of two paths
     into the variable it describes.  `sameParameters`' own comment states the invariant and then
     relies on the reader: *"this list must name EVERY EngineParameters field -- a field added there
-    and forgotten here would have its edits ignored whenever nothing else moves."*
+    and forgotten here would have its edits ignored whenever nothing else moves."*  A FIFTH list,
+    `measurementInputsDiffer` (ADR-0007, Amendment 2026-09-24), answers "can this switch change
+    anything the Level-Match measurement reads"; it is checked by `check_measurement_inputs`
+    against MEASUREMENT_INPUTS, total over the struct.
 
   * `AnamorphEngine::reset` and its MODULES.  Round 5 gave the function a `ResetScope` parameter,
     which turned one list into two answers per module -- and nobody made the second answer for any
@@ -169,6 +172,49 @@ DISCRETE_DIFFERS_EXCLUDED = {
 PROCESSING_DIFFERS_EXCLUDED = {
     "bypass": "the chain runs under bypass too, so the measured path is unchanged (Issues 2/3)",
     "autoGainMatch": "engaging the match changes what is APPLIED, not the path being measured",
+}
+
+# The FIFTH list, `measurementInputsDiffer` (ADR-0007, Amendment 2026-09-24): "can this switch change
+# anything the Level-Match measurement reads" -- the wet at the loudness tap, the dry reference, or
+# the predict's inputs. It decides whether a Level-Match-engaging duck bottom may land the applied
+# gain on the published value, so a field wrongly left out makes the engage land on a STALE value.
+# Unlike the two selection lists it names continuous fields too, and it is TOTAL: every field is
+# either compared below or excluded with a reason in MEASUREMENT_INPUTS_EXCLUDED.
+#   form  "exact" -- `a.X != b.X`, or `! juce::exactlyEqual (a.X, b.X)` for a float
+#         "tol"   -- `differs (a.X, b.X)`: a float, to a relative representation tolerance
+#   guard None, or the relevance condition the comparison sits under, exactly as written in the
+#         term (whitespace-normalised): the field's module OUTPUT reaches the tap only then.
+# Each answer was derived from the code and measured bitwise on the matcher's state (worklog
+# NONFINITE_PARAMETERS_AND_F13.md §J). The lint holds the code to the table; it does not claim the
+# table is right -- Test 66 is what measures that.
+_HAAS, _VELVET, _CHORUS = "either (Algorithm::Haas)", "either (Algorithm::Velvet)", "either (Algorithm::Chorus)"
+_DIMD = "(a.algorithm == Algorithm::DimensionD || b.algorithm == Algorithm::DimensionD)"
+MEASUREMENT_INPUTS = {
+    "channelMode": ("exact", None), "monoSum": ("exact", None), "swapLR": ("exact", None),
+    "polarityL": ("exact", None), "polarityR": ("exact", None), "msMode": ("exact", None),
+    "solo": ("exact", None),                 # M/S solo is input conditioning, BEFORE the tap
+    "algorithm": ("exact", None), "mbEnable": ("exact", None),
+    "monoMakerEnable": ("exact", None), "oversample": ("exact", None),
+    # The predict's own inputs: its rise test fires on ANY rise, one ulp included.
+    "driveDb": ("exact", None), "mix": ("exact", None),
+    "inputBalance": ("tol", None), "algoAmount": ("tol", None), "width": ("tol", None),
+    "haasDelayMs": ("tol", _HAAS), "haasSide": ("exact", _HAAS),
+    "velvetDensity": ("tol", _VELVET),
+    "chorusRate": ("tol", _CHORUS), "chorusDepth": ("tol", _CHORUS),
+    "dimMode": ("exact", _DIMD),
+    "mbBands": ("exact", "mb"), "mbWidthLow": ("tol", "mb"),
+    "mbFreqLow": ("tol", "mb && bands >= 2"), "mbWidthMid": ("tol", "mb && bands >= 2"),
+    "mbFreqMid": ("tol", "mb && bands >= 3"), "mbWidthHiMid": ("tol", "mb && bands >= 3"),
+    "mbFreqHigh": ("tol", "mb && bands >= 4"), "mbWidthHigh": ("tol", "mb && bands >= 4"),
+    "monoMakerFreq": ("tol", "(a.monoMakerEnable || b.monoMakerEnable)"),
+}
+MEASUREMENT_INPUTS_EXCLUDED = {
+    "outputGainDb": "applied after the loudness tap (the output stage)",
+    "outputBalance": "applied after the loudness tap (the output stage)",
+    "mbSolo": "Band Solo is a post-everything monitor (DSP_POLICY invariant 3)",
+    "bypass": "an output crossfade after the tap; with Level Match off it also toggles the H4 dry "
+              "reference, the documented 0.8.9 Class-B difference (<= 0.0064 dB at an engage)",
+    "autoGainMatch": "the switch being asked about; it too toggles the H4 dry reference (as above)",
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -783,8 +829,174 @@ def check_engine_reset(engine_h, engine_cpp):
     return problems
 
 
+MEASUREMENT_FN = "measurementInputsDiffer"
+
+
+def _norm(text):
+    """Whitespace-collapsed, with no space next to a paren: a re-wrap is not a difference."""
+    t = " ".join(text.split())
+    return re.sub(r"\s*([()])\s*", r"\1", t)
+
+
+def _split_top(expr, op):
+    """`expr` split at `op` (`||` or `&&`) where the parenthesis depth is zero."""
+    parts, depth, start, k, n = [], 0, 0, 0, len(expr)
+    while k < n:
+        c = expr[k]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif depth == 0 and expr.startswith(op, k):
+            parts.append(expr[start:k])
+            start = k = k + len(op)
+            continue
+        k += 1
+    parts.append(expr[start:])
+    return [p.strip() for p in parts]
+
+
+def _unwrap(term):
+    """`term` without parentheses that enclose ALL of it."""
+    t = term.strip()
+    while t.startswith("(") and t.endswith(")"):
+        depth = 0
+        for k, c in enumerate(t):
+            depth += c == "("
+            depth -= c == ")"
+            if depth == 0 and k < len(t) - 1:
+                return t
+        t = t[1:-1].strip()
+    return t
+
+
+def _final_return(body):
+    """The expression of the LAST `return` at the function's own brace depth (not a lambda's)."""
+    depth, last = 0, None
+    for m in re.finditer(r"[{}]|\breturn\b", body):
+        tok = m.group(0)
+        if tok == "{":
+            depth += 1
+        elif tok == "}":
+            depth -= 1
+        elif depth == 1:
+            last = m.end()
+    if last is None:
+        return ""
+    k, paren = last, 0
+    while k < len(body):
+        if body[k] == "(":
+            paren += 1
+        elif body[k] == ")":
+            paren -= 1
+        elif body[k] == ";" and paren == 0:
+            break
+        k += 1
+    return body[last:k]
+
+
+_MEAS_FORMS = {
+    "exact": (r"\ba\.{f}\s*!=\s*b\.{f}\b",
+              r"!\s*juce::exactlyEqual\s*\(\s*a\.{f}\s*,\s*b\.{f}\s*\)"),
+    "tol": (r"\bdiffers\s*\(\s*a\.{f}\s*,\s*b\.{f}\s*\)",),
+}
+
+
+def _compares(text, f, form):
+    return any(re.search(p.format(f=re.escape(f)), text) for p in _MEAS_FORMS[form])
+
+
+def check_measurement_inputs(params_h, engine_cpp, inputs=None, excluded=None):
+    """Problems with `measurementInputsDiffer`, the fifth `EngineParameters` list."""
+    inputs = MEASUREMENT_INPUTS if inputs is None else inputs
+    excluded = MEASUREMENT_INPUTS_EXCLUDED if excluded is None else excluded
+    fields = [n for _, _, n in parse_members(params_h, "struct EngineParameters")]
+    if not fields:
+        return [(PARAMS_H, 1, "no fields parsed out of `struct EngineParameters` -- this lint "
+                              "would report the tree clean without checking anything")]
+    body = function_body(engine_cpp, "AnamorphEngine::" + MEASUREMENT_FN)
+    if body is None:
+        return [(ENGINE_CPP, 1, f"`AnamorphEngine::{MEASUREMENT_FN}` not found -- this lint cannot "
+                                f"check a list it cannot read.")]
+    problems = []
+
+    # --- TOTAL: every field answered exactly once, and only real fields --------------------------
+    for f in fields:
+        if f not in inputs and f not in excluded:
+            problems.append((ENGINE_CPP, 1,
+                             f"`{f}` has no answer in MEASUREMENT_INPUTS or MEASUREMENT_INPUTS_EXCLUDED."
+                             f" A Level-Match engage lands the applied gain on the published value "
+                             f"only when no measurement input changed; a field nobody classified is "
+                             f"a way to land on a stale one. Decide whether a change to it can reach "
+                             f"the loudness tap, the dry reference or the predict."))
+    for f in sorted(set(inputs) & set(excluded)):
+        problems.append((ENGINE_CPP, 1, f"`{f}` is both a measurement input and excluded. Pick one."))
+    for f in sorted((set(inputs) | set(excluded)) - set(fields)):
+        problems.append((ENGINE_CPP, 1,
+                         f"`{f}` is declared for `{MEASUREMENT_FN}` but `EngineParameters` does not "
+                         f"declare it. Remove it."))
+
+    # --- FORM and GUARD, term by term ---------------------------------------------------------
+    terms = _split_top(_final_return(body), "||")
+    for f, (form, guard) in sorted(inputs.items()):
+        if f not in fields:
+            continue
+        other = "tol" if form == "exact" else "exact"
+        hits = [t for t in terms if _compares(t, f, form)]
+        if any(_compares(t, f, other) for t in terms):
+            problems.append((ENGINE_CPP, 1,
+                             f"`{MEASUREMENT_FN}` compares `{f}` in the `{other}` form; it is declared "
+                             f"`{form}`." + (" It feeds the predict, whose rise test fires on any "
+                                             "rise: a tolerance would land on a pre-ducked value."
+                                             if form == "exact" and f in ("driveDb", "mix") else "")))
+            continue
+        if not hits:
+            problems.append((ENGINE_CPP, 1,
+                             f"`{MEASUREMENT_FN}` does not compare the measurement input `{f}` in its "
+                             f"declared `{form}` form, so a switch that changes it would land the "
+                             f"Level-Match gain on a stale value."))
+            continue
+        for t in hits:
+            parts = _split_top(_unwrap(t), "&&")
+            conds = [q for q in parts if not _compares(q, f, form)]
+            got = _norm(" && ".join(conds)) if conds else None
+            want = _norm(guard) if guard is not None else None
+            if got != want:
+                problems.append((ENGINE_CPP, 1,
+                                 f"`{MEASUREMENT_FN}` compares `{f}` under "
+                                 f"{'`' + got + '`' if got else 'no condition'}, but it is declared "
+                                 f"{'`' + want + '`' if want else 'unconditional'}. The guard is the "
+                                 f"condition under which the field's output reaches the tap; make "
+                                 f"the code and MEASUREMENT_INPUTS agree."))
+    for f in sorted(excluded):
+        if re.search(r"\b[ab]\." + re.escape(f) + r"\b", body):
+            problems.append((ENGINE_CPP, 1,
+                             f"`{f}` is declared excluded from `{MEASUREMENT_FN}` but the code reads "
+                             f"it. The declaration and the code disagree; fix whichever is wrong."))
+
+    # --- DERIVED FROM THE CODE: the predict's inputs are exact and unconditional ---------------
+    stripped = strip_comments_and_strings(engine_cpp)
+    for f in sorted(set(re.findall(r"\bloudness\s*\.\s*set(?:DriveDb|Mix)\s*\(\s*p\.(\w+)",
+                                   stripped))):
+        if inputs.get(f) != ("exact", None):
+            problems.append((ENGINE_CPP, 1,
+                             f"`{f}` feeds the Level-Match predict (`loudness.set...(p.{f})`), whose "
+                             f"rise test fires on any rise, so `{MEASUREMENT_FN}` must compare it "
+                             f"exactly and unconditionally: declare it (\"exact\", None)."))
+    # --- A path change is a measurement change: processingDiffers' fields are all inputs --------
+    pd = function_body(engine_cpp, "AnamorphEngine::processingDiffers") or ""
+    for f in fields:
+        if re.search(r"\ba\." + re.escape(f) + r"\s*!=\s*b\." + re.escape(f) + r"\b", pd) \
+                and f not in inputs:
+            problems.append((ENGINE_CPP, 1,
+                             f"`processingDiffers` re-arms the measure on `{f}`, but `{f}` is not a "
+                             f"declared measurement input of `{MEASUREMENT_FN}`."))
+    return problems
+
+
 def lint(params_h, engine_h, engine_cpp):
-    return check_engine_params(params_h, engine_cpp) + check_engine_reset(engine_h, engine_cpp)
+    return (check_engine_params(params_h, engine_cpp) + check_measurement_inputs(params_h, engine_cpp)
+            + check_engine_reset(engine_h, engine_cpp))
 
 
 def lint_tree():
@@ -1068,6 +1280,52 @@ def self_test():
         GUARD_DIVERGENCE.update(_saved)
     check("the table is restored after the divergence cases", dict(GUARD_DIVERGENCE), _saved)
 
+    # --- 5b. THE FIFTH LIST, `measurementInputsDiffer`: quiet on the real code, and fires on each
+    # defect it exists for, re-created one at a time on the REAL source (a fixture check first, so a
+    # rewritten engine turns these into loud fixture failures rather than silently passing cases).
+    real_params = (ROOT / PARAMS_H).read_text(encoding="utf-8")
+    real_cpp = (ROOT / ENGINE_CPP).read_text(encoding="utf-8")
+    check("the real measurementInputsDiffer is quiet", check_measurement_inputs(real_params, real_cpp), [])
+    check("the real return expression is read, not skipped",
+          len(_split_top(_final_return(function_body(real_cpp, "AnamorphEngine::" + MEASUREMENT_FN)),
+                         "||")) >= 20, True)
+
+    def mutated(what, old, new, needle, count=1):
+        check(f"fixture present for: {what}", old in real_cpp, True)
+        fires(what, check_measurement_inputs(real_params, real_cpp.replace(old, new, 1)), needle, count)
+
+    mutated("a measurement input no longer compared",
+            "|| differs (a.width, b.width)", "", "width")
+    mutated("the predict's Drive compared to a tolerance",
+            "! juce::exactlyEqual (a.driveDb, b.driveDb)", "differs (a.driveDb, b.driveDb)", "driveDb")
+    mutated("a guarded field compared unconditionally",
+            "(either (Algorithm::Velvet) && differs (a.velvetDensity, b.velvetDensity))",
+            "differs (a.velvetDensity, b.velvetDensity)", "velvetDensity")
+    mutated("a band guard off by one band (both fields of the term)",
+            "(mb && bands >= 3 && (differs (a.mbFreqMid,", "(mb && bands >= 2 && (differs (a.mbFreqMid,",
+            "mbFreqMid", count=2)
+    mutated("an excluded, post-tap field compared",
+            "|| differs (a.width, b.width)", "|| differs (a.width, b.width) || a.mbSolo != b.mbSolo",
+            "mbSolo")
+    check("fixture present for: a new field nobody classified", "bool        bypass" in real_params, True)
+    fires("a new field nobody classified",
+          check_measurement_inputs(real_params.replace("bool        bypass", "float newKnob = 0.0f;\n"
+                                                                            "    bool        bypass", 1),
+                                   real_cpp), "newKnob")
+    fires("a declared input the struct no longer has",
+          check_measurement_inputs(real_params, real_cpp,
+                                   inputs=dict(MEASUREMENT_INPUTS, ghost=("exact", None))), "ghost")
+    fires("the predict input declared tolerant",
+          check_measurement_inputs(real_params, real_cpp.replace(
+              "! juce::exactlyEqual (a.mix, b.mix)", "differs (a.mix, b.mix)", 1),
+              inputs=dict(MEASUREMENT_INPUTS, mix=("tol", None))), "mix")
+    fires("the function missing", check_measurement_inputs(
+        real_params, real_cpp.replace("AnamorphEngine::" + MEASUREMENT_FN, "AnamorphEngine::gone")),
+        MEASUREMENT_FN)
+    check("a lambda's own `return` is not the list", _final_return(
+        "{ auto f = [] (int x) { return x || y; }; return a.p != b.p || a.q != b.q; }").strip(),
+        "a.p != b.p || a.q != b.q")
+
     # --- 6. TARGET 2 MUST STAY QUIET on the real shape ----------------------------------------
     clean_reset = _reset_src(_ALL_RESET + ["correlation.reset();", "loudnessDone();"],
                              ["levels.reset();"], ["levels.resetLive();"])
@@ -1166,7 +1424,7 @@ def main():
     fields = len(parse_members((ROOT / PARAMS_H).read_text(encoding="utf-8"),
                                "struct EngineParameters"))
     modules = len(RESET_SCOPE)
-    print(f"check-state-coverage: {fields} EngineParameters field(s) answered by 4 list(s), "
+    print(f"check-state-coverage: {fields} EngineParameters field(s) answered by 5 list(s), "
           f"{modules} engine module(s) answered for both reset scopes.")
     return 0
 

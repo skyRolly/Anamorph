@@ -662,19 +662,20 @@ DELIBERATE_REAIMS = {
     # re-aimed by hand onto the adoption block at the top of the function, which is what the
     # sentence describes. The token is resolved at the new spelling. The merge base and
     # `origin/main` carry `:208-215` for the same sentence; that transition is declared too, since
-    # a declaration answers only for the base that carries its old spelling.
+    # a declaration answers only for the base that carries its old spelling. (PR #156's O4g round
+    # moved the same block down one line, so the target spelling is now `:206-212`.)
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:206-212"): "pendingP",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

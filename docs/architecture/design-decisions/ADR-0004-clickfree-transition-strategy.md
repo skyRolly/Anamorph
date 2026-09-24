@@ -116,13 +116,23 @@ the flag refreshed, every route is bit-identical to the entry route.
   `testAlgoResetSurvivesMidFadeRetarget` (Test 57) in `tests/dsp_tests.cpp`. Both fail against the
   pre-correction engine — 27 and 12 checks respectively.
 
+## Note, 2026-09-24 — the Level-Match gain at a duck bottom (ADR-0007, Amendment of the same date)
+
+Decision 1's "snap smoothers there" never covered `matchGainSmooth`: `snapSmoothers()` leaves it out,
+because where it lands is ADR-0007's to decide, and its target is fresh only after the bottom block's
+loudness measurement. ADR-0007's Amendment of 2026-09-24 decides it: at a bottom that turns Level
+Match on and changes nothing the measurement reads, the smoother is landed on the published value
+right after that block's measurement — at a forced bottom and, new for mechanism 1, at an ordinary
+one (the Level Match toggle), which otherwise snaps nothing. At any other bottom it keeps gliding. The
+three mechanisms, and which control belongs to which, are unchanged.
+
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:355-382` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
+- `src/dsp/AnamorphEngine.cpp:357-384` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:355-382, 1254-1465; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:357-384, 1325-1536; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree,
   testInertDiscreteChangeDoesNotDuck, testAlgoResetSurvivesMidFadeRetarget
