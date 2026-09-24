@@ -243,7 +243,9 @@ against a fresh instance at the destination state:
    whenever any continuous sound field differs? Re-arming at every injection also re-arms an A/B
    switch between identical slots (0.030 → 0.000454 dB, the re-armed signature), which reverses the
    A/B row of the dimMode table in the note above — no suite catches it, because Test 58 never
-   injects. Re-arming on every forced duck is ruled out outright: it fails Test 58.
+   injects. Re-arming on every forced duck is ruled out outright: it fails Test 58. (Measured
+   further on 2026-09-24 — each transition's root cause, the candidate policies and the owner's
+   questions — in worklog `NONFINITE_PARAMETERS_AND_F13.md` §K; nothing decided there.)
 
 Separately, a NaN reading no longer becomes the match target (ADR-0009, note of the same date;
 Test 65): the target stays where it was, this ADR's rule for a reading it cannot trust.
@@ -280,12 +282,12 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   5. the reading is a number (ADR-0009): otherwise the stage keeps its target and nothing lands.
 - **Case B — anything else.** Exactly the behaviour before this amendment: the smoother starts where
   it rests while Level Match is off (unity) and glides to the matcher's value — or, at an A/B switch
-  (condition 4), starts on the slot's injected gain. When the switch also
-  changes the sound, the published value describes the sound *before* the switch; landing on it
-  would align the gain to a stale result — worklog §I5 measured that at up to 4.5 dB further from a
-  fresh instance than gliding. The right gain there is a measurement question (question 2 above,
-  F13(2), KI-030) and is not decided here. A host reset or a silence→audio edge still lands the gain
-  in both cases, through the Decision's edge snap, as before.
+  (condition 4), starts on the slot's injected gain. When the switch also changes the sound, the
+  published value describes the sound *before* the switch; landing on it would align the gain to a
+  stale result — worklog §I5 measured that at up to 4.5 dB further from a fresh instance than
+  gliding. The right gain there is a measurement question (question 2 above, F13(2), KI-030) and is
+  not decided here. A host reset or a silence→audio edge still lands the gain in both cases, through
+  the Decision's edge snap, as before.
 
 **`measurementInputsDiffer`** is derived from the engine's signal graph (worklog
 `NONFINITE_PARAMETERS_AND_F13.md` §J), not from a list of names, and each answer was checked by

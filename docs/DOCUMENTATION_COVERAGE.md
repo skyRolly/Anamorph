@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24), non-finite parameter state and the Devin review, whose entries are the **76th** and **77th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g) and F13(2) taken to its owner-decision record — whose entries are the **76th**, **77th** and **78th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,69 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 78th pass — 2026-09-24, PR #156 (F13(1b) implemented under the owner's ruling O4g; F13(2) taken to its decision record)
+
+**Scope.** The owner's ruling on the 77th pass's decision record — *"Use O4g as the working direction
+for this round"* — implemented, tested and recorded; then F13(2) measured on the resulting head and
+taken to its owner-decision boundary (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §J, §K).
+
+**F13(1b) — fixed (KI-031 resolved).** A switch that turns Level Match on and changes nothing the
+measurement reads lands the applied gain on the value published right after the bottom block's
+measurement, instead of fading in at unity and gliding ~0.6 s: Undo of Apply +2.32 / +4.45 / +5.67 dB
+at Drive 4 / 8 / 10 → 0.00 dB, settle 523–647 ms → 127 ms. "Changes nothing the measurement reads" is
+`AnamorphEngine::measurementInputsDiffer`, derived from the signal graph (two independent derivations,
+84-row code-reading harness and 23,744 bitwise runs, reconciled), plus `duckMeasDirty` for what an
+ordinary duck makes live on the way down, `!procChanged`, no A/B injection and a finite reading. A
+sound-changing engage (Case B) is unchanged, pending F13(2). ADR-0007 carries the ruling as its
+*Amendment, 2026-09-24* (in place, the precedent of its own earlier amendment; the owner's words quoted
+verbatim), with notes in ADR-0004 and ADR-0035.
+
+**Tests.** DSP **Test 66** (29 checks; 6 fail against the pre-fix engine) and **State test 130**
+(114 checks; 24 fail pre-fix). An event-matched twin shares the duck and keeps Level Match off, so the
+applied gain is read as a per-block least-squares gain against it (residual ≤ 1e-3): LAND is max|D| ≤
+0.1 dB for 0.6 s from the first full-level block; NOT LAND is glide fraction ≥ 0.5. 21 engine variants
+rejected, each by a named leg (worklog §J). `check-state-coverage.py` gains the `MEASUREMENT_INPUTS`
+tables, total over `EngineParameters`, with a self-test that re-creates each defect on the real source.
+
+**F13(2) — measured, root-caused, taken to its owner-decision boundary; no behaviour change.** The
+recorded figures reproduce on this head through the processor, on two independent harnesses and at
+other seeds and block sizes (continuous-only A/B +1.59 dB, Undo Drive 0 → 10 / 10 → 0 +6.73 / −7.89 dB,
+same-rate re-prepare +2.46 dB). Counterfactual surgery on the matcher's two halves assigns each
+transition: only the continuous-only A/B leaves the halves inconsistent (the right injected gain,
+dragged by the previous slot's analysis — KI-030); a re-prepare and the NaN self-heal throw away a
+result that was still valid; live edits, forced continuous-only swaps (identical to the live edit),
+Case B engages and a Case A engage on a converging value are the measure's accepted lag. Seven
+candidate policies were measured as scratch variants with both suites; every one contradicts Accepted
+ADR-0007 text, so none was built, and five questions are put to the owner (worklog §K6).
+
+**Documents changed.** ADR-0007 (Amendment; a pointer from question 2 to §K), ADR-0004 and ADR-0035
+(notes); the three passages this PR wrote that said an engage "otherwise glides" from unity, where an
+A/B engage starts on the injected slot gain (ADR-0007 Case B, ADR-0004, ADR-0035, the engine's
+output-stage comment, three `KNOWN_ISSUES.md` sentences); `CHANGELOG.md` `[0.9.9]` (one Fixed entry);
+`KNOWN_ISSUES.md` (KI-031 resolved; KI-030 gains the engage-staleness bullet, the narrower re-arm's
+measurement and the same-rate re-prepare flush); `PERFORMANCE_BUDGET.md` (the engage is no longer
+"always duck+glide smoothed"); `procedures/TESTING.md` (Test 66, State test 130); the engine's comments
+that the change made false (`:78`, the prepare comment, the `snapSmoothers` header, the forced-branch and
+output-stage comments); the worklog (§J, §K; §J now quotes the owner verbatim); this entry and the *Last
+updated* line; citation anchors the engine and test insertions moved (`check-citations.py --fix`, four
+`DELIBERATE_REAIMS` targets re-spelled). **Triggers not fired, decided:** `SIGNAL_FLOW.md` /
+`DSP_GRAPH_REFERENCE.md` (no stage-order change: the landing is inside the level-match stage);
+`LATENCY_MODEL.md` (no latency change); `THREAD_MODEL.md` (audio-thread-only state, no new shared
+state); the parameter documents and the state schema (no parameter or field change);
+`API_REFERENCE.md` (no public signature change; its host-reset row's Level-Match inexactness is
+pre-existing, reported in §K7); `user/USER_MANUAL.md` (it promises Level Match "so loudness doesn't bias
+you" and never described the swell); `CHANGELOG.md` for F13(2) (no behaviour change).
+
+**Drift reported, not fixed** (pre-existing; worklog §K7): ADR-0007:101 "re-armed in exactly one place"
+holds for the switch path only; `DSP_ALGORITHMS.md:186-192` anchors the measure at the predict lines;
+`API_REFERENCE.md:35` host reset "exactly as its silent bottom would" is inexact for a pending A/B
+injection and the Case-A landing; `AnamorphEngine.cpp:222-223` / `.h:49-51` say a block size
+invalidates the K-weighting coefficients; ADR-0007's *Related code* anchors and two of its 2026-09-24
+note's comment anchors; the lower bound of the re-arm-at-injection figure (0.022 vs 0.013 dB).
+
+**Counts.** DSP **553 / 0** (524 + 29, Test 66), State **4 923 / 0** (4 809 + 114, State test 130).
+[Verified]
 
 ## 77th pass — 2026-09-24, PR #156 (Devin review; F13(1b) reproduced for an owner decision)
 

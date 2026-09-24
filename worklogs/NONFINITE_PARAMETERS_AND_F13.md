@@ -748,3 +748,220 @@ Before the ruling the same engages glided from unity (same probe, same metric, a
 quieter) and 3.37 dB (forced, quieter) — closer than landing — and 6.25 dB (forced, louder) — further.
 Neither is right; the lag is the measure's own convergence, which is the F13(2) question (§K). No
 convergence guard was added: that would be an F13(2) rule chosen silently.
+
+## K. F13(2): the published value across sound changes — evidence, root cause, owner-decision record
+
+Round after `f155978`, same branch (PR #156). The owner asked for F13(2) after F13(1b): reproduce the
+measurement family through the plugin, decide which transitions are measurement-invalid and why, and
+either implement what the Accepted text already decides or stop at the evidence and decision-record
+boundary. **No behaviour changed in this section.** Every candidate policy below contradicts Accepted
+ADR-0007 text (§K5), so each one is a hard stop (`AI_AGENT_POLICY.md:45`) and is recorded, not built.
+
+### K1. Method
+
+Three measurements on the engine of `f20212d` (its code unchanged since), through
+`AnamorphAudioProcessor` exactly as a host and the editor drive it, then two adversarial verifiers
+(one re-ran the measurements at other seeds and block sizes with its own probe; one re-ran every
+variant's suites and harness rows and re-checked every quotation):
+
+- **Shared harness** (the §E / §I harness, extended by one row per transition class): K-weighted
+  100 ms trailing windows (`pkX` / `dipX` against the two counterfactual trajectories) plus a 20 ms
+  least-squares gain of the run against a fresh instance prepared at the destination state and fed the
+  identical input from sample 0 ("run − fresh", normalised over 2.5–3.0 s after the event). Pink noise,
+  48 kHz / 256. The four recorded rows are byte-identical to the pre-O4g table; only the O4g engage
+  rows differ from it.
+- **Independent harness**, written without reading the other harnesses: band-limited noise with a slow
+  ±3 dB level modulation, 48 kHz / 256 and 44.1 kHz / 512, its own 20 ms least-squares metric.
+- **Root-cause probe**: counterfactual surgery on the running matcher at the event — S1 replaces only the
+  ANALYSIS (the four K-weighting biquads and both integrators) with the fresh destination's, S2 only the
+  RESULT (`displayedGainDb`, `prevPredictedGainDb`, `matchGainDb`), S3 both; an `m` suffix also sets the
+  applied-gain smoother; S4 skips a flush. The half whose replacement removes the error owns it.
+
+Scope: Linux x86-64, GCC; stationary noise programmes only (no music, transients or silence gaps); Haas
+for the matrix, Chorus / Velvet for the discrete rows (Chorus rows placed so the fresh instance's LFO
+phase matches, since the bottom restarts the LFO).
+
+### K2. The recorded figures, reproduced
+
+| transition (Level Match on in both states) | recorded | shared harness | independent 48 k / 256 | independent 44.1 k / 512 |
+|---|---|---|---|---|
+| A/B, slots differ only in Drive (2 → 8) | +1.59 dB | +1.59 (`pkX`) | +1.65 at 490 ms | +1.62 |
+| the same, 8 → 2 | −1.84 (`dipX`) | −1.84 | −2.02 | −2.08 |
+| Undo, Drive 0 → 10 | +6.73 | +6.73 | +7.65 at 50 ms | +7.64 |
+| Undo, Drive 10 → 0 | −7.89 / −8.72 | −7.89 | −8.35 | −8.38 |
+| re-prepare, same rate and block | +2.46 | +2.46 | +2.48 | +2.61 |
+
+The 20 ms windows read the Drive rows higher and earlier than the 100 ms ones (the shared harness's own
+50 ms figure for Undo 0 → 10 is +7.32). Same sign, size and cause everywhere. An adversarial re-run at
+two other seeds and at 128- and 512-sample blocks moved the shared-harness figures by at most 0.2 dB
+(+1.55 to +1.59, +6.65 to +6.73, −7.87 to −7.91, +2.26 to +2.46), and a third probe on its own input
+and metric agreed in sign and cause.
+
+Every class, run − fresh at 100 ms / 500 ms / 1 s / 2 s after the event (shared harness):
+
+| class | transition | 100 ms | 500 ms | 1 s | 2 s |
+|---|---|---|---|---|---|
+| (a) live edit | Drive 0 → 10 / 10 → 0 | +6.89 / −8.10 | +3.54 / −6.70 | +1.89 / −3.63 | +0.46 / −0.95 |
+| (b) forced, continuous-only | user preset 0 → 10 / 10 → 0 | +6.91 / −8.10 | +3.52 / −6.72 | +1.86 / −3.64 | +0.46 / −0.95 |
+| | Undo | +6.61 / −7.93 | +3.49 / −6.74 | +1.86 / −3.64 | +0.46 / −0.98 |
+| | Redo | +6.58 / −7.89 | +3.60 / −6.62 | +1.95 / −3.57 | +0.48 / −0.96 |
+| (c) A/B, continuous-only | Drive 2 → 8 / 8 → 2 | +0.67 / −0.42 | +1.59 / −1.84 | +1.12 / −1.48 | +0.29 / −0.41 |
+| (d) discrete | Haas → Chorus live / Undo | −1.77 / −1.80 | −1.10 / −1.24 | −0.60 / −0.67 | −0.13 / −0.15 |
+| (e) A/B, discrete | Haas ↔ Chorus | ≤ +0.07 | ≤ +0.05 | ≤ +0.02 | 0.00 |
+| (f) re-prepare | same / block 256 → 512 / 48 → 44.1 kHz | +2.35 / +2.29 / +2.30 | +1.29 / +1.29 / +1.31 | +0.67 / +0.68 / +0.68 | +0.15 / +0.15 / +0.14 |
+| (g) host reset | settled (control without reset) | +0.23 (+0.22) | +0.15 (+0.13) | +0.06 (+0.07) | +0.01 (+0.02) |
+| | 200 ms after a live Drive 0 → 10 (control) | +3.77 (+5.19) | +1.27 (+2.70) | +0.64 (+1.58) | +0.14 (+0.38) |
+| (h) Case B engage | preset: Level Match on + Drive 0 → 10 / 10 → 0 | +6.57 / −2.84 | +3.49 / −6.52 | +1.86 / −3.64 | +0.46 / −0.95 |
+| (i) Case A engage on a converging value | 16 ms / 500 ms after a live Drive 12 → 6 | −4.14 / −3.50 | −3.67 / −2.52 | −2.30 / −1.53 | −0.60 / −0.36 |
+
+The three forced routes track the live edit within 0.35 dB at every checkpoint: **(b) is (a)**. A host
+reset reduces the error of a switch it interrupts rather than causing one (g).
+
+### K3. Root cause, by surgery
+
+| class | category | what owns the error (surgery, 20 ms run − fresh) |
+|---|---|---|
+| (a) live edit | stale but consistent | both halves describe the old Drive and re-converge with the measure's constants (0.4 s integrators; 60 ms glide above a 2 dB gap, 0.9 s below); the applied-gain smoother (a 120 ms ramp restarted every block, so an exponential of τ ≈ 120 ms) dominates the first ~300 ms. Drive 0 → 10: none +7.99, S3 (both halves) +7.23 at 47 ms then +0.26 at 500 ms, S3m +0.03 |
+| (b) forced, continuous-only | stale but consistent — as (a) | `procChanged` false, no re-arm; no injection; no Case-A landing (Level Match is on in both states, so the switch is not an engage); `snapSmoothers()` leaves the applied gain. Undo 0 → 10: none +7.45, S3 +6.59, S3m 0.00; 10 → 0: none −8.74, S3 −5.25, S3m 0.00 |
+| (c) A/B, continuous-only | **analysis inconsistent with the result** | the injected result is the slot's remembered value (−6.70 dB against a fresh −6.88; the 0.18 dB is its provenance — the slot was left 3 s after an edit, before the measure had converged) and is landed; the integrators still hold the source slot, so the first measure targets it (−2.80) and the fast glide drags the value away (KI-030). S1 (analysis only) +1.82 → +0.39 (+0.16 before the bottom); S2 (result only) +1.84 — no effect |
+| (d) discrete | result stale, analysis re-armed — the mirror of (c), benign | `softReset` re-arms: the analysis is right within a block or two (S1 no effect) and pulls the carried result the right way at the 0.9 s glide. S2 cuts the time above 0.5 dB from 1,365 to 165 ms |
+| (e) A/B, discrete | not stale | re-arm, injection and landing in the same bottom: ≤ 0.1 dB in every mode. The injected value is only as good as the slot's convergence when it was left |
+| (f) re-prepare, same rate | **a valid result flushed** | `loudness.prepare` and `reset(everything)` zero a result that is still exact: skipping the flush (S4) gives 0.00 dB, restoring only the result +0.03; the result owns ~90 % of the error, the analysis re-arm ~10 % (S1 +2.73 → +2.46). The next block's predict floor (−4.07 against a true −6.80) and the edge snap start the glide |
+| (f) re-prepare, new rate | coefficients invalid in kind; the error is still the flush | the old 48 kHz coefficients kept (S4) and the new ones with the old states (S4r) both give −0.09 dB; the pre-prepare result was 0.09 dB from the 44.1 kHz destination |
+| (g) host reset, settled | not stale | `softReset`, result kept, edge snap: ≤ 0.03 dB |
+| (g) host reset, mid-swap | result stale, analysis re-armed | the reset completes the swap and then re-arms unconditionally, so a continuous-only swap IS re-armed here; the edge snap lands the stale result at once: Undo 0 → 10 + reset +3.05 (without the reset +7.45), S1 no effect, S2 +0.01. A pending A/B injection is consumed after the re-arm — consistent (+0.18, without the reset +1.82) |
+| (h) Case B | stale but consistent | the matcher runs while Level Match is off, so both halves describe the sound before the switch; the applied gain starts at unity. Drive 10 → 0: none −7.74, S3 −0.55; 0 → 10: none +7.38, S3 +6.46 (unity starts 8.4 dB off) |
+| (i) Case A on a converging value | stale but consistent | the landing copies the lagging value of (a) into the applied gain at full size; with both halves replaced before the bottom it is exact (0.00 dB) |
+| (j) NaN self-heal | analysis invalid in kind; a valid result flushed | restoring the pre-NaN matcher (S4) gives +0.01 dB; the flush costs +1.57 dB peak and 1.4 s |
+
+**The Drive 0 → 10 / 10 → 0 asymmetry** has five parts. (1) The predict only lowers: on 0 → 10 it floors the
+published value from +0.13 to −5.02 dB in the bottom block; on 10 → 0 it does nothing (removing it makes
+the rise worse, +8.46 against +7.45, and leaves the fall unchanged). (2) On the rise the stale target is
+more than 2 dB away, so the fast glide undoes most of that pre-duck within ~80 ms. (3) The target is the
+dB ratio of two linear-energy integrators: it converges fast on a rise and slowly on a fall, where the
+old, larger energy dominates (remaining target error at 101 / 400 / 997 ms: 5.15 / 1.73 / 0.33 dB rising,
+8.10 / 5.56 / 1.97 dB falling). (4) Inside the 2 dB band the published value moves on the 0.9 s
+coefficient, so on the fall it sits still until ~290 ms. (5) The applied gain is not landed at the forced
+bottom. The time constants alone are nearly symmetric (S1m +1.49 / −1.83 dB); the asymmetry is the stale
+analysis (S2m +3.82 / −6.15) and the rise-only predict.
+
+### K4. Which transitions are measurement-invalid, and why
+
+- **Invalid in kind** — the state cannot describe the new situation: a **sample-rate change** (the
+  K-weighting coefficients, the 0.4 s window and the glide constants are functions of the rate) and a
+  **non-finite sample** (a NaN in the integrators). Only the ANALYSIS is invalid in either case: the stale
+  coefficients cost < 0.01 dB, and the result survives both (0.09 dB and 0.01 dB from the fresh
+  destination). Both flushes are decided: re-prepare by the review gate's scope sentence *"a re-prepare
+  still resets all of it"* (ADR-0007:182), the self-heal by ADR-0009 (whose own owner question is the
+  gain it discards, ADR-0009:82-83).
+- **Analysis inconsistent with the result** — exactly one transition: the **A/B injection between
+  slots that differ only in continuous controls** (c). The result is the destination's (within its own
+  provenance: the value published when the slot was left); the carried analysis is the source slot's
+  and pulls it away. This is the only transition where the matcher's two halves disagree in the wrong
+  direction, and the only one where re-arming the analysis removes the error (all but the slot's own
+  provenance).
+- **Stale but consistent** — the measure's accepted lag (Context "A pure measured loudness lags",
+  ADR-0007:6-7; the Decision's measure + floor-only predict): **live continuous edits** (a), **forced
+  continuous-only swaps** — preset, undo, redo (b), which are the same thing — **Case B engages** (h),
+  and **Case A engages on a value still converging** (i).
+- **Result stale, analysis re-armed** — a **discrete change** (d) and a **host reset mid-swap** (g): the
+  mirror of (c), but benign, because the correct half is the analysis and it pulls the stale result the
+  right way.
+- **Not stale** — an A/B with a discrete difference (e), a settled host reset (g), and every change
+  after the tap (Output Gain, Output Balance, Bypass, Band Solo, the Level Match switch itself: the
+  2026-09-24 Amendment's derived set).
+
+Distinguishing the routes: continuous and discrete differ only in whether the bottom re-arms
+(`processingDiffers`); preset, undo and redo are the live edit; A/B differs from them only by the
+injection, which is right, and by leaving the analysis alone, which is the defect; a re-prepare and the
+self-heal throw away a result that was still valid; a host reset re-arms whatever is in flight.
+
+### K5. Candidate policies, measured (scratch engine variants; none is in the repository)
+
+The re-arm variants (P1–P1c) pass both suites (553 / 0, 4,923 / 0): no existing test discriminates
+between them. P2, P3 and P4 each fail exactly the checks that pin the behaviour they change. CF-V2 and
+CF-V3 are the independent harness's diagnostics, whose suites were not run (P4 is CF-V3 built as a
+candidate). None needs a parameter, schema, threading, signal-order or latency change; the allocation
+guard stays at zero under each.
+
+| | definition | effect (HEAD → variant) | Accepted text it contradicts |
+|---|---|---|---|
+| **P1** | at a forced bottom, also `softReset()` when `measurementInputsDiffer (p, pendingP)` | (c) +1.59 → +0.10 dB, settle 2,448 → 124 ms; (b) Undo 0 → 10 +6.73 → +6.18, 10 → 0 −7.89 → −5.92 — so the forced route **no longer tracks the live edit** (+7.31 / −8.92 unchanged live); the applied gain still glides (published −6.57 against applied −3.52 at 130 ms), so the rise barely improves; forced Case B changes | ADR-0007:101-104, :197-200, :214-215, :279-280, :330-333; the O4g ruling (Case B changes); arguably :124-125 (a preset that turns Level Match on while Drive changes is re-armed; the counter-reading is :122, "any real path change: thrown away") |
+| **P1a** (B1) | `softReset()` at every A/B injection | (c) as P1; (b) unchanged; also re-arms an A/B between identical slots and one that changes only Level Match | as P1 (:101-104, :214-217, :279-280, :330); reverses the dimMode table's A/B row (:120); arguably :124-125 |
+| **P1b** | P1a only when the slots' measurement inputs differ | (c) as P1; an A/B that also turns Level Match on +1.63 → +0.07; nothing else on the shared harness moves; identical-slot and Level-Match-only A/B are not re-armed; State test 31's remembered slot-B gain prints −1.04 → +2.08 dB (its checks pass; the same under P1–P1c) | :101-104, :214-217, :279-280, :330-333; A/B Case B changes (the O4g ruling); arguably :124-125 (an A/B that turns Level Match on while Drive changes is re-armed) |
+| **P1c** | P1 at every bottom (with `duckMeasDirty`) | as P1, plus ordinary Case B engages; re-arms an ordinary duck whose edit returned before the bottom | as P1; arguably :124-125 |
+| CF-V2 (O3) | land the applied gain after the measure at a Match-on-both forced bottom | Undo 0 → 10 +7.65 → +4.47 (§I5's O3, +4.55; a 2.6–2.9 dB cut on another programme); 10 → 0 unchanged (the published value itself is stale) | :197-200 (the forced route stops tracking the live edit) |
+| CF-V3 / **P4** | keep the result across a re-prepare at an unchanged rate (a changed rate still flushes) | re-prepare `pkX` +2.46 → +0.04 dB, settle 2,215 → 0 ms (+2.48 → +0.055 on the independent harness); a block-size-only re-prepare the same; a rate change unchanged. **Fails State test 120** ("R6: ResetScope::everything still flushes the matcher, published gain included"). Not measured: a same-rate re-prepare no longer clears a Level Match displaced by an extreme finite burst (ADR-0009:44-46) | :39-40; the review gate's scope, :182 "a re-prepare still resets all of it" |
+| **P2** | Case A lands only after 1.3 s (the 0.4 s window plus the 0.9 s glide) without a measurement-input change; otherwise it glides from unity (as built, the counter also advances through silence, where the measure holds rather than converges) | mean error over 500 ms after an engage 16 / 500 / 1,000 ms after a change: quieter routes better (live 4.46 → 2.73, forced 5.70 → 3.35 dB), the louder route worse (4.51 → 6.15 dB, peak +5.20 → +8.93) and the overshoot above both endpoints returns (`pkX` up to +0.90 dB); 2 s unchanged. **Fails Test 66** (3 checks: every lane's history holds a measurement-input change 0.2 s before its event) | :268-282 (Case A asks only about the switch), and :319-324 leaves it undecided |
+| **P3** (O4) | Case B lands too | Level Match on + Drive 0 → 10 better (`pkX` +6.71 → +4.59, still above both endpoints), Drive 10 → 0 worse (`dipX` −6.88 → −8.09), + an algorithm change worse (−1.06 → −4.45). **Fails Test 66** (3) and **State test 130** (2) — the legs that pin Case B | the O4g ruling (*"Preserve current behavior for sound-changing Level Match engages until F13(2) is explicitly resolved."*) and :283-290 |
+
+No re-arm touches (a), (d), (e), (f), (g), (i) or (j): a re-arm makes the published value converge faster
+but does not move the applied gain, which dominates the first ~300 ms of (b) and (h).
+
+### K6. Owner decision record — F13(2)
+
+- **Decided by the current text** (the published value is not "invalid", it is the reading of an
+  estimator that lags by design): live edits (a); forced continuous-only swaps behave like the live edit
+  (ADR-0007:197-200, a note recording measured behaviour, with a change reserved by question 2 — which is
+  why Test 66 leg (8) and State test 130 leg (8) pin it "pending F13(2)" while §E3 calls it "preserve");
+  re-arm on a path change (:101-104, Test 58); re-arm plus injection on an A/B with a discrete difference;
+  flush on re-prepare (:39-40, :182) and in the self-heal (ADR-0009); host reset re-arms and keeps the
+  result (:165-167); the Case B interim and the Case A landing (the Amendment, O4g).
+- **Excluded by the current text:** re-measuring on engage (:240-241, :344); re-arming on every forced
+  duck (:246, Test 58); re-measuring on a Level Match or Bypass toggle (:124-125).
+- **No owner ruling decides the open questions.** The review gate of 2026-09-22 (R9; its scope at
+  :179-182, the owner's words at :187) decides two of the transitions — the host reset keeps the
+  published gain, a re-prepare resets all of it — and O4g decides the engage predicate and binds Case B
+  *"until F13(2) is explicitly resolved"* (:360). Every change in §K5 contradicts Accepted text, and
+  `ADR_POLICY.md:27-28` says a reversed decision adds a new ADR; the precedents in this repository
+  (ADR-0007's Amendment, ADR-0008's, ADR-0024's) amended in place. Which form applies is the owner's
+  call.
+- **Questions for the owner**, each with its measured options:
+  1. **A/B injection** (question 2, KI-030): leave the analysis (today; +1.59 / −1.84 dB for ~2.5 s on a
+     continuous-only switch); re-arm only when the slots' measurement inputs differ (P1b; the one
+     targeted fix: +0.10 dB, nothing else moves); re-arm at every injection (P1a; also re-arms identical
+     slots and reverses the dimMode row).
+  2. **Forced swaps without an injection** (question 2's "whenever any continuous sound field
+     differs?"): keep them identical to the live edit (today); re-arm them (P1; a forced route that no
+     longer tracks the live edit, and still +6.18 dB on the rise because the applied gain glides); or
+     land the applied gain at a Match-on-both forced bottom (O3 / CF-V2; +4.47 on the rise, nothing on the
+     fall). Neither makes the live edit itself any better: that is the measure's design (Context :6-7).
+  3. **Case B starting gain**: unity (today); land on the published value (P3 / O4 — better in one
+     direction, worse in the other two measured); another seed (§I5's O5, the gain that was playing).
+  4. **Case A convergence**: land whatever is published (today; −4.14 dB at 16 ms after a live Drive
+     change, settling in ~2.6 s); glide from unity until the measure has settled (P2 — better when the
+     change made the sound quieter, worse and with the swell back when it made it louder).
+  5. **Re-prepare at an unchanged rate** (not raised before; the review gate's scope sentence decides it
+     today): flush (today; +2.46 dB for ~2.2 s after every same-rate re-prepare); keep the result (P4;
+     +0.04 dB, and State test 120's R6 check, which pins the flush, would change with it).
+- **Recommendation**, for the owner to accept or reject: question 1 → **P1b**, the only change that
+  fixes a defect of the matcher's own consistency (c) and moves nothing else measured; questions 2–4 →
+  keep today's behaviour: every option measured trades one direction for another (P2, P3) or makes the
+  forced route diverge from the live edit (P1, O3), and the lag it would address is the Accepted design
+  (Context :6-7); question 5 → **P4** if the owner reads the gate's "a re-prepare still resets all of it"
+  as describing the flush rather than requiring it, since the result is measured valid across a
+  same-rate re-prepare; otherwise keep.
+
+### K7. Recorded, not changed
+
+- Pre-existing drift, reported: ADR-0007:101 "re-armed in exactly one place" holds for the switch path
+  only (the host reset `softReset`s, `prepare()` and the self-heal `reset`); `DSP_ALGORITHMS.md:186-192`
+  points the measure at the predict lines and does not describe `softReset` / `reset` / the injection;
+  `API_REFERENCE.md:35` says a host reset lands a swap "exactly as its silent bottom would", which for
+  Level Match is not exact: a pending A/B injection is adopted one block later, by the fallback
+  consumer, and the gain lands through the edge snap rather than the Case-A landing (the row already
+  says the reset clears the Level-Match analysis); `AnamorphEngine.cpp:222-223` and
+  `AnamorphEngine.h:49-51` say a new block size invalidates the K-weighting coefficients (they depend on
+  the rate only); ADR-0007's *Related code* anchors (:372-377) and its 2026-09-24 note's comment anchors
+  (:253-254: two of its four anchors moved — the re-arm comment is now `AnamorphEngine.cpp:1179-1181`,
+  the output-stage comment `:1887-1892`); the lower bound of the re-arm-at-injection figure differs
+  between ADR-0007:217 (0.022 dB) and §E3 (0.013 dB) — this round's P1a / P1b rows measure it on
+  another metric (+0.10 dB `pkX`; +0.004 dB on the independent harness's 20 ms metric when the slot had
+  converged before it was left — otherwise the slot's own provenance error remains, +0.2 dB on the
+  verifier's probe).
+- Corrected in this round because this PR wrote them: ADR-0007's Case B "(unity)" and ADR-0004's /
+  ADR-0035's "otherwise it glides" omitted the A/B engage, where the injected slot gain sets the
+  smoother; the engine's output-stage comment and three `KNOWN_ISSUES.md` sentences said the same; §J
+  paraphrased the owner.
+- The per-block restart of the applied-gain ramp (§I3, §I7) is measured again here as an exponential of
+  τ ≈ 120 ms that owns the first ~300 ms of every glide; still a separate lever, deferred.
