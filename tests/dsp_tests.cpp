@@ -8370,7 +8370,10 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //       fields ("post": Output Gain / Balance, Band Solo, Bypass, the Level Match switch), the guarded-out
 //       ones ("off": Haas fields off Haas, Chorus fields off Chorus -- Dimension D included --, Velvet density
 //       off Velvet, dimMode off Dimension D, a crossover or band width with too few bands or Multiband off,
-//       Mono Maker Freq with it off) and the identical slot MOVE.
+//       Mono Maker Freq with it off) and the identical slot MOVE. (1b) The re-arm clears the ANALYSIS only:
+//       every row above injects below the predict floor, so an injection ABOVE it (-0.5 dB against Drive 8's
+//       -4.06, slots differing in Width) must be published exactly at the bottom and hold -- a re-arm through
+//       reset() loses prevPredictedGainDb and the next predict floors the slot's gain.
 //   (2) Continuous-only A/B, Drive 2 -> 8 and 8 -> 2, injecting what a fresh destination engine converged to
 //       (the slot's remembered gain, -6.08 / -2.78 dB): published D(t) and output gain within 0.1 dB of the
 //       fresh engine over 3 s (0.018 / 0.015 and 0.017 / 0.012 dB measured); its silence twin holds the
@@ -8398,13 +8401,17 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //       differing only in Output Gain KEEP the value bit-exact through the first block after prepare; from
 //       there silence holds (re-armed) where the same run without the re-prepare moves 4.60 dB. 48 -> 44.1 kHz
 //       and a primed Drive 8 -> 10 FLUSH: exactly 0 dB after prepare, then a trajectory bit-identical to a
-//       fresh engine first-prepared there on the same input (which publishes exactly 0 dB too).
+//       fresh engine first-prepared there on the same input (which publishes exactly 0 dB too). (d) A FIRST
+//       prepare at 44.1 kHz -- the rate an unprepared engine reads -- from the default snapshot, the sound set
+//       afterwards, measures within 0.3 dB of an engine primed with the sound after 2 s (0.016 measured): only
+//       "prepared before" (os2) tells it from a same-rate keep, which would skip loudness.prepare and leave the
+//       matcher publishing the predict floor for ever.
 //  The allocation guard (tests/AllocationGuard.h, Test 38's pattern) is armed around setParameters + process
 //  from every A/B / injection event to the block after its bottom in legs (1)-(4) (664 calls, zero
 //  allocations measured).
 //
-//  MEASURED BEFORE THE CHANGE (engine daa6809, this test): 12 of the 34 checks fail -- the "meas" rows of (1)
-//  move 2.72-4.67 dB; the (2) / (3) A/B runs sit up to 1.33 / 1.63 dB (Drive 2 -> 8 / 8 -> 2) and 3.46 / 4.92
+//  MEASURED BEFORE THE CHANGE (engine daa6809, this test): 13 of the 37 checks fail -- the "meas" rows of (1)
+//  move 2.72-4.67 dB and (1b)'s value drifts; the (2) / (3) A/B runs sit up to 1.33 / 1.63 dB (Drive 2 -> 8 / 8 -> 2) and 3.46 / 4.92
 //  dB (0 -> 10 / 10 -> 0) off the fresh engine, their silence twins drift 1.8-5.8 dB off the injected value;
 //  the (4) upgrade and defensive legs move; and every re-prepare flushed (the audible run's first block played
 //  -4.066 dB against -6.084, 2.02 dB off; each keep read 0 dB, then the predict floor). The path rows, the MOVE rows, the
@@ -8416,7 +8423,8 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //  a forced bottom that re-arms without an injection (P1: (3) no-re-arm and tracks-the-live-edit); a
 //  fallback consumer that always re-arms ((3), (4)); no defensive re-arm ((4)); a keep across a rate change
 //  and a keep that ignores the primed snapshot ((5) flushes); a keep through loudness.reset() plus a restored
-//  published value, which loses prevPredictedGainDb, and a keep that does not re-arm ((5) keeps, re-arm).
+//  published value, which loses prevPredictedGainDb, and a keep that does not re-arm ((5) keeps, re-arm); an
+//  injection re-arm through loudness.reset() ((1b)); a keep decided without "prepared before" ((5)(d)).
 static void testLevelMatchAbRearmAndSameRateReprepare()
 {
     std::printf ("Test 67: an A/B injection re-arms the Level-Match analysis when the slots differ in what it reads; "
@@ -8723,6 +8731,28 @@ static void testLevelMatchAbRearmAndSameRateReprepare()
         check (restMove, "slots that differ only after the tap (Output Gain / Balance, Band Solo, Bypass, Level Match), "
                          "in a guarded-out field, or not at all keep the converged analysis: the injected value moves "
                          "(> 1 dB) toward the source's measurement on silence");
+
+        // (1b) THE RE-ARM CLEARS THE ANALYSIS ONLY. Every row above injects BELOW the destination's predict floor,
+        // where min (v, floor) = v whatever the predict remembers; an injection ABOVE it (-0.5 dB against Drive 8's
+        // -4.06) is published exactly only if the re-arm kept prevPredictedGainDb -- a re-arm through reset()
+        // would make the next predict read a rise and floor the slot's gain.
+        {
+            const float vUp = -0.5f;                                 // >= 4 dB from the -4.96 published before it
+            Lane ln;
+            ln.pre = bH; ln.blocks = P1 + 1; ln.silentFrom = S1;
+            ln.at = [&] (int b, AnamorphEngine& e, Params& s)
+            {
+                if (b >= E1) s.width = 1.6f;                         // a measurement input; the predict is unchanged
+                if (b == E1) { e.requestDuck(); e.injectMatchGainDb (vUp); }
+            };
+            run (ln);
+            const Probe q = probeOf (ln, (double) vUp, B1);
+            std::printf ("  (1b) injection above the Drive-8 predict floor: %+.4f -> bottom %+.4f (v %+.4f), then silence "
+                         "moves %.1e dB\n", (double) ln.pub[(size_t) B1 - 1], (double) ln.pub[(size_t) B1], (double) vUp, q.move);
+            check (consumed (q) && juce::exactlyEqual (ln.pub[(size_t) B1], vUp) && q.move < kHold,
+                   "the injection re-arm clears the analysis only: a slot gain above the predict floor is published "
+                   "exactly at the bottom and holds (the predict's memory survives the re-arm)");
+        }
     }
     // =====================================================================================================
     //  LEGS (2) and (3) -- continuous-only A/B transients against a fresh destination engine (Drive 2 <-> 8,
@@ -9046,6 +9076,30 @@ static void testLevelMatchAbRearmAndSameRateReprepare()
                           "published exactly 0 dB right after prepare");
         check (flushFirst, "...and is a first prepare: the published trajectory is bit-identical to a fresh engine's first-"
                            "prepared there on the same input");
+
+        // (d) THE FIRST PREPARE AT THE RATE AN UNPREPARED ENGINE READS. Before any prepare the engine's rate is
+        // 44.1 kHz, and a fresh processor primes a default snapshot, which moves no measurement input -- so only
+        // "prepared before" keeps that first prepare from passing for a same-rate keep that skips
+        // loudness.prepare, leaving the matcher unconfigured: its integrators never leave their floor and it
+        // publishes the predict floor for ever. A default engine first prepared at 44.1 kHz and then set to the
+        // leg's sound must measure it as an engine primed with that sound does.
+        {
+            const int n2 = 2 * sec;
+            Lane cold, warm;
+            cold.pre = Params{}; cold.rate = 44100.0; cold.blocks = n2;
+            cold.at = [&] (int, AnamorphEngine&, Params& s) { s = h8; };
+            warm.pre = h8;       warm.rate = 44100.0; warm.blocks = n2;
+            run (cold); run (warm);
+            const double wMoved = std::abs ((double) warm.pub[(size_t) n2 - 1] - warm.pub[0]);
+            const double dCold  = std::abs ((double) cold.pub[(size_t) n2 - 1] - warm.pub[(size_t) n2 - 1]);
+            std::printf ("  (5) first prepare at 44.1 kHz: primed with the sound %+.4f -> %+.4f; default, then the sound "
+                         "%+.4f -> %+.4f (|diff| %.3f dB)\n", (double) warm.pub[0], (double) warm.pub[(size_t) n2 - 1],
+                         (double) cold.pub[0], (double) cold.pub[(size_t) n2 - 1], dCold);
+            check (wMoved >= 1.0, "premise: (5) a primed first prepare at 44.1 kHz measures: its published value leaves "
+                                  "the predict floor by >= 1 dB within 2 s");
+            check (dCold <= 0.3, "a first prepare at 44.1 kHz from the default snapshot prepares the matcher: after 2 s it "
+                                 "publishes within 0.3 dB of the primed engine's measurement (not the predict floor)");
+        }
     }
 
     // ---- the allocation guard, around every A/B / injection event to the block after its bottom ---------

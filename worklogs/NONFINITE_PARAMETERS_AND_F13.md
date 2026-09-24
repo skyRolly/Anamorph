@@ -1077,3 +1077,71 @@ applied-gain error ≤ 0.143 dB, and never above 0.1 dB in 30 of its 36 rows. Ev
 slot B now re-arms. Slot B's converged match, from the same run kept playing and from a fresh
 processor at its exact state, is +2.97 dB: the new value is 0.89 dB off it, the old one 4.01 dB and of
 the wrong sign — the stale analysis was dragging the value the slot then remembered.
+
+### L5. Tests, and what each rejects
+
+- **DSP Test 67** (`testLevelMatchAbRearmAndSameRateReprepare`, the engine contract; 37 checks, 13
+  fail against `daa6809`) and **State test 131** (the processor, as a host and the editor drive it; 97
+  checks, 21 fail against `daa6809`); **State test 120**'s leg 2 replaced — it asserted the same-rate
+  flush this round removes; it now pins the keep (bit-exact, then re-armed) and the new-rate flush
+  (16 checks, 2 fail against `daa6809`). `procedures/TESTING.md` has the legs.
+- **Observing a re-arm without reaching inside the matcher.** Silence fed right after the event closes
+  the matcher's gate: a re-armed analysis holds the published value exactly (< 1e-6 dB, 0 measured); a
+  carried one keeps integrating the tail and moves it (> 1 dB, 1.88–4.67 dB measured). Every probe
+  first proves its injection was consumed in the block it judges, so a probe cannot pass on a block
+  where nothing happened. Accuracy is read against a fresh engine or processor prepared at the
+  destination and fed the identical seeded input from sample 0: D(t) on the published value and a
+  per-block least-squares gain of the outputs (residual ≤ 1e-3).
+- **The predicate is total.** Test 67's leg 1 swaps one `EngineParameters` member at a time under four
+  bases (36 members × 4, plus the identical slot) and requires "re-armed" exactly for the measurement
+  inputs and the `processingDiffers` path changes; `check-state-coverage.py`'s `MEASUREMENT_INPUTS`
+  table (§J) keeps the member list total.
+- **Mutants** (each a one-site change to the implementation, built and run with both full suites):
+
+  | mutant | change | DSP suite | State suite |
+  |---|---|---|---|
+  | M1 | no re-arm at either injection consumer (`daa6809`'s Q1) | 6 (Test 67 legs 1–4) | 14 (131 a, b control, g) |
+  | M2 | re-arm at every injection (P1a) | 3 (leg 1 post / off / identical rows, leg 3 fall probe, leg 4 controls) | 4 (131 b) |
+  | M3 | `measChangedAtBottom` without `duckMeasDirty` (re-arm and landing) | 3 (Test 66 Case B, Test 67 leg 4) | 1 (130 (5)) |
+  | M3b | the same for the re-arm only | 2 (leg 4) | 0 — the processor cannot reach it |
+  | M4 | the fallback consumer re-arms unconditionally | 2 (legs 3, 4) | 0 — idem |
+  | M5 | the fallback consumer never re-arms | 1 (leg 4, defensive) | 0 — idem |
+  | M6 | never keep (`daa6809`'s Q5) | 6 (leg 5) | 9 (120 leg 2, 131 e) |
+  | M7 | keep across a rate change | 2 (leg 5 flushes) | 2 (120, 131 e) |
+  | M8 | keep without `! primeMeasChanged` | 1 (leg 5 flush) | 1 (131 e) |
+  | M9 | a keep that does not re-arm | 4 (leg 5) | 4 (120, 131 e) |
+  | M10 | `primeMeasChanged` on any field (`! sameParameters`), a header mutant | 1 (leg 5, Output-Gain keep) | 1 (131 e) |
+  | M11 | keep without `os2 != nullptr` ("prepared before") | **0 → 1** (leg 5 (d), added) | **0 → 1** (131 h, added) |
+  | M12 | the injection re-arm through `reset()` | **0 → 1** (leg 1b, added) | 1 (131 b control route) |
+
+  M11 was not equivalent: `sr` reads 44.1 kHz before any prepare, and a fresh processor primes a
+  default snapshot that moves no measurement input, so without "prepared before" the first prepare at
+  44.1 kHz skips `loudness.prepare` and the matcher never measures (−4.06 dB for ever, against −9.20
+  dB). M12 was caught only by one route premise with a 0.37 dB margin because every Test 67 injection
+  sat below the predict floor. Both checks were added and each kills its mutant; on `daa6809` the two
+  first-prepare checks pass (its `prepare` always prepared the matcher) and leg (1b) fails with the
+  rest of Q1. M3b, M4 and M5 are killed by the DSP suite only: the processor consumes its injections
+  at the forced bottom.
+
+### L6. Recorded, not changed
+
+- **Keeping the result across a new sample rate** (§L3): measured 0.02–0.13 dB stale against the
+  flush's +2.7 to +3.3 dB; not adopted by the authorization's own limit, a candidate for a later owner
+  decision with the §L4 evidence and its stated gaps.
+- **Haas at 44.1 kHz** reads its default 12 ms as a fractional delay (529.2 samples) through linear
+  interpolation, 0.05–0.20 dB quieter than at 48 / 96 kHz on noise (§L3): a product observation about
+  the Haas line, outside Level Match.
+- **The NaN self-heal** still flushes the whole matcher (ADR-0009's own open owner question); the
+  per-block restart of the applied-gain ramp (§I3, §K7) is still a separate lever, deferred.
+- **PREfast C6262 on DSP Test 66** (`tests/dsp_tests.cpp`, *"Function uses '20528' bytes of stack"*):
+  test-only, introduced with the test in the F13(1b) round, real frame 14,480 B (1.4 % of 1 MiB; the
+  `char verdict[5][36][48]` table is 8,640 B), passes the `ulimit -s 1024` suite runs. Not moved to the
+  heap and not suppressed; disposition in `procedures/CI_CD.md`. Test 67 (3,328 B) and State test 131
+  (1,584 B) add none.
+- **Evidence tooling.** The scratch shadow builder used for the scratch variants tested a header
+  dependency with `grep -q` under `pipefail`, which can report a miss when `grep` exits early; every
+  variant that overrode a header was rebuilt from clean, and the figures above come from those builds.
+- **Pre-existing drift, reported:** the Note of 2026-09-24's own comment anchors (the lines of its head)
+  and the lower bound of its re-arm-at-every-injection figure (0.022 vs 0.013 dB, a policy not adopted);
+  ADR-0004's `:480-562`, ADR-0005's `:726-759` and ADR-0006's `:831-845` (bare anchors, already stale at
+  the merge base) and ADR-0005's A(dry) production span.

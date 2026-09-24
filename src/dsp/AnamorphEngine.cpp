@@ -52,7 +52,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // rate still flushes, by decision rather than by necessity: the coefficients must be rebuilt
     // there, and carrying the result across a rate change, though measured close on Haas
     // programmes, is not adopted (ADR-0007, F13(2)). The first prepare (no oversampler yet)
-    // always flushes -- there is nothing measured to keep.
+    // always flushes: nothing is measured, and sr still reads its 44.1 kHz default (Test 67).
     const bool keepMatch = os2 != nullptr && juce::exactlyEqual (sampleRate, sr)
                         && ! primeMeasChanged && std::isfinite (loudness.getMatchGainDb());
     primeMeasChanged = false;

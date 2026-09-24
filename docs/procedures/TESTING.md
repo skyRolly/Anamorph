@@ -323,15 +323,20 @@ one block before or after that bottom, or without a duck; (5) re-prepare: same r
 value is displaced off the predict floor first, so a keep that lost `prevPredictedGainDb` is caught),
 then silence holds; the audible run applies −6.080 dB in its first block against the converged
 −6.084 dB and stays within 0.1 dB for 3 s; 48 → 44.1 kHz and a primed Drive change flush to exactly
-0 dB and then match a first prepare bit for bit. The allocation guard is armed around every injection
-bottom (664 calls, zero allocations). 34 checks, ~0.75 s native. Against the pre-change engine
-(`daa6809`) 12 of the 34 fail — the A/B runs sit 1.33 / 1.63 dB off at Drive 2 ↔ 8 and 3.46 / 4.92 dB
+0 dB and then match a first prepare bit for bit; a first prepare at 44.1 kHz — the rate an unprepared
+engine reads — from the default snapshot measures like one primed with the sound (within 0.3 dB after
+2 s; 0.016), which only "prepared before" tells from a same-rate keep. Leg (1b): an injection above the
+predict floor is published exactly and holds, so the re-arm clears the analysis and not the predict's
+memory. The allocation guard is armed around every injection bottom (664 calls, zero allocations).
+37 checks, ~0.75 s native. Against the pre-change engine (`daa6809`) 13 of the 37 fail — the A/B runs
+sit 1.33 / 1.63 dB off at Drive 2 ↔ 8 and 3.46 / 4.92 dB
 off at 0 ↔ 10, and every re-prepare flushed (2.02 dB off at the first block) — while the path rows,
 the move rows, the forced-without-injection legs, the ordinary controls and the flushes pass on both.
-Nine engine variants are each rejected by a named leg: a re-arm at every injection, no `duckMeasDirty`
+Eleven engine variants are each rejected by a named leg: a re-arm at every injection, no `duckMeasDirty`
 in the rule, a forced bottom that re-arms without an injection, a fallback consumer that always
 re-arms, no defensive re-arm, a keep across a rate change, a keep that ignores the primed snapshot, a
-keep that loses the predict's memory, and a keep that does not re-arm.
+keep that loses the predict's memory, a keep that does not re-arm, an injection re-arm through
+`reset()` (leg 1b), and a keep decided without "prepared before" (leg 5).
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
@@ -4493,13 +4498,15 @@ pre-change 0.00); (f) a settled host reset keeps and re-arms, and a host reset o
 fade-out stays within 0.3 dB of the fresh destination (0.080); (g) Apply 0.5 s after (a)'s first A/B
 writes within 0.2 dB of the fresh destination's match (−2.770 against −2.826; pre-change −4.400), and
 Undo restores Level Match on at −3 dB. Preset files use unique names; a same-named user file is parked
-and restored (State test 8's pattern). 95 checks, ~0.65 s native. Against the pre-change engine 21 of
-the 95 fail — (a)'s D, g and probe on all four switches, (b)'s control, (e)'s seven keep / re-arm /
-Apply checks and (g)'s Apply. Seven engine variants are each rejected by the leg that pins what they
-change: no injection re-arm, a re-arm at every injection (leg b), a re-arm at every forced bottom
-whose measurement inputs differ (leg c), no same-rate keep, a keep that ignores the rate or the primed
-snapshot, and a keep that does not re-arm. **State test 120**'s leg 2 now pins the same boundary from
-the R6 side: after re-converging, a same-rate re-prepare keeps the published gain bit-exact and
+and restored (State test 8's pattern); (h) a fresh processor first prepared at 44.1 kHz and configured
+afterwards measures within 0.3 dB of one configured first (0.016 dB after 2 s). 97 checks, ~0.65 s
+native. Against the pre-change engine 21 of the 97 fail — (a)'s D, g and probe on all four switches,
+(b)'s control, (e)'s seven keep / re-arm / Apply checks and (g)'s Apply. Eight engine variants are each
+rejected by the leg that pins what they change: no injection re-arm, a re-arm at every injection (leg
+b), a re-arm at every forced bottom whose measurement inputs differ (leg c), no same-rate keep, a keep
+that ignores the rate or the primed snapshot, a keep that does not re-arm, and a keep decided without
+"prepared before" (leg h). **State test 120**'s leg 2 now pins the same boundary from the R6 side: after
+re-converging, a same-rate re-prepare keeps the published gain bit-exact and
 silence then moves 0.000000 dB, and a re-prepare at a new rate still flushes the whole matcher (2 of
 its 16 checks fail against the pre-change engine: 0 dB kept, 4.06 dB of movement).
 

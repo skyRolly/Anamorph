@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g) and F13(2) taken to its owner-decision record — whose entries are the **76th**, **77th** and **78th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), and F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep) — whose entries are the **76th** to **79th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,89 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 79th pass — 2026-09-24, PR #156 (F13(2) decided and implemented; PREfast's one new C6262 disposed)
+
+**Scope.** The owner's authorization of this round — *"You are explicitly authorized to make the owner
+decisions for the unresolved F13(2) questions based on your own investigation, measured evidence, and
+the recommendations already recorded in the worklog."* — with Q1 *"Adopt **P1b**"*, Q2–Q4 unchanged
+and Q5 *"Adopt **P4**"* limited to the same rate; and the PREfast C6262 the 78th pass's head raised
+(`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §L).
+
+**PREfast C6262 — DO NOT FIX, measured.** *"Function uses '20528' bytes of stack"* names
+`testLevelMatchEngagesAtTheLevelItMeasured` (DSP Test 66, `tests/dsp_tests.cpp`), introduced with the
+test by the F13(1b) round; test-only code, not in the plug-in or the release gate. Its real frame on the
+Linux toolchain is 14,480 B (1.4 % of a 1 MiB stack; the largest local is `char verdict[5][36][48]`,
+8,640 B) and it passes the suites' `ulimit -s 1024` runs; PREfast sums disjoint scopes and MSVC's larger
+`std::function`. Disposition in `procedures/CI_CD.md`. This round's two new tests are 3,328 B (Test 67)
+and 1,584 B (State test 131).
+
+**F13(2) — fixed (KI-030 resolved).** (1) An A/B switch whose slots differ in anything the Level Match
+measurement reads re-arms the analysis at the bottom that consumes the injection, before the slot's
+remembered gain is written — `measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p,
+pendingP)`, one answer shared with the Case-A landing; slots that differ only in Output Gain, Output
+Balance, Bypass, Band Solo, the Level Match switch or a guarded-out field keep a converged analysis.
+Continuous-only A/B, Drive 2 ↔ 8: +1.59 / −1.84 dB → +0.10 / +0.06 dB, settle ~2.5 s → 124 ms.
+(2) A `prepare()` at a bit-identical sample rate whose primed snapshot changes no measurement input
+keeps the published result and re-arms the analysis, as a host reset does (+2.46 dB → +0.04 dB; a
+block-size change included). A new rate, a primed measurement-input change and the first prepare still
+flush — the new rate by decision (measured, keeping would be 0.02–0.13 dB stale against the flush's
++2.7 to +3.3 dB; a candidate recorded in §L3). Forced swaps without an injection (Q2), the Case-B engage
+(Q3) and the Case-A engage on a converging value (Q4) are unchanged, decided. ADR-0007 carries the
+decision as its *Amendment, 2026-09-24 — F13(2)* (in place, as its two earlier amendments), with a
+transition table for the analysis, the result and the applied gain, and the owner's words verbatim.
+
+**Tests.** DSP **Test 67** (`testLevelMatchAbRearmAndSameRateReprepare`, 37 checks; 13 fail against
+`daa6809`) and **State test 131** (`testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept`,
+97 checks; 21 fail against `daa6809`); **State test 120**'s leg 2 replaced, not deleted — it asserted
+the flush this round removes, and now pins the same-rate keep bit-exact and re-armed and the new-rate
+flush (16 checks; 2 fail against `daa6809`). A re-arm is observed through the public API: silence fed
+right after the event holds a re-armed analysis's published value exactly and moves a carried one.
+Transients are read against a fresh engine / processor prepared at the destination on the identical
+input. Thirteen one-site mutants of the implementation, each built and run through both full suites,
+are all killed (worklog §L5). One first survived and one was caught by a single route check: without
+the `os2 != nullptr` ("prepared before") term of `keepMatch`, a fresh engine's first prepare at 44.1 kHz
+— the rate `sr` reads before any prepare — passes for a same-rate keep and leaves the matcher
+unprepared, publishing the predict floor for ever (the implementation has the term; Test 67 leg (5)(d)
+and State test 131 leg (h) now pin it); a re-arm through `reset()` instead of `softReset()` loses the
+predict's memory (Test 67 leg (1b) now pins it).
+
+**Documents changed.** ADR-0007 (the Amendment; its *Related code* list re-aimed onto what each line
+names — the 78th pass reported it stale; the O4g amendment's and this amendment's line references
+re-spelled); ADR-0004 (one sentence: the measurement side of the A/B bottom); `CHANGELOG.md` `[0.9.9]`
+(two Fixed entries); `KNOWN_ISSUES.md` (KI-030 resolved; the new-rate flush and the engage cases stated
+as decided); `API_REFERENCE.md` (`prepare`, `reset`, `injectMatchGainDb` rows; the host-reset row now
+says where it is not the bottom's exact twin for Level Match); `DSP_ALGORITHMS.md` (the Level Match
+anchors on the measure, the hold and the re-arm / flush; which calls clear which half);
+`THREAD_MODEL.md` (the `prepare` row: the kept gain and the two prepare-thread flags);
+`procedures/CI_CD.md` (the C6262 disposition; the re-prepare sentence); `procedures/TESTING.md` (Test
+67, State test 131, State test 120's leg 2); the engine's comments this change made false or that were
+already wrong (`ResetScope` and the flush comment: a block size is no input to the measurement; the
+re-arm comment; `measurementInputsDiffer`; `prepare()`); `LoudnessMatch.h` (the `softReset` uses);
+`check-state-coverage.py` (docstring: the re-prepare keep); `check-citations.py` (`DELIBERATE_REAIMS`:
+the `pendingP` targets follow the prepare comment; ADR-0007's re-aims declared for every base that
+carries the old spelling); the worklog (§L); this entry and the *Last updated* line. ADR-0035 reviewed:
+its F13(1b) note stands (no A/B or re-prepare claim). **Triggers not fired, decided:** `SIGNAL_FLOW.md`
+/ `DSP_GRAPH_REFERENCE.md` (no node or stage-order change: the re-arm is inside the level-match stage's
+bottom handling); `LATENCY_MODEL.md` (no latency change); the parameter documents and the state schema
+(no parameter or field change); `PERFORMANCE_BUDGET.md` (a `softReset()` is four filter-state clears and
+two stores, at a duck bottom that consumes an injection); `RELEASE_COMPATIBILITY_CHECKLIST.md` (no
+compatibility-affecting change); `user/USER_MANUAL.md` (it asks for A/B with Level Match engaged "so
+loudness doesn't bias you" and never described the drift; the fix makes the sentence hold).
+
+**Drift fixed** (reported in the 78th pass, worklog §K7): ADR-0007:101 "re-armed in exactly one place"
+(superseded by the Amendment's table, which lists every re-arm and flush point); `DSP_ALGORITHMS.md`'s
+measure anchors; `API_REFERENCE.md:35`'s host reset "exactly as its silent bottom would";
+`AnamorphEngine.cpp` / `.h` saying a block size invalidates the K-weighting coefficients; ADR-0007's
+*Related code*. **Drift reported, not fixed** (pre-existing, historical text): the Note of 2026-09-24's
+own comment anchors (`AnamorphEngine.cpp:78`, `:1111-1113`, `:1816`, the lines of that note's head);
+the lower bound of that note's re-arm-at-every-injection figure (0.022 vs 0.013 dB) — a policy not
+adopted; ADR-0004's `:480-562`, ADR-0005's `:726-759` and ADR-0006's `:831-845` (bare, untracked, already
+stale at the merge base) and ADR-0005's A(dry) production span, which the line map carried faithfully
+onto the switch machine.
+
+**Counts.** DSP **590 / 0** (553 + 37, Test 67), State **5 023 / 0** (4 923 + 97, State test 131, + 3,
+State test 120's leg 2). [Verified]
 
 ## 78th pass — 2026-09-24, PR #156 (F13(1b) implemented under the owner's ruling O4g; F13(2) taken to its decision record)
 

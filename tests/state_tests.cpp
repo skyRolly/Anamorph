@@ -38524,13 +38524,18 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //   (g) Apply 0.5 s after (a)'s first A/B writes a value within 0.2 dB of the fresh destination's
 //       match (-2.770 against -2.826; pre-change -4.400, the dragged value); Undo restores Level Match
 //       on at Output Gain -3.
-//  AGAINST THE PRE-CHANGE ENGINE 21 of the 95 checks fail: (a)'s D, g and probe on all four events,
+//   (h) A fresh processor first prepared at 44.1 kHz -- the rate its engine reads before any prepare --
+//       and configured only afterwards measures within 0.3 dB of one configured first, after 2 s (0.016):
+//       its default snapshot moves no measurement input, so only "prepared before" keeps that prepare
+//       from passing for a same-rate keep that skips the matcher's own prepare.
+//  AGAINST THE PRE-CHANGE ENGINE 21 of the 97 checks fail: (a)'s D, g and probe on all four events,
 //  (b)'s CONTROL, (e)'s seven keep / re-arm / Apply checks and (g)'s Apply. Engine variants built from
 //  this tree, each run through this test: no Q1 re-arm (14 fail: (a), (b) CONTROL, (g)); re-arm at
 //  EVERY injection (4: (b)'s twin, Output Gain, Level Match and Dim-D probes); re-arm at every forced
 //  bottom whose measurement inputs differ (8: (c)'s tracking and probes); no Q5 keep (7: (e)); Q5
 //  without its rate test (1: 44.1 kHz) or without its primed-snapshot test (1: the Drive restore);
-//  Q5 keeping the result without re-arming (3: (e)'s probes).
+//  Q5 keeping the result without re-arming (3: (e)'s probes); Q5 without "prepared before" (1: (h));
+//  the injection re-arm through reset() (1: (b)'s CONTROL route, which injects above the predict floor).
 //  Every lane owns its processor on the heap; the preset files use unique names (State test 8's
 //  pattern: a same-named user file is parked and put back, ours are deleted before and after).
 static void testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept()
@@ -39218,6 +39223,42 @@ static void testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept()
         check (moveCtl > 1.0e-3, "(f) control: without a reset or re-prepare the live analysis DOES move on silence");
         check (juce::exactlyEqual (keptReset, m0) && holdReset < 1.0e-6,
                "(f) a settled host reset keeps the published value bit-exact and re-arms (State tests 118 / 120)");
+    }
+
+    // =====================================================================================================
+    //  (h) a fresh processor's FIRST prepare at 44.1 kHz -- the rate its engine reads before any prepare --
+    //      with the sound set only afterwards: its default snapshot moves no measurement input, so only
+    //      "prepared before" keeps this prepare from passing for a same-rate keep that skips the matcher's
+    //      own prepare (and leaves it publishing the predict floor for ever)
+    // =====================================================================================================
+    {
+        auto rig = newRig();
+        Rig& r = *rig;
+        auto lane441 = [&] (bool soundFirst)
+        {
+            Lane ln;
+            ln.p = std::make_unique<Proc>();
+            auto configure = [&] { for (const auto& [id, v] : sound (8.0f)) setPlain (*ln.p, id, v); ln.p->pollUndoCoalesce(); };
+            if (soundFirst) configure();
+            ln.p->prepareToPlay (44100.0, block);
+            if (! soundFirst) configure();
+            ln.out.setSize (2, block);
+            r.lane.push_back (std::move (ln));
+            return (int) r.lane.size() - 1;
+        };
+        const int cold = lane441 (false), warm = lane441 (true);
+        step (r, 2 * sec);
+        const Lane& C = r.lane[(size_t) cold];
+        const Lane& W = r.lane[(size_t) warm];
+        const double wMoved = std::abs ((double) W.pub.back() - (double) W.pub.front());
+        const double dCold  = std::abs ((double) C.pub.back() - (double) W.pub.back());
+        std::printf ("  (h) first prepare at 44.1 kHz: sound set first %+.4f -> %+.4f; default, then the sound %+.4f -> %+.4f "
+                     "(|diff| %.3f dB)\n", (double) W.pub.front(), (double) W.pub.back(), (double) C.pub.front(),
+                     (double) C.pub.back(), dCold);
+        check (wMoved >= 1.0, "premise: (h) a processor configured before its first prepare at 44.1 kHz measures: its "
+                              "published value leaves the predict floor by >= 1 dB within 2 s");
+        check (dCold <= 0.3, "(h) a fresh processor first prepared at 44.1 kHz and configured afterwards measures too: "
+                             "within 0.3 dB of the one configured first after 2 s (not the predict floor)");
     }
 }
 

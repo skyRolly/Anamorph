@@ -420,7 +420,9 @@ describes what the reset/thread-model change of `c5f3d8f` left in place; the own
 (:187) approve that change and say nothing about the re-prepare, and this note's own reason for the
 flush (:39-40) is the sample rate. The flush is now kept only where that reason holds: a re-prepare
 **keeps** the result, and re-arms the analysis as a host reset does, when all of these hold —
-1. the engine was prepared before (there is a result to keep);
+1. the engine was prepared before (there is a result to keep, and until then the rate reads its
+   44.1 kHz default, which a first prepare at 44.1 kHz would otherwise match — Test 67 leg (5)(d),
+   State test 131 leg (h));
 2. the sample rate is bit-identical to the previous one — the K-weighting coefficients, the 0.4 s
    window and the glide constants are functions of the rate alone, and a block size is no input to
    the measurement (the glide coefficients re-key on each block's length);
