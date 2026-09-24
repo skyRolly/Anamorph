@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24), non-finite parameter state and the Devin review, whose entries are the **76th** and **77th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,85 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 77th pass — 2026-09-24, PR #156 (Devin review; F13(1b) reproduced for an owner decision)
+
+**Scope.** The two Devin-review findings on PR #156, then F13(1b) — the Level-Match swell after an
+undo of Apply — reproduced and put to the owner (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §I).
+
+**Finding 1 — State test 129 could pass without Apply reading a NaN.** The window is inside
+`engine.process()`, between `loudness.process` and the self-heal's reset; a serialised scheduler
+almost never lands a click in it, and the test required only that the audio thread ran. Fix: a
+message-thread seam, `Seams::atApplyMeasurement` (empty in production, one null check, the D-2
+pattern), hands Apply's reading to the test by reference. Leg A substitutes a NaN and requires the
+seam to fire once (liveness) before its checks; leg B is the finite control (Apply writes the
+measured value, Level Match turns off, the host sees values and a gesture); leg C keeps the real
+two-thread race as corroboration and says when it was not reached. The guard removed: leg A fails
+its 6 checks with liveness met; Apply disabled: legs A and B fail liveness (`reached 0`).
+
+**Finding 2 — this audit.** The round's `TESTING.md` entries shipped without a coverage entry; the
+76th pass is that entry (entered late, labelled as such), with KI-029 / KI-030 for the two
+owner-decision limitations the lifecycle trigger map requires. No repository gate checks that a new
+test is named here; a scratch cross-check (every `Test N` / `State test N` added since the merge
+base named in `TESTING.md` and in a pass) passes on this tree and fails with 1 missing when one
+entry is removed. Not a general cleanup: the 73rd–75th passes' header gap is noted, not back-filled.
+
+**Also.** State test 128's NaN constant made `constexpr` (PREfast con.5 on the previous head).
+
+**Documents changed.** `procedures/TESTING.md` (State test 129); `KNOWN_ISSUES.md` (KI-029, KI-030);
+this file (76th and 77th passes, the *Last updated* line); the worklog (§E4 revised). **Triggers not
+fired, decided:** `THREAD_MODEL.md` (the seam runs on the message thread inside Apply, adds no
+thread and no shared state); `API_REFERENCE.md` (`Seams` is a test surface, as are the other
+D-2 seams it does not list).
+
+**Counts.** DSP **524 / 0** (unchanged), State **4 809 / 0** (4 802 + 7: State test 129 has 12
+checks, was 5). [Verified]
+
+## 76th pass — 2026-09-24, PR #156 (non-finite parameter state; F13 measured)
+
+**Scope.** The non-finite-parameter failure class (the Mono Maker NaN latch recorded in the 75th
+pass, NaN admission by `MultibandWidth::setCrossovers`, and their relation to R7's Haas / Velvet
+reseed), then a measurement of F13 — Level-Match state carried through preset load, undo, redo and
+A/B (`worklogs/NONFINITE_PARAMETERS_AND_F13.md`). Entered late, in the Devin-review round (77th pass),
+and labelled as such: the round shipped its `TESTING.md` entries but not this entry.
+
+**Four product defects fixed; no contract changed, one detail added.** Velvet density froze on a NaN
+(host, or "nan" typed into the value box) until a re-prepare — `setDensity` keeps the last finite
+target. A NaN Mono Maker cutoff at any `prepare()` muted the output (engine API only) —
+`snapToTargets` keeps the current cutoff, re-clamped for the rate. Level Match Apply locked a NaN
+measurement into Output Gain — `applyAutoGain` now does nothing then (the added detail, ADR-0007 note).
+A NaN reading became a match gain of 0 that the self-heal never sees — it now keeps the current
+target. Finite behaviour bit-identical (186 + 945 finite legs). Multiband NaN preserved (inside
+ADR-0009's self-heal).
+
+**Tests.** DSP Test 64 (40 legs; 32 fail pre-fix) and Test 65 (3 checks; 2 fail pre-fix); State
+test 128 (6 checks; all 4 legs fail pre-fix) and State test 129 (5 checks as shipped in this round;
+rewritten in the 77th pass). Mutants and rejected alternatives in the worklog §D and §E4.
+
+**Documents changed.** ADR-0009 and ADR-0007 (notes, 2026-09-24); `DSP_ALGORITHMS.md` (Velvet
+density, Mono Maker); `API_REFERENCE.md` (`applyAutoGain`); `procedures/TESTING.md` (four entries);
+`CHANGELOG.md` `[0.9.9]` (three Fixed entries — the Mono Maker fix is engine-API only, so none);
+`KNOWN_ISSUES.md` KI-029 and KI-030, the two owner-decision limitations the round confirmed (added
+late, in the 77th pass); four Level-Match comments that described A/B behaviour the code no longer
+has; three anchors this round's edits moved (`DSP_POLICY.md`'s `VelvetNoise.h`,
+`REALTIME_SAFETY_AUDIT.md`'s and `PERFORMANCE_BUDGET.md`'s `MonoMaker.cpp`); this entry; the new
+worklog. **Triggers not fired, decided:** `SIGNAL_FLOW.md` / `DSP_GRAPH_REFERENCE.md` (no stage-order
+or placement change, and nothing they state changed); `THREAD_MODEL.md` / `THREADING_POLICY.md` (no
+threading change); the parameter documents (no parameter, range or default change);
+`POSTMORTEMS.md` (review-found defects fixed in the round they were found, the precedent of the
+73rd pass and of round 2's `value="nan"` fix).
+
+**Recorded, not fixed.** What a non-finite parameter should mean on ingress (KI-029); F13(1b), the
+match smoother at a forced swap's bottom (investigated in the 77th pass); F13(2), the A/B
+continuous-only re-arm (KI-030, a hard stop); the restore window for `value="nan"` with a usable
+`raw`; float → int UB in Haas / Chorus on a NaN; an engine-API overflow that still latches the density.
+
+**Drift reported, not fixed** — each present at the merge base: ADR-0007's and ADR-0009's *Related
+code* anchors; `DSP_POLICY.md:55`; `THREAD_MODEL.md:99` (`toEngine` also runs on the prepare and
+message threads); `DSP_ALGORITHMS.md`'s Mono Maker recombine `.cpp:39-45`; State test 123's premise
+("a host that sends NaN is buggy" — the value box produces one too).
+
+**Counts.** DSP **524 / 0** (518 + 6), State **4 802 / 0** (4 791 + 11). [Verified]
 
 ## 75th pass — 2026-09-23, PR #155 (a host reset inside a forced swap; merge readiness)
 

@@ -145,6 +145,8 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-028 | ~~A value-box drag whose mouse RELEASE is never delivered leaves the host change gesture OPEN~~ | — | **RESOLVED 2026-09-01 (round 4).** Linux/Windows were fixed in round 3 by the `anamorph::gui::DragGestureOwner` sweep; the macOS residual was never the sweep but its TRIGGER, which asked JUCE for the button state and got a cached copy (KI-013). `anamorph::gui::anyPhysicalMouseButtonDown()` now calls `+[NSEvent pressedMouseButtons]` on macOS and forwards to JUCE elsewhere. State tests 21 and 23; the macOS-discriminating assertion is `#if JUCE_MAC` and is verified by the macOS CI job, which runs this suite |
 | KI-027 | ~~Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched — a condition ADR-0034 has since made unreachable) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`)~~ | — | **RESOLVED 2026-09-01 (round 4, decision D-1 — APPROVED by the maintainer and implemented).** The chain was confirmed as filed (ER-RT-01, two independent verifications) and the fix is the one the gate was asked to approve: `requestLatencyUpdate()` keeps delivery synchronous on the message thread and, from any other thread, does one atomic store that a **processor-owned** 20 Hz timer serves on the message thread — no editor polling, no `AsyncUpdater`. Round 11 closed a double-clear window in that path (ER-STATE-14) and round 12 added a deterministic barrier test for requests landing mid-delivery. State tests 22 and 27; `docs/architecture/LATENCY_MODEL.md`. Round 15 routed `prepareToPlay` through the same request (ER-STATE-19; State test 30). This row had gone stale — it still read "fix gated … awaiting maintainer sign-off" for three rounds after the approval landed; corrected in round 12 |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
+| KI-029 | A **non-finite parameter value** — the text "nan" typed into a knob's value box, or a NaN from a host — mutes or changes several controls **while it is present** (Width, Haas Delay, Chorus Rate / Depth, Output Gain and the multiband widths / crossovers mute; Mix plays fully wet; the Level-Match gain is discarded) | Low | Confirmed; recovers as soon as a valid value arrives. What a NaN value should mean is an **owner decision** (ADR-0009 note 2026-09-24) |
+| KI-030 | After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back | Medium | Confirmed; the fix changes ADR-0007's re-arm rule, so it is an **owner decision** / ADR amendment (ADR-0007 note 2026-09-24) |
 
 ---
 
@@ -1014,3 +1016,38 @@ it, and the notification is an RAII member.
   (`parameterGestureChanged` counting `openGestures`, `pollUndoCoalesce`'s mid-gesture guard);
   pinned JUCE `juce_Slider.cpp` (`ScopedDragNotification` sends drag start/end from its
   constructor/destructor).
+
+## KI-029 — a non-finite parameter value mutes or changes several controls while it is present
+
+A parameter can hold a value that is not a number: JUCE's value-box and host text parsers accept the
+text "nan", and a host (or a damaged automation lane) can send one. The value reaches the audio engine
+unchanged. While it is present, measured through the processor: **Width, Haas Delay, Chorus Rate /
+Depth, Output Gain and the multiband widths and crossovers mute** (the engine's self-heal zeroes the
+non-finite output), **Mix plays fully wet**, and the self-heal's reset **discards the Level-Match
+gain**. Mono Maker Freq is the exception: its range turns NaN into 500 Hz. Nothing latches — each
+recovers within one block (or one smoother ramp) of a valid value — and no non-finite sample ever
+reaches the host. The two glides that did latch (Velvet density, and the Mono Maker cutoff through the
+engine API) are fixed.
+
+- **Why it is not fixed here:** the stateless fix (a non-finite value treated as the parameter's
+  default where parameters enter the engine) was measured and removes every mute, but it decides what
+  a NaN value *means* — an Output Gain NaN would play at 0 dB — which ADR_POLICY makes an owner
+  decision. The text parsers accepting "nan" belong to the same decision.
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §B–§C; State tests 123 and 128;
+  ADR-0009, Implementation note 2026-09-24.
+
+## KI-030 — Level Match drifts after an A/B switch between slots that differ only in continuous controls
+
+An A/B switch restores the destination slot's remembered Level-Match gain, and that value is right
+(within 0.03 dB of a fresh instance at the destination). But the loudness analysis is re-armed only
+when the switch changes the signal path — a discrete field such as the algorithm — so when the slots
+differ only in Drive, Mix, Width or Amount, the integrators still describe the previous slot's audio
+and pull the gain away from the restored value within ~100 ms. Measured through the processor: 0.22 to
+5.8 dB off, depending on the change and the programme, back within 0.1 dB after 1.8–4.5 s. Switches
+that change a discrete field, preset loads, undo and redo are not affected in this way.
+
+- **Why it is not fixed here:** re-arming the analysis when a slot's gain is restored keeps the gain
+  within 0.042 dB, but it changes ADR-0007's "re-armed in exactly one place" rule and reverses the A/B
+  row of its dimMode table — an ADR amendment and an owner decision.
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §E; ADR-0007, note 2026-09-24.
+
