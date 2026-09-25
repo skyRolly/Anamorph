@@ -53,8 +53,16 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // there, and carrying the result across a rate change, though measured close on Haas
     // programmes, is not adopted (ADR-0007, F13(2)). The first prepare (no oversampler yet)
     // always flushes: nothing is measured, and sr still reads its 44.1 kHz default (Test 67).
+    // The result must also be CURRENT (ADR-0007, Amendment of 2026-09-25; Test 69): a measurement
+    // input changed live or at a duck bottom is already in p, so the prime cannot see it, and until
+    // the measure catches up the result still describes the previous sound. A duck still in flight
+    // reports its change only at its bottom, which reset() below replaces: an ordinary duck's live
+    // part (duckMeasDirty) and, on the unprimed engine API, its pending snapshot.
+    const bool adoptsMeasChange = switchState != SwitchState::Normal
+                               && (duckMeasDirty || measurementInputsDiffer (p, pendingP));
     const bool keepMatch = os2 != nullptr && juce::exactlyEqual (sampleRate, sr)
-                        && ! primeMeasChanged && std::isfinite (loudness.getMatchGainDb());
+                        && ! primeMeasChanged && ! adoptsMeasChange
+                        && std::isfinite (loudness.getMatchGainDb()) && loudness.isResultCurrent();
     primeMeasChanged = false;
     sr = sampleRate;
     maxBlock = juce::jmax (1, maxBlockSize);
@@ -228,10 +236,12 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // equals a clean start only where none of those was moving.
     if (switchState != SwitchState::Normal)
     {
+        const bool adoptsMeasChange = duckMeasDirty || measurementInputsDiffer (p, pendingP);
         p = pendingP;
         updateDerived();
         if (pendingForced)
             snapSmoothers();
+        if (adoptsMeasChange) loudness.inputsChanged();   // the result now trails the adopted state
     }
 
     haas.reset();
@@ -444,7 +454,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:895 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:908 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -460,14 +470,14 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // states, which no module can observe.
         //
         // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
-        // (src/dsp/AnamorphEngine.cpp:414 (`a.dimMode`)),
+        // (src/dsp/AnamorphEngine.cpp:424 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
         // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:880 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:893 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -683,6 +693,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // behaves exactly as its previous block did.
             if (! sameParameters (np, p))
             {
+                if (measurementInputsDiffer (p, np)) loudness.inputsChanged(); // a live edit (ADR-0007)
                 p = np;                      // continuous-only change
                 updateDerived();
             }
@@ -734,9 +745,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:651), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:664) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:651) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:661), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:674) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:661) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -745,7 +756,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1176) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1190) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
@@ -771,7 +782,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         // continuous controls live during the duck.
         if (! pendingForced)
         {
-            duckMeasDirty = duckMeasDirty || measurementInputsDiffer (p, np); // heard mid-duck (ADR-0007)
+            const bool heard = measurementInputsDiffer (p, np);
+            duckMeasDirty = duckMeasDirty || heard;           // heard mid-duck (ADR-0007)
+            if (heard) loudness.inputsChanged();   // live now; in a fade-IN no bottom follows to report it
             copyContinuous (p, np);
             updateDerived();
         }
@@ -1153,6 +1166,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     {
         const bool procChanged = processingDiffers (pendingP, p);
         measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP);
+        if (measChangedAtBottom) loudness.inputsChanged();   // an A/B injection below makes it current
         // An engage that changes only the gain may START at the published value: that value
         // still describes the sound that will play. Not when the measure re-arms here, when
         // anything it reads changes across the switch, or when an ordinary duck already made

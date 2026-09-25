@@ -665,19 +665,20 @@ DELIBERATE_REAIMS = {
     # a declaration answers only for the base that carries its old spelling. (PR #156's O4g round
     # moved the same block down one line, to `:206-212`; its F13(2) round, which added the Level-Match
     # keep decision to prepare(), sixteen more, and its fix for the Devin review's quiet-resume finding
-    # seven more, so the target spelling is now `:229-235`.)
+    # seven more, so the target spelling was `:229-235`; its fix for the live-edit finding put eight more
+    # lines above the block and two inside it, so it is now `:237-245`.)
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     #
     # 2026-09-24 (PR #156, F13(2)): ADR-0007's *Related code* list was stale before this PR -- its
     # own Note of 2026-09-24 reported it -- and the line map carried the stale spellings along
@@ -686,21 +687,25 @@ DELIBERATE_REAIMS = {
     # `:402-424` is no longer `applyAutoGain`. Each is re-aimed by hand onto what its line says it
     # cites. The two bases (the branch's previous head and the merge base) spell the engine span
     # differently, so that one is declared twice; the other three spell the same on both.
+    # 2026-09-25 (the Devin review's live-edit finding): every target below is RE-DERIVED, none is new.
+    # The result's currency adds ten lines above `measurementInputsDiffer`, thirteen above the bottom's
+    # decision and fourteen above the A(dry) reference and the landing, and its bookkeeping grows
+    # `LoudnessMatch::process()` to `:16-245`.
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/LoudnessMatch.cpp:15-43",
      "src/dsp/LoudnessMatch.cpp:16-46"): "setSampleRate",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1272-1305",
-     "src/dsp/AnamorphEngine.cpp:1728-1729"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1742-1743"): "loudnessRefScratch",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1201-1234",
-     "src/dsp/AnamorphEngine.cpp:1728-1729"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1742-1743"): "loudnessRefScratch",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/PluginProcessor.cpp:402-424",
      "src/PluginProcessor.cpp:455"): "applyAutoGain",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/LoudnessMatch.cpp:15-156",
-     "src/dsp/LoudnessMatch.cpp:16-186"): "displayedGainDb",
+     "src/dsp/LoudnessMatch.cpp:16-245"): "displayedGainDb",
     #
     # The same round's second engine commit added two comment lines to prepare() and was pushed
     # with four of ADR-0007's engine anchors still on the pre-comment lines, so against that head
@@ -709,16 +714,16 @@ DELIBERATE_REAIMS = {
     # decision and the A(dry) reference they name.
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1844",
-     "src/dsp/AnamorphEngine.cpp:1853"): "landMatchAfterMeasure",
+     "src/dsp/AnamorphEngine.cpp:1867"): "landMatchAfterMeasure",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:545",
-     "src/dsp/AnamorphEngine.cpp:554"): "measurementInputsDiffer",
+     "src/dsp/AnamorphEngine.cpp:564"): "measurementInputsDiffer",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1146",
-     "src/dsp/AnamorphEngine.cpp:1155"): "measChangedAtBottom",
+     "src/dsp/AnamorphEngine.cpp:1168"): "measChangedAtBottom",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1719-1720",
-     "src/dsp/AnamorphEngine.cpp:1728-1729"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1742-1743"): "loudnessRefScratch",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

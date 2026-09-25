@@ -124,8 +124,8 @@ through). `soundMovedUnderGesture()` reports a difference larger than `kSplitMov
 0.5 px `writeCrossovers` uses to decide a write is worth making, now a named constant so the two
 cannot drift. Self-comparison is exact here because the imager and outside writers are the only
 writers of these three parameters: the engine only reads them —
-`src/dsp/AnamorphEngine.cpp:899` (`multiband.setCrossovers`) and
-`src/dsp/AnamorphEngine.cpp:906` (`soloMonitor.setCrossovers`).
+`src/dsp/AnamorphEngine.cpp:912` (`multiband.setCrossovers`) and
+`src/dsp/AnamorphEngine.cpp:919` (`soloMonitor.setCrossovers`).
 
 **F4 — the retained Width and solo values are preserved, deliberately.** Both consumers already mask
 to the live count: `SoloMonitor.cpp:85` computes `mask & ((1 << bands) - 1)` and `:96` holds every

@@ -11,7 +11,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 | Module | Audio-path status | Allocation (prepare only) | Evidence |
 |---|---|---|---|
 | `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO | n/a (engine.prepare) | src/PluginProcessor.cpp:384-452 |
-| `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | src/dsp/AnamorphEngine.cpp:43-205 vs :660-1339 |
+| `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | src/dsp/AnamorphEngine.cpp:43-213 vs :660-1339 |
 | `MidSide` | **Verified** — pure arithmetic, `noexcept` | none | MidSide.h:21-42 |
 | `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:15-22,46-63 |
 | `VelvetNoise` | **Verified** — no alloc/lock/IO; note O(64) per-sample loop + transport-stop `std::fill` (no alloc) | prepare(): `midHist.assign`, RNG construct | VelvetNoise.cpp:10-17,81-139 |
@@ -19,7 +19,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 | `MonoMaker` | **Verified** — per-sample `setCutoffFrequency` (in-place coeff recompute, no alloc) | prepare(): scalar only (`LR4Xover` state is flat — no heap since Wave 2 / H6) | MonoMaker.cpp:7-18,26-48 |
 | `MultibandWidth` | **Verified** — capped cutoff moves (0.8.10: per-sample coeff recompute while tracking under the R(f) = 4·max(1, f/300) oct/s slew cap; one ~12 ms dual-bank crossfade with 2× filter ticks on a discrete target step), no alloc/lock/IO | prepare(): scalar only (24× `LR4Xover.prepare`, flat state — no heap since Wave 2 / H6) | MultibandWidth.cpp (prepare/reset/glide + fade trigger/processBlock) |
 | `SoloMonitor` | **Verified** — capped cutoff moves (0.8.10, as MultibandWidth) + `SmoothedValue`, no alloc | prepare(): 6× flat-state filter + smoother reset | SoloMonitor.cpp (prepare/reset/glide + fade trigger/process) |
-| `LoudnessMatch` | **Verified** — fixed nested biquad structs; `pow/log10/tanh`; no alloc | prepare(): coeff compute only | LoudnessMatch.cpp:47-156 |
+| `LoudnessMatch` | **Verified** — fixed nested biquad structs; `pow/log10/tanh`; no alloc. The result-currency bookkeeping (ADR-0007, 2026-09-25) is scalar: a `pow` when the block size changes, a `log10` pair per audible block while a change is being caught up | prepare(): coeff compute only | LoudnessMatch.cpp:48-245 |
 | `CorrelationMeter` | **Verified** — scalar one-poles only | none | Correlation.h:48-107 |
 | `LevelMeters` | **Verified** — scalar envelopes; NaN self-heal per sample | none | LevelMeters.h:85-192 |
 | `ScopeBuffer` | **Verified** — fixed `std::array`, lock-free SPSC | none | ScopeBuffer.h:28-57 |
@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: src/dsp/AnamorphEngine.cpp:1986-2036.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:2000-2050.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 
@@ -78,7 +78,7 @@ upgrade the "no allocation inside JUCE's oversampler call" assumption from infer
 The plugin's own code is allocation-free on the audio path; JUCE internals are trusted by
 construction (initProcessing is called in prepare).`
 
-Source for the OS init: src/dsp/AnamorphEngine.cpp:80-82 (`initProcessing` at prepare).
+Source for the OS init: src/dsp/AnamorphEngine.cpp:88-90 (`initProcessing` at prepare).
 
 **Partially measured since 2026-08-18** (this entry does not close the TODO above): a dynamic
 allocation-interposition probe over the real engine + JUCE 9.0.1 (`juce_dsp` is byte-identical at
@@ -94,11 +94,11 @@ calls per run) rather than once in a session.
 
 **The SWITCH is armed as well as the steady state, since 2026-08-19, and until then it was not.**
 Each of the 32 configurations is now applied *inside* the armed region, so the block that adopts a
-discrete change — `src/dsp/AnamorphEngine.cpp:1152-1291`: algorithm tails cleared, the three
+discrete change — `src/dsp/AnamorphEngine.cpp:1165-1305`: algorithm tails cleared, the three
 oversamplers and the chorus reset on an oversampling-path change, the crossover cleared on a
 topology change — runs with the counters watching. Before that the configuration was applied and
 then `reset()` *outside* the armed region, and `reset()` flushes an in-flight duck straight to its
-target (`src/dsp/AnamorphEngine.cpp:229-235`), so every armed block sat in the steady-state
+target (`src/dsp/AnamorphEngine.cpp:237-245`), so every armed block sat in the steady-state
 no-change gate and the gate proved the audio path allocation-free only while nothing was changing.
 Measured both ways with one allocation seeded into that adopt block: invisible then (3,840 armed
 calls, worst `new` 0, green), a failure now (worst `new` 2, worst `malloc` 2). The test also counts

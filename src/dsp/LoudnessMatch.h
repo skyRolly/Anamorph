@@ -63,12 +63,36 @@ public:
     float getMatchGainDb() const noexcept { return matchGainDb.load (std::memory_order_relaxed); }
 
     // Restore a remembered match value (per A/B slot) so a switch doesn't have to
-    // re-converge from scratch and lurch in level (feedback #23).
+    // re-converge from scratch and lurch in level (feedback #23). The slot's value is that
+    // slot's own measurement, so the result is current for the state it is restored with.
     void setDisplayedGainDb (float db) noexcept
     {
         displayedGainDb = (double) db;
         matchGainDb.store (db, std::memory_order_relaxed);
+        resultStale = false;
     }
+
+    // IS THE PUBLISHED RESULT A MEASUREMENT OF THE CURRENT INPUTS? (ADR-0007, Amendment of
+    // 2026-09-25.) The engine calls inputsChanged() whenever it adopts a change to anything this
+    // measurement reads -- a live edit, a duck bottom, a forced swap. From then on the published
+    // value, and the analysis behind it, describe the PREVIOUS state: the integrators still hold
+    // its energy (tau 0.4 s) and the published value glides after them. process() separates, in
+    // what the published value glides toward, the measurement of the audio heard since the change
+    // alone (the linear integrators give it exactly: their energy minus the pre-change energy,
+    // decayed) from everything older. The result is current again once those post-change
+    // measurements make up at least half of the published value and it is within kCurrentDb of
+    // their mean -- everything older moves it by no more than that. An A/B slot's restored value is
+    // current by construction; a flush (reset) is no measurement of another state, so it clears the
+    // question. prepare() keeps a result only while it is current.
+    void inputsChanged() noexcept
+    {
+        resultStale = true;
+        staleDry0 = meanSqDry;
+        staleWet0 = meanSqWet;
+        stalePreWeight = 1.0;
+        postShare = postSum = 0.0;
+    }
+    bool isResultCurrent() const noexcept { return ! resultStale; }
 
     // Tell the matcher the current state of the two big-gain controls. estBoostDb()
     // turns these into an ABSOLUTE predicted boost (no internal accumulation), so the
@@ -122,6 +146,17 @@ private:
     bool   memoBoostValid = false;
     int    coeffForN = -1;
     double coeffFast = 0.0, coeffSlow = 0.0;
+
+    // The result's currency (inputsChanged()). staleDry0 / staleWet0: the integrators at the last
+    // change; stalePreWeight: the share of that pre-change energy still in them, (1 - smoothCoeff)^N
+    // after N samples -- the integrators' own decay, block by block (memo keyed on the block size).
+    // postShare / postSum: the post-change measurements' weight in the published value's glide, and
+    // their weighted sum (postSum / postShare is their glide-weighted mean).
+    bool   resultStale = false;
+    double staleDry0 = 0.0, staleWet0 = 0.0, stalePreWeight = 1.0;
+    double postShare = 0.0, postSum = 0.0;
+    int    decayForN = -1;
+    double decayPerBlock = 1.0;
 
     std::atomic<float> matchGainDb { 0.0f };
 };

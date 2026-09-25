@@ -186,21 +186,35 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
   stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`src/dsp/LoudnessMatch.cpp:16-46`).
   Mean-square loudness integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
 - **MEASURE**: one-pole toward `clamp(dLufs − wLufs, ±24)` with adaptive tau (0.06 s if |Δ|>2 dB
-  else 0.9 s); on silence it **holds** (no drift) (`src/dsp/LoudnessMatch.cpp:158-182`).
+  else 0.9 s); on silence it **holds** (no drift) (`src/dsp/LoudnessMatch.cpp:167-193`).
 - **PREDICT**: absolute feed-forward `estBoost(drive, mix)` from the tanh-Drive makeup
-  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled (`src/dsp/LoudnessMatch.cpp:77-98`); floor-only
+  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled (`src/dsp/LoudnessMatch.cpp:83-104`); floor-only
   pre-duck `displayed = min(displayed, predicted)` only when the estimate **rises**
-  (`src/dsp/LoudnessMatch.cpp:131-156`).
+  (`src/dsp/LoudnessMatch.cpp:140-165`).
 - **Two halves, and who clears which** (ADR-0007): the *analysis* (the four K-weighting biquads and
   both integrators) and the *result* (`displayedGainDb`, `prevPredictedGainDb`, the published
   `matchGainDb`). `softReset()` clears the analysis and keeps the result; `reset()` clears both;
   `setDisplayedGainDb()` overwrites the result. The engine re-arms (`softReset`) at a switch bottom
   that changes the signal path, at an A/B injection whose slots differ in anything the measurement
   reads, on every host reset, and on a re-prepare at an unchanged sample rate whose measurement
-  inputs did not change; it flushes (`reset`, via `prepare`) on any other re-prepare and in the NaN
-  self-heal. An A/B switch overwrites the result with the slot's remembered gain. The applied gain
-  (`matchGainSmooth`) is the engine's: a kept re-prepare with Level Match on starts it on the kept
-  result (quiet audio never fires the silence→audio snap; Test 68), a flush starts it at unity.
+  inputs did not change and whose result is current (below); it flushes (`reset`, via `prepare`) on
+  any other re-prepare and in the NaN self-heal. An A/B switch overwrites the result with the slot's
+  remembered gain. The applied gain (`matchGainSmooth`) is the engine's: a kept re-prepare with Level
+  Match on starts it on the kept result (quiet audio never fires the silence→audio snap; Test 68), a
+  flush starts it at unity.
+- **Currency** (ADR-0007, Amendment of 2026-09-25): `inputsChanged()`, which the engine calls whenever
+  it adopts a change to anything the measurement reads (a live edit, a change heard during a duck, a
+  duck bottom, a host reset that lands a duck), marks the result as describing the
+  previous sound. Each audible block then splits what the published value glides toward: the target
+  of the audio heard since the change alone (exact, because the integrators are linear: their energy
+  minus the pre-change energy, decayed at their own rate), and everything older. A block counts only
+  while the input heard since the change is above the silence gate and at least half of the dry
+  integrator: pre-change audio still in the pipeline, such as a wet tail after the input stopped, is no
+  measurement. `isResultCurrent()`
+  is true again once those post-change measurements make up at least half of the published value and
+  it is within 0.1 dB of their glide-weighted mean (`src/dsp/LoudnessMatch.cpp:197-242`). An A/B
+  injection is current; a flush clears the question; `softReset()` keeps it. `prepare()` keeps a
+  result only while it is current. None of this changes what is published.
 - Invariants: predict only ever lowers gain; absolute (non-accumulating) → cannot ratchet;
   measure freezes on silence; both clamped ±24 dB; IIR → essentially zero latency.
 

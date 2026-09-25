@@ -1289,3 +1289,332 @@ The existing F13 tests pass unchanged: Tests 66 and 67, State tests 120, 130 and
 - **Two State-suite runs at once can collide.** Running two at the same time made State test 19 read
   another run's preset file (a shared path outside `HOME`). A single run is clean. This is a test-harness
   property, recorded for whoever parallelises CI.
+
+## N. The Devin review of `0fbce03`: a live edit left the kept result stale
+
+This round follows `0fbce03` on the same branch (PR #156). Devin's finding: *"Live edits retain stale
+match gain."* It points at `keepMatch` in `AnamorphEngine::prepare()`. The finding was confirmed
+through the processor before any edit.
+
+### N1. Reproduction and root cause
+
+Q5's condition 3 compares the snapshot `primeParameters()` adopts with the engine's live `p`. Three
+transitions write `p` as they happen:
+- a live continuous edit, on the Normal path (`p = np`);
+- an ordinary duck's continuous part (`copyContinuous`);
+- a duck bottom (`p = pendingP`).
+
+When the host re-prepares after any of them, the prime compares the new state with itself. So
+`primeMeasChanged` stays false, and the result the re-prepare keeps still describes the audio from
+before the edit. The analysis is re-armed by then, so nothing is left in the engine that could correct
+it quickly: the kept value glides toward the new measurement at the measure's own speed.
+
+The probe ran through the processor: 48 kHz / 256, Haas, Amount 0.5, Drive 8, Width 1.0, Output Gain
+−3 dB, Level Match on, stationary noise with seed 901. It converged for 3 s, made the edit as a user
+gesture, and called `prepareToPlay` at the same rate *d* blocks later. Three lanes played the same
+stream:
+- **the live lane:** the edit, then the re-prepare;
+- **the restore control:** the same edit made while suspended, which reaches `prepare()` through the prime;
+- **the fresh reference:** a new instance at the destination state.
+
+The error is |published − reference|, at the first sample and integrated over 3 s:
+
+| edit | head `0fbce03`, d = 1 block (5 ms) | restore control (flush) |
+|---|---|---|
+| Width 1.0 → 2.0 (Devin's case) | KEPT −5.471 dB against −7.728: 2.25 dB, 1.84 dB·s | 3.40 dB, 1.81 dB·s |
+| Width 1.0 → 1.3 | kept: 0.62, 0.56 | 2.02, 1.78 |
+| Drive 8 → 12 | kept: 1.55, 1.37 | 1.55, 1.37 (the predict floor sets both) |
+| Drive 8 → 2 | kept: 3.02, 1.66 | 0.43, 0.40 |
+| Mix 1.0 → 0.5 | kept: 2.25, 1.63 | 0.74, 0.65 |
+| Amount 0.5 → 1.0 | kept: 0.78, 0.75 | 2.18, 1.97 |
+| Output Gain −3 → −9 (not a measurement input) | kept: 0.00, 0.02 | kept: 0.00, 0.02 |
+
+On head the live lane kept at every *d* from 5 ms to 8.5 s. Its error decays with the measure: Width
+1 → 2 went 2.25 / 1.73 / 1.07 / 0.35 / 0.11 dB at 0.005 / 0.53 / 1.07 / 2.13 / 3.2 s. The modulated
+programme (1.3 Hz and 0.37 Hz envelopes, 18 dB deep, with a 220 Hz partial) gave the same pattern.
+
+### N2. The invariant, and what "current" means
+
+The owner set the boundary and authorised the decision: *"A same-rate re-prepare may retain a
+published Level Match result only when that result is still valid for the measurement state that the
+re-prepared engine will use."* Valid means **current**: the published value is the measure's answer for
+the inputs it now reads, within the Level Match settle tolerance (0.1 dB). The cases:
+1. An immediate re-prepare after a measurement-input change is not current, however the change arrived,
+   so it flushes as the restore route does.
+2. A change the measure has caught up with is current again, and the result is kept.
+3. A change to a field `measurementInputsDiffer` does not compare invalidates nothing.
+4. A non-finite result flushes (condition 4). A flush publishes no measurement of any state, so it
+   counts as current.
+
+The measure's own evidence decides. The engine calls `LoudnessMatch::inputsChanged()` whenever it adopts
+a change to anything the measurement reads. The call sites:
+- the Normal path (a live edit);
+- a change heard during a duck: its continuous part goes live at once, and in a fade-in no bottom
+  follows to report it;
+- every duck bottom with `measChangedAtBottom`, which covers forced swaps, discrete changes and an
+  ordinary duck's continuous part (`duckMeasDirty`);
+- a host reset that lands an in-flight duck carrying such a change.
+
+An ordinary duck's entry is not a call site. Its continuous part goes live there, but the bottom reports
+it within ~6 ms. A re-prepare in between meets `prepare()`'s in-flight-duck test (below). A report at the
+entry would be redundant on every path, and no test could tell it apart.
+
+The matcher then snapshots both integrators. They are linear one-poles, so after N samples the
+pre-change energy left in them is exactly (1 − c)^N times the snapshot, and the audio heard since the
+change has energy `meanSq − (1 − c)^N · snapshot`. The measure's own target formula reads it (the
+−0.691 offsets cancel; the same 1e-7 floor and ±24 dB clamp apply).
+
+Each audible block glides the published value by `coeff` toward that block's target. The bookkeeping
+splits the step into two parts:
+- `postShare` / `postSum` accumulate the step's weight and the post-change target. Both decay by
+  (1 − coeff) per step, exactly like the published value. `postSum / postShare` is therefore the
+  glide-weighted mean of the post-change measurements, taken with the weights the published value itself
+  gives them.
+- Everything else in the published value is older: its value at the change, and the targets the
+  pre-change energy coloured.
+
+The result is current again when `postShare ≥ ½` and |published − postSum/postShare| ≤ 0.1 dB. The
+difference is exactly (1 − postShare) times the distance between the older content and the post-change
+mean. It therefore measures the pre-change influence on the published value directly. It does not test
+a coincidence between a moving target and a gliding value.
+
+Three rules cover silence, what counts as a post-change measurement, and the predict floor:
+- Silent blocks do not glide, so they confirm nothing.
+- A block adds share only when the input heard since the change is itself a measurement: its dry energy
+  is above the silence gate and at least half of what the dry integrator holds. The linear split is
+  exact for the integrators, but pre-change audio still in the pipeline (the dry reference's alignment
+  and filters, a delay line emptying into the wet) arrives after the change and counts as post-change
+  audio. Against no input, or a sliver of it, those tails are the whole ratio; §N3 has both failures.
+  The gate is absolute because the half is relative: `softReset()` empties the pre-change snapshot, and
+  after that any input is at least half.
+- The predict floor moves the published value only in the block that first reads a raised Drive or Mix.
+  That is a measurement input, so `inputsChanged()` has already emptied the share. The check reads the
+  value itself either way. A variant that restarts the share when the floor fires produced identical
+  output on all 48 probe rows (§N3).
+
+The other operations:
+- An A/B injection marks the result current (the slot's own measurement, restored with its state).
+- `reset()` clears the question.
+- `softReset()` keeps both the currency and the share. It zeroes only the pre-change snapshot, because
+  the integrators then hold post-change audio alone.
+
+`prepare()` keeps a result only while it is current. It also refuses while a duck that changes a
+measurement input is in flight (`adoptsMeasChange`), because its own `reset()` adopts what that duck's
+bottom would have reported. On the processor path that is an ordinary duck's live continuous part. On
+the unprimed engine API it is also the pending snapshot: §M5's recorded gap, which the prime covers for
+the processor. Nothing published changes: the
+bookkeeping writes no value the measure, the predict or the engine reads.
+
+### N3. Strategies compared
+
+| strategy | what it keeps | verdict |
+|---|---|---|
+| S0: the status quo | every result the prime cannot see changed | fails case 1 (§N1) |
+| S1: a sticky dirty flag, cleared only by a flush or an injection | nothing after any edit, for ever | the rule the owner excluded in so many words |
+| S2: time since the change | whatever a timeout allows | the design has no time-based validity contract; a timeout would stand in for the measure |
+| S3: the engine's smoothers settled | results 20–120 ms after an edit | the smoothers are not the measurement; the measure needs seconds |
+| S4: a "measured-for" snapshot or generation | results whose snapshot matches | still needs a caught-up rule, and its revert shortcut (edit and back) is wrong while the analysis still holds the excursion |
+| S5a: the post-change energy dominates each integrator (pre-change share ≤ ½) and one block's post-change target agrees within 0.1 dB | results after one agreeing block | **rejected on measurement**, below |
+| S5 with share from any post-change audio over the gate, input or wet | results a wet tail agrees with | **rejected on measurement**, below |
+| S5 with share from post-change input over the gate, without the half | results a ratio of tails agrees with | **rejected on measurement**, below |
+| **S5: the glide split (§N2)** | results the measure has provably caught up with | **adopted** |
+| S6: publish the post-change measurement at the re-prepare instead of flushing | always a measurement of the new state | a candidate: it changes what is published, and it would remove the trade-off in §N6 |
+
+S5a was the first implementation, and it passed both suites. An engine-level scan then found two ways it
+marked a stale result current. The scan covered 24 scenarios × 8 seeds × {noise, modulated programme}:
+- six path changes: algorithm × 3, Multiband on, Mono Maker on, M/S;
+- seven continuous edits;
+- seven silence gaps of 0.1–5 s after the edit;
+- three edits followed at once by a host reset.
+
+The two failure modes were:
+1. **A host reset right after the edit.** `softReset()` empties the integrators, so "the post-change
+   energy dominates" holds trivially. The first block's short-window target then agreed with the old
+   value by chance. The result went current at block 0: Width 1 → 2 on noise, 2.26 dB off the fresh
+   reference; Drive 8 → 2 on the modulated programme, 4.15 dB off.
+2. **The modulated programme.** The target moves with the programme, because Drive's saturation makes
+   the wet/dry ratio level-dependent, and it crossed the gliding value at ~1.3 s after most edits. The
+   result went current up to 1.33 dB off (Width 1 → 2, then a 1 s gap).
+
+The glide split went through two gates before the adopted one. Two more sweeps target that gate, each
+over 8 seeds × {noise, modulated programme}:
+- **a silence sweep:** Width 1 → 2 at Drive 0–24 dB (7 values), with the input silent for 1–8 s from
+  the edit (5 values);
+- **a burst sweep:** the same Drives, then 2–40 blocks of audio after the edit (5 values), then 3 or 8 s
+  of silence.
+
+The two rejected gates:
+1. **Share from any post-change audio over the gate, input or wet** (the first S5 build). The silence
+   sweep found Drive 24 on the modulated programme with ≥ 3 s of silence. The Haas delay line emptied
+   into the wet with no dry behind it, and the gate stayed open on the decaying pre-change energy. That
+   tail's ratio to the silence floor agreed with the gliding value, and the result went current 2.7 s
+   into the silence, 2.3 dB off.
+2. **Share from post-change input over the gate, without the half.** This passed both sweeps (burst:
+   ≤ 0.19 dB) but failed the scan on Drive 8 → 2 with 1 s of silence from the edit, noise seed 905. The
+   dry reference's tail held the post-change dry energy at 1.9e-6, just over the gate (7 ppm of the
+   integrator), for the first 0.26 s of the silence, against 2.9e-3 of Haas tail in the wet. That −24 dB
+   target took up to a quarter of the share. 0.43 s after the audio resumed, the post-change mean met the
+   gliding value 2.0 dB off.
+
+The adopted gate requires both conditions. Test 69 leg (10) pins each on the matcher directly: (10a) and
+(10b) a tail with no input behind it, (10c) tails against a sliver of input.
+
+S5 on the same scan:
+- currency came no earlier than 0.63 s after a change, and never at a crossing;
+- at the moment of currency the result was within 0.15 dB of the fresh reference on noise, 0.19 dB on
+  the modulated programme;
+- the host-reset rows went current at 2.3–2.9 s, 0.09–0.15 dB off;
+- on the silence and burst sweeps it was within 0.15 dB at currency and 0.16 dB after, and it never failed to go current.
+
+These residuals are the measure's own history dependence. The lane and the reference glide toward the
+same audio from different histories, and their difference decays below 0.01 dB by ~5 s.
+
+### N4. Measured on the implementation
+
+**The processor grid** re-prepared *d* after the edit and measured |error| at the first sample. The
+grid ran from 0.005 to 8.5 s:
+
+| edit | noise: flushes (as the restore control) for d ≤ | noise: keeps from, error | modulated: flushes for d ≤ | modulated: keeps from, error |
+|---|---|---|---|---|
+| Width 1.0 → 2.0 | 3.2 s | 4.3 s, 0.04 dB | 3.2 s | 4.3 s, 0.04 dB |
+| Width 1.0 → 1.3 | 2.1 s | 3.2 s, 0.03 | 1.1 s | 2.1 s, 0.12 |
+| Drive 8 → 12 | 2.1 s | 3.2 s, 0.09 | 3.2 s | 4.3 s, 0.03 |
+| Drive 8 → 2 | 3.2 s | 4.3 s, 0.06 | 3.2 s | 4.3 s, 0.06 |
+| Mix 1.0 → 0.5 | 3.2 s | 4.3 s, 0.04 | 3.2 s | 4.3 s, 0.06 |
+| Amount 0.5 → 1.0 | 2.1 s | 3.2 s, 0.05 | 1.1 s | 2.1 s, 0.14 |
+| Output Gain −3 → −9 | never | at once, 0.00 | never | at once, 0.00 |
+
+Every flush row is identical to the restore control, error by error. The S5a build kept on the
+modulated programme from 2.1 s, 0.12–0.40 dB off. S5 keeps two rows there, Width 1.0 → 1.3 and Amount,
+0.12 / 0.14 dB off: inside the 0.19 dB the scan measured at currency on that programme.
+
+**Nothing changes without a re-prepare.** The F13(1b) route harness gained five rows and a hash mode:
+FNV-1a over the output samples, over the published value per block, and over the applied gain's current
+and target values per block. It was built against the pre-fix sources (`0fbce03`, with every header
+dependent recompiled) and against the fix. 22 of 23 rows are bit-identical in all three hashes:
+- S1–S4: Apply, Undo and Redo;
+- S5–S6: hand engages and disengage;
+- S7: A/B with the injection;
+- S8: a preset load;
+- S9: a forced Undo;
+- S10: host resets in the fade;
+- S11: a re-prepare with nothing changed;
+- S13: a live script with every measurement-input category, a 60-block drag, a ducked algorithm change,
+  Output Gain, Level Match off and on, two Undos, a Redo, two host resets, Apply and an Undo;
+- S14: an A/B script with a host reset;
+- S15: a re-prepare 6 s after a live edit.
+
+The 23rd row, S12, is the positive control: a live edit with a re-prepare 5 ms later. Its hashes
+differ, and the fix publishes −8.622 dB 3 s later against the pre-fix −8.630.
+
+### N5. Tests
+
+- **DSP Test 69** (`testLevelMatchReprepareKeepsOnlyACurrentResult`, the engine contract, and in leg
+  (10) the matcher directly): 102 checks. Against `0fbce03`, 29 of the 94 checks of legs (1)–(9) fail
+  (re-run on the final test file with leg (10) removed, which drives the matcher's new API).
+- **State test 133** (`testLevelMatchReprepareKeepsOnlyACurrentResultThroughTheProcessor`, the processor
+  contract): 129 checks; 31 fail against `0fbce03`.
+
+`procedures/TESTING.md` has the legs. On both engines the failures are exactly the flush claims; every
+premise, liveness check, keep and control passes. The premises are asserted, never assumed:
+- the edit was heard, from its block's output against an event-matched no-edit twin;
+- the measure had not caught up (≥ 1 dB or ≥ 0.3 dB off a fresh engine at the destination), or had
+  caught up, read through the published value itself (within 0.05 dB for 0.5 s). No test sleeps a fixed
+  guess;
+- the re-prepare happened, and the flush is exactly 0 dB followed by the restore route bit for bit;
+- a width smoother was still gliding at the re-prepare (Test 69 (1d): 1.016 → 1.249 of 2.0 inside the
+  edit block).
+
+The existing F13 tests pass unchanged: Tests 66, 67 and 68, and State tests 120, 130, 131 and 132.
+
+**Mutants.** Each is a one-site edit of the final tree (M19: the rejected first design's matcher), built
+and run through both full suites. The counts are failures, DSP / State.
+
+| mutant | change | DSP | State | rejected by |
+|---|---|---|---|---|
+| M01 | `keepMatch` without `isResultCurrent()` | 26 | 29 | every flush claim but the in-flight-duck ones |
+| M18 | `inputsChanged()` never marks | 29 | 29 | as M01, and Test 69 (10a)–(10c) |
+| M02 | `keepMatch` without the in-flight-duck test | 3 | 1 | Test 69 (1q) and its second re-prepare, (9a); State test 133 (10) |
+| M20 | that test without its `pendingP` half (unprimed only) | 1 | 0 | Test 69 (9a) |
+| M03 | no report on the live path | 23 | 24 | the live legs, the drag, the half-way points, the host resets |
+| M05 | no report for a change heard during a duck | 1 | 1 | Test 69 (1r); State test 133 (11) |
+| M06 | no report at a duck bottom | 1 | 3 | Test 69 (1p); State test 133 (3) Undo, Redo, preset |
+| M07 | no report when a host reset lands a duck | 1 | 1 | Test 69 (1s); State test 133 (8d) |
+| M27 | a report for every changed snapshot | 6 | 3 | Test 69 (3a)–(3f); State test 133 (5) |
+| M28 | a report at every duck bottom | 2 | 2 | Test 69 (3g), (1r)'s twin; State test 133 (4), (11)'s control |
+| M08 | currency without the half share | 0 | 2 | State test 133 (8b) |
+| M09 | a 1 dB agreement instead of 0.1 dB | 5 | 3 | Test 69 (2a)'–(2d)', (10c); State test 133 (6) half-way, (8c) |
+| M10 | the post-change target read from the whole integrators | 3 | 0 | Test 69 (4a), (10a), (10c) |
+| M23 | the gate without the half | 1 | 0 | Test 69 (10c) |
+| M24 | the half without the gate | 1 | 0 | Test 69 (10b) |
+| M22 | the half, with share also from a post-change wet over the gate | 1 | 0 | Test 69 (10b) |
+| M25 | share from any post-change audio over the gate, no half (the first S5 build) | 2 | 0 | Test 69 (10a), (10b) |
+| M15 | share from every audible block | 2 | 0 | Test 69 (10a), (10b) |
+| M11 | an A/B injection leaves the result stale | 2 | 1 | Test 69 (5a), (6b); State test 133 (3) A/B |
+| M12 | a flush leaves the result stale | 1 | 1 | the second re-prepares after a flush |
+| M26 | `softReset()` clears the question | 4 | 6 | Test 69 (1s), (5b), (5c), (10b); State test 133 (8a)–(8d) |
+| M16 | `inputsChanged()` keeps the previous share | 1 | 0 | Test 69 (2f) |
+| M17 | the pre-change energy never decays | 11 | 12 | every converged keep, and leg (10)'s control and liveness: the result never becomes current |
+| M19 | S5a, the rejected first design | 2 | 4 | Test 69 (10a), (10b); State test 133 (8b), (8c) |
+| M13 | `softReset()` keeps the pre-change snapshot | 0 | 0 | not rejected: see below |
+| M14 | `softReset()` also clears the share | 0 | 0 | not rejected: see below |
+
+Two mutants are not rejected. Both change only what `softReset()` leaves behind, and the false-currency
+scan (§N3) bounds both:
+- **M13** subtracts pre-change energy that the re-arm has already removed from the integrators, so the
+  post-change energies read low until that phantom decays. On the scan it moves currency in 18 of the
+  48 rows: later in 13 (by up to 1.53 s), earlier in 5 (all on the modulated programme, by 0.10–0.44 s).
+  At currency it is never more than 0.19 dB off the fresh reference, the adopted rule's own bound there.
+- **M14** discards the post-change share accrued before a re-arm, so currency can only come later. It is
+  identical to the adopted rule on all 48 rows: every re-arm in the scan comes with its own change, when
+  the share is still empty.
+
+Pinning either needs the timing of currency after a re-arm, which no invariant here fixes. The suites
+pin the invariant (never keep a stale result) and its liveness (keep once caught up).
+
+**Validation on the final tree** (Linux x86-64, GCC, Release):
+- both suites under `ulimit -s 1024`: DSP 722 / 0, State 5276 / 0;
+- the pre-fix run above: 29 / 31 failures, exactly the flush claims;
+- the Devin controls still fail as designed: State test 129 with Apply disabled (69 failing checks) and
+  with its NaN guard removed (6); `prepare()` without the kept-result write fails State test 132 (33
+  state failures, 6 in DSP);
+- the 186 finite-value legs hash identically to the pre-fix build, and the 23 route hashes of §N4 are
+  identical to the first build of this fix;
+- frames (GCC `-fstack-usage`): Test 69 5,104 B, its largest lambda 992 B; State test 133 2,384 B;
+- `check-docs`, `check-dispatch`, `check-portability`, `check-realtime`, `check-state-coverage` and
+  their self-tests; `check-citations` against `0fbce03`, `043c7e3`, `a7d2b88` and `659ca0a`, and its
+  self-test (255 cases); the GCC gate flags on the changed translation units (no new warning).
+
+### N6. Recorded, not changed
+
+- **The trade-off window.** A re-prepare from ~0.3 s to ~3–4 s after a large measurement-input change
+  now flushes where the partly converged value was closer. Width 1 → 2 at 1.07 s: the keep was 1.07 dB
+  off, the flush is 3.45 dB off. Condition 3 already accepts the same trade-off for the restore route.
+  S6, publishing the post-change measurement at the re-prepare, would remove it; it is a candidate
+  because it changes what is published.
+- **Automation of a measurement input** keeps the result not current, because every block's change
+  restarts it. A re-prepare during such automation flushes, as the same automation arriving through a
+  restore always did.
+- **A slot's remembered value is restored as current.** An A/B switch injects the destination slot's
+  remembered gain (#23), and the matcher takes it as current. The processor probe (Haas / Drive 8 slot A;
+  slot B at Drive 12; switch back, then a same-rate `prepareToPlay` d later) measured three cases:
+  - **B converged when left:** kept 0.00–0.01 dB off at every d from 0.1 s.
+  - **B left 0.3 s after its edit:** kept 1.09 / 0.87 / 0.61 / 0.38 / 0.12 dB off at 0.1 / 0.3 / 0.6 /
+    1.1 / 2.1 s. The flush there is 7.61 dB off at its first sample, and 1.41 dB·s over 3 s against the
+    keep's 0.97–0.13.
+  - **A never-visited slot, and both slots after a session restore,** inject 0.0 dB (ER-STATE-20's
+    fresh-instance value) and are taken as current the same way. For the default sound 0.0 dB is right
+    (−0.001 dB measured).
+
+  The variant that makes an injection wait for the measure's confirmation (`setDisplayedGainDb` reporting
+  `inputsChanged()`) closes both cases. It flushed the converged slot for 0.1–0.3 s after the switch, and
+  the stale slot until 2.1 s and beyond. It also failed Test 67 leg (5), 3 checks: its probes displace the
+  value by an engine-API injection before a re-prepare. And it failed State test 132 leg (6)'s premise.
+  Both tests are to be preserved. Carrying each slot's currency with its remembered value would close the
+  gap without that cost. The value crosses from the message thread to the audio thread with the
+  injection, so that needs a second cross-thread field: a threading-model change, outside this finding.
+  It is a candidate.
+- **§M5's unprimed in-flight duck is closed.** `prepare()` now refuses to keep when `reset()` will adopt
+  a measurement-input change (`adoptsMeasChange`).
+- **A documentation drift, corrected.** `THREAD_MODEL.md` cited `LoudnessMatch.h:112` for the published
+  atomic, which `0fbce03` already had at `:126`. It now reads `:161`.

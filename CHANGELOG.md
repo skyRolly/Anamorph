@@ -201,11 +201,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   re-prepare a plug-in when, for example, the audio buffer size changes or the plug-in is
   re-activated. With Level Match on, the matched level was discarded and rebuilt from an estimate, so
   the output played about **2–3 dB** away from the matched level for about two seconds afterwards. At
-  an unchanged sample rate, with the sound's settings unchanged, the matched level is now kept and
-  plays from the very first moment, quiet passages included; a sample-rate change, or a re-prepare
-  after loading a state that changes the sound, still measures it afresh. Decision: ADR-0007
-  (Amendment of 2026-09-24, F13(2)). Regression coverage: Test 67, Test 68, State tests 131, 132 and
-  120. Evidence: PR #156. [Verified]
+  an unchanged sample rate, once Level Match has caught up with the latest change to the sound, the
+  matched level is now kept and plays from the very first moment, quiet passages included; a
+  sample-rate change, a re-prepare after loading a state that changes the sound, or one made within the
+  few seconds Level Match needs to catch up with a change, still measures it afresh. Decision: ADR-0007
+  (Amendments of 2026-09-24, F13(2), and 2026-09-25). Regression coverage: Test 67, Test 68, Test 69,
+  State tests 131, 132, 133 and 120. Evidence: PR #156. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

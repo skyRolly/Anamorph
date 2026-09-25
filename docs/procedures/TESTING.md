@@ -371,6 +371,76 @@ on `prevInputSilent` alone (Case B lands, the quiet flushes snap), the fix witho
 (Case B φ 0.094), the keep without its `isfinite` term (the NaN is kept and the run goes silent), and
 the write placed before `reset()` or gated on the Level-Match state read before it (leg 11).
 
+**A same-rate re-prepare keeps the Level-Match result only while it is current — Test 69 (2026-09-25;
+ADR-0007, Amendment of 2026-09-25; the Devin review of PR #156, "Live edits retain stale match
+gain").**
+
+*The contract.* F13(2) Q5 kept the published result whenever the snapshot `primeParameters()`
+adopts changes no measurement input. But a live edit, a drag, a duck bottom, a forced swap and a
+host reset that completes one have all written `p` before the host re-prepares, so the prime saw
+nothing. The kept value then described the previous sound: Width 1 → 2, 5 ms, kept 2.28 dB off.
+`LoudnessMatch::inputsChanged()` now marks every such adoption. `prepare()` keeps a result only once
+`isResultCurrent()` holds: the post-change measurements make up at least half of the published value,
+and it agrees with their mean within 0.1 dB. A block counts toward them only while the input heard
+since the change is above the silence gate and at least half of the dry integrator. `prepare()` also
+refuses while a duck that changes a measurement input is in flight.
+
+**Test 69** (`testLevelMatchReprepareKeepsOnlyACurrentResult`, the engine contract) reads the published value across
+`primeParameters → prepare → setParameters`, the processor's `prepareToPlay` sequence. "Flush" means
+exactly 0 dB after it, and then the restore control's published trajectory, bit for bit. The restore
+control is the same state primed without the live edit. "Keep" means bit-identical across it. A fresh
+engine prepared at the destination and fed the same seeded input is the measure's answer. Every leg
+first proves its premises:
+- the edit was heard, from its block's output against a no-edit twin;
+- the measure had not caught up (≥ 0.3 dB off the fresh engine, 0.62–6.54 dB measured), or had caught up,
+  read through the published value itself: 0.5 s all within 0.05 dB of the fresh engine and moving
+  < 0.01 dB. No leg waits a fixed guess.
+
+Legs:
+- **(1a)–(1s) One per measurement-input category, re-prepared right after the change.** Each flushes
+  like the restore route. The categories:
+  - Drive up (the predict floor) and down, Mix, Width (the Devin case), Amount, Input Balance;
+  - Haas delay, Velvet density and Chorus depth under their algorithms;
+  - a Multiband width and split, the Mono Maker frequency, a polarity flip;
+  - Drive with Level Match off;
+  - an algorithm change through its ordinary duck, a forced swap without an injection (preset / undo),
+    an ordinary duck's entry, a Width edit in a duck's **fade-in** (no bottom follows to report it,
+    with its no-edit twin kept), and a forced swap completed by a host reset.
+- **(7) A drag** of 0.5 s, one edit per block: flushes.
+- **(2a)–(2f) Convergence, and a second edit.**
+  - Width, Drive, Mix and Amount, and a small Width 1 → 1.05, keep bit-exact once the measure has caught
+    up: 2.3–5.7 s after the edit, 0.011–0.018 dB off the fresh engine.
+  - The same edits flush while they are still ≥ 0.3 dB off.
+  - A second edit on a caught-up result flushes again.
+- **(3a)–(3g) What the measurement does not read keeps:**
+  - Output Gain, where it is heard (Level Match off), Output Balance, Bypass, Band Solo;
+  - two guarded-out fields, whose edit blocks are bit-identical;
+  - the Level Match switch through its duck.
+- **(4a)/(4b) Silence after an edit.** A Width edit followed by 3 s of digital silence still flushes:
+  silence confirms nothing. Once audio resumes and the measure catches up, it keeps.
+- **(5a) An A/B injection** keeps the injected slot gain, and P1b's re-arm is unchanged.
+- **(5b)–(5d) A host reset right after an edit.** A re-prepare one block, or 0.5 s, later flushes. This
+  is the rejected first design's failure mode: the reset empties the pre-change energy. Once the
+  measure has caught up, it keeps.
+- **(6) A NaN result still flushes.**
+- **(8) A kept value resumed at −70 dBFS** is the applied gain from the first sample (Test 68's metric).
+- **(9) The unprimed engine API:** `prepare()` with a forced duck to a measurement change in flight
+  flushes, while its Output-Gain-only twin keeps.
+- **(10) The matcher directly**, where its currency is public. Pre-change audio still in the pipeline
+  arrives after the change and counts as post-change audio:
+  - (10a) the input stops at the change while a wet tail goes on for 10 s. The published value settles
+    on the tail's ratio to the silence floor, yet the result never goes current. Its twin, with the input
+    6 dB under the same wet, goes current;
+  - (10b) the same after a host reset right after the change: never current. The reset empties the
+    pre-change snapshot, so only the gate rejects it;
+  - (10c) tails of the old programme against a sliver of post-change input, over 25 input levels ×
+    dry-tail lengths: never current while ≥ 0.3 dB off the returned ratio, and current on it 3.2 s
+    after the input returns.
+
+102 checks, ~2.0 s native. Against the pre-fix engine (`0fbce03`) 29 of the 94 checks of legs
+(1)–(9) fail: exactly the flush claims. Every premise, keep and control passes on both engines. Leg
+(10) drives the API the fix adds, so it has no pre-fix run; each rejected gate fails it (worklog §N5).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4565,6 +4635,49 @@ engage (glides from unity, φ 0.78); (8) 44.1 kHz — the unchanged flush, a qui
 by the `isfinite` term): each starts at unity and glides. 124 checks, ~0.4 s native. Against the pre-fix
 engine 30 fail — exactly the three kept-contract checks on each of the ten kept legs; every premise,
 liveness, snap, A/B, Apply, Case A / B, 44.1 kHz and invalid-result check passes on both.
+
+**A same-rate re-prepare keeps the Level-Match result only while it is current, through the processor
+— State test 133 (2026-09-25; ADR-0007, Amendment of 2026-09-25; the Devin review of PR #156).** This
+(`testLevelMatchReprepareKeepsOnlyACurrentResultThroughTheProcessor`) is the processor half of Test 69, driven through `AnamorphAudioProcessor` as a host and the editor
+drive it: gestures with `pollUndoCoalesce`, `processBlock`, `prepareToPlay`, `reset()`, undo / redo,
+`abSwitchTo`, the preset browser's load, and `applyAutoGain`. Heap processors run in lockstep on one
+seeded stream.
+- **Flush and keep.** "Flush" means the published value is exactly 0 dB after `prepareToPlay`; "keep"
+  means it is bit-identical across it.
+- **The oracle.** A fresh processor at the destination sound is the measure's answer.
+- **The restore route.** This is the same edit made with no block before `prepareToPlay`, which the
+  prime sees.
+
+Legs:
+- **(1) Devin's example.** Width 1 → 2, one block, re-prepare. It flushes, then publishes and plays
+  bit for bit what the restore route does for 3 s. A second re-prepare 1 s later keeps the restarted
+  measure.
+- **(2) The same claims for Drive up and down, Mix, Amount (at Width 2), and a 48-block Width drag.**
+- **(3) Forced swaps changing Drive** (Undo, Redo, a user preset), re-prepared right after the bottom:
+  - they flush, where the no-swap lane keeps;
+  - left to converge, they keep;
+  - an A/B between converged slots keeps the injected gain, with P1b's re-arm unchanged.
+- **(4) Apply, and Undo of Apply:** kept (not measurement inputs).
+- **(5) Output Gain (with Level Match on and off) and Output Balance:** kept.
+- **(6) Width re-prepared half-way (2 s, 0.41 dB off) flushes;** caught up (6 s) it keeps.
+- **(7) After (6)'s keep, a −70 dBFS resume** plays the kept value from the first sample (State test
+  132's metric).
+- **(8) Host resets.** Each keeps the published value, and a re-prepare after it still flushes: one
+  block after the edit; 1 block or 0.5 s after a Drive rise; 1.5 s after the edit; one block into a
+  preset's fade-out, where the reset completes the swap. The first implementation of this change
+  (current once the pre-change energy was under half and one block agreed) called two of these
+  current and kept them 0.42–1.59 dB off.
+- **(9) A new rate:** still flushes.
+- **(10) An ordinary duck** (Level Match turned on by hand) carrying the Width edit in its entry
+  snapshot, or given it in its fade-out, re-prepared before its bottom: flushes. `prepare()`'s
+  in-flight-duck test alone holds this leg. The same duck alone keeps.
+- **(11) The same duck given the Width edit in its fade-in,** after the bottom. The phase is proved
+  from the run's per-sample gain over a no-duck twin: the silent bottom (−240 dB) comes before the edit
+  block, the gain is still rising at the edit (−9.9 dB at its first sample), and the output is at full
+  level from event + 7. `prepareToPlay` comes 0.2 s later, after the duck has finished: it flushes. The
+  mid-duck report is the only thing that sees this change. The same duck without the edit keeps.
+129 checks, ~1 s native. Against the pre-fix engine (`0fbce03`) 31 fail: exactly the flush claims.
+Every premise, liveness, keep, control, (7) and (9) pass on both engines.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
