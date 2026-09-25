@@ -802,8 +802,8 @@ void AnamorphEngine::snapSmoothers() noexcept
     // is already in force.
     // matchGainSmooth is NOT snapped here: its target is fresh only after this block's
     // loudness.process, so a Match-on bottom that changes nothing the measurement reads lands
-    // it there instead (measurementInputsDiffer; ADR-0007, Amendment 2026-09-24). An A/B
-    // injection lands it at the bottom. Otherwise it glides (#16).
+    // it there instead (measurementInputsDiffer; ADR-0007, Amendment 2026-09-24). An A/B injection
+    // lands it at the bottom, a silence->audio edge and a kept re-prepare (prepare()) too; else it glides.
 }
 
 // The oversampler for the SELECTED FACTOR, or nullptr when no factor is selected.

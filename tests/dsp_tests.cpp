@@ -9638,10 +9638,9 @@ static void testLevelMatchKeptResultIsTheAppliedGainFromTheFirstBlock()
     // =====================================================================================================
     {
         const Params h8 = haas (8.0f, true);
-        const float inf = std::numeric_limits<float>::infinity();
         // (8a) +Inf injected un-ducked, Level Match off, on audio: NaN at the boundary; primed Level Match on
-        auto a8 = pairOf (offOf (h8), h8, RS, sc70, false,
-                          [RS, inf] (int b, AnamorphEngine& e, Params&) { if (b == RS - 8) e.injectMatchGainDb (inf); });
+        auto a8 = pairOf (offOf (h8), h8, RS, sc70, false, [RS] (int b, AnamorphEngine& e, Params&)
+                          { if (b == RS - 8) e.injectMatchGainDb (std::numeric_limits<float>::infinity()); });
         // (8b) a NaN burst whose self-heal flushes the matcher, re-prepared on the next block
         auto b8 = pairOf (h8, h8, RS, sc70, false, nullptr);
         b8->r.nanAt = b8->t.nanAt = RS - 1;

@@ -13022,7 +13022,7 @@ authoritative. With Level Match off the gain rests at unity, and every flush sta
 Seven lines in `prepare()` and two comments; no parameter, schema, thread, order or latency change.
 
 **Tests.**
-- **DSP Test 68** (`testLevelMatchKeptResultIsTheAppliedGainFromTheFirstBlock`): 29 checks; 4 fail
+- **DSP Test 68** (`testLevelMatchKeptResultIsTheAppliedGainFromTheFirstBlock`): 30 checks; 5 fail
   against `a7d2b88`.
 - **State test 132** (`testLevelMatchKeptResultPlaysFromTheFirstQuietBlock`): 124 checks; 30 fail
   against `a7d2b88`.

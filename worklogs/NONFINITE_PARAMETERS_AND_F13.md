@@ -1241,7 +1241,7 @@ The existing F13 tests pass unchanged: Tests 66 and 67, State tests 120, 130 and
   | no fix (`a7d2b88`) | — | 5 (Test 68's kept claims and (11)) | 30 (State test 132's three kept checks on ten legs) |
   | K2 | the write without its Level-Match gate | 1 (Test 68 (6) Case B, φ 0.094) | 1 (State test 132 (7) Case B) |
   | K3 | the write before `reset()`, replacing the unity write | 1 (Test 68 (11)) | 0 — equivalent on the processor path |
-  | K4 | the target only (`setTargetValue`) | 5 | 30 |
+  | K4 | the target only (`setTargetValue`) | 4 | 30 |
   | K5a | no fix; `prevInputSilent = false` after a kept prepare | 6 | 33 |
   | K5b | no fix; the silence→audio snap never fires | 9 (incl. Tests 66, 67) | 35 (incl. State tests 130, 131) |
   | K5c | no fix; the snap on `prevInputSilent` alone | 3 | 9 |
@@ -1253,6 +1253,11 @@ The existing F13 tests pass unchanged: Tests 66 and 67, State tests 120, 130 and
   | K14 | the fix, plus the loud snap suppressed after a keep | 0 | 2 (State test 132's loud-resume snaps, at 2e-4 dB) |
   | K8 / K9 / K12 | the write on every Level-Match-on prepare; the value read before `reset()`; a snap to the target on any keep | 0 | 0 — equivalent: a flush publishes 0 dB (unity), `softReset()` keeps the result, the target is the same value |
 
+  Where the rows were run:
+  - K2, K4, K5a–c, K6, K7, K10, K13 and K14: the DSP suite before leg (11) existed (619 checks). Each of
+    them that starts a kept value at unity would also fail leg (11). K14's State count is with the 2e-4
+    dB snap tolerance.
+  - The no-fix row, K3, K8, K9, K11 and K12: the final suites (620 DSP checks).
   K3 and K11 first survived both suites, and Test 68 leg (11) was added. K3 and K11 are identical on the
   processor path, where the prime makes `p == pendingP`. Leg (11) runs the unprimed engine API with a
   Level-Match engage in flight at `prepare()`, where the fix's placement after `reset()` decides.

@@ -505,8 +505,10 @@ the engage cases. The applied gain now lands at a silence→audio edge, an A/B i
 predict floor has no kept result behind it and is recorded, not changed (worklog §M). Owner instruction
 of 2026-09-25: *"the applied Level Match smoother must begin from the retained match value rather than
 unity"* and *"The first quiet blocks after re-prepare must already use the retained Level Match gain."*
-Gate: a text correction to this Accepted ADR, flagged in the PR body and the commit; no compatibility
-trigger (no parameter, schema, thread, order or latency change — the write is on the prepare path).
+Gate: a text correction to this Accepted ADR, flagged in the PR #156 body and the implementing commit
+(`043c7e3`); step 2, the owner's instruction above; review of the implementation: pending, PR #156; no
+compatibility trigger (no parameter, schema, thread, order or latency change — the write is on the
+prepare path).
 
 Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1155` (`measChangedAtBottom`, one
 answer for the Case-A landing and the injection re-arm), `:1274` and `:1310` (the re-arm at the
@@ -522,7 +524,7 @@ becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:122` (`prim
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:77-98` and `:131-156` (predict), `:158-182`
   (measure/hold), `:100-106` (`softReset`: the analysis only), `:64-71` (`reset`: both halves)
-- `src/dsp/AnamorphEngine.cpp:1728-1729` (A(dry) reference), `:1841` (the measurement), `:1880-1881`
+- `src/dsp/AnamorphEngine.cpp:1728-1729` (A(dry) reference), `:1848` (the measurement), `:1887-1888`
   (silence-edge snap)
 - `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 
