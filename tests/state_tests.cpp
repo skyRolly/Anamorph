@@ -41973,7 +41973,7 @@ static void testLevelMatchAbSlotCarriesTheValidityOfItsResult()
 
 // =====================================================================================================
 //  State test 135 -- A GAIN-ONLY LEVEL-MATCH ENGAGE LANDS ON THE VALUE THE MATCHER PUBLISHES, CURRENT OR NOT, ON
-//  THE PRODUCTION PATH (ADR-0007, Decision of 2026-09-25 on the Devin finding "Level Match engages on stale
+//  THE PRODUCTION PATH (ADR-0007, Note of 2026-09-25, stale engage, on the Devin finding "Level Match engages on stale
 //  compensation". Test 71 is the engine half; State test 130 pins the landing, 133 the currency, 134 the A/B record)
 //
 //  THE CONTRACT. Level Match's analysis runs whether or not Level Match is on, so a switch that turns it on and
@@ -42001,8 +42001,9 @@ static void testLevelMatchAbSlotCarriesTheValidityOfItsResult()
 //
 //  THE LEGS (Advanced Mode on, Haas 50 %, Width 100 %, Drive 8, Multiband off, Output Gain 0, Level Match off; the
 //  edit by gesture at 5.5 s, the result measured by then; the toggle 0.3 s later unless stated).
-//   (1) THE REVIEW'S CASE: Width 1.0 -> 2.0, then the toggle. Premises: KEPT before the edit and within 0.05 dB of a
-//       fresh processor at Width 1.0; the edit's block differs from the lane without it; FLUSHED after the edit, at
+//   (1) THE REVIEW'S CASE: Width 1.0 -> 2.0, then the toggle. Premises: KEPT before the edit and converged there (P
+//       moved <= 0.02 dB over the 0.5 s before it: a flush is current from its first block, so KEPT alone would
+//       prove nothing); the edit's block differs from the lane without it; FLUSHED after the edit, at
 //       the toggle and right before the bottom. Claims: the bottom block plays the value it publishes (|D| <= 0.1 dB,
 //       that value >= 3 dB from unity) although it is >= 0.5 dB off a fresh processor at Width 2.0; P is the
 //       on-throughout lane's in every block (<= 1e-4 dB); FLUSHED right after the landing (it validates nothing);
@@ -42022,7 +42023,8 @@ static void testLevelMatchAbSlotCarriesTheValidityOfItsResult()
 //   CONTROLS. (C) the toggle 6 s after (1)'s edit: KEPT at the toggle and after the landing, lands, no excursion
 //   beyond [0 dB, P] by > 0.2 dB (O4g). (D) Output Gain 0 -> -6 (no input to the measurement; heard): KEPT after it
 //   and at the bottom, lands. (E) Case B: Width 1.0 -> 2.0 and the toggle in ONE message-thread turn: glides from
-//   unity (phi = D_F / (0 - P_F) >= 0.5) and FLUSHED after the bottom.
+//   unity (phi = D_F / (0 - P_F) >= 0.5, residual <= 1e-3) and FLUSHED after its fade-in -- the bottom's report is
+//   the only one an ordinary duck's change gets, and mid fade-in the in-flight-duck guard would flush regardless.
 static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor()
 {
     std::printf ("State test 135: a gain-only Level-Match engage lands on the value the matcher publishes, current or not"
@@ -42234,7 +42236,6 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
         return g;
     };
     const KV w2 = with (on, { { "width", 2.0f } });
-    const int fBase = addLane (on, E);                            // a fresh processor at the origin
     Leg l1  = family ("(1) Width 1.0 -> 2.0, the toggle 0.3 s later", "width", 2.0f, U, true, true, w2);
     Leg l1b = family ("(1') the toggle one block after the edit", "width", 2.0f, E + 1, false, true, w2);
     Leg l2a = family ("(2a) Drive 8 -> 12", "drive", 12.0f, U, false, true, with (on, { { "drive", 12.0f } }));
@@ -42250,9 +42251,9 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
     at (U, [&] { userEdit (P (eTwin), "width", 2.0f); userEdit (P (eTwin), "mbBands", 3.0f); });
     const int ePre = addLane (base, U);
     prepAt (ePre, U - 1, sr);
-    const int eAfter = addLane (base, U + kBot + 2);
+    const int eAfter = addLane (base, U + kFull + 2);             // read after the fade-in (see the header)
     at (U, [&] { userEdit (P (eAfter), "width", 2.0f); userEdit (P (eAfter), "autoGainMatch", 1.0f); });
-    prepAt (eAfter, U + kBot + 1, sr);
+    prepAt (eAfter, U + kFull + 1, sr);
 
     // (3) Undo of Apply on a stale result
     const int A3 = 4 * sec, u1 = E + (int) std::lround (0.2 * sec), U3 = u1 + dEng;
@@ -42316,7 +42317,8 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
     // =====================================================================================================
     //  THE VERDICTS
     // =====================================================================================================
-    struct Judged { double dBot = 0.0, residBot = 1.0, dF = 0.0, phiF = 0.0, exc = -1.0e9, pubVsOn = 0.0, recErr = 0.0;
+    struct Judged { double dBot = 0.0, residBot = 1.0, dF = 0.0, phiF = 0.0, exc = -1.0e9, pubVsOn = 0.0, recErr = 0.0,
+                           moved = 1.0e9;
                     float pubBot = 0.0f, freshBot = 0.0f; int lastZero = -1; bool route = false; };
     auto judge = [&] (const Leg& g, bool recover)
     {
@@ -42334,6 +42336,9 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
             const double gg = f.gDb + g.gT, pb = pubAt (g.run, b);
             j.exc = juce::jmax (j.exc, juce::jmax (juce::jmin (g.gT, pb) - gg, gg - juce::jmax (g.gT, pb)));
         }
+        j.moved = 0.0;                                           // converged before the edit
+        for (int b = E - 2 - half; b <= E - 2; ++b)
+            j.moved = juce::jmax (j.moved, std::abs ((double) pubAt (g.run, b) - (double) pubAt (g.run, E - 2)));
         if (g.on >= 0)
             for (int b = 0; b <= bot + W; ++b)
                 j.pubVsOn = juce::jmax (j.pubVsOn, std::abs ((double) pubAt (g.run, b) - (double) pubAt (g.on, b)));
@@ -42351,19 +42356,21 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
                                    sizeof (float) * 2 * (size_t) block) != 0;
         else
             j.route = ! juce::exactlyEqual (pubAt (g.run, E + 1), pubAt (g.noEdit, E + 1));
-        std::printf ("  %-48s: before %s (%+.3f, fresh %+.3f) | edit %s | toggle %s | bottom %s, P %+.3f (fresh %+.3f), "
-                     "plays D %+.3f | after it %s | P vs on-throughout %.1e | excursion %+.3f\n",
-                     g.name, word (verdictOf (g, "pre")), (double) pubAt (verdictOf (g, "pre"), E - 2),
-                     (double) pubAt (fBase, E - 2), word (verdictOf (g, "edit")), word (verdictOf (g, "eng")),
-                     word (verdictOf (g, "bot")), (double) j.pubBot, (double) j.freshBot, j.dBot,
-                     word (verdictOf (g, "after")), j.pubVsOn, j.exc);
+        char onTxt[32];
+        if (g.on >= 0) std::snprintf (onTxt, sizeof onTxt, "%.1e", j.pubVsOn);
+        else           std::snprintf (onTxt, sizeof onTxt, "-");
+        std::printf ("  %-48s: before %s (%+.3f, moved %.4f over 0.5 s) | edit %s | toggle %s | bottom %s, P %+.3f (fresh "
+                     "%+.3f), plays D %+.3f | after it %s | P vs on-throughout %s | excursion %+.3f\n",
+                     g.name, word (verdictOf (g, "pre")), (double) pubAt (verdictOf (g, "pre"), E - 2), j.moved,
+                     word (verdictOf (g, "edit")), word (verdictOf (g, "eng")), word (verdictOf (g, "bot")),
+                     (double) j.pubBot, (double) j.freshBot, j.dBot, word (verdictOf (g, "after")), onTxt, j.exc);
         return j;
     };
     // A STALE LANDING, judged the same way on every leg of the family that has one
     auto stale = [&] (const Leg& g, const Judged& j)
     {
         return isKeep (verdictOf (g, "pre"))
-            && std::abs (pubAt (verdictOf (g, "pre"), E - 2) - pubAt (fBase, E - 2)) <= 0.05f && j.route
+            && j.moved <= 0.02 && j.route
             && isFlush (verdictOf (g, "edit")) && isFlush (verdictOf (g, "eng")) && isFlush (verdictOf (g, "bot"))
             && std::abs (j.dBot) <= 0.1 && j.residBot <= 1.0e-3 && std::abs (j.pubBot) >= 3.0f
             && std::abs (j.pubBot - j.freshBot) >= 0.5f && j.pubVsOn <= 1.0e-4
@@ -42375,8 +42382,9 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
                  word (verdictOf (l1, "rec")), j1.recErr, (double) L (verdictOf (l1, "rate")).before,
                  (double) L (verdictOf (l1, "rate")).after);
     check (j1.lastZero + 1 == U + kBot, "premise (1): the toggle's bottom, read from the twin's output, is event + 2");
-    check (isKeep (verdictOf (l1, "pre")) && std::abs (pubAt (verdictOf (l1, "pre"), E - 2) - pubAt (fBase, E - 2)) <= 0.05f,
-           "premise (1): the result was current and converged before the edit (KEPT; within 0.05 dB of a fresh processor)");
+    check (isKeep (verdictOf (l1, "pre")) && j1.moved <= 0.02,
+           "premise (1): the result was current and converged before the edit (KEPT; P moved <= 0.02 dB over the 0.5 s "
+           "before it)");
     check (j1.route, "premise (1): the Width gesture reached the engine (the edit block differs from the lane without it)");
     check (isFlush (verdictOf (l1, "edit")) && isFlush (verdictOf (l1, "eng")) && isFlush (verdictOf (l1, "bot")),
            "premise (1): NOT current after the edit, at the toggle and right before the bottom (FLUSHED)");
@@ -42388,9 +42396,9 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
     check (isKeep (verdictOf (l1, "rec")) && j1.recErr <= 0.1,
            "(1) recovery: KEPT 6 s after the edit, the applied gain within 0.1 dB of the fresh processor over the 0.5 s before");
     check (isFlush (verdictOf (l1, "rate")), "(1) a new rate still flushes (a 44.1 kHz prepareToPlay: exactly 0 dB)");
-    check (stale (l1b, judge (l1b, false)), "(1') the toggle one block after the edit: every premise and claim of (1)");
-    check (stale (l2a, judge (l2a, false)), "(2a) Drive 8 -> 12: every premise and claim of (1)");
-    check (stale (l2b, judge (l2b, false)), "(2b) Mix 1.0 -> 0.5: every premise and claim of (1)");
+    check (stale (l1b, judge (l1b, false)), "(1') the toggle one block after the edit: the premises and landing claims of (1)");
+    check (stale (l2a, judge (l2a, false)), "(2a) Drive 8 -> 12: the premises and landing claims of (1)");
+    check (stale (l2b, judge (l2b, false)), "(2b) Mix 1.0 -> 0.5: the premises and landing claims of (1)");
 
     // (3) Undo of Apply on a stale result
     {
@@ -42456,21 +42464,14 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor
            "the bottom), and the toggle lands");
     {
         const int F = U + kFull;
-        Fit ff;
-        {
-            const Lane& a = L (eRun); const Lane& t = L (eTwin);
-            const float* x = a.y.data() + (size_t) (F - a.recFrom) * 2 * block;
-            const float* z = t.y.data() + (size_t) (F - t.recFrom) * 2 * block;
-            double num = 0.0, den = 0.0;
-            for (int i = 0; i < 2 * block; ++i) { num += (double) x[i] * z[i]; den += (double) z[i] * z[i]; }
-            ff.ok = den > 1.0e-20; ff.gDb = ff.ok ? 20.0 * std::log10 (juce::jmax (1.0e-12, std::abs (num / den))) : 0.0;
-        }
+        const Fit ff = fit (eRun, eTwin, F);
         const double phi = (ff.gDb - pubAt (eRun, F)) / (0.0 - (double) pubAt (eRun, F));
-        std::printf ("  %-48s: before %s | P_F %+.3f, phi %.3f | after the bottom %s\n", "(E) Case B: Width and the toggle in one turn",
-                     word (ePre), (double) pubAt (eRun, F), phi, word (eAfter));
-        check (isKeep (ePre) && ff.ok && phi >= 0.5 && isFlush (eAfter),
-               "(E) Case B unchanged: current before, the engage that also changes the sound glides from unity (phi >= 0.5), "
-               "and its bottom reports the change (FLUSHED after it)");
+        std::printf ("  %-48s: before %s | P_F %+.3f, phi %.3f (resid %.1e) | after its fade-in %s\n",
+                     "(E) Case B: Width and the toggle in one turn", word (ePre), (double) pubAt (eRun, F), phi, ff.resid,
+                     word (eAfter));
+        check (isKeep (ePre) && ff.ok && ff.resid <= 1.0e-3 && phi >= 0.5 && isFlush (eAfter),
+               "(E) Case B unchanged: current before, the engage that also changes the sound glides from unity (phi >= 0.5, "
+               "residual <= 1e-3), and its bottom reports the change (FLUSHED after its fade-in)");
     }
 }
 

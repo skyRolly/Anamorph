@@ -13014,12 +13014,14 @@ authorization: **not a defect; the landing is kept** (`worklogs/NONFINITE_PARAME
 
 **The decision.**
 - **What the landed value is.** Level Match on throughout publishes the same value at that block (within
-  1.6e-5 dB, 85 of 85 engine landings). The error against a fresh instance is the measure's own
-  convergence lag, which Level Match on throughout plays identically (505 processor landings, within
-  0.07 dB mean / 0.12 dB peak).
+  1.6e-5 dB, 85 of 85 engine landings). Not current, it still partly describes the sound before the edit,
+  exactly as the always-on value does. The error against a fresh instance is the measure's own convergence
+  lag: across 505 non-current processor landings HEAD is never more than 0.07 dB (mean) / 0.12 dB (peak)
+  above the always-on twin, and lower in 73 rows, where the twin's applied gain still trails.
 - **What currency governs.** What a result may be carried into: a re-prepare, an A/B record. Not where
   the applied gain joins the published trajectory. The landing validates nothing.
-- **The proposed guard (`isResultCurrent()`).** Worse on the 500 ms mean in 54 of 75 engine rows.
+- **The proposed guard (`isResultCurrent()`).** Worse on the 500 ms mean in 54 of 75 engine rows, and split
+  on the processor set (246 / 225 / 34).
   - The review's own case goes 2.02 → 5.90 dB over 120 ms (peak +2.04 → +7.61).
   - It reopens KI-031's swell on Undo of Apply after an edit (peak +5.33 dB).
   - It fails Test 66 (6 checks), whose lanes already engage on a non-current result.
@@ -13037,7 +13039,18 @@ authorization: **not a defect; the landing is kept** (`worklogs/NONFINITE_PARAME
   with a not-measured record.
 - **Suites:** DSP 811 / 0, State 5434 / 0.
 
-**Mutation.** Six engine variants, each through both suites (worklog §P6); every one is rejected by Test
+**Adversarial review.** An independent review of the tests and these documents found two vacuous checks,
+since corrected:
+- **Case B's "flushed after the bottom".** The in-flight-duck guard flushed there regardless of currency.
+  It is now read after the fade-in, which exposed a gap no suite had covered: an ordinary duck's bottom
+  report.
+- **"Converged before the edit".** A flush is current from its first block. The check now requires the
+  published value to be stationary.
+
+The review also found overstated bounds and descriptions in this change's text; each is corrected against
+the raw data.
+
+**Mutation.** Seven engine variants, each through both suites (worklog §P6); every one is rejected by Test
 71 or State test 135.
 
 **Documents changed.**
@@ -13045,7 +13058,7 @@ authorization: **not a defect; the landing is kept** (`worklogs/NONFINITE_PARAME
   versus having a current result, the options measured, the decision, the recorded positive stale step,
   and the gate record. The O4g amendment's Case A premise, "the boundary with F13(2)" and the F13(2)
   table's Q4 row and paragraph are annotated in place.
-- **`KNOWN_ISSUES.md`:** KI-030's engage bullet.
+- **`KNOWN_ISSUES.md`:** KI-030's engage bullet; KI-031's banner points to the positive stale step.
 - **`TESTING.md`:** Test 71 and State test 135.
 - **The worklog:** §P.
 - **Code comments:** `AnamorphEngine.cpp` (the landing predicate's comment, and the bottom's currency

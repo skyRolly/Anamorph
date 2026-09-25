@@ -506,7 +506,11 @@ trajectory. The landing validates nothing.
 **Test 71** (`testLevelMatchEngageLandsOnThePublishedTrajectory`) drives the engine through the processor's
 prime / prepare / setParameters sequence. Each lane runs from sample 0 on one seeded programme.
 - **Currency.** A same-rate re-prepare inserted into the run's own script keeps a current result bit-exact
-  and flushes anything else to exactly 0 dB (Tests 69 / 70).
+  and flushes anything else to exactly 0 dB (Tests 69 / 70). It primes a snapshot differing from the adopted
+  one only in the Level Match switch, so only currency decides it. Case B (E) is the exception: it is read
+  before the engage and after its fade-in, where neither the prime nor the in-flight-duck guard flushes.
+- **Converged.** A flush is current from its first block, so KEPT alone proves nothing. The published value
+  must also have moved ≤ 0.02 dB over the 0.5 s before the edit (0.002 dB measured).
 - **The applied gain.** Test 66's least-squares fit of the run over an event-matched Level-Match-off twin.
 - **On throughout.** The same script with Level Match on from sample 0 and no duck, read against its own
   twin.
@@ -514,8 +518,9 @@ prime / prepare / setParameters sequence. Each lane runs from sample 0 on one se
 
 Legs (Haas 50 %, Drive 8, Level Match off, the edit live at 5.5 s):
 - **(1) The review's case.** Width 1 → 2, then the toggle 0.3 s later.
-  - Premises: current and converged before the edit; the edit reached the engine; NOT current after it,
-    at the engage and right before the bottom; the bottom at event + 2.
+  - Premises: current and converged before the edit; the edit reached the engine (its block differs from
+    the lane without it); NOT current after it, at the engage and right before the bottom; the bottom at
+    event + 2.
   - Claims: the bottom block plays the value it publishes (−5.760 dB against a fresh −7.798); the
     published trajectory is the on-throughout lane's, bit for bit; the applied gain joins that lane's
     (0.110 → 0.000 dB over 0.6 s); FLUSHED right after the landing; KEPT 6 s later, within 0.010 dB of
@@ -532,7 +537,8 @@ Legs (Haas 50 %, Drive 8, Level Match off, the edit live at 5.5 s):
 - **Controls.**
   - (C) current: lands, no excursion.
   - (D) Output Gain 0 → −6: never stale, lands.
-  - (E) Case B in the engage's own snapshot: phi 0.798, FLUSHED after.
+  - (E) Case B in the engage's own snapshot: phi 0.798, FLUSHED after its fade-in. The bottom's report is
+    the only one an ordinary duck's change gets; no suite covered it before.
   - (G) a flush's current, not-measured value: lands.
 
 27 checks, ~2.6 s native. Engine variants rejected (worklog §P6): land only when current (the review's guard; 9 checks here, 6 in Test 66), only when measured (10), a landing that marks the result current (8), no landing (12), a landing blind to `measChangedAtBottom` (1: (E)), and a capped start for a non-current boost (1: (4)).
@@ -4834,7 +4840,8 @@ half of Test 71. It is driven as a host and the editor drive it: gestures, `appl
 `abCopyToOther`, `abSwitchTo`, `processBlock` and `prepareToPlay`. Heap processors run in lockstep on one
 seeded stream.
 - **Currency.** A `prepareToPlay` on a lane whose script is the run's up to that point: keep is
-  bit-identical, flush is exactly 0 dB.
+  bit-identical, flush is exactly 0 dB. Converged before the edit means P moved ≤ 0.02 dB over the 0.5 s
+  before it.
 - **The applied gain.** State test 130's least-squares fit against a twin with Level Match off, whose duck
   is opened by an inert Multiband Bands move, or by `requestDuck()` for an Undo.
 
@@ -4853,7 +4860,7 @@ Legs:
   not measured. It comes back not current. The toggle on B lands and is FLUSHED after it: the engage
   promotes nothing. (4c) B left measured: KEPT throughout.
 - **Controls.** (C) current: lands, no excursion. (D) Output Gain 0 → −6: never stale, lands. (E) Width
-  and the toggle in one turn (Case B): phi 0.799, FLUSHED after.
+  and the toggle in one turn (Case B): phi 0.799 (residual 2.7e-5), FLUSHED after its fade-in.
 
 23 checks, ~1.7 s native. Engine variants rejected (worklog §P6): land only when current (6), only when measured (6; 18 more in State test 130), a landing that marks the result current (5), no landing (9) and a landing blind to `measChangedAtBottom` (1: (E)). The capped start passes here (no positive leg); Test 71 leg (4) rejects it.
 

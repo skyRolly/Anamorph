@@ -11832,9 +11832,9 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
 
 // =====================================================================================================
 //  Test 71 -- A GAIN-ONLY LEVEL-MATCH ENGAGE LANDS ON THE VALUE THE MATCHER PUBLISHES, CURRENT OR NOT: THE VALUE A
-//  LEVEL MATCH ON THROUGHOUT IS PUBLISHING (ADR-0007, Decision of 2026-09-25 on the Devin finding "Level Match
-//  engages on stale compensation"; State test 135 is the production-path half. Test 66 pins the landing, Test 69
-//  the currency, Test 70 the A/B record.)
+//  LEVEL MATCH ON THROUGHOUT IS PUBLISHING (ADR-0007, Note of 2026-09-25, stale engage, on the Devin finding "Level
+//  Match engages on stale compensation"; State test 135 is the production-path half. Test 66 pins the landing, Test
+//  69 the currency, Test 70 the A/B record.)
 //
 //  THE CLAIM. The matcher runs whether or not Level Match is on, so a switch that turns Level Match on and changes
 //  nothing the measurement reads (Case A) finds it already measuring the sound that plays after the bottom. The
@@ -11843,7 +11843,7 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
 //  result may be CARRIED into -- a same-rate re-prepare (Test 69), an A/B record (Test 70) -- and the landing carries
 //  it nowhere: it moves the applied gain onto the published trajectory and leaves the result, its currency and the
 //  analysis untouched. Gated on currency (the review's proposal) the same engage glides from unity instead: further
-//  from a fresh engine at the destination on every leg below but (2b), louder at its start wherever the match is a
+//  from a fresh engine at the destination on every leg below but (2b) and (4), louder at its start wherever the match is a
 //  cut, and the swell KI-031 resolved returns wherever the engage also restores a lower Output Gain (Test 66).
 //
 //  THE ORACLES (48 kHz / 256; programme N, seed 6901, L = v, R = 0.6 v + 0.2 w; A, seed 7101, R = -0.5 v + 0.5 w).
@@ -11851,24 +11851,28 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
 //    CURRENCY: the matcher's has no public accessor, so it is read as Test 69 reads it -- a same-rate re-prepare
 //      (prime, prepare, setParameters: the processor's prepareToPlay) KEEPS a current result bit-exact and FLUSHES
 //      anything else to exactly 0 dB. A verdict at block k is the run's own script with that re-prepare before block
-//      k: nothing earlier differs. The snapshot it primes changes nothing the measurement reads (checked by
-//      construction: every verdict primes the run's own snapshot, which differs from the adopted one only in
-//      autoGainMatch), so only currency decides it.
+//      k: nothing earlier differs. On every leg but (E) the snapshot it primes differs from the adopted one only in
+//      autoGainMatch, and no duck in flight carries a measurement change, so only currency decides it. (E)'s own
+//      snapshot carries its Width change, so the prime and the in-flight-duck guard would flush there whatever the
+//      currency: (E) is read before the engage and after its fade-in, and prints no engage or bottom verdict.
+//    CONVERGED: the published value moved <= 0.02 dB over the 0.5 s before the edit (a flush is current from its
+//      first block, so KEPT alone would prove nothing).
 //    APPLIED GAIN (M1, Test 66's): the run against an event-matched twin -- the same script with Level Match OFF,
 //      its duck opened at the same block by an inert band-count move (Multiband off) or the same requestDuck --
 //      per block g = 20 log10 (sum run*twin / sum twin^2) (both at Output Gain 0, so g is the applied match gain),
 //      residual judged <= 1e-3. At the bottom block both fade in on the same ramp, so an ordinary engage's bottom
 //      block reads the gain it plays.
-//    ON THROUGHOUT: the same script with Level Match on from sample 0, its duck opened by the inert move: its
-//      published values, and its applied gain by the same fit.
+//    ON THROUGHOUT: the same script with Level Match on from sample 0 and no duck at all (the band-count move
+//      re-arms the analysis -- processingDiffers reads mbBands -- so it cannot stand in there): its published
+//      values, and its applied gain fitted against its own Level-Match-off twin.
 //    FRESH: an engine primed at the destination (Level Match on) from sample 0: the value the measure converges to.
 //    THE BOTTOM: read from the twin's output -- the last block holding an exact zero is event + 1 (Tests 66-70).
 //
 //  THE LEGS (Haas, Amount 0.5, Width 1, Drive 8, Output Gain 0, Level Match off; the edit live at 5.5 s, the result
 //  measured and converged by then; the engage 0.3 s later unless stated).
 //   (1) THE REVIEW'S CASE: Width 1 -> 2, then the Level Match toggle (an ordinary duck). Premises: KEPT before the
-//       edit and within 0.05 dB of a fresh engine at Width 1 (valid); the edit reached the engine (the output
-//       differs from the lane without it); FLUSHED after the edit, at the engage and right before the bottom (not
+//       edit and converged there (valid); the edit reached the engine (its block's output differs from the lane
+//       without it); FLUSHED after the edit, at the engage and right before the bottom (not
 //       current there); the bottom at event + 2. Claims: the bottom block plays the value it publishes (|D| <= 0.1
 //       dB; that value >= 3 dB from unity, where a gated engage would start) although it is >= 0.5 dB off the fresh
 //       engine; the published trajectory is the on-throughout lane's (<= 1e-4 dB, every block); the applied gain
@@ -11890,8 +11894,9 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
 //       and never leaves [0 dB, published] by more than 0.2 dB (O4g, no swell). (D) an edit the measurement does
 //       not read, Output Gain 0 -> -6 (heard with Level Match off; the twin mirrors it): KEPT after the edit and
 //       at the bottom -- it never made the result stale -- and lands. (E) Case B: Width 1 -> 2 carried in the
-//       engage's own snapshot: phi >= 0.5 (glides from unity, unchanged) and FLUSHED after the bottom (the bottom
-//       reported the change). (G) a same-rate re-prepare one block after (1)'s edit flushes the stale result (0 dB:
+//       engage's own snapshot: phi >= 0.5 (glides from unity, unchanged) and FLUSHED after its fade-in (the bottom
+//       reported the change: no other report sees an ordinary duck's). (G) a same-rate re-prepare one block after
+//       (1)'s edit flushes the stale result (0 dB:
 //       current, not measured); the engage 0.3 s later is KEPT at the bottom and lands -- a landing gated on
 //       isResultMeasured() would refuse it.
 static void testLevelMatchEngageLandsOnThePublishedTrajectory()
@@ -12041,7 +12046,8 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
     struct Res
     {
         Verdict vPre, vEdit, vEng, vBot, vAfter, vRec, vRate;
-        float  pubBot = 0.0f, g1Bot = 0.0f, pubPre = 0.0f, g0Pre = 0.0f, pubF = 0.0f;
+        float  pubBot = 0.0f, g1Bot = 0.0f, pubPre = 0.0f, pubF = 0.0f;
+        double moved = 1.0e9;                                            // max |P - P_pre| over the 0.5 s before the edit
         double dBot = 0.0, residBot = 1.0, dF = 0.0, phiF = 0.0, residF = 1.0;
         double pubVsOn = 0.0, gapBot = 0.0, gapMax = 0.0, gapEnd = 0.0, recErr = 0.0, exc = -1.0e9, stepUp = 0.0;
         int    lastZero = -1;
@@ -12077,32 +12083,33 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
         for (Lane* ln : { &R, &T, &O, &TO }) { ln->cap = end + 1; ln->recFrom = from; ln->recTo = end + 1; }
         run (R); run (T); run (O); run (TO);
         // FRESH engines at the destination and at the origin (Level Match on)
-        Lane F1, F0;
-        F1.prog = F0.prog = sp.prog;
+        Lane F1;
+        F1.prog = sp.prog;
         F1.snaps.emplace_back (0, withOn (sp.post));
-        F0.snaps.emplace_back (0, withOn (sp.pre));
-        F1.cap = end + 1; F0.cap = from + 1;
-        run (F1); run (F0);
+        F1.cap = end + 1;
+        run (F1);
         // THE VERDICTS
         const int pre = from;                                            // the block before the edit (or the engage)
         r.vPre  = verdict (R, pre, sr);
         if (sp.edit >= 0) r.vEdit = verdict (R, sp.edit + 1 == sp.flushAt ? sp.edit + 2 : sp.edit + 1, sr);
         r.vEng  = verdict (R, U, sr);
         r.vBot  = verdict (R, bot, sr);
-        r.vAfter = verdict (R, bot + 1, sr);
+        r.vAfter = verdict (R, sp.caseB ? F + 1 : bot + 1, sr);       // Case B: after its fade-in (see THE ORACLES)
         if (sp.recover) { r.vRec = verdict (R, Rc, sr); r.vRate = verdict (R, Rc, srLo); }
         r.pubPre = R.pub[(size_t) pre - 1];
-        r.g0Pre  = F0.pub[(size_t) pre - 1];
+        r.moved  = 0.0;
+        for (int b = pre - 1 - H; b < pre; ++b)
+            r.moved = juce::jmax (r.moved, std::abs ((double) R.pub[(size_t) b] - (double) r.pubPre));
         // THE ROUTE: the edit reached the engine (the output differs from the lane without it)
         if (sp.edit >= 0)
         {
             Lane N0;
             N0.prog = sp.prog;
             N0.snaps.emplace_back (0, sp.pre);
-            N0.cap = sp.edit + 2; N0.recFrom = from; N0.recTo = sp.edit + 2;
+            N0.cap = sp.edit + 1; N0.recFrom = from; N0.recTo = sp.edit + 1;
             run (N0);
             r.routeDiff = std::memcmp (N0.y.data() + (size_t) (sp.edit - from) * blk,
-                                       R.y.data() + (size_t) (sp.edit - from) * blk, sizeof (float) * 2 * (size_t) blk) != 0;
+                                       R.y.data() + (size_t) (sp.edit - from) * blk, sizeof (float) * (size_t) blk) != 0;
         }
         // THE BOTTOM, from the twin's output: the last block holding an exact zero
         for (int b = U; b < F && ! sp.forced; ++b)
@@ -12143,11 +12150,12 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
         if (sp.recover)
             for (int b = Rc - H; b < Rc; ++b)
                 r.recErr = juce::jmax (r.recErr, std::abs (fit (R, T, b).gDb + gT - (double) F1.pub[(size_t) b]));
-        std::printf ("  %-44s: before %s (%+.3f, fresh %+.3f) | edit %s | engage %s | bottom %s, published %+.3f (fresh "
-                     "%+.3f), plays D %+.3f | after it %s | pub vs on-throughout %.1e | applied vs on-throughout %.3f -> "
-                     "%.3f | phi_F %.3f | excursion %+.3f\n",
-                     sp.name, word (r.vPre), (double) r.pubPre, (double) r.g0Pre, sp.edit >= 0 ? word (r.vEdit) : "-",
-                     word (r.vEng), word (r.vBot), (double) r.pubBot, (double) r.g1Bot, r.dBot, word (r.vAfter), r.pubVsOn,
+        std::printf ("  %-44s: before %s (%+.3f, moved %.4f over 0.5 s) | edit %s | engage %s | bottom %s, published %+.3f "
+                     "(fresh %+.3f), plays D %+.3f | after it %s | pub vs on-throughout %.1e | applied vs on-throughout "
+                     "%.3f -> %.3f | phi_F %.3f | excursion %+.3f\n",
+                     sp.name, word (r.vPre), (double) r.pubPre, r.moved, sp.edit >= 0 ? word (r.vEdit) : "-",
+                     sp.caseB ? "-" : word (r.vEng), sp.caseB ? "-" : word (r.vBot), (double) r.pubBot, (double) r.g1Bot,
+                     r.dBot, word (r.vAfter), r.pubVsOn,
                      r.gapBot, r.gapEnd, r.phiF, r.exc);
         if (sp.recover)
             std::printf ("  %-44s: 6 s after the edit %s, max|applied - fresh| %.3f dB over 0.5 s | at 44.1 kHz %+.4f -> %+.4f\n",
@@ -12164,7 +12172,7 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
     // A STALE LANDING, judged the same way on every leg that has one
     const auto stale = [&] (const Res& r, bool far, bool ordinary)
     {
-        return r.vPre.keep && std::abs (r.pubPre - r.g0Pre) <= 0.05f && r.routeDiff
+        return r.vPre.keep && r.moved <= 0.02 && r.routeDiff
             && r.vEdit.flush && r.vEng.flush && r.vBot.flush                                   // premises
             && (! ordinary || (std::abs (r.dBot) <= 0.1 && r.residBot <= 1.0e-3))            // plays the value it publishes
             && std::abs (r.pubBot) >= 3.0f                                                   // ...far from unity
@@ -12182,9 +12190,9 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
         s1.pre = base; s1.post = w2; s1.edit = E; s1.eng = U; s1.recover = true;
         const Res r1 = runLeg (s1);
         check (r1.lastZero + 1 == U + kBot, "premise (1): the duck's bottom, read from the twin's output, is event + 2");
-        check (r1.vPre.keep && std::abs (r1.pubPre - r1.g0Pre) <= 0.05f,
-               "premise (1): the result was current and converged before the edit (KEPT; within 0.05 dB of a fresh "
-               "engine at Width 1)");
+        check (r1.vPre.keep && r1.moved <= 0.02,
+               "premise (1): the result was current and converged before the edit (KEPT; the published value moved <= "
+               "0.02 dB over the 0.5 s before it)");
         check (r1.routeDiff, "premise (1): the edit reached the engine (the edit block's output differs from the lane without it)");
         check (r1.vEdit.flush && r1.vEng.flush && r1.vBot.flush,
                "premise (1): the result was NOT current after the edit, at the engage and right before the bottom "
@@ -12205,7 +12213,7 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
 
         Spec s1b = s1; s1b.name = "(1') the same, engaged one block after the edit"; s1b.eng = E + 1; s1b.recover = false;
         const Res r1b = runLeg (s1b);
-        check (stale (r1b, true, true), "(1') engaged one block after the edit: every premise and claim of (1)");
+        check (stale (r1b, true, true), "(1') engaged one block after the edit: the premises and landing claims of (1)");
     }();
     [&] {
         struct Two { const char* name = ""; std::function<void (Params&)> f; bool far = false; bool recover = false; };
@@ -12224,9 +12232,9 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
             ok[k] = stale (r, legs[k].far, true) && (! s.recover || (r.vRec.keep && r.recErr <= 0.1));
             if (k == 3) off2d = std::abs (r.pubBot - r.g1Bot);
         }
-        check (ok[0], "(2a) Drive 8 -> 12: every premise and claim of (1), recovery included");
-        check (ok[1], "(2b) Mix 1 -> 0.5: every premise and claim of (1)");
-        check (ok[2], "(2c) Amount 0.5 -> 1.0: every premise and claim of (1)");
+        check (ok[0], "(2a) Drive 8 -> 12: the premises and landing claims of (1), recovery included");
+        check (ok[1], "(2b) Mix 1 -> 0.5: the premises and landing claims of (1)");
+        check (ok[2], "(2c) Amount 0.5 -> 1.0: the premises and landing claims of (1)");
         check (ok[3] && off2d <= 0.1f, "(2d) Haas Delay 12 -> 30 ms: NOT current, landed, and within 0.1 dB of the fresh "
                                        "engine -- currency is not accuracy");
     }();
@@ -12235,7 +12243,7 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
         s.pre = base; s.post = w2; s.edit = E; s.eng = U; s.forced = true;
         const Res r = runLeg (s);
         check (stale (r, true, false) && std::abs (r.phiF) <= 0.1 && r.residF <= 1.0e-3,
-               "(3) a FORCED engage after the same edit: every premise and claim of (1) but the bottom block (the forced "
+               "(3) a FORCED engage after the same edit: the premises and landing claims of (1) but the bottom block (the forced "
                "duck dry-fills) -- the published trajectory the on-throughout lane's within the forced bottom's module "
                "restarts (<= 0.01 dB); at the first full-level block the glide fraction phi <= 0.1");
     }();
@@ -12252,7 +12260,7 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
                      "fresh engine (Level Match on throughout plays the same)\n", "", r.stepUp, (double) (r.pubBot - r.g1Bot));
         check (r.pubBot > 0.0f && r.pubBot - r.g1Bot >= 0.5f,
                "premise (4): the published value at the bottom is a boost, >= 0.5 dB above the fresh engine");
-        check (stale (r, true, true), "(4) a POSITIVE stale value lands too: every premise and claim of (1) (pins the "
+        check (stale (r, true, true), "(4) a POSITIVE stale value lands too: the premises and landing claims of (1) (pins the "
                                       "decided behaviour; the surge is the Width-blind predict's, recorded)");
     }();
 
@@ -12283,7 +12291,7 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
         const Res re = runLeg (se);
         check (re.vPre.keep && re.phiF >= 0.5 && re.residF <= 1.0e-3 && re.vAfter.flush,
                "(E) Case B unchanged: current before, the engage that also changes the sound glides from unity (phi >= "
-               "0.5), and its bottom reports the change (FLUSHED after it)");
+               "0.5), and its bottom reports the change (FLUSHED after its fade-in)");
 
         Spec sg; sg.name = "(G) a flush's value (re-prepared after the edit)"; sg.prog = &progN;
         sg.pre = base; sg.post = w2; sg.edit = E; sg.eng = U; sg.flushAt = E + 1;

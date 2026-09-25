@@ -1071,12 +1071,14 @@ engine API) are fixed.
 >   switch (preset load, undo, redo) keep behaving like the same live edit. All three are the
 >   measure's own accepted lag, kept by the F13(2) decision (questions 2–4). The gain-only engage
 >   lands on that value whether or not the measure has caught up with the change: it is the value
->   Level Match left on throughout would be playing, and starting from unity instead measured worse
->   in most cases and brought back KI-031's swell (Devin review, re-examined 2026-09-25; ADR-0007,
->   Note of 2026-09-25, stale engage; Test 71, State test 135). One consequence is recorded with
->   it: after an edit that makes the sound louder while Level Match is boosting — a narrowed image
->   widened at Drive 0 — the engage steps up to the old boost (+4.25 dB above the level before on
->   uncorrelated noise), the surge Level Match on throughout plays too, because the prediction reads
+>   Level Match left on throughout would be publishing, and heading for, at that moment. Starting
+>   from unity instead measured worse in 54 of 75 engine cases, split about evenly on a wider
+>   processor set, and brought back KI-031's swell on Undo of Apply after an edit (Devin review,
+>   re-examined 2026-09-25; ADR-0007, Note of 2026-09-25, stale engage; Test 71, State test 135).
+>   One consequence is recorded with it: after an edit that makes the sound louder while Level
+>   Match is boosting — a narrowed image widened at Drive 0 — the engage steps up to the old boost
+>   (+4.25 dB above the level before on uncorrelated noise), louder than both the level before and
+>   the level after, the surge Level Match on throughout plays too, because the prediction reads
 >   only Drive and Mix.
 > Everything below is the pre-resolution record.
 
@@ -1120,6 +1122,10 @@ that change a discrete field, preset loads, undo and redo are not affected in th
 > mechanism but the measurement's: an engage that also changes the sound still starts from unity
 > (outside an A/B switch), because the published value describes the previous sound, and a gain-only
 > engage made shortly after a sound change lands on a value that is still converging. Both are F13(2), recorded under KI-030 and since kept by decision (ADR-0007, Amendment of 2026-09-24, F13(2)).
+> That landing was re-examined against Level Match's currency on 2026-09-25 and kept (ADR-0007, Note of
+> 2026-09-25, stale engage). Where the converging value is a boost above the level heard before —
+> an edit that made the sound louder while Level Match was boosting — the engage steps above both
+> levels, this issue's signature from the measurement's side; it is recorded under KI-030.
 > Everything below is the pre-ruling record.
 
 While Level Match is off, the gain it would apply rests at unity (0 dB). When a switch turns it on,
