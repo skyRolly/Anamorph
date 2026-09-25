@@ -1069,7 +1069,15 @@ engine API) are fixed.
 >   starts from unity (from the slot's gain at an A/B switch), and a gain-only engage made shortly
 >   after a sound change lands on a value that is still converging; forced swaps without an A/B
 >   switch (preset load, undo, redo) keep behaving like the same live edit. All three are the
->   measure's own accepted lag, kept by the F13(2) decision (questions 2–4).
+>   measure's own accepted lag, kept by the F13(2) decision (questions 2–4). The gain-only engage
+>   lands on that value whether or not the measure has caught up with the change: it is the value
+>   Level Match left on throughout would be playing, and starting from unity instead measured worse
+>   in most cases and brought back KI-031's swell (Devin review, re-examined 2026-09-25; ADR-0007,
+>   Note of 2026-09-25, stale engage; Test 71, State test 135). One consequence is recorded with
+>   it: after an edit that makes the sound louder while Level Match is boosting — a narrowed image
+>   widened at Drive 0 — the engage steps up to the old boost (+4.25 dB above the level before on
+>   uncorrelated noise), the surge Level Match on throughout plays too, because the prediction reads
+>   only Drive and Mix.
 > Everything below is the pre-resolution record.
 
 An A/B switch restores the destination slot's remembered Level-Match gain, and that value is right

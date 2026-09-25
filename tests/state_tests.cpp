@@ -41971,6 +41971,509 @@ static void testLevelMatchAbSlotCarriesTheValidityOfItsResult()
     }
 }
 
+// =====================================================================================================
+//  State test 135 -- A GAIN-ONLY LEVEL-MATCH ENGAGE LANDS ON THE VALUE THE MATCHER PUBLISHES, CURRENT OR NOT, ON
+//  THE PRODUCTION PATH (ADR-0007, Decision of 2026-09-25 on the Devin finding "Level Match engages on stale
+//  compensation". Test 71 is the engine half; State test 130 pins the landing, 133 the currency, 134 the A/B record)
+//
+//  THE CONTRACT. Level Match's analysis runs whether or not Level Match is on, so a switch that turns it on and
+//  changes nothing the measurement reads (Case A) lands the applied gain on the value that block publishes -- the
+//  value a Level Match on throughout publishes there -- whether or not that value has caught up with an earlier edit.
+//  Currency decides what a result may be carried into (a same-rate re-prepare, an A/B record), never where the applied
+//  gain joins the published trajectory; the landing validates nothing. An engage that also changes the sound still
+//  glides from unity (Case B), and a new sample rate still flushes.
+//
+//  THE METRIC. Heap processors in lockstep on one seeded correlated-noise stream (L = v, R = 0.6 v + 0.2 w; seed 135),
+//  driven only as a host and the editor drive them: gestures + pollUndoCoalesce, abCopyToOther, abSwitchTo,
+//  applyAutoGain, undo, processBlock, prepareToPlay; `getEngine().requestDuck()` only in a twin. P is
+//  getEngine().getMatchGainDb() after each block.
+//    CURRENCY (State tests 133 / 134): a prepareToPlay (48 kHz, 256) on a lane whose script is the run's to that point
+//      KEEPS a current result (P bit-identical across it) and FLUSHES anything else (P exactly 0 dB). Every verdict
+//      primes the run's own snapshot, which differs from the adopted state at most in the Level Match switch.
+//    APPLIED GAIN (M1, State test 130's): the run against a TWIN with the same history and Level Match off at a known
+//      Output Gain g_t that takes the same duck at the same block -- the toggle's replaced by an inert Multiband Bands
+//      4 -> 3 with Multiband off, an Undo's by requestDuck() with nothing changed. Per block ghat = sum (run twin) /
+//      sum twin^2 over both channels, g = 20 log10 ghat + g_t (Level Match on replaces Output Gain), D = g - P, and the
+//      residual <= 1e-3 wherever D is judged. The bottom is event + 2 (read from the twin's output: its last exact
+//      zero is in event + 1), the first full-level block F event + 8.
+//    ON THROUGHOUT: the same history with Level Match on from the first block (no duck): its P.
+//    FRESH: a processor prepared at the destination with Level Match on and fed the stream from sample 0.
+//
+//  THE LEGS (Advanced Mode on, Haas 50 %, Width 100 %, Drive 8, Multiband off, Output Gain 0, Level Match off; the
+//  edit by gesture at 5.5 s, the result measured by then; the toggle 0.3 s later unless stated).
+//   (1) THE REVIEW'S CASE: Width 1.0 -> 2.0, then the toggle. Premises: KEPT before the edit and within 0.05 dB of a
+//       fresh processor at Width 1.0; the edit's block differs from the lane without it; FLUSHED after the edit, at
+//       the toggle and right before the bottom. Claims: the bottom block plays the value it publishes (|D| <= 0.1 dB,
+//       that value >= 3 dB from unity) although it is >= 0.5 dB off a fresh processor at Width 2.0; P is the
+//       on-throughout lane's in every block (<= 1e-4 dB); FLUSHED right after the landing (it validates nothing);
+//       KEPT 6 s after the edit with the applied gain within 0.1 dB of the fresh processor over the 0.5 s before
+//       (recovery); a 44.1 kHz prepareToPlay there flushes to 0 dB (a new rate, unchanged).
+//   (1') The toggle one block after the edit. (2a) Drive 8 -> 12 (the predict pre-ducks). (2b) Mix 1.0 -> 0.5.
+//   (3) UNDO OF APPLY on a stale result -- O4g's own route (KI-031): Level Match on and converged, Apply at 4 s (off,
+//       Output Gain m), Width 1.0 -> 2.0 at 5.5 s, Undo (Width back) 0.2 s later -- a forced bottom that adopts a
+//       measurement change -- and Undo (of Apply) 0.3 s after that: FLUSHED at its bottom (not current), yet D_F
+//       within 0.1 dB and from the Undo on the applied gain never leaves [m, P] by more than 0.2 dB: no swell. An
+//       engage gated on currency glides from unity here and swells to within ~0.1 dB of +|m| over the level before.
+//   (4) A/B, Level Match off in both slots: slot B (a Copy of A, active from the first block) edited Width 1.0 -> 2.0,
+//       left 0.3 s later (its record is not measured), 6 s on A, back (restored NOT current: FLUSHED right after the
+//       return's bottom), and the toggle 0.3 s later: FLUSHED at its bottom, lands (|D| <= 0.1 dB), FLUSHED after it
+//       -- the engage does not promote a stale A/B value. Control (4c): B left 6 s after the edit (measured): KEPT
+//       after the return's bottom and after the landing.
+//   CONTROLS. (C) the toggle 6 s after (1)'s edit: KEPT at the toggle and after the landing, lands, no excursion
+//   beyond [0 dB, P] by > 0.2 dB (O4g). (D) Output Gain 0 -> -6 (no input to the measurement; heard): KEPT after it
+//   and at the bottom, lands. (E) Case B: Width 1.0 -> 2.0 and the toggle in ONE message-thread turn: glides from
+//   unity (phi = D_F / (0 - P_F) >= 0.5) and FLUSHED after the bottom.
+static void testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor()
+{
+    std::printf ("State test 135: a gain-only Level-Match engage lands on the value the matcher publishes, current or not"
+                 " (ADR-0007; Devin)\n");
+
+    using Proc = AnamorphAudioProcessor;
+    using KV   = std::vector<std::pair<const char*, float>>;
+    constexpr double sr = 48000.0;
+    constexpr int block = 256;
+    const int sec  = (int) std::lround (sr / block);   // 188 blocks: one second
+    const int half = sec / 2;
+    const int E    = (int) std::lround (5.5 * sec);    // the edit
+    const int dEng = (int) std::lround (0.3 * sec);    // the toggle, 0.3 s after it
+    const int U    = E + dEng;
+    const int kBot = 2, kFull = 8;                     // a duck's bottom / first full-level block, from its event
+    const int W    = (int) std::lround (0.6 * sec);    // the window after a landing
+    const int Rc   = E + 6 * sec;                      // the recovery verdict
+    const int D6   = 6 * sec;
+
+    auto setPlain = [] (Proc& p, const char* id, float v)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+    };
+    auto userEdit = [] (Proc& p, const char* id, float v)          // one gesture, one undo step
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->beginChangeGesture(); rp->setValueNotifyingHost (rp->convertTo0to1 (v)); rp->endChangeGesture();
+        p.pollUndoCoalesce();
+    };
+    auto with = [] (KV kv, const KV& edits)
+    {
+        for (const auto& [id, v] : edits)
+        {
+            bool found = false;
+            for (auto& e : kv)
+                if (std::strcmp (e.first, id) == 0) { e.second = v; found = true; }
+            if (! found) kv.push_back ({ id, v });
+        }
+        return kv;
+    };
+    auto make = [&] (const KV& kv)
+    {
+        auto p = std::make_unique<Proc>();                       // heap: State test 59's note
+        for (const auto& [id, v] : kv) setPlain (*p, id, v);
+        p->pollUndoCoalesce();
+        p->prepareToPlay (sr, block);
+        return p;
+    };
+    const KV base = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "width", 1.0f },
+                      { "mbEnable", 0.0f }, { "drive", 8.0f }, { "outputGain", 0.0f }, { "autoGainMatch", 0.0f } };
+    const KV on = with (base, { { "autoGainMatch", 1.0f } });
+
+    // ---- lanes: processors in lockstep on one seeded stream (State tests 131-134) ---------------------------
+    struct Lane
+    {
+        std::unique_ptr<Proc> p;
+        juce::AudioBuffer<float> out;
+        std::vector<float> pub;                   // P after each processed block
+        std::vector<float> y;                     // the output over [recFrom, recTo), interleaved
+        int endAt = 0, recFrom = 0, recTo = 0;
+        int prepAt = -1;                          // the verdict prepareToPlay, between blocks prepAt - 1 and prepAt
+        float before = 0.0f, after = 0.0f;
+    };
+    struct Ev { int b = 0; std::function<void()> f; };
+    struct Rig
+    {
+        std::vector<Lane> lane;
+        std::vector<Ev> ev;
+        juce::Random rng { 135 };
+        juce::AudioBuffer<float> in;
+        int at = 0;
+    };
+    auto rig = std::make_unique<Rig>();
+    Rig& r = *rig;
+    r.in.setSize (2, block);
+    r.lane.reserve (64);
+    auto L = [&r] (int k) -> Lane& { return r.lane[(size_t) k]; };
+    auto P = [&r] (int k) -> Proc& { return *r.lane[(size_t) k].p; };
+    auto addLane = [&] (const KV& kv, int endAt, int recFrom = 0, int recTo = 0)
+    {
+        Lane ln;
+        ln.p = make (kv);
+        ln.out.setSize (2, block);
+        ln.endAt = endAt; ln.recFrom = recFrom; ln.recTo = recTo;
+        ln.y.assign ((size_t) juce::jmax (0, recTo - recFrom) * 2 * block, 0.0f);
+        r.lane.push_back (std::move (ln));
+        return (int) r.lane.size() - 1;
+    };
+    auto at = [&r] (int b, std::function<void()> f) { r.ev.push_back ({ b, std::move (f) }); };
+    auto step = [&]
+    {
+        juce::MidiBuffer midi;
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = r.rng.nextFloat() - 0.5f, w = r.rng.nextFloat() - 0.5f;
+            r.in.setSample (0, i, v); r.in.setSample (1, i, 0.6f * v + 0.2f * w);
+        }
+        for (auto& ln : r.lane)
+        {
+            if (r.at >= ln.endAt) continue;
+            for (int ch = 0; ch < 2; ++ch) ln.out.copyFrom (ch, 0, r.in, ch, 0, block);
+            midi.clear();
+            ln.p->processBlock (ln.out, midi);
+            ln.pub.push_back (ln.p->getEngine().getMatchGainDb());
+            if (r.at >= ln.recFrom && r.at < ln.recTo)
+                for (int i = 0; i < block; ++i)
+                {
+                    ln.y[(size_t) ((r.at - ln.recFrom) * block + i) * 2]     = ln.out.getSample (0, i);
+                    ln.y[(size_t) ((r.at - ln.recFrom) * block + i) * 2 + 1] = ln.out.getSample (1, i);
+                }
+        }
+        ++r.at;
+    };
+    // The verdict prepareToPlay, scheduled like any other event: P right before / right after.
+    auto prepAt = [&] (int k, int b, double rate)
+    {
+        at (b, [&, k, rate]
+        {
+            Lane& ln = L (k);
+            ln.prepAt = r.at;
+            ln.before = ln.p->getEngine().getMatchGainDb();
+            ln.p->prepareToPlay (rate, block);
+            ln.after = ln.p->getEngine().getMatchGainDb();
+        });
+    };
+    auto isFlush = [&L] (int k) { return L (k).prepAt >= 0 && ! juce::exactlyEqual (L (k).before, 0.0f)
+                                         && juce::exactlyEqual (L (k).after, 0.0f); };
+    auto isKeep  = [&L] (int k) { return L (k).prepAt >= 0 && ! juce::exactlyEqual (L (k).before, 0.0f)
+                                         && std::memcmp (&L (k).after, &L (k).before, sizeof (float)) == 0; };
+    auto word = [&] (int k) { return isKeep (k) ? "KEPT" : isFlush (k) ? "FLUSHED" : "neither"; };
+    struct Fit { double gDb = 0.0, resid = 1.0; bool ok = false; };
+    auto fit = [&L] (int run, int twin, int b)                   // M1: the run's gain over the twin in block b
+    {
+        const Lane& a = L (run);
+        const Lane& t = L (twin);
+        const float* x = a.y.data() + (size_t) (b - a.recFrom) * 2 * block;
+        const float* z = t.y.data() + (size_t) (b - t.recFrom) * 2 * block;
+        double num = 0.0, den = 0.0, ex = 0.0;
+        for (int i = 0; i < 2 * block; ++i) { num += (double) x[i] * z[i]; den += (double) z[i] * z[i]; ex += (double) x[i] * x[i]; }
+        Fit f;
+        if (! (den > 1.0e-20 && ex > 1.0e-20)) return f;
+        const double g = num / den;
+        double res = 0.0;
+        for (int i = 0; i < 2 * block; ++i) { const double d = (double) x[i] - g * z[i]; res += d * d; }
+        f.gDb = 20.0 * std::log10 (juce::jmax (1.0e-12, std::abs (g))); f.resid = res / ex; f.ok = true;
+        return f;
+    };
+    auto pubAt = [&L] (int k, int b) { return L (k).pub[(size_t) b]; };
+
+    // =====================================================================================================
+    //  THE LANES
+    // =====================================================================================================
+    // A LEG: the run (a script of events), its twin and its verdict lanes -- each verdict lane is the run's script
+    // with a prepareToPlay at its block. `script (k, withToggle)` schedules the history on lane k; the run and the
+    // verdicts take the toggle, the twin takes the inert duck in its place.
+    struct Leg
+    {
+        const char* name = "";
+        int run = -1, twin = -1, on = -1, fresh = -1, noEdit = -1, eng = 0;
+        double gT = 0.0;
+        std::vector<std::pair<const char*, int>> v;       // (label, verdict lane)
+    };
+    auto verdictOf = [] (const Leg& g, const char* lab)
+    {
+        for (const auto& x : g.v) if (std::strcmp (x.first, lab) == 0) return x.second;
+        return -1;
+    };
+    // The Devin family: an edit by gesture at E, the toggle at `eng`.
+    auto family = [&] (const char* name, const char* id, float v, int eng, bool recover, bool onLane, const KV& fresh)
+    {
+        Leg g;
+        g.name = name; g.eng = eng;
+        const int endRun = recover ? Rc + 1 : eng + kBot + W + 2;
+        const int recFrom = E - 1;                               // the edit block too: the route premise
+        auto script = [&, id, v, eng] (int k, int toggle)       // toggle: 1 the toggle, 0 the inert duck, -1 nothing
+        {
+            at (E, [&, k, id, v] { userEdit (P (k), id, v); });
+            if (toggle == 1) at (eng, [&, k] { userEdit (P (k), "autoGainMatch", 1.0f); });
+            if (toggle == 0) at (eng, [&, k] { userEdit (P (k), "mbBands", 3.0f); });
+        };
+        g.run = addLane (base, endRun, recFrom, endRun);
+        script (g.run, 1);
+        g.twin = addLane (base, endRun, recFrom, endRun);
+        script (g.twin, 0);
+        if (onLane) { g.on = addLane (on, endRun); script (g.on, -1); }
+        g.fresh = addLane (fresh, endRun);
+        g.noEdit = addLane (base, E + 2, E, E + 2);
+        const std::pair<const char*, int> pts[] = { { "pre", E - 1 }, { "edit", E + 1 }, { "eng", eng },
+                                                    { "bot", eng + kBot }, { "after", eng + kBot + 1 } };
+        for (const auto& [lab, b] : pts)
+        {
+            const int k = addLane (base, b + 1);
+            if (b > E) script (k, 1);
+            prepAt (k, b, sr);
+            g.v.push_back ({ lab, k });
+        }
+        if (recover)
+        {
+            const std::pair<const char*, double> rates[] = { { "rec", sr }, { "rate", 44100.0 } };   // a new rate
+            for (const auto& [lab, rate] : rates)
+            {
+                const int k = addLane (base, Rc + 1);
+                script (k, 1);
+                prepAt (k, Rc, rate);
+                g.v.push_back ({ lab, k });
+            }
+        }
+        return g;
+    };
+    const KV w2 = with (on, { { "width", 2.0f } });
+    const int fBase = addLane (on, E);                            // a fresh processor at the origin
+    Leg l1  = family ("(1) Width 1.0 -> 2.0, the toggle 0.3 s later", "width", 2.0f, U, true, true, w2);
+    Leg l1b = family ("(1') the toggle one block after the edit", "width", 2.0f, E + 1, false, true, w2);
+    Leg l2a = family ("(2a) Drive 8 -> 12", "drive", 12.0f, U, false, true, with (on, { { "drive", 12.0f } }));
+    Leg l2b = family ("(2b) Mix 1.0 -> 0.5", "mix", 0.5f, U, false, true, with (on, { { "mix", 0.5f } }));
+    Leg lC  = family ("(C) the toggle 6 s after the edit", "width", 2.0f, Rc, false, false, w2);
+    Leg lD  = family ("(D) Output Gain 0 -> -6", "outputGain", -6.0f, U, false, false, with (on, { { "outputGain", -6.0f } }));
+    lD.gT = -6.0;
+
+    // (E) Case B: Width and the toggle in one message-thread turn
+    const int eRun = addLane (base, U + kBot + W + 2, U - 2, U + kBot + W + 2);
+    at (U, [&] { userEdit (P (eRun), "width", 2.0f); userEdit (P (eRun), "autoGainMatch", 1.0f); });
+    const int eTwin = addLane (base, U + kBot + W + 2, U - 2, U + kBot + W + 2);
+    at (U, [&] { userEdit (P (eTwin), "width", 2.0f); userEdit (P (eTwin), "mbBands", 3.0f); });
+    const int ePre = addLane (base, U);
+    prepAt (ePre, U - 1, sr);
+    const int eAfter = addLane (base, U + kBot + 2);
+    at (U, [&] { userEdit (P (eAfter), "width", 2.0f); userEdit (P (eAfter), "autoGainMatch", 1.0f); });
+    prepAt (eAfter, U + kBot + 1, sr);
+
+    // (3) Undo of Apply on a stale result
+    const int A3 = 4 * sec, u1 = E + (int) std::lround (0.2 * sec), U3 = u1 + dEng;
+    float m3 = 0.0f;
+    auto applyScript = [&] (int k, bool undoApply)
+    {
+        at (A3, [&, k] { P (k).applyAutoGain(); P (k).pollUndoCoalesce(); });
+        at (E,  [&, k] { userEdit (P (k), "width", 2.0f); });
+        at (u1, [&, k] { P (k).undo(); });
+        if (undoApply) at (U3, [&, k] { P (k).undo(); });
+        else           at (U3, [&, k] { P (k).getEngine().requestDuck(); });
+    };
+    const int end3 = U3 + kBot + W + 2;
+    const int run3 = addLane (on, end3, U3 - 2, end3);
+    applyScript (run3, true);
+    at (A3, [&] { m3 = P (run3).getAPVTS().getRawParameterValue ("outputGain")->load(); });
+    const int twin3 = addLane (on, end3, U3 - 2, end3);
+    applyScript (twin3, false);
+    const int bot3 = addLane (on, U3 + kBot + 1);
+    applyScript (bot3, true);
+    prepAt (bot3, U3 + kBot, sr);
+
+    // (4) A/B, Level Match off in both slots
+    auto abScript = [&] (int k, int leaveAfter, int toggle)
+    {
+        at (0, [&, k] { P (k).abCopyToOther(); P (k).abSwitchTo (1); });
+        at (E, [&, k] { userEdit (P (k), "width", 2.0f); });
+        at (E + leaveAfter, [&, k] { P (k).abSwitchTo (0); });
+        at (E + leaveAfter + D6, [&, k] { P (k).abSwitchTo (1); });
+        if (toggle == 1) at (E + leaveAfter + D6 + dEng, [&, k] { userEdit (P (k), "autoGainMatch", 1.0f); });
+        if (toggle == 0) at (E + leaveAfter + D6 + dEng, [&, k] { userEdit (P (k), "mbBands", 3.0f); });
+    };
+    struct AbLeg { const char* name = ""; int leave = 0, run = 0, twin = 0, vRet = 0, vBot = 0, vAfter = 0, eng = 0; };
+    AbLeg ab[2] = { { "(4) B left 0.3 s after its edit, back, the toggle", dEng, 0, 0, 0, 0, 0, 0 },
+                    { "(4c) B left 6 s after its edit (measured)", D6, 0, 0, 0, 0, 0, 0 } };
+    for (auto& a : ab)
+    {
+        const int back = E + a.leave + D6;
+        a.eng = back + dEng;
+        const int e = a.eng + kBot + W + 2;
+        a.run = addLane (base, e, a.eng - 2, e);   abScript (a.run, a.leave, 1);
+        a.twin = addLane (base, e, a.eng - 2, e);  abScript (a.twin, a.leave, 0);
+        a.vRet = addLane (base, back + kBot + 2);  abScript (a.vRet, a.leave, -1); prepAt (a.vRet, back + kBot + 1, sr);
+        a.vBot = addLane (base, a.eng + kBot + 1); abScript (a.vBot, a.leave, 1);  prepAt (a.vBot, a.eng + kBot, sr);
+        a.vAfter = addLane (base, a.eng + kBot + 2); abScript (a.vAfter, a.leave, 1); prepAt (a.vAfter, a.eng + kBot + 1, sr);
+    }
+
+    // =====================================================================================================
+    //  RUN
+    // =====================================================================================================
+    int end = 0;
+    for (const auto& ln : r.lane) end = juce::jmax (end, ln.endAt);
+    std::stable_sort (r.ev.begin(), r.ev.end(), [] (const Ev& a, const Ev& b) { return a.b < b.b; });
+    size_t next = 0;
+    for (int b = 0; b <= end; ++b)
+    {
+        while (next < r.ev.size() && r.ev[next].b == b) r.ev[next++].f();
+        if (b < end) step();
+    }
+
+    // =====================================================================================================
+    //  THE VERDICTS
+    // =====================================================================================================
+    struct Judged { double dBot = 0.0, residBot = 1.0, dF = 0.0, phiF = 0.0, exc = -1.0e9, pubVsOn = 0.0, recErr = 0.0;
+                    float pubBot = 0.0f, freshBot = 0.0f; int lastZero = -1; bool route = false; };
+    auto judge = [&] (const Leg& g, bool recover)
+    {
+        Judged j;
+        const int bot = g.eng + kBot, F = g.eng + kFull;
+        const Fit fb = fit (g.run, g.twin, bot), ff = fit (g.run, g.twin, F);
+        j.pubBot = pubAt (g.run, bot); j.freshBot = pubAt (g.fresh, bot);
+        j.dBot = fb.gDb + g.gT - j.pubBot; j.residBot = fb.ok ? fb.resid : 1.0;
+        j.dF = ff.gDb + g.gT - pubAt (g.run, F);
+        j.phiF = j.dF / (0.0 - (double) pubAt (g.run, F));
+        for (int b = g.eng; b <= bot + W; ++b)
+        {
+            const Fit f = fit (g.run, g.twin, b);
+            if (! f.ok) continue;
+            const double gg = f.gDb + g.gT, pb = pubAt (g.run, b);
+            j.exc = juce::jmax (j.exc, juce::jmax (juce::jmin (g.gT, pb) - gg, gg - juce::jmax (g.gT, pb)));
+        }
+        if (g.on >= 0)
+            for (int b = 0; b <= bot + W; ++b)
+                j.pubVsOn = juce::jmax (j.pubVsOn, std::abs ((double) pubAt (g.run, b) - (double) pubAt (g.on, b)));
+        if (recover)
+            for (int b = Rc - half; b < Rc; ++b)
+                j.recErr = juce::jmax (j.recErr, std::abs (fit (g.run, g.twin, b).gDb + g.gT - (double) pubAt (g.fresh, b)));
+        const Lane& t = L (g.twin);
+        for (int b = g.eng; b < F; ++b)
+            for (int i = 0; i < 2 * block; ++i)
+                if (juce::exactlyEqual (t.y[(size_t) ((b - t.recFrom) * 2 * block + i)], 0.0f)) j.lastZero = b;
+        const Lane& a = L (g.run);
+        const Lane& n = L (g.noEdit);
+        if (a.recFrom <= E)
+            j.route = std::memcmp (a.y.data() + (size_t) (E - a.recFrom) * 2 * block, n.y.data(),
+                                   sizeof (float) * 2 * (size_t) block) != 0;
+        else
+            j.route = ! juce::exactlyEqual (pubAt (g.run, E + 1), pubAt (g.noEdit, E + 1));
+        std::printf ("  %-48s: before %s (%+.3f, fresh %+.3f) | edit %s | toggle %s | bottom %s, P %+.3f (fresh %+.3f), "
+                     "plays D %+.3f | after it %s | P vs on-throughout %.1e | excursion %+.3f\n",
+                     g.name, word (verdictOf (g, "pre")), (double) pubAt (verdictOf (g, "pre"), E - 2),
+                     (double) pubAt (fBase, E - 2), word (verdictOf (g, "edit")), word (verdictOf (g, "eng")),
+                     word (verdictOf (g, "bot")), (double) j.pubBot, (double) j.freshBot, j.dBot,
+                     word (verdictOf (g, "after")), j.pubVsOn, j.exc);
+        return j;
+    };
+    // A STALE LANDING, judged the same way on every leg of the family that has one
+    auto stale = [&] (const Leg& g, const Judged& j)
+    {
+        return isKeep (verdictOf (g, "pre"))
+            && std::abs (pubAt (verdictOf (g, "pre"), E - 2) - pubAt (fBase, E - 2)) <= 0.05f && j.route
+            && isFlush (verdictOf (g, "edit")) && isFlush (verdictOf (g, "eng")) && isFlush (verdictOf (g, "bot"))
+            && std::abs (j.dBot) <= 0.1 && j.residBot <= 1.0e-3 && std::abs (j.pubBot) >= 3.0f
+            && std::abs (j.pubBot - j.freshBot) >= 0.5f && j.pubVsOn <= 1.0e-4
+            && isFlush (verdictOf (g, "after"));
+    };
+
+    const Judged j1 = judge (l1, true);
+    std::printf ("  %-48s: 6 s after the edit %s, max|applied - fresh| %.3f dB over 0.5 s | at 44.1 kHz %+.4f -> %+.4f\n", "",
+                 word (verdictOf (l1, "rec")), j1.recErr, (double) L (verdictOf (l1, "rate")).before,
+                 (double) L (verdictOf (l1, "rate")).after);
+    check (j1.lastZero + 1 == U + kBot, "premise (1): the toggle's bottom, read from the twin's output, is event + 2");
+    check (isKeep (verdictOf (l1, "pre")) && std::abs (pubAt (verdictOf (l1, "pre"), E - 2) - pubAt (fBase, E - 2)) <= 0.05f,
+           "premise (1): the result was current and converged before the edit (KEPT; within 0.05 dB of a fresh processor)");
+    check (j1.route, "premise (1): the Width gesture reached the engine (the edit block differs from the lane without it)");
+    check (isFlush (verdictOf (l1, "edit")) && isFlush (verdictOf (l1, "eng")) && isFlush (verdictOf (l1, "bot")),
+           "premise (1): NOT current after the edit, at the toggle and right before the bottom (FLUSHED)");
+    check (std::abs (j1.dBot) <= 0.1 && j1.residBot <= 1.0e-3 && std::abs (j1.pubBot) >= 3.0f,
+           "(1) the toggle's bottom block plays the value it publishes (|D| <= 0.1 dB; that value >= 3 dB from unity)");
+    check (std::abs (j1.pubBot - j1.freshBot) >= 0.5f, "non-vacuity (1): the landed value is >= 0.5 dB off a fresh processor");
+    check (j1.pubVsOn <= 1.0e-4, "(1) P is the on-throughout lane's in every block (<= 1e-4 dB)");
+    check (isFlush (verdictOf (l1, "after")), "(1) the landing validates nothing: FLUSHED right after the landing block");
+    check (isKeep (verdictOf (l1, "rec")) && j1.recErr <= 0.1,
+           "(1) recovery: KEPT 6 s after the edit, the applied gain within 0.1 dB of the fresh processor over the 0.5 s before");
+    check (isFlush (verdictOf (l1, "rate")), "(1) a new rate still flushes (a 44.1 kHz prepareToPlay: exactly 0 dB)");
+    check (stale (l1b, judge (l1b, false)), "(1') the toggle one block after the edit: every premise and claim of (1)");
+    check (stale (l2a, judge (l2a, false)), "(2a) Drive 8 -> 12: every premise and claim of (1)");
+    check (stale (l2b, judge (l2b, false)), "(2b) Mix 1.0 -> 0.5: every premise and claim of (1)");
+
+    // (3) Undo of Apply on a stale result
+    {
+        const int bot = U3 + kBot, F = U3 + kFull;
+        const Fit ff = fit (run3, twin3, F);
+        const double dF = ff.gDb + m3 - pubAt (run3, F);
+        double exc = -1.0e9, worstUp = -1.0e9;
+        for (int b = U3; b <= bot + W; ++b)
+        {
+            const Fit f = fit (run3, twin3, b);
+            if (! f.ok) continue;
+            const double g = f.gDb + m3, pb = pubAt (run3, b);
+            exc = juce::jmax (exc, juce::jmax (juce::jmin ((double) m3, pb) - g, g - juce::jmax ((double) m3, pb)));
+            worstUp = juce::jmax (worstUp, g - (double) m3);
+        }
+        const bool state = P (run3).getAPVTS().getRawParameterValue ("autoGainMatch")->load() > 0.5f
+                        && std::abs (P (run3).getAPVTS().getRawParameterValue ("outputGain")->load()) < 1.0e-6f
+                        && std::abs (P (run3).getAPVTS().getRawParameterValue ("width")->load() - 1.0f) < 1.0e-6f;
+        std::printf ("  %-48s: m %+.3f | its bottom %s | P_F %+.3f, D_F %+.3f (resid %.1e) | excursion %+.3f, highest "
+                     "%+.3f dB over the level before\n", "(3) Undo of Apply on a stale result", (double) m3, word (bot3),
+                     (double) pubAt (run3, F), dF, ff.resid, exc, worstUp);
+        check (state && std::abs (m3) >= 3.0f && std::abs (m3 - pubAt (run3, F)) <= 0.5f,
+               "premise (3): the two Undos restored Level Match on, Output Gain 0 and Width 1.0; Apply locked m (>= 3 dB "
+               "from unity, within 0.5 dB of P_F)");
+        check (isFlush (bot3), "premise (3): the result was NOT current at the Undo of Apply's bottom (FLUSHED)");
+        check (std::abs (dF) <= 0.1 && ff.resid <= 1.0e-3 && exc <= 0.2,
+               "(3) Undo of Apply on a stale result lands (D_F within 0.1 dB) and never leaves [m, P] by more than 0.2 dB: "
+               "no swell (KI-031)");
+    }
+
+    // (4) A/B
+    for (auto& a : ab)
+    {
+        const int bot = a.eng + kBot;
+        const Fit fb = fit (a.run, a.twin, bot);
+        const double dBot = fb.gDb - pubAt (a.run, bot);
+        std::printf ("  %-48s: after the return's bottom %s | the toggle's bottom %s, P %+.3f, plays D %+.3f | after it %s\n",
+                     a.name, word (a.vRet), word (a.vBot), (double) pubAt (a.run, bot), dBot, word (a.vAfter));
+        if (a.leave == dEng)
+        {
+            check (isFlush (a.vRet) && isFlush (a.vBot),
+                   "premise (4): slot B's record was not measured -- restored NOT current (FLUSHED after the return's bottom and "
+                   "at the toggle's)");
+            check (std::abs (dBot) <= 0.1 && fb.ok && fb.resid <= 1.0e-3 && std::abs (pubAt (a.run, bot)) >= 3.0f,
+                   "(4) the toggle on the restored slot lands on the value it publishes (|D| <= 0.1 dB)");
+            check (isFlush (a.vAfter), "(4) ...and does not promote the stale A/B value: FLUSHED after the landing");
+        }
+        else
+            check (isKeep (a.vRet) && isKeep (a.vAfter) && std::abs (dBot) <= 0.1 && fb.ok && fb.resid <= 1.0e-3,
+                   "control (4c): a measured record comes back current (KEPT after the return's bottom), lands, and stays KEPT");
+    }
+
+    // CONTROLS
+    const Judged jC = judge (lC, false);
+    check (isKeep (verdictOf (lC, "eng")) && isKeep (verdictOf (lC, "after")) && std::abs (jC.dBot) <= 0.1
+           && jC.residBot <= 1.0e-3 && jC.exc <= 0.2 && std::abs (jC.pubBot - jC.freshBot) <= 0.2f,
+           "(C) a CURRENT result lands (O4g): KEPT at the toggle and after the landing, the bottom plays its value, no "
+           "excursion beyond [0 dB, P] by > 0.2 dB, within 0.2 dB of the fresh processor");
+    const Judged jD = judge (lD, false);
+    check (jD.route && isKeep (verdictOf (lD, "edit")) && isKeep (verdictOf (lD, "bot")) && std::abs (jD.dBot) <= 0.1
+           && jD.residBot <= 1.0e-3,
+           "(D) Output Gain 0 -> -6 (heard; nothing the measurement reads) never made the result stale (KEPT after it and at "
+           "the bottom), and the toggle lands");
+    {
+        const int F = U + kFull;
+        Fit ff;
+        {
+            const Lane& a = L (eRun); const Lane& t = L (eTwin);
+            const float* x = a.y.data() + (size_t) (F - a.recFrom) * 2 * block;
+            const float* z = t.y.data() + (size_t) (F - t.recFrom) * 2 * block;
+            double num = 0.0, den = 0.0;
+            for (int i = 0; i < 2 * block; ++i) { num += (double) x[i] * z[i]; den += (double) z[i] * z[i]; }
+            ff.ok = den > 1.0e-20; ff.gDb = ff.ok ? 20.0 * std::log10 (juce::jmax (1.0e-12, std::abs (num / den))) : 0.0;
+        }
+        const double phi = (ff.gDb - pubAt (eRun, F)) / (0.0 - (double) pubAt (eRun, F));
+        std::printf ("  %-48s: before %s | P_F %+.3f, phi %.3f | after the bottom %s\n", "(E) Case B: Width and the toggle in one turn",
+                     word (ePre), (double) pubAt (eRun, F), phi, word (eAfter));
+        check (isKeep (ePre) && ff.ok && phi >= 0.5 && isFlush (eAfter),
+               "(E) Case B unchanged: current before, the engage that also changes the sound glides from unity (phi >= 0.5), "
+               "and its bottom reports the change (FLUSHED after it)");
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -42168,6 +42671,7 @@ int main (int argc, char* argv[])
     testLevelMatchKeptResultPlaysFromTheFirstQuietBlock();
     testLevelMatchReprepareKeepsOnlyACurrentResultThroughTheProcessor();
     testLevelMatchAbSlotCarriesTheValidityOfItsResult();
+    testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

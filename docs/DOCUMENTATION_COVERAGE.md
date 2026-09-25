@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-25), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), and its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from) — whose entries are the **76th** to **82nd passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-25), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), and its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect) — whose entries are the **76th** to **83rd passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,55 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 83rd pass — 2026-09-25, PR #156 (the Devin review: "Level Match engages on stale compensation")
+
+**Scope.** Devin's review of `1c22d51`: *"Level Match engages on stale compensation"* at
+`AnamorphEngine.cpp:1270-1271`. A live measurement-input edit leaves the result not current, Level Match
+is turned on before the measure catches up, `measChangedAtBottom` is false, and Case A lands the published
+value. The finding was reproduced through the processor and the engine, every landing path was audited,
+the proposed guard and three alternatives were measured, and the finding was decided under the owner's
+authorization: **not a defect; the landing is kept** (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §P).
+
+**The decision.**
+- **What the landed value is.** Level Match on throughout publishes the same value at that block (within
+  1.6e-5 dB, 85 of 85 engine landings). The error against a fresh instance is the measure's own
+  convergence lag, which Level Match on throughout plays identically (505 processor landings, within
+  0.07 dB mean / 0.12 dB peak).
+- **What currency governs.** What a result may be carried into: a re-prepare, an A/B record. Not where
+  the applied gain joins the published trajectory. The landing validates nothing.
+- **The proposed guard (`isResultCurrent()`).** Worse on the 500 ms mean in 54 of 75 engine rows.
+  - The review's own case goes 2.02 → 5.90 dB over 120 ms (peak +2.04 → +7.61).
+  - It reopens KI-031's swell on Undo of Apply after an edit (peak +5.33 dB).
+  - It fails Test 66 (6 checks), whose lanes already engage on a non-current result.
+- **The rest.** Measured-gated and capped variants fail accepted coverage too. No production behaviour
+  changes.
+
+**Tests.**
+- **DSP Test 71** (`testLevelMatchEngageLandsOnThePublishedTrajectory`): 27 checks.
+- **State test 135** (`testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor`): 23 checks.
+- **Premises, each asserted:** current before; the edit reached the engine; not current at the engage
+  and the bottom.
+- **Claims:** the landing on the on-throughout trajectory; nothing validated; recovery; a new rate
+  flushing.
+- **Controls:** current, irrelevant edit, Case B, a flush's value, Undo of Apply on a stale result, A/B
+  with a not-measured record.
+- **Suites:** DSP 811 / 0, State 5434 / 0.
+
+**Mutation.** Six engine variants, each through both suites (worklog §P6); every one is rejected by Test
+71 or State test 135.
+
+**Documents changed.**
+- **ADR-0007:** a new dated *Note* (stale engage): the reproduction, what the landed value is, enabling
+  versus having a current result, the options measured, the decision, the recorded positive stale step,
+  and the gate record. The O4g amendment's Case A premise, "the boundary with F13(2)" and the F13(2)
+  table's Q4 row and paragraph are annotated in place.
+- **`KNOWN_ISSUES.md`:** KI-030's engage bullet.
+- **`TESTING.md`:** Test 71 and State test 135.
+- **The worklog:** §P.
+- **Code comments:** `AnamorphEngine.cpp` (the landing predicate's comment, and the bottom's currency
+  comment corrected for the A/B provenance restore), `LoudnessMatch.h` (`isResultCurrent`).
+- **This file:** this entry and the *Last updated* line.
 
 ## 82nd pass — 2026-09-25, PR #156 (the Devin review: an unsettled A/B gain survived a re-prepare)
 

@@ -492,6 +492,51 @@ record measured, every restore current) fails 15; HEAD's own engine behind a six
 Every premise and keep passes on both. Each of M1–M15 (worklog §O7) and five further variants the
 verifier added is rejected.
 
+**A gain-only Level-Match engage lands on the value the matcher publishes, current or not — Test 71
+(2026-09-25; ADR-0007, Note of 2026-09-25, stale engage; the Devin review of PR #156, "Level Match engages
+on stale compensation").**
+
+*The contract.* The matcher runs whether or not Level Match is on. A switch that turns Level Match on and
+changes nothing the measurement reads (Case A) therefore finds it already measuring the sound that plays.
+The applied gain lands on the value that block publishes: the value Level Match on throughout publishes
+there, whether or not it has caught up with an earlier edit (`isResultCurrent`). Currency decides what a
+result may be carried into (a re-prepare, an A/B record), not where the applied gain joins the published
+trajectory. The landing validates nothing.
+
+**Test 71** (`testLevelMatchEngageLandsOnThePublishedTrajectory`) drives the engine through the processor's
+prime / prepare / setParameters sequence. Each lane runs from sample 0 on one seeded programme.
+- **Currency.** A same-rate re-prepare inserted into the run's own script keeps a current result bit-exact
+  and flushes anything else to exactly 0 dB (Tests 69 / 70).
+- **The applied gain.** Test 66's least-squares fit of the run over an event-matched Level-Match-off twin.
+- **On throughout.** The same script with Level Match on from sample 0 and no duck, read against its own
+  twin.
+- **Fresh.** A fresh engine at the destination.
+
+Legs (Haas 50 %, Drive 8, Level Match off, the edit live at 5.5 s):
+- **(1) The review's case.** Width 1 → 2, then the toggle 0.3 s later.
+  - Premises: current and converged before the edit; the edit reached the engine; NOT current after it,
+    at the engage and right before the bottom; the bottom at event + 2.
+  - Claims: the bottom block plays the value it publishes (−5.760 dB against a fresh −7.798); the
+    published trajectory is the on-throughout lane's, bit for bit; the applied gain joins that lane's
+    (0.110 → 0.000 dB over 0.6 s); FLUSHED right after the landing; KEPT 6 s later, within 0.010 dB of
+    fresh; a 44.1 kHz re-prepare flushes.
+- **(1') One block after the edit.**
+- **(2) Other measurement inputs.** (2a) Drive 8 → 12, recovery included; (2b) Mix 1 → 0.5; (2c) Amount
+  0.5 → 1.0; (2d) Haas Delay 12 → 30 ms. (2d) is not current yet 0.017 dB from fresh: currency is not
+  accuracy.
+- **(3) A forced engage.** Judged from the first full-level block: phi 0.006, and the published trajectory
+  within the forced bottom's module restarts (0.005 dB).
+- **(4) A positive stale value.** Anti-correlated programme, Drive 0, Width 0 → 2, 21 ms later: lands a
+  +6.00 dB boost, +10.12 dB over fresh. This pins the decided behaviour. The surge is the Width-blind
+  predict's, which Level Match on throughout plays too.
+- **Controls.**
+  - (C) current: lands, no excursion.
+  - (D) Output Gain 0 → −6: never stale, lands.
+  - (E) Case B in the engage's own snapshot: phi 0.798, FLUSHED after.
+  - (G) a flush's current, not-measured value: lands.
+
+27 checks, ~2.6 s native. Engine variants rejected (worklog §P6): land only when current (the review's guard; 9 checks here, 6 in Test 66), only when measured (10), a landing that marks the result current (8), no landing (12), a landing blind to `measChangedAtBottom` (1: (E)), and a capped start for a non-current boost (1: (4)).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4781,6 +4826,36 @@ Legs:
 checks, and the pending switch at a session restore. Every keep, premise, route, probe and control
 passes there. Each engine variant of the brief (M1–M15) and seven further ones the verifier added is
 rejected (worklog §O7).
+
+**A gain-only Level-Match engage lands on the value the matcher publishes, current or not, through the
+processor — State test 135 (2026-09-25; ADR-0007, Note of 2026-09-25, stale engage; the Devin review of
+PR #156).** This (`testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor`) is the processor
+half of Test 71. It is driven as a host and the editor drive it: gestures, `applyAutoGain`, `undo`,
+`abCopyToOther`, `abSwitchTo`, `processBlock` and `prepareToPlay`. Heap processors run in lockstep on one
+seeded stream.
+- **Currency.** A `prepareToPlay` on a lane whose script is the run's up to that point: keep is
+  bit-identical, flush is exactly 0 dB.
+- **The applied gain.** State test 130's least-squares fit against a twin with Level Match off, whose duck
+  is opened by an inert Multiband Bands move, or by `requestDuck()` for an Undo.
+
+Legs:
+- **(1) The review's case.** Width 1.0 → 2.0 by gesture, then the toggle 0.3 s later.
+  - Premises: current and converged before; the gesture reached the engine; NOT current after it, at the
+    toggle and right before the bottom; the bottom at event + 2.
+  - Claims: the bottom block plays the value it publishes (−5.761 dB against a fresh −7.792); the
+    published value is the on-throughout lane's in every block; FLUSHED right after the landing; KEPT 6 s
+    later, within 0.010 dB of fresh; a 44.1 kHz `prepareToPlay` flushes.
+- **(1')** the toggle one block after the edit; **(2a)** Drive 8 → 12; **(2b)** Mix 1.0 → 0.5.
+- **(3) Undo of Apply on a stale result.** Apply, then a Width edit and its Undo (a forced bottom that
+  adopts a measurement change), then Undo of Apply 0.3 s later. It is FLUSHED at its bottom, yet lands:
+  D_F +0.006 dB, excursion 0.016 dB. O4g's own route keeps KI-031 closed on a non-current result.
+- **(4) A/B, Level Match off in both slots.** Slot B is left 0.3 s after its Width edit, so its record is
+  not measured. It comes back not current. The toggle on B lands and is FLUSHED after it: the engage
+  promotes nothing. (4c) B left measured: KEPT throughout.
+- **Controls.** (C) current: lands, no excursion. (D) Output Gain 0 → −6: never stale, lands. (E) Width
+  and the toggle in one turn (Case B): phi 0.799, FLUSHED after.
+
+23 checks, ~1.7 s native. Engine variants rejected (worklog §P6): land only when current (6), only when measured (6; 18 more in State test 130), a landing that marks the result current (5), no landing (9) and a landing blind to `measChangedAtBottom` (1: (E)). The capped start passes here (no positive leg); Test 71 leg (4) rejects it.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

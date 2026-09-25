@@ -90,7 +90,7 @@ public:
     // their mean -- everything older moves it by no more than that. An A/B slot's restored value is
     // current when its caller says it is measured (setDisplayedGainDb); a flush (reset) is no
     // measurement of another state, so it clears the question. prepare() keeps a result only while
-    // it is current.
+    // it is current; a Case-A engage lands on it either way (ADR-0007, Note of 2026-09-25, stale engage).
     void inputsChanged() noexcept
     {
         resultStale = true;

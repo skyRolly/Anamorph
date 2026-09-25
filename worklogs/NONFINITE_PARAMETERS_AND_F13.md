@@ -1895,3 +1895,179 @@ the (c0) / (c1) own-bottom checks. Two variants survive, by design:
   what is restored, so it is a candidate.
 - **Deferred by instruction:** cross-rate retention; a flush's quiet glide; the currency of automation;
   KI-029 and global non-finite ingress; the per-block ramp restart.
+
+## P. The Devin review of `1c22d51`: "Level Match engages on stale compensation"
+
+The finding is at `AnamorphEngine.cpp:1270-1271`. A live edit to something the measurement reads leaves
+the result not current. Level Match is then turned on before the measure has caught up. At the bottom,
+`p` and `pendingP` both hold the edit, so `measChangedAtBottom` is false, and Case A lands the published
+value. The review proposed `&& loudness.isResultCurrent()`. Decided under the owner's authorization of
+2026-09-25: **not a defect; the landing is kept** (ADR-0007, Note of 2026-09-25, stale engage). No
+production behaviour changes; two comments and the tests below.
+
+### P1. Reproduction and trace (processor, then engine)
+
+Processor at 48 kHz / 256: Haas 50 %, Drive 8, Output Gain 0, Level Match off, seeded noise; Width 1.0 →
+2.0 by gesture at 6 s; the toggle 0.3 s later. Traced per block:
+
+| moment | P (dB) | current | measured | applied (dB) | fresh (dB) |
+|---|---|---|---|---|---|
+| block before the edit | −5.5241 | 1 | 1 | 0.0000 | −7.8024 |
+| edit block | −5.5241 | 0 | 0 | 0.0000 | −7.8025 |
+| the toggle's bottom (block 1186) | −5.7656 | 0 | 0 | **−5.7656** | −7.8027 |
+| bottom + 10 blocks | −5.8330 | 0 | 0 | −5.7798 | −7.8020 |
+
+- **At the bottom.** `measChangedAtBottom` 0 and `procChanged` 0, so the landing predicate is true. The
+  applied gain equals the value the bottom block publishes.
+- **Current control** (the toggle 8 s after the edit): the result is current and measured, lands, and is
+  0.001 dB from the fresh value.
+- **Currency returns** 3.28 s after the edit (engine reproduction).
+
+The engine reproduction is an independent harness driving `AnamorphEngine` directly. Its objects are
+byte-identical to HEAD's. It gives the same trace, and it lands −5.7653 against a fresh −7.8027.
+
+### P2. The question the finding raises
+
+Is the landed value a **validity** error or the measure's **convergence**? A validity error would be a
+value carried out of the context its analysis measured. The only fallback the rule offers is Case B's
+unity, so the finding is a defect only if the landing plays something other than what Level Match on
+throughout would play there.
+
+Two lanes answer it. The same history with Level Match on from the first block publishes the same
+trajectory:
+- **Engine:** within 1.6e-5 dB at the landing in 85 of 85 rows. The run's and the twin's trajectories
+  are bit-identical, except with Multiband on (≤ 4.2e-4 dB, the H4 reference switch).
+- **Processor:** across 505 non-current landings, HEAD's 500 ms mean error is within 0.07 dB of the
+  twin's, and its peak within 0.12 dB. The exceptions are two NaN self-heal rows, +0.23 / +0.25 dB,
+  where the twin's own flush happens with Level Match on.
+
+The observed error is therefore the measure's own lag, not the landing's.
+
+### P3. Every path that lands the applied gain (audit)
+
+| # | path | lands | not current possible | context |
+|---|---|---|---|---|
+| L1 | `prepare()` (`:100`, `:114`) | unity | — | no published value |
+| L2 | a kept re-prepare (`:175-176`) | the kept result | no: `keepMatch` requires currency | same state, same rate |
+| L3 | an A/B restore (`:1375`, `:1413` → `adoptRememberedMatch`, `:682`) | the slot's record | yes (not measured) | **another** context, by design (#23); validity restored separately (the A/B provenance amendment) |
+| L4 | the Case-A landing (`:1959-1960`) | this block's published value | yes | **the same** context, still converging |
+| L5 | the silence→audio edge snap (`:1993-1994`) | this block's published value | yes | the same trajectory; after a host reset, the value carried across the re-armed analysis |
+
+- `updateDerived` (`:1023`) and `:1958` set only the target (a glide).
+- The NaN self-heal lands nothing.
+- Only L3 lands a value from another context, and that is by design.
+- **Option A's reach.** It changes only L4. L5 re-lands the value on any bottom that meets an audio edge,
+  and after every host reset (HEAD and Option A bit-identical there).
+- **Thread safety.** Reading `isResultCurrent()` at the bottom would be safe: same thread, a plain bool
+  written only on the audio thread and the prepare / reset paths.
+
+### P4. The options, measured
+
+Setup:
+- **Engine set:** 75 non-current landings over Haas, Velvet, Chorus, Dimension D, Multiband and Mono
+  Maker; Width, Drive, Mix, Amount and module-field edits; forced engages; Undo of Apply.
+- **Processor set:** 505 non-current landings. It adds uncorrelated, partly correlated and
+  anti-correlated programmes, edits in silence, host resets, re-prepares, a NaN self-heal and A/B with
+  a not-measured record.
+- **Metrics:** mean |applied − fresh| over 120 ms, 500 ms and 2 s after the bottom, and the signed peak.
+
+**Option A (the review's guard; glide from unity when not current).**
+
+| edit, engaged after | HEAD 120 ms / peak | A 120 ms / peak |
+|---|---|---|
+| Width 1 → 2, 0.3 s (the review's case) | 2.02 / +2.04 | 5.90 / +7.61 |
+| Width 1 → 2 under Velvet, 0.3 s | 2.02 / +2.05 | 7.21 / +9.32 |
+| Multiband band width 1 → 2, 0.3 s | 2.00 / +2.02 | 5.87 / +7.58 |
+| Drive 0 → 12 (the predict pre-ducks), 0.05 s | 4.68 / +4.68 | 6.57 / +7.51 |
+| Haas Delay 15 → 30 ms, 0.3 s | 0.02 / +0.09 | 3.70 / +5.34 |
+| Undo of Apply after Width 1 → 2 and its Undo, 0.3 s | 0.22 / −0.31 | 3.63 / +5.33 |
+| Drive 8 → 4, 0.05 s (quieter) | 2.33 / −2.34 | 1.36 / +2.99 |
+| Mix 1 → 0, 0.05 s (quieter; fresh 0 dB) | 5.50 / −5.51 | 1.81 / −4.78 |
+| Drive 12 → 0, 0.05 s (quieter; fresh +0.67) | 8.26 / −8.27 | 3.01 / −6.96 |
+
+- **Engine set, 500 ms mean:** A worse in 54 of 75 rows, better in 21, all of them edits that make the
+  sound quieter, engaged within ~1–2 s.
+- **Processor set:** A better in 220 of 505, HEAD in 241, 44 ties.
+- **Direction.** HEAD errs in the direction of the edit, by the twin's amount. A errs loud by the whole
+  match wherever the match is a cut.
+- **Test 66 against A: 6 checks fail.** Every Test 66 lane opens a dirty history duck in its first
+  0.1 s. The result is current only 2.13 s after it, so at the 2.0 s event it is not current, 0.134 dB
+  from settled. A turns that residual into a glide from unity: D_F +4.85 dB, the pre-O4g numbers.
+
+**Option B (land only when measured).** Never better than both HEAD and A (0 of 505 rows). It also refuses
+a flush's current value: +7.63 dB peak after a same-rate re-prepare.
+
+**Options C and C2 (from the verification).**
+- **C** lands a non-current value only at or below the level heard; otherwise it glides from that level.
+- **C2** is the narrowest version: it caps the start at max(unity, Output Gain) when not current and
+  above the cap.
+
+C2 differs from HEAD only in non-current landings, and is never louder than HEAD at the peak:
+- **Better:** 158 rows.
+- **Worse:** 23 rows, all on the quiet side (down to −7.45 dB).
+- **Suites:** DSP 3 failures, all in Test 66 (leg (2)'s positive-match Undo of Apply, D_F −0.165 dB;
+  leg (11)); State 0.
+
+### P5. Decision
+
+**Keep the landing; Q4 stands**, re-examined against currency (ADR-0007, Note of 2026-09-25, stale engage).
+
+**The invariant.** At a Case-A bottom the applied gain lands on the value that block publishes: the value
+Level Match on throughout publishes there, current or not. Currency decides what a result may be
+carried into (a re-prepare, an A/B record), not where the applied gain joins the published trajectory.
+The landing validates nothing.
+
+**Why.**
+- The finding's premise holds for the code but not for the behaviour: the landed value is the current
+  context's estimate.
+- Every alternative measured either trades direction (A), refuses correct values (B, and A on trivial
+  edits), or fails accepted coverage (A, B and C2 against Test 66 / State test 130).
+- A reopens KI-031 on Undo of Apply after any recent measurement-input edit.
+
+### P6. Tests and mutants
+
+- **Test 71** (engine, 27 checks) and **State test 135** (processor, 23 checks).
+  - **Premises, each asserted.** Current and converged before the edit, through the same-rate
+    re-prepare verdict of Tests 69 / 70 and State tests 133 / 134. The edit reached the engine. NOT
+    current after the edit, at the engage and right before the bottom. The bottom at event + 2, read
+    from the twin's output.
+  - **Claims.** The bottom block plays its published value (|D| ≤ 0.1 dB, ≥ 3 dB from unity, ≥ 0.5 dB
+    from fresh). The on-throughout trajectory (≤ 1e-4 dB; ≤ 0.01 dB across a forced bottom's module
+    restarts). The applied gain joining the on-throughout lane's. FLUSHED right after the landing.
+    Recovery (KEPT 6 s later, within 0.1 dB of fresh). A new rate flushing.
+  - **Controls.** Current (O4g), Output Gain (never stale), Case B (glides, flushed after), a flush's
+    current value, Undo of Apply on a stale result (no swell), A/B with a not-measured record (not
+    promoted) and with a measured one.
+  - **HEAD:** DSP 811 / 0, State 5434 / 0.
+- **Mutants**, each an engine variant run through both suites:
+
+| mutant | DSP (Test 71 / Test 66) | State (State test 135 / 130) |
+|---|---|---|
+| M1 A: land only when current (`&& loudness.isResultCurrent()`) | 15 (9 / 6) | 6 (6 / 0) |
+| M2 B: land only when measured | 17 (10 / 6) | 26 (6 / 18) |
+| M3 the landing marks the result current (`setDisplayedGainDb (published, true)`) | 10 (8 / 2) | 5 (5 / 0) |
+| M4 no landing (Case B everywhere) | 19 (12 / 6) | 36 (9 / 24) |
+| M5 a landing blind to `measChangedAtBottom` | 4 (1 / 2) | 5 (1 / 2) |
+| M6 C2: a non-current boost above the level heard starts at that level | 4 (1 / 3) | 0 |
+
+Every variant is rejected by Test 71 or State test 135; M6 only by Test 71 leg (4), the pinned positive
+step, and by Test 66. The rest of each suite passes under every variant.
+
+### P7. Recorded, not changed
+
+- **The positive stale step.** An edit that makes the sound louder while the match is boosting (a narrowed
+  image widened, Drive 0) leaves a stale boost, and the engage steps up to it:
+  - +6.00 dB above the level before, +10.12 dB over fresh −4.12 dB (Test 71 leg (4), anti-correlated,
+    21 ms after the edit);
+  - +4.25 dB on uncorrelated programme;
+  - at correlation ≥ 0.3, at most 0.6 dB more than a glide.
+
+  Level Match on throughout plays the same surge: the predict reads only Drive and Mix. The candidate is
+  C2; it fails Test 66.
+- **L5, the edge snap**, lands a non-current value too (after a host reset or an edit in silence), as
+  designed.
+- **A 5 ms boundary.** An edit and the toggle in one block give Case B; one block apart they give a
+  landing.
+- **Deferred by instruction:** cross-rate retention; a flush's quiet glide; automation currency; the A/B
+  residuals of §O8; KI-029; global `toEngine` sanitization; float→int UB; F9, F10, F12; R6a–R6d;
+  ScopeBuffer threading; the vectorscope stop-state; historical doc cleanup; the per-block ramp restart.

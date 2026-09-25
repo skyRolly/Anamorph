@@ -265,8 +265,10 @@ re-arms, or A/B.
 before the bottom and true after it, whether the switch is forced (A/B, preset, undo, redo) or
 ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of two paths:
 
-- **Case A — the switch changes nothing the Level-Match measurement reads.** The published value
-  still describes the sound that plays after the bottom, so the fade-in starts from it: right after
+- **Case A — the switch changes nothing the Level-Match measurement reads.** The matcher, which runs
+  with Level Match off too, is already measuring the sound that plays after the bottom, so the fade-in
+  starts from the value it publishes, converged or still converging on an earlier edit (*Note of
+  2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
   level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1959`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
@@ -321,7 +323,8 @@ Match switch itself move the H4 dry reference while Level Match is off (the 0.8.
 part of it: the published value is still converging on the new sound, and a Case-A engage lands on
 it — the value a Level Match that had been on throughout would be following, since the matcher runs
 whether or not Level Match is on. That lag is the measure's own time constants (question 2, F13(2)),
-measured in worklog §J, and is not decided here.
+measured in worklog §J, and is not decided here. *(Decided by the Note of 2026-09-25, stale engage,
+below: it lands, current or not.)*
 
 **What this changes in the text above.**
 - *Decision* ("A silence→audio edge snaps the applied gain …"): still true, and no longer the only
@@ -386,7 +389,7 @@ contract, by transition:
 | forced swap without an injection — preset load, undo, redo — that changes only continuous controls | carried | carried; not current until the measure catches up, as after the same live edit (2026-09-25) | glides; behaves like the same live edit (**Q2: unchanged**) |
 | Level Match engage that changes only the gain (Case A) | carried | carried | lands on the published value (the amendment above) |
 | Level Match engage together with a sound change (Case B) | carried (re-armed if the path changes) | carried — it describes the sound before the switch | starts at unity and glides; at an A/B switch, on the injected slot gain (**Q3: unchanged**) |
-| Case-A engage shortly after a sound change | carried, still converging | carried, still converging | lands on it, converged or not (**Q4: unchanged** — no convergence guard) |
+| Case-A engage shortly after a sound change | carried, still converging | carried, still converging; not current (2026-09-25) | lands on it, converged or not (**Q4: unchanged** — no convergence guard; re-examined against currency and kept, the Note of 2026-09-25, stale engage) |
 | **A/B switch whose slots differ in anything the measurement reads** | **re-armed** (new) | overwritten by the destination slot's remembered gain, current only if its record was measured, at this rate, for these measurement inputs, otherwise not current (2026-09-25, A/B provenance) | lands on that gain |
 | A/B switch whose slots differ only in what the measurement does not read (Output Gain, Output Balance, Bypass, Band Solo, the Level Match switch, an inert guarded field), or not at all | carried (re-armed only if the path changes) | overwritten by the slot's remembered gain, current by the same rule | lands on that gain |
 | host reset (R9) | re-armed | carried, current or not as before it; one that lands an in-flight duck's measurement-input change leaves it not current (2026-09-25) | lands at the next silence→audio edge |
@@ -413,7 +416,8 @@ on an analysis the reset has already re-armed) re-arms nothing.
 the same live edit; the Drive 0 ↔ 10 undo figures (+6.73 / −7.89 dB) are that live edit's own lag and
 the rise-only predict (worklog §K3), not a route defect, and every alternative measured traded one
 direction for the other or made the forced route diverge from the live edit (§K5). A Case-B engage
-keeps its unity start. A Case-A engage keeps landing on whatever is published.
+keeps its unity start. A Case-A engage keeps landing on whatever is published (re-examined against the
+currency the matcher reports since 2026-09-25, and kept: the Note of 2026-09-25, stale engage, below).
 
 **Q5 — a same-rate re-prepare keeps a valid result (new).** `prepare()` used to flush the whole
 matcher. The review gate's scope sentence below — *"a re-prepare still resets all of it"* (:182) —
@@ -956,6 +960,159 @@ un-measure; the confirmation that sets `resultMeasured`), `src/dsp/AnamorphEngin
 `restoreAbSlot`, `adoptRememberedMatch`, and the two consumers in `process`), `src/PluginProcessor.cpp`
 (`abSwitchToAdopted`, `adoptRestoreTail`). Tests: Test 70, State test 134; State test 132 leg (6)'s
 pre-roll.
+
+## Note, 2026-09-25 — a gain-only engage lands on the published value, current or not (Devin review: "Level Match engages on stale compensation"; "stale engage")
+
+Devin's review of `1c22d51` (PR #156) found *"Level Match engages on stale compensation"* at
+`src/dsp/AnamorphEngine.cpp:1270-1271`. The sequence it gives:
+1. With Level Match off, a live edit to something the measurement reads leaves the result not current
+   (`inputsChanged`; the amendment of 2026-09-25 above).
+2. Level Match is turned on before the measure has caught up.
+3. At the bottom, `p` and `pendingP` both hold the edit, so `measChangedAtBottom` is false.
+4. Case A lands the published value, which *"belongs to the previous sound"*.
+
+The review proposed adding `&& loudness.isResultCurrent()` to the landing.
+
+This note decides the finding under the owner's authorization. It changes no code; the engine's comment and
+this ADR's Case A text now say what the landing asks (worklog `NONFINITE_PARAMETERS_AND_F13.md` §P).
+
+**Reproduced.** Processor at 48 kHz / 256: Haas 50 %, Drive 8, Output Gain 0, Level Match off; a Width 1.0 → 2.0
+gesture; the toggle 0.3 s later (State test 135 leg (1)).
+- Before the edit the result is current and converged: −5.517 dB, the fresh processor's own value.
+- The edit leaves it not current, and it is still not current at the toggle and at the bottom.
+- At the bottom `measChangedAtBottom` and `procChanged` are false, so the landing fires. The bottom block
+  plays −5.761 dB; a fresh processor at Width 2.0 publishes −7.792 dB.
+- The result is current again 3.28 s after the edit.
+
+The code does what the finding says.
+
+**What the landed value is.** The matcher runs whether or not Level Match is on, and a Case-A switch changes
+nothing it reads. The engage therefore finds the matcher already measuring the sound that plays after the
+bottom. The value it lands is the value Level Match on throughout publishes at that block:
+- **Engine.** Within 1.6e-5 dB in 85 of 85 landings. The whole published trajectory is bit-identical, except
+  with Multiband on: ≤ 4.2e-4 dB, the documented H4 reference switch.
+- **Processor.** Across 505 non-current landings, HEAD's mean |applied − fresh| over the 500 ms after the
+  bottom is within 0.07 dB of the always-on twin's, and its peak within 0.12 dB. The exceptions are two NaN
+  self-heal rows (+0.23 / +0.25 dB), where the twin's own flush happens with Level Match on.
+
+So the distance from a fresh instance is the measure's own convergence lag, the lag this ADR's Context
+accepts, and Level Match on throughout plays it identically.
+
+A **validity** error is a value carried out of the context its analysis measured: a same-rate re-prepare
+after the audio stopped, or an A/B record restored into another slot or at another rate. Those are what
+currency governs (the two amendments of 2026-09-25). A Case-A landing carries the result nowhere. It moves
+only the applied gain onto the published trajectory, and leaves the result, its currency, its measured bit
+and the analysis untouched. Test 71 and State test 135 read the result as FLUSHED right after the landing
+block: the landing validates nothing.
+
+**Enabling Level Match vs. having a current result to land.** Turning Level Match on asks one question:
+where does the applied gain start? A current result answers a different one: may the result be carried
+into another context?
+- **Case A does not guarantee a current result.** The measure may still be converging on an edit made
+  before the switch.
+- **It does not need one.** Before the measure catches up, the only other start this engine has is Case B's
+  unity, which is no measurement of anything. The glide from unity then heads for the same non-current
+  published value anyway, and follows it within ~0.5 s (the smoother's τ ≈ 120 ms, restarted each block).
+- **Case B is unchanged.** An engage that also changes what the measurement reads still starts from unity.
+- **A/B provenance stays separate.** An A/B restore still takes priority over the landing, and restores its
+  record's validity on its own terms. The landing never promotes a restored value: State test 135 leg (4),
+  a not-measured slot record, is FLUSHED after the toggle's landing.
+
+**The options, measured.**
+
+The engine set is 75 non-current landings across:
+- Haas, Velvet, Chorus, Dimension D, Multiband and Mono Maker;
+- Width, Drive, Mix, Amount and module-field edits;
+- forced engages and Undo of Apply.
+
+The processor set is 505 non-current landings. On top of the same edits it covers correlated, uncorrelated
+and anti-correlated programmes, silence, host resets, re-prepares, a NaN self-heal and A/B.
+
+Per option: mean |applied − fresh| after the bottom over the window stated, and the signed peak.
+
+- **A — land only when current (the review's proposal).** The engage glides from unity instead, so its
+  error at the bottom is −G against the fresh value G.
+  - **Where it is worse:**
+    - Over 500 ms it is worse in 54 of the engine set's 75 rows. On the processor set it is better in
+      220 of 505 rows, HEAD in 241, with 44 ties.
+    - **The review's own case:** 2.02 → 5.90 dB mean over 120 ms, peak +2.04 → +7.61 dB.
+    - **An edit the measure barely feels** (Haas Delay 15 → 30 ms, 0.05 s): 0.00 → 3.69 dB over 120 ms,
+      peak +5.34 dB. The result is not current, yet it is within 0.02 dB of the fresh value: currency is
+      not accuracy.
+    - **Undo of Apply after an edit and its Undo:** 0.22 → 3.63 dB over 120 ms, peak +5.33 dB. KI-031's
+      swell returns.
+  - **Where it is better:** only after edits that make the sound quieter, engaged within ~1–2 s. For
+    example, over 500 ms at 0.05 s, Drive 8 → 4 goes 2.22 → 1.44 dB and Mix 1 → 0 goes 5.23 → 3.79 dB.
+    Where the match is a cut it then errs loud where HEAD errs quiet.
+  - **It fails Test 66 (6 checks).** That test's lanes engage 1.9 s after a measurement-input change,
+    0.134 dB from settled and not current. A turns that residual into a +4.85 dB glide.
+- **B — land only when measured.** It is never better than both HEAD and A (0 of 505 rows). It also refuses
+  a flush's current value, which costs a +7.63 dB peak after a same-rate re-prepare.
+- **C2 — land, but when the result is not current start a boost above the level heard at the level heard.**
+  It removes the landing's own step in the positive class below. It is worse in 23 rows, all on the quiet
+  side (down to −7.45 dB), and it fails Test 66 legs (2) and (11).
+- **Keep (adopted).** The engage lands on the value Level Match on throughout publishes. The error is the
+  measure's.
+
+**Decision.** Keep the landing; **Q4 stands**, re-examined against the currency the matcher now reports.
+- **The finding describes the code but is not a defect of it.** The landed value is not from the previous
+  context; it is the current context's estimate, still converging.
+- **The proposed guard trades direction without a gain.** It is worse on most rows, and after louder,
+  trivial and forced engages it errs loud by the whole match.
+- **It breaks accepted coverage.** It reopens KI-031 on Undo of Apply after an edit, and Test 66 already
+  pins that landing.
+- **No timeout, second tolerance or new flag is added.** Currency is the only validity state this ADR
+  defines, and it is not the question the landing asks.
+
+**Recorded, not changed.**
+- **The positive stale step.** Sometimes the non-current published value is a boost above the level heard
+  with Level Match off: an edit made the sound louder while the match was boosting, such as a narrowed image
+  widened at Drive 0. The landing then steps up to that stale boost:
+  - **anti-correlated programme, 21 ms after the edit:** +6.00 dB above the level heard before, and
+    +10.12 dB over the fresh value −4.12 dB (Test 71 leg (4));
+  - **uncorrelated programme:** +4.25 dB;
+  - **correlation 0.3 or more:** at most 0.6 dB more than a glide.
+
+  Level Match on throughout plays the same surge. The predict reads only Drive and Mix, so a Width or
+  narrowing change that raises the output is never pre-ducked (KNOWN_ISSUES KI-030). C2 is the measured
+  candidate; it is not adopted because it fails Test 66.
+- **The silence→audio edge snap** lands the published value too, current or not. It fires after a host
+  reset, and on an engage whose bottom meets an audio edge. This is the Decision's own snap, unchanged, and
+  it lands the same trajectory.
+- **A 5 ms boundary between Case B and Case A.** An edit and the toggle in one block give Case B, a glide
+  from unity. One block apart they give Case A, a landing. Both are the rule's own cases.
+
+**What this changes in the text above.**
+- **The O4g amendment, Case A.** "The published value still describes the sound that plays after the
+  bottom" is now spelled as what it asks: the matcher is already measuring that sound, converged or not.
+- **"The boundary with F13(2)"** is decided here: "is not decided here" now points to this note.
+- **The F13(2) table's Q4 row, and "Q2, Q3, Q4 — unchanged, decided"** now point to this note.
+
+**Regression coverage.**
+- **Test 71** (the engine, 27 checks) and **State test 135** (the processor, 23 checks).
+- **Premises, each asserted.** The result is current and converged before the edit. The edit reached the
+  engine. The result is not current after the edit, at the engage and right before the bottom. The bottom
+  is at event + 2.
+- **Claims.** The bottom block plays the value it publishes. That value is ≥ 3 dB from unity and ≥ 0.5 dB
+  from a fresh instance. The published trajectory is the on-throughout lane's. The applied gain joins that
+  lane's. The landing validates nothing. The result recovers, and a new rate still flushes.
+- **Controls.** A current result (O4g), an edit the measurement does not read, Case B, a flush's current
+  value, Undo of Apply on a stale result (no swell) and a not-measured A/B record.
+- **Mutants rejected.** A, B, C2, a landing that marks the result current, no landing, and a landing blind
+  to `measChangedAtBottom` (worklog §P6).
+
+**Architecture Review Gate — owner authorization of 2026-09-25.**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #156 body and the commit message: a text change to an **Accepted ADR** (Case A's premise, the F13(2) boundary, the Q4 row); no production code changes beyond two comments |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's authorization of 2026-09-25**: *"Treat this as a real production bug unless investigation disproves it on the current head."* *"Prove that: … the observed incorrect gain is attributable to that landing rather than normal Level Match convergence."* *"Do not wait for another owner decision. You are explicitly authorized to make the owner decision based on the measured evidence and repository contract."* Review: pending, PR #156 |
+| 3 | if the change is a decision, an ADR is added/updated | this Note, in place: the decision it records (Q4) stands |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change; no behaviour change |
+
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1263-1271` (the bottom's answer and the landing
+predicate), `:1959-1960` (the landing), `:1993-1994` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
+(`inputsChanged`, `isResultCurrent`). Tests: Test 71, State test 135.
 
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.

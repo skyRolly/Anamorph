@@ -1261,12 +1261,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     {
         const bool procChanged = processingDiffers (pendingP, p);
         measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP);
-        if (measChangedAtBottom) loudness.inputsChanged();   // an A/B injection below makes it current
-        // An engage that changes only the gain may START at the published value: that value
-        // still describes the sound that will play. Not when the measure re-arms here, when
-        // anything it reads changes across the switch, or when an ordinary duck already made
-        // such a change live (duckMeasDirty) -- then the published value is stale and the
-        // fade-in glides from unity as before (Case B).
+        if (measChangedAtBottom) loudness.inputsChanged();   // a restore below: current only if measured
+        // An engage that changes only the gain STARTS at the published value, current or not: the matcher
+        // runs with Level Match off too, so that value is what Level Match on throughout publishes here.
+        // Currency governs what a result is carried into (a re-prepare, an A/B record), not this landing
+        // (ADR-0007, Note of 2026-09-25, stale engage). Not when the measure re-arms here, or when what it
+        // reads changes across the switch or went live in an ordinary duck (duckMeasDirty): Case B.
         landMatchAfterMeasure = ! p.autoGainMatch && pendingP.autoGainMatch && ! procChanged
                              && ! measChangedAtBottom;
         // A change to the Multiband topology (band added/removed, or the module
