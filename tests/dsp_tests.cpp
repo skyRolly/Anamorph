@@ -11214,7 +11214,7 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
     };
     const auto word = [] (const Verdict& v) { return v.keep ? "KEPT" : v.flush ? "FLUSHED" : "neither"; };
     const auto pubAt = [] (const Lane& ln, int b) { return ln.pub[(size_t) b]; };
-    const auto outDiff = [blk] (const Lane& l0, const Lane& l1, int from, int to)   // output energy ratio l0 - l1 : l1, dB
+    const auto outDiff = [&] (const Lane& l0, const Lane& l1, int from, int to)   // output energy ratio l0 - l1 : l1, dB
     {
         double d = 0.0, t = 0.0;
         for (int k = from; k < to; ++k)
@@ -11227,7 +11227,7 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
             }
         return juce::exactlyEqual (d, 0.0) ? -999.0 : 10.0 * std::log10 (d / juce::jmax (t, 1.0e-30));
     };
-    const auto blockEn = [blk] (const Lane& ln, int b)
+    const auto blockEn = [&] (const Lane& ln, int b)
     {
         double s = 0.0;
         for (int i = 0; i < blk; ++i) { const double v = ln.y[(size_t) (b - ln.recFrom) * blk + (size_t) i]; s += v * v; }

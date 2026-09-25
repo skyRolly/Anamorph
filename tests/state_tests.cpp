@@ -41361,7 +41361,7 @@ static void testLevelMatchAbSlotCarriesTheValidityOfItsResult()
     const int w5z = addLane (base, SRt + kPrep, false), w5 = addLane (base, SRt + kPrep, false);
     const int w5c = addLane (base, SRt + kPrep, false);
     for (auto [k, b] : { std::pair<int, int> { w5z, 0 }, { w5, 56 }, { w5c, SL } })
-        at (b, [&, k = k] { P (k).abCopyToOther(); P (k).abSwitchTo (1); });
+        at (b, [&, lane = k] { P (lane).abCopyToOther(); P (lane).abSwitchTo (1); });
     for (int k : { w5z, w5, w5c }) { sw (k, SRt, 0); prepAt (k, SRt + kPrep); }
     // drift: B with Multiband and Mono Maker on at off-grid frequencies whose round trip moves their bits
     const KV drKv = with (base, { { "mbEnable", 1.0f }, { "mbFreqLow", xLow }, { "monoMakerOn", 1.0f },
