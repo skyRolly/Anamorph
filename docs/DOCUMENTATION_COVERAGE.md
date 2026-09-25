@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), and F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep) — whose entries are the **76th** to **79th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-25), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), and the Devin review's quiet-resume finding (a kept result is the applied gain from the first block) — whose entries are the **76th** to **80th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1317-1323` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1324-1330` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1916,10 +1916,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:222-228`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:229-235`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1145-1284`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1152-1291`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1979-2029` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1986-2036` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13002,6 +13002,97 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 80th pass — 2026-09-25, PR #156 (the Devin review: a kept Level-Match result is the applied gain from the first block)
+
+**Scope.** The Devin review of `a7d2b88` — *"Quiet audio loses retained match level."* — confirmed,
+root-caused against the code and fixed (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §M).
+
+**The finding and the fix.** F13(2) Q5 kept the published result across a same-rate re-prepare, but
+`prepare()` left the applied gain (`matchGainSmooth`) at unity. `snapSmoothers()` excludes it, and
+`updateDerived()` only targets the kept value, so it was landed only by `process()`'s silence→audio
+snap. That snap never fires below its ~−60 dBFS detector (`inSq < 1e-6·n`), so audio resumed quietly
+glided 0.12 s from 0 dB.
+
+Measured through the processor: a kept −6.03 dB, resumed at −70 dBFS, played −0.001 / −0.371 /
+−1.162 / −2.503 / −6.031 dB at 0 / 10 / 30 / 60 / 120 ms; it now plays −6.031 dB from the first sample.
+`prepare()` now starts the applied gain on the kept result when Level Match is on in the state its
+`reset()` settles. The write goes after `reset()`, because only there is `p` final and the result
+authoritative. With Level Match off the gain rests at unity, and every flush starts at unity as before.
+Seven lines in `prepare()` and two comments; no parameter, schema, thread, order or latency change.
+
+**Tests.**
+- **DSP Test 68** (`testLevelMatchKeptResultIsTheAppliedGainFromTheFirstBlock`): 29 checks; 4 fail
+  against `a7d2b88`.
+- **State test 132** (`testLevelMatchKeptResultPlaysFromTheFirstQuietBlock`): 124 checks; 30 fail
+  against `a7d2b88`.
+
+Both read the applied gain per sample against a Level-Match-off twin. They judge the first resumed
+blocks at −70, −90 and −125 dBFS, and kept values from −10.95 to +7.71 dB. They assert their premises:
+- the keep;
+- the re-prepare;
+- Level Match engaged;
+- the input under the detector, numerically and by an unchanged new-rate flush that glides at the same
+  level.
+
+They also pin what must not change: Level Match off (a Case-B engage right after still glides from
+unity), the new-rate flush, invalid results, a following injection, a following host reset, and Apply.
+Fifteen one-site mutants of the fix were each run through both full suites; every non-equivalent one is
+killed (worklog §M4). Two first survived and closed test gaps:
+- **The write placed before `reset()`.** It is identical on the processor path. Test 68 leg (11), the
+  unprimed engine API with an engage in flight, now pins the placement.
+- **A kept start that also suppressed the loud snap.** State test 132's loud-resume snaps are now judged
+  at 2e-4 dB.
+
+Three mutants are equivalent by construction: the value read before `reset()`, the write on every
+Level-Match-on prepare, and a snap to the target on a keep. The alternatives the task forbids are all
+rejected by named legs: a lowered detector, `prevInputSilent`, and snapping in `snapSmoothers()`.
+
+**Documents changed.**
+- **ADR-0007:**
+  - the F13(2) amendment's transition-table rows for a same-rate and a new-rate re-prepare now split
+    the applied gain from the result;
+  - its introduction no longer claims the landing points are unchanged;
+  - a dated *Correction* paragraph quotes the owner's instruction of 2026-09-25 and records the
+    Architecture Review Gate;
+  - *Related code* gains the new lines;
+  - the bare line references of both 2026-09-24 amendments are re-spelled for the seven-line shift.
+- **`CHANGELOG.md` `[0.9.9]`:** the same-rate re-prepare Fixed entry now also says the level plays from
+  the very first moment, quiet passages included. It is corrected in place: the defect never shipped.
+- **`KNOWN_ISSUES.md`:** the KI-030 banner's re-prepare bullet.
+- **`API_REFERENCE.md`:** the `prepare` row.
+- **`DSP_ALGORITHMS.md`:** the "two halves" bullet gains the applied gain.
+- **`procedures/TESTING.md`:** Test 68 and State test 132.
+- **The engine's comments:**
+  - the `matchGainSmooth.reset` line and the `snapSmoothers` exclusion comment list the new landing
+    point;
+  - the new block explains itself;
+  - Test 67's and State test 131's headers no longer say the edge snap lands the kept gain.
+- **`check-citations.py`:** `--fix` re-anchored 76 citations; ten `DELIBERATE_REAIMS` targets moved
+  +7.
+- **The worklog:** §M.
+- **This file:** this entry and the *Last updated* line.
+
+**Triggers not fired, decided:**
+- `SIGNAL_FLOW.md` / `DSP_GRAPH_REFERENCE.md`: no node or order change.
+- `LATENCY_MODEL.md`: no latency change.
+- `THREAD_MODEL.md`: the write is on the prepare path its row already covers.
+- The parameter documents and the state schema: no parameter or field change.
+- `PERFORMANCE_BUDGET.md`: one smoother write per prepare.
+- `RELEASE_COMPATIBILITY_CHECKLIST.md`: no compatibility-affecting change.
+- `user/USER_MANUAL.md`: it never described the glide; "so loudness doesn't bias you" now holds on
+  quiet material too.
+
+**Drift reported, not fixed** (worklog §M5):
+- a flush's own quiet glide from unity to the predict floor (no kept result behind it; a candidate);
+- a NaN published value reachable through the engine API (`injectMatchGainDb (+Inf)` with Level Match
+  off; the processor cannot reach it, and `keepMatch` flushes it);
+- `keepMatch` ignoring an in-flight duck's `pendingP` on an engine-level `prepare()` without a prime;
+- two concurrent State-suite runs sharing a preset path outside `HOME`.
+
+**Counts.** DSP **620 / 0** (590 + 30, Test 68), State **5 147 / 0** (5 023 + 124, State test 132); both
+under `ulimit -s 1024`. Frames: Test 68 1,712 B, State test 132 1,520 B.
+[Verified]
 
 ## 79th pass — 2026-09-24, PR #156 (F13(2) decided and implemented; PREfast's one new C6262 disposed)
 

@@ -77,7 +77,7 @@ If documentation and source code disagree:
 
 ```
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:871-1583
+- Source: src/dsp/AnamorphEngine.cpp:878-1590
 - Test:   tests/dsp_tests.cpp :: testNoClicksAcrossTransitions
 - Commit: 6a24b82
 ```

@@ -268,14 +268,14 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
 - **Case A — the switch changes nothing the Level-Match measurement reads.** The published value
   still describes the sound that plays after the bottom, so the fade-in starts from it: right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1846`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1853`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
-     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:547`);
+     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:554`);
   2. no such change was made live during the switch's own fade-out — `! duckMeasDirty`: an ORDINARY
      duck applies its continuous controls at once (`copyContinuous`), so by the bottom `p` already
-     carries them and the comparison above cannot see them (`:658`, `:767`);
+     carries them and the comparison above cannot see them (`:665`, `:774`);
   3. the bottom does not re-arm the measure — `! procChanged` (`processingDiffers` still alone
      decides the `softReset()`; a re-armed measure is moving, so it is not landed on);
   4. no A/B injection is consumed in that block — the slot's remembered gain keeps priority (#23);
@@ -361,8 +361,8 @@ records the ruling and the implementation, not an approval of the code.
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment; ADR-0004 and ADR-0035 (notes of the same date) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes |
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:547` (`measurementInputsDiffer`),
-`:658` and `:767` (`duckMeasDirty`), `:1154` (the decision at the bottom), `:1846` (the landing);
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:554` (`measurementInputsDiffer`),
+`:665` and `:774` (`duckMeasDirty`), `:1161` (the decision at the bottom), `:1853` (the landing);
 `scripts/check-state-coverage.py` (`MEASUREMENT_INPUTS`).
 
 ## Amendment, 2026-09-24 — F13(2): an A/B injection re-arms a stale analysis, and a same-rate re-prepare keeps a valid result
@@ -370,7 +370,8 @@ Related code (this amendment): `src/dsp/AnamorphEngine.cpp:547` (`measurementInp
 This answers question 2 of the note above and the five F13(2) questions of the decision record
 (worklog `NONFINITE_PARAMETERS_AND_F13.md` §K6), on the owner's authorization (at the end of this
 section). It adds one re-arm point and removes one flush. It does not change what is measured, the
-measure's time constants, the predict, or where the applied gain lands.
+measure's time constants or the predict; where the applied gain lands it changes in one place, a
+same-rate re-prepare that keeps the result (the correction at the end of this section).
 
 **Where the matcher's two halves stand after every transition.** The *analysis* (K-weighting filter
 states and the two energy integrators) describes the audio heard over the last ~0.4 s; the *result*
@@ -389,8 +390,8 @@ contract, by transition:
 | **A/B switch whose slots differ in anything the measurement reads** | **re-armed** (new) | overwritten by the destination slot's remembered gain | lands on that gain |
 | A/B switch whose slots differ only in what the measurement does not read (Output Gain, Output Balance, Bypass, Band Solo, the Level Match switch, an inert guarded field), or not at all | carried (re-armed only if the path changes) | overwritten by the slot's remembered gain | lands on that gain |
 | host reset (R9) | re-armed | carried | lands at the next silence→audio edge |
-| **re-prepare at the same sample rate, measurement inputs unchanged** | **re-armed** | **carried** (new) | lands at the next silence→audio edge |
-| re-prepare at a new sample rate, or after a primed snapshot that changes a measurement input, or the first prepare | flushed | flushed (0 dB, then the predict floor) | lands at the next silence→audio edge |
+| **re-prepare at the same sample rate, measurement inputs unchanged** | **re-armed** | **carried** (new) | Level Match on: **starts on the kept result** (`prepare()`; the correction below), quiet audio included; Level Match off: rests at unity, so a later engage starts as Case A / Case B say |
+| re-prepare at a new sample rate, or after a primed snapshot that changes a measurement input, or the first prepare | flushed | flushed (0 dB, then the predict floor) | starts at unity (the flushed 0 dB); lands at the next silence→audio edge, and below that edge's detector glides to the predict floor (unchanged) |
 | NaN self-heal (ADR-0009) | flushed | flushed (ADR-0009's own owner question) | glides |
 
 **Q1 — the A/B injection (new).** An A/B switch injects the destination slot's remembered gain into
@@ -485,11 +486,34 @@ scratch builds of §K5 gave):
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment, in place, as the one above (ADR_POLICY's "a reversed decision adds a new ADR" read with this ADR's own precedent: the decision stands, two of its notes are narrowed) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes (`primeMeasChanged` and `keepMatchResult` are written and read on the prepare path, which JUCE never runs concurrently with `process()` or `reset()`) |
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1148` (`measChangedAtBottom`, one
-answer for the Case-A landing and the injection re-arm), `:1267` and `:1303` (the re-arm at the
+**Correction, 2026-09-25 — the applied gain at a kept re-prepare (Devin review of PR #156).** Q5 keeps
+the *result*; the first implementation left the *applied gain* where `prepare()` writes it, at unity,
+and let process()'s silence→audio snap land it — and that snap fires only on a block whose input
+reaches its ~−60 dBFS detector (`inSq ≥ 1e-6·n`). Audio resumed below it (a quiet intro, a fade, a
+tail) therefore played the smoother's 0.12 s glide from 0 dB to the kept value. Measured through the
+processor, Drive 8, a kept −6.03 dB, resumed at −70 dBFS: −0.001 / −0.371 / −1.162 / −2.503 / −6.031 dB
+at 0 / 10 / 30 / 60 / 120 ms; now −6.031 dB from the first sample (State test 132; engine level, Test 68,
+the same at −70, −90 and −125 dBFS, for kept values from −10.95 to +7.71 dB). This table's row said
+"lands at the next silence→audio edge" and contradicted what Q5 decides — the kept result is what plays
+— so the row is corrected above, and `prepare()` now starts the applied gain on the kept result when
+Level Match is on in the state its `reset()` settles (after it, because `reset()` may adopt an in-flight
+duck's snapshot). Unchanged: with Level Match off it rests at unity, so a later engage starts as Case A /
+Case B say; every flush (new rate, primed measurement change, first prepare, a non-finite result) starts
+at unity, which is the flushed 0 dB; the re-arm rule, the measurement, the predict, the host reset and
+the engage cases. The applied gain now lands at a silence→audio edge, an A/B injection, a Case-A bottom
+(the amendment above, :327-329) and a kept re-prepare. A flush's own quiet glide from unity to the
+predict floor has no kept result behind it and is recorded, not changed (worklog §M). Owner instruction
+of 2026-09-25: *"the applied Level Match smoother must begin from the retained match value rather than
+unity"* and *"The first quiet blocks after re-prepare must already use the retained Level Match gain."*
+Gate: a text correction to this Accepted ADR, flagged in the PR body and the commit; no compatibility
+trigger (no parameter, schema, thread, order or latency change — the write is on the prepare path).
+
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1155` (`measChangedAtBottom`, one
+answer for the Case-A landing and the injection re-arm), `:1274` and `:1310` (the re-arm at the
 two injection consumers), `:56` (`keepMatch`), `:69` and `:159` (the kept matcher skips
-`loudness.prepare` and takes `softReset`), `:274` (`reset (everything)`); `src/dsp/AnamorphEngine.h:122`
-(`primeParameters` records `primeMeasChanged`).
+`loudness.prepare` and takes `softReset`), `:281` (`reset (everything)`), `:167-168` (the kept result
+becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:122` (`primeParameters` records
+`primeMeasChanged`).
 
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
@@ -498,7 +522,7 @@ two injection consumers), `:56` (`keepMatch`), `:69` and `:159` (the kept matche
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:77-98` and `:131-156` (predict), `:158-182`
   (measure/hold), `:100-106` (`softReset`: the analysis only), `:64-71` (`reset`: both halves)
-- `src/dsp/AnamorphEngine.cpp:1721-1722` (A(dry) reference), `:1841` (the measurement), `:1880-1881`
+- `src/dsp/AnamorphEngine.cpp:1728-1729` (A(dry) reference), `:1841` (the measurement), `:1880-1881`
   (silence-edge snap)
 - `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 

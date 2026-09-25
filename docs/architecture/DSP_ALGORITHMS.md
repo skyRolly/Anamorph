@@ -198,7 +198,9 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
   that changes the signal path, at an A/B injection whose slots differ in anything the measurement
   reads, on every host reset, and on a re-prepare at an unchanged sample rate whose measurement
   inputs did not change; it flushes (`reset`, via `prepare`) on any other re-prepare and in the NaN
-  self-heal. An A/B switch overwrites the result with the slot's remembered gain.
+  self-heal. An A/B switch overwrites the result with the slot's remembered gain. The applied gain
+  (`matchGainSmooth`) is the engine's: a kept re-prepare with Level Match on starts it on the kept
+  result (quiet audio never fires the silence→audio snap; Test 68), a flush starts it at unity.
 - Invariants: predict only ever lowers gain; absolute (non-accumulating) → cannot ratchet;
   measure freezes on silence; both clamped ±24 dB; IIR → essentially zero latency.
 

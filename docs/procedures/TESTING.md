@@ -338,6 +338,39 @@ re-arms, no defensive re-arm, a keep across a rate change, a keep that ignores t
 keep that loses the predict's memory, a keep that does not re-arm, an injection re-arm through
 `reset()` (leg 1b), and a keep decided without "prepared before" (leg 5).
 
+**A kept Level-Match result is the applied gain from the first block after a same-rate re-prepare, at
+any input level — Test 68 (2026-09-25; ADR-0007, Amendment of 2026-09-24, F13(2) Q5, and its
+correction of 2026-09-25; the Devin review of PR #156).** Q5 keeps the published result across a
+same-rate re-prepare, but `prepare()` wrote the applied gain (`matchGainSmooth`) to unity and only the
+silence→audio snap in `process()` landed it — a snap that fires only on a block whose conditioned
+input reaches `inSq ≥ 1e-6·n` (~−60 dBFS). Audio resumed below it played the smoother's 0.12 s glide
+from 0 dB to the kept value. **Test 68** (`testLevelMatchKeptResultIsTheAppliedGainFromTheFirstBlock`,
+the engine contract) reads the applied gain per sample as run / twin, the twin an event-matched engine
+with Level Match off at Output Gain 0 dB (exact to one rounding; the per-block least-squares residual
+≤ 1e-6 once the gain is constant, ≤ 9e-16 measured). Legs: (1)–(5) kept re-prepares with Level Match on
+— Drive 8 (retained −6.087 dB) resumed at −70 dBFS (the Devin review's example), −90 and −125 dBFS;
+Drive 20 / 24 / 2 (−10.41 / −10.95 / −2.79 dB); a positive match (Width 0 on anti-correlated input,
++7.71 dB) — each applied within 0.02 dB of the retained value from the first sample and at every
+sample for 0.149 s, with premises asserted: the keep (bit-exact across prepare), the twin sharing the
+measurement, the published value holding, every resumed block's input mean(L² + R²) under half the
+snap's rule, Level Match engaged, and the re-prepare real (the first block's output energy ≥ 30 dB
+below a no-re-prepare control still carrying the loud Haas tail); (6) Level Match OFF across a kept
+re-prepare, engaged in the first block after it: a Case-B engage still glides from unity (φ 0.765), a
+Case-A engage lands (the smoother was left at unity); (7) 48 → 44.1 kHz, the flush unchanged — the
+applied gain starts at unity and glides to the predict floor at every quiet level (the behavioural proof
+that those levels are under the detector) and snaps at the loud one; (8) an invalid result falls back to
+unity — a NaN that reaches `prepare()` through the engine API (`injectMatchGainDb (+Inf)` with Level
+Match off; the processor cannot inject it), a NaN burst the self-heal flushes, a primed Drive change;
+(9) an injection right after a kept re-prepare still wins; (10) a host reset after one leaves the
+applied gain alone; (11) through the unprimed engine API, a kept re-prepare that resolves an in-flight
+Level-Match engage applies the kept value from the first sample (the state `reset()` settles decides).
+30 checks, ~0.16 s native. Against the pre-fix engine (`a7d2b88`) 5 fail — the claims of the kept legs: every one started at unity (−70 dBFS: −0.001 / −0.373 / −1.170 / −2.521 /
+−6.087 dB at 0 / 10 / 30 / 60 / 120 ms), at −125 dBFS as at −70. Rejected variants: the silence
+detector lowered to 1e-12·n instead of the fix (the −125 dBFS legs, and the quiet flushes snap), a snap
+on `prevInputSilent` alone (Case B lands, the quiet flushes snap), the fix without its Level-Match gate
+(Case B φ 0.094), the keep without its `isfinite` term (the NaN is kept and the run goes silent), and
+the write placed before `reset()` or gated on the Level-Match state read before it (leg 11).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4509,6 +4542,29 @@ that ignores the rate or the primed snapshot, a keep that does not re-arm, and a
 re-converging, a same-rate re-prepare keeps the published gain bit-exact and
 silence then moves 0.000000 dB, and a re-prepare at a new rate still flushes the whole matcher (2 of
 its 16 checks fail against the pre-change engine: 0 dB kept, 4.06 dB of movement).
+
+**A kept Level-Match result plays from the first quiet block after a same-rate re-prepare — State test
+132 (2026-09-25; ADR-0007, Amendment of 2026-09-24, F13(2) Q5, and its correction of 2026-09-25; the
+Devin review of PR #156).** The processor half of Test 68, through `AnamorphAudioProcessor` exactly as
+a host drives it (APVTS parameters, `prepareToPlay` for the re-prepare, `setStateInformation` for a
+restore, `processBlock`; 43 heap processors in lockstep on one seeded stream). The applied gain is run /
+twin per sample, the twin a processor identical but for Level Match off at Output Gain 0 dB. Legs:
+(1) the Devin review's example — Drive 8 converged to −6.0306 dB, `prepareToPlay (48000, 256)` again,
+resumed at −70 dBFS: the applied gain is the kept value at the first sample and for the whole 0.12 s
+(pre-fix −0.001 / −0.371 / −1.162 / −2.503 / −6.031 dB at 0 / 10 / 30 / 60 / 120 ms), with a no-re-prepare
+control (liveness) and a loud resume that snaps on both engines (within 2e-4 dB of that block's value,
+so a kept start that suppressed the snap is caught); (2) −90 and −125 dBFS; (3) Drive 20,
+Drive 2 and a positive match (−10.40 / −2.76 / +7.66 dB); (4) a 512-sample re-prepare and a restore of
+Output Gain alone (both keep); (5) a restore that turns Level Match on across a same-rate re-prepare —
+kept, the consistent answer (a loud resume snaps there too); (6) right after a kept re-prepare, an A/B
+(the slot's gain wins), a host reset (the applied gain continuous and still kept) and Apply (writes the
+kept value); (7) Level Match off across the re-prepare, then a hand Case-A engage (lands) and Case-B
+engage (glides from unity, φ 0.78); (8) 44.1 kHz — the unchanged flush, a quiet glide and a loud snap;
+(9) invalid results — a restore that moves Drive (flush), a NaN input sample the self-heal flushes, and
+`injectMatchGainDb (+Inf)` with Level Match off leaving a NaN published value at the boundary (flushed
+by the `isfinite` term): each starts at unity and glides. 124 checks, ~0.4 s native. Against the pre-fix
+engine 30 fail — exactly the three kept-contract checks on each of the ten kept legs; every premise,
+liveness, snap, A/B, Apply, Case A / B, 44.1 kHz and invalid-result check passes on both.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

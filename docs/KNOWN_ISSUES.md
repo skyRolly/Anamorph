@@ -158,7 +158,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1158 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1165 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -1047,7 +1047,10 @@ engine API) are fixed.
 >   2 ↔ 8 switch (Test 67, State test 131). Slots that differ only in Output Gain, Level Match itself
 >   or nothing at all keep their settled analysis, as before.
 > - **A re-prepare at an unchanged sample rate — fixed.** The match is kept (bit-identical) and only
->   the analysis restarts: +2.46 dB for ~2.2 s → +0.04 dB at Drive 8. A re-prepare after a restore
+>   the analysis restarts: +2.46 dB for ~2.2 s → +0.04 dB at Drive 8. With Level Match on, the kept value
+>   is also the applied gain from the first block — audio resumed below the silence→audio detector used
+>   to glide 0.12 s from 0 dB to it (−70 dBFS: 6.03 dB off at the first sample; Devin review, corrected
+>   2026-09-25; Test 68, State test 132). A re-prepare after a restore
 >   that changed what the measurement reads still measures afresh. So does a **new sample rate**, by
 >   decision: it plays +2.7 to +3.3 dB off at Drive 8–10 for ~3 s, where carrying the value across
 >   measured within 0.13 dB on Haas programmes — recorded as a candidate, not adopted (ADR-0007,

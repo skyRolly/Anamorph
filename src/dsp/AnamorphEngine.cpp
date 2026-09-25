@@ -89,7 +89,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     widthSmooth     .reset (sr, ramp);
     mixSmooth       .reset (sr, ramp);
     outGainSmooth   .reset (sr, ramp);
-    matchGainSmooth .reset (sr, 0.12); // gentle, so a live match change glides (#16); lands at an A/B injection (#23), a silence->audio edge, and a gain-only Match-on bottom (ADR-0007)
+    matchGainSmooth .reset (sr, 0.12); // gentle, so a live match change glides (#16); lands at an A/B injection (#23), a silence->audio edge, a gain-only Match-on bottom and a kept re-prepare (ADR-0007)
     balanceSmooth   .reset (sr, ramp);
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
@@ -159,6 +159,13 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     keepMatchResult = keepMatch;
     reset();
     keepMatchResult = false;
+    // A KEPT RESULT IS ALSO THE APPLIED GAIN. With Level Match on in the state reset() settled, the
+    // kept value is already published (the re-armed measure holds it until its gate opens), so the
+    // applied gain starts there, not at the unity above: process()'s silence->audio snap never fires
+    // for audio under its ~-60 dBFS detector, and quiet resumed audio glided 120 ms from 0 dB (ADR-0007,
+    // F13(2) Q5; Test 68). Level Match off rests at unity, so a later engage starts as it would have.
+    if (keepMatch && p.autoGainMatch)
+        matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (loudness.getMatchGainDb()));
 
     // Settle every continuous smoother at the target updateDerived() just armed
     // from the live snapshot p. Without this, the neutral constants written
@@ -169,8 +176,8 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // blocks. prepare() has just cleared all delay/filter state, so snapping
     // is inaudible; the two blend crossfades were already settled from p above
     // (the same treatment the continuous set was missing). matchGainSmooth is
-    // deliberately excluded by snapSmoothers: ADR-0007 decides where it lands (an A/B
-    // injection, a silence->audio edge, a Match-on duck bottom that changes only the gain).
+    // deliberately excluded by snapSmoothers: ADR-0007 decides where it lands (an A/B injection,
+    // a silence->audio edge, a gain-only Match-on duck bottom, a kept re-prepare just above).
     snapSmoothers();
 
     // ...and the same treatment for the MODULES' own internal smoothers, which
@@ -437,7 +444,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:888 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:895 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -453,14 +460,14 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // states, which no module can observe.
         //
         // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
-        // (src/dsp/AnamorphEngine.cpp:407 (`a.dimMode`)),
+        // (src/dsp/AnamorphEngine.cpp:414 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
         // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:873 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:880 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -727,9 +734,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:644), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:657) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:644) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:651), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:664) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:651) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -738,7 +745,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1169) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1176) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:

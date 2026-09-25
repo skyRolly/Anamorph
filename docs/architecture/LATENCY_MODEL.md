@@ -157,7 +157,7 @@ to them — a reported-latency change, and a hard-stop for review — fails the 
   Oversampling Setting inside an off-thread `setStateInformation` (RISK-007) can still change the
   value from a non-message thread.
 
-Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:415-420,
+Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:422-427,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

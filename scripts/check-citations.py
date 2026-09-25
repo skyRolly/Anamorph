@@ -664,19 +664,20 @@ DELIBERATE_REAIMS = {
     # `origin/main` carry `:208-215` for the same sentence; that transition is declared too, since
     # a declaration answers only for the base that carries its old spelling. (PR #156's O4g round
     # moved the same block down one line, to `:206-212`; its F13(2) round, which added the Level-Match
-    # keep decision to prepare(), sixteen more, so the target spelling is now `:222-228`.)
+    # keep decision to prepare(), sixteen more, and its fix for the Devin review's quiet-resume finding
+    # seven more, so the target spelling is now `:229-235`.)
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:222-228"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:222-228"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:222-228"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:222-228"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:229-235"): "pendingP",
     #
     # 2026-09-24 (PR #156, F13(2)): ADR-0007's *Related code* list was stale before this PR -- its
     # own Note of 2026-09-24 reported it -- and the line map carried the stale spellings along
@@ -690,10 +691,10 @@ DELIBERATE_REAIMS = {
      "src/dsp/LoudnessMatch.cpp:16-46"): "setSampleRate",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1272-1305",
-     "src/dsp/AnamorphEngine.cpp:1721-1722"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1728-1729"): "loudnessRefScratch",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1201-1234",
-     "src/dsp/AnamorphEngine.cpp:1721-1722"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1728-1729"): "loudnessRefScratch",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/PluginProcessor.cpp:402-424",
      "src/PluginProcessor.cpp:455"): "applyAutoGain",
@@ -708,16 +709,16 @@ DELIBERATE_REAIMS = {
     # decision and the A(dry) reference they name.
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1844",
-     "src/dsp/AnamorphEngine.cpp:1846"): "landMatchAfterMeasure",
+     "src/dsp/AnamorphEngine.cpp:1853"): "landMatchAfterMeasure",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:545",
-     "src/dsp/AnamorphEngine.cpp:547"): "measurementInputsDiffer",
+     "src/dsp/AnamorphEngine.cpp:554"): "measurementInputsDiffer",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1146",
-     "src/dsp/AnamorphEngine.cpp:1148"): "measChangedAtBottom",
+     "src/dsp/AnamorphEngine.cpp:1155"): "measChangedAtBottom",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1719-1720",
-     "src/dsp/AnamorphEngine.cpp:1721-1722"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1728-1729"): "loudnessRefScratch",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

@@ -1145,3 +1145,142 @@ the wrong sign — the stale analysis was dragging the value the slot then remem
   and the lower bound of its re-arm-at-every-injection figure (0.022 vs 0.013 dB, a policy not adopted);
   ADR-0004's `:480-562`, ADR-0005's `:726-759` and ADR-0006's `:831-845` (bare anchors, already stale at
   the merge base) and ADR-0005's A(dry) production span.
+
+## M. The Devin review of `a7d2b88`: a kept result was not the applied gain on quiet audio
+
+Round after `a7d2b88`, same branch (PR #156). Finding (Devin): *"Quiet audio loses retained match
+level."* Confirmed, and root-caused against the code before any edit.
+
+### M1. Root cause — the lifecycle
+
+The processor's `prepareToPlay` runs `primeParameters (e)`, `prepare`, `setParameters (e)`. Inside
+`prepare()`:
+1. `keepMatch` is decided (prepared before, bit-identical rate, no primed measurement change, a finite
+   published value), and a kept matcher skips `loudness.prepare`.
+2. `matchGainSmooth.reset (sr, 0.12)`. JUCE's `SmoothedValue::reset (double, double)` sets the step count
+   and snaps the current value to the old target. Every smoother is then written to its neutral value,
+   `matchGainSmooth` to **unity**.
+3. `updateDerived()` sets the match smoother's **target** to the kept value (Level Match on) or 1.
+4. `reset()` adopts an in-flight duck's snapshot (after a prime, `p` already equals it) and, for a keep,
+   takes `loudness.softReset()`. The result is authoritative from here on.
+5. `snapSmoothers()` settles every smoother **except** `matchGainSmooth` (ADR-0007 decides where it
+   lands).
+
+The first `process()` block then moved the applied gain only through the silence→audio snap:
+`prevInputSilent` (true after `reset()`) and `! inSilentNow`, where `inSilentNow = inSq < 1e-6·n` over
+the conditioned input. Audio resumed below that detector never fired it. The smoother then glided
+linearly over 0.12 s from unity to the kept value. The published value was right all along; the audio
+was not.
+
+Every re-prepare leg of Test 67, State test 131 and State test 120 resumed on loud audio. There the
+snap landed the gain in the first block, so none of them saw this, and the §L4 "+0.04 dB, 0 ms" row was
+measured the same way.
+
+### M2. The fix
+
+In `prepare()`, right after `reset()`:
+`if (keepMatch && p.autoGainMatch) matchGainSmooth.setCurrentAndTargetValue (decibelsToGain
+(published))`.
+
+- **Why after `reset()`.** `p` is final only there, since `reset()` may adopt a duck's snapshot. The
+  kept result is authoritative only there, after the `softReset`. The value written is bitwise the
+  target `updateDerived()` set, so the smoother is settled.
+- **Level Match off.** The smoother stays at unity, so a later engage starts where the engage rules say:
+  Case A lands, Case B glides from unity.
+- **Every flush is unchanged.** The published value is 0 dB, so unity already agrees with it.
+
+Alternatives were measured and rejected:
+- **Writing before `reset()`** (replacing the unity write). This is equivalent on the processor path,
+  because the prime makes `p == pendingP`. It differs for an engine-level `prepare()` without a prime
+  while a duck is in flight.
+- **Inside `reset()` under `keepMatchResult`.** This is equivalent, but it puts a gain write into the
+  function that keeps the gain on a host reset.
+- **In `snapSmoothers()`.** That function also runs at every forced duck bottom, and a Case-B forced
+  engage would then land.
+- **The forbidden alternatives:**
+  - a lowered detector threshold, which still fails below it (−125 dBFS) and makes quiet flushes snap;
+  - a snap on `prevInputSilent` alone, which lands Case B and snaps quiet flushes.
+
+An adversarial review of the lifecycle found the fix correct and found no other path of the same class
+(§M5 records the related ones).
+
+### M3. Measured, before (`a7d2b88`) and after
+
+Applied gain as run / twin per sample; the twin is Level Match off at Output Gain 0 dB.
+
+| where | kept value | resumed at | 0 / 10 / 30 / 60 / 120 ms, before | after |
+|---|---|---|---|---|
+| processor (State test 132 (1)), Drive 8 | −6.0306 dB | −70 dBFS | −0.001 / −0.371 / −1.162 / −2.503 / −6.031 dB | −6.031 dB throughout |
+| engine (Test 68 (1)), Drive 8 | −6.0873 dB | −70, −90, −125 dBFS | −0.001 / −0.373 / −1.170 / −2.521 / −6.087 dB, the same at all three levels | −6.087 dB throughout |
+| engine, Drive 20 / 24 / 2, positive match | −10.41 / −10.95 / −2.79 / +7.71 dB | −90 / −125 / −70 / −70 dBFS | first sample 0 dB (error = \|kept\|) | kept value from the first sample |
+
+A loud resume is identical before and after: the snap lands it in the first block. The published value
+is bit-identical before and after in every leg.
+
+### M4. Tests
+
+- **DSP Test 68** (the engine contract): 30 checks; 5 fail on `a7d2b88`.
+- **State test 132** (the processor): 124 checks; 30 fail on `a7d2b88`.
+
+`procedures/TESTING.md` has the legs. Both assert their premises:
+- the keep happened;
+- the re-prepare happened;
+- Level Match is engaged;
+- the input is under the detector, numerically and behaviourally (the same quiet level glides after a
+  new-rate flush).
+
+Both also pin what must not change: Level Match off (a Case-B engage right after still glides from unity),
+the new-rate flush, invalid results, a following injection, and a following host reset.
+
+The existing F13 tests pass unchanged: Tests 66 and 67, State tests 120, 130 and 131.
+
+**Mutants** (each a one-site edit of the fixed engine, built and run through both full suites):
+
+  | mutant | change | DSP suite | State suite |
+  |---|---|---|---|
+  | no fix (`a7d2b88`) | — | 5 (Test 68's kept claims and (11)) | 30 (State test 132's three kept checks on ten legs) |
+  | K2 | the write without its Level-Match gate | 1 (Test 68 (6) Case B, φ 0.094) | 1 (State test 132 (7) Case B) |
+  | K3 | the write before `reset()`, replacing the unity write | 1 (Test 68 (11)) | 0 — equivalent on the processor path |
+  | K4 | the target only (`setTargetValue`) | 5 | 30 |
+  | K5a | no fix; `prevInputSilent = false` after a kept prepare | 6 | 33 |
+  | K5b | no fix; the silence→audio snap never fires | 9 (incl. Tests 66, 67) | 35 (incl. State tests 130, 131) |
+  | K5c | no fix; the snap on `prevInputSilent` alone | 3 | 9 |
+  | K6 | no fix; the detector lowered to 1e-12·n | 4 (the −125 dBFS legs; quiet flushes snap) | 11 |
+  | K7 | no fix; `snapSmoothers()` snaps the match smoother | 3 (Test 66: forced Case B lands) | 2 (State tests 130, 131) |
+  | K10 | the keep without its `isfinite` term | 2 (Test 68 (8)) | 4 |
+  | K11 | the gate read before `reset()` | 1 (Test 68 (11)) | 0 — as K3 |
+  | K13 | no fix; the unity write deleted | 2 | 9 |
+  | K14 | the fix, plus the loud snap suppressed after a keep | 0 | 2 (State test 132's loud-resume snaps, at 2e-4 dB) |
+  | K8 / K9 / K12 | the write on every Level-Match-on prepare; the value read before `reset()`; a snap to the target on any keep | 0 | 0 — equivalent: a flush publishes 0 dB (unity), `softReset()` keeps the result, the target is the same value |
+
+  K3 and K11 first survived both suites, and Test 68 leg (11) was added. K3 and K11 are identical on the
+  processor path, where the prime makes `p == pendingP`. Leg (11) runs the unprimed engine API with a
+  Level-Match engage in flight at `prepare()`, where the fix's placement after `reset()` decides.
+  K14 first survived State test 132's 0.02 dB snap tolerance, because the snap moves the kept value only
+  one MEASURE step (0.0018 dB). The loud-resume snaps are now judged at 2e-4 dB.
+
+### M5. Recorded, not changed
+
+- **A flush's own quiet glide.** After a first prepare, a new rate or a primed measurement change, the
+  published value is 0 dB and the applied gain is unity; the first block's predict floor then publishes
+  e.g. −4.06 dB at Drive 8. Below the detector the applied gain glides there over 0.12 s. This is
+  measured the same before and after the fix, and Test 68 (7) and State test 132 (8) pin it as
+  unchanged. There is no kept result behind it: it is the flushed restart, Case-B-shaped, with its own
+  owner question. It is a candidate, not a defect of Q5.
+- **A NaN published value can reach `prepare()` through the engine API.**
+  - `injectMatchGainDb (+Inf)` passes `inj > kNoInject + 1`.
+  - Consumed with Level Match off while the matcher's gate is open, it makes MEASURE compute Inf − Inf =
+    NaN, and `clampd` passes it.
+  - The output plays Output Gain, so no self-heal runs, and the NaN is absorbing.
+  - It survives a host reset (`softReset` keeps the result).
+
+  `keepMatch`'s `isfinite` term flushes it at a re-prepare (Test 68 (8a), State test 132 (9)(iii)).
+  The processor cannot inject +Inf: `abMatchGain` is 0 or a `getMatchGainDb()` reading, and a NaN
+  injection is refused. Rejecting a non-finite injection in both consumers would close the route. That
+  is outside this finding and borders KI-029 (non-finite ingress).
+- **`keepMatch` ignores an in-flight duck's `pendingP` when `prepare()` runs without `primeParameters`.**
+  This is reachable only through the engine API. The processor always primes, and the prime compares the
+  live `p` with the snapshot.
+- **Two State-suite runs at once can collide.** Running two at the same time made State test 19 read
+  another run's preset file (a shared path outside `HOME`). A single run is clean. This is a test-harness
+  property, recorded for whoever parallelises CI.
