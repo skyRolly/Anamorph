@@ -454,7 +454,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:908 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:1003 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -477,7 +477,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:893 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:988 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -589,6 +589,99 @@ bool AnamorphEngine::measurementInputsDiffer (const EngineParameters& a, const E
         || ((a.monoMakerEnable || b.monoMakerEnable) && differs (a.monoMakerFreq, b.monoMakerFreq));
 }
 
+// ---------------------------------------------------------------------------
+//  THE A/B LEVEL-MATCH MEMORY (feedback #23; ADR-0007, Amendment of 2026-09-25, A/B provenance).
+//  A slot's remembered value carries the validity of the result it was taken from: restoring the
+//  value and restoring its currency are two answers, and the second is decided here, on the audio
+//  thread, from state that lives here. The processor sends only the two slot indices.
+// ---------------------------------------------------------------------------
+void AnamorphEngine::requestAbSwitch (int fromSlot, int toSlot) noexcept
+{
+    const int from = juce::jlimit (0, kAbSlots - 1, fromSlot);
+    const int to   = juce::jlimit (0, kAbSlots - 1, toSlot);
+    int cur = duckRequest.load (std::memory_order_relaxed);
+    for (;;)
+    {
+        // A switch the engine has not taken yet keeps ITS source: the engine is still on that slot,
+        // and the slot in between was never adopted (A -> B -> A before a block: B keeps its record).
+        const int source = (cur & kReqAbSwitch) != 0 ? ((cur >> kReqFromShift) & kReqSlotMask) : from;
+        const int next = (cur & kReqAbForget) | kReqDuck | kReqAbSwitch
+                       | (source << kReqFromShift) | (to << kReqToShift);
+        if (duckRequest.compare_exchange_weak (cur, next, std::memory_order_relaxed))
+            return;
+    }
+}
+
+void AnamorphEngine::forgetAbMatchMemory() noexcept
+{
+    // Keeps a pending duck; drops a pending switch, whose slots the restore has replaced.
+    int cur = duckRequest.load (std::memory_order_relaxed);
+    while (! duckRequest.compare_exchange_weak (cur, (cur & kReqDuck) | kReqAbForget, std::memory_order_relaxed)) {}
+}
+
+bool AnamorphEngine::takeRequests (int req) noexcept
+{
+    if ((req & kReqAbForget) != 0)
+    {
+        for (auto& m : abMemory) m = AbMatchMemory {};
+        abRestoreSlot = -1;
+    }
+    if ((req & kReqAbSwitch) != 0)
+    {
+        const int from = juce::jlimit (0, kAbSlots - 1, (req >> kReqFromShift) & kReqSlotMask);
+        const int to   = juce::jlimit (0, kAbSlots - 1, (req >> kReqToShift) & kReqSlotMask);
+        // Record the slot being left, every answer read here, before this call adopts anything: the
+        // published value, whether it is MEASURED -- the measure's confirmed answer, not merely
+        // current: a flush's value is current only in the flush's own context -- and the state and
+        // rate it was measured for. Not while a restore is still armed -- the engine never adopted the slot
+        // that switch was going to, and the live result is still its source's, already recorded --
+        // and not in the word that forgets: the live result is the previous project's. Not measured
+        // either while a duck in flight has made a measurement-input change live that only its bottom
+        // will report (duckMeasDirty) -- the same rule prepare() applies.
+        if (abRestoreSlot < 0 && (req & kReqAbForget) == 0)
+        {
+            AbMatchMemory& m = abMemory[from];
+            m.gainDb      = loudness.getMatchGainDb();
+            m.measured    = loudness.isResultMeasured() && ! (switchState != SwitchState::Normal && duckMeasDirty);
+            m.measuredFor = p;
+            m.measuredAt  = sr;   // a prime runs before its prepare: still the rate the result was measured at
+        }
+        abRestoreSlot = to;
+    }
+    return (req & kReqDuck) != 0;
+}
+
+bool AnamorphEngine::restoreAbSlot (bool rearm) noexcept
+{
+    const AbMatchMemory& m = abMemory[abRestoreSlot];
+    abRestoreSlot = -1;
+    if (! (m.gainDb > kNoInject + 1.0f))   // a NaN reading is not restored, as the injection never was
+        return false;
+    // Measured only if it was measured when the slot was left, at the rate the engine runs at now
+    // (the K-weighting is a function of the rate: a record from another rate is no measurement here,
+    // and one from this rate still is, whatever rates came between), AND the state adopted now reads
+    // the same measurement inputs: a Copy onto the slot, an Oversampling change made on the other
+    // slot, or an edit the engine had not yet adopted when the slot was left each fail that test.
+    const bool measured = m.measured && juce::exactlyEqual (m.measuredAt, sr)
+                       && ! measurementInputsDiffer (m.measuredFor, p);
+    adoptRememberedMatch (m.gainDb, measured, rearm);
+    return true;
+}
+
+void AnamorphEngine::adoptRememberedMatch (float db, bool measured, bool rearm) noexcept
+{
+    // The restored value describes the DESTINATION slot; the analysis still holds the source slot's
+    // audio. When the two slots differ in anything the measurement reads, that analysis would drag
+    // the restored value back toward the source for seconds (KI-030), so re-arm it: the result is
+    // the slot's, the analysis starts on the slot's sound. Identical slots, and slots that differ
+    // only after the tap (Output Gain, Level Match itself), keep a converged analysis (ADR-0007,
+    // Amendment of 2026-09-24, F13(2) Q1). The re-arm answers where the ANALYSIS came from;
+    // `measured` answers where the VALUE came from -- two questions, never one flag.
+    if (rearm) loudness.softReset();
+    loudness.setDisplayedGainDb (db, measured);
+    matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (db));
+}
+
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
 {
     // Keep dst's discrete fields; pull every smoothed/continuous field from src. Every
@@ -619,7 +712,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     // silent bottom (continuous included, smoothers snapped) so NOTHING can pop
     // mid-fade, not even an un-smoothed control or the Level-Match re-injection
     // (#1, 0.6.4/0.6.5 feedback).
-    const bool forceDuck = duckRequest.exchange (0, std::memory_order_relaxed) != 0;
+    // The same word carries the A/B switch (requestAbSwitch), taken first against the state being
+    // left (ADR-0007, Amendment of 2026-09-25, A/B provenance).
+    const bool forceDuck = takeRequests (duckRequest.exchange (0, std::memory_order_relaxed));
 
     // Begin (or re-begin) a forced duck: mark it forced and latch the dry-fill
     // decision against the state being heard RIGHT NOW (getLatencySamples() tracks
@@ -745,9 +840,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:661), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:674) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:661) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:756), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:769) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:756) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -756,7 +851,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1190) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1285) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
@@ -1275,20 +1370,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
             osRunning = osActiveFor (p);
             pendingAlgoReset = false; // already handled by the wholesale reset above
+            // The A/B slot's remembered value, with its own provenance (#23), then an engine-API
+            // injection, which its caller asserts is measured. Either takes priority over the landing.
+            if (abRestoreSlot >= 0 && restoreAbSlot (measChangedAtBottom))
+                landMatchAfterMeasure = false;   // the slot's own gain takes priority (#23)
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
             {
-                // The injected value describes the DESTINATION slot; the analysis still holds
-                // the source slot's audio. When the two slots differ in anything the measurement
-                // reads, that analysis would drag the restored value back toward the source for
-                // seconds (KI-030), so re-arm it: the result is the slot's, the analysis starts
-                // on the slot's sound. Identical slots, and slots that differ only after the tap
-                // (Output Gain, Level Match itself), keep a converged analysis (ADR-0007,
-                // Amendment of 2026-09-24, F13(2) Q1).
-                if (measChangedAtBottom) loudness.softReset();
-                loudness.setDisplayedGainDb (inj);
-                matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
-                landMatchAfterMeasure = false;   // the slot's own gain takes priority (#23)
+                adoptRememberedMatch (inj, true, measChangedAtBottom);
+                landMatchAfterMeasure = false;
             }
             pendingForced = false;
         }
@@ -1313,17 +1403,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // delay-aligned raw input (bypassDryScratch) instead of toward silence.
     const bool duckDry = fading && dryDuck;
 
-    // A Level-Match injection that arrived WITHOUT a forced duck (defensive: every
-    // A/B switch forces one, so normally this is consumed at the silent bottom
-    // above) still gets applied so it isn't lost.
+    // A Level-Match restore that arrived WITHOUT a forced duck still gets applied so it isn't
+    // lost. Every A/B switch forces one, so this is the switch a prime took (its duck dropped), a
+    // host reset that completed the duck in the bottom's place, or an engine-API injection with
+    // no duck. The re-arm is the same rule, false without a bottom: the prepare or reset that
+    // replaced the bottom re-armed the analysis itself.
     if (! pendingForced)
     {
+        if (abRestoreSlot >= 0 && restoreAbSlot (measChangedAtBottom))
+            landMatchAfterMeasure = false;
         const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
         if (inj > kNoInject + 1.0f)
         {
-            if (measChangedAtBottom) loudness.softReset();   // same rule; false without a bottom
-            loudness.setDisplayedGainDb (inj);
-            matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+            adoptRememberedMatch (inj, true, measChangedAtBottom);
             landMatchAfterMeasure = false;
         }
     }

@@ -69,8 +69,10 @@ void LoudnessMatch::reset()
     displayedGainDb = 0.0;
     prevPredictedGainDb = 0.0; // default state = no boost
     matchGainDb.store (0.0f, std::memory_order_relaxed);
-    // A flush is no measurement of a previous state -- the measure restarts on the current one.
+    // A flush is no measurement of a previous state -- the measure restarts on the current one --
+    // and no measurement of this one either, until the measure confirms it (isResultMeasured).
     resultStale = false;
+    resultMeasured = false;
     staleDry0 = staleWet0 = 0.0;
     stalePreWeight = 1.0;
     postShare = postSum = 0.0;
@@ -161,8 +163,22 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     // first played block nor a live crank can slam. A FALLING estimate never jumps the
     // gain up here -- the measurement eases it back on play, so there is no surge. This
     // floor-only, absolute rule is what kills the old ratchet-to-(-24) behaviour.
-    if (predictDelta < 0.0)
-        displayedGainDb = std::min (displayedGainDb, predictedGainDb);
+    if (predictDelta < 0.0 && predictedGainDb < displayedGainDb)
+    {
+        displayedGainDb = predictedGainDb;
+        // A measured value the floor replaces is a prediction now, and the measure must confirm
+        // what follows it -- from audio heard after this block (ADR-0007, Amendment of 2026-09-25,
+        // A/B provenance). Reached only by a value restored as measured: every other rise the
+        // floor reads was reported by inputsChanged() first, or follows a flush.
+        if (resultMeasured)
+        {
+            resultMeasured = false;
+            staleDry0 = meanSqDry;
+            staleWet0 = meanSqWet;
+            stalePreWeight = 1.0;
+            postShare = postSum = 0.0;
+        }
+    }
 
     // ---- MEASURE: ground truth while there is audio; frozen on silence ------------
     double glideCoeff = 0.0;   // this block's glide step, for the currency bookkeeping below
@@ -211,9 +227,12 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     // it, those tails are the whole ratio (the silence floor against a tail). The gate is absolute
     // because the half is relative: a host reset's softReset() empties the snapshot, and then anything
     // dominates. (The predict floor moves the value only in the block that first reads a raised Drive
-    // or Mix, a measurement input that inputsChanged() has already reported; the check reads the value
-    // itself.)
-    if (resultStale)
+    // or Mix, a measurement input that inputsChanged() has already reported, or after a flush, or over
+    // a value restored as measured, which it un-measures above; the check reads the value itself.)
+    // The same confirmation makes the result MEASURED (isResultMeasured), so it also runs while a
+    // result that is current without being measured -- a flush's, or one the floor lowered -- awaits
+    // it; there it moves only resultMeasured (ADR-0007, Amendment of 2026-09-25, A/B provenance).
+    if (! resultMeasured)
     {
         if (numSamples != decayForN)
         {
@@ -237,7 +256,10 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
             }
             constexpr double kCurrentDb = 0.1;   // the Level Match settle tolerance
             if (postShare >= 0.5 && std::abs (displayedGainDb - postSum / postShare) <= kCurrentDb)
-                resultStale = false;
+            {
+                resultStale    = false;
+                resultMeasured = true;
+            }
         }
     }
 

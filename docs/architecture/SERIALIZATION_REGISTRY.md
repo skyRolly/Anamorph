@@ -93,7 +93,7 @@ a removed factory id, a deleted or moved user preset — ticks **nothing**; it n
 same-named preset. Source: src/PresetManager.h:56-78 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
 src/PresetManager.cpp:1310-1363 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:2248-2353 (`writeSelection`/`readSelection`), :585 (root write),
+src/PluginProcessor.cpp:2250-2355 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
@@ -363,9 +363,14 @@ v0.2 branch) and :1063-1108 (`adoptRestoreTail`, which assigns the slot set and 
 Level-Match memory); State test 26.
 
 **The per-slot Level-Match gain is part of the slot, and resets with it** (2026-09-02,
-ER-STATE-20). `abMatchGain[]` is the one piece of a slot that is **never serialized** — it is a
-runtime cache of what the loudness matcher had settled on when that slot was last left, restored on
-the way in by `abSwitchTo`'s closing `engine.injectMatchGainDb (abMatchGain[slot])`. Because it is
+ER-STATE-20). The remembered Level-Match gain is the one piece of a slot that is **never serialized** —
+a runtime record of what the loudness matcher had published when that slot was last left. It was the
+processor's `abMatchGain[]`, restored on the way in by `abSwitchTo`'s closing
+`engine.injectMatchGainDb (abMatchGain[slot])`; since 2026-09-25 it is the engine's per-slot record
+(`AnamorphEngine::abMemory`: the value, whether it was measured, and the state and sample rate it was
+measured for), taken and restored on the audio thread through `requestAbSwitch`, and a restore
+forgets it with `forgetAbMatchMemory()` (ADR-0007, Amendment of 2026-09-25, A/B provenance). Still not
+serialized, and still no format change. The history below describes the processor member. Because it is
 absent from the format, nothing on the restore path ever overwrote it, so it survived every restore
 on a reused instance and handed the NEW project's matcher the OLD project's figure. Measured on the
 real restore paths: the first switch injected the previous project's remembered value verbatim —
@@ -381,7 +386,7 @@ sound, name, baseline and identity restore exactly as before and the matcher re-
 always has. The *audible* consequence of the stale injection was measured separately in round 9 and
 found inert (`--legacy-match-probe`: `setParameters` re-targets the smoother from the live
 measurement every block); what was wrong, and is fixed here, is the state. Source:
-src/PluginProcessor.cpp (`adoptRestoreTail`, which resets it for the whole set on every restore since D-2; `readSlot`); State test 31.
+src/PluginProcessor.cpp (`adoptRestoreTail`, which resets it for the whole set on every restore since D-2 — since 2026-09-25 by `engine.forgetAbMatchMemory()`, after which a slot restores 0 dB, not current; `readSlot`); State test 31.
 
 **Both slots get that same answer.** Slot B used to be seeded from a *copy of slot A* instead. On the
 path that runs every time — construction, where both slots are invalid — the two are

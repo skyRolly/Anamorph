@@ -956,11 +956,12 @@ private:
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
-    // Remembered Level-Match per A/B slot (#23). A runtime cache, never serialized --
-    // and therefore reset by every restore along with the slots themselves, or a
-    // restore with no A/B data would leak the previous project's gains into the first
-    // switch (ER-STATE-20). 0 dB is both the initialiser and the fresh-instance value.
-    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f };
+    // The remembered Level-Match per A/B slot (#23) is the ENGINE's (requestAbSwitch): its
+    // currency is audio-thread state, so the record lives where that state is written
+    // (ADR-0007, Amendment of 2026-09-25, A/B provenance). Never serialized; every restore
+    // forgets it (ER-STATE-20, forgetAbMatchMemory).
+    static_assert (anamorph::AnamorphEngine::kAbSlots == anamorph::kNumAbSlots,
+                   "the engine keeps one Level-Match record per A/B slot");
 
     // ------------------------------------------------------------------------
     //  D-2 (RISK-007): the program-state ownership boundary. ADR-0036.

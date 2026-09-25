@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-25), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), and its live-edit finding (a same-rate re-prepare keeps only a result that is current) — whose entries are the **76th** to **81st passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-25), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), and its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from) — whose entries are the **76th** to **82nd passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1338-1344` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1430-1436` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1919,7 +1919,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:237-245`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1165-1305`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1260-1395`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2000-2050` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2092-2142` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13003,6 +13003,70 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 82nd pass — 2026-09-25, PR #156 (the Devin review: an unsettled A/B gain survived a re-prepare)
+
+**Scope.** Devin's review of `20af101`: *"Unsettled A/B gain survives re-prepare."* The finding was
+reproduced through the processor, the invariant was derived and decided under the owner's authorization,
+and the fix was implemented (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §O).
+
+**The finding and the fix.**
+- **The defect.** `LoudnessMatch::setDisplayedGainDb` made every restored A/B value current. A slot left
+  before the measure had caught up came back current, and a same-rate re-prepare kept it: 1.53 dB off for
+  a slot left 0.3 s after a Drive edit, 4.57 dB for a never-visited slot. A validity-state error, not
+  convergence lag: the value before the re-prepare is the same before and after the fix.
+- **The decision.** A remembered gain carries the validity of the result that produced it; restoring
+  the value and restoring its validity are separate. The record carries a stricter bit than "current",
+  **measured**, the measure's own confirmation, because a flush's "current" is not portable into another
+  context (a flush-current 0 dB was kept 4.70 dB off).
+- **How.** The per-slot record moved from the processor into the engine: the value, whether it was
+  measured, and the state and sample rate it was measured for, all read where they are written. Only
+  two slot indices and a forget bit cross, in the existing duck-request word. The restore is measured
+  only if the record was, at this rate, for these measurement inputs; otherwise not current. P1b's
+  re-arm is unchanged and separate.
+- **What it does not touch.** Audio, the published value and the applied gain on every live route (23 of
+  23 processor routes bit-identical per block; DSP suite output byte-identical; finite hashes 186 of 186),
+  except the one intended change: A → B → A before the engine adopts B no longer hands B A's value. No
+  parameter, schema, DSP order or latency change; no new thread, direction or ordering.
+
+**Decision record.** The owner's authorization of 2026-09-25 is quoted in ADR-0007's gate record. Five
+strategies were compared and three adversarial reviews run (ADR-0007; worklog §O4). The first prototype of
+the adopted design was refuted twice on measurement: it recorded `isResultCurrent()` (flush and floor
+cases, up to 4.72 dB) and ignored `duckMeasDirty` (2.26 dB); its new-rate disown was a false negative
+(a 48 → 44.1 → 48 kHz round trip). All three are closed.
+
+**Tests.**
+- **DSP Test 70** (`testAbLevelMatchMemoryCarriesItsProvenance`): 62 checks. The API it drives does not
+  exist at `20af101`; the HEAD-equivalent composite fails 15, `20af101`'s engine behind a shim 23.
+- **State test 134** (`testLevelMatchAbSlotCarriesTheValidityOfItsResult`): 135 checks; 29 fail against
+  `20af101`.
+- **State test 132** leg (6): a 4 s pre-roll for its A/B pair, whose premise had been a flush-current
+  capture; its assertions are unchanged.
+- **Suites:** DSP 784 / 0, State 5411 / 0.
+
+**Mutation.** Fifteen planned mutants and ten more from the two adversarial verifiers, each through the
+new tests (worklog §O7). All are rejected but two, which survive by design: a capture in the word that
+forgets, and the floor also marking a measured restore stale. The verifiers extended both tests where a
+variant first survived.
+
+**Documents changed.**
+- **ADR-0007:** a new dated *Amendment* (A/B provenance): the reproduction, the invariant, the measured bit,
+  the record and the handoff, every capture and restore path, the strategy comparison, the measurements,
+  the recorded trade-off and candidates, and the gate record; the live-edit amendment's "Made current" and
+  "Recorded, not changed" paragraphs and the F13(2) table's two A/B rows, edited in place.
+- **`THREAD_MODEL.md`, `THREADING_POLICY.md`:** the request word and the engine-API injection atomic, which
+  both documents had omitted (a drift, corrected); the A/B record as engine-owned, not shared.
+- **`API_REFERENCE.md`:** `requestAbSwitch`, `forgetAbMatchMemory`, and the `prepare`, `reset`,
+  `injectMatchGainDb` and `requestDuck` rows.
+- **`DSP_ALGORITHMS.md`:** the *Measured* bullet; the two-halves and currency bullets.
+- **`KNOWN_ISSUES.md`:** KI-030's index row and banner.
+- **`CHANGELOG.md` `[0.9.9]`:** the re-prepare and A/B entries, corrected in place (the defect never
+  shipped).
+- **`SERIALIZATION_REGISTRY.md`, ADR-0036, `TESTING.md`:** the remembered gain as the engine's record
+  (still never serialized).
+- **`TESTING.md`:** Test 70 and State test 134; State test 132 leg (6)'s pre-roll.
+- **The worklog:** §O, and §N6's residual marked resolved.
+- **Engine, processor and test comments.**
+
 ## 81st pass — 2026-09-25, PR #156 (the Devin review: a live edit left the kept Level-Match result stale)
 
 **Scope.** Devin's review of `0fbce03`: *"Live edits retain stale match gain."* The finding was
@@ -13815,7 +13879,7 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21968`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
 1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and over its 20 largest
@@ -13834,7 +13898,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19068`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19072`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,

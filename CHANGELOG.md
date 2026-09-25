@@ -195,8 +195,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   two to three seconds: measured at **+1.6 / −1.8 dB** on pink noise for a Drive 2 ↔ 8 switch. The measurement
   now starts afresh on the new slot's sound whenever the two slots differ in anything it listens to;
   a switch that changes only Output Gain, Level Match itself or nothing at all keeps its settled
-  measurement, as before. Decision: ADR-0007 (Amendment of 2026-09-24, F13(2)). Regression coverage:
-  Test 67 and State test 131. Evidence: PR #156. [Verified]
+  measurement, as before. Switching A → B → A within a few milliseconds, or while your host is not
+  processing audio, no longer hands slot B slot A's level: B keeps its own for the next time you switch to it (measured **1.6 dB**
+  closer). Decision: ADR-0007 (Amendment of 2026-09-24, F13(2), and Amendment of 2026-09-25, A/B
+  provenance). Regression coverage: Test 67, State test 131, Test 70 and State test 134. Evidence:
+  PR #156. [Verified]
 - **Re-preparing Anamorph at the same sample rate no longer throws away the Level Match level.** Hosts
   re-prepare a plug-in when, for example, the audio buffer size changes or the plug-in is
   re-activated. With Level Match on, the matched level was discarded and rebuilt from an estimate, so
@@ -204,9 +207,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   an unchanged sample rate, once Level Match has caught up with the latest change to the sound, the
   matched level is now kept and plays from the very first moment, quiet passages included; a
   sample-rate change, a re-prepare after loading a state that changes the sound, or one made within the
-  few seconds Level Match needs to catch up with a change, still measures it afresh. Decision: ADR-0007
-  (Amendments of 2026-09-24, F13(2), and 2026-09-25). Regression coverage: Test 67, Test 68, Test 69,
-  State tests 131, 132, 133 and 120. Evidence: PR #156. [Verified]
+  few seconds Level Match needs to catch up with a change, still measures it afresh. The same goes for
+  a re-prepare right after switching back to an A/B slot that you left before Level Match had caught
+  up with it: that slot's remembered level is restored as before, but it is no longer kept as if it
+  had been measured (a slot left 0.3 s after a Drive change was kept **1.5 dB** off). Decision: ADR-0007
+  (Amendments of 2026-09-24, F13(2), and 2026-09-25, including A/B provenance). Regression coverage:
+  Test 67, Test 68, Test 69, Test 70, State tests 131, 132, 133, 134 and 120. Evidence: PR #156.
+  [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

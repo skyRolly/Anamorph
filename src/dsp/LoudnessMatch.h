@@ -63,13 +63,19 @@ public:
     float getMatchGainDb() const noexcept { return matchGainDb.load (std::memory_order_relaxed); }
 
     // Restore a remembered match value (per A/B slot) so a switch doesn't have to
-    // re-converge from scratch and lurch in level (feedback #23). The slot's value is that
-    // slot's own measurement, so the result is current for the state it is restored with.
-    void setDisplayedGainDb (float db) noexcept
+    // re-converge from scratch and lurch in level (feedback #23). Restoring the value and
+    // restoring its validity are two answers, and the caller gives both: `measured` says whether
+    // the value is the measure's confirmed answer for the inputs the matcher now reads (ADR-0007,
+    // Amendment of 2026-09-25, A/B provenance). One that is not -- a slot left before the measure
+    // had confirmed it, or restored into a state that reads different inputs -- is a value from
+    // another time, so it starts not current, exactly as a change reported by inputsChanged()
+    // does, and the measure confirms it from there.
+    void setDisplayedGainDb (float db, bool measured) noexcept
     {
         displayedGainDb = (double) db;
         matchGainDb.store (db, std::memory_order_relaxed);
-        resultStale = false;
+        if (measured) { resultStale = false; resultMeasured = true; }
+        else          inputsChanged();
     }
 
     // IS THE PUBLISHED RESULT A MEASUREMENT OF THE CURRENT INPUTS? (ADR-0007, Amendment of
@@ -82,17 +88,29 @@ public:
     // decayed) from everything older. The result is current again once those post-change
     // measurements make up at least half of the published value and it is within kCurrentDb of
     // their mean -- everything older moves it by no more than that. An A/B slot's restored value is
-    // current by construction; a flush (reset) is no measurement of another state, so it clears the
-    // question. prepare() keeps a result only while it is current.
+    // current when its caller says it is measured (setDisplayedGainDb); a flush (reset) is no
+    // measurement of another state, so it clears the question. prepare() keeps a result only while
+    // it is current.
     void inputsChanged() noexcept
     {
         resultStale = true;
+        resultMeasured = false;
         staleDry0 = meanSqDry;
         staleWet0 = meanSqWet;
         stalePreWeight = 1.0;
         postShare = postSum = 0.0;
     }
     bool isResultCurrent() const noexcept { return ! resultStale; }
+
+    // IS THE PUBLISHED RESULT THE MEASURE'S OWN ANSWER? (ADR-0007, Amendment of 2026-09-25, A/B
+    // provenance.) Stricter than current, which it implies: current says the value describes no
+    // PREVIOUS state; measured says the measure has confirmed it for the inputs it now reads, by
+    // the same criterion that makes a changed result current again. A flush is current but not
+    // measured -- 0 dB, then the predict floor, are no measurement -- and so is a value the predict
+    // floor lowers; either becomes measured when the measure confirms it. What an A/B slot
+    // records when it is left: a value that is current only because a flush left it so is right
+    // in the flush's own context (the floor lands the first block), not in another one.
+    bool isResultMeasured() const noexcept { return resultMeasured; }
 
     // Tell the matcher the current state of the two big-gain controls. estBoostDb()
     // turns these into an ABSOLUTE predicted boost (no internal accumulation), so the
@@ -151,8 +169,10 @@ private:
     // change; stalePreWeight: the share of that pre-change energy still in them, (1 - smoothCoeff)^N
     // after N samples -- the integrators' own decay, block by block (memo keyed on the block size).
     // postShare / postSum: the post-change measurements' weight in the published value's glide, and
-    // their weighted sum (postSum / postShare is their glide-weighted mean).
+    // their weighted sum (postSum / postShare is their glide-weighted mean). resultMeasured
+    // (isResultMeasured) implies ! resultStale; the bookkeeping runs until it is set.
     bool   resultStale = false;
+    bool   resultMeasured = false;
     double staleDry0 = 0.0, staleWet0 = 0.0, stalePreWeight = 1.0;
     double postShare = 0.0, postSum = 0.0;
     int    decayForN = -1;

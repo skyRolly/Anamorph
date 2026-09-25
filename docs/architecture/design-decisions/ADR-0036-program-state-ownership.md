@@ -95,7 +95,8 @@ VST3 wrapper services the plug-in's messages from its own thread until the host 
 `IRunLoop`, so even an in-spec host's UI thread is not JUCE's message thread for a while.
 
 Every piece of *program metadata* this plug-in owns — the preset name, identity and dirty baseline
-(`PresetManager`), the A/B slot set (`abSlot[]`, `abActive`, `abMatchGain[]`), the undo history
+(`PresetManager`), the A/B slot set (`abSlot[]`, `abActive`, `abMatchGain[]` — the last since moved into
+the engine as audio-thread state, ADR-0007, Amendment of 2026-09-25, A/B provenance), the undo history
 (`abUndo[]`), the committed baseline and gesture bookkeeping, and the host-hidden Settings tree
 (`InternalState`) — was written by the restore on the caller's thread and read by the editor's
 24 Hz tick on the message thread, with no lock and no marshalling. `AnamorphStateTests

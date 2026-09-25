@@ -2179,12 +2179,14 @@ void AnamorphAudioProcessor::abSwitchToAdopted (int slot)
     slot = juce::jlimit (0, anamorph::kNumAbSlots - 1, slot); // defensive: never index out of bounds
     abEnsureInit();
     if (slot == abActive) return;
-    engine.requestDuck();                              // mask the level jump (#1, 0.6.4)
+    // The duck that masks the level jump (#1, 0.6.4) AND the per-slot Level-Match memory (#23):
+    // the engine records the slot being left and restores this one's at the duck's bottom, each
+    // value with the currency of the result it was taken from (ADR-0007, Amendment of 2026-09-25,
+    // A/B provenance). Before the parameters move, as requestDuck() always was.
+    engine.requestAbSwitch (abActive, slot);
     abSlot[abActive] = currentStateSet();              // store the whole state set in the old slot
-    abMatchGain[abActive] = engine.getMatchGainDb();   // remember this slot's match (#23)
     abActive = slot;
     abApplySlot (slot);                                // ...whose setMeta republishes the snapshot (D-2)
-    engine.injectMatchGainDb (abMatchGain[slot]);      // restore the new slot's match (#23)
     syncCommitted();                                   // the switch itself isn't undoable (#11)
 }
 
@@ -2601,19 +2603,17 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d, bool mayB
     // The slot set as a WHOLE -- both slots, the active index and the per-slot
     // Level-Match memory -- from the one decode, so no half of it can come from a
     // different project than the other half (the rule readSlot states per slot,
-    // applied to the set). `abMatchGain` is the one member of the set that is never
-    // serialized -- a runtime cache of what the matcher had settled on when each slot
-    // was last left -- so there is nothing to overlay it with and every restore
-    // resets it (ER-STATE-20, round 16; State test 31): leaving it alone let the
-    // PREVIOUS project's figure survive into this session's first switch, which
-    // ends with `engine.injectMatchGainDb (abMatchGain[slot])`. 0.0f is the member's
-    // own initialiser, which is what makes this exactly the fresh-instance path.
+    // applied to the set). The Level-Match memory is the one member of the set that is
+    // never serialized -- a runtime record, kept by the engine, of what the matcher had
+    // published when each slot was last left -- so there is nothing to overlay it with and
+    // every restore forgets it (ER-STATE-20, round 16; State test 31): keeping it let the
+    // PREVIOUS project's figure survive into this session's first switch. Forgotten, each
+    // slot restores 0 dB, not current -- the fresh-instance record (ADR-0007, Amendment of
+    // 2026-09-25, A/B provenance).
     abActive = d.abActive;
     for (int i = 0; i < anamorph::kNumAbSlots; ++i)
-    {
-        abSlot[i]      = d.abSlot[i];
-        abMatchGain[i] = 0.0f;
-    }
+        abSlot[i] = d.abSlot[i];
+    engine.forgetAbMatchMemory();
 
     // Fresh session: clear undo history.
     abUndo[0] = {}; abUndo[1] = {};

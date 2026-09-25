@@ -849,7 +849,7 @@ jobs:
       # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
       # (`testPendingDuckDoesNotSurviveActivation`, tests/dsp_tests.cpp:1388) against
       # the state suite's 709,760 (`testSettingsPublicationIsFieldLevelAndOrdered-
-      # ByObservation`, tests/state_tests.cpp:21964) -- 28% of the 1 MB reserve, not
+      # ByObservation`, tests/state_tests.cpp:21968) -- 28% of the 1 MB reserve, not
       # 0%. This arms a tripwire rather than introducing a failure: both suites were
       # verified green under `ulimit -s 1024` before the step was widened.
       #

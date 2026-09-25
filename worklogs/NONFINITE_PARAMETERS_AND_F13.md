@@ -1613,8 +1613,285 @@ pin the invariant (never keep a stale result) and its liveness (keep once caught
   Both tests are to be preserved. Carrying each slot's currency with its remembered value would close the
   gap without that cost. The value crosses from the message thread to the audio thread with the
   injection, so that needs a second cross-thread field: a threading-model change, outside this finding.
-  It is a candidate.
+  It is a candidate. **Resolved in §O** (Devin review of `20af101`): the record carries whether its value
+  was measured, and it stays on the audio thread, so no second cross-thread field was needed.
 - **§M5's unprimed in-flight duck is closed.** `prepare()` now refuses to keep when `reset()` will adopt
   a measurement-input change (`adoptsMeasChange`).
 - **A documentation drift, corrected.** `THREAD_MODEL.md` cited `LoudnessMatch.h:112` for the published
   atomic, which `0fbce03` already had at `:126`. It now reads `:161`.
+
+## O. The Devin review of `20af101`: an unsettled A/B gain survived a re-prepare
+
+*"Unsettled A/B gain survives re-prepare"* (`src/dsp/LoudnessMatch.h`, `setDisplayedGainDb`). §N6 recorded
+it and did not change it; this section decides it, on the owner's authorization of 2026-09-25 (ADR-0007,
+Amendment of 2026-09-25, A/B provenance).
+
+### O1. Reproduction and root cause
+
+A processor probe with private access (scratch, not in the repository) was run at 48 kHz / 256 with
+Haas, Amount 0.5, Drive 8, Output Gain −3 and Level Match on, over noise (seed 901). The sequence:
+1. Slot B, a copy of converged A, is edited Drive 8 → 12 and left *t* later.
+2. The engine plays 6 s on A, then switches back to B.
+3. A same-rate `prepareToPlay` runs 4 blocks after that switch.
+
+At `20af101`, *t* = 0.3 s, block by block:
+- **When B is left**, it publishes −6.0728 dB. It is **not current**: a fresh processor at B measures
+  −7.608.
+- `abSwitchToAdopted` stores the value, and only the value: `abMatchGain[1] = engine.getMatchGainDb()`.
+- **At the return's forced bottom**, the injection writes the value back and `setDisplayedGainDb` sets
+  `resultStale = false`. The result is current from that block on, while it glides.
+- **The re-prepare** passes condition 5 and keeps −6.0844 against a fresh −7.6109.
+
+| *t* | recorded current | kept error at the first sample | over 3 s |
+|---|---|---|---|
+| 0.1 s | 0 | 1.596 dB | 1.407 dB·s |
+| 0.3 s | 0 | 1.526 | 1.335 |
+| 0.6 s | 0 | 1.252 | 1.102 |
+| 1.1 s | 0 | 0.801 | 0.708 |
+| 2.1 s | 0 | 0.286 | 0.263 |
+| 3.2 s | 1 | 0.086 | 0.095 |
+| 4.3 s | 1 | 0.025 | 0.050 |
+| 6.0 s | 1 | 0.014 | 0.036 |
+
+**A validity-state error, not convergence lag.** The value B remembered is exactly what the measure had
+published after *t*. Its label claims a measurement that never happened. The label is the only thing
+condition 5 reads, and it is also the only thing the injection changed. A never-visited slot shows the
+same error with no edit at all: it injects 0 dB, is made current, and is kept 4.574 dB off.
+
+### O2. The invariant, and the second bit it needs
+
+*A remembered A/B Level-Match gain carries the validity state of the measurement result that produced
+it; restoring the value and restoring its validity are separate.*
+
+**Why "current" is not enough.** "Current" (§N2) means the value describes no **previous** state. A
+flush is current by that definition. That is right in the flush's own context: its first block's
+predict floor lands on the flushed 0 dB. It is **not portable**. The adversarial reviews of §O4 measured
+records taken within ~2.7 s of a flush, restored elsewhere and kept:
+- A/B 0.3 s / 1.0 s after the first prepare: kept 1.071 / 0.498 dB off;
+- the first second silent (the record is the Drive-8 predict floor, −4.057): kept 1.457 dB off;
+- A/B before the first block after the first prepare (record 0 dB), returning from Drive 12 to
+  Drive 8, where no floor fires: kept 4.704 dB off. A flush plays 1.47 dB off there.
+
+**The predict floor.** The floor can also replace a **measured** restored value in the bottom's own
+block, when the destination's Drive or Mix is higher than the source's. That value is then a prediction,
+not the slot's measurement.
+
+The record therefore carries `LoudnessMatch::isResultMeasured()`: the measure has **confirmed** the
+published value for its current inputs, by §N2's criterion. It implies current.
+
+| event | measured |
+|---|---|
+| flush (`reset`) | cleared |
+| `inputsChanged()` | cleared |
+| the predict floor lowering a measured value | cleared, and the bookkeeping restarts from a fresh snapshot |
+| `softReset()` | kept |
+| the confirmation | set |
+| `setDisplayedGainDb (db, true)` | set |
+
+The confirmation bookkeeping now runs while the result is not measured, which includes after a flush. It
+moves only the new bit there, so `isResultCurrent()` and condition 5 are unchanged.
+
+**Post-restore convergence.**
+- A value restored **not** current becomes current, and measured, only through the confirmation: 2–4 s
+  on audible programme; silence confirms nothing.
+- A value restored **measured** stays measured while it converges. The exceptions are the floor case
+  above and an input change.
+
+### O3. Every capture and restore path, traced
+
+`20af101` had one capture and one restore point, both on the message thread, in `abSwitchToAdopted`:
+`abMatchGain[abActive] = engine.getMatchGainDb()` and `engine.injectMatchGainDb (abMatchGain[slot])`.
+The injection was consumed at the forced bottom (`process`, with the P1b re-arm) or on the defensive path
+(a prime dropped the duck; a host reset completed it). `adoptRestoreTail` zeroed the array
+(ER-STATE-20). `abCopyToOther` moved a slot's state and not its gain. The Oversampling index is shared
+by both slots.
+
+The windows where the value and the state it describes come apart, measured at `20af101` with the
+windows probe:
+
+| window | kept error |
+|---|---|
+| (a) an edit to B the engine had not adopted when B was left | 1.599 dB |
+| (b) an ordinary duck in flight when B was left | 1.715 dB |
+| (c0) A → B → A before any block (B's slot got A's live value) | 1.609 dB |
+| (c1) the same, with one block between | 1.608 dB |
+| (d) Copy onto a visited B | 1.900 dB |
+| (e) Oversampling changed on A | 0.565–0.636 dB |
+| (f) an edit during the return fade | 1.049 dB |
+| a never-visited slot | 4.574 dB |
+
+W7, a switch pending across a new-rate prepare, was carried to the new rate. W9, Apply in the same turn
+as a switch, is out of scope: Apply reads the published value and nothing else.
+
+The full path table, after the change, is ADR-0007's (Amendment of 2026-09-25, A/B provenance).
+
+### O4. Strategies compared, and the three adversarial reviews
+
+A scratch workflow ran four stages:
+- **Probes:** windows, bit-exactness, a bounded audit, threading.
+- **Two designs:** D, the engine keeps the record; B2-exact, a 64-bit published word with a tag re-keyed
+  through the tolerance.
+- **Three adversarial reviews,** each looking for refutations: provenance; false negatives and
+  regressions; threading, realtime and static analysis.
+
+The findings:
+- **Bit-exactness.** A/B round trips move `mbFreqLow/Mid/High` and `monoMakerFreq` by up to 12 ulp
+  (1.24e-6 relative), below `measurementInputsDiffer`'s 1e-5. A bitwise token calls 4–5.5 % of
+  converged round trips "not current". The engine's `p` equals `toEngine (APVTS)` bit for bit
+  (3000 / 3000).
+- **Strategy A** (a boolean with the value) is wrong in every window. The message thread cannot read
+  the matcher's currency without a race (TSan), and a copied flag describes the wrong moment.
+- **B1** (a generation) misses (d)–(f).
+- **B2-exact** holds against the windows. Its injection can land after the bottom on the defensive path,
+  un-re-armed, and drift 0.53–0.55 dB while labelled measured (0.44–0.55 dB kept). Its key needs a second
+  list mirroring `measurementInputsDiffer`.
+- **C** (every restore waits for confirmation) fails Test 67 (5)(b) and Test 69 (5a) / (6b), and flushes
+  converged slots after every switch.
+- **D's first prototype** was refuted twice:
+  - it recorded `isResultCurrent()`: the flush-currency cases of §O2, and the floor case (20 of 595
+    random-scan keeps more than 0.3 dB off, worst 4.716 dB);
+  - it ignored `duckMeasDirty`: an ordinary duck opened by a non-measurement discrete change (the
+    Level Match switch, or a band count with Multiband off) with a Width or Drive edit, and A/B inside
+    its fade-out, was kept 1.32–2.26 dB off.
+
+  Its transport survived. The restore is armed with the duck and consumed at the bottom with P1b, so
+  there is no late landing (0.023 dB where B2-exact drifts 0.530).
+- **Its new-rate "disown"** wrongly unmeasured a 48 → 44.1 → 48 kHz round trip (1.429 against
+  0.045 dB·s). The adopted design stamps the rate instead.
+
+**Adopted: D with the measured bit, the in-flight-duck rule and the rate stamp.** All three reviews
+named this hybrid as the strongest option.
+
+### O5. The implementation and the handoff
+
+The request word (`duckRequest`, existing, relaxed) gains a switch bit with two 4-bit slot fields and a
+forget bit:
+- `requestDuck` is a `fetch_or`;
+- `requestAbSwitch` is a CAS that keeps a pending source;
+- `forgetAbMatchMemory` is a CAS that keeps a pending duck and drops a pending switch.
+
+`takeRequests()` runs at the top of `setParameters` and in `primeParameters` before `p = np`. It forgets,
+records, and arms. `restoreAbSlot()` runs at the forced bottom and on the defensive path, and hands
+`adoptRememberedMatch (db, measured, rearm)` the value and the two separate answers.
+
+What the message thread reads for a switch: nothing of the engine's. The records are audio-thread /
+prepare-path state, never concurrent with `process()`. `EngineParameters` is 132 bytes and trivially
+copyable; the engine grows by ~290 bytes and is heap-allocated in every host and test.
+
+Checked:
+- check-realtime reports 0 violations. A seeded lock in `restoreAbSlot` is reported.
+  `LoudnessMatch::setDisplayedGainDb` stays header-inline: a callee in another translation unit is the
+  lint's documented cross-file gap, and RTSan covers it under `process`.
+- The processor asserts `AnamorphEngine::kAbSlots == anamorph::kNumAbSlots`, so the DSP layer does not
+  include the processor's header.
+
+### O6. Measured on the implementation
+
+| measurement | result |
+|---|---|
+| the O1 sweep | *t* ≤ 2.1 s flushes: 1.403–1.418 dB·s over 3 s, against the keep's 0.263–1.407. *t* ≥ 3.2 s keeps, bit-identical to `20af101` (0.086 / 0.025 / 0.014 dB). The published value before every re-prepare is bit-identical; only the label differs |
+| windows (a), (b), (d), (e), (f), never-visited | flushed |
+| windows (c0) / (c1) | B's own value restored and kept, 0.009 / 0.007 dB, where `20af101` restored A's (the one audible change) |
+| control | kept, 0.015 dB, bit for bit |
+| processor routes | 23 of 23 bit-identical to `20af101` per block (output, published, applied gain): the live-edit harness of §N4, A/B script included |
+| DSP suite output | byte-identical |
+| finite-parameter hashes | 186 of 186 unchanged |
+| ThreadSanitizer, the handoff under load | an engine-only harness (the DSP sources built with `-fsanitize=thread`): a message thread issues `requestAbSwitch` / `requestDuck` / `forgetAbMatchMemory` and reads the published value (5.2 M operations) while the audio thread runs 4000 blocks of `setParameters` + `process`, with a `primeParameters` + `prepare` every 500 blocks (every second one at a new rate): 0 reports. Positive control, the same harness with `requestAbSwitch` also writing the record from the message thread: 4 reports (`takeRequests` against `requestAbSwitch`) |
+| Devin controls on the implementation | State test 129 fails 5 with the NaN guard removed and 5 with Apply disabled; State test 132 fails 30 without the retained-gain seat; State test 133 fails 24 without the live-edit report. Baseline: 265 checks, 0 failures |
+
+State test 134's processor measurements, before (the same test built against `20af101`) and after, are
+tabulated in ADR-0007's amendment (A/B provenance). The window cases this section's probes did not reach
+all flush where `20af101` kept:
+- window (g), 2.13 dB;
+- the flush-current captures, 4.63 / 1.06 dB;
+- the floored restore, 1.27 dB;
+- identical slots with an unmeasured record, 1.48 dB;
+- a session restore then a switch, 1.59 dB;
+- a switch and an Undo in one turn, 1.91 dB;
+- a 44.1 kHz restore of a 48 kHz record, and a new-rate prime.
+
+Their event-matched controls keep. Two audible changes are both provenance corrections:
+- (c0) / (c1): B's own value is restored, 1.59 dB closer;
+- a switch pending when a session restore lands: dropped, where `20af101` restored the previous project's
+  B onto the restored A.
+
+### O7. Tests
+
+Both tests were written by one agent and then verified by another, which tried to refute every premise,
+control and reference and added mutants of its own.
+- **Test 70** (`testAbLevelMatchMemoryCarriesItsProvenance`, DSP): 62 checks, ~0.6 s. It covers:
+  - the matcher's two bits;
+  - capture and restore through re-prepare verdicts, including an audible restore of a stale record
+    beside the same value injected as measured: bit-identical output, only the verdict differs;
+  - the request word;
+  - the rate stamp and the prime;
+  - the tolerance;
+  - the raw API;
+  - P1b.
+
+  The API does not exist at `20af101`. The HEAD-equivalent composite (every record measured, every
+  restore current) fails 15; `20af101`'s engine behind a six-line shim fails 23.
+- **State test 134** (`testLevelMatchAbSlotCarriesTheValidityOfItsResult`, processor): 135 checks,
+  ~2.2 s, 63 heap processors. Against `20af101`, 29 fail: the flush claims, (c0) / (c1)'s own-value
+  checks, and the pending switch at a session restore. Every keep, premise, route, probe and control passes
+  there.
+- **Existing tests** pass unchanged, except State test 132 leg (6), whose A/B pair now plays a 4 s
+  pre-roll. Its premise was a flush-current capture.
+- **Suites:** DSP 784 / 0 and State 5411 / 0.
+
+**Mutants** (each the fix with one change, run through the new test and, where noted, the full suite):
+
+| # | mutant | Test 70 | State test 134 |
+|---|---|---|---|
+| M1 | every record measured | 6 | 11 |
+| M2 | `isResultCurrent()` recorded | 2 | 3 |
+| M3 | no in-flight-duck term | 1 | 1 |
+| M4 | no `measurementInputsDiffer` at the restore | 2 | 6 |
+| M5 | no rate stamp | 2 | 2 |
+| M6 | capture while a restore is armed | 1 | 3 |
+| M7 | forget keeps the records | 1 | 2 |
+| M8 | a pending switch's source replaced | 1 | 4 |
+| M9 | `requestDuck` stores over a pending switch | 1 | 3 |
+| M10 | the floor does not un-measure | 2 | 1 |
+| M11 | a flush counts as measured | 1 | 1 |
+| M12 | `setDisplayedGainDb` ignores `measured` | 15 | 21 |
+| M13 | the bookkeeping gated on staleness again | 17 | 1 |
+| M14 | re-arm only for an unmeasured record | 15 | 9 |
+| M15 | the prime clears the word | 3 | 5 |
+
+The verifiers' own variants:
+- the record's state read from the pending snapshot;
+- the applied gain snapped only for a measured restore;
+- a retarget while armed ignored;
+- a pending switch keeping its destination;
+- `setDisplayedGainDb (v, false)` keeping the earlier bookkeeping;
+- forget leaving an armed restore;
+- the in-flight term without its switch-state test;
+- the prime recording after it adopts;
+- `rearm || ! measured`.
+
+Each is rejected, after the verifiers extended the tests with (2f), (2g), (b'), W7's return and Copy, and
+the (c0) / (c1) own-bottom checks. Two variants survive, by design:
+- **Capture in the word that forgets.** The record would carry its own state and rate, so it could only
+  restore as measured where it is a measurement.
+- **The floor also marking a measured restore stale.** The floored value is the prediction a flush would
+  publish in its first block, so the two verdicts play the same value.
+
+### O8. Recorded, not changed
+
+- **The trade-off.** A slot left before its measure confirms now flushes at a re-prepare right after the
+  return. At *t* = 1.1–2.1 s, keeping cost less (0.26–0.71 dB·s against the flush's 1.40). So does a slot
+  visited within ~2.7 s of any flush, State test 132 leg (6)'s old setup among them: that leg now gives
+  its pair a 4 s pre-roll so its premise is the measure's. With switching faster than confirmation, a
+  restored not-measured value never confirms, because nothing carries evidence across visits.
+  Conservative; the cost is only at a re-prepare.
+- **Rare conservative misses in free-running or burst processing.** Under those conditions a forced
+  bottom can adopt a partly written slot, and the record then differs from the adopted state and is
+  restored not current. Measured by the second review on the design-1 prototype, whose transport this
+  implementation keeps: 1–2 in 120–400 threaded toggles.
+- **The predict floor over a measured restore (audio).** Skipping the floor for a measured restore would
+  keep the slot's level. That is an audible change, and a candidate.
+- **Copy carrying the live record.** It would remove the flush and the lurch after a Copy. It changes
+  what is restored, so it is a candidate.
+- **Deferred by instruction:** cross-rate retention; a flush's quiet glide; the currency of automation;
+  KI-029 and global non-finite ingress; the per-block ramp restart.

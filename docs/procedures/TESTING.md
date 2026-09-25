@@ -441,6 +441,57 @@ Legs:
 (1)–(9) fail: exactly the flush claims. Every premise, keep and control passes on both engines. Leg
 (10) drives the API the fix adds, so it has no pre-fix run; each rejected gate fails it (worklog §N5).
 
+**An A/B slot's remembered Level-Match gain comes back with the validity of the result it was taken from
+— Test 70 (2026-09-25; ADR-0007, Amendment of 2026-09-25, A/B provenance; the Devin review of PR #156,
+"Unsettled A/B gain survives re-prepare").**
+
+*The contract.* `LoudnessMatch` answers two questions:
+- **current** (`isResultCurrent`, what `prepare()` keeps): the published value describes no previous state;
+- **measured** (`isResultMeasured`): the value is the measure's own confirmed answer for the inputs it
+  reads now. Measured implies current.
+
+A flush is current and not measured, and the predict floor lowering a measured value leaves it current,
+not measured. The engine keeps one record per A/B slot (`requestAbSwitch`): the value, whether it was
+measured, and the adopted state and sample rate it was measured for. At the switch's bottom the record's
+value is always restored, with the applied gain. It is restored as measured only if it was measured, at
+the rate running now, for the same measurement inputs; otherwise it is restored not current.
+
+**Test 70** (`testAbLevelMatchMemoryCarriesItsProvenance`) drives the matcher directly and the engine
+through the processor's prime / prepare / setParameters sequence. A same-rate re-prepare keeps a current
+result bit-exact and flushes anything else to exactly 0 dB, so the verdict reads the validity. Every
+restore is observed on digital silence through its bottom, so the published value there is the restored
+value, compared bit for bit with the record; (2g) alone is heard. A fresh engine at the destination gives
+what a keep is compared with.
+
+Legs:
+- **(1) The matcher.** A flush is not measured and is confirmed 2.68 s later; silence confirms nothing;
+  `softReset` keeps the bit; `inputsChanged` and `setDisplayedGainDb (v, false)` clear it. A value
+  restored unmeasured is not confirmed by the next audible block. The floor over a measured value
+  un-measures it, and it is re-confirmed 0.89 s later. In every block, measured implies current.
+- **(2) Capture and restore.** A measured record is kept 0.024 dB off. These flush: a stale source (a
+  keep would be 1.71 dB off), a dirty ordinary duck (1.72, with its control kept), a flush-current
+  capture (1.08), a floored restore left 3 blocks later (1.74, with its no-floor control kept), and a
+  forced duck whose pending snapshot was never adopted (1.72, with its Output-Gain control kept).
+  **(2g)** restores the stale record audibly against the same value injected as measured: published
+  values and output are bit-identical, and only the verdict differs. Restoring the value and restoring
+  its validity are separate.
+- **(3) The request word.** A → B → A before a block, a second switch while armed, and `requestDuck`
+  after a switch each keep B's record. `forgetAbMatchMemory` resets the records, drops a pending switch
+  or an armed restore, and keeps a pending duck.
+- **(4) The rate stamp and the prime.** A 48 kHz record at 44.1 kHz flushes by the stamp (the value is
+  0.13 dB from a fresh 44.1 kHz engine). 48 → 44.1 → 48 keeps. A switch the prime takes restores B's
+  record exactly on the first block at the same rate, and flushes at a new rate.
+- **(5) The tolerance.** A preset round trip's drift (1.2e-6) keeps; 1e-4 flushes, with the same value.
+- **(6) The raw API.** `injectMatchGainDb` stays caller-asserted measured; a NaN record or injection
+  is never restored.
+- **(7) P1b, separate from currency.** Across a Width difference the restore re-arms, measured or not;
+  into identical inputs it does not re-arm, measured or not.
+
+62 checks, ~0.6 s native. The API does not exist at `20af101`. The HEAD-equivalent composite (every
+record measured, every restore current) fails 15; HEAD's own engine behind a six-line shim fails 23.
+Every premise and keep passes on both. Each of M1–M15 (worklog §O7) and five further variants the
+verifier added is rejected.
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -683,7 +734,9 @@ same reason as the two above: the test asserts the rule, the probe shows the mag
 `AnamorphStateTests --legacy-match-probe` is the fourth, and like `--latency-restore-probe` it
 **measures and prints without asserting** — because what it examines was REFUTED on impact, so a
 probe that encoded an expectation would be pinning a non-defect. It asks whether the per-slot
-Level-Match gains (`abMatchGain[]`, never reset on any restore path and never serialized) reach the
+Level-Match gains (then `abMatchGain[]`, never reset on any restore path and never serialized; reset by
+every restore since round 16, and since 2026-09-25 the engine's per-slot record, which a restore forgets —
+ADR-0007, Amendment of 2026-09-25, A/B provenance) reach the
 output after a restore that carries no A/B data. Round 9's answer: the stale figure IS injected
 (engine match −7.10 → −2.18 dB on the block it lands, tracking the previous project's B), but the
 output level does not move — matched same-instance counterfactual, fresh-instance control and a
@@ -2275,7 +2328,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21968`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
     1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and across its 20
@@ -2293,7 +2346,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:19068`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19072`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -4297,7 +4350,7 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21968`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
@@ -4627,7 +4680,9 @@ so a kept start that suppressed the snap is caught); (2) −90 and −125 dBFS; 
 Drive 2 and a positive match (−10.40 / −2.76 / +7.66 dB); (4) a 512-sample re-prepare and a restore of
 Output Gain alone (both keep); (5) a restore that turns Level Match on across a same-rate re-prepare —
 kept, the consistent answer (a loud resume snaps there too); (6) right after a kept re-prepare, an A/B
-(the slot's gain wins), a host reset (the applied gain continuous and still kept) and Apply (writes the
+(the slot's gain wins; since 2026-09-25 that pair plays a 4 s pre-roll of its own first, so slot A is
+MEASURED when its early visit leaves it and the kept premise is the measure's — ADR-0007, Amendment of
+2026-09-25, A/B provenance), a host reset (the applied gain continuous and still kept) and Apply (writes the
 kept value); (7) Level Match off across the re-prepare, then a hand Case-A engage (lands) and Case-B
 engage (glides from unity, φ 0.78); (8) 44.1 kHz — the unchanged flush, a quiet glide and a loud snap;
 (9) invalid results — a restore that moves Drive (flush), a NaN input sample the self-heal flushes, and
@@ -4678,6 +4733,54 @@ Legs:
   mid-duck report is the only thing that sees this change. The same duck without the edit keeps.
 129 checks, ~1 s native. Against the pre-fix engine (`0fbce03`) 31 fail: exactly the flush claims.
 Every premise, liveness, keep, control, (7) and (9) pass on both engines.
+
+**An A/B slot's remembered Level-Match gain carries the validity of the result it was taken from,
+through the processor — State test 134 (2026-09-25; ADR-0007, Amendment of 2026-09-25, A/B provenance;
+the Devin review of PR #156).** This (`testLevelMatchAbSlotCarriesTheValidityOfItsResult`) is the
+processor half of Test 70. It is driven as a host and the editor drive it: `abSwitchTo`, `abCopyToOther`,
+undo, gestures, `processBlock`, `prepareToPlay`, `setStateInformation`, and the shared Oversampling
+setting. 63 heap processors run in lockstep on one seeded stream.
+- **The verdict.** A `prepareToPlay` 4 blocks after the switch back: keep is bit-identical, flush is
+  exactly 0 dB.
+- **Premises and controls.** Every leg proves its route: the bottom publishes the slot's record, or the
+  edit's block differs from, or is bit-identical to, the lane without it. A fresh processor at the
+  destination is the reference, and each claim has an event-matched control.
+
+Legs:
+- **(A) A slot left measured** is kept, 0.008 dB off.
+- **(B) Devin's case.** A slot left 0.1 / 0.3 / 1.1 s after a Drive edit flushes; the pre-fix processor
+  kept it 1.61 / 1.54 / 0.81 dB off.
+- **(C) Re-establishing currency.** Re-confirmed on a later visit and left measured, the slot keeps.
+  Beside a Level-Match-off twin, the not-measured value is still the applied gain from the bottom:
+  the value and its validity are restored apart.
+- **(D) An edit just before leaving.** Output Gain and Output Balance keep; Width flushes.
+- **(E) P1b separate from currency.** A differing slot re-arms, measured or not. Identical slots do
+  not re-arm and keep when the record was measured, and flush when it was not. A never-visited slot
+  flushes.
+- **(F) Quiet resume.** At −70 dBFS, for a negative and a positive match, the kept value is applied
+  from the first sample. The stale twins flush.
+- **(G) The rate stamp.** 48 → 44.1 flushes; 48 → 44.1 → 48 keeps. A switch the prime takes flushes at a
+  new rate and keeps at the same rate. The slot the prime recorded keeps, and after a Copy it flushes.
+- **The windows.** Each flushes where the pre-fix processor kept 0.58–2.13 dB off:
+  - (a) an edit in the switch's own turn;
+  - (b) an ordinary duck carrying a live Width edit when the slot is left (its control, and (b'), the same
+    duck finished 6 s earlier, keep);
+  - (d) a Copy;
+  - (e) the Oversampling setting;
+  - (f) an edit in the return fade;
+  - (h) an Undo in the switch's turn.
+- **(c0) / (c1) A → B → A before the engine adopts B.** The event's own bottom restores A's value.
+  B's record is untouched: visited later, B is bit-identical to the lane without the event and kept.
+  The pre-fix processor had given B A's value, 1.59 dB off.
+- **(S) Session restore.** It forgets every record. A switch pending when it lands is dropped; the
+  pre-fix processor restored the previous project's B onto slot A.
+- **(w5) Flush-current captures**, and **(F2) a floored restore**, flush; their controls keep.
+- **(drift)** Off-grid crossover and Mono Maker frequencies, moved by the round trip, keep.
+
+135 checks, ~2.2 s native. Against `20af101` 29 fail: exactly the flush claims, (c0)/(c1)'s own-value
+checks, and the pending switch at a session restore. Every keep, premise, route, probe and control
+passes there. Each engine variant of the brief (M1–M15) and seven further ones the verifier added is
+rejected (worklog §O7).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
