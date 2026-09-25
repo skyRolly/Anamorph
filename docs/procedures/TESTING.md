@@ -541,7 +541,15 @@ Legs (Haas 50 %, Drive 8, Level Match off, the edit live at 5.5 s):
     the only one an ordinary duck's change gets; no suite covered it before.
   - (G) a flush's current, not-measured value: lands.
 
-27 checks, ~2.6 s native. Engine variants rejected (worklog §P6): land only when current (the review's guard; 9 checks here, 6 in Test 66), only when measured (10), a landing that marks the result current (8), no landing (12), a landing blind to `measChangedAtBottom` (1: (E)), and a capped start for a non-current boost (1: (4)).
+27 checks, ~2.6 s native. Engine variants rejected (worklog §P6):
+- land only when current (the review's guard): 9 checks here, 6 in Test 66;
+- land only when measured: 10;
+- a landing that marks the result current: 8;
+- no landing: 12;
+- a landing blind to `measChangedAtBottom`: 1, (E);
+- a capped start for a non-current boost: 1, (4);
+- an ordinary duck's bottom that does not report its measurement change: 1, (E). No suite covered this
+  before (E)'s verdict moved after the fade-in.
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
@@ -4862,7 +4870,15 @@ Legs:
 - **Controls.** (C) current: lands, no excursion. (D) Output Gain 0 → −6: never stale, lands. (E) Width
   and the toggle in one turn (Case B): phi 0.799 (residual 2.7e-5), FLUSHED after its fade-in.
 
-23 checks, ~1.7 s native. Engine variants rejected (worklog §P6): land only when current (6), only when measured (6; 18 more in State test 130), a landing that marks the result current (5), no landing (9) and a landing blind to `measChangedAtBottom` (1: (E)). The capped start passes here (no positive leg); Test 71 leg (4) rejects it.
+23 checks, ~1.7 s native. Engine variants rejected (worklog §P6):
+- land only when current: 6;
+- land only when measured: 6, and 18 more in State test 130;
+- a landing that marks the result current: 5;
+- no landing: 9;
+- a landing blind to `measChangedAtBottom`: 1, (E);
+- an ordinary duck's bottom that does not report: 1, (E).
+
+The capped start passes here, because there is no positive leg; Test 71 leg (4) rejects it.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

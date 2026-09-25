@@ -2060,23 +2060,42 @@ The landing validates nothing.
     from fresh). The on-throughout trajectory (≤ 1e-4 dB; ≤ 0.01 dB across a forced bottom's module
     restarts). The applied gain joining the on-throughout lane's. FLUSHED right after the landing.
     Recovery (KEPT 6 s later, within 0.1 dB of fresh). A new rate flushing.
-  - **Controls.** Current (O4g), Output Gain (never stale), Case B (glides, flushed after), a flush's
+  - **Controls.** Current (O4g), Output Gain (never stale), Case B (glides; FLUSHED after its fade-in), a flush's
     current value, Undo of Apply on a stale result (no swell), A/B with a not-measured record (not
     promoted) and with a measured one.
   - **HEAD:** DSP 811 / 0, State 5434 / 0.
 - **Mutants**, each an engine variant run through both suites:
 
-| mutant | DSP (Test 71 / Test 66) | State (State test 135 / 130) |
+| mutant | DSP: Test 71 / Test 66 / other | State: State test 135 / 130 / other |
 |---|---|---|
-| M1 A: land only when current (`&& loudness.isResultCurrent()`) | 15 (9 / 6) | 6 (6 / 0) |
-| M2 B: land only when measured | 17 (10 / 6) | 26 (6 / 18) |
-| M3 the landing marks the result current (`setDisplayedGainDb (published, true)`) | 10 (8 / 2) | 5 (5 / 0) |
-| M4 no landing (Case B everywhere) | 19 (12 / 6) | 36 (9 / 24) |
-| M5 a landing blind to `measChangedAtBottom` | 4 (1 / 2) | 5 (1 / 2) |
-| M6 C2: a non-current boost above the level heard starts at that level | 4 (1 / 3) | 0 |
+| M1 A: land only when current (`&& loudness.isResultCurrent()`) | 9 / 6 / 0 | 6 / 0 / 0 |
+| M2 B: land only when measured | 10 / 6 / 1 | 6 / 18 / 2 |
+| M3 the landing marks the result current (`setDisplayedGainDb (published, true)`) | 8 / 2 / 0 | 5 / 0 / 0 |
+| M4 no landing (Case B everywhere) | 12 / 6 / 1 | 9 / 24 / 3 |
+| M5 a landing blind to `measChangedAtBottom` | 1 / 2 / 1 | 1 / 2 / 2 |
+| M6 C2: a non-current boost above the level heard starts at that level | 1 / 3 / 0 | 0 / 0 / 0 |
+| M7 an ordinary duck's bottom does not report its measurement change (`&& pendingForced`) | 1 / 0 / 0 | 1 / 0 / 0 |
 
-Every variant is rejected by Test 71 or State test 135; M6 only by Test 71 leg (4), the pinned positive
-step, and by Test 66. The rest of each suite passes under every variant.
+- **"Other."** M2, M4 and M5 also fail Test 68 leg (6). M2 and M5 fail State tests 131 (d) and 132 (7).
+  M4 fails those two and State test 133's route (11).
+- **Coverage.** Every variant is rejected by Test 71 or State test 135. M6 is rejected only by Test 71
+  leg (4), the pinned positive step, and by Test 66.
+- **M7 was a coverage gap.** The review built it: before the corrected Case-B verdict it passed both full
+  suites (811 / 0, 5434 / 0). Tests 69 / State 133 cover only a forced bottom's report ((1p)). It now
+  fails (E) in both tests, and nothing else.
+- **Devin regression controls on this tree** (the state suite, each mechanism removed):
+
+  | mechanism removed | fails |
+  |---|---|
+  | Apply's NaN guard | 6 of State test 129 (5 deterministic, plus the real-window leg C) |
+  | Apply itself | 5 of State test 129, 2 of 132, 3 of 133, 2 of 135 and 45 of 130 |
+  | the kept result as the applied gain | 30 of State test 132, 3 of 133, 4 of 134 |
+  | the live-edit report | 24 of State test 133, 1 of 134, 7 of 135 |
+  | `setDisplayedGainDb` honouring `measured` | 21 of State test 134, 2 of 135 |
+- **Adversarial review of the tests and documents.** Two checks could not fail and were corrected: Case
+  B's verdict (now after the fade-in) and the converged premise (now a stationarity window). Test 71's
+  route check read two blocks, not one. The documents' bounds, tallies and set descriptions were
+  corrected against the raw data.
 
 ### P7. Recorded, not changed
 
