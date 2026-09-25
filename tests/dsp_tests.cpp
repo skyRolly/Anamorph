@@ -10924,8 +10924,10 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
     // =====================================================================================================
     //  LEG 1 -- THE MATCHER DIRECTLY: current is not measured
     // =====================================================================================================
+    // Each leg runs in its own immediately-invoked lambda, so its locals sit in their own frame (MSVC /analyze sums
+    // every block of one function into one estimate; C6262, docs/procedures/CI_CD.md).
     int invBad = 0, invBlocks = 0;                                       // measured without current, over every block
-    {
+    [&] {
         constexpr float kW = 2.0f;                                       // the wet at twice the dry: the target -6.02 dB
         const double target = -20.0 * std::log10 ((double) kW);
         std::vector<float> dL ((size_t) bs), dR ((size_t) bs), wL ((size_t) bs), wR ((size_t) bs);
@@ -11101,7 +11103,7 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
         std::printf ("  %-70s: %d of %d blocks measured without being current\n", "(1) the invariant, every matcher lane",
                      invBad, invBlocks);
         check (invBad == 0, "(1) measured implies current in every block of every matcher lane");
-    }
+    }();
 
     // =====================================================================================================
     //  THE ENGINE LANES: one seeded programme, a script of snapshots, calls and re-prepares per lane
@@ -11249,7 +11251,7 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
     // =====================================================================================================
     //  LEG 2 -- CAPTURE AND RESTORE: a measured record comes back current; a stale one does not
     // =====================================================================================================
-    {
+    [&] {
         const int back = P + 2 * sec;                                    // 2 s on B (`other`: Amount 1.0), then back to A
         Lane a, st, dd, dc, fl;
         setSnap (a, 0, w2);   abSwitch (a, P, 0, 1, other);  abSwitch (a, back, 1, 0, w2);  observe (a, back, kBot, kObs, sr);
@@ -11309,8 +11311,8 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
         check (vf.flush, "(2d) a slot left while its result was current only by the flush's convention (0.5 s after the "
                          "first prepare) was not measured: restored NOT current, FLUSHED ((2a) is the control: 4 s)");
 
-    }
-    {
+    }();
+    [&] {
         // (2e) the predict floor over a measured restore, through the engine: B (Drive 12) converged on N x 2 (-3.5 dB,
         // above its -6.00 floor), left, then returned to from A at Drive 8 (a rise: floored) or Drive 16 (a fall: not)
         const Params d12 = with (base, [] (Params& q) { q.driveDb = 12.0f; });
@@ -11348,8 +11350,8 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
         check (vr.flush, "(2e) a measured restore the predict floor lowers is no longer measured: the slot left 3 blocks "
                          "later comes back NOT current -- FLUSHED");
         check (vc.keep, "control (2e): the same restore reached by a Drive FALL is not floored and stays measured: KEPT");
-    }
-    {
+    }();
+    [&] {
         const int back = P + 2 * sec;                                    // (2a)'s timeline
         // (2f) AN EDIT THE ENGINE NEVER ADOPTED: a forced duck (requestDuck: a preset load's or an undo's) carrying Width
         // 1 -> 2, and A -> B in its fade-out. The state still heard, Width 1, is the one A's record was measured for;
@@ -11395,8 +11397,8 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
                           "one pending: restored into the never-adopted Width 2, NOT current -- FLUSHED");
         check (vpn.keep && offFresh (fBase, vpn, pn.rp) <= 0.1,
                "control (2f): the same forced duck carrying Output Gain only: KEPT, within 0.1 dB of a fresh engine at A");
-    }
-    {
+    }();
+    [&] {
         // (2g) VALUE AND VALIDITY ARE TWO ANSWERS: a stale record (A edited Width 1 -> 2 one block before it is left, as
         // in (2b)) restored at an AUDIBLE bottom -- no silence, so the applied gain is the restore's, not the silence ->
         // audio snap's -- against the same value injected in its place as MEASURED (requestDuck + injectMatchGainDb, the
@@ -11443,12 +11445,12 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
                "(2g) restoring the value and restoring its validity are separate: an UNMEASURED restore is bit-identical, "
                "published and output (the applied gain), to a MEASURED injection of the same value; only the re-prepare "
                "tells them apart -- FLUSHED against KEPT");
-    }
+    }();
 
     // =====================================================================================================
     //  LEG 3 -- THE REQUEST WORD: A -> B -> A before a block, a switch while a restore is armed, requestDuck, forget
     // =====================================================================================================
-    {
+    [&] {
         // B (Width 2) first, as slot 1, for P; then A (base); the event at x; A -> B observed at y
         const int x = P + sec, yb = x + H;
         const auto lane3 = [&]
@@ -11544,12 +11546,12 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
         check (ident (dropA),
                "(3e) ...and a switch already taken whose restore is still armed: forgotten before its bottom, the bottom "
                "restores nothing (bit-identical to requestDuck() alone)");
-    }
+    }();
 
     // =====================================================================================================
     //  LEG 4 -- THE RATE STAMP, and the switch a prime takes
     // =====================================================================================================
-    {
+    [&] {
         // A (base) first for P, left for B (Width 2); prepared at 44.1 kHz 0.5 s later (B primed), and in (4b) back at
         // 48 kHz 0.5 s after that; back to A 1.5 s after it was left
         const int x = P + 3 * H;
@@ -11631,12 +11633,12 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
         check (same (pubAt (pd, xp), vB) && d1.flush,
                "(4d) at a new rate the switch the prime takes restores B's value NOT measured (a 48 kHz record at 44.1 "
                "kHz): FLUSHED");
-    }
+    }();
 
     // =====================================================================================================
     //  LEG 5 -- THE TOLERANCE: a preset round trip's bit drift is no change; a real edit is
     // =====================================================================================================
-    {
+    [&] {
         Params a5 = base;
         a5.mbEnable = true; a5.monoMakerEnable = true; a5.mbFreqLow = 173.21f; a5.monoMakerFreq = 131.77f;
         const auto drift = [] (Params q, double rel)
@@ -11681,12 +11683,12 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
                "and Mono Maker Freq, 1.2e-6 relative) is still measured: KEPT, within 0.1 dB of a fresh engine at A");
         check (ve.flush, "(5b) ...and one differing by 1e-4 relative (over measurementInputsDiffer's 1e-5 bound) is not: "
                          "FLUSHED");
-    }
+    }();
 
     // =====================================================================================================
     //  LEG 6 -- THE RAW ENGINE API: injectMatchGainDb is caller-asserted MEASURED; NaN is never restored
     // =====================================================================================================
-    {
+    [&] {
         // requestDuck + Width 1 -> 2 (+ the fresh engine's Width-2 value injected), then the slot left kObs blocks after
         // the bottom, and returned to 0.5 s later
         const int e = P, lv = e + kBot + 1 + kObs, yb = lv + H;
@@ -11768,12 +11770,12 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
                "premise (6b): the slot was left publishing NaN (its record), and B's restore replaced it with a number");
         check (identN (nr) && identN (ni), "(6b) a NaN record and a NaN injection are never restored: the switch back to the "
                                            "NaN slot and a NaN injection are bit-identical to a duck alone");
-    }
+    }();
 
     // =====================================================================================================
     //  LEG 7 -- P1b PRESERVED: the re-arm answers the inputs, whatever the record's currency
     // =====================================================================================================
-    {
+    [&] {
         // measured records: B first (slot 1) for P on N x 2 (its value is not A's), then A (base) on N; A -> B at x.
         // unmeasured records: A from block 0; A -> B (never visited: 0 dB) at xu. B differs from A in Width (re-arm) or
         // only in Output Gain (identical measurement inputs). The probe: 0.3 s of silence from the bottom (Test 67).
@@ -11825,7 +11827,7 @@ static void testAbLevelMatchMemoryCarriesItsProvenance()
                "(7c) a MEASURED record restored into identical measurement inputs does not re-arm: the stale analysis "
                "drags it > 0.5 dB in 0.3 s (the record, taken on N x 2, >= 2 dB from what A measures on N)");
         check (pr[3].dev > 0.5, "(7d) ...nor does an UNMEASURED one: dragged > 0.5 dB");
-    }
+    }();
 }
 
 static int runForcedSwapAuditProbe()
