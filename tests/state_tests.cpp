@@ -43438,8 +43438,12 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
 //   (A) THE DEVIN CASE. Copy A -> B and switch to B at block 0; B left 3.5 s in (measured from 2.67 s), 2 s on A,
 //       back, prepareToPlay 4 blocks later: KEPT (-8.3285), bit-identical to the twin. Premises: the raw Density is
 //       NaN on B before the leave, on A in the visit, on B after the return and at the prepare; the active slot is B,
-//       A, B; after the return BOTH saved slots store a NaN Density ("nan"); with Level Match off the NaN lane's output
-//       is bit-identical to its twin's through the same switches and prepareToPlay (the Velvet plays the held 0.3); and
+//       A, B; BOTH slots store the NaN -- applying either (B at the return; A again after the verdict) writes the
+//       parameter's default, a restore's repair of a stored Density that is not a number, where the twin's slots bring
+//       back their 0.3. The slots are read there, not from getStateInformation: serializing a NaN parameter reaches
+//       JUCE's serialiseDouble, a NaN-to-int conversion -- undefined behaviour, a pre-existing finding (worklog §S10).
+//       With Level Match off the NaN lane's output is bit-identical to its twin's through the same switches and
+//       prepareToPlay (the Velvet plays the held 0.3); and
 //       B is MEASURED when left -- on the finite twin, which the lane matches bit for bit, B is stale from the block-0
 //       switch until the measure confirms it, and a prepareToPlay at the leave block keeps it (-8.3282) where one
 //       1.5 s in flushes (State test 137's premise).
@@ -43510,13 +43514,6 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     };
     const auto rawOfId = [&bitsOf] (Proc& p, const char* id) { return bitsOf (p.getAPVTS().getRawParameterValue (id)->load()); };
     const auto rawDensity = [&rawOfId] (Proc& p) { return rawOfId (p, "velvetDensity"); };
-    // the Density each saved A/B slot stores (the AB node's slot trees, the PARAM's exact `raw`), as text
-    const auto savedSlotDensity = [] (Proc& p, const char* key)
-    {
-        const auto ab = stateTreeOf (p).getChildWithName ("AB");
-        const auto slot = juce::ValueTree::fromXml (ab[key].toString());
-        return slot.getChildWithProperty ("id", "velvetDensity")["raw"].toString();
-    };
 
     const KV base = { { "advancedMode", 1.0f }, { "algorithm", 1.0f }, { "amount", 0.8f }, { "width", 1.0f },
                       { "mbEnable", 0.0f }, { "drive", 8.0f }, { "outputGain", -3.0f }, { "autoGainMatch", 1.0f },
@@ -43548,10 +43545,8 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         bool lmOn = true;
         int cap = 0;
         std::vector<int> probeAt;                           // raw Density and active slot, as processBlock reads them
-        std::vector<int> saveAt;                            // the saved slots' Density, at the same point
         std::vector<Probe> probes;
         std::vector<std::uint32_t> prepRaw;                 // the raw value each prepareToPlay primed with (hostId)
-        std::vector<std::pair<juce::String, juce::String>> saved;
         std::vector<float> pub, out, before, after;
     };
     auto run = [&] (Lane& ln)
@@ -43581,8 +43576,6 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
             hostWrite (*p, ln.hostId, ln.density (b));
             for (const int pb : ln.probeAt)
                 if (pb == b) ln.probes.push_back ({ b, rawDensity (*p), p->abActiveSlot() });
-            for (const int pb : ln.saveAt)
-                if (pb == b) ln.saved.push_back ({ savedSlotDensity (*p, "slotAParams"), savedSlotDensity (*p, "slotBParams") });
             bool silent = false;
             for (const auto& z : ln.silent) silent = silent || (b >= z.first && b < z.second);
             const float* x = stream.data() + (size_t) b * blk;
@@ -43647,7 +43640,6 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         }
         ln.density = [d] (int b) { return d[(size_t) b]; };
         ln.probeAt.clear();
-        ln.saveAt.clear();
         return ln;
     };
     // the A/B script: Copy A -> B and switch to B at block 0; leave B at `leave`, back at `back`
@@ -43663,21 +43655,35 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     // =====================================================================================================
     [&] {
         const int ret = L + away;
+        const int toA = ret + kPrep + 2;                    // after the verdict: back to A, which applies A's slot
         Lane ln;
         ln.density = [qnan] (int) { return qnan; };
         abScript (ln, L, ret);
+        ln.ev.push_back ({ toA, [] (Proc& p) { p.abSwitchTo (0); } });
         ln.preps.push_back (ret + kPrep);
         ln.probeAt = { L - 1, L + sec, ret + 1 };
-        ln.saveAt  = { ret + 1 };
-        ln.cap = ret + kPrep + 1;
+        ln.cap = toA + 1;
         Lane tw = twinOf (ln);
         Lane off = ln;
         off.lmOn = false;
         off.probeAt.clear();
-        off.saveAt.clear();
         Lane offTw = twinOf (off);
-        float atSwitch = 0.0f;                              // what the return's switch itself wrote, before the host's
-        ln.ev.push_back ({ ret, [&atSwitch] (Proc& p) { atSwitch = p.getAPVTS().getRawParameterValue ("velvetDensity")->load(); } });
+        // BOTH SLOTS STORE THE NaN, read where a switch applies each slot, before the host's write: a stored Density
+        // that is not a number is repaired to the parameter's default, and a finite one comes back as itself (the
+        // twin's 0.3). Not read from getStateInformation: serializing a NaN parameter reaches JUCE's serialiseDouble,
+        // which converts the NaN to int -- undefined behaviour, a pre-existing finding recorded in worklog §S10
+        float atB = -1.0f, atA = -1.0f, twB = -1.0f, twA = -1.0f;
+        const auto rawNow = [] (Proc& p) { return p.getAPVTS().getRawParameterValue ("velvetDensity")->load(); };
+        ln.ev.push_back ({ ret, [&atB, rawNow] (Proc& p) { atB = rawNow (p); } });
+        ln.ev.push_back ({ toA, [&atA, rawNow] (Proc& p) { atA = rawNow (p); } });
+        tw.ev.push_back ({ ret, [&twB, rawNow] (Proc& p) { twB = rawNow (p); } });
+        tw.ev.push_back ({ toA, [&twA, rawNow] (Proc& p) { twA = rawNow (p); } });
+        const float dflt = []
+        {
+            const auto q = std::make_unique<Proc>();
+            auto* rp = q->getAPVTS().getParameter ("velvetDensity");
+            return rp->convertFrom0to1 (rp->getDefaultValue());
+        }();
         // B MEASURED WHEN LEFT, on the finite twin the lane matches bit for bit (State test 137's premise): B is stale
         // from the block-0 switch until the measure confirms it, so prepareToPlay at the leave block keeps only a
         // confirmed, measured result -- and 1.5 s in, before that, it flushes
@@ -43714,15 +43720,13 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
             std::snprintf (t, sizeof t, " %08x", (unsigned) ln.prepRaw.front());
             row += t;
         }
-        const bool storedNaN = ln.saved.size() == 1
-                            && std::isnan (ln.saved.front().first.getDoubleValue())
-                            && std::isnan (ln.saved.front().second.getDoubleValue());
-        const juce::String stA = ln.saved.empty() ? juce::String ("-") : ln.saved.front().first;
-        const juce::String stB = ln.saved.empty() ? juce::String ("-") : ln.saved.front().second;
+        const bool storedNaN = sameBits (atB, dflt) && sameBits (atA, dflt)
+                            && std::abs (twB - held) <= 1.0e-6f && std::abs (twA - held) <= 1.0e-6f;
         std::printf ("  %-58s: raw Density / slot before the leave, in the visit, after the return; at the prepare:%s | "
-                     "the return's switch wrote %.4f, the host's NaN replaced it | the saved slots' Density after the return: "
-                     "A \"%s\", B \"%s\" | Level Match off, the NaN lane's output against its twin's bit-identical: %s\n",
-                     "(A) premises", row.c_str(), (double) atSwitch, stA.toRawUTF8(), stB.toRawUTF8(), diffText (dOff).c_str());
+                     "applied, before the host's write: B at the return %.4f, A after the verdict %.4f (the default %.4f); "
+                     "the twin's %.4f / %.4f | Level Match off, the NaN lane's output against its twin's bit-identical: %s\n",
+                     "(A) premises", row.c_str(), (double) atB, (double) atA, (double) dflt, (double) twB, (double) twA,
+                     diffText (dOff).c_str());
         std::printf ("  %-58s: prepareToPlay %+.4f -> %+.4f (%s) | the twin %s (%+.4f) | bit-identical to it: %s\n",
                      "(A) identical NaN slots, back, prepareToPlay", (double) v.before, (double) v.after, word (v), word (vt),
                      (double) vt.before, diffText (d).c_str());
@@ -43734,9 +43738,11 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
                "twin, which the lane matches bit for bit)");
         check (rawNaN && slots && storedNaN && dOff < 0,
                "premise (A): the host's NaN is the raw Density on B before the leave, on A in the visit, on B after the "
-               "return and at the prepare; the switches happened (B, A, B); after the return BOTH saved slots store a "
-               "NaN Density; and with Level Match off the NaN lane's output is bit-identical to its twin's through the "
-               "same switches and prepareToPlay -- the Velvet plays the held 0.3, the sound is unchanged");
+               "return and at the prepare; the switches happened (B, A, B); BOTH slots store the NaN -- applying either "
+               "(B at the return, A after the verdict) writes the parameter's default, a restore's repair of a stored "
+               "Density that is not a number, where the twin's slots bring back their 0.3; and with Level Match off the "
+               "NaN lane's output is bit-identical to its twin's through the same switches and prepareToPlay -- the "
+               "Velvet plays the held 0.3, the sound is unchanged");
         check (v.keep && vt.keep && d < 0,
                "(A) THE DEVIN CASE: identical Velvet slots holding the same NaN Density keep B's matched level through the "
                "A/B return and a same-rate prepareToPlay -- KEPT, published and output bit-identical to the finite twin");

@@ -2675,7 +2675,8 @@ Density 0.3 set before the first prepare. Copy A → B and switch to B at block 
   parameter's default (a restore's repair; measured 0.5000), so a Copy made under a single NaN write plays 0.5
   and keeps (−8.3751 → −8.3751). The state arises when the host writes NaN after the switch, as an automation lane
   at NaN does at the start of every callback: the raw Density is then NaN before the leave, in the visit, after
-  the return and at the prepare, and both saved slots store `nan`.
+  the return and at the prepare, and both saved slots store `nan` (read by the scratch probe through
+  `getStateInformation`, which with a NaN parameter reaches undefined behaviour in JUCE: §S10).
 - **The sound is unchanged.** With Level Match off, the NaN processor's output is bit-identical to the twin whose
   host writes 0.3, over 1509 blocks through the switches and the prepare. The Velvet ignores the NaN
   (`VelvetNoise::setDensity`) and plays the 0.3 it holds.
@@ -2832,7 +2833,10 @@ concurrently with `process()`.
 - **Every lane is compared with its finite twin, bit for bit, every block:** published values and output.
 - **The premises are asserted:**
   - the host's NaN reaches the raw Density at each point;
-  - both saved slots store `nan` after the return;
+  - both slots store the NaN: applying either (B at the return, A again after the verdict) writes the
+    parameter's default, a restore's repair, where the twin's slots bring back 0.3. The first version read the
+    saved slots through `getStateInformation`; CI's UBSan stopped it there (§S10), so the premise is read where
+    the slots are applied;
   - the switches happened;
   - the Level-Match-off output is bit-identical to the twin's (the effective Velvet state is unchanged);
   - B is measured when it is left: first measured 2.672 s in through the processor (2.56 s at the engine). State
@@ -2975,9 +2979,14 @@ concurrently with `process()`.
   - Frames (GCC `-fstack-usage`): `measurementChangeFrom` 320 B. `restoreAbSlot` goes from 80 to 240 B and
     `takeRequests` from 24 to 48 B: each holds a resolved copy of the heard state. `setParameters` (48 B) and
     `primeParameters` (32 B) are unchanged. Test 74 is 2,224 B (its largest leg lambda 4,608 B) and State test
-    138 1,936 B (2,624 B). The largest frames in either suite are unchanged.
+    138 1,808 B (2,336 B). The largest frames in either suite are unchanged.
   - `_GLIBCXX_ASSERTIONS`: Tests 66–74 411 / 0; State tests 134, 136, 137, 138 222 / 0.
-  - memcheck (local, the lane's flags): Test 74 32 s and State test 138 36 s, 0 errors each.
+  - memcheck (local, the lane's flags): Test 74 34 s and State test 138 35 s, 0 errors each.
+- **CI's `sanitizers` job on `63e4953`** stopped at State test 138 (A)'s premise probe: UBSan's float-cast
+  check fired in `juce::serialiseDouble` (§S10). The premise now reads the slots where a switch applies them
+  (§S7). A local clang-18 replica of the step (ASan + UBSan with CI's flags, `halt_on_error=0` to list every
+  site) found nothing else. Outside the HarfBuzz paths CI's ignorelist covers, the previous test reported only
+  `juce_String.cpp:2294`. The current one passes 5521 / 0 with no report there.
 
 
 ### S9. The `sanitizers` job's timeout (45 → 60 minutes, `fba78ec`)
@@ -2992,7 +3001,7 @@ Measured on this PR's heads:
 Under the 45-minute cap, `b82a294`'s green run would have been cancelled, and this round adds Test 74 and State
 test 138 to both memcheck passes. 45 does not suffice. The cap stays at 60, the ceiling the build jobs already
 use. The lane's command, suites and strictness are unchanged, and no test is weakened or skipped for it.
-This round's two tests add 32 s and 36 s under local memcheck (0 errors each), on top of a run that was
+This round's two tests add 34 s and 35 s under local memcheck (0 errors each), on top of a run that was
 already over 45 minutes without them.
 
 ### S10. Recorded, not changed (deferred)
@@ -3013,6 +3022,16 @@ already over 45 minutes without them.
   - ADR-0004's Related code (`:819-829`, `:872-888`, `:655-707`, `:831-845`), ADR-0005's `:726-759` and
     ADR-0006's `:831-845`;
   - ADR-0040's `:1824` and `:814-825`;
+- **Saving the session while a parameter is NaN reaches undefined behaviour in JUCE.** CI's UBSan stopped
+  State test 138's first version (`63e4953`) at
+  `getStateInformation` → `writeState` → `ValueTree::toXmlString` → `var::toString` → `juce::serialiseDouble`. That
+  function converts the value to `int` before any NaN test (`juce_String.cpp:2294`, `int intInput = (int)
+  input;`): undefined for a NaN. Every PARAM's saved `value` and `raw` take that path, and so do the A/B slots'
+  copies. On Linux x86-64 the bytes read `nan`, and a restore reads them as not a number and takes the
+  parameter's default. It is pre-existing and outside this round: it belongs to the float→int class and a
+  global non-finite ingress policy, both deferred, and a fix changes what the state writes, which is a
+  serialization change and gated. The test now reads the slots where a switch applies them (§S7), and no test
+  serializes a NaN state. KNOWN_ISSUES KI-029 records it.
 - **Mono Maker Freq at the engine API (§S3).** Its module holds the cutoff on a NaN target (ADR-0009, Test 64;
   it clamps ±Inf to its range), yet `measurementInputsDiffer` reads NaN against NaN there as a change: the same
   pattern as the Velvet Density's. No host reaches it, because the parameter's range maps a NaN to a finite cutoff. The owner's

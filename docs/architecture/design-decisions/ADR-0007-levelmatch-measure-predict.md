@@ -1541,7 +1541,8 @@ never runs concurrently with `process()`. This is the guarantee under which the 
 **Regression coverage.** Test 74 (the engine, 34 checks) and State test 138 (the processor, 15 checks).
 - **Premises.**
   - The host's NaN is the raw Density before the leave, in the visit, after the return and at the prepare.
-  - Both saved slots store NaN, and the switches happened.
+  - Both slots store the NaN: applying either writes the parameter's default, a restore's repair, where the
+    twin's slots bring back their 0.3. The switches happened.
   - B is measured when it is left: on the finite twin, a `prepareToPlay` at the leave block keeps, and one 1.5 s
     in flushes.
   - The Level-Match-off output is bit-identical to the twin's.

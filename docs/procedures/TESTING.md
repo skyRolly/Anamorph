@@ -5101,9 +5101,12 @@ which the host's NaN then replaces, so the engine reads NaN on every block, as u
 verdict is `prepareToPlay` 4 blocks after a return; each lane is compared with its twin bit for bit.
 - **(A) The Devin case:** Copy A → B and switch at block 0, B left 3.5 s in, 2 s on A, back, `prepareToPlay` —
   KEPT (−8.3285), twin-identical. Premises: the raw Density is NaN before the leave, in the visit, after the
-  return and at the prepare; the slots B, A, B; both saved slots store "nan" after the return; with Level Match
-  off the output is bit-identical to the twin's through the switches and the prepare; B is measured when left (on
-  the twin: a `prepareToPlay` at the leave block keeps, one 1.5 s in flushes).
+  return and at the prepare; the slots B, A, B; both slots store the NaN — applying either (B at the return, A
+  again after the verdict) writes the parameter's default, a restore's repair, where the twin's slots bring back
+  0.3 (read there rather than from `getStateInformation`, which with a NaN parameter reaches undefined behaviour
+  in JUCE: worklog §S10); with Level Match off the output is bit-identical to the twin's through the switches and
+  the prepare; B is measured when left (on the twin: a `prepareToPlay` at the leave block keeps, one 1.5 s in
+  flushes).
 - **(A2) A quiet return:** the published value jumps from A's −8.1148 to −8.3287, 0.0005 dB from B's record
   (identical slots keep their analysis), where without the return A's reads −8.1200 — the restore happened; kept.
 - **(B)** B at Drive 12, A at 8, a quiet return: B's record back bit for bit (−10.5744), kept.

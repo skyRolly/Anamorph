@@ -13043,6 +13043,11 @@ is confirmed and fixed under the owner's authorization. All of it is 0.9.9, date
   The glide also does not run while another algorithm plays. Both tests now separate the two reads.
 - **Mutants:** 19, of which 18 are rejected. One is equivalent on every reachable path (worklog §S8): `to`
   resolved against the Velvet's target.
+- **CI's UBSan on the first push (`63e4953`).** State test 138's premise read the saved slots through
+  `getStateInformation`. With a NaN parameter, that reaches JUCE's `serialiseDouble`, which converts the NaN to
+  `int`: undefined behaviour, pre-existing in every session save. The premise now reads each slot where a switch
+  applies it. The UB is recorded, not fixed: it is in the deferred float→int class, and a fix would change what
+  the state writes (KNOWN_ISSUES KI-029; worklog §S10).
 - **Validation (the final tree).** DSP 935 / 0 and State 5521 / 0 under a 1 MiB stack. This tree's tests
   against `b82a294`'s sources fail exactly Test 74's 25 checks and State test 138's 10. The suites' output is
   otherwise identical, thread-timing counters and wall-clock times aside, and the 186 finite hashes are
@@ -13055,7 +13060,8 @@ is confirmed and fixed under the owner's authorization. All of it is 0.9.9, date
   the decision, what it preserves, the coverage and the gate record). In place: the O4g predicate paragraph
   and its Case-A condition 1, the A/B provenance restore rule and record contract, the F13(2) Q1 bottom
   expression and Q5 condition 3, and the duckMeasDirty note's "Set" item.
-- **`KNOWN_ISSUES.md`:** KI-030 (the index row and the resolution summary).
+- **`KNOWN_ISSUES.md`:** KI-030 (the index row and the resolution summary); KI-029 (a session saved while a value
+  is NaN reaches undefined behaviour in JUCE's number formatting).
 - **`CHANGELOG.md` `[0.9.9]`:** the decision and coverage references of the same-rate re-prepare entry and
   the A/B entry. There is no new bullet: the defect never shipped. The same-rate keep and
   `measurementInputsDiffer` are both 0.9.9 work (`CHANGELOG_POLICY.md`, "Writing an entry").
