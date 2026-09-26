@@ -12849,7 +12849,8 @@ static void testAbRestoreSurvivesAReprepareInTheFadeIn()
 //  before a return through its bottom, so the bottom publishes exactly what was restored; a verdict is a same-rate
 //  re-prepare (prime, prepare, setParameters) 3 audible blocks after the bottom -- KEEP bit-identical, FLUSH exactly
 //  0 dB; FRESH is an engine at B from sample 0. Programme N (seed 6901), 48 kHz / 256; A = Haas, Amount 0.5, Width 1,
-//  Drive 8, Level Match on; slot B (the engine's slot 1) is A edited to Drive 12 or 2 at 4 s; 2 s on A per visit.
+//  Drive 8, Level Match on; slot B (the engine's slot 1) is A edited to Drive 12 or 2 at 1.5 s, its result measured
+//  (a re-prepare the block before the edit keeps -5.2393: asserted); 2 s on A per visit.
 //
 //  THE LEGS (measured)
 //   (1a) The change reported at 4 s: the first counted block 0.277 s later; the share follows 1 - (1 - c)^n to 6e-16
@@ -12863,19 +12864,19 @@ static void testAbRestoreSurvivesAReprepareInTheFadeIn()
 //        (1e) A non-finite share or mean certifies nothing. (1f) softReset keeps it; inputsChanged, reset and an
 //        unmeasured restore clear it; the floor lowering (1b)'s certified value (Drive 8 -> 24) un-measures it and
 //        clears the evidence behind it.
-//   (2)  O8(1), one visit: left 0.3 s after the edit -- the record restored exactly, FLUSHED (8 -> 12: -6.0693, 1.53 dB
-//        off fresh; 8 -> 2: -5.2946, 3.14 off). Left 1.1 s after it (not measured: a re-prepare there flushes) -- the
-//        bottom publishes the evidence's mean, KEPT: 8 -> 12 -6.8000 (0.81 off) -> -7.6087 (0.020 off); 8 -> 2 -3.9181
-//        (1.76 off) -> -2.1907 (0.028 off); the same value from a return 1 s later. Left 6 s after it (measured): the
-//        record exactly, KEPT, as before.
+//   (2)  O8(1), one visit: left 0.3 s after the edit -- the record restored exactly, FLUSHED (8 -> 12: -6.0740, 1.50 dB
+//        off fresh at the verdict; 8 -> 2: -5.0969, 2.18 off). Left 1.1 s after it (not measured: a re-prepare there
+//        flushes) -- the bottom publishes the evidence's mean, KEPT: 8 -> 12 -6.8032 (0.72 off) -> -7.6043 (0.014 off
+//        at the verdict); 8 -> 2 -3.8271 (1.70 off) -> -2.1913 (0.032 off); the same value from a return 1 s later.
+//        Left 6 s after it (measured): the record exactly, KEPT, as before.
 //   (3)  O8(2), visits of T s from the edit on: the returns before the visits add up restore the record exactly and
-//        FLUSH; then a return restores the mean, KEPT -- T = 0.3 s from the 4th return (8 -> 12 0.097 dB off fresh, the
-//        record 0.57 dB away; 8 -> 2 0.067), T = 0.6 s from the 2nd (0.056 / 0.021). The event-matched control (each
+//        FLUSH; then a return restores the mean, KEPT -- T = 0.3 s from the 4th return (8 -> 12 0.070 dB off fresh, the
+//        record 0.57 dB away; 8 -> 2 0.055), T = 0.6 s from the 2nd (0.010 / 0.005). The event-matched control (each
 //        return's Drive 0.01 dB away from the record's, alternately) FLUSHES there.
 //   (4)  What drops it: (4a) B left inside an ordinary duck carrying Width 1 -> 2 live (a fresh Width-2 B is 2.17 dB
-//        from a Width-1 one): the record restored exactly, FLUSHED; the same duck without Width: the mean, KEPT, 0.020
+//        from a Width-1 one): the record restored exactly, FLUSHED; the same duck without Width: the mean, KEPT, 0.014
 //        off. (4b) Back into Width 2: the record exactly, FLUSHED. (4c) The return the prime takes: at 48 kHz the first
-//        block publishes the mean (-7.6087), KEPT; at 44.1 kHz the record (-6.8000), FLUSHED. (4d) A forget: 0 dB
+//        block publishes the mean (-7.6043), KEPT; at 44.1 kHz the record (-6.8032), FLUSHED. (4d) A forget: 0 dB
 //        restored (the bottom publishes the Drive 12 floor over it, -6.0030), FLUSHED.
 //  VARIANTS REJECTED (each this tree with one change, worklog §R6): no evidence recorded; evidence recorded through a
 //  change in flight -- (4a); evidence restored for other inputs -- (3)'s control, (4b); for another rate -- (4c);
@@ -12901,7 +12902,8 @@ static void testAbRecordCarriesThePostChangeEvidence()
     const int kBot  = (int) std::lround (0.006 * sr) / bs + 1;           // a forced duck's silent bottom: event + 2
     const int kObs  = 3;                                                 // audible blocks from a return's bottom to its verdict
     const int kQuiet = 8;                                                // digital silence from 8 blocks before a return (Test 70)
-    const int E1    = 4 * sec;                                           // slot B's edit (B converged and measured by then)
+    const int M1    = 4 * sec;                                           // leg 1: the matcher's change (measured by then)
+    const int E1    = 3 * sec / 2;                                       // the engine legs: slot B's edit (1.5 s in)
     const int away  = 2 * sec;                                           // a visit to A
     const double cSlow = 1.0 - std::exp (-((double) bs / sr) / 0.9);     // the slow glide's step: the evidence's weight
     const int nHalf = (int) std::ceil (std::log (0.5) / std::log (1.0 - cSlow));   // counted blocks to a share of 0.5
@@ -12946,11 +12948,11 @@ static void testAbRecordCarriesThePostChangeEvidence()
             lm.prepare (sr);
             lm.setDriveDb (8.0f);
             lm.setMix (1.0f);
-            for (int b = 0; b < E1; ++b) feed (lm, b, 2.0f);
+            for (int b = 0; b < M1; ++b) feed (lm, b, 2.0f);
         };
         const double target3 = -20.0 * std::log10 (3.0);                   // the wet at three times the dry: -9.54 dB
 
-        // (1a) the change: the wet goes 2x -> 3x at E1, reported (inputsChanged) as the engine reports a live edit
+        // (1a) the change: the wet goes 2x -> 3x at M1, reported (inputsChanged) as the engine reports a live edit
         LoudnessMatch lm;
         primed (lm);
         const bool measBefore = lm.isResultMeasured();
@@ -12961,7 +12963,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
         Ev evC {}, evPre {}, evAfterLive { -1.0, -1.0 };
         float pubC = 0.0f, pubPre = 0.0f;
         bool measAtC = true;
-        for (int b = E1; b < E1 + 8 * sec; ++b)
+        for (int b = M1; b < M1 + 8 * sec; ++b)
         {
             const Ev before = lm.getEvidence();
             const float pubBefore = lm.getMatchGainDb();
@@ -12983,12 +12985,12 @@ static void testAbRecordCarriesThePostChangeEvidence()
                      "follows 1 - (1 - c)^n to %.1e | 0.5 after %d counted blocks (%.3f s) | mean %+.4f (target %+.4f) | "
                      "published then %+.4f, measured %s | measured live %.2f s after it | evidence then %.3f / %.3f\n",
                      "(1a) wet 2x -> 3x, reported", measBefore ? "yes" : "NO", evMeasured.share,
-                     (double) ((k0 - E1) * bs) / sr, formulaErr, kc - k0 + 1, (double) ((kc - k0 + 1) * bs) / sr, meanC,
+                     (double) ((k0 - M1) * bs) / sr, formulaErr, kc - k0 + 1, (double) ((kc - k0 + 1) * bs) / sr, meanC,
                      target3, (double) pubC, measAtC ? "YES" : "no", (double) ((kLive - kc) * bs) / sr, evAfterLive.share,
                      evAfterLive.sum);
         check (measBefore && sameEv (evMeasured, Ev {}),
                "premise (1a): the matcher is measured before the change, and a measured result has no evidence (empty)");
-        check (k0 - E1 >= (int) (0.25 * sec) && k0 - E1 <= (int) (0.30 * sec) + 1,
+        check (k0 - M1 >= (int) (0.25 * sec) && k0 - M1 <= (int) (0.30 * sec) + 1,
                "(1a) the evidence counts audio heard since the change only once it is at least half of what the dry "
                "integrator holds: its first block 0.25-0.30 s after the change (0.4 s * ln 2 = 0.277 s)");
         check (formulaErr <= 1.0e-9 && kc - k0 + 1 == nHalf,
@@ -13010,7 +13012,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
         lf.inputsChanged();
         int k0f = -1;
         double formulaErrF = 0.0, maxStep = 0.0;
-        for (int b = E1; b < E1 + 2 * sec && ! lf.isResultMeasured(); ++b)
+        for (int b = M1; b < M1 + 2 * sec && ! lf.isResultMeasured(); ++b)
         {
             const float before = lf.getMatchGainDb();
             feed (lf, b, 8.0f);
@@ -13054,13 +13056,13 @@ static void testAbRecordCarriesThePostChangeEvidence()
         int kc3 = -1, k03 = -1;
         double carryErr = 0.0;
         double meanC3 = 0.0;
-        for (int b = E1; b < E1 + 2 * sec && kc3 < 0; ++b)
+        for (int b = M1; b < M1 + 2 * sec && kc3 < 0; ++b)
         {
             const double prev = mc.getEvidence().share;
             feed (mc, b, 3.0f);
             const Ev e = mc.getEvidence();
             if (k03 < 0 && e.share > prev * (1.0 - cSlow) + 0.5 * cSlow) k03 = b;       // the first counted block
-            const double expect = evPre.share * std::pow (1.0 - cSlow, (double) (b - E1 + 1))
+            const double expect = evPre.share * std::pow (1.0 - cSlow, (double) (b - M1 + 1))
                                 + (k03 < 0 ? 0.0 : 1.0 - std::pow (1.0 - cSlow, (double) (b - k03 + 1)));
             carryErr = std::max (carryErr, std::abs (e.share - expect));
             if (e.share >= 0.5) { kc3 = b; meanC3 = e.sum / e.share; }
@@ -13069,7 +13071,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
                      "bit-exact %s | the same audio then: 0.5 reached %.3f s after the restore (a fresh start: %.3f s), "
                      "formula to %.1e, mean %+.4f\n", "(1c) restoreUnmeasured (value, evidence of share < 0.5)", evPre.share,
                      (double) mc.getMatchGainDb(), cPub ? "yes" : "NO", (int) cCur, (int) cMeas, cEv ? "yes" : "NO",
-                     (double) ((kc3 - E1 + 1) * bs) / sr, (double) ((kc - E1 + 1) * bs) / sr, carryErr, meanC3);
+                     (double) ((kc3 - M1 + 1) * bs) / sr, (double) ((kc - M1 + 1) * bs) / sr, carryErr, meanC3);
         check (evPre.share < 0.5 && cPub && ! cCur && ! cMeas && cEv,
                "(1c) evidence below half is no measurement: the restore publishes the recorded value exactly, NOT current "
                "(as setDisplayedGainDb (v, false)), and keeps the evidence bit-exact");
@@ -13085,7 +13087,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
         md.restoreUnmeasured (-3.0f, Ev {});
         me.setDisplayedGainDb (-3.0f, false);
         bool twin = true;
-        for (int b = E1; b < E1 + 3 * sec; ++b)
+        for (int b = M1; b < M1 + 3 * sec; ++b)
         {
             feed (md, b, 2.0f);
             feed (me, b, 2.0f);
@@ -13119,7 +13121,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
         {
             primed (m);
             m.inputsChanged();
-            for (int b = E1; b < E1 + sec; ++b) feed (m, b, 3.0f);
+            for (int b = M1; b < M1 + sec; ++b) feed (m, b, 3.0f);
         };
         LoudnessMatch mf, ms, mr, mv;
         for (LoudnessMatch* m : { &mf, &ms, &mr, &mv }) oneSecondIn (*m);
@@ -13132,7 +13134,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
         const bool clr = sameEv (mf.getEvidence(), Ev {}) && sameEv (mr.getEvidence(), Ev {}) && sameEv (mv.getEvidence(), Ev {});
         // the floor's un-measure: the certified value of (1b), then Drive 8 -> 24 (its floor -12 dB, under the value)
         mb.setDriveDb (24.0f);
-        feed (mb, E1, 3.0f);
+        feed (mb, M1, 3.0f);
         const bool floored = mb.getMatchGainDb() <= (float) target3 - 1.5f && ! mb.isResultMeasured();
         const bool floorClr = sameEv (mb.getEvidence(), Ev {});
         std::printf ("  %-70s: evidence %.3f | softReset keeps it %s | inputsChanged / reset / setDisplayedGainDb (v, false) "
@@ -13231,7 +13233,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
     const auto slotB = [&] (float drive) { return with (base, [drive] (Params& q) { q.driveDb = drive; }); };
 
     // FRESH engines at B (Drive 12 / 2 / 12 at Width 2), fed the same stream from sample 0
-    const int nF = nN;
+    const int nF = E1 + 9 * sec;                                         // past every block a fresh value is read at
     const auto fresh = [&] (const Params& s)
     {
         Lane f;
@@ -13283,24 +13285,34 @@ static void testAbRecordCarriesThePostChangeEvidence()
     [&] {
         struct Case { float drive; double t; };
         const Case cases[] = { { 12.0f, 0.3 }, { 12.0f, 1.1 }, { 12.0f, 6.0 }, { 2.0f, 0.3 }, { 2.0f, 1.1 }, { 2.0f, 6.0 } };
+        const Verdict v0 = verdictOf (verdictLane (script (12.0f, {}), E1 - 1, sr), 0);
+        std::printf ("  %-66s: re-prepared %+.4f -> %+.4f (%s)\n", "B before its edit (the block before it)",
+                     (double) v0.before, (double) v0.after, word (v0));
+        check (v0.keep, "premise (2): B's result is MEASURED before its edit (a re-prepare the block before it keeps) -- the "
+                        "edit changes a converged slot, as in the reproduction");
         for (const Case& c : cases)
         {
             const int leave = E1 + (int) std::lround (c.t * sec), ret = leave + away, vk = verdictAfter (ret);
             const Lane lv = verdictLane (script (c.drive, { { leave, ret, c.drive } }), vk, sr);
             const Lane tw = verdictLane (script (c.drive, {}), leave, sr);            // the premise: re-prepared at the leave
-            const Lane lt = verdictLane (script (c.drive, { { leave, ret + sec, c.drive } }), ret + sec + kBot + 1, sr);
+            const bool measuredLeave = c.t > 5.0;
+            const bool expectCert = ! measuredLeave && c.t > 1.0;
+            Lane lt;                                                             // a return 1 s later: the certified cases
+            if (expectCert) lt = verdictLane (script (c.drive, { { leave, ret + sec, c.drive } }), ret + sec + kBot + 1, sr);
             const Lane& fr = freshOf (c.drive);
-            const float rec = pubAt (lv, leave - 1), bot = pubAt (lv, ret + kBot), botLate = pubAt (lt, ret + sec + kBot);
+            const float rec = pubAt (lv, leave - 1), bot = pubAt (lv, ret + kBot);
+            const float botLate = expectCert ? pubAt (lt, ret + sec + kBot) : std::numeric_limits<float>::quiet_NaN();
             const float aLive = pubAt (lv, ret - kQuiet - 1);
             const Verdict v = verdictOf (lv, 0), vt = verdictOf (tw, 0);
             const double recOff = std::abs ((double) rec - pubAt (fr, leave - 1));
             const double keptOff = std::abs ((double) v.before - pubAt (fr, vk - 1));
-            const bool measuredLeave = c.t > 5.0;
-            const bool expectCert = ! measuredLeave && c.t > 1.0;
+            char late[40] = "";
+            if (expectCert)
+                std::snprintf (late, sizeof late, " (a return 1 s later %+.4f)", (double) botLate);
             std::printf ("  8 -> %-2.0f left %.1f s after the edit%-33s: record %+.4f (%.3f dB off fresh; re-prepared there %s) | "
-                         "A plays %+.4f | the return's bottom %+.4f (a return 1 s later %+.4f) | re-prepared %+.4f -> %+.4f "
-                         "(%s), %.3f dB off fresh\n", (double) c.drive, c.t, "", (double) rec, recOff, word (vt),
-                         (double) aLive, (double) bot, (double) botLate, (double) v.before, (double) v.after, word (v), keptOff);
+                         "A plays %+.4f | the return's bottom %+.4f%s | re-prepared %+.4f -> %+.4f (%s), %.3f dB off fresh\n",
+                         (double) c.drive, c.t, "", (double) rec, recOff, word (vt), (double) aLive, (double) bot, late,
+                         (double) v.before, (double) v.after, word (v), keptOff);
             check (measuredLeave ? vt.keep : vt.flush,
                    measuredLeave ? "premise (2): 6 s after the edit B's result is MEASURED when it is left (a re-prepare there "
                                    "keeps it)"

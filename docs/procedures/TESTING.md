@@ -624,7 +624,7 @@ exactly as before.
 lanes with Test 70's observation (digital silence from 8 blocks before a return through its bottom, so the
 bottom publishes exactly what was restored) and verdict (a same-rate re-prepare 3 audible blocks after the
 bottom: keep bit-exact, flush exactly 0 dB). Programme N, 48 kHz / 256; slot B is A (Haas, Drive 8) edited
-to Drive 12 or 2 at 4 s; 2 s on A per visit.
+to Drive 12 or 2 at 1.5 s, its result measured (asserted); 2 s on A per visit.
 - **(1) The matcher**, the wet 2× then 3× the dry (every block's post-change ratio is the target, −9.5424
   dB). The first counted block 0.277 s after the change; the share follows `1 − (1 − c)^n` to 6e-16 and
   reaches 0.5 after exactly 117 counted blocks (0.624 s), its mean exact, while the published value is
@@ -637,19 +637,19 @@ to Drive 12 or 2 at 4 s; 2 s on A per visit.
   the floor's un-measure of a certified value.
 - **(2) O8(1), one visit.** Left 0.3 s after the edit: the record restored exactly, flushed. Left 1.1 s
   after it (not measured: a re-prepare there flushes): the bottom publishes the evidence's mean and a
-  re-prepare keeps it — Drive 8 → 12 −6.8000 (0.81 dB off fresh) → −7.6087 (0.020 off); 8 → 2 −3.9181 (1.76
-  off) → −2.1907 (0.028 off) — and a return 1 s later publishes the same value. Left 6 s after it
+  re-prepare keeps it — Drive 8 → 12 −6.8032 (0.72 dB off fresh) → −7.6043 (0.014 off); 8 → 2 −3.8271 (1.70
+  off) → −2.1913 (0.032 off) — and a return 1 s later publishes the same value. Left 6 s after it
   (measured): as before.
 - **(3) O8(2), repeated visits.** Visits of 0.3 s: returns 1–3 restore the record exactly and flush, the
-  4th restores the mean and keeps it (0.097 / 0.067 dB off fresh); visits of 0.6 s: from the 2nd return
-  (0.056 / 0.021). The event-matched control, each return's Drive 0.01 dB away from the record's
+  4th restores the mean and keeps it (0.070 / 0.055 dB off fresh); visits of 0.6 s: from the 2nd return
+  (0.010 / 0.005). The event-matched control, each return's Drive 0.01 dB away from the record's
   (alternately), flushes at the same return.
 - **(4) What drops the evidence.** A duck in flight carrying Width 1 → 2 when B is left (the Width-2 level
   is 2.17 dB from the Width-1 one): the record exactly, flushed — the same duck without Width keeps the
   mean. A return into Width 2: flushed. A return the prime takes: at 48 kHz the first block publishes the
   mean, kept; at 44.1 kHz the record, flushed. A forget: 0 dB restored, flushed.
 
-55 checks, ~1 s native. It drives an API the revision adds, so it has no run at `3a779f5`; the variant that records
+56 checks, ~1 s native. It drives an API the revision adds, so it has no run at `3a779f5`; the variant that records
 no evidence (the head-equivalent composite) fails 16 of its checks. The variants rejected are listed in the test's
 header and worklog §R6.
 
@@ -5016,20 +5016,20 @@ gains, (H1) and (H2). Strategy B fails 6; the flag retired where the fade-in end
 through the processor — State test 137 (2026-09-26; ADR-0007, A/B provenance, revision of 2026-09-26;
 worklog §R).** This (`testAnAbSlotCarriesItsPostChangeEvidence`) is the processor half of Test 73, on
 State test 134's spine (slot B a Copy of A at Drive 8, active from the first block, edited to Drive 12 or 2
-at 4 s; 2 s on A per visit; `prepareToPlay` 4 blocks after a return). One heap processor per lane, seed
+at 3 s, its result measured — it is from 2.75 s, asserted; 2 s on A per visit; `prepareToPlay` 4 blocks after a return). One heap processor per lane, seed
 137; driven by gestures, `abCopyToOther`, `abSwitchTo`, `processBlock`, `prepareToPlay` and `reset()`.
 - **(A) One visit.** Every premise asserted (a `prepareToPlay` at the leave flushes for 0.3–2.1 s and keeps at
-  6 s; A plays ≥ 1 dB from a fresh B). 0.3 / 0.6 s: flushed. 1.1 / 2.1 s: the bottom publishes the
-  evidence's mean and it is kept — Drive 8 → 12 0.021 / 0.009 dB off fresh (the value recorded 0.81 / 0.29
-  off); 8 → 2 0.032 / 0.003 (1.76 / 0.64). 6 s: kept.
+  6 s; A plays ≥ 1 dB from a fresh B). 0.3 s: flushed. 1.1 / 2.1 s: the bottom publishes the
+  evidence's mean and it is kept — Drive 8 → 12 0.011 / 0.008 dB off fresh (the value recorded 0.80 / 0.29
+  off); 8 → 2 0.032 / 0.008 (1.75 / 0.64). 6 s: kept.
 - **(B) Repeated visits**, a verdict lane per return: 0.3 s visits flush at returns 1–3 and keep from the 4th;
-  0.6 s visits flush at the 1st and keep from the 2nd (0.011–0.067 dB off fresh). The control — each
+  0.6 s visits flush at the 1st and keep from the 2nd (0.003–0.085 dB off fresh). The control — each
   return's Drive moved 0.01 dB in its own turn, alternately — flushes there.
-- **(C) A cycle:** left at 0.6 s, back (flushed), 0.5 s more, left, back — kept 0.057 dB off; its control
+- **(C) A cycle:** left at 0.6 s, back (flushed), 0.5 s more, left, back — kept 0.028 dB off; its control
   flushes.
 - **(D) Copy.** B left 1.1 s after its edit (~0.83 s of evidence). A Copy that moves B's measurement inputs
   (A at Drive 8 onto B's Drive-12 record): flushed. A
-  edited to Drive 12 first, then copied: B's evidence mean, kept 0.017 dB off.
+  edited to Drive 12 first, then copied: B's evidence mean, kept 0.005 dB off.
 - **(E) Without a forced bottom.** `reset()` in the return's fade-out, and the return primed by
   `prepareToPlay` in the same turn: the 1.1 s record kept on both, flushed when primed at 44.1 kHz; the
   0.3 s record flushed on all three.
@@ -5039,7 +5039,7 @@ at 4 s; 2 s on A per visit; `prepareToPlay` 4 blocks after a return). One heap p
 - **(G) A change in flight.** B left inside an ordinary duck (Bands 4 → 3, Multiband off) carrying Width
   1 → 2: flushed; the band count alone: kept.
 
-53 checks, ~2 s native. Against the engine before the revision (`3a779f5`) 23 fail — (A) 1.1 / 2.1 s on both
+48 checks, ~1 s native. Against the engine before the revision (`3a779f5`) 23 fail — (A) 1.1 / 2.1 s on both
 routes, all twelve of (B) (no return is ever kept), (C), (D2), (E1), (E2) at the same rate, (F) twice and (G)'s
 control — and every premise, flush and control passes there.
 

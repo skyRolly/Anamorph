@@ -13028,13 +13028,13 @@ under burst processing — investigated only (no threading change). All of it is
   a future owner decision.
 
 **Tests.**
-- **DSP Test 73** (`testAbRecordCarriesThePostChangeEvidence`): 55 checks.
-- **State test 137** (`testAnAbSlotCarriesItsPostChangeEvidence`): 53 checks.
+- **DSP Test 73** (`testAbRecordCarriesThePostChangeEvidence`): 56 checks.
+- **State test 137** (`testAnAbSlotCarriesItsPostChangeEvidence`): 48 checks.
 - **Revised, stronger:** Test 70 (3b)'s identity check (bit-identity with (3a)'s bottom); State test 134 (B)
   1.1 s (the certified keep, within 0.1 dB of fresh, in place of the flush).
-- **Against `3a779f5`:** State test 137 fails 23 of 53 (Test 73's API is new; the variant recording no evidence
+- **Against `3a779f5`:** State test 137 fails 23 of 48 (Test 73's API is new; the variant recording no evidence
   fails 16 of its checks); State test 134 (B) 1.1 s fails its route and keep.
-- **Suites:** DSP 900 / 0, State 5505 / 0 (`ulimit -s 1024`).
+- **Suites:** DSP 901 / 0, State 5500 / 0 (`ulimit -s 1024`).
 - **What else moves:** only A/B returns of a record with a measurement's worth of evidence — State test 130 leg
   (6) and State test 131 (a) / (b) (closer to fresh; passing) and route hash S14; 22 of 23 route hashes and 186 of
   186 finite hashes unchanged.
@@ -13056,7 +13056,11 @@ under burst processing — investigated only (no threading change). All of it is
 - **Architecture:** `DSP_ALGORITHMS.md` (the evidence), `THREAD_MODEL.md` (the record's fields),
   `SERIALIZATION_REGISTRY.md` (the record, still never serialized), `API_REFERENCE.md` (`requestAbSwitch`).
 - **The worklog:** §R, and §Q7's candidate marked adopted.
-- **`CI_CD.md`:** the round's PREfast disposition beside the PR's `C6262` record.
+- **`CI_CD.md`:** the round's PREfast disposition beside the PR's `C6262` record, and *Job timeouts*: the
+  `sanitizers` cap 45 → 60 minutes (`build.yml`), with the lane's measured runtimes — `311fa70` was cancelled at
+  45:14 inside State test 137 under memcheck; both new tests were first made cheaper (32 s and 51 s under
+  memcheck, from 56 s and 69 s) without dropping an assertion, and each now asserts that B is measured
+  before its edit.
 - **Code comments:** `LoudnessMatch.h` (`Evidence`, `getEvidence`, `restoreUnmeasured`, the bookkeeping),
   `AnamorphEngine.h` (`AbMatchMemory`), `AnamorphEngine.cpp` (capture, restore, `adoptRememberedMatch`).
 - **This file:** this entry and the *Last updated* line.

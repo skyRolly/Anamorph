@@ -42935,34 +42935,35 @@ static void testAnAbGainRestoredAtAnUpgradedBottomSurvivesAReprepareInTheFadeIn(
 //  (48 kHz, 256) 4 blocks after a return (State test 134's) -- KEEP bit-identical, FLUSH exactly 0 dB; FRESH is a
 //  processor at B from sample 0. THE SPINE is State test 134's: Advanced Mode, Haas 50 %, Width 100 %, Multiband off,
 //  Output Gain -3, Level Match on; slot B, a Copy of A (Drive 8), active from the first block, edited to Drive 12 (a
-//  rise) or 2 (a cut) at 4 s; each visit to A 2 s.
+//  rise) or 2 (a cut) at 3 s, B's result measured (it is from 2.75 s: asserted); each visit to A 2 s.
 //
 //  THE LEGS (measured)
-//   (A) O8(1), one visit, left t after the edit (every premise asserted: prepareToPlay at the leave FLUSHES for 0.3 -
-//       2.1 s, KEEPS at 6 s; A plays >= 1 dB from a fresh B). 0.3 / 0.6 s: FLUSHED, as before. 1.1 / 2.1 s: the bottom
-//       publishes the evidence's mean and prepareToPlay KEEPS it -- 8 -> 12: recorded -6.7940 / -7.3282 (0.81 / 0.29 off
-//       fresh), kept -7.5918 / -7.6069 (0.021 / 0.009 off); 8 -> 2: -3.9132 / -2.7952 (1.76 / 0.64 off) -> -2.1851 /
-//       -2.1585 (0.032 / 0.003 off). 6 s: KEPT, as before.
+//   (A) O8(1), one visit, left t after the edit (every premise asserted: B measured before the edit -- prepareToPlay
+//       the block before it keeps -5.4436; prepareToPlay at the leave FLUSHES for 0.3 - 2.1 s, KEEPS at 6 s; A plays
+//       >= 1 dB from a fresh B). 0.3 s: FLUSHED, as before. 1.1 / 2.1 s: the bottom publishes the evidence's mean and
+//       prepareToPlay KEEPS it -- 8 -> 12: recorded -6.7998 / -7.3228 (0.80 / 0.29 off fresh), kept -7.6055 / -7.6048
+//       (0.011 / 0.008 off); 8 -> 2: -3.9033 / -2.7932 (1.75 / 0.64 off) -> -2.1862 / -2.1611 (0.032 / 0.008 off).
+//       6 s: KEPT, as before.
 //   (B) O8(2), visits of T s from the edit on, a verdict lane per return: T = 0.3 s -- returns #0-#2 FLUSHED, #3 KEPT
-//       (8 -> 12 0.067 dB off fresh; 8 -> 2 0.054); T = 0.6 s -- #0 FLUSHED, #1 KEPT (0.028 / 0.011). The control, each
+//       (8 -> 12 0.085 dB off fresh; 8 -> 2 0.054); T = 0.6 s -- #0 FLUSHED, #1 KEPT (0.038 / 0.003). The control, each
 //       return's Drive moved 0.01 dB in its own turn (alternately), FLUSHES at the same return.
-//   (C) Left at 0.6 s, back (FLUSHED), 0.5 s more on B, left, back: KEPT, 0.057 off -- neither visit alone is half a
+//   (C) Left at 0.6 s, back (FLUSHED), 0.5 s more on B, left, back: KEPT, 0.028 off -- neither visit alone is half a
 //       measurement; the control whose first return drops the evidence FLUSHES.
 //   (D) B left 1.1 s after its edit (~0.83 s of evidence); on A, Copy A -> B (B now Drive 8): FLUSHED. A edited to
-//       Drive 12 (B's recorded state) and then copied: KEPT, the evidence's mean, 0.017 off.
+//       Drive 12 (B's recorded state) and then copied: KEPT, the evidence's mean, 0.005 off.
 //   (E) Without a forced bottom: reset() in the return's fade-out, and the return primed by prepareToPlay in the same
-//       turn -- the 1.1 s record KEPT on both (-7.5908 / the first block -7.5938), and FLUSHED when primed at 44.1 kHz;
+//       turn -- the 1.1 s record KEPT on both (-7.6025 / the first block -7.6093), and FLUSHED when primed at 44.1 kHz;
 //       the 0.3 s record FLUSHED on all three.
-//   (F) The kept mean is the applied gain from the first block of a -70 dBFS resume (-7.5918, resid 6e-16); without a
-//       prepareToPlay, the return's first full-level block applies it too (-7.5951 against the bottom's -7.5945; the
-//       record -6.7940).
+//   (F) The kept mean is the applied gain from the first block of a -70 dBFS resume (-7.6055, resid 6e-16); without a
+//       prepareToPlay, the return's first full-level block applies it too (-7.6100 against the bottom's -7.6086; the
+//       record -6.7998).
 //   (G) B left inside an ordinary duck (Bands 4 -> 3, Multiband off) carrying Width 1 -> 2, 1.1 s after the edit:
 //       the value recorded comes back not current, FLUSHED; the band count alone: the evidence's mean, KEPT.
-//  AGAINST THE ENGINE BEFORE THIS REVISION (the record without evidence, 3a779f5) 23 of the 53 checks fail: (A) 1.1 /
+//  AGAINST THE ENGINE BEFORE THIS REVISION (the record without evidence, 3a779f5) 23 of the 48 checks fail: (A) 1.1 /
 //  2.1 s on both routes (4), (B)'s three checks on all four visit routes (12: no return ever kept), (C), (D2), (E1),
 //  (E2) at the same rate, (F) twice and (G)'s control -- each flushed or applied the value recorded; every premise,
 //  every flush and every control of this test passes there. State test 134 (B) 1.1 s fails its route and keep there
-//  too. Runtime ~2 s.
+//  too. Runtime ~1 s.
 static void testAnAbSlotCarriesItsPostChangeEvidence()
 {
     std::printf ("State test 137: an A/B slot left before its Level-Match result is measured carries the measure's "
@@ -42977,9 +42978,9 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
     const int sec   = (int) std::lround (sr / block);        // 188 blocks: one second
     const int kBot  = 2;                                    // a switch's silent bottom: event + 2 (State tests 131-136)
     const int kPrep = 4;                                    // the verdict: prepareToPlay 4 blocks after a return (134's)
-    const int E1    = 4 * sec;                              // slot B's edit (B converged at Drive 8 by then)
+    const int E1    = 3 * sec;                              // slot B's edit, 3 s in (B measured from 2.75 s)
     const int away  = 2 * sec;                              // a visit to A
-    const int nBlk  = 16 * sec;
+    const int nBlk  = E1 + 9 * sec;                         // past every block a lane or a fresh value is read at
 
     auto setPlain = [] (Proc& p, const char* id, float v)
     {
@@ -43142,8 +43143,13 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
     // =====================================================================================================
     [&] {
         struct Case { float drive; double t; int expect; };      // expect: 0 FLUSH (stale), 1 KEEP the evidence, 2 KEEP measured
-        const Case cases[] = { { 12.0f, 0.3, 0 }, { 12.0f, 0.6, 0 }, { 12.0f, 1.1, 1 }, { 12.0f, 2.1, 1 }, { 12.0f, 6.0, 2 },
-                               {  2.0f, 0.3, 0 }, {  2.0f, 0.6, 0 }, {  2.0f, 1.1, 1 }, {  2.0f, 2.1, 1 }, {  2.0f, 6.0, 2 } };
+        const Case cases[] = { { 12.0f, 0.3, 0 }, { 12.0f, 1.1, 1 }, { 12.0f, 2.1, 1 }, { 12.0f, 6.0, 2 },
+                               {  2.0f, 0.3, 0 }, {  2.0f, 1.1, 1 }, {  2.0f, 2.1, 1 }, {  2.0f, 6.0, 2 } };
+        const Verdict v0 = verdictOf (verdictLane (spine (12.0f, {}, false), E1 - 1, sr), 0);
+        std::printf ("  %-62s: prepareToPlay %+.4f -> %+.4f (%s)\n", "(A) B before its edit (the block before it)",
+                     (double) v0.before, (double) v0.after, word (v0));
+        check (v0.keep, "premise (A): B's result is MEASURED before its edit (prepareToPlay the block before it keeps) -- "
+                        "the edit changes a converged slot, as in the reproduction");
         for (const Case& c : cases)
         {
             const int leave = E1 + (int) std::lround (c.t * sec), ret = leave + away;
@@ -43169,7 +43175,7 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
                        "post-change evidence), B comes back as its evidence's mean -- the bottom >= 0.25 dB from the value "
                        "recorded, within 0.1 dB of a fresh B -- MEASURED: prepareToPlay 4 blocks later keeps it");
             else if (c.expect == 0)
-                check (v.flush, "(A) left 0.3 / 0.6 s after its edit (under half a measurement of evidence), B comes back "
+                check (v.flush, "(A) left 0.3 s after its edit (under half a measurement of evidence), B comes back "
                                 "as before: the value recorded, NOT current -- prepareToPlay 4 blocks later flushes it");
             else
                 check (v.keep && keptOff <= 0.1, "(A) control: a slot left MEASURED comes back as before -- KEPT within "

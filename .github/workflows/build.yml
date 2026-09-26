@@ -1310,7 +1310,7 @@ jobs:
   # -------------------------------------------------------------------------
   sanitizers:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60  # 45 until 2026-09-26: the lane outgrew it (CI_CD.md, "Job timeouts")
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository

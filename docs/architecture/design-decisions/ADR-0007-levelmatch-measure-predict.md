@@ -1100,7 +1100,7 @@ unchanged.
 per record (48 per engine). No allocation, lock, thread, atomic or cross-thread path: the evidence is
 audio-thread state, captured and restored exactly where the record is, by the same two functions.
 
-**Regression coverage.** Test 73 (the matcher and the engine, 55 checks) and State test 137 (the processor, 53
+**Regression coverage.** Test 73 (the matcher and the engine, 56 checks) and State test 137 (the processor, 48
 checks); Test 70 (3b) now proves the double switch's bottom restores A's record by bit-identity with (3a)'s bottom
 (A's record, unmeasured with a measurement's worth of evidence, is restored as its mean), and State test 134 (B) 1.1 s
 asserts the certified keep in place of the flush — both stronger than the assertions they replace. The variants
