@@ -1501,6 +1501,13 @@ largest frame. `/analyze`'s 20,528 is 1.42× that: it sums disjoint sibling scop
 engines are already on the heap. Test-only, green under the `ulimit -s 1024` guard step: nothing
 to fix, and moving a 9 KB table to the heap would change nothing measurable.
 
+**The A/B record's evidence (2026-09-26, `311fa70`) adds no `C6262`.** Still 180, none added or
+removed: every claim that moved did so by an exact multiple of **48 bytes** — the engine's growth per
+automatic (two A/B records at 16 bytes each and the matcher's 16) — and the new Test 73 and State test
+137 raise none (GCC frames 8,016 and 2,592 bytes). `C26495` is unchanged. That head's two new `C26498`
+findings, both on Test 73's non-finite constants (`inf`, `nan` not marked `constexpr`), are fixed at
+the source in the following commit, not suppressed.
+
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 
 `sanitizers` runs both suites twice: once under ASan+UBSan (about a minute) and once under

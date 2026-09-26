@@ -13102,7 +13102,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
 
         // (1e) a non-finite mean is no measurement
         bool nfOk = true;
-        const double inf = std::numeric_limits<double>::infinity(), nan = std::numeric_limits<double>::quiet_NaN();
+        constexpr double inf = std::numeric_limits<double>::infinity(), nan = std::numeric_limits<double>::quiet_NaN();
         for (const Ev bad : { Ev { 0.7, nan }, Ev { 0.7, inf }, Ev { 0.7, -inf }, Ev { inf, 1.0 }, Ev { nan, 1.0 } })
         {
             LoudnessMatch mn;

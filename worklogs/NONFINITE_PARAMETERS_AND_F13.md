@@ -2564,6 +2564,9 @@ close: the value recorded never certifies anything.
   `restoreAbSlot` 64 → 80 B, `adoptRememberedMatch` 48 → 64 B, `LoudnessMatch::process` 512 → 544 B; the
   suites' largest frames grow by the engine's 48 bytes per automatic (DSP 290,208 → 290,304; State 711,824 →
   712,064), inside the 1 MiB guard both suites pass under.
+- **PREfast** (the CI artifact of `311fa70` against `3a779f5`'s): `C6262` 180 → 180, none added or removed, every
+  moved claim by an exact multiple of 48 bytes (the engine's growth per automatic); `C26495` identical; two new
+  `C26498` on Test 73 (1e)'s `inf` / `nan` locals, made `constexpr` in the next commit (not suppressed).
 
 ### R7. O8(3), burst processing: investigated, not changed
 

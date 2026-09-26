@@ -13040,6 +13040,8 @@ under burst processing — investigated only (no threading change). All of it is
   186 finite hashes unchanged.
 - **Mutants:** 18, all rejected (worklog §R6); M16 and M06 first survived and the tests were tightened.
 - **Devin controls:** the five mechanisms, each removed, still fail their intended tests.
+- **PREfast:** `C6262` still 180 (claims moved by multiples of 48 bytes, the engine's growth); `C26495`
+  identical; the two `C26498` the new test first raised fixed at the source (`CI_CD.md`).
 
 **Documents changed.**
 - **ADR-0007:** the A/B provenance amendment amended in place — the record's five fields, the capture and
@@ -13054,6 +13056,7 @@ under burst processing — investigated only (no threading change). All of it is
 - **Architecture:** `DSP_ALGORITHMS.md` (the evidence), `THREAD_MODEL.md` (the record's fields),
   `SERIALIZATION_REGISTRY.md` (the record, still never serialized), `API_REFERENCE.md` (`requestAbSwitch`).
 - **The worklog:** §R, and §Q7's candidate marked adopted.
+- **`CI_CD.md`:** the round's PREfast disposition beside the PR's `C6262` record.
 - **Code comments:** `LoudnessMatch.h` (`Evidence`, `getEvidence`, `restoreUnmeasured`, the bookkeeping),
   `AnamorphEngine.h` (`AbMatchMemory`), `AnamorphEngine.cpp` (capture, restore, `adoptRememberedMatch`).
 - **This file:** this entry and the *Last updated* line.
