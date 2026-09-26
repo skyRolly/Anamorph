@@ -2981,12 +2981,17 @@ concurrently with `process()`.
     `primeParameters` (32 B) are unchanged. Test 74 is 2,224 B (its largest leg lambda 4,608 B) and State test
     138 1,808 B (2,336 B). The largest frames in either suite are unchanged.
   - `_GLIBCXX_ASSERTIONS`: Tests 66–74 411 / 0; State tests 134, 136, 137, 138 222 / 0.
-  - memcheck (local, the lane's flags): Test 74 34 s and State test 138 35 s, 0 errors each.
+  - memcheck (local, the lane's flags): Test 74 32 s and State test 138 34 s, 0 errors each.
 - **CI's `sanitizers` job on `63e4953`** stopped at State test 138 (A)'s premise probe: UBSan's float-cast
   check fired in `juce::serialiseDouble` (§S10). The premise now reads the slots where a switch applies them
   (§S7). A local clang-18 replica of the step (ASan + UBSan with CI's flags, `halt_on_error=0` to list every
   site) found nothing else. Outside the HarfBuzz paths CI's ignorelist covers, the previous test reported only
   `juce_String.cpp:2294`. The current one passes 5521 / 0 with no report there.
+- **PREfast** (`e138ee0` against `b82a294`): 180 `C6262` and 8 `C26495`, the same functions at the same byte
+  counts. `C26498` went from 4 to 7. The three new ones are this round's NaN and infinity locals: Test 74's
+  `qnan` and `pinf`, and State test 138's `qnan`, each initialized from a `constexpr` `std::numeric_limits` call.
+  They are made `constexpr`, not suppressed, as Test 73's were. In State test 138 `qnan` is `static constexpr`,
+  and the lanes' lambdas no longer capture it. @PF@
 
 
 ### S9. The `sanitizers` job's timeout (45 → 60 minutes, `fba78ec`)
@@ -3001,7 +3006,7 @@ Measured on this PR's heads:
 Under the 45-minute cap, `b82a294`'s green run would have been cancelled, and this round adds Test 74 and State
 test 138 to both memcheck passes. 45 does not suffice. The cap stays at 60, the ceiling the build jobs already
 use. The lane's command, suites and strictness are unchanged, and no test is weakened or skipped for it.
-This round's two tests add 34 s and 35 s under local memcheck (0 errors each), on top of a run that was
+This round's two tests add 32 s and 34 s under local memcheck (0 errors each), on top of a run that was
 already over 45 minutes without them.
 
 ### S10. Recorded, not changed (deferred)

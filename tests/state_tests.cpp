@@ -43493,7 +43493,8 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     const float held = 0.3f;
     const auto fromBits = [] (std::uint32_t u) { float f; std::memcpy (&f, &u, sizeof f); return f; };
     const auto bitsOf = [] (float f) { std::uint32_t u; std::memcpy (&u, &f, sizeof u); return u; };
-    const float qnan = std::numeric_limits<float>::quiet_NaN(), pnan = fromBits (0x7fc00123u), nnan = fromBits (0xffc00000u);
+    static constexpr float qnan = std::numeric_limits<float>::quiet_NaN();   // static: the lanes' lambdas need no capture
+    const float pnan = fromBits (0x7fc00123u), nnan = fromBits (0xffc00000u);
 
     auto setPlain = [] (Proc& p, const char* id, float v)
     {
@@ -43657,7 +43658,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         const int ret = L + away;
         const int toA = ret + kPrep + 2;                    // after the verdict: back to A, which applies A's slot
         Lane ln;
-        ln.density = [qnan] (int) { return qnan; };
+        ln.density = [] (int) { return qnan; };
         abScript (ln, L, ret);
         ln.ev.push_back ({ toA, [] (Proc& p) { p.abSwitchTo (0); } });
         ln.preps.push_back (ret + kPrep);
@@ -43754,7 +43755,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     [&] {
         const int ret = L + away;
         Lane ln;
-        ln.density = [qnan] (int) { return qnan; };
+        ln.density = [] (int) { return qnan; };
         abScript (ln, L, ret);
         ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
         ln.preps.push_back (ret + kPrep);
@@ -43787,7 +43788,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     [&] {
         const int leave = 4 * sec, ret = leave + away;
         Lane ln;
-        ln.density = [qnan] (int) { return qnan; };
+        ln.density = [] (int) { return qnan; };
         abScript (ln, leave, ret);
         ln.ev.push_back ({ 1, [&userEdit] (Proc& p) { userEdit (p, "drive", 12.0f); } });
         ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
@@ -43813,7 +43814,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     // =====================================================================================================
     [&] {
         Lane ln;
-        ln.density = [qnan] (int) { return qnan; };
+        ln.density = [] (int) { return qnan; };
         ln.preps.push_back (L);
         ln.cap = L + 1;
         Lane tw = twinOf (ln);
@@ -43837,7 +43838,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     {
         const int ret = L + away;
         Lane ln;
-        ln.density = [qnan, other, ret] (int b) { return b < ret ? qnan : other; };
+        ln.density = [other, ret] (int b) { return b < ret ? qnan : other; };
         abScript (ln, L, ret);
         ln.preps.push_back (ret + kPrep);
         ln.probeAt = { ret - 1, ret + 1 };
@@ -43865,7 +43866,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     [&] {
         const int ret = L + away;
         Lane ln;
-        ln.density = [qnan, L, sec] (int b) { return b >= L + sec / 2 && b < L + sec ? 0.7f : qnan; };
+        ln.density = [L, sec] (int b) { return b >= L + sec / 2 && b < L + sec ? 0.7f : qnan; };
         abScript (ln, L, ret);
         ln.preps.push_back (ret + kPrep);
         ln.cap = ret + kPrep + 1;
@@ -43888,7 +43889,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     [&] {
         const int leave = L + (int) std::lround (1.1 * sec), ret = leave + away;
         Lane ln;
-        ln.density = [qnan] (int) { return qnan; };
+        ln.density = [] (int) { return qnan; };
         abScript (ln, leave, ret);
         ln.ev.push_back ({ L, [&userEdit] (Proc& p) { userEdit (p, "drive", 12.0f); } });
         ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
@@ -43914,7 +43915,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         Lane ln;
         ln.hostId = "mbFreqLow";
         ln.extra  = { { "mbEnable", 1.0f }, { "mbBands", 2.0f } };
-        ln.density = [qnan] (int b) { return b < 5 ? 180.0f : qnan; };
+        ln.density = [] (int b) { return b < 5 ? 180.0f : qnan; };
         ln.preps.push_back (L);
         ln.cap = L + 5;
         run (ln);
@@ -43965,7 +43966,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         for (const bool write : { true, false })
         {
             Lane ln;
-            ln.density = [qnan, L, sec, write] (int b) { return write && b >= L + sec / 2 && b < L + sec ? 0.7f : qnan; };
+            ln.density = [L, sec, write] (int b) { return write && b >= L + sec / 2 && b < L + sec ? 0.7f : qnan; };
             abScript (ln, L, ret);
             ln.ev.push_back ({ L + sec / 4, [&userEdit] (Proc& p) { userEdit (p, "algorithm", 0.0f); } });   // A: Haas
             ln.silent.push_back ({ ret - 8, ret + kBot + 1 });

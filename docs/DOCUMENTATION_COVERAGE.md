@@ -13048,6 +13048,8 @@ is confirmed and fixed under the owner's authorization. All of it is 0.9.9, date
   `int`: undefined behaviour, pre-existing in every session save. The premise now reads each slot where a switch
   applies it. The UB is recorded, not fixed: it is in the deferred float→int class, and a fix would change what
   the state writes (KNOWN_ISSUES KI-029; worklog §S10).
+- **PREfast on `e138ee0`.** It raised three new `C26498` findings on this round's NaN and infinity locals. They
+  are made `constexpr`, not suppressed. @PF2@
 - **Validation (the final tree).** DSP 935 / 0 and State 5521 / 0 under a 1 MiB stack. This tree's tests
   against `b82a294`'s sources fail exactly Test 74's 25 checks and State test 138's 10. The suites' output is
   otherwise identical, thread-timing counters and wall-clock times aside, and the 186 finite hashes are

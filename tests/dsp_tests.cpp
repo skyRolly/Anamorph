@@ -13617,8 +13617,9 @@ static void testANonFiniteVelvetDensityIsTheHeldDensity()
     const int away   = 2 * sec;                                          // a visit to A
     const float held = 0.3f;                                             // the Density the Velvet holds from the first block
     const auto fromBits = [] (std::uint32_t u) { float f; std::memcpy (&f, &u, sizeof f); return f; };
-    const float qnan = std::numeric_limits<float>::quiet_NaN(), pnan = fromBits (0x7fc00123u), nnan = fromBits (0xffc00000u);
-    const float pinf = std::numeric_limits<float>::infinity(), ninf = -pinf;
+    constexpr float qnan = std::numeric_limits<float>::quiet_NaN();
+    const float pnan = fromBits (0x7fc00123u), nnan = fromBits (0xffc00000u);
+    constexpr float pinf = std::numeric_limits<float>::infinity(), ninf = -pinf;
     const auto same = [] (float f0, float f1) { return std::memcmp (&f0, &f1, sizeof (float)) == 0; };
 
     // ---- the programme N (Tests 69-73: seed 6901; L = v, R = 0.6 v + 0.2 w) --------------------------------------
