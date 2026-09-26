@@ -12849,8 +12849,9 @@ static void testAbRestoreSurvivesAReprepareInTheFadeIn()
 //  before a return through its bottom, so the bottom publishes exactly what was restored; a verdict is a same-rate
 //  re-prepare (prime, prepare, setParameters) 3 audible blocks after the bottom -- KEEP bit-identical, FLUSH exactly
 //  0 dB; FRESH is an engine at B from sample 0. Programme N (seed 6901), 48 kHz / 256; A = Haas, Amount 0.5, Width 1,
-//  Drive 8, Level Match on; slot B (the engine's slot 1) is A edited to Drive 12 or 2 at 1.5 s, its result measured
-//  (a re-prepare the block before the edit keeps -5.2393: asserted); 2 s on A per visit.
+//  Drive 8, Level Match on; slot B (the engine's slot 1) is A edited to Drive 12 or 2 at 3 s, its state a measurement
+//  by then (asserted through its record: left the block before the edit and back, a re-prepare keeps it, -5.4726; the
+//  same visit 0.5 s in, current only by the first prepare's flush, flushes); 2 s on A per visit.
 //
 //  THE LEGS (measured)
 //   (1a) The change reported at 4 s: the first counted block 0.277 s later; the share follows 1 - (1 - c)^n to 6e-16
@@ -12864,19 +12865,19 @@ static void testAbRestoreSurvivesAReprepareInTheFadeIn()
 //        (1e) A non-finite share or mean certifies nothing. (1f) softReset keeps it; inputsChanged, reset and an
 //        unmeasured restore clear it; the floor lowering (1b)'s certified value (Drive 8 -> 24) un-measures it and
 //        clears the evidence behind it.
-//   (2)  O8(1), one visit: left 0.3 s after the edit -- the record restored exactly, FLUSHED (8 -> 12: -6.0740, 1.50 dB
-//        off fresh at the verdict; 8 -> 2: -5.0969, 2.18 off). Left 1.1 s after it (not measured: a re-prepare there
-//        flushes) -- the bottom publishes the evidence's mean, KEPT: 8 -> 12 -6.8032 (0.72 off) -> -7.6043 (0.014 off
-//        at the verdict); 8 -> 2 -3.8271 (1.70 off) -> -2.1913 (0.032 off); the same value from a return 1 s later.
+//   (2)  O8(1), one visit: left 0.3 s after the edit -- the record restored exactly, FLUSHED (8 -> 12: -6.0717, 1.52 dB
+//        off fresh at the verdict; 8 -> 2: -5.2694, 2.31 off). Left 1.1 s after it (not measured: a re-prepare there
+//        flushes) -- the bottom publishes the evidence's mean, KEPT: 8 -> 12 -6.8001 (0.80 off) -> -7.6054 (0.016 off
+//        at the verdict); 8 -> 2 -3.9079 (1.76 off) -> -2.1897 (0.031 off); the same value from a return 1 s later.
 //        Left 6 s after it (measured): the record exactly, KEPT, as before.
 //   (3)  O8(2), visits of T s from the edit on: the returns before the visits add up restore the record exactly and
-//        FLUSH; then a return restores the mean, KEPT -- T = 0.3 s from the 4th return (8 -> 12 0.070 dB off fresh, the
-//        record 0.57 dB away; 8 -> 2 0.055), T = 0.6 s from the 2nd (0.010 / 0.005). The event-matched control (each
+//        FLUSH; then a return restores the mean, KEPT -- T = 0.3 s from the 4th return (8 -> 12 0.066 dB off fresh, the
+//        record 0.58 dB away; 8 -> 2 0.055), T = 0.6 s from the 2nd (0.033 / 0.008). The event-matched control (each
 //        return's Drive 0.01 dB away from the record's, alternately) FLUSHES there.
 //   (4)  What drops it: (4a) B left inside an ordinary duck carrying Width 1 -> 2 live (a fresh Width-2 B is 2.17 dB
-//        from a Width-1 one): the record restored exactly, FLUSHED; the same duck without Width: the mean, KEPT, 0.014
+//        from a Width-1 one): the record restored exactly, FLUSHED; the same duck without Width: the mean, KEPT, 0.016
 //        off. (4b) Back into Width 2: the record exactly, FLUSHED. (4c) The return the prime takes: at 48 kHz the first
-//        block publishes the mean (-7.6043), KEPT; at 44.1 kHz the record (-6.8032), FLUSHED. (4d) A forget: 0 dB
+//        block publishes the mean (-7.6054), KEPT; at 44.1 kHz the record (-6.8001), FLUSHED. (4d) A forget: 0 dB
 //        restored (the bottom publishes the Drive 12 floor over it, -6.0030), FLUSHED.
 //  VARIANTS REJECTED (each this tree with one change, worklog §R6): no evidence recorded; evidence recorded through a
 //  change in flight -- (4a); evidence restored for other inputs -- (3)'s control, (4b); for another rate -- (4c);
@@ -12903,7 +12904,7 @@ static void testAbRecordCarriesThePostChangeEvidence()
     const int kObs  = 3;                                                 // audible blocks from a return's bottom to its verdict
     const int kQuiet = 8;                                                // digital silence from 8 blocks before a return (Test 70)
     const int M1    = 4 * sec;                                           // leg 1: the matcher's change (measured by then)
-    const int E1    = 3 * sec / 2;                                       // the engine legs: slot B's edit (1.5 s in)
+    const int E1    = 3 * sec;                                           // the engine legs: slot B's edit (3 s in)
     const int away  = 2 * sec;                                           // a visit to A
     const double cSlow = 1.0 - std::exp (-((double) bs / sr) / 0.9);     // the slow glide's step: the evidence's weight
     const int nHalf = (int) std::ceil (std::log (0.5) / std::log (1.0 - cSlow));   // counted blocks to a share of 0.5
@@ -13285,11 +13286,24 @@ static void testAbRecordCarriesThePostChangeEvidence()
     [&] {
         struct Case { float drive; double t; };
         const Case cases[] = { { 12.0f, 0.3 }, { 12.0f, 1.1 }, { 12.0f, 6.0 }, { 2.0f, 0.3 }, { 2.0f, 1.1 }, { 2.0f, 6.0 } };
-        const Verdict v0 = verdictOf (verdictLane (script (12.0f, {}), E1 - 1, sr), 0);
-        std::printf ("  %-66s: re-prepared %+.4f -> %+.4f (%s)\n", "B before its edit (the block before it)",
-                     (double) v0.before, (double) v0.after, word (v0));
-        check (v0.keep, "premise (2): B's result is MEASURED before its edit (a re-prepare the block before it keeps) -- the "
-                        "edit changes a converged slot, as in the reproduction");
+        // premise: B's state before its edit is a MEASUREMENT. A re-prepare in place cannot show it -- the first
+        // prepare's flush makes B current, not measured, and a re-prepare keeps what is current -- but B's A/B record
+        // can: left the block before the edit, 2 s on A, back, it restores current only if it was a measurement, so
+        // the re-prepare after the return KEEPS it. Control: the same visit 0.5 s after the start, B current only by
+        // the flush's convention -- FLUSHED.
+        const auto preEdit = [&] (int leave)
+        {
+            const int ret = leave + away;
+            return verdictOf (verdictLane (script (8.0f, { { leave, ret, 8.0f } }), verdictAfter (ret), sr), 0);
+        };
+        const Verdict v0 = preEdit (E1 - 1), v0c = preEdit (sec / 2);
+        std::printf ("  %-66s: %s %+.4f (the same visit 0.5 s after the start: %s)\n",
+                     "B's record the block before its edit, restored, re-prepared", word (v0), (double) v0.before,
+                     word (v0c));
+        check (v0.keep && v0c.flush,
+               "premise (2): B's state before its edit is a MEASUREMENT -- its record, left the block before the edit, "
+               "comes back current and a re-prepare KEEPS it (control: the same visit 0.5 s after the start, current "
+               "only by the flush's convention, FLUSHES)");
         for (const Case& c : cases)
         {
             const int leave = E1 + (int) std::lround (c.t * sec), ret = leave + away, vk = verdictAfter (ret);

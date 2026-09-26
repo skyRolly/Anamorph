@@ -679,15 +679,16 @@ a slow runner while still failing inside the hour.
 
 **`sanitizers`: 45 → 60 minutes (2026-09-26, PR #156).** Its valgrind half grows with every test the
 suites gain, and it had outgrown the rule above: green runs on this PR's heads took 29:08, 31:07, 33:55,
-36:25, 34:13 and 42:28 (`3a779f5`: setup and the ASan run 8 min, memcheck 12:38 on the DSP suite and
-21:47 on the State suite), and the next head, `311fa70`, was cancelled at 45:14 inside State test 137
-under memcheck. That head added Test 73 and State test 137 (56 s and 69 s under memcheck); on that
-runner the lane without them projects to about 44 minutes, so the cap no longer left room for a slow
-runner at all. Both tests were first made cheaper where it costs nothing they assert (pre-rolls of 1.5 s
-and 3 s in place of 4 s, each now asserting B measured before its edit; fresh lanes capped; duplicate
-lanes dropped: 32 s and 51 s under memcheck). The cap then moves to the 60 minutes the build jobs already
-use — still failing inside the hour, with the command, the suites and their strictness unchanged. This
-is growth, not a pathological test: the paced-spinner fix below is the precedent for the other kind.
+36:25, 34:13 and 42:28 (`3a779f5`: setup, the builds and the ASan run 8 min, memcheck 12:38 on the DSP
+suite and 21:47 on the State suite), and the next head, `311fa70`, was cancelled at 45:14 inside State
+test 137 under memcheck. That head added Test 73 and State test 137 (Test 73 took 56 s under memcheck
+in that run; locally, under the lane's flags, 56 s and 69 s); on that runner the lane without them
+projects to about 44 minutes, so the cap no longer left room for a slow runner at all. Both tests were
+first made cheaper (slot B's edit at 3 s instead of 4 s, fresh lanes capped, Test 73's later-return
+lane only where it asserts: 43 s and 57 s locally), and the head that carried the first cut of that,
+`fba78ec`, took 44:37. The cap then moves to the 60 minutes the build jobs already use — still failing
+inside the hour, with the command, the suites and their strictness unchanged. This is growth, not a
+pathological test: the paced-spinner fix below is the precedent for the other kind.
 
 ## Pipeline (per job)
 
@@ -1522,7 +1523,7 @@ the source in the following commit, not suppressed.
 
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 
-`sanitizers` runs both suites twice: once under ASan+UBSan (about a minute) and once under
+`sanitizers` runs both suites twice: once under ASan+UBSan (about two minutes) and once under
 `valgrind --tool=memcheck`, in a **45-minute** job (60 since 2026-09-26, see "Job timeouts").
 memcheck is not just slow, it is **serialising**: it runs one thread at a time and instruments every
 instruction. A state test that keeps an unpaced
