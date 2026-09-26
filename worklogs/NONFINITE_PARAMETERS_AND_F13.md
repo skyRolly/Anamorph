@@ -2991,7 +2991,8 @@ concurrently with `process()`.
   counts. `C26498` went from 4 to 7. The three new ones are this round's NaN and infinity locals: Test 74's
   `qnan` and `pinf`, and State test 138's `qnan`, each initialized from a `constexpr` `std::numeric_limits` call.
   They are made `constexpr`, not suppressed, as Test 73's were. In State test 138 `qnan` is `static constexpr`,
-  and the lanes' lambdas no longer capture it. @PF@
+  and the lanes' lambdas no longer capture it. The final head's run is recorded in the PR #156 description:
+  that head changes only documentation after the fix, so its analysis is the fix's.
 
 
 ### S9. The `sanitizers` job's timeout (45 → 60 minutes, `fba78ec`)
