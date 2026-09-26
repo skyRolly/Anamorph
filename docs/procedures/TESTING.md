@@ -624,9 +624,10 @@ exactly as before.
 lanes with Test 70's observation (digital silence from 8 blocks before a return through its bottom, so the
 bottom publishes exactly what was restored) and verdict (a same-rate re-prepare 3 audible blocks after the
 bottom: keep bit-exact, flush exactly 0 dB). Programme N, 48 kHz / 256; slot B is A (Haas, Drive 8) edited
-to Drive 12 or 2 at 3 s, its state a measurement by then (asserted through its record: left the block before
-the edit and back, a re-prepare keeps it; the same visit 0.5 s in, current only by the first prepare's flush,
-flushes); 2 s on A per visit.
+to Drive 12 or 2 at 3 s, its result measured by then — asserted: left the block before the edit for A at Drive
+12 and back, its record comes back bit for bit (the measured path; a record certified by its evidence comes back as
+the mean) and a re-prepare keeps it; the same visit 1.5 s in, B not yet measured, publishes the mean, 0.27 dB from
+the record; 2 s on A per visit.
 - **(1) The matcher**, the wet 2× then 3× the dry (every block's post-change ratio is the target, −9.5424
   dB). The first counted block 0.277 s after the change; the share follows `1 − (1 − c)^n` to 6e-16 and
   reaches 0.5 after exactly 117 counted blocks (0.624 s), its mean exact, while the published value is

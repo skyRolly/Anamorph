@@ -2516,11 +2516,11 @@ close: the value recorded never certifies anything.
 
   | mutant | DSP | State | what catches it |
   |---|---|---|---|
-  | M01 no evidence recorded (the head-equivalent composite) | 17 | 25 | Test 73 (2) (3) (4a)'s control (4c); Test 70 (3b); State 137 (A) (B) (C) (D2) (E) (F) (G)'s control; State 134 (B) 1.1 s |
+  | M01 no evidence recorded (the head-equivalent composite) | 18 | 25 | Test 73 (2) and its premise's control, (3), (4a)'s control, (4c); Test 70 (3b); State 137 (A) (B) (C) (D2) (E) (F) (G)'s control; State 134 (B) 1.1 s |
   | M02 evidence recorded through a change in flight | 1 | 1 | Test 73 (4a); State 137 (G) |
   | M03 evidence restored for other inputs | 5 | 6 | the (3) / (B) controls, (4b), (C)'s control, (D1) |
   | M04 evidence restored for another rate | 1 | 1 | Test 73 (4c) at 44.1 kHz; State 137 (E2) at 44.1 kHz |
-  | M05 certified at any share | 15 | 27 | the 0.3 / 0.6 s flushes, the visits, (1c), (C), (E), Test 73 (2)'s premise control; Test 70 (2d) (2e); Test 72 (F); State 134's not-measured lanes; State 136 (F) |
+  | M05 certified at any share | 14 | 27 | the 0.3 / 0.6 s flushes, the visits, (1c), (C), (E); Test 70 (2d) (2e); Test 72 (F); State 134's not-measured lanes; State 136 (F) |
   | M06 glide-weighted evidence | 5 | 5 | (1a)'s fast glide, (3), (B); Test 70 (2d); State 134 (F)'s stale lanes |
   | M07 no carry | 14 | 13 | (1c), (3), (B) |
   | M08 the floor keeps the evidence | 1 | 0 | (1f) |
@@ -2530,9 +2530,9 @@ close: the value recorded never certifies anything.
   | M12 no finite-share guard | 1 | 0 | (1e) |
   | M13 the applied gain snapped to the value recorded | 0 | 1 | State 137 (F) (the first full-level block) |
   | M14 certified at 0.75 | 11 | 15 | the 1.1 s legs, the visit bounds, (1b), (1f); Test 70 (3b) |
-  | M15 certified at 0.4 | 7 | 2 | (1c), Test 73 (2)'s premise control; Test 70 (2d); Test 72 (F); State 136 (F); (C) |
+  | M15 certified at 0.4 | 6 | 2 | (1c); Test 70 (2d); Test 72 (F); State 136 (F); (C) |
   | M16 the certified mean current but not measured | 2 | 0 | (1b), (1f) — **it survived its first run**: (1b)'s matcher was already measured before the restore, so a restore that never set the bit went unseen; (1b) now restores into a matcher neither current nor measured |
-  | M17 the certified restore publishes the value recorded | 10 | 16 | the 1.1 s legs, the visits, (1b); Test 70 (3b); State 134 (B) 1.1 s |
+  | M17 the certified restore publishes the value recorded | 11 | 16 | the 1.1 s legs, the visits, (1b), Test 73 (2)'s premise control; Test 70 (3b); State 134 (B) 1.1 s |
   | M18 measured records restored through the evidence path | 33 | 37 | Test 70's measured keeps, (2)'s control and premise, and every measured leg |
 
   M06 first survived (1a) too: the 2× → 3× change keeps the glide slow through the counted blocks, so glide and
@@ -2541,15 +2541,19 @@ close: the value recorded never certifies anything.
 - **The memcheck lane** (`sanitizers`). `311fa70`'s run was cancelled at its 45-minute cap inside State test 137
   under valgrind (Test 73 took 56 s there; locally, under the lane's flags, 56 s and 69 s). Both tests were made
   cheaper: slot B's edit at 3 s instead of 4 s, fresh lanes stopping at the last block read, and Test 73's
-  later-return lane run only where it asserts — 43 s and 57 s locally. Each now asserts that B's result is a
-  measurement before its edit, with a control that fails: through the processor B is stale from the block-0 switch
-  until the measure confirms it, so a keep by `prepareToPlay` the block before the edit is the measured bit
-  (1.5 s in: flushed); at the engine the first prepare's flush makes B current but not measured, so the premise
-  reads B's own A/B record instead (left the block before the edit and back: kept; the same visit 0.5 s in:
-  flushed). A first cut of this (`fba78ec`) had moved Test 73's edit to 1.5 s and asserted the premise with an
-  in-place re-prepare, which a flush-current result passes: the adversarial review of that commit showed B there
-  first measured 2.42 s in, and dropping State test 137 (A)'s 0.6 s case had removed six checks; both were
-  undone. `fba78ec`'s lane took 44:37. The lane had run 29–42 minutes on this PR's green heads, so its cap moves
+  later-return lane run only where it asserts — 43 s and 57 s locally. Each now asserts that B's result is
+  MEASURED before its edit, with a control the same check fails on. Through the processor B is stale from the
+  block-0 switch until the measure confirms it, so a keep by `prepareToPlay` the block before the edit is the
+  measured bit (1.5 s in: flushed). At the engine neither a keep in place (the first prepare's flush makes B current,
+  not measured) nor a keep after a return (a record not measured whose evidence reaches half comes back current
+  too) shows it; what the return publishes does: B left the block before the edit for A at Drive 12 and back — the
+  slots differ, so the return re-arms and the bottom holds what was restored — its record −5.4711 comes back bit for
+  bit (the measured path; an evidence-certified record comes back as the mean) and a re-prepare keeps it; the same
+  visit 1.5 s in publishes the mean −5.5151 against the record −5.2410, and with the edit at 1.5 s the premise
+  fails. Two cuts before this one were wrong, each caught by an adversarial review: `fba78ec` moved Test 73's edit
+  to 1.5 s behind an in-place re-prepare (B there is first measured 2.42 s in) and dropped State test 137 (A)'s
+  0.6 s case (six checks); `4b2ed24` read the premise from a keep after a return, which an evidence-certified record
+  passes too. Both are undone. `fba78ec`'s lane took 44:37. The lane had run 29–42 minutes on this PR's green heads, so its cap moves
   to 60 minutes (CI_CD.md, "Job timeouts"); command, suites and strictness unchanged.
 - **What else moves**, against `3a779f5`: the DSP output is identical outside Test 73 except Test 70 (3b)'s line
   (the bottom now −5.5105, the evidence's mean, where it was −4.8048); the State output is identical outside State
@@ -2573,7 +2577,7 @@ close: the value recorded never certifies anything.
   seven `DELIBERATE_REAIMS` targets re-derived) and its self-test passes. GCC with the gate's flags gives the same
   gated-warning sets as `3a779f5` on both test files, the engine, the matcher and the processor (the ungated,
   structural `-Wmismatched-new-delete` from `AllocationGuard.h` counts more sites, as every new allocation in a
-  test does). `-fstack-usage`: Test 73 3,248 B (its largest leg lambda 8,016), State test 137 2,560 B; the engine's
+  test does). `-fstack-usage`: Test 73 3,280 B (its largest leg lambda 8,016), State test 137 2,560 B; the engine's
   `restoreAbSlot` 64 → 80 B, `adoptRememberedMatch` 48 → 64 B, `LoudnessMatch::process` 512 → 544 B; the
   suites' largest frames grow by the engine's 48 bytes per automatic (DSP 290,208 → 290,304; State 711,824 →
   712,064), inside the 1 MiB guard both suites pass under.

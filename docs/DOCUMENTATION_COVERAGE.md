@@ -13060,8 +13060,9 @@ under burst processing — investigated only (no threading change). All of it is
   `sanitizers` cap 45 → 60 minutes (`build.yml`), with the lane's measured runtimes — `311fa70` was cancelled at
   45:14 inside State test 137 under memcheck. Both new tests were first made cheaper (local memcheck 56 → 43 s
   and 69 → 57 s: slot B's edit at 3 s instead of 4 s, fresh lanes capped, Test 73's later-return lane only where
-  it asserts), and each now asserts, with a control that fails, that B's result is a measurement before its
-  edit.
+  it asserts), and each now asserts that B's result is measured before its edit, with a control the same check
+  fails on (at the engine: the record comes back bit for bit, where an evidence-certified one would come back as
+  its mean).
 - **Code comments:** `LoudnessMatch.h` (`Evidence`, `getEvidence`, `restoreUnmeasured`, the bookkeeping),
   `AnamorphEngine.h` (`AbMatchMemory`), `AnamorphEngine.cpp` (capture, restore, `adoptRememberedMatch`).
 - **This file:** this entry and the *Last updated* line.
