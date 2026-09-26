@@ -2541,20 +2541,21 @@ close: the value recorded never certifies anything.
 - **The memcheck lane** (`sanitizers`). `311fa70`'s run was cancelled at its 45-minute cap inside State test 137
   under valgrind (Test 73 took 56 s there; locally, under the lane's flags, 56 s and 69 s). Both tests were made
   cheaper: slot B's edit at 3 s instead of 4 s, fresh lanes stopping at the last block read, and Test 73's
-  later-return lane run only where it asserts — 43 s and 57 s locally. Each now asserts that B's result is
-  MEASURED before its edit, with a control the same check fails on. Through the processor B is stale from the
-  block-0 switch until the measure confirms it, so a keep by `prepareToPlay` the block before the edit is the
-  measured bit (1.5 s in: flushed). At the engine neither a keep in place (the first prepare's flush makes B current,
-  not measured) nor a keep after a return (a record not measured whose evidence reaches half comes back current
-  too) shows it; what the return publishes does: B left the block before the edit for A at Drive 12 and back — the
-  slots differ, so the return re-arms and the bottom holds what was restored — its record −5.4711 comes back bit for
-  bit (the measured path; an evidence-certified record comes back as the mean) and a re-prepare keeps it; the same
-  visit 1.5 s in publishes the mean −5.5151 against the record −5.2410, and with the edit at 1.5 s the premise
-  fails. Two cuts before this one were wrong, each caught by an adversarial review: `fba78ec` moved Test 73's edit
-  to 1.5 s behind an in-place re-prepare (B there is first measured 2.42 s in) and dropped State test 137 (A)'s
-  0.6 s case (six checks); `4b2ed24` read the premise from a keep after a return, which an evidence-certified record
-  passes too. Both are undone. `fba78ec`'s lane took 44:37. The lane had run 29–42 minutes on this PR's green heads, so its cap moves
-  to 60 minutes (CI_CD.md, "Job timeouts"); command, suites and strictness unchanged.
+  later-return lane run only where it asserts — 43 s and 57 s locally. Each now asserts that B's result is MEASURED
+  before its edit, with a control the same check fails on. Through the processor B is stale from the block-0 switch
+  until the measure confirms it, so a keep by `prepareToPlay` the block before the edit is the measured bit (1.5 s
+  in: flushed). At the engine neither a keep in place (the first prepare's flush makes B current, not measured) nor
+  a keep after a return (a record not measured whose evidence reaches half comes back current too) shows it alone;
+  that keep together with what the return publishes does: B left the block before the edit for A at Drive 12 and
+  back — the slots differ, so the return re-arms and the bottom holds what was restored — and only a measured record
+  comes back bit for bit AND is kept (an evidence-certified record comes back as the mean, one with less evidence
+  bit for bit but flushed): −5.4711, kept; the same visit 1.5 s in publishes the mean −5.5151 against the record
+  −5.2410, and with the edit at 1.5 s the premise fails. Two cuts before this one were wrong, each caught by an
+  adversarial review: `fba78ec` moved Test 73's edit to 1.5 s behind an in-place re-prepare (B there is first
+  measured 2.42 s in) and dropped State test 137 (A)'s 0.6 s case (six checks); `4b2ed24` read the premise from a
+  keep after a return, which an evidence-certified record passes too. Both are undone. `fba78ec`'s lane took 44:37.
+  The lane had run 29–42 minutes on this PR's green heads, so its cap moves to 60 minutes (CI_CD.md, "Job
+  timeouts"); command, suites and strictness unchanged.
 - **What else moves**, against `3a779f5`: the DSP output is identical outside Test 73 except Test 70 (3b)'s line
   (the bottom now −5.5105, the evidence's mean, where it was −4.8048); the State output is identical outside State
   test 137 (thread-timing counters aside) except three places, all an A/B return of a record left not measured

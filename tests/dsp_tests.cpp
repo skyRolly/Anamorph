@@ -13290,10 +13290,11 @@ static void testAbRecordCarriesThePostChangeEvidence()
         const Case cases[] = { { 12.0f, 0.3 }, { 12.0f, 1.1 }, { 12.0f, 6.0 }, { 2.0f, 0.3 }, { 2.0f, 1.1 }, { 2.0f, 6.0 } };
         // premise: B's result is MEASURED before its edit. Neither a re-prepare in place (the first prepare's flush
         // makes B current, not measured) nor a keep after a return (a record not measured whose evidence reaches half
-        // comes back current too) can show it; what the return publishes can. B left the block before the edit for
-        // A at Drive 12 (the slots differ, so the return re-arms and the bottom holds what was restored on silence):
-        // a MEASURED record comes back as itself, bit for bit, and a re-prepare keeps it; one certified by its
-        // evidence comes back as the evidence's mean. Control: the same visit 1.5 s in, B not yet measured -- the
+        // comes back current too) can show it alone; that keep together with what the return publishes can. B left
+        // the block before the edit for A at Drive 12 (the slots differ, so the return re-arms and the bottom holds
+        // what was restored on silence): only a MEASURED record comes back as itself, bit for bit, AND is kept by a
+        // re-prepare -- one certified by its evidence comes back as the evidence's mean, one with less evidence comes
+        // back bit for bit but not current (flushed). Control: the same visit 1.5 s in, B not yet measured -- the
         // bottom publishes the mean, >= 0.1 dB from the record.
         const auto preEdit = [&] (int leave)
         {
