@@ -270,7 +270,7 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   starts from the value it publishes, converged or still converging on an earlier edit (*Note of
   2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1959`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1965`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
@@ -602,7 +602,8 @@ How each transition affects currency:
   - a change heard during a duck (in a fade-in no bottom follows to report it);
   - every duck bottom that changes a measurement input (`measChangedAtBottom`: forced swaps and
     discrete changes);
-  - a host reset that lands an in-flight duck carrying such a change.
+  - a host reset that lands an in-flight duck carrying such a change (in flight: before its bottom, which
+    reports the change and retires the flag; Note of 2026-09-26, the duckMeasDirty lifecycle).
 - **Made current:** an A/B injection, because the slot's value is that slot's own measurement,
   restored with its state (a slot left before it had caught up is the recorded exception below).
   *Superseded by the amendment of 2026-09-25, A/B provenance, below:* made current only when the slot's
@@ -612,8 +613,9 @@ How each transition affects currency:
 - **Unchanged by `softReset()`:** both the currency and the post-change share survive, because it
   re-arms only the integrators, which then hold post-change audio alone.
 
-`prepare()` also refuses to keep while a duck that changes a measurement input is in flight, because
-its own `reset()` then adopts the change the duck would have reported at its bottom. On the processor
+`prepare()` also refuses to keep while a duck that changes a measurement input is in flight — before its
+bottom — because its own `reset()` then adopts the change the duck would have reported there. From the
+bottom on, the currency carries it (Note of 2026-09-26, the duckMeasDirty lifecycle). On the processor
 path that is an ordinary duck's continuous part, which went live at its entry (`duckMeasDirty`). On the
 unprimed engine API it is also the duck's pending snapshot, which the processor's prime folds into
 condition 3 (recorded in worklog §M5, closed here). Nothing in this amendment
@@ -797,8 +799,9 @@ the fields are written.
 - **Capture:** when the engine takes the switch (`takeRequests`, at the top of `setParameters`, or in
   `primeParameters` before it adopts the prime), it records the slot being left from its own `p`, `sr`
   and matcher.
-- **Not measured during a duck in flight** that has made a measurement-input change live which only its
-  bottom will report (`duckMeasDirty`, the rule `prepare()` already applies). Otherwise the record
+- **Not measured during a duck in flight** — before its bottom — that has made a measurement-input change
+  live which only that bottom will report (`duckMeasDirty`, the rule `prepare()` already applies; the bottom
+  retires it: Note of 2026-09-26, the duckMeasDirty lifecycle). Otherwise the record
   would pair the pre-change result with the post-change `p`: an ordinary duck opened by a
   non-measurement discrete change together with a Width edit, the switch inside its fade-out, was kept
   2.13 dB off (State test 134, window (g)).
@@ -965,7 +968,7 @@ pre-roll.
 ## Note, 2026-09-25 — a gain-only engage lands on the published value, current or not (Devin review: "Level Match engages on stale compensation"; "stale engage")
 
 Devin's review of `1c22d51` (PR #156) found *"Level Match engages on stale compensation"* at
-`src/dsp/AnamorphEngine.cpp:1270-1271`. The sequence it gives:
+`src/dsp/AnamorphEngine.cpp:1276-1277`. The sequence it gives:
 1. With Level Match off, a live edit to something the measurement reads leaves the result not current
    (`inputsChanged`; the Amendment of 2026-09-25, live edits).
 2. Level Match is turned on before the measure has caught up.
@@ -1147,9 +1150,127 @@ against the currency the matcher now reports.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, in place: the decision it records (Q4) stands |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change; no behaviour change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1263-1271` (the bottom's answer and the landing
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1263-1277` (the bottom's answer and the landing
 predicate), `:1959-1960` (the landing), `:1993-1994` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
 (`inputsChanged`, `isResultCurrent`). Tests: Test 71, State test 135.
+
+## Note, 2026-09-26 — the bottom that reports an ordinary duck's live measurement change retires it (Devin review: "Valid A/B gain lost on re-prepare"; "the duckMeasDirty lifecycle")
+
+Devin's review of `d910a1e` (PR #156) found *"Valid A/B gain lost on re-prepare"* at
+`src/dsp/AnamorphEngine.cpp:61-65` (`adoptsMeasChange` and `keepMatch` in `prepare()`). The sequence it gives:
+1. An ordinary duck (a band count) is upgraded to a forced A/B duck during its fade-out.
+2. The bottom restores B's measured gain.
+3. `duckMeasDirty` stays set after the bottom.
+4. About 10 ms into the fade-in, a same-rate `prepare()` sees `adoptsMeasChange` and flushes to 0 dB.
+
+It was a defect, and it is fixed here (worklog `NONFINITE_PARAMETERS_AND_F13.md` §Q).
+
+**Reproduced** through the processor at 48 kHz / 256 (Haas 50 %, Drive 8 on A and 12 on B, Multiband on,
+Output Gain −3, Level Match on).
+- B was left measured at −7.616 dB (a fresh processor at B: −7.619). On A, Bands 4 → 3 opened an ordinary
+  duck; `abSwitchTo (B)` one block later upgraded it.
+- The bottom published −7.613 dB, current and measured, with `duckMeasDirty` still set.
+- A `prepareToPlay` 10.7 ms into the fade-in (phase 0.38) flushed it to 0 dB. The next block applied the
+  predict floor, −6.01 dB: 1.61 dB off the fresh value, 0.74 dB on average over the next 2 s.
+- The same happened in every fade-in gap. Before the bottom the flush is right, and the switch's armed restore
+  lands in the first block after it (0.022 dB off). After the fade-in the flag is still set but every reader
+  gates on the switch state, so the result was kept.
+- Clearing only the flag before the same `prepareToPlay` kept the value (0.028 dB off). The record was valid
+  and current; the flag's lifetime alone discarded it.
+- The flag has two more readers in the fade-in, and both misread it the same way. A host reset re-reported the
+  change, so the restored value lost its currency until the measure re-confirmed it. A switch away recorded B
+  as not measured: back on B after 1 s, a same-rate re-prepare flushed it, 1.60 dB off.
+
+**The lifecycle.** `duckMeasDirty` answers one question: has a measurement-input change gone live during this
+duck that nothing has reported to the matcher yet?
+- **Set** when an ordinary duck opens (`measurementInputsDiffer (p, np)`, before `copyContinuous` hides it), and
+  by a snapshot heard while a non-forced duck is in flight. That path calls `inputsChanged()` itself.
+- **Read** by four consumers:
+  - the bottom (`measChangedAtBottom`), which calls `inputsChanged()`, refuses the Case-A landing, and re-arms
+    an A/B restore or injection (P1b);
+  - `prepare()` (`adoptsMeasChange`: no keep);
+  - `reset()` (`adoptsMeasChange`: `inputsChanged()`);
+  - the A/B record (`takeRequests`: not measured).
+- **Cleared** by a forced entry, by a re-duck from the fade-in (whose copy then marks it again), by `reset()`,
+  and — from this note — by the bottom that reports it.
+
+After the bottom's report, the question's answer lives in the result: the currency bit that
+`inputsChanged()` cleared, or the provenance that a restore wrote with `setDisplayedGainDb (v, measured)`. Left
+set, the flag gave `prepare()`, `reset()` and the A/B record a second, stale answer that overrode the first. A
+change heard during the fade-in sets the flag again, but it reports itself at once. The flag can then outlive
+the duck into Normal, where every reader already gates on the switch state.
+
+**Decision** (the owner's authorization, below). The bottom retires the flag right after it reports it: one
+assignment after `measChangedAtBottom` and its `inputsChanged()`, at every bottom, which is what `reset()`
+already does when it completes a duck in the bottom's place.
+
+Each alternative below was run on the reproduction and through Test 72 and State test 136; the full table is
+in worklog §Q3.
+- **Retire at every bottom (adopted).** Every leg passes. After an ordinary bottom, a host reset in the fade-in
+  now leaves the confirmation where a lane without the reset has it (block 3126). Before, it restarted the
+  confirmation (3127–3129).
+- **Retire at a forced bottom only.** Equivalent on every check: after an ordinary bottom the result is not
+  current, and no fade-in is long enough for the measure to confirm it again. It leaves a reported flag set
+  after ordinary bottoms, and a host reset there reports the change a second time.
+- **Narrow `prepare()`'s guard to the fade-out (Strategy B).** It keeps the value, but `prepare()`'s own
+  `reset()` still reads the flag and marks the result stale, so a second re-prepare flushes it. The host reset
+  and the A/B record stay wrong. It fails 6 checks in each test.
+- **Narrow all three readers to the fade-out.** Equivalent on every check, but every present and future reader
+  must then gate a flag that no longer means anything.
+- **Retire at the upgrade.** The bottom loses the flag's re-arm: Test 72 (G1) and Tests 66 and 67 fail.
+- **Retire before the bottom reads it.** Case B and P1b lose the report: Tests 66, 67, 68, 71 and 72 (G1), and
+  State tests 130, 132 and 135, fail.
+- **Retire where the fade-in ends.** The finding is unchanged: 11 and 8 checks fail.
+
+**What this preserves.**
+- **P1b.** The re-arm reads `measChangedAtBottom`, computed before the retirement. A Width change live only
+  through the duck (the adopted state reads what the running one did) still re-arms, and holds on silence
+  (Test 72 (G1)). With no measurement input changed it does not re-arm (G2).
+- **O4g and Case B.** The landing reads the same local, so both are unchanged.
+- **A/B provenance.** A not-measured record is still restored not current and flushed (leg (F)).
+- **Same-rate re-prepares.** One still keeps only a current result, and the kept value is the applied gain from
+  the first block, a quiet resume included (Test 68's property). A new rate still flushes.
+- **Before the bottom,** a re-prepare, a host reset and an A/B record still treat the change as in flight.
+
+It changes no published value's math, no parameter ID, schema, DSP order, reported latency or thread. The
+flag is audio-thread state, written in `process()` beside the report it retires.
+
+**What this changes in the text above.** "In flight" means *before its bottom* in three places:
+- the live-edit amendment's `prepare()` refusal;
+- its "marked not current" row for a host reset;
+- the A/B provenance amendment's capture rule.
+
+**Regression coverage.** Test 72 (the engine, 34 checks) and State test 136 (the processor, 18 checks).
+- **Premises, each asserted.**
+  - An ordinary duck opened, and the switch came inside its fade-out: the output is bit-identical to the duck
+    alone through the switch block.
+  - The duck was upgraded: the switch block still publishes A's value, and the bottom B's record.
+  - The record is valid (within 0.1 dB of a fresh instance at B).
+  - The verdicts land in the fade-in: the blocks before them play ≤ 0.2 and ≤ 0.9 of a fresh B's energy.
+- **Legs.**
+  - **The fade-in:** re-prepares in its gaps keep, and keep again 3 blocks later, with the applied gain,
+    audible and quiet.
+  - **Before the bottom:** it flushes, the restore lands, and a later re-prepare keeps.
+  - **After the fade-in** it keeps, and **a new rate** still flushes.
+  - **Controls:** the ordinary duck alone, the switch alone, and a duck that carries no measurement change.
+  - **A stale record** flushes.
+  - **A host reset and a switch away** in the fade-in, each with its controls.
+  - **(G1)/(G2) P1b.**
+- **Against `d910a1e`,** 11 of Test 72's checks and 8 of State test 136's fail.
+
+**Architecture Review Gate — owner authorization of 2026-09-26.**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #156 body and the implementing commit message: a behaviour change governed by an **Accepted ADR** (the live-edit and A/B provenance amendments' "in flight"), made precise in place |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's authorization of 2026-09-26**: *"Treat this as a real production bug unless investigation disproves it on the current head."* *"Do not ask for another owner decision. You are explicitly authorized to make owner decisions."* Review: pending, PR #156 |
+| 3 | if the change is a decision, an ADR is added/updated | this Note, and the three in-place clarifications it lists |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
+
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1262-1270` (the bottom's report and the retirement),
+`:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:643-646` (the A/B record),
+`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:302-307` (the flag). Tests: Test 72,
+State test 136.
 
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
@@ -1159,7 +1280,7 @@ predicate), `:1959-1960` (the landing), `:1993-1994` (the edge snap); `src/dsp/L
 - `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:85-106` and `:142-181` (predict; the floor's
   un-measure), `:183-209` (measure/hold), `:108-117` (`softReset`: the analysis only), `:65-79` (`reset`:
   both halves), `:213-264` (the result's currency and its confirmation; the amendments of 2026-09-25)
-- `src/dsp/AnamorphEngine.cpp:1834-1835` (A(dry) reference), `:1954` (the measurement), `:1993-1994`
+- `src/dsp/AnamorphEngine.cpp:1840-1841` (A(dry) reference), `:1954` (the measurement), `:1993-1994`
   (silence-edge snap), `:598-683` (the A/B record: request, forget, capture, restore)
 - `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 

@@ -300,10 +300,10 @@ private:
     // setParameters); landing during FadeIn it re-ducks via beginForcedDuck.
     bool  pendingForced = false;
     // An ORDINARY duck makes its continuous controls live at once (copyContinuous), so by the
-    // bottom `p` already holds them and cannot show what changed. Set when any snapshot made
-    // live during this duck changed a Level-Match measurement input (measurementInputsDiffer);
-    // cleared at every fresh fade-out entry and by reset(). A forced duck makes nothing live,
-    // so the bottom's own (p, pendingP) comparison is complete there.
+    // bottom `p` already holds them and cannot show what changed. Set when any snapshot made live
+    // during this duck changed a Level-Match measurement input (measurementInputsDiffer); retired by
+    // the bottom that reports it, by reset() and at every fresh fade-out entry (ADR-0007, Note of
+    // 2026-09-26). A forced duck makes nothing live: its bottom's (p, pendingP) test is complete.
     bool  duckMeasDirty = false;
     // Set by primeParameters() when the snapshot it adopts changes a Level-Match measurement
     // input; read and cleared by prepare(), which keeps the published result only if it did not.

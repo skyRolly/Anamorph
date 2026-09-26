@@ -383,7 +383,8 @@ nothing. The kept value then described the previous sound: Width 1 → 2, 5 ms, 
 `isResultCurrent()` holds: the post-change measurements make up at least half of the published value,
 and it agrees with their mean within 0.1 dB. A block counts toward them only while the input heard
 since the change is above the silence gate and at least half of the dry integrator. `prepare()` also
-refuses while a duck that changes a measurement input is in flight.
+refuses while a duck that changes a measurement input is in flight: before its bottom, which reports the
+change and retires the flag (Test 72).
 
 **Test 69** (`testLevelMatchReprepareKeepsOnlyACurrentResult`, the engine contract) reads the published value across
 `primeParameters → prepare → setParameters`, the processor's `prepareToPlay` sequence. "Flush" means
@@ -550,6 +551,57 @@ Legs (Haas 50 %, Drive 8, Level Match off, the edit live at 5.5 s):
 - a capped start for a non-current boost: 1, (4);
 - an ordinary duck's bottom that does not report its measurement change: 1, (E). No suite covered this
   before (E)'s verdict moved after the fade-in.
+
+**A measured A/B gain restored at an upgraded duck's bottom survives a same-rate re-prepare in the fade-in
+— Test 72 (2026-09-26; ADR-0007, Note of 2026-09-26, the duckMeasDirty lifecycle; the Devin review of PR
+#156, "Valid A/B gain lost on re-prepare").**
+
+*The contract.* `duckMeasDirty` records an ordinary duck's live measurement change that nothing has
+reported yet. The duck's bottom reports it — `inputsChanged()`, the Case-A landing refused, an A/B restore
+or injection re-armed (P1b) — and retires it there. Before the bottom, a re-prepare, a host reset and an
+A/B record treat the change as in flight. After it, the result's currency, or a restore's provenance,
+carries the change.
+
+**Test 72** (`testAbRestoreSurvivesAReprepareInTheFadeIn`) runs Test 70's engine lanes on programme N at
+48 kHz / 256. A verdict is the lane's own script with a same-rate prime / prepare / setParameters before
+block k: keep is bit-identical, flush is exactly 0 dB. The applied gain is Test 66's fit against a
+Level-Match-off, Output-Gain-0 twin.
+- **The route.** Slot B (Drive 12) is left measured at 4 s (−7.5992, the fresh engine −7.5992). On A (Drive
+  8), an ordinary duck opens: a band count with Multiband off, carrying Width 1 → 2. One block later
+  `requestAbSwitch (A → B)` lands with B's snapshot.
+- **Premises.**
+  - The switch block plays 2.4e-5 of the level before, and is bit-identical to the duck alone through it:
+    an upgrade.
+  - The switch block publishes A's value; the bottom (event + 2) publishes B's record.
+  - The blocks before the verdicts play 0.00 and 0.22 of a fresh B's energy: the fade-in.
+- **(B) Before the bottom.** A re-prepare flushes the live result. The armed restore lands in the first
+  block, and a re-prepare 3 blocks later keeps it. Both engines.
+- **(C) (A) (D) The fade-in gaps + 1, + 3 and + 5.** + 1 is Devin's ~10 ms.
+  - This tree: kept bit-exact, 0.014–0.023 dB off fresh, the next block's applied gain within 0.005 dB, and
+    kept again 3 blocks later. After a quiet resume (−70 dBFS) the kept value is applied from the first
+    block.
+  - The pre-fix engine: flushed; the next block applies the floor (−6.01, 1.58 dB off), and the quiet
+    resume −0.094 dB.
+  - After the fade-in, kept on both engines. At 44.1 kHz, flushed on both.
+- **(E)** The ordinary duck alone: flushed before its bottom and in its fade-in (Case B: not current), kept
+  6 s later.
+- **Controls.** The switch alone, and the upgraded duck carrying no measurement change: kept.
+- **(F)** B's record NOT measured (its visit 0.5 s long): restored and flushed. Retiring the flag marks
+  nothing current.
+- **(H1)** A host reset in the fade-in, then a re-prepare: kept (−7.5831) / flushed on the pre-fix engine.
+- **(H2)** B → A in the fade-in, 1 s on A, then back: B was recorded measured and is kept / flushed on the
+  pre-fix engine.
+- **(G) P1b on silence.** (G1) A Width change live only through the duck still re-arms at the upgraded
+  bottom: the value holds, 0 dB. (G2) No measurement input changed: not re-armed, 1.30 dB of movement.
+
+34 checks, ~0.6 s native. Against the pre-fix engine (`d910a1e`) 11 fail: the four fade-in legs' keep and
+applied gain, the quiet resume, (H1) and (H2). Engine variants (worklog §Q3):
+- the flag retired where the fade-in ends: the same 11;
+- `prepare()`'s guard alone narrowed to the fade-out (Strategy B): 6, the second re-prepare of each
+  fade-in leg, (H1) and (H2);
+- retired at the upgrade: (G1), and Tests 66 and 67;
+- retired before the bottom reads it: (G1), Tests 66 67 68 71, and State tests 130 132 135;
+- retired at a forced bottom only, or all three readers narrowed to the fade-out: 0 (equivalent, recorded).
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
@@ -4879,6 +4931,33 @@ Legs:
 - an ordinary duck's bottom that does not report: 1, (E).
 
 The capped start passes here, because there is no positive leg; Test 71 leg (4) rejects it.
+
+**A measured A/B gain restored at an upgraded duck's bottom survives a same-rate `prepareToPlay` in the
+fade-in, through the processor — State test 136 (2026-09-26; ADR-0007, Note of 2026-09-26, the
+duckMeasDirty lifecycle; the Devin review of PR #156).** This
+(`testAnAbGainRestoredAtAnUpgradedBottomSurvivesAReprepareInTheFadeIn`) is the processor half of Test 72. It
+is driven as a host and the editor drive it: gestures, `abCopyToOther`, `abSwitchTo`, `processBlock`,
+`prepareToPlay` and `reset()`. One heap processor runs per lane on one seeded stream.
+- **The route.** Slot B is a Copy of A, active from the first block and edited to Drive 12 there, and left
+  measured at 4 s (−7.5946). On A, Bands 4 → 3 with Multiband on (Devin's case: the band count itself is a
+  measurement input); `abSwitchTo (B)` one block later.
+- **Premises.** As Test 72's. The switch block is bit-identical to the duck alone; it publishes A's
+  −5.2889 and the bottom B's −7.5921.
+- **Legs.**
+  - (B) before the bottom: flushed, then the restore lands and a later `prepareToPlay` keeps.
+  - (C) (A) (D) the fade-in gaps + 1, + 2, + 4, + 6: kept, and kept again 3 blocks later / flushed on the
+    pre-fix processor.
+  - Multiband off with Width 1 → 2: the applied gain after + 2, audible (−7.5863 against the kept −7.5894 /
+    −6.0093) and at a −70 dBFS resume (−7.5894 / −0.098).
+  - After the fade-in: kept. At 44.1 kHz: flushed.
+  - (E) the duck alone flushes, then keeps 6 s later.
+  - Controls: the switch alone, and the band count alone with the switch.
+  - (F) a not-measured record flushes.
+  - (H1) `reset()` in the fade-in, then `prepareToPlay`: kept / flushed.
+  - (H2) a switch away in the fade-in, then back: kept / flushed.
+
+18 checks, ~1.5 s native. Against the pre-fix processor 8 fail: the four fade-in legs, the two applied
+gains, (H1) and (H2). Strategy B fails 6; the flag retired where the fade-in ends fails the same 8.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

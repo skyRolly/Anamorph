@@ -2093,7 +2093,8 @@ The landing validates nothing.
   | the live-edit report | 24 of State test 133, 1 of 134, 7 of 135 |
   | `setDisplayedGainDb` honouring `measured` | 21 of State test 134, 2 of 135 |
 - **Adversarial review of the tests and documents.** Two checks could not fail and were corrected: Case
-  B's verdict (now after the fade-in) and the converged premise (now a stationarity window). Test 71's
+  B's verdict (now after the fade-in) and the converged premise (now a stationarity window). (The
+  mid-fade-in flush that made the first one vacuous was `duckMeasDirty` outliving its bottom: §Q.) Test 71's
   route check read two blocks, not one. The documents' bounds, tallies and set descriptions were
   corrected against the raw data.
 
@@ -2115,3 +2116,186 @@ The landing validates nothing.
 - **Deferred by instruction:** cross-rate retention; a flush's quiet glide; automation currency; the A/B
   residuals of §O8; KI-029; global `toEngine` sanitization; float→int UB; F9, F10, F12; R6a–R6d;
   ScopeBuffer threading; the vectorscope stop-state; historical doc cleanup; the per-block ramp restart.
+
+## Q. The Devin review of `d910a1e`: "Valid A/B gain lost on re-prepare"
+
+The finding is at `AnamorphEngine.cpp:61-65` (`adoptsMeasChange`, `keepMatch`). An ordinary duck is
+upgraded to a forced A/B duck during its fade-out. The bottom restores B's measured gain, but
+`duckMeasDirty` stays set. A same-rate `prepare()` ~10 ms into the fade-in then reads the duck as still
+carrying a change and flushes the gain to 0 dB. **A defect, fixed**: the bottom retires the flag it reports
+(ADR-0007, Note of 2026-09-26, the duckMeasDirty lifecycle).
+
+### Q1. Reproduction and trace (processor, then engine)
+
+Processor at 48 kHz / 256: Advanced Mode, Haas 50 %, Width 1, Multiband on, Output Gain −3, Level Match
+on, seeded correlated noise.
+- Slot B (a Copy, Drive 12) is left converged at 10 s. Its record is −7.6162, measured, at 48 kHz, for the
+  state it is restored into (a fresh processor at B: −7.6191).
+- 6 s later, on A, Bands 4 → 3 opens an ordinary duck (block 3008). `abSwitchTo (B)` one block later
+  upgrades it.
+
+| block | switch state | `duckMeasDirty` | `pendingForced` | P (dB) | current / measured | applied (dB) |
+|---|---|---|---|---|---|---|
+| 3008 (the duck opens) | Normal → FadeOut | 0 → 1 | 0 | −5.5229 | 1 / 1 | −5.5203 |
+| 3009 (the switch, upgraded) | FadeOut | 1 | 0 → 1 | −5.5229 | 1 / 1 | −5.5203 |
+| 3010 (the bottom) | FadeOut → FadeIn | **1 → 1** | 1 → 0 | −7.6132 | 1 / 1 | −7.6160 |
+| 3011 | FadeIn | 1 | 0 | −7.6100 | 1 / 1 | −7.6157 |
+
+**The prepare.** A `prepareToPlay` before block 3012 (fade-in phase 0.38, 10.7 ms) finds `adoptsMeasChange`
+true. The terms are:
+- `duckMeasDirty` 1;
+- `measurementInputsDiffer (p, pendingP)` 0;
+- `primeMeasChanged` 0;
+- the result current and measured;
+- the record measured, same rate, same inputs.
+
+It **flushes to 0 dB**. The next block applies the predict floor, −6.0097 dB: 1.61 dB off the fresh value,
+0.74 dB mean over 2 s.
+
+**The same, at other gaps and on other routes** (processor):
+- **Every fade-in gap** (+ 1 … + 6 after the bottom block): flushed, 1.61 dB.
+- **Before the bottom:** flushed. The armed restore lands in the first block after it (0.022 dB off).
+- **After the fade-in:** kept. The flag is still set, but every reader gates on the switch state.
+- **The causal probe.** The same `prepareToPlay` with only `duckMeasDirty` cleared by hand keeps the value,
+  0.028 dB off. The record was valid and the result current; the flag's lifetime alone discarded it.
+- **Controls.**
+  - The switch alone: kept, 0.029 dB.
+  - The duck changing no measurement input (Bands with Multiband off) plus the switch: kept.
+  - The duck alone: flushed. That result is not current, so the flush is correct.
+  - Multiband off with Width 1 → 2 riding the band count: flushed, 1.61 dB, like the main route.
+
+**The other two readers in the fade-in:**
+- A host reset `reset()` before block 3012 left the restored value NOT current. It re-reported the retired
+  change, and a re-prepare before the measure re-confirmed it would flush.
+- `abSwitchTo (A)` there recorded B as NOT measured. Back on B 1 s later, a `prepareToPlay` flushed, 1.60
+  dB off. Clearing the flag by hand: current, and measured / kept, 0.023 dB.
+
+**Engine reproduction** (Test 72's lanes, programme N): the same split. The pre-fix engine flushes in all
+four fade-in gaps and applies −6.01 against a kept −7.59. It also flushes after the host reset and after
+the switch away and back. The switch alone and the no-measurement duck keep.
+
+### Q2. The lifecycle
+
+What each reader asks — *has a measurement-input change gone live during this duck that nothing has
+reported yet?* — and who writes it:
+
+| site | role | before this change | after |
+|---|---|---|---|
+| ordinary entry (`setParameters`, :770) | set: `measurementInputsDiffer (p, np)` before `copyContinuous` | same | same |
+| heard mid-duck, not forced (:881) | set (`\|= heard`), and `inputsChanged()` at once | same | same |
+| forced entry (:758), fade-in re-duck (:809), `reset()` (:361) | clear | same | same |
+| the bottom (:1263) | read: `measChangedAtBottom` → `inputsChanged()`, no Case-A landing, restore / injection re-arm (P1b) | read, **left set** | read, then **cleared** (:1270) |
+| `prepare()` (:61-62) | read: no keep | read in FadeOut **and FadeIn** | FadeIn sees it only if a fade-in edit set it (then not current anyway) |
+| `reset()` (:239) | read: `inputsChanged()` | FadeIn re-reported the bottom's change | same rule, nothing left to re-report |
+| A/B record (:645) | read: not measured | FadeIn recorded a measured restore as not measured | measured iff the result is |
+
+**The invariant.** The flag is set only while such a change has not been reported.
+- **Before the bottom** it is the only carrier: the ordinary entry does not call `inputsChanged()`, so
+  the currency bit still reads current.
+- **At the bottom** it is reported (`inputsChanged()`) and consumed through `measChangedAtBottom`, which is
+  block-local and read by the landing, the forced restore, the injection and the defensive consumer.
+- **After the bottom** the currency bit carries it, or a restore's provenance (`setDisplayedGainDb (v,
+  measured)`) replaces it.
+- **Fade-in edits.** A heard edit in the fade-in sets the flag again and calls `inputsChanged()` in the
+  same statement, so every fade-in reader sees *not current* through either answer.
+- **Into Normal.** The flag can outlive the duck there. Every reader gates on `switchState != Normal`,
+  and the next entry overwrites it.
+
+Is anything left for the flag to say after the bottom? No: `reset()` already cleared it when it completed
+a duck in the bottom's place.
+
+### Q3. The strategies, measured
+
+Each strategy is an engine variant, run through the probe of Q1 and both suites with Test 72 and State
+test 136.
+
+| strategy | Q1 probe (fade-in `prepareToPlay` / host reset / switch away) | Test 72 / State 136 | other suites | verdict |
+|---|---|---|---|---|
+| **A: retire at every bottom (adopted)** | kept 0.028 dB / current / measured, kept | 0 / 0 | 0 | the invariant; one assignment beside the report |
+| A′: retire at a forced bottom only | the same | 0 / 0 | 0 | equivalent here; leaves a reported flag set after ordinary bottoms (below) |
+| B: `prepare()`'s guard narrowed to FadeOut | kept, then its own `reset()` marks it NOT current / NOT current / not measured, flushed | 6 / 6 | 0 | a kept result that is stale on arrival; two readers still wrong |
+| B3: all three readers narrowed to FadeOut | as A | 0 / 0 | 0 | equivalent; every present and future reader must gate a flag with no meaning left |
+| retire at the upgrade | as A | 1 (G1) / 0 | Tests 66, 67 | loses the flag's re-arm and Case B across an upgrade |
+| retire before the bottom reads it | as A | 1 (G1) / 0 | Tests 66 67 ×2 68 71, State 130 132 135 | loses the report |
+| retire where the fade-in ends | as HEAD | 11 / 8 | 0 | the finding |
+
+**A against A′.** An ordinary bottom that reports a change leaves the result not current. No fade-in is
+long enough for the measure to confirm it again: at 16384-sample blocks the whole fade-in fits in the
+bottom block and the result is still not current after it. So a keep never depends on the ordinary
+bottom's flag. What does depend on it is a host reset in that fade-in:
+- **A′ (and HEAD).** The reset reports the change a second time and restarts the confirmation. The
+  result is current at block 3127 or 3129, depending on the gap.
+- **A.** The confirmation lands at block 3126 from either gap, the block a lane without the reset
+  reaches.
+
+A is one rule for every bottom, and the rule `reset()` already follows.
+
+**Decision** (owner authorization delegated, 2026-09-26): **A**.
+
+### Q4. Audit of the paths (bounded)
+
+- **`measChangedAtBottom`.** It is computed from the flag before the retirement and is block-local. Its
+  four readers (the Case-A landing, `restoreAbSlot`, the injection, the defensive consumer) run in the same
+  `process()` call. Unchanged.
+- **`processingDiffers`, `measurementInputsDiffer`.** Unchanged, and neither reads the flag.
+  `measurementInputsDiffer (p, pendingP)` is false throughout a fade-in: `p = pendingP` at the bottom,
+  and a later snapshot either re-ducks (a discrete change) or is copied into `p` (continuous).
+- **`keepMatch`.** The formula is unchanged. Its inputs after a bottom are now the currency bit and the
+  prime.
+- **Forced transitions.**
+  - Entry clears the flag.
+  - Tighten does not touch it.
+  - A forced re-duck from the fade-in clears it; `takeRequests` runs first, so its record reads the
+    retired state.
+  - The bottom clears it.
+- **Ordinary transitions.**
+  - Entry sets it.
+  - A retarget in the fade-out ORs in heard edits.
+  - The bottom clears it.
+  - Heard edits in the fade-in set it and report.
+  - A re-duck clears it, then its copy marks it again.
+- **The A/B upgrade** (an ordinary fade-out taking a forced request). It keeps the flag, and the bottom
+  consumes it:
+  - Test 72 (G1): the re-arm comes from the flag alone and holds;
+  - Tests 66 and 67: Case B and the re-arm across an upgrade.
+
+  There is no downgrade path: `pendingForced` clears only at a bottom or in `reset()`.
+- **Host reset and `prepare()` before the bottom.** Unchanged; they read the flag and clear it themselves.
+- **Threads.** The flag is audio-thread state. It is written in `process()` beside the report it retires,
+  and read in `setParameters`, `process`, and `prepare` / `reset` (host-serialized with processing). There
+  is no new state, no lock and no cross-thread access. The added store is one `bool`.
+
+### Q5. Tests, mutants, controls, hashes
+
+- **Test 72** (engine, 34 checks) and **State test 136** (processor, 18 checks). Premises, legs and
+  numbers are in `TESTING.md`. Against `d910a1e`: 11 and 8 fail.
+- **HEAD:** DSP 845 / 0, State 5452 / 0.
+- **Nothing else moves.** On `d910a1e` and on this tree:
+  - the full DSP output is byte-identical apart from Test 72;
+  - the State output is identical apart from State test 136 and the thread-timing counters;
+  - the 23 processor-route hashes and the 186 finite hashes are identical.
+
+  So no existing test reads a re-prepare, a host reset or an A/B record in the fade-in after an ordinary
+  duck carrying a measurement change: the coverage gap the finding lives in.
+- **Devin controls on this tree** (the state suite, each mechanism removed; the 1 MB stack):
+
+  | mechanism removed | fails |
+  |---|---|
+  | Apply's NaN guard | 6 of State test 129 |
+  | Apply itself | 5 of 129, 45 of 130, 8 of 131, 2 of 132, 3 of 133, 2 of 135 |
+  | the kept result as the applied gain | 30 of 132, 3 of 133, 4 of 134, 1 of 136 (the quiet resume) |
+  | the live-edit report | 24 of 133, 1 of 134, 7 of 135 |
+  | `setDisplayedGainDb` honouring `measured` | 21 of 134, 2 of 135, 1 of 136 ((F)) |
+
+- **Load sensitivity (recorded).** With four suites run concurrently on this container, State tests 18
+  and 39 (preset I/O with audio and a saving thread) failed once each, on the pre-fix binary as well.
+  Rerun alone, they pass.
+
+### Q6. Recorded, not changed
+
+- **The fade-in heard edit.** It still sets the flag. That is redundant with its own `inputsChanged()`,
+  and harmless, but a host reset in that fade-in restarts the confirmation, as before.
+- **Deferred by instruction:** cross-rate retention; a flush's quiet glide; automation currency; KI-029;
+  global `toEngine` sanitization; float→int UB; F9, F10, F12; R6a–R6d; ScopeBuffer threading; the
+  vectorscope stop-state; historical doc cleanup; the per-block ramp restart; §P7's 5 ms boundary and
+  positive stale step.

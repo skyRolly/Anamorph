@@ -29,10 +29,10 @@ through. The effect engine is **solo-agnostic** (always sums every band).
   reorder prohibitions.
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:1938` (Mono Maker post-Mix), `:831-845` (Band Solo last)
+- `src/dsp/AnamorphEngine.cpp:1944` (Mono Maker post-Mix), `:831-845` (Band Solo last)
 - `src/dsp/MultibandWidth.h:29-32` (solo-agnostic)
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:1412-1500
+- Source: src/dsp/AnamorphEngine.cpp:1418-1506
 - Tests: testMonoMakerPostMix, testSoloMonitor, testLevelMatchAndSolo
 - History [Partially Verified]: CHANGELOG.md [0.8.0]; commit 018dcdd

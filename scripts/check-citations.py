@@ -701,34 +701,39 @@ DELIBERATE_REAIMS = {
      "src/dsp/LoudnessMatch.cpp:142-181"): "predictDelta",
     ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
      "src/dsp/AnamorphEngine.cpp:1256-1318",
-     "src/dsp/AnamorphEngine.cpp:1702-1821"): "dryAlignScratch",
+     "src/dsp/AnamorphEngine.cpp:1708-1827"): "dryAlignScratch",
     ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
      "src/dsp/AnamorphEngine.cpp:1320-1326",
-     "src/dsp/AnamorphEngine.cpp:1938"): "monoMaker.process",
+     "src/dsp/AnamorphEngine.cpp:1944"): "monoMaker.process",
     # The same four transitions from the older bases this branch is checked against (0fbce03 and
     # 043c7e3, a7d2b88, 659ca0a), which spell those anchors at their own lines; and the `:15-156`
     # entry's target, which follows the re-anchored `:16-267` (a pure move of its end).
     ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
      "src/dsp/AnamorphEngine.cpp:1242-1304",
-     "src/dsp/AnamorphEngine.cpp:1702-1821"): "dryAlignScratch",
+     "src/dsp/AnamorphEngine.cpp:1708-1827"): "dryAlignScratch",
     ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
      "src/dsp/AnamorphEngine.cpp:1306-1312",
-     "src/dsp/AnamorphEngine.cpp:1938"): "monoMaker.process",
+     "src/dsp/AnamorphEngine.cpp:1944"): "monoMaker.process",
     ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
      "src/dsp/AnamorphEngine.cpp:1235-1297",
-     "src/dsp/AnamorphEngine.cpp:1702-1821"): "dryAlignScratch",
+     "src/dsp/AnamorphEngine.cpp:1708-1827"): "dryAlignScratch",
     ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
      "src/dsp/AnamorphEngine.cpp:1299-1305",
-     "src/dsp/AnamorphEngine.cpp:1938"): "monoMaker.process",
+     "src/dsp/AnamorphEngine.cpp:1944"): "monoMaker.process",
     ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
      "src/dsp/AnamorphEngine.cpp:1139-1192",
-     "src/dsp/AnamorphEngine.cpp:1702-1821"): "dryAlignScratch",
+     "src/dsp/AnamorphEngine.cpp:1708-1827"): "dryAlignScratch",
     ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
      "src/dsp/AnamorphEngine.cpp:1194-1199",
-     "src/dsp/AnamorphEngine.cpp:1938"): "monoMaker.process",
+     "src/dsp/AnamorphEngine.cpp:1944"): "monoMaker.process",
     ("docs/architecture/API_REFERENCE.md",
      "src/dsp/AnamorphEngine.h:46-167",
      "src/dsp/AnamorphEngine.h:46-198"): "requestAbSwitch",
+    #
+    # 2026-09-26 (the Devin review's re-prepare finding, "the duckMeasDirty lifecycle"): the targets of
+    # the `dryAlignScratch`, `monoMaker.process`, `loudnessRefScratch` and `landMatchAfterMeasure`
+    # entries are RE-DERIVED, none is new. The bottom retires the flag it reports: six lines below
+    # `measChangedAtBottom`.
     #
     # 2026-09-25 (the Devin review's A/B finding, "A/B provenance"): the targets of FIVE entries below
     # and of FUTURE_RISKS.md's `abActive` entry above are RE-DERIVED, none is new. The engine gains the
@@ -745,10 +750,10 @@ DELIBERATE_REAIMS = {
      "src/dsp/LoudnessMatch.cpp:16-46"): "setSampleRate",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1272-1305",
-     "src/dsp/AnamorphEngine.cpp:1834-1835"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1840-1841"): "loudnessRefScratch",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1201-1234",
-     "src/dsp/AnamorphEngine.cpp:1834-1835"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1840-1841"): "loudnessRefScratch",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/PluginProcessor.cpp:402-424",
      "src/PluginProcessor.cpp:455"): "applyAutoGain",
@@ -763,7 +768,7 @@ DELIBERATE_REAIMS = {
     # decision and the A(dry) reference they name.
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1844",
-     "src/dsp/AnamorphEngine.cpp:1959"): "landMatchAfterMeasure",
+     "src/dsp/AnamorphEngine.cpp:1965"): "landMatchAfterMeasure",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:545",
      "src/dsp/AnamorphEngine.cpp:564"): "measurementInputsDiffer",
@@ -772,7 +777,7 @@ DELIBERATE_REAIMS = {
      "src/dsp/AnamorphEngine.cpp:1263"): "measChangedAtBottom",
     ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
      "src/dsp/AnamorphEngine.cpp:1719-1720",
-     "src/dsp/AnamorphEngine.cpp:1834-1835"): "loudnessRefScratch",
+     "src/dsp/AnamorphEngine.cpp:1840-1841"): "loudnessRefScratch",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

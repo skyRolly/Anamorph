@@ -55,9 +55,9 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // always flushes: nothing is measured, and sr still reads its 44.1 kHz default (Test 67).
     // The result must also be CURRENT (ADR-0007, Amendment of 2026-09-25; Test 69): a measurement
     // input changed live or at a duck bottom is already in p, so the prime cannot see it, and until
-    // the measure catches up the result still describes the previous sound. A duck still in flight
-    // reports its change only at its bottom, which reset() below replaces: an ordinary duck's live
-    // part (duckMeasDirty) and, on the unprimed engine API, its pending snapshot.
+    // the measure catches up the result still describes the previous sound. A duck before its bottom
+    // reports its change only there, which reset() below replaces: an ordinary duck's live part
+    // (duckMeasDirty, retired by that bottom) and, on the unprimed engine API, its pending snapshot.
     const bool adoptsMeasChange = switchState != SwitchState::Normal
                                && (duckMeasDirty || measurementInputsDiffer (p, pendingP));
     const bool keepMatch = os2 != nullptr && juce::exactlyEqual (sampleRate, sr)
@@ -636,8 +636,8 @@ bool AnamorphEngine::takeRequests (int req) noexcept
         // rate it was measured for. Not while a restore is still armed -- the engine never adopted the slot
         // that switch was going to, and the live result is still its source's, already recorded --
         // and not in the word that forgets: the live result is the previous project's. Not measured
-        // either while a duck in flight has made a measurement-input change live that only its bottom
-        // will report (duckMeasDirty) -- the same rule prepare() applies.
+        // either while a duck before its bottom has made a measurement-input change live that only
+        // that bottom will report (duckMeasDirty, retired there) -- the same rule prepare() applies.
         if (abRestoreSlot < 0 && (req & kReqAbForget) == 0)
         {
             AbMatchMemory& m = abMemory[from];
@@ -851,7 +851,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1285) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1291) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
@@ -1262,6 +1262,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         const bool procChanged = processingDiffers (pendingP, p);
         measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP);
         if (measChangedAtBottom) loudness.inputsChanged();   // a restore below: current only if measured
+        // The duck's live change is REPORTED here, so its flag retires here: this bottom reads it through
+        // measChangedAtBottom, and from now on the result's currency -- or a restore's provenance -- carries it.
+        // Left set, it outlived its report into the fade-in, where a same-rate re-prepare, a host reset and an
+        // A/B record each read it as a change still in flight and discarded a measured restore (ADR-0007, Note
+        // of 2026-09-26, the duckMeasDirty lifecycle). A live edit during the fade-in reports itself.
+        duckMeasDirty = false;
         // An engage that changes only the gain STARTS at the published value, current or not: the matcher
         // runs with Level Match off too, so that value is what Level Match on throughout publishes here.
         // Currency governs what a result is carried into (a re-prepare, an A/B record), not this landing

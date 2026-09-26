@@ -210,9 +210,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   few seconds Level Match needs to catch up with a change, still measures it afresh. The same goes for
   a re-prepare right after switching back to an A/B slot that you left before Level Match had caught
   up with it: that slot's remembered level is restored as before, but it is no longer kept as if it
-  had been measured (a slot left 0.3 s after a Drive change was kept **1.5 dB** off). Decision: ADR-0007
-  (Amendments of 2026-09-24, F13(2), and 2026-09-25, including A/B provenance). Regression coverage:
-  Test 67, Test 68, Test 69, Test 70, State tests 131, 132, 133, 134 and 120. Evidence: PR #156.
+  had been measured (a slot left 0.3 s after a Drive change was kept **1.5 dB** off). And a slot's
+  correctly measured level is now kept when you switch A/B during the short fade of another change (a
+  Multiband band count, say) and the host re-prepares in the fade that follows: it used to be thrown
+  away there, playing about **1.6 dB** off for two seconds; a transport stop, or switching away again
+  within that fade, left it to be thrown away by a later re-prepare. Decision: ADR-0007 (Amendments of 2026-09-24, F13(2), and
+  2026-09-25, including A/B provenance; Note of 2026-09-26). Regression coverage: Test 67, Test 68,
+  Test 69, Test 70, Test 72, State tests 131, 132, 133, 134, 136 and 120. Evidence: PR #156.
   [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands

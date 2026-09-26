@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-25), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), and its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect) — whose entries are the **76th** to **83rd passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-26), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), and its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in) — whose entries are the **76th** to **84th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1430-1436` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1436-1442` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1919,7 +1919,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:237-245`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1260-1395`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1260-1401`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2092-2142` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2098-2148` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13002,6 +13002,61 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 84th pass — 2026-09-26, PR #156 (the Devin review: "Valid A/B gain lost on re-prepare")
+
+**Scope.** Devin's review of `d910a1e`: *"Valid A/B gain lost on re-prepare"* at `AnamorphEngine.cpp:61-65`.
+An ordinary duck is upgraded to a forced A/B duck in its fade-out, the bottom restores B's measured gain,
+`duckMeasDirty` stays set, and a same-rate `prepare()` in the fade-in flushes the gain to 0 dB. The finding
+was reproduced through the processor and the engine, the flag's producers and readers were traced, two
+strategies and five variants were measured, and the fix was decided under the owner's authorization: **a
+defect; the bottom retires the flag it reports** (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §Q).
+
+**The finding and the fix.**
+- **Reproduced.** 10.7 ms into the fade-in, B's −7.613 dB (current, measured, its record valid) flushed to
+  0 dB. The next block applied the floor, 1.61 dB off a fresh processor. The same happened in every fade-in
+  gap. With only the flag cleared by hand: kept, 0.028 dB off.
+- **Two more readers.** A host reset in the fade-in re-reported the change. A switch away recorded B as not
+  measured, and back on B a re-prepare flushed it, 1.60 dB off.
+- **The lifecycle.** The flag says an ordinary duck's live measurement change has not been reported yet.
+  The bottom reports it (`measChangedAtBottom`, `inputsChanged()`, P1b) and now retires it, as `reset()`
+  already did when completing a duck. After the bottom, the currency or a restore's provenance carries it.
+- **Strategies.**
+  - Narrowing `prepare()`'s guard kept a stale value (its own `reset()` still read the flag) and left the
+    other two readers wrong.
+  - Retiring at the upgrade, or before the bottom reads the flag, loses P1b / Case B.
+  - Retiring where the fade-in ends changes nothing.
+  - Retiring at forced bottoms only, or gating all three readers, is equivalent on every check and
+    recorded.
+
+**Tests.**
+- **DSP Test 72** (`testAbRestoreSurvivesAReprepareInTheFadeIn`): 34 checks.
+- **State test 136** (`testAnAbGainRestoredAtAnUpgradedBottomSurvivesAReprepareInTheFadeIn`): 18 checks.
+- **Premises:** an ordinary duck; the switch inside its fade-out; the upgrade; B's record restored and
+  valid; the verdicts in the fade-in.
+- **Legs:** before the bottom; the fade-in gaps with the applied gain (audible and quiet); after it; a new
+  rate; the duck alone; the switch alone; a duck without a measurement change; a stale record; a host
+  reset and a switch away in the fade-in; P1b.
+- **Against `d910a1e`:** 11 and 8 checks fail.
+- **Suites:** DSP 845 / 0, State 5452 / 0.
+- **Nothing else moves:** DSP and State output identical outside the new tests (thread-timing counters
+  aside); 23 route and 186 finite hashes unchanged.
+- **Devin controls:** the five mechanisms, each removed, still fail their intended tests.
+
+**Documents changed.**
+- **ADR-0007:** a new dated *Note* (the duckMeasDirty lifecycle): the reproduction, the lifecycle, the
+  decision, the alternatives, what it preserves and the gate record. "In flight" in the live-edit
+  amendment (the `prepare()` refusal and the host-reset row) and in the A/B provenance capture rule now
+  reads *before its bottom*.
+- **`KNOWN_ISSUES.md`:** KI-030's A/B bullet and its table row.
+- **`CHANGELOG.md` `[0.9.9]`:** the same-rate re-prepare entry.
+- **`TESTING.md`:** Test 72, State test 136, and the Test 69 sentence on the in-flight guard.
+- **The worklog:** §Q, and a pointer from §P6.
+- **Code comments:** `AnamorphEngine.cpp` (the retirement, `prepare()`'s guard, the A/B capture rule),
+  `AnamorphEngine.h` (`duckMeasDirty`).
+- **Citations:** 52 anchors re-anchored by `check-citations.py --fix`; four `DELIBERATE_REAIMS` targets
+  re-derived (+6 lines below the bottom's report).
+- **This file:** this entry and the *Last updated* line.
 
 ## 83rd pass — 2026-09-25, PR #156 (the Devin review: "Level Match engages on stale compensation")
 

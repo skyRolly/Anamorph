@@ -12304,6 +12304,520 @@ static void testLevelMatchEngageLandsOnThePublishedTrajectory()
     }();
 }
 
+// =====================================================================================================
+//  Test 72 -- A MEASURED A/B GAIN RESTORED AT AN UPGRADED DUCK'S BOTTOM SURVIVES A SAME-RATE RE-PREPARE IN THE FADE-IN:
+//  THE BOTTOM RETIRES THE LIVE CHANGE IT REPORTED (ADR-0007, Note of 2026-09-26, the duckMeasDirty lifecycle, on the
+//  Devin finding "Valid A/B gain lost on re-prepare"; State test 136 is the production-path half. Test 69 pins the
+//  currency, Test 70 the A/B record, Test 67 the re-arm.)
+//
+//  THE CONTRACT. duckMeasDirty records that an ORDINARY duck made a measurement-input change live (copyContinuous)
+//  that nothing has reported yet. Its bottom reports it -- measChangedAtBottom, inputsChanged(), the Case-A landing
+//  refused, an A/B restore or injection re-armed (P1b) -- and retires it there, as a host reset that completes the
+//  duck in the bottom's place always did. Before the bottom a same-rate re-prepare, a host reset and an A/B record
+//  read it as a change still in flight (Test 69, Test 70 (2c)); after it the result's currency -- or a restore's
+//  provenance -- carries the change. Left set through the fade-in, it made all three read a measured restore as
+//  stale: the pre-fix engine flushed B's -7.59 dB to 0 dB on a re-prepare there (the next block applying the predict
+//  floor, -6.01: 1.58 dB off), dropped its currency on a host reset, and recorded the slot as not measured.
+//
+//  THE ORACLES (48 kHz / 256; programme N, seed 6901). Every lane is an engine run from sample 0 on one script; a
+//  verdict is the script with a same-rate re-prepare (prime, prepare, setParameters: the processor's prepareToPlay)
+//  before block k: KEEP is the published value bit-identical across it, FLUSH is exactly 0 dB after it. The applied
+//  gain is M1 (Test 66): the run over its Level-Match-off, Output-Gain-0 twin -- the same script and re-prepares --
+//  per block. FRESH: an engine at slot B from sample 0.
+//
+//  THE ROUTE (Devin's). Slot B (Haas, Amount 0.5, Width 1, Drive 12, Level Match on) from the first block, left for A
+//  (Drive 8) 4 s in: its record measured, -7.5992 (the fresh engine -7.5992). 2 s on A, then an ORDINARY duck (a band
+//  count, Multiband off) carrying Width 1 -> 2, and requestAbSwitch (A -> B) with B's snapshot one block later.
+//  PREMISES, measured: the switch block plays 2.4e-5 of the level before (0.95 without the duck) and is bit-identical
+//  to the duck alone through it (the request rode the running fade: an upgrade); the switch block still publishes A's
+//  value (-5.2853) and the bottom, event + 2, B's record (-7.5956; a restore without a forced bottom lands in the block
+//  that takes the switch; the duck alone -5.2947); the bottom block and two after it play 0.00 / 0.22 of the fresh
+//  engine's energy (the fade-in).
+//
+//  THE LEGS (this tree / the pre-fix engine, d910a1e)
+//   (B) Re-prepared before the bottom (FadeOut): FLUSHED -- the live result carries a change in flight -- and the
+//       switch's armed restore lands in the first block (-7.5956), KEPT by a re-prepare 3 blocks later. Both.
+//   (C) (A) (D) Re-prepared in the fade-in gaps after the bottom block, + 1, + 3 and + 5 (the last; Devin's ~10 ms is
+//       + 1): KEPT bit-exact (-7.5956 / -7.5926 / -7.5890 / -7.5868, 0.014-0.023 dB off fresh), the applied gain of
+//       the next block within 0.005 dB of it, and KEPT again 3 blocks later / FLUSHED, the next block applying the
+//       floor (-6.01). After the fade-in (Normal) KEPT, both: the window was the fade-in alone. A quiet resume (-70
+//       dBFS, under the silence detector) after the + 1 re-prepare applies -7.5926 from its first block / -0.094 (a
+//       glide from 0 dB). The same gap at 44.1 kHz: FLUSHED, both (a new rate, F13(2)).
+//   (E) The ordinary duck alone: FLUSHED before its bottom and in its fade-in (Case B: the bottom reported the Width
+//       change, so the result is not current), KEPT 6 s later. Both.
+//   CONTROLS. The switch alone, and the upgraded duck carrying no measurement change (the band count only): KEPT in
+//       the fade-in, both (the flag was never set).
+//   (F) B's record NOT measured (its visit 0.5 s long, -6.6707, 0.94 dB off a converged fresh engine): restored at the
+//       upgraded bottom (-6.6726) and FLUSHED in the fade-in, both -- retiring the flag marks nothing current.
+//   (H1) A host reset (audioTailsOnly) + 1 into the fade-in, then a re-prepare 3 blocks later: KEPT (-7.5831) /
+//       FLUSHED (the reset re-reported the retired change). The switch alone KEPT, the duck alone FLUSHED, both.
+//   (H2) requestAbSwitch (B -> A) + 1 into the fade-in records B (-7.5926); 1 s on A; back: restored -7.5902, KEPT
+//       (0.035 dB off fresh) / FLUSHED (recorded NOT measured). The switch alone: KEPT, both.
+//   (G) P1b, on silence for 0.3 s from the bottom, B measured on N x 2. (G1) B at Width 2, the duck making Width 2 live
+//       on A: at the bottom the adopted state reads what the running one does, so the re-arm is the flag's alone --
+//       the restored -4.6143 HOLDS (0 dB). (G2) B at Output Gain -6, the duck carrying Output Gain -3: no measurement
+//       input differs anywhere, NOT re-armed -- it moves 1.30 dB. Both engines.
+//  AGAINST THE PRE-FIX ENGINE 11 of the 34 checks fail: (C) (A) (D) (D)'s keep and applied gain (8), the quiet resume,
+//  (H1), (H2). VARIANTS, each this tree with one change: the flag retired only at a FORCED bottom -- 0 (equivalent
+//  under every check here: after an ordinary bottom the result is not current until the measure re-confirms it,
+//  which no fade-in is long enough for; what it keeps is the host reset's second report, a confirmation restarted);
+//  retired before the bottom reads it -- (G1), and Tests 66 67 68 71, State tests 130 132 135 (Case B and P1b lose
+//  the report); retired at the upgrade -- (G1), Tests 66 67; retired where the fade-in ends -- the pre-fix 11;
+//  prepare()'s guard narrowed to FadeOut instead (Strategy B) -- 6: the second re-prepare of (C) (A) (D) (D) (the
+//  kept result's own reset() marks it stale), (H1), (H2); all three readers narrowed to FadeOut -- 0 (equivalent: it
+//  leaves a reported flag set for every future reader to gate).
+static void testAbRestoreSurvivesAReprepareInTheFadeIn()
+{
+    std::printf ("Test 72: a measured A/B gain restored at an upgraded duck's bottom survives a same-rate re-prepare in the "
+                 "fade-in -- the bottom retires the live change it reported (ADR-0007, duckMeasDirty lifecycle; Devin)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    using anamorph::AnamorphEngine;
+    using anamorph::Algorithm;
+    using Params = anamorph::EngineParameters;
+    constexpr double sr = 48000.0, srLo = 44100.0;
+    constexpr int    bs = 256, nch = 2, blk = bs * nch;
+    const int sec   = (int) std::lround (sr / bs);                       // 188 blocks per second
+    const int H     = sec / 2;                                           // 0.5 s
+    const int kBot  = (int) std::lround (0.006 * sr) / bs + 1;           // a duck's silent bottom: event + 2 (Tests 66-71)
+    const int kFade = ((int) std::lround (0.028 * sr) + bs - 1) / bs;    // its fade-in spans 6 blocks: + 2 .. + 7
+    const int P     = 4 * sec;                                           // slot B's visit: its result measured by then
+    const int E     = P + 2 * sec;                                       // on A: the ordinary duck opens (6 s)
+    const int S     = E + 1;                                             // ...and the A/B switch lands in its fade-out
+    const int kObs  = 3;                                                 // audible blocks from a return's bottom to its verdict
+    const int probe = (int) std::lround (0.3 * sec);                     // (G): Test 67's P1b probe, 0.3 s of silence
+    const int nN    = E + 7 * sec;                                       // (E)'s recovery verdict 6 s after its duck
+    const auto same = [] (float f0, float f1) { return std::memcmp (&f0, &f1, sizeof (float)) == 0; };
+
+    // ---- the programme N (Tests 69-71: seed 6901; L = v, R = 0.6 v + 0.2 w) --------------------------------------
+    std::vector<float> progN ((size_t) nN * blk);
+    {
+        juce::Random rng (6901);
+        for (size_t i = 0; i < progN.size(); i += 2)
+        {
+            const float v = rng.nextFloat() - 0.5f, w = rng.nextFloat() - 0.5f;
+            progN[i] = v;
+            progN[i + 1] = 0.6f * v + 0.2f * w;
+        }
+    }
+
+    // ---- lanes: a script of snapshots, calls and re-prepares, run from sample 0 (Test 70's) -------------------------
+    using Act = std::function<void (AnamorphEngine&)>;
+    struct Lane
+    {
+        std::vector<std::pair<int, Params>> snaps;                       // (from block, the host's snapshot)
+        std::vector<std::pair<int, Act>>    acts;                        // (block, calls before the block's setParameters)
+        std::vector<std::pair<int, double>> rps;                         // (block, rate): prime, prepare, setParameters
+        std::vector<std::pair<int, int>>    silent;                      // digital silence on [first, second)
+        std::vector<std::pair<int, float>>  scales;                      // (from block, the input's scale)
+        int cap = 0, recFrom = 0, recTo = 0;
+        std::vector<float> pub, y, before, after;                        // published dB per block; output; per re-prepare
+    };
+    const auto run = [&] (Lane& ln)
+    {
+        const auto byBlock = [] (const auto& p0, const auto& p1) { return p0.first < p1.first; };
+        std::stable_sort (ln.snaps.begin(), ln.snaps.end(), byBlock);
+        std::stable_sort (ln.scales.begin(), ln.scales.end(), byBlock);
+        std::stable_sort (ln.rps.begin(), ln.rps.end(), byBlock);
+        const auto snapAt = [&ln] (int b)
+        {
+            Params s = ln.snaps.front().second;
+            for (const auto& x : ln.snaps)
+                if (x.first <= b) s = x.second;
+            return s;
+        };
+        auto e = std::make_unique<AnamorphEngine>();                     // heap: Test 59's note (1 MB-stack lane)
+        const Params first = snapAt (0);
+        e->primeParameters (first);
+        e->prepare (sr, bs);
+        e->setParameters (first);
+        ln.pub.assign ((size_t) ln.cap, 0.0f);
+        ln.before.assign (ln.rps.size(), 0.0f);
+        ln.after.assign (ln.rps.size(), 0.0f);
+        ln.y.assign ((size_t) juce::jmax (0, ln.recTo - ln.recFrom) * blk, 0.0f);
+        juce::AudioBuffer<float> buf (nch, bs);
+        for (int b = 0; b < ln.cap; ++b)
+        {
+            const Params s = snapAt (b);
+            for (auto& a : ln.acts)
+                if (a.first == b) a.second (*e);
+            for (size_t i = 0; i < ln.rps.size(); ++i)
+                if (ln.rps[i].first == b)
+                {
+                    ln.before[i] = e->getMatchGainDb();
+                    e->primeParameters (s);                              // the processor's prepareToPlay sequence
+                    e->prepare (ln.rps[i].second, bs);
+                    e->setParameters (s);
+                    ln.after[i] = e->getMatchGainDb();
+                }
+            bool silent = false;
+            for (const auto& z : ln.silent) silent = silent || (b >= z.first && b < z.second);
+            float g = 1.0f;
+            for (const auto& z : ln.scales)
+                if (z.first <= b) g = z.second;
+            const float* x = progN.data() + (size_t) b * blk;
+            for (int i = 0; i < bs; ++i)
+            {
+                buf.setSample (0, i, silent ? 0.0f : g * x[2 * i]);
+                buf.setSample (1, i, silent ? 0.0f : g * x[2 * i + 1]);
+            }
+            e->setParameters (s);
+            e->process (buf);
+            ln.pub[(size_t) b] = e->getMatchGainDb();
+            if (b >= ln.recFrom && b < ln.recTo)
+            {
+                float* out = ln.y.data() + (size_t) (b - ln.recFrom) * blk;
+                for (int i = 0; i < bs; ++i) { out[2 * i] = buf.getSample (0, i); out[2 * i + 1] = buf.getSample (1, i); }
+            }
+        }
+    };
+    struct Verdict { float before = 0.0f, after = 0.0f; bool keep = false, flush = false; };
+    const auto verdictOf = [&same] (const Lane& ln, size_t i)            // KEEP: bit-identical; FLUSH: exactly 0 dB
+    {
+        Verdict v;
+        v.before = ln.before[i];
+        v.after  = ln.after[i];
+        const bool zero = juce::exactlyEqual (v.before, 0.0f);
+        v.keep  = ! zero && std::isfinite (v.before) && same (v.before, v.after);
+        v.flush = ! zero && juce::exactlyEqual (v.after, 0.0f);
+        return v;
+    };
+    const auto word = [] (const Verdict& v) { return v.keep ? "KEPT" : v.flush ? "FLUSHED" : "neither"; };
+    const auto pubAt = [] (const Lane& ln, int b) { return ln.pub[(size_t) b]; };
+    const auto blockEn = [&] (const Lane& ln, int b)
+    {
+        double s = 0.0;
+        for (int i = 0; i < blk; ++i) { const double v = ln.y[(size_t) (b - ln.recFrom) * blk + (size_t) i]; s += v * v; }
+        return s;
+    };
+    const auto sameOut = [&] (const Lane& l0, const Lane& l1, int from, int to)   // bit-identical output over [from, to)
+    {
+        for (int k = from; k < to; ++k)
+            for (int i = 0; i < blk; ++i)
+                if (! same (l0.y[(size_t) (k - l0.recFrom) * blk + (size_t) i], l1.y[(size_t) (k - l1.recFrom) * blk + (size_t) i]))
+                    return false;
+        return true;
+    };
+    struct Fit { double gDb = 0.0, resid = 1.0; bool ok = false; };
+    const auto fit = [&] (const Lane& r, const Lane& t, int b) -> Fit    // M1 (Test 66): r's gain over t in block b (dB)
+    {
+        const float* x = r.y.data() + (size_t) (b - r.recFrom) * blk;
+        const float* z = t.y.data() + (size_t) (b - t.recFrom) * blk;
+        double num = 0.0, den = 0.0, ex = 0.0;
+        for (int i = 0; i < blk; ++i) { num += (double) x[i] * z[i]; den += (double) z[i] * z[i]; ex += (double) x[i] * x[i]; }
+        if (! (den > 1.0e-30 && ex > 1.0e-30)) return {};
+        const double g = num / den;
+        double res = 0.0;
+        for (int i = 0; i < blk; ++i) { const double d = (double) x[i] - g * z[i]; res += d * d; }
+        return { 20.0 * std::log10 (juce::jmax (1.0e-12, std::abs (g))), res / ex, true };
+    };
+
+    // ---- the states: A = Haas, Amount 0.5, Width 1, Drive 8, Level Match on; B = A at Drive 12 ----------------------
+    Params base;
+    base.algorithm = Algorithm::Haas; base.algoAmount = 0.5f; base.width = 1.0f; base.driveDb = 8.0f;
+    base.autoGainMatch = true;
+    const auto with = [] (Params p0, const std::function<void (Params&)>& f) { f (p0); return p0; };
+    const Params slotB = with (base, [] (Params& q) { q.driveDb = 12.0f; });
+    const Params inert = with (base, [] (Params& q) { q.mbBands = 3; });           // Multiband off: ducks, measures nothing
+    const Params dirty = with (inert, [] (Params& q) { q.width = 2.0f; });         // ...carrying a live Width 1 -> 2
+    const auto twinOf  = [] (Params s) { s.autoGainMatch = false; return s; };     // Output Gain 0: g is the match gain
+
+    // THE SCRIPT. Slot B from the first block; left for A (the engine's slot 1 -> 0) at `leave`: at P its result is
+    // measured, at H (0.5 s after the first prepare) it is current only by the flush's convention. On A, at E:
+    //   devin -- the ordinary duck (a band count, Multiband off) carrying Width 1 -> 2, and the switch to B one block
+    //            later, in its fade-out (the processor's order: requestAbSwitch, then the destination's snapshot)
+    //   quiet -- the same duck without the Width change (it makes nothing live the measurement reads), the same switch
+    //   ab    -- the switch alone, at the same block (a forced duck from Normal: its bottom one block later)
+    //   ord   -- the ordinary duck alone
+    enum Route { devin, quiet, ab, ord };
+    const auto script = [&] (Route r, int leave, bool twin)
+    {
+        Lane ln;
+        const auto st = [twin, &twinOf] (const Params& s) { return twin ? twinOf (s) : s; };
+        ln.snaps.emplace_back (0, st (slotB));
+        ln.acts.emplace_back (leave, [] (AnamorphEngine& e) { e.requestAbSwitch (1, 0); });
+        ln.snaps.emplace_back (leave, st (base));
+        if (r == devin || r == ord) ln.snaps.emplace_back (E, st (dirty));
+        if (r == quiet)             ln.snaps.emplace_back (E, st (inert));
+        if (r != ord)
+        {
+            ln.acts.emplace_back (S, [] (AnamorphEngine& e) { e.requestAbSwitch (0, 1); });
+            ln.snaps.emplace_back (S, st (slotB));
+        }
+        ln.recFrom = E - 1;
+        return ln;
+    };
+    const auto bottomOf = [&] (Route r) { return (r == ab ? S : E) + kBot; };    // the bottom block of the route's duck
+    // A VERDICT: the script with a same-rate re-prepare before block k (and optionally a second one `again` blocks
+    // later), run to `to`.
+    const auto verdictLane = [&] (Route r, int leave, int k, int again, double rate, int to, bool twin)
+    {
+        Lane ln = script (r, leave, twin);
+        ln.rps.emplace_back (k, rate);
+        if (again > 0) ln.rps.emplace_back (k + again, sr);
+        ln.cap = ln.recTo = to;
+        run (ln);
+        return ln;
+    };
+
+    // A fresh engine at slot B, fed the same stream from sample 0: what the measure converges to there.
+    Lane fB;
+    fB.snaps.emplace_back (0, slotB);
+    fB.cap = fB.recTo = nN;
+    fB.recFrom = E - 1;
+    run (fB);
+    const auto offFresh = [&] (float v, int b) { return std::abs ((double) v - (double) pubAt (fB, b)); };
+    const auto ratioToFresh = [&] (const Lane& ln, int b) { return blockEn (ln, b) / juce::jmax (1.0e-30, blockEn (fB, b)); };
+
+    // =====================================================================================================
+    //  PREMISES: the route happened as Devin describes it, and B's record is a valid, measured one
+    // =====================================================================================================
+    float rec = 0.0f;
+    [&] {
+        Lane dv = script (devin, P, false), od = script (ord, P, false), no = script (ord, P, false);
+        no.snaps.pop_back();                                             // no event at all on A
+        for (Lane* l : { &dv, &od, &no }) { l->cap = l->recTo = E + kBot + kFade + 2; run (*l); }
+        rec = pubAt (dv, P - 1);                                         // B's record: the value published when B was left
+        const double enBefore = blockEn (dv, E - 1), enSw = blockEn (dv, S), enNo = blockEn (no, S);
+        std::printf ("  %-70s: B left at %+.4f (fresh B %+.4f) | the switch block plays %.1e of the level before (%.2f "
+                     "without the duck), bit-identical to the duck alone through it: %s\n",
+                     "premise: an ordinary duck, and the A/B switch inside its fade-out", (double) rec,
+                     (double) pubAt (fB, P - 1), enSw / enBefore, enNo / enBefore,
+                     sameOut (dv, od, E - 1, S + 1) ? "yes" : "NO");
+        check (enSw <= 0.05 * enBefore && enNo >= 0.5 * enBefore && sameOut (dv, od, E - 1, S + 1),
+               "premise: the band count opened an ordinary duck (the switch block < 5% of the level before, >= 50% "
+               "without it) and the switch was taken inside its fade-out -- the output is bit-identical to the duck "
+               "alone through the switch block (the request re-opened nothing: it upgraded the running fade)");
+        const int bt = bottomOf (devin);
+        std::printf ("  %-70s: published %+.4f in the switch block, %+.4f at the bottom (block %d) | the duck alone "
+                     "%+.4f there\n", "premise: the upgraded bottom restores B's record", (double) pubAt (dv, S),
+                     (double) pubAt (dv, bt), bt - E, (double) pubAt (od, bt));
+        check (std::abs (pubAt (dv, S) - rec) >= 0.3 && std::abs (pubAt (dv, bt) - rec) <= 0.01
+                   && std::abs (pubAt (od, bt) - rec) >= 0.3,
+               "premise: the duck was UPGRADED and its bottom restored B's record -- still A's value in the switch block "
+               "(a restore without a forced bottom lands in the block that takes the switch), within 0.01 dB of the "
+               "record at event + 2, and the duck alone publishes no such value there");
+        check (offFresh (rec, P - 1) <= 0.1, "premise: B's record is valid -- within 0.1 dB of a fresh engine at B");
+        std::printf ("  %-70s: block + 2 / + 4 / + 6 of the duck plays %.2f / %.2f / %.2f of a fresh B's energy\n",
+                     "premise: the fade-in", ratioToFresh (dv, bt), ratioToFresh (dv, bt + 2), ratioToFresh (dv, bt + 4));
+        check (ratioToFresh (dv, bt) <= 0.2 && ratioToFresh (dv, bt + 2) <= 0.9,
+               "premise: the bottom block and two blocks after it are still fading in (<= 0.2 and <= 0.9 of a fresh B's "
+               "block energy): a re-prepare in the gaps after them lands in the fade-in");
+    }();
+
+    // =====================================================================================================
+    //  (A)-(D) A SAME-RATE RE-PREPARE AROUND THE UPGRADED BOTTOM
+    // =====================================================================================================
+    [&] {
+        const int bt = bottomOf (devin);
+        struct Gap { const char* name; int k; bool fadeIn; };
+        const Gap gaps[] = { { "(B)  before the bottom (the fade-out's last gap)", bt, false },
+                             { "(C)  the earliest fade-in gap (after the bottom block)", bt + 1, true },
+                             { "(A)  ~11 ms into the fade-in (Devin's case)", bt + 2, true },
+                             { "(D)  ~21 ms into the fade-in", bt + 4, true },
+                             { "(D)  the fade-in's last gap", bt + kFade, true },
+                             { "     control: the first gap after the fade-in (Normal)", bt + kFade + 1, false } };
+        for (const Gap& g : gaps)
+        {
+            const Lane v = verdictLane (devin, P, g.k, 3, sr, g.k + 5, false);
+            const Verdict v0 = verdictOf (v, 0), v1 = verdictOf (v, 1);
+            if (g.k == bt)
+            {
+                // Before the bottom the live result carries the duck's live change: it goes. The restore the switch armed
+                // lands in the first block instead, measured -- and a re-prepare after it keeps it.
+                std::printf ("  %-70s: %+.4f -> %+.4f (%s) | the first block publishes %+.4f (the record %+.4f) | "
+                             "re-prepared 3 blocks later %s\n", g.name, (double) v0.before, (double) v0.after, word (v0),
+                             (double) pubAt (v, g.k), (double) rec, word (v1));
+                check (v0.flush && std::abs (pubAt (v, g.k) - rec) <= 0.01 && v1.keep,
+                       "(B) a same-rate re-prepare BEFORE the bottom respects the pending state: it flushes the live result "
+                       "(a measurement change still in flight), the switch's armed restore lands in the first block (within "
+                       "0.01 dB of B's record) and a re-prepare 3 blocks later KEEPS it");
+                continue;
+            }
+            const Lane t = verdictLane (devin, P, g.k, 3, sr, g.k + 5, true);
+            const Fit f = fit (v, t, g.k);
+            std::printf ("  %-70s: %+.4f -> %+.4f (%s), %.3f dB off fresh B | applied in the next block %+.4f (resid "
+                         "%.0e) | re-prepared 3 blocks later %s\n", g.name, (double) v0.before, (double) v0.after,
+                         word (v0), offFresh (v0.before, g.k - 1), f.gDb, f.resid, word (v1));
+            check (v0.keep && offFresh (v0.before, g.k - 1) <= 0.1,
+                   g.fadeIn ? "(A)/(C)/(D) a measured A/B gain restored at an upgraded duck's bottom SURVIVES a same-rate "
+                              "re-prepare in the fade-in: KEPT bit-exact, within 0.1 dB of a fresh engine at B (the bottom "
+                              "reported the duck's live change and retired it)"
+                            : "control: after the fade-in the same re-prepare KEEPS it (the window the pre-fix engine "
+                              "discarded it in is the fade-in alone)");
+            check (f.ok && f.resid <= 1.0e-3 && std::abs (f.gDb - (double) v0.before) <= 0.01,
+                   "(A) ...and the kept value is the APPLIED gain from the first block after the re-prepare (M1 against the "
+                   "Level-Match-off twin: within 0.01 dB)");
+            check (v1.keep, "(A) ...and it stays CURRENT: a second same-rate re-prepare 3 blocks later keeps it too");
+        }
+
+        // (A) at a quiet resume: the stream at -70 dBFS from the re-prepare on, under the silence detector -- the kept
+        // value is the applied gain from the first sample (Test 68's property, through this route)
+        const int k = bt + 2;
+        Lane q = script (devin, P, false), qt = script (devin, P, true);
+        for (Lane* l : { &q, &qt })
+        {
+            l->rps.emplace_back (k, sr);
+            l->scales.emplace_back (k, 3.2e-4f);
+            l->cap = l->recTo = k + 4;
+            run (*l);
+        }
+        const Verdict vq = verdictOf (q, 0);
+        const Fit fq = fit (q, qt, k);
+        std::printf ("  %-70s: %+.4f -> %+.4f (%s) | applied in the first quiet block %+.4f (resid %.0e)\n",
+                     "(A)  ~11 ms into the fade-in, then a quiet resume (-70 dBFS)", (double) vq.before, (double) vq.after,
+                     word (vq), fq.gDb, fq.resid);
+        check (vq.keep && fq.ok && fq.resid <= 1.0e-3 && std::abs (fq.gDb - (double) vq.before) <= 0.01,
+               "(A) at a quiet resume the kept value is the applied gain from the first block (within 0.01 dB), not a glide "
+               "from 0 dB");
+
+        // a new rate still flushes (F13(2): a result is not carried across a rate change)
+        const Lane nr = verdictLane (devin, P, bt + 2, 0, srLo, bt + 3, false);
+        const Verdict vr = verdictOf (nr, 0);
+        std::printf ("  %-70s: %+.4f -> %+.4f (%s)\n", "     control: the same gap, re-prepared at 44.1 kHz",
+                     (double) vr.before, (double) vr.after, word (vr));
+        check (vr.flush, "control: a re-prepare at a NEW rate in the same gap still flushes (exactly 0 dB)");
+    }();
+
+    // =====================================================================================================
+    //  (E) (F) CONTROLS: the duck without the switch; the switch without the duck; a stale record
+    // =====================================================================================================
+    [&] {
+        const int btO = bottomOf (ord), btA = bottomOf (ab), btQ = bottomOf (quiet);
+        const Lane o1 = verdictLane (ord, P, btO + 2, 0, sr, btO + 3, false);
+        const Lane o0 = verdictLane (ord, P, btO, 0, sr, btO + 1, false);
+        const Lane oR = verdictLane (ord, P, btO + 6 * sec, 0, sr, btO + 6 * sec + 1, false);
+        const Verdict vo1 = verdictOf (o1, 0), vo0 = verdictOf (o0, 0), voR = verdictOf (oR, 0);
+        std::printf ("  %-70s: before the bottom %s | ~11 ms into the fade-in %s | 6 s later %s (%+.4f)\n",
+                     "(E)  the ordinary duck alone (Width 1 -> 2 live, no switch)", word (vo0), word (vo1), word (voR),
+                     (double) voR.before);
+        check (vo0.flush && vo1.flush,
+               "(E) the ordinary duck alone: a same-rate re-prepare before its bottom and in its fade-in FLUSHES -- the "
+               "result is not current (the bottom reported the live Width change: Case B), whatever the flag");
+        check (voR.keep, "(E) ...and KEEPS once the measure has re-confirmed it (6 s later: liveness)");
+        const Lane a1 = verdictLane (ab, P, btA + 2, 0, sr, btA + 3, false);
+        const Lane q1 = verdictLane (quiet, P, btQ + 2, 0, sr, btQ + 3, false);
+        const Verdict va1 = verdictOf (a1, 0), vq1 = verdictOf (q1, 0);
+        std::printf ("  %-70s: the switch alone %s (%+.4f) | the duck carrying no measurement change + the switch %s "
+                     "(%+.4f)\n", "     controls ~11 ms into their fade-ins", word (va1), (double) va1.before, word (vq1),
+                     (double) vq1.before);
+        check (va1.keep && vq1.keep,
+               "control: the switch alone, and the same upgraded duck when it carries no measurement change, keep B's "
+               "restored value across a re-prepare in the fade-in (both engines: the flag was never set there)");
+        const Lane s1 = verdictLane (devin, H, bottomOf (devin) + 2, 0, sr, bottomOf (devin) + 3, false);
+        const Verdict vs1 = verdictOf (s1, 0);
+        std::printf ("  %-70s: B left at %+.4f, %.3f dB off a converged fresh B | restored %+.4f | ~11 ms into the "
+                     "fade-in %s\n", "(F)  Devin's route, B's record NOT measured (its visit 0.5 s long)",
+                     (double) pubAt (s1, H - 1), offFresh (pubAt (s1, H - 1), E), (double) pubAt (s1, bottomOf (devin)),
+                     word (vs1));
+        check (offFresh (pubAt (s1, H - 1), E) >= 0.3 && std::abs (pubAt (s1, bottomOf (devin)) - pubAt (s1, H - 1)) <= 0.01,
+               "premise (F): the stale record was restored at the upgraded bottom and a keep would play it >= 0.3 dB off a "
+               "fresh engine at B");
+        check (vs1.flush, "(F) a record that was NOT measured is restored NOT current: the same re-prepare in the fade-in "
+                          "FLUSHES it -- retiring the flag marks nothing current");
+    }();
+
+    // =====================================================================================================
+    //  (H) THE OTHER TWO READERS OF THE FLAG IN THE FADE-IN: a host reset, and the A/B record of a switch taken there
+    // =====================================================================================================
+    [&] {
+        const int bt = bottomOf (devin), btA = bottomOf (ab), btO = bottomOf (ord);
+        const auto resetLane = [&] (Route r, int b)
+        {
+            Lane ln = script (r, P, false);
+            ln.acts.emplace_back (b + 2, [] (AnamorphEngine& e) { e.reset (AnamorphEngine::ResetScope::audioTailsOnly); });
+            ln.rps.emplace_back (b + 5, sr);
+            ln.cap = ln.recTo = b + 6;
+            run (ln);
+            return verdictOf (ln, 0);
+        };
+        const Verdict hd = resetLane (devin, bt), ha = resetLane (ab, btA), ho = resetLane (ord, btO);
+        std::printf ("  %-70s: Devin's route %s (%+.4f) | the switch alone %s | the duck alone %s\n",
+                     "(H1) a host reset ~11 ms into the fade-in, a re-prepare 3 blocks later", word (hd), (double) hd.before,
+                     word (ha), word (ho));
+        check (hd.keep && offFresh (hd.before, bt + 4) <= 0.1,
+               "(H1) a host reset in the fade-in keeps the restored gain CURRENT: a same-rate re-prepare 3 blocks later "
+               "KEEPS it (within 0.1 dB of a fresh B)");
+        check (ha.keep && ho.flush, "control (H1): the switch alone keeps; the ordinary duck alone flushes (not current)");
+
+        // (H2) the switch back to A taken in the fade-in records B; 1 s on A; back to B; re-prepared after its bottom
+        const auto backLane = [&] (Route r, int b)
+        {
+            Lane ln = script (r, P, false);
+            const int x = b + 2, y = x + sec;
+            ln.acts.emplace_back (x, [] (AnamorphEngine& e) { e.requestAbSwitch (1, 0); });
+            ln.snaps.emplace_back (x, r == ab ? base : dirty);
+            ln.acts.emplace_back (y, [] (AnamorphEngine& e) { e.requestAbSwitch (0, 1); });
+            ln.snaps.emplace_back (y, slotB);
+            ln.rps.emplace_back (y + kBot + 1 + kObs, sr);
+            ln.cap = ln.recTo = y + kBot + 2 + kObs;
+            run (ln);
+            return std::make_pair (verdictOf (ln, 0), std::make_pair (pubAt (ln, x - 1), pubAt (ln, y + kBot)));
+        };
+        const auto bd = backLane (devin, bt), ba = backLane (ab, btA);
+        std::printf ("  %-70s: B recorded at %+.4f, restored %+.4f on the return | re-prepared %s (%.3f dB off fresh B) | "
+                     "the switch alone %s\n", "(H2) B -> A taken ~11 ms into the fade-in, 1 s on A, back to B",
+                     (double) bd.second.first, (double) bd.second.second, word (bd.first),
+                     offFresh (bd.first.before, bt + 2 + sec + kBot + kObs), word (ba.first));
+        check (std::abs (bd.second.second - bd.second.first) <= 0.01,
+               "premise (H2): the return's bottom restored the value B was recorded at in the fade-in (within 0.01 dB)");
+        check (bd.first.keep && ba.first.keep,
+               "(H2) a slot left in the fade-in of an upgraded bottom is recorded MEASURED: back to it, a same-rate "
+               "re-prepare KEEPS its value (control: the switch alone keeps too)");
+    }();
+
+    // =====================================================================================================
+    //  (G) P1b: THE BOTTOM STILL CONSUMES THE FLAG -- a measurement change live only through the duck re-arms
+    // =====================================================================================================
+    [&] {
+        // B measured at a different programme level (N x 2 before P), so a restored value the analysis is NOT re-armed
+        // behind is dragged toward A's on silence. (G1) B = A at Width 2: the duck makes Width 2 live on A, so at the
+        // bottom the adopted state reads what the running one does -- the re-arm is the flag's alone. (G2) B = A at
+        // Output Gain -6, the duck carrying Output Gain -3 live: no measurement input differs anywhere -- not re-armed.
+        const Params bW2  = with (base, [] (Params& q) { q.width = 2.0f; });
+        const Params bOg  = with (base, [] (Params& q) { q.outputGainDb = -6.0f; });
+        const Params dOg  = with (inert, [] (Params& q) { q.outputGainDb = -3.0f; });
+        const auto p1b = [&] (const Params& b, const Params& duck)
+        {
+            Lane ln;
+            ln.scales.emplace_back (0, 2.0f);
+            ln.scales.emplace_back (P, 1.0f);
+            ln.snaps.emplace_back (0, b);
+            ln.acts.emplace_back (P, [] (AnamorphEngine& e) { e.requestAbSwitch (1, 0); });
+            ln.snaps.emplace_back (P, base);
+            ln.snaps.emplace_back (E, duck);
+            ln.acts.emplace_back (S, [] (AnamorphEngine& e) { e.requestAbSwitch (0, 1); });
+            ln.snaps.emplace_back (S, b);
+            ln.silent.emplace_back (E + kBot, E + kBot + probe + 1);
+            ln.cap = E + kBot + probe + 1;
+            run (ln);
+            double moved = 0.0;
+            for (int k = E + kBot + 1; k <= E + kBot + probe; ++k)
+                moved = juce::jmax (moved, std::abs ((double) pubAt (ln, k) - (double) pubAt (ln, E + kBot)));
+            const double jump = std::abs ((double) pubAt (ln, S) - (double) pubAt (ln, P - 1));
+            const bool restored = jump >= 0.3
+                               && std::abs ((double) pubAt (ln, E + kBot) - (double) pubAt (ln, P - 1)) <= 0.2 * jump;
+            return std::make_pair (restored ? moved : -1.0, std::make_pair (pubAt (ln, P - 1), pubAt (ln, E + kBot)));
+        };
+        const auto g1 = p1b (bW2, dirty), g2 = p1b (bOg, dOg);
+        std::printf ("  %-70s: B %+.4f, restored %+.4f | moved %.6f dB over 0.3 s of silence\n",
+                     "(G1) the Width change live only through the duck (B at Width 2)", (double) g1.second.first,
+                     (double) g1.second.second, g1.first);
+        std::printf ("  %-70s: B %+.4f, restored %+.4f | moved %.6f dB over 0.3 s of silence\n",
+                     "(G2) an Output Gain change only (not a measurement input)", (double) g2.second.first,
+                     (double) g2.second.second, g2.first);
+        check (g1.first >= 0.0 && g2.first >= 0.0,
+               "premise (G): each upgraded bottom restored B's record (a jump >= 0.3 dB from A's value, the bottom within "
+               "20 % of it -- one unarmed measure step may move it there)");
+        check (g1.first >= 0.0 && g1.first <= 1.0e-4,
+               "(G1) P1b: a measurement change live only through the ordinary duck (the adopted state reads what the "
+               "running one does) still RE-ARMS the analysis at the upgraded bottom -- the value holds on silence: the "
+               "bottom consumes the flag before it retires it");
+        check (g2.first >= 0.1, "(G2) P1b: with no measurement input changed anywhere the analysis is NOT re-armed -- the "
+                                "value moves on silence (>= 0.1 dB)");
+    }();
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -12558,6 +13072,7 @@ int main (int argc, char* argv[])
     testLevelMatchReprepareKeepsOnlyACurrentResult();
     testAbLevelMatchMemoryCarriesItsProvenance();
     testLevelMatchEngageLandsOnThePublishedTrajectory();
+    testAbRestoreSurvivesAReprepareInTheFadeIn();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
