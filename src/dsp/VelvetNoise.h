@@ -39,6 +39,10 @@ public:
     // reseed it, and the output stays finite, so the self-heal never fires (Test 64).
     void setDensity (float d) noexcept { if (std::isfinite (d)) targetDensity = d; }
     void setAmount  (float a) noexcept { targetAmount  = a; } // 0 = identity
+    // The density the module holds: the last finite one setDensity was given, so the one a non-finite
+    // Density plays with. The engine's Level-Match comparisons read it (ADR-0007, Note of 2026-09-26, the
+    // non-finite Velvet Density).
+    float getTargetDensity() const noexcept { return targetDensity; }
 
     // Host transport state, fed once per block by the wrapper. The pause burst
     // (#4) is the sparse FIR replaying its last ~45 ms of Mid history at program

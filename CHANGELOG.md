@@ -197,9 +197,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a switch that changes only Output Gain, Level Match itself or nothing at all keeps its settled
   measurement, as before. Switching A → B → A within a few milliseconds, or while your host is not
   processing audio, no longer hands slot B slot A's level: B keeps its own for the next time you switch to it (measured **1.6 dB**
-  closer). Decision: ADR-0007 (Amendment of 2026-09-24, F13(2), and Amendment of 2026-09-25, A/B
-  provenance). Regression coverage: Test 67, State test 131, Test 70 and State test 134. Evidence:
-  PR #156. [Verified]
+  closer). Decision: ADR-0007 (Amendment of 2026-09-24, F13(2), Amendment of 2026-09-25, A/B
+  provenance, and Note of 2026-09-26, the non-finite Velvet Density). Regression coverage: Test 67, State
+  test 131, Test 70, State test 134, Test 74 and State test 138. Evidence: PR #156. [Verified]
 - **Re-preparing Anamorph at the same sample rate no longer throws away the Level Match level.** Hosts
   re-prepare a plug-in when, for example, the audio buffer size changes or the plug-in is
   re-activated. With Level Match on, the matched level was discarded and rebuilt from an estimate, so
@@ -220,9 +220,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Multiband band count, say) and the host re-prepares in the fade that follows: it used to be thrown
   away there, playing about **1.6 dB** off for two seconds; a transport stop, or switching away again
   within that fade, left it to be thrown away by a later re-prepare. Decision: ADR-0007 (Amendments of 2026-09-24, F13(2), and
-  2026-09-25, including A/B provenance and its revision of 2026-09-26; Note of 2026-09-26). Regression
-  coverage: Test 67, Test 68, Test 69, Test 70, Test 72, Test 73, State tests 131, 132, 133, 134, 136, 137
-  and 120. Evidence: PR #156.
+  2026-09-25, including A/B provenance and its revision of 2026-09-26; Notes of 2026-09-26). Regression
+  coverage: Test 67, Test 68, Test 69, Test 70, Test 72, Test 73, Test 74, State tests 131, 132, 133, 134,
+  136, 137, 138 and 120. Evidence: PR #156.
   [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands

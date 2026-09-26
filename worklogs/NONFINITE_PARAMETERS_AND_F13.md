@@ -2655,3 +2655,368 @@ A read-only audit of the write sequence against the pinned JUCE 9.0.2 source, an
 - Copy carrying the live record; the predict floor over a measured restore; cross-rate retention; the P1b
   re-arm's first blocks moving a measured restore 0.3–0.8 dB (all as ADR-0007 records them).
 - The route-dependent cost of R3 (burst programme after a rise: the kept mean up to 0.15 dB·s over the flush).
+
+## S. The Devin review of `b82a294`: "Identical Velvet slots lose matched levels" (0.9.9)
+
+Continues PR #156 from `b82a294`. The owner authorized the decision (*"You are explicitly authorized to make the
+owner decision for this issue. Do NOT stop and ask the owner to choose between the comparison strategies."*) and
+asked for the narrowest rule (*"Choose the narrowest semantically correct rule. Do not generalize non-finite
+equality merely because it makes this one test pass."*). Decision record: ADR-0007, Note of 2026-09-26, the
+non-finite Velvet Density. Version 0.9.9, dated 2026-09-27, unchanged.
+
+### S1. Reproduction through the processor (head `b82a294`)
+
+A scratch probe (not committed) drives `AnamorphAudioProcessor` at 48 kHz / 256 on State test 137's stream (seed
+137): Advanced Mode, Velvet, Amount 80 %, Width 100 %, Multiband off, Drive 8, Output Gain −3, Level Match on,
+Density 0.3 set before the first prepare. Copy A → B and switch to B at block 0, B left 3.5 s in, 2 s on A, back,
+`prepareToPlay` 4 blocks after the return. A twin processor runs the same script with the Density finite.
+
+- **The Devin state needs a host.** A slot's stored NaN does not survive a switch: applying it writes the
+  parameter's default (a restore's repair; measured 0.5000), so a Copy made under a single NaN write plays 0.5
+  and keeps (−8.3751 → −8.3751). The state arises when the host writes NaN after the switch, as an automation lane
+  at NaN does at the start of every callback: the raw Density is then NaN before the leave, in the visit, after
+  the return and at the prepare, and both saved slots store `nan`.
+- **The sound is unchanged.** With Level Match off, the NaN processor's output is bit-identical to the twin whose
+  host writes 0.3, over 1509 blocks through the switches and the prepare. The Velvet ignores the NaN
+  (`VelvetNoise::setDensity`) and plays the 0.3 it holds.
+- **The comparison is not.** B's record: −8.3732, measured, its Density field `7fc00000`. At the return's bottom
+  `measurementInputsDiffer (record, p)` = 1, so the record came back not current and not measured, and the
+  `prepareToPlay` flushed it: −8.1844 → 0 dB, where the twin kept −8.3729.
+- **No A/B needed.** Under the same host NaN, a `prepareToPlay` 3.5 s in flushed (−8.3316 → 0 dB, State test
+  138 (C); the twin kept it): the prime's `measurementInputsDiffer (p, snapshot)` = 1.
+- With Level Match on, the NaN lane's published value leaves its twin at block 2, the first switch's bottom, where
+  the NaN also read as a change.
+
+**Root cause.** `measurementInputsDiffer` compares every float but Drive and Mix with
+`! (|x − y| <= 1e-5 · max (1, |x|, |y|))`. Every comparison with NaN is false, so a NaN on either side reads as a
+change, NaN against the same NaN included. ±Inf is wrong both ways: `Inf − Inf` is NaN (a change), while
+`|Inf − x| <= 1e-5 · Inf` holds for every finite `x` (no change). For every input whose NaN disturbs the sound,
+"NaN reads as a change" is the right answer (§S3). The Velvet Density alone is ignored by its module when
+non-finite, so its NaN plays exactly what the held density plays, and each of these read as a change although
+nothing audible moved:
+- NaN against NaN;
+- the held density against NaN;
+- NaN against the held density.
+
+Every consumer inherited it:
+- the prime (`primeParameters`);
+- `prepare()`'s and `reset()`'s pending test;
+- an ordinary duck's opening (`duckMeasDirty`);
+- a live edit (`inputsChanged`);
+- a snapshot heard during a non-forced duck;
+- every duck's bottom, ordinary or forced (`measChangedAtBottom`, which also gates P1b and the Case-A landing);
+- the A/B restore, whose record had stored the raw `p`.
+
+### S2. The invariant
+
+`VelvetNoise` keeps the last finite target (`setDensity` ignores a non-finite one; ADR-0009, Implementation note
+2026-09-24). `prepare()` snaps the glide to the target (`snapToTargets`), and `reset()` leaves the density alone.
+A state with a non-finite Density therefore plays the Velvet's target at the moment it is adopted, whatever
+happens to the module afterwards (Test 74 (0); State test 138 (A), through a `prepareToPlay`).
+
+**A non-finite Velvet Density is compared as the density the Velvet plays.**
+- **The played Density.** `played (s, H)` is `s.velvetDensity` when it is finite, else `H`
+  (`withPlayedVelvetDensity`).
+- **A transition from the heard state `p` to `to`.** `from = played (p, target)` and
+  `to' = played (to, from.velvetDensity)`: a non-finite Density in `to` leaves the Velvet where `p` left it
+  (`measurementChangeFrom`).
+- **The A/B record** stores `played (p, target)` when its slot is left.
+- **The restore** compares it with `played (p, target)` now.
+
+For finite Densities every one of these is the identity, so no finite trajectory changes (§S8). The Velvet's
+target equals a finite `p`'s Density on every path. Every adoption of `p` except the prime is followed at once by
+`updateDerived()` (`velvet.setDensity (p.velvetDensity)`), and the prime's own comparisons run before it adopts
+(the prime) or compare `p` with itself (`prepare()`'s and `reset()`'s pending test right after it).
+
+### S3. Bounded audit: the same pattern elsewhere
+
+The question: which comparison reads a non-finite value as a change although the sound does not change? A scratch
+probe (not committed) drove each continuous measurement input to NaN from 1 s through the engine, for 2 s (376
+blocks), with Level Match off. The algorithm was Haas, or the input's own module: Velvet, Chorus, Multiband at 4
+bands, or Mono Maker. Each output was compared with the lane that kept the value. The probe also wrote NaN through
+the host into each raw value.
+
+| input | host NaN reaches the raw value | the engine's sound under NaN |
+|---|---|---|
+| `velvetDensity` | yes | **held**: bit-identical to the held value |
+| `mbFreqLow` (and the other crossovers) | yes | held live; muted after a reset or a prepare (§B3) |
+| `monoMakerFreq` | **no** (the range maps NaN to a finite cutoff) | held |
+| `width`, `mix`, `haasDelayMs`, `chorusDepth`, `mbWidthLow` | yes | muted (376 of 376 blocks zero) |
+| `algoAmount`, `driveDb` | yes | altered (1 and 3 of the 376 blocks all zero) |
+| `inputBalance`, `chorusRate` | yes | altered |
+
+- **Discrete fields** never carry NaN into `EngineParameters`: `toEngine` maps them through `> 0.5` / `roundToInt`
+  (§B3).
+- **The other engine comparisons that read the Density.**
+  - `sameParameters` compares bit patterns. A NaN of another payload falls through to the adopt path, where
+    `measurementChangeFrom` now reads no change and `setDensity` ignores it: harmless, unchanged.
+  - `processingDiffers` does not read the Density.
+- **Result: the Velvet Density is the only input a host can reach with the pattern, and the only one changed.**
+  - A NaN crossover is not the same pattern: a reset or a prepare mutes it, so NaN against NaN is not the same
+    sound across the lifecycle. State test 138 (G) pins that it still reads as a change.
+  - `monoMakerFreq` has the pattern only at the engine API: its module holds the cutoff on a NaN (it clamps
+    ±Inf), but a host's NaN never reaches its raw value (§S10).
+  - Every other input's NaN disturbs the sound, and "a change" is right for it.
+- **Not audited** (outside this comparison): the processor's undo and preset-dirty signatures, which compare
+  rendered text; a global non-finite ingress policy (deferred, §S10).
+
+### S4. The options, measured
+
+Ten processor lanes (L1–L10), each run with the options below patched into `b82a294`'s engine, each lane beside
+its finite twin, and one ingress check (L11). KEEP is bit-identical across the `prepareToPlay`; FLUSH is exactly
+0 dB.
+
+| lane | `b82a294` | (A) bitwise NaN equality | (B) any two non-finite equal | (C) the Density played |
+|---|---|---|---|---|
+| L1 the Devin state (host NaN every block, A/B, prepare) | FLUSH | KEEP, leaves the twin at block 2 | KEEP, leaves the twin at block 2 | KEEP, twin-identical |
+| L2 host NaN, no A/B, prepare | FLUSH | KEEP | KEEP | KEEP, twin-identical |
+| L3 NaN, then another payload / −NaN from the return | FLUSH | FLUSH | KEEP, leaves the twin | KEEP, twin-identical |
+| L4 hazard: B measured at the held 0.3; on A the host wrote 0.7, then NaN | FLUSH | **KEEP (false)** | **KEEP (false)** | FLUSH |
+| L5 0.3 → NaN, prepare 0.5 s later | FLUSH | FLUSH | FLUSH | KEEP, twin-identical |
+| L6 NaN → 0.3 (the held value) | FLUSH | FLUSH | FLUSH | KEEP, twin-identical |
+| L7 NaN → 0.7 (a real change) | FLUSH | FLUSH | FLUSH | FLUSH |
+| L8 Output Gain moved under NaN | FLUSH | KEEP | KEEP | KEEP, twin-identical |
+| L9 Level Match engaged under NaN | no landing | lands | lands | lands, twin-identical |
+| L10 NaN, prepare at 44.1 kHz | FLUSH | FLUSH | FLUSH | FLUSH |
+| L11 ingress: host payloads and −NaN reach the raw value; +Inf and "inf" clamp to 1.0, −Inf and "-inf" to 0.0; "nan" and "-nan" reach it as a quiet NaN | — | — | — | — |
+
+- **(A) and (B) are wrong in both directions.**
+  - They still read the held density against NaN as a change (L5, L6): the first host NaN after a finite value
+    reports a change, and every such lane leaves its twin from the first switch's bottom.
+  - They keep a record the other slot has invalidated (L4). In this programme it is only 0.007 dB from a fresh
+    0.7, but it is a record of another density.
+- **(C)** matches the twin in every twin-compared lane.
+
+### S5. Decision
+
+(C), under the owner's authorization. It is the narrowest rule that is semantically correct. It changes one input:
+the Density, the only input a host can make non-finite whose module ignores it (Mono Maker Freq's module does
+too, but no host reaches it: §S3, §S10). It changes one kind of value, the non-finite, and no comparison of finite
+values. Recorded in ADR-0007, Note of 2026-09-26, the non-finite Velvet Density, with the gate table. The O4g
+amendment's predicate paragraph and Case-A condition 1, the F13(2) amendment's Q1 and Q5 condition 3, the A/B
+provenance amendment's restore and record wording, and the duckMeasDirty note's "Set" item are amended in place.
+
+### S6. Implementation
+
+- **`VelvetNoise.h`.** `getTargetDensity()`, a const accessor of the held target.
+- **`AnamorphEngine.h`.**
+  - `withPlayedVelvetDensity`, static and inline.
+  - `measurementChangeFrom`, declared.
+  - `primeParameters` calls `measurementChangeFrom (np)`.
+  - `AbMatchMemory::measuredFor`'s comment.
+- **`AnamorphEngine.cpp`.**
+  - `measurementChangeFrom`.
+  - The six other consumers call it: `prepare()`, `reset()`, the duck's opening, the live edit, mid-duck, every
+    duck's bottom.
+  - The capture stores `withPlayedVelvetDensity (p, velvet.getTargetDensity())`.
+  - The restore compares against the same.
+  - `measurementInputsDiffer`'s body is unchanged (so `scripts/check-state-coverage.py`'s parse holds); its
+    comment now says why NaN reads as a change and where the Density is resolved instead.
+
+Not changed:
+- no parameter ID, range or schema;
+- no DSP order;
+- no reported latency;
+- no thread, atomic, lock, wait or `callAsync`;
+- no `toEngine` sanitization;
+- no measurement math;
+- the silence threshold and the per-block ramp.
+
+Every new read is audio-thread state read on the audio thread, or on the prepare path, which JUCE never runs
+concurrently with `process()`.
+
+### S7. Tests
+
+- **Test 74** (the engine, 34 checks) and **State test 138** (the processor, 15 checks): see their headers and
+  TESTING.md.
+- **Every lane is compared with its finite twin, bit for bit, every block:** published values and output.
+- **The premises are asserted:**
+  - the host's NaN reaches the raw Density at each point;
+  - both saved slots store `nan` after the return;
+  - the switches happened;
+  - the Level-Match-off output is bit-identical to the twin's (the effective Velvet state is unchanged);
+  - B is measured when it is left: first measured 2.672 s in through the processor (2.56 s at the engine). State
+    test 138 (A) asserts it on the finite twin, which the lane matches bit for bit: a `prepareToPlay` at the leave
+    block keeps −8.3282, and one 1.5 s in flushes;
+  - the restore is visible on a quiet return (A2: the bottom jumps from A's −8.1148 to −8.3287, 0.0005 dB from
+    B's record −8.3282, where without the return A's reads −8.1200; (B): bit for bit, −10.5744);
+  - the verdict is a same-rate `prepareToPlay` (KEEP bit-identical, FLUSH exactly 0 dB).
+- **Before / after:**
+
+  | case | `b82a294` | this tree |
+  |---|---|---|
+  | State 138 (A), the Devin case | −8.3086 → 0 (FLUSHED; twin kept −8.3285) | −8.3285 → −8.3285 (KEPT), twin-identical |
+  | State 138 (C), no A/B | −8.3316 → 0 | kept, twin-identical |
+  | State 138 (F), S5 under NaN | the record −9.5586 back, flushed | the evidence's mean −10.5601, kept |
+  | Test 74 (1), +Inf → 0.7 | KEPT (a missed change) | FLUSHED, as its twin |
+  | Test 74 (3), identical NaN slots | −8.1360 → 0 | −8.3354 kept |
+  | Test 74 (5a), NaN → 0.7 at the glide's stall | −8.3445 → 0 (the twin kept) | −8.3445 kept, twin-identical |
+  | Test 74 (5b) control, a Haas visit | −8.3021 → 0 (the twin kept) | −8.3021 kept, twin-identical |
+
+- **Against `b82a294`, 25 of Test 74's checks and 10 of State test 138's fail.**
+  - Every premise passes there, and every control's verdict holds there too: its flush happens.
+  - The controls that also compare their lane with its twin fail on that comparison: the NaN lane has left its
+    twin at the first switch's bottom (Test 74 (3)'s two FLUSHes, State test 138 (E) and (H)).
+  - Test 74's +Inf → 0.7 is kept there, which is itself the ±Inf defect.
+  - State test 138 (G) and its sibling pass there, and so does Test 74 (5b)'s flush.
+- **Review of this round** (an adversarial test review, before the commit) added three things:
+  - **Test 74 (5) and State test 138 (H)**, the target and not the glide (below, V15);
+  - **State test 138 (G)'s sibling**: a finite Split 1 move at block 5 kept by the same `prepareToPlay`, so
+    (G)'s flush cannot be a block-5 report still unconfirmed;
+  - two clarifications. Test 74 (1)'s same-bit rows make no edit at block 20 (the bitwise gate returns first):
+    they test block 5's edit and the prime. Test 74 (3)'s 44.1 kHz flush is `prepare()`'s rate rule, and the
+    lane's information is its twin comparison.
+- **Runtime native:** ~0.5 s and ~0.6 s.
+
+### S8. Mutants, controls, validation
+
+- **Mutants** (each this tree with one change, header mutants rebuilt whole; failing checks in Tests 66–74 /
+  State tests 134, 136, 137, 138 against the final tests — every failure is in Test 74 or State test 138). 18 of 19
+  are rejected:
+
+  | mutant | DSP | State | what catches it |
+  |---|---|---|---|
+  | V01 the prime compares the raw Densities | 18 | 8 | Test 74 (1)–(3), (5b)'s control; State 138 (A)–(D), (F), (H)'s control |
+  | V02 `prepare()`'s pending test raw | 9 | 7 | Test 74 (2), (3), (5b)'s control; State 138 (A), (A2), (B), (D), (F), (H)'s control |
+  | V03 `reset()`'s pending test raw | 1 | 0 | Test 74 (2), the host reset in the fade-out |
+  | V04 the ordinary duck's opening raw | 4 | 0 | Test 74 (2), (4) |
+  | V05 the live edit raw | 12 | 0 | Test 74 (1), (2), (5a) |
+  | V06 mid-duck raw | 9 | 7 | Test 74 (2) re-prepared after its bottom, (3), (4), (5b)'s control; State 138 (A), (A2), (B), (D), (F), (H)'s control |
+  | V07 every duck's bottom raw | 7 | 8 | Test 74 (2) re-prepared after its bottom, (3), (4); State 138 (A), (A2), (D), (E), (F), (H) and its control |
+  | V08 the capture stores the raw `p` | 6 | 7 | Test 74 (3), (5b)'s control; State 138 (A), (A2), (B), (D), (F), (H)'s control |
+  | V09 the restore compares the raw `p` | 6 | 7 | the same |
+  | V10 every consumer raw (capture and restore resolved) | 25 | 10 | as `b82a294` |
+  | V11 option (A): bitwise NaN equality, all raw | 16 | 8 | Test 74 (1)–(3), (5a), (5b); State 138 (A), (A2), (D), (E), (F), (H) and its control |
+  | V12 option (B): any two non-finite equal, all raw | 14 | 8 | Test 74 (1)–(3), the hazard included, (5a), (5b); State 138 as V11 |
+  | V13 the restore resolves against the record's Density | 2 | 2 | the hazards: Test 74 (3) and (5b); State 138 (E) and (H) |
+  | V14 `to` resolved against the Velvet's target, not `from`'s Density | 0 | 0 | **equivalent** (below) |
+  | V15 the target read as the glide's current value | 2 | 1 | Test 74 (5a) (a false flush) and (5b) (a false keep); State 138 (H) |
+  | V16 NaN equals NaN for every input (generalized) | 0 | 1 | State 138 (G), the NaN crossover |
+  | V17 only NaN resolved (±Inf compared raw) | 5 | 0 | Test 74's ±Inf cases, (1) and (3) (engine API) |
+  | V18 `to` resolved against the raw `p` Density | 17 | 10 | Test 74 (1)–(4), (5b)'s control; State 138 (A)–(F), (H) and its control |
+  | V19 `from` = the raw `p` | 25 | 10 | as `b82a294` |
+
+  - **V14 is equivalent.** `from`'s Density is the Velvet's target whenever `p`'s is non-finite. It is also the
+    target whenever `p`'s is finite, because every adoption of `p` but the prime is followed at once by
+    `updateDerived()` (`velvet.setDensity (p.velvetDensity)`). The prime's comparisons run before it adopts,
+    or compare `p` with itself.
+  - **V15 is not equivalent.** The first campaign called it equivalent. It held that the glide's current value
+    differs from the target by more than 1e-5 only for ~0.16 s after a finite Density change, while the result is
+    un-measured. The test review of this round refuted that on two deterministic paths, each with the result
+    measured:
+    - **The glide stalls.** Its step, 0.0015 × the distance, rounds away once it is under half an ulp, so it
+      stops 1.99e-5 short of a target in [0.5, 1): 0.3 → 0.7 stops at 0.69998014, for good. Read from the glide,
+      NaN → 0.7 there is a change: a false flush (Test 74 (5a)).
+    - **The glide is frozen while another algorithm plays.** `velvet.processBlock` runs only under Velvet, but
+      `updateDerived()` hands every Density to `setDensity` under any algorithm, so a Density written on a Haas
+      slot moves the target and not the glide. Read from the glide, B's NaN returning after the host moved the
+      target to 0.7 reads as the 0.3 of its record: a false keep (Test 74 (5b)).
+
+    Test 74 (5) and State test 138 (H) were written for it, and V15 fails both. The target is the right read: a
+    non-finite Density leaves the module exactly as a write of its target does (ADR-0007, the Note's rule).
+- **Devin controls** (each Devin mechanism removed; failing checks by State test; no new Devin finding this
+  round). Each was built from this tree and run on the full State suite; failing checks by State test:
+  - the NaN guard: 129 ×6;
+  - Apply disabled: 129 ×5, 130 ×45, 131 ×8, 132 ×2, 133 ×3, 135 ×2;
+  - the kept-result init: 132 ×30, 133 ×3, 134 ×4, 136 ×1, 137 ×1;
+  - the live-edit report: 133 ×24, 134 ×1, 135 ×7, 137 ×16, 138 ×1;
+  - `setDisplayedGainDb` honouring `measured`: 134 ×20, 135 ×2, 136 ×1, 137 ×22, 138 ×3.
+
+  The counts on State tests 129–137 are §R6's exactly, re-run on the final tests. State test 138 adds one
+  failure under the live-edit report ((F): S5's evidence) and three under the last one (the premise that B is
+  measured when left, (E) and (H): restores it marks current although their records no longer describe B).
+- **Suites** (the final tree, under `ulimit -s 1024`): DSP 935 / 0, State 5521 / 0. This tree's tests built
+  against `b82a294`'s sources: DSP 935 / 25 and State 5521 / 10, every failure in Test 74 and State test 138.
+- **Finite behaviour unchanged.** For finite Densities every resolution is the identity. Measured on the whole suites and the engine:
+  - The full suites' printed output was built from this tree's tests against `b82a294`'s sources and this tree's.
+    DSP: every section but Test 74's is identical (71 of 72). State: outside State test 138 the other 134
+    sections differ only in thread-timing counters and wall-clock times (State tests 38, 39, 41, 62, 100, 113
+    and 116).
+  - The 186 finite-value engine hashes are identical to `b82a294`'s (and to §R6's record).
+  - The processor-route hash harness of §R6 was not rebuilt: its scratch source is gone. The whole-suite
+    comparison covers every processor route the suites drive.
+- **Static checks.** `check-docs`, `check-realtime`, `check-dispatch`, `check-portability` and
+  `check-state-coverage` pass. `check-citations` passes against `b82a294`, `3a779f5` and `659ca0a`, and its
+  self-test passes. It re-anchored 70 anchors by the line map. It re-derived the targets of fourteen
+  `DELIBERATE_REAIMS` entries (`dryAlignScratch`, `monoMaker.process`, `loudnessRefScratch`,
+  `landMatchAfterMeasure`, `measurementInputsDiffer`, `measChangedAtBottom`). Three ADR-0007 anchors whose own
+  lines this change edited were re-spelled by hand (`measChangedAtBottom` `:1289`, the bottom's answer
+  `:1289-1303`, the prime `AnamorphEngine.h:123-129`).
+- **Bare `:NNN` continuations** (`check-citations` does not track them). This round first re-mapped all 69
+  that the engine's line shift touched, mechanically. The documentation review found that wrong, and it was
+  withdrawn:
+  - it attributed two ADR-0040 anchors to the engine, although they continue `SpectrumImager.cpp` and
+    `PluginProcessor.cpp` citations, and neither file moved;
+  - it rewrote 39 historical values in `DOCUMENTATION_COVERAGE.md`'s earlier passes, among them `build.yml`
+    anchors and a demonstration "past the end of a 542-line file";
+  - it re-certified continuations that were already mis-aimed at `b82a294`.
+
+  Ten ADR-0007 continuations are kept. Five named their code at `b82a294` and moved with it: `:568`, `:705`,
+  `:1407-1414`, `:1445-1452` and `:656-659`. Five were already mis-aimed at `b82a294` and are re-aimed here by
+  symbol. That drift is reported here (AI_AGENT_POLICY C6):
+  - the stale-engage Note's landing, `:1959-1960`: a comment there; the landing was at `:1975-1976`. Now
+    `:1991-1992`.
+  - its edge snap, `:1993-1994`: a comment; the snap was at `:2009-2010`. Now `:2025-2026`.
+  - the Consequences' measurement, `:1954`: `monoMaker.process`; `loudness.process` was at `:1970-1971`. Now
+    `:1986-1987`.
+  - the Consequences' edge snap, `:1993-1994`, as above. Now `:2025-2026`.
+  - the Consequences' A/B record, `:598-683`: seven lines into `adoptRememberedMatch`, which the label does not
+    name (`restoreAbSlot` ended at `:676`). Now `:611-692`.
+
+  Every other continuation is back at its `b82a294` value. The mis-aimed ones are listed in §S10. The engine
+  comment that cited the FadeIn re-arm at the forced entry (`:766` at `b82a294`, the re-arm at `:816`) is
+  re-aimed to `:832`. The two lines are byte-identical, so `check-citations` accepts either.
+- **Warnings, bounds, memory** (the final tree).
+  - GCC 13 with the gate's flags, on both test files, the engine, the matcher, the processor and
+    `VelvetNoise.cpp`: the same first-party warning sets as `b82a294`. Only the ungated, structural
+    `-Wmismatched-new-delete` from `AllocationGuard.h` counts more sites (43 → 47).
+  - clang-18 with the gate's warning flags: the same first-party sets as `b82a294`, and nothing on the new code
+    after a clean parse. The Clang 22 gate runs in CI.
+  - Frames (GCC `-fstack-usage`): `measurementChangeFrom` 320 B. `restoreAbSlot` goes from 80 to 240 B and
+    `takeRequests` from 24 to 48 B: each holds a resolved copy of the heard state. `setParameters` (48 B) and
+    `primeParameters` (32 B) are unchanged. Test 74 is 2,224 B (its largest leg lambda 4,608 B) and State test
+    138 1,936 B (2,624 B). The largest frames in either suite are unchanged.
+  - `_GLIBCXX_ASSERTIONS`: Tests 66–74 411 / 0; State tests 134, 136, 137, 138 222 / 0.
+  - memcheck (local, the lane's flags): Test 74 32 s and State test 138 36 s, 0 errors each.
+
+
+### S9. The `sanitizers` job's timeout (45 → 60 minutes, `fba78ec`)
+
+The owner noted that the change was not requested and asked for it to be kept only if the workload needs it.
+Measured on this PR's heads:
+- **Green runs:** 29:08, 31:07, 33:55, 36:25, 34:13 and 42:28 (`3a779f5`).
+- **`311fa70`:** cancelled at 45:14 inside State test 137 under memcheck.
+- **`fba78ec`:** 44:37.
+- **`b82a294`:** **45:06**, with its memcheck step 36:23 (08:09:26 → 08:45:49).
+
+Under the 45-minute cap, `b82a294`'s green run would have been cancelled, and this round adds Test 74 and State
+test 138 to both memcheck passes. 45 does not suffice. The cap stays at 60, the ceiling the build jobs already
+use. The lane's command, suites and strictness are unchanged, and no test is weakened or skipped for it.
+This round's two tests add 32 s and 36 s under local memcheck (0 errors each), on top of a run that was
+already over 45 minutes without them.
+
+### S10. Recorded, not changed (deferred)
+
+- **A global non-finite ingress policy**, and `toEngine` sanitization (§B5, the owner question of §G).
+- **The processor's signatures under a NaN** (undo, preset dirty): not audited.
+- **Float → int UB** on a NaN Haas delay or Chorus rate (§B5).
+- **F9, F10, F12; R6a–R6d; ScopeBuffer threading; the vectorscope stop-state**; historical documentation
+  cleanup.
+- **Level Match across a new sample rate**, the quiet glide after a flush, and automation currency.
+- **The per-block ramp-restart redesign**; the O8 residuals of §R9, and O8(3) (§R7: B2, gated).
+- **Bare continuations already mis-aimed at `b82a294`** (§S8; restored to their values there, not re-aimed):
+  - ADR-0007: `:675` and `:785-786` (`duckMeasDirty`; its producers are now `:796` and `:906-907`); `:1175` (the
+    bottom's decision, now `:1289` and `:1302-1303`); `:1867` (the landing, now `:1991-1992`); `:1816` (an
+    empty comment line); `:791` and `:880-882` (a live edit, now `:817`; a change heard mid-duck, now
+    `:906-908`); `:1264` (the duck bottom, now `:1286-1289`); the duckMeasDirty note's producers `:767-771` and
+    `:878-882`;
+  - ADR-0004's Related code (`:819-829`, `:872-888`, `:655-707`, `:831-845`), ADR-0005's `:726-759` and
+    ADR-0006's `:831-845`;
+  - ADR-0040's `:1824` and `:814-825`;
+- **Mono Maker Freq at the engine API (§S3).** Its module holds the cutoff on a NaN target (ADR-0009, Test 64;
+  it clamps ±Inf to its range), yet `measurementInputsDiffer` reads NaN against NaN there as a change: the same
+  pattern as the Velvet Density's. No host reaches it, because the parameter's range maps a NaN to a finite cutoff. The owner's
+  bound admits no case for a parameter class that cannot reach the comparison in production, so it is recorded,
+  not changed. The Velvet Density's ±Inf are in its rule as the same reachable parameter's non-finite values.
+- **One equivalent mutant (§S8):** `to` resolved against the Velvet's target instead of `from`'s Density (V14).
+  The other the first campaign called equivalent, V15, is not: Test 74 (5) and State test 138 (H) reject it.

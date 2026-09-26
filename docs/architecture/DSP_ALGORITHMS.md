@@ -44,6 +44,10 @@ does and for the same reason (ADR-0009, Implementation note 2026-09-22). A non-f
 target is ignored (`setDensity` keeps the last finite one): the density glide cannot leave NaN,
 `reset()` does not reseed it, and the output stays finite, so the self-heal never fires — it froze
 the density until a re-prepare (ADR-0009, Implementation note 2026-09-24; Test 64, State test 128).
+The density it holds (`getTargetDensity`) is the one the Level-Match comparisons read for a non-finite
+Density (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). It is the
+target, not the glide's current value: the glide stalls 2e-5 short of a target in [0.5, 1) and does not run
+under another algorithm (Test 74 (5), State test 138 (H)).
 
 ## ChorusEngine — `src/dsp/ChorusEngine.{h,cpp}`
 
@@ -225,8 +229,9 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
   rate it was measured for; the record is taken and restored on the audio thread, so only two slot
   indices cross from the message thread. The restore at the switch's silent bottom adopts the value and
   makes it measured only if it was measured, at this rate, for the measurement inputs it is restored into
-  (`measurementInputsDiffer`); otherwise the result is not current and the measure confirms it from
-  there. The engine-API `injectMatchGainDb` is caller-asserted measured. None of this changes what is
+  (`measurementInputsDiffer`; each side with the Velvet Density it plays, a non-finite one being the one the
+  Velvet holds — ADR-0007, Note of 2026-09-26, the non-finite Velvet Density); otherwise the result is not
+  current and the measure confirms it from there. The engine-API `injectMatchGainDb` is caller-asserted measured. None of this changes what is
   published or applied.
 - **The post-change evidence** (ADR-0007, A/B provenance, revision of 2026-09-26): while the result is not
   measured, the counted post-change measurements are also summed with the slow glide's weight

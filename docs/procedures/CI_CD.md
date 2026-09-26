@@ -688,7 +688,11 @@ first made cheaper (slot B's edit at 3 s instead of 4 s, fresh lanes capped, Tes
 lane only where it asserts: 43 s and 57 s locally), and the head that carried the first cut of that,
 `fba78ec`, took 44:37. The cap then moves to the 60 minutes the build jobs already use — still failing
 inside the hour, with the command, the suites and their strictness unchanged. This is growth, not a
-pathological test: the paced-spinner fix below is the precedent for the other kind.
+pathological test: the paced-spinner fix below is the precedent for the other kind. **Re-examined on
+`b82a294`** (the owner asked for the change to stay only if the workload needs it): that head's green run
+took **45:06**, its memcheck step alone 36:23, so the 45-minute cap would have cancelled it. The next head
+adds Test 74 and State test 138 to both memcheck passes (32 s and 36 s under local memcheck). The cap stays
+at 60 minutes, and nothing in the lane was weakened or skipped to fit it.
 
 ## Pipeline (per job)
 

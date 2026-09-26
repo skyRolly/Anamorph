@@ -43408,6 +43408,586 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
     }();
 }
 
+// =====================================================================================================
+//  State test 138 -- A NaN VELVET DENSITY FROM THE HOST IS NO CHANGE TO WHAT LEVEL MATCH MEASURES, ON THE PRODUCTION
+//  PATH: IDENTICAL VELVET SLOTS KEEP THEIR MATCHED LEVEL THROUGH AN A/B RETURN AND A SAME-RATE prepareToPlay (ADR-0007,
+//  Note of 2026-09-26, the non-finite Velvet Density; Devin review "Identical Velvet slots lose matched levels";
+//  worklog §S. Test 74 is the engine half.)
+//
+//  THE FINDING, reproduced here at b82a294. A host that writes NaN into Velvet Density -- an automation lane at NaN; a
+//  host NaN or the value box's "nan" reach the raw value (State test 128) -- leaves the Velvet playing the density it
+//  held (VelvetNoise ignores a non-finite one), yet measurementInputsDiffer read NaN against NaN as a change: B's
+//  measured record came back not current and the same-rate prepareToPlay that followed flushed it to 0 dB where the
+//  finite twin kept it; with no A/B at all every same-rate prepareToPlay flushed (the prime's comparison); and every
+//  switch's bottom re-armed the analysis the twin kept.
+//
+//  THE CONTRACT. A non-finite Velvet Density is compared as the density the Velvet plays -- the one it holds.
+//
+//  THE METRIC. One heap processor per lane (State test 59's note) on State test 137's stream (seed 137), 48 kHz / 256;
+//  Advanced Mode, Velvet, Amount 80 %, Width 100 %, Multiband off, Drive 8, Output Gain -3, Level Match on, Density 0.3
+//  set before the first prepare. Each block: the message thread's commands (A/B, a user edit), a prepareToPlay if one
+//  is due, then the HOST's write of the Density (setValueNotifyingHost: NaN in the lane, the density the Velvet holds in
+//  its TWIN), then processBlock. The host writes at the callback's start, after the commands: a switch writes the
+//  slot's stored Density, and for a stored NaN that is the parameter's default (a restore's repair; measured 0.5000),
+//  which the host's NaN then replaces -- the engine reads NaN on every block of the lane, as under a NaN automation
+//  lane. The verdict is prepareToPlay (48 kHz) 4 blocks after a return: KEEP bit-identical, FLUSH exactly 0 dB. Each
+//  lane's published values and output are compared with its twin's, bit for bit, every block: by the contract the two
+//  processors are the same.
+//
+//  THE LEGS (measured)
+//   (A) THE DEVIN CASE. Copy A -> B and switch to B at block 0; B left 3.5 s in (measured from 2.67 s), 2 s on A,
+//       back, prepareToPlay 4 blocks later: KEPT (-8.3285), bit-identical to the twin. Premises: the raw Density is
+//       NaN on B before the leave, on A in the visit, on B after the return and at the prepare; the active slot is B,
+//       A, B; after the return BOTH saved slots store a NaN Density ("nan"); with Level Match off the NaN lane's output
+//       is bit-identical to its twin's through the same switches and prepareToPlay (the Velvet plays the held 0.3); and
+//       B is MEASURED when left -- on the finite twin, which the lane matches bit for bit, B is stale from the block-0
+//       switch until the measure confirms it, and a prepareToPlay at the leave block keeps it (-8.3282) where one
+//       1.5 s in flushes (State test 137's premise).
+//   (A2) The same with digital silence into the return's bottom: the published value jumps from A's -8.1148 to
+//       -8.3287, 0.0005 dB from B's record (-8.3282; identical slots keep their analysis, F13(2) Q1, and the value
+//       glides on from the record within the bottom block), where without the return A's reads -8.1200 at that block
+//       -- the restore happened -- and prepareToPlay KEEPS it.
+//   (B) A differing slot: B's Drive edited 8 -> 12 at block 1, left 4 s in, a quiet return: the bottom publishes B's
+//       record bit for bit (-10.5744, A at -8.0819; the measured path -- an evidence-certified record would publish
+//       its mean) and prepareToPlay KEEPS it.
+//   (C) No A/B: prepareToPlay 3.5 s in, primed with the host's NaN -- KEPT (-8.3316).
+//   (D) The host's NaN changes payload at the return (0x7fc00123), or sign (-NaN): the raw value carries it; KEPT.
+//   (E) Event-matched control: the host writes 0.7 for 0.5 s of the visit, then NaN again -- the Velvet now plays 0.7,
+//       B's record (played at 0.3) no longer describes B: FLUSHED, as the twin is.
+//   (F) S5 under NaN: B's Drive 8 -> 12 at 3.5 s, left 1.1 s later (not measured), a quiet return: the evidence's
+//       mean (-10.5601) 1.0 dB from the record (-9.5576), KEPT.
+//   (G) Control, the rule is the Velvet Density's alone: a host NaN into Multiband Split 1 (Multiband on, 2 bands)
+//       from block 5 reaches the raw value and is held live, but a prepare does not hold it (the output is silent
+//       after: worklog §B3) -- it reads as a change, and prepareToPlay 3.5 s in FLUSHES (-8.3316 -> 0). Its sibling, a
+//       finite Split 1 move at block 5 (180 -> 190 Hz), KEEPS at the same prepareToPlay: a block-5 report is confirmed
+//       by then, so (G)'s flush is the prime reading the NaN.
+//   (H) The held density is the Velvet's target, not its glide: A is turned to Haas a quarter second into the visit,
+//       and under Haas the Velvet does not run, so its glide stays at 0.3; the host writes 0.7 for 0.5 s, then NaN; a
+//       quiet return -- B's record back bit for bit, NOT current: FLUSHED (B's NaN now plays 0.7), as the twin is. The
+//       same visit without the write is KEPT.
+//  AGAINST THE ENGINE BEFORE THIS NOTE (b82a294) 10 of the 15 checks fail. The KEEPs of (A), (A2), (B), (C), both (D),
+//  (F) and (H)'s control flush there ((A) -8.3086 -> 0, where the twin keeps -8.3285), each NaN lane leaving its twin
+//  at the first switch's bottom (block 2) or at the prepareToPlay. (E) and (H) flush there too, as their checks want,
+//  but fail on the twin comparison: their NaN lanes leave their twins at block 2. The three premises, (G) and its
+//  sibling pass there: the scenario is the same, the verdicts are not. Runtime ~0.6 s.
+static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
+{
+    std::printf ("State test 138: a NaN Velvet Density from the host is no change to what Level Match measures -- identical "
+                 "Velvet slots keep their matched level through an A/B return and a same-rate prepareToPlay (ADR-0007, "
+                 "the non-finite Velvet Density; Devin)\n");
+
+    using Proc = AnamorphAudioProcessor;
+    using KV   = std::vector<std::pair<const char*, float>>;
+    constexpr double sr = 48000.0;
+    constexpr int block = 256, nch = 2, blk = block * nch;
+    const int sec   = (int) std::lround (sr / block);        // 188 blocks: one second
+    const int kBot  = 2;                                    // a switch's silent bottom: event + 2 (State tests 131-137)
+    const int kPrep = 4;                                    // the verdict: prepareToPlay 4 blocks after a return
+    const int L     = 7 * sec / 2;                          // B left 3.5 s in
+    const int away  = 2 * sec;                              // a visit to A
+    const int nBlk  = 8 * sec;                              // the stream: past every lane's last block
+    const float held = 0.3f;
+    const auto fromBits = [] (std::uint32_t u) { float f; std::memcpy (&f, &u, sizeof f); return f; };
+    const auto bitsOf = [] (float f) { std::uint32_t u; std::memcpy (&u, &f, sizeof u); return u; };
+    const float qnan = std::numeric_limits<float>::quiet_NaN(), pnan = fromBits (0x7fc00123u), nnan = fromBits (0xffc00000u);
+
+    auto setPlain = [] (Proc& p, const char* id, float v)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+    };
+    auto userEdit = [] (Proc& p, const char* id, float v)          // one gesture, one undo step
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->beginChangeGesture(); rp->setValueNotifyingHost (rp->convertTo0to1 (v)); rp->endChangeGesture();
+        p.pollUndoCoalesce();
+    };
+    // the host's write: NaN goes in as NaN (normalised NaN is NaN: State test 128); a finite value through its range
+    auto hostWrite = [&setPlain] (Proc& p, const char* id, float v)
+    {
+        if (std::isfinite (v)) setPlain (p, id, v);
+        else                   p.getAPVTS().getParameter (id)->setValueNotifyingHost (v);
+    };
+    const auto rawOfId = [&bitsOf] (Proc& p, const char* id) { return bitsOf (p.getAPVTS().getRawParameterValue (id)->load()); };
+    const auto rawDensity = [&rawOfId] (Proc& p) { return rawOfId (p, "velvetDensity"); };
+    // the Density each saved A/B slot stores (the AB node's slot trees, the PARAM's exact `raw`), as text
+    const auto savedSlotDensity = [] (Proc& p, const char* key)
+    {
+        const auto ab = stateTreeOf (p).getChildWithName ("AB");
+        const auto slot = juce::ValueTree::fromXml (ab[key].toString());
+        return slot.getChildWithProperty ("id", "velvetDensity")["raw"].toString();
+    };
+
+    const KV base = { { "advancedMode", 1.0f }, { "algorithm", 1.0f }, { "amount", 0.8f }, { "width", 1.0f },
+                      { "mbEnable", 0.0f }, { "drive", 8.0f }, { "outputGain", -3.0f }, { "autoGainMatch", 1.0f },
+                      { "velvetDensity", held } };
+
+    // ---- the stream: State test 137's (seed 137), block b the same samples in every lane ---------------------------
+    std::vector<float> stream ((size_t) nBlk * blk);
+    {
+        juce::Random rng { 137 };
+        for (size_t i = 0; i < stream.size(); i += 2)
+        {
+            const float v = rng.nextFloat() - 0.5f, w = rng.nextFloat() - 0.5f;
+            stream[i] = v;
+            stream[i + 1] = 0.6f * v + 0.2f * w;
+        }
+    }
+
+    // ---- a lane: commands, prepares, the host's Density per block, silence ------------------------------------------
+    struct Ev2 { int b = 0; std::function<void (Proc&)> f; };
+    struct Probe { int b = 0; std::uint32_t raw = 0; int slot = -1; };
+    struct Lane
+    {
+        std::function<float (int)> density;                 // what the host writes at block b
+        const char* hostId = "velvetDensity";               // ...into this parameter
+        KV extra;                                           // set after the base, before the first prepare
+        std::vector<Ev2> ev;                                // the message thread's commands at block b, first
+        std::vector<int> preps;                             // prepareToPlay (48 kHz) at block b, after the commands
+        std::vector<std::pair<int, int>> silent;            // digital silence on [first, second)
+        bool lmOn = true;
+        int cap = 0;
+        std::vector<int> probeAt;                           // raw Density and active slot, as processBlock reads them
+        std::vector<int> saveAt;                            // the saved slots' Density, at the same point
+        std::vector<Probe> probes;
+        std::vector<std::uint32_t> prepRaw;                 // the raw value each prepareToPlay primed with (hostId)
+        std::vector<std::pair<juce::String, juce::String>> saved;
+        std::vector<float> pub, out, before, after;
+    };
+    auto run = [&] (Lane& ln)
+    {
+        auto p = std::make_unique<Proc>();
+        for (const auto& [id, v] : base) setPlain (*p, id, v);
+        for (const auto& [id, v] : ln.extra) setPlain (*p, id, v);
+        if (! ln.lmOn) setPlain (*p, "autoGainMatch", 0.0f);
+        p->pollUndoCoalesce();
+        p->prepareToPlay (sr, block);
+        juce::AudioBuffer<float> buf (nch, block);
+        juce::MidiBuffer midi;
+        ln.pub.assign ((size_t) ln.cap, 0.0f);
+        ln.out.assign ((size_t) ln.cap * blk, 0.0f);
+        for (int b = 0; b < ln.cap; ++b)
+        {
+            for (auto& e : ln.ev)
+                if (e.b == b) e.f (*p);
+            for (const int pb : ln.preps)
+                if (pb == b)
+                {
+                    ln.prepRaw.push_back (rawOfId (*p, ln.hostId));
+                    ln.before.push_back (p->getEngine().getMatchGainDb());
+                    p->prepareToPlay (sr, block);
+                    ln.after.push_back (p->getEngine().getMatchGainDb());
+                }
+            hostWrite (*p, ln.hostId, ln.density (b));
+            for (const int pb : ln.probeAt)
+                if (pb == b) ln.probes.push_back ({ b, rawDensity (*p), p->abActiveSlot() });
+            for (const int pb : ln.saveAt)
+                if (pb == b) ln.saved.push_back ({ savedSlotDensity (*p, "slotAParams"), savedSlotDensity (*p, "slotBParams") });
+            bool silent = false;
+            for (const auto& z : ln.silent) silent = silent || (b >= z.first && b < z.second);
+            const float* x = stream.data() + (size_t) b * blk;
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, silent ? 0.0f : x[2 * i]);
+                buf.setSample (1, i, silent ? 0.0f : x[2 * i + 1]);
+            }
+            midi.clear();
+            p->processBlock (buf, midi);
+            ln.pub[(size_t) b] = p->getEngine().getMatchGainDb();
+            for (int i = 0; i < block; ++i)
+            {
+                ln.out[(size_t) b * blk + 2 * (size_t) i]     = buf.getSample (0, i);
+                ln.out[(size_t) b * blk + 2 * (size_t) i + 1] = buf.getSample (1, i);
+            }
+        }
+    };
+    struct Verdict { float before = 0.0f, after = 0.0f; bool keep = false, flush = false; };
+    auto verdictOf = [] (const Lane& ln, size_t i)          // KEEP: bit-identical; FLUSH: exactly 0 dB
+    {
+        Verdict v;
+        if (i >= ln.before.size()) return v;
+        v.before = ln.before[i];
+        v.after  = ln.after[i];
+        const bool zero = juce::exactlyEqual (v.before, 0.0f);
+        v.keep  = ! zero && std::isfinite (v.before) && std::memcmp (&v.before, &v.after, sizeof (float)) == 0;
+        v.flush = ! zero && juce::exactlyEqual (v.after, 0.0f);
+        return v;
+    };
+    auto word = [] (const Verdict& v) { return v.keep ? "KEPT" : v.flush ? "FLUSHED" : "neither"; };
+    auto firstDiff = [] (const Lane& a, const Lane& t)      // bit for bit, published and output; -1 when identical
+    {
+        if (a.cap != t.cap) return 0;
+        for (int b = 0; b < a.cap; ++b)
+            if (std::memcmp (&a.pub[(size_t) b], &t.pub[(size_t) b], sizeof (float)) != 0
+                || std::memcmp (a.out.data() + (size_t) b * blk, t.out.data() + (size_t) b * blk, sizeof (float) * blk) != 0)
+                return b;
+        return -1;
+    };
+    auto firstOutDiff = [] (const Lane& a, const Lane& t)   // the output alone: the sound
+    {
+        if (a.cap != t.cap) return 0;
+        for (int b = 0; b < a.cap; ++b)
+            if (std::memcmp (a.out.data() + (size_t) b * blk, t.out.data() + (size_t) b * blk, sizeof (float) * blk) != 0)
+                return b;
+        return -1;
+    };
+    auto diffText = [] (int d) { return d < 0 ? std::string ("yes") : "NO, block " + std::to_string (d); };
+    auto sameBits = [] (float a, float b) { return std::memcmp (&a, &b, sizeof (float)) == 0; };
+    // the twin: the host writes the density the Velvet holds -- the last finite one it wrote, 0.3 before any --
+    // wherever the lane writes a non-finite one; no probes (they read only)
+    auto twinOf = [held] (Lane ln)
+    {
+        std::vector<float> d ((size_t) ln.cap);
+        float h = held;
+        for (int b = 0; b < ln.cap; ++b)
+        {
+            const float v = ln.density (b);
+            if (std::isfinite (v)) h = v;
+            d[(size_t) b] = h;
+        }
+        ln.density = [d] (int b) { return d[(size_t) b]; };
+        ln.probeAt.clear();
+        ln.saveAt.clear();
+        return ln;
+    };
+    // the A/B script: Copy A -> B and switch to B at block 0; leave B at `leave`, back at `back`
+    auto abScript = [] (Lane& ln, int leave, int back)
+    {
+        ln.ev.push_back ({ 0, [] (Proc& p) { p.abCopyToOther(); p.abSwitchTo (1); } });
+        ln.ev.push_back ({ leave, [] (Proc& p) { p.abSwitchTo (0); } });
+        ln.ev.push_back ({ back, [] (Proc& p) { p.abSwitchTo (1); } });
+    };
+
+    // =====================================================================================================
+    //  (A) THE DEVIN CASE: identical NaN slots, a return, a same-rate prepareToPlay
+    // =====================================================================================================
+    [&] {
+        const int ret = L + away;
+        Lane ln;
+        ln.density = [qnan] (int) { return qnan; };
+        abScript (ln, L, ret);
+        ln.preps.push_back (ret + kPrep);
+        ln.probeAt = { L - 1, L + sec, ret + 1 };
+        ln.saveAt  = { ret + 1 };
+        ln.cap = ret + kPrep + 1;
+        Lane tw = twinOf (ln);
+        Lane off = ln;
+        off.lmOn = false;
+        off.probeAt.clear();
+        off.saveAt.clear();
+        Lane offTw = twinOf (off);
+        float atSwitch = 0.0f;                              // what the return's switch itself wrote, before the host's
+        ln.ev.push_back ({ ret, [&atSwitch] (Proc& p) { atSwitch = p.getAPVTS().getRawParameterValue ("velvetDensity")->load(); } });
+        // B MEASURED WHEN LEFT, on the finite twin the lane matches bit for bit (State test 137's premise): B is stale
+        // from the block-0 switch until the measure confirms it, so prepareToPlay at the leave block keeps only a
+        // confirmed, measured result -- and 1.5 s in, before that, it flushes
+        Lane pre = tw;
+        pre.ev.resize (1);                                  // the block-0 Copy + switch alone
+        pre.preps = { L };
+        pre.cap = L + 1;
+        Lane early = pre;
+        early.preps = { (int) std::lround (1.5 * sec) };
+        early.cap = early.preps.front() + 1;
+        run (ln);
+        run (tw);
+        run (off);
+        run (offTw);
+        run (pre);
+        run (early);
+        const Verdict v = verdictOf (ln, 0), vt = verdictOf (tw, 0), vPre = verdictOf (pre, 0), vEarly = verdictOf (early, 0);
+        const int d = firstDiff (ln, tw), dOff = firstOutDiff (off, offTw);
+        bool rawNaN = ln.probes.size() == 3 && ln.prepRaw.size() == 1, slots = ln.probes.size() == 3;
+        std::string row;
+        const int wantSlot[] = { 1, 0, 1 };
+        for (size_t i = 0; i < ln.probes.size() && i < 3; ++i)
+        {
+            rawNaN = rawNaN && std::isnan (fromBits (ln.probes[i].raw));
+            slots  = slots && ln.probes[i].slot == wantSlot[i];
+            char t[40];
+            std::snprintf (t, sizeof t, " %08x/%c", (unsigned) ln.probes[i].raw, ln.probes[i].slot == 0 ? 'A' : 'B');
+            row += t;
+        }
+        if (ln.prepRaw.size() == 1)
+        {
+            rawNaN = rawNaN && std::isnan (fromBits (ln.prepRaw.front()));
+            char t[24];
+            std::snprintf (t, sizeof t, " %08x", (unsigned) ln.prepRaw.front());
+            row += t;
+        }
+        const bool storedNaN = ln.saved.size() == 1
+                            && std::isnan (ln.saved.front().first.getDoubleValue())
+                            && std::isnan (ln.saved.front().second.getDoubleValue());
+        const juce::String stA = ln.saved.empty() ? juce::String ("-") : ln.saved.front().first;
+        const juce::String stB = ln.saved.empty() ? juce::String ("-") : ln.saved.front().second;
+        std::printf ("  %-58s: raw Density / slot before the leave, in the visit, after the return; at the prepare:%s | "
+                     "the return's switch wrote %.4f, the host's NaN replaced it | the saved slots' Density after the return: "
+                     "A \"%s\", B \"%s\" | Level Match off, the NaN lane's output against its twin's bit-identical: %s\n",
+                     "(A) premises", row.c_str(), (double) atSwitch, stA.toRawUTF8(), stB.toRawUTF8(), diffText (dOff).c_str());
+        std::printf ("  %-58s: prepareToPlay %+.4f -> %+.4f (%s) | the twin %s (%+.4f) | bit-identical to it: %s\n",
+                     "(A) identical NaN slots, back, prepareToPlay", (double) v.before, (double) v.after, word (v), word (vt),
+                     (double) vt.before, diffText (d).c_str());
+        std::printf ("  %-58s: prepareToPlay at the leave block %s (%+.4f), 1.5 s in %s\n",
+                     "(A) premise: B measured when left (the finite twin)", word (vPre), (double) vPre.before, word (vEarly));
+        check (vPre.keep && vEarly.flush,
+               "premise (A): B's result is MEASURED when B is left -- stale from the block-0 switch until the measure "
+               "confirms it, it is kept by a prepareToPlay at the leave block and flushed by one 1.5 s in (on the finite "
+               "twin, which the lane matches bit for bit)");
+        check (rawNaN && slots && storedNaN && dOff < 0,
+               "premise (A): the host's NaN is the raw Density on B before the leave, on A in the visit, on B after the "
+               "return and at the prepare; the switches happened (B, A, B); after the return BOTH saved slots store a "
+               "NaN Density; and with Level Match off the NaN lane's output is bit-identical to its twin's through the "
+               "same switches and prepareToPlay -- the Velvet plays the held 0.3, the sound is unchanged");
+        check (v.keep && vt.keep && d < 0,
+               "(A) THE DEVIN CASE: identical Velvet slots holding the same NaN Density keep B's matched level through the "
+               "A/B return and a same-rate prepareToPlay -- KEPT, published and output bit-identical to the finite twin");
+    }();
+
+    // =====================================================================================================
+    //  (A2) THE SAME, WITH DIGITAL SILENCE INTO THE RETURN'S BOTTOM: the restore is visible
+    // =====================================================================================================
+    [&] {
+        const int ret = L + away;
+        Lane ln;
+        ln.density = [qnan] (int) { return qnan; };
+        abScript (ln, L, ret);
+        ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
+        ln.preps.push_back (ret + kPrep);
+        ln.cap = ret + kPrep + 1;
+        Lane tw = twinOf (ln);
+        Lane stay = ln;                                     // control: no return -- A through the same silence
+        stay.ev.pop_back();
+        stay.preps.clear();
+        run (ln);
+        run (tw);
+        run (stay);
+        const Verdict v = verdictOf (ln, 0);
+        const int d = firstDiff (ln, tw);
+        const float rec = ln.pub[(size_t) L - 1], onA = ln.pub[(size_t) ret - 1], bot = ln.pub[(size_t) ret + kBot],
+                    ctl = stay.pub[(size_t) ret + kBot];
+        std::printf ("  %-58s: B's record %+.4f, A before the return %+.4f, the bottom %+.4f (without the return %+.4f) | "
+                     "prepareToPlay %s | bit-identical to the twin: %s\n", "(A2) identical NaN slots, quiet return",
+                     (double) rec, (double) onA, (double) bot, (double) ctl, word (v), diffText (d).c_str());
+        check (std::abs (bot - rec) <= 0.002f && std::abs (onA - rec) >= 0.1f && std::abs (ctl - onA) <= 0.02f
+                   && v.keep && d < 0,
+               "(A2) with digital silence into the return's bottom, the published value jumps from A's (>= 0.1 dB away) "
+               "to within 0.002 dB of B's record at the bottom, where without the return it stays within 0.02 dB of A's "
+               "-- the restore happened (identical slots keep their analysis, F13(2) Q1: the value glides on from the "
+               "record within the bottom block) -- and prepareToPlay KEEPS it, bit-identical to the finite twin");
+    }();
+
+    // =====================================================================================================
+    //  (B) A DIFFERING SLOT, DIGITAL SILENCE INTO THE RETURN'S BOTTOM
+    // =====================================================================================================
+    [&] {
+        const int leave = 4 * sec, ret = leave + away;
+        Lane ln;
+        ln.density = [qnan] (int) { return qnan; };
+        abScript (ln, leave, ret);
+        ln.ev.push_back ({ 1, [&userEdit] (Proc& p) { userEdit (p, "drive", 12.0f); } });
+        ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
+        ln.preps.push_back (ret + kPrep);
+        ln.cap = ret + kPrep + 1;
+        Lane tw = twinOf (ln);
+        run (ln);
+        run (tw);
+        const Verdict v = verdictOf (ln, 0);
+        const int d = firstDiff (ln, tw);
+        const float rec = ln.pub[(size_t) leave - 1], bot = ln.pub[(size_t) ret + kBot], onA = ln.pub[(size_t) ret - 1];
+        std::printf ("  %-58s: B's record %+.4f, A before the return %+.4f, the bottom %+.4f | prepareToPlay %s | "
+                     "bit-identical to the twin: %s\n", "(B) B at Drive 12, A at 8, both NaN, quiet return", (double) rec,
+                     (double) onA, (double) bot, word (v), diffText (d).c_str());
+        check (sameBits (bot, rec) && std::abs (rec - onA) >= 1.0f && v.keep && d < 0,
+               "(B) B's record comes back bit for bit at the return's bottom (>= 1 dB from A's value: a restore, and the "
+               "measured one -- an evidence-certified record would publish its mean) and prepareToPlay KEEPS it, "
+               "bit-identical to the finite twin");
+    }();
+
+    // =====================================================================================================
+    //  (C) NO A/B: the prime's comparison at a same-rate prepareToPlay
+    // =====================================================================================================
+    [&] {
+        Lane ln;
+        ln.density = [qnan] (int) { return qnan; };
+        ln.preps.push_back (L);
+        ln.cap = L + 1;
+        Lane tw = twinOf (ln);
+        run (ln);
+        run (tw);
+        const Verdict v = verdictOf (ln, 0);
+        const int d = firstDiff (ln, tw);
+        const bool primedNaN = ln.prepRaw.size() == 1 && std::isnan (fromBits (ln.prepRaw.front()));
+        std::printf ("  %-58s: primed with %08x | prepareToPlay %+.4f -> %+.4f (%s) | bit-identical to the twin: %s\n",
+                     "(C) no A/B, prepareToPlay 3.5 s in", ln.prepRaw.empty() ? 0u : (unsigned) ln.prepRaw.front(),
+                     (double) v.before, (double) v.after, word (v), diffText (d).c_str());
+        check (primedNaN && v.keep && d < 0,
+               "(C) with no A/B at all, a same-rate prepareToPlay primed with the host's NaN (premise) KEEPS the result: "
+               "the prime compares the Density the Velvet plays -- bit-identical to the finite twin");
+    }();
+
+    // =====================================================================================================
+    //  (D) THE HOST'S NaN CHANGES PAYLOAD OR SIGN AT THE RETURN
+    // =====================================================================================================
+    for (const float other : { pnan, nnan })
+    {
+        const int ret = L + away;
+        Lane ln;
+        ln.density = [qnan, other, ret] (int b) { return b < ret ? qnan : other; };
+        abScript (ln, L, ret);
+        ln.preps.push_back (ret + kPrep);
+        ln.probeAt = { ret - 1, ret + 1 };
+        ln.cap = ret + kPrep + 1;
+        Lane tw = twinOf (ln);
+        run (ln);
+        run (tw);
+        const Verdict v = verdictOf (ln, 0);
+        const int d = firstDiff (ln, tw);
+        const bool carried = ln.probes.size() == 2 && ln.probes[0].raw == bitsOf (qnan) && ln.probes[1].raw == bitsOf (other)
+                          && ln.prepRaw.size() == 1 && ln.prepRaw.front() == bitsOf (other);
+        char nm[64];
+        std::snprintf (nm, sizeof nm, "(D) NaN %08x until the return, then %08x", (unsigned) bitsOf (qnan), (unsigned) bitsOf (other));
+        std::printf ("  %-58s: the raw Density before / after the return %08x / %08x | prepareToPlay %s | bit-identical to "
+                     "the twin: %s\n", nm, ln.probes.size() > 0 ? (unsigned) ln.probes[0].raw : 0u,
+                     ln.probes.size() > 1 ? (unsigned) ln.probes[1].raw : 0u, word (v), diffText (d).c_str());
+        check (carried && v.keep && d < 0,
+               "(D) a NaN of another payload or sign replaces the lane's NaN in the raw Density at the return (premise) "
+               "and is the same held density: KEPT, bit-identical to the finite twin");
+    }
+
+    // =====================================================================================================
+    //  (E) EVENT-MATCHED CONTROL: the host moves the Velvet to 0.7 during the visit, then writes NaN again
+    // =====================================================================================================
+    [&] {
+        const int ret = L + away;
+        Lane ln;
+        ln.density = [qnan, L, sec] (int b) { return b >= L + sec / 2 && b < L + sec ? 0.7f : qnan; };
+        abScript (ln, L, ret);
+        ln.preps.push_back (ret + kPrep);
+        ln.cap = ret + kPrep + 1;
+        Lane tw = twinOf (ln);
+        run (ln);
+        run (tw);
+        const Verdict v = verdictOf (ln, 0), vt = verdictOf (tw, 0);
+        const int d = firstDiff (ln, tw);
+        std::printf ("  %-58s: prepareToPlay %+.4f -> %+.4f (%s) | the twin %s | bit-identical to it: %s\n",
+                     "(E) control: 0.7 for 0.5 s of the visit, then NaN", (double) v.before, (double) v.after, word (v),
+                     word (vt), diffText (d).c_str());
+        check (v.flush && vt.flush && d < 0,
+               "(E) control: once the host moved the Velvet to 0.7, B's NaN Density plays 0.7 and B's record (played at "
+               "0.3) no longer describes it -- FLUSHED, as the twin is: the rule reads the density played, not the NaN");
+    }();
+
+    // =====================================================================================================
+    //  (F) S5 UNDER NaN: B left 1.1 s after an edit, not measured -- the evidence's mean comes back measured
+    // =====================================================================================================
+    [&] {
+        const int leave = L + (int) std::lround (1.1 * sec), ret = leave + away;
+        Lane ln;
+        ln.density = [qnan] (int) { return qnan; };
+        abScript (ln, leave, ret);
+        ln.ev.push_back ({ L, [&userEdit] (Proc& p) { userEdit (p, "drive", 12.0f); } });
+        ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
+        ln.preps.push_back (ret + kPrep);
+        ln.cap = ret + kPrep + 1;
+        Lane tw = twinOf (ln);
+        run (ln);
+        run (tw);
+        const Verdict v = verdictOf (ln, 0);
+        const int d = firstDiff (ln, tw);
+        const float rec = ln.pub[(size_t) leave - 1], bot = ln.pub[(size_t) ret + kBot];
+        std::printf ("  %-58s: B's record %+.4f, the bottom %+.4f (the evidence's mean) | prepareToPlay %s | "
+                     "bit-identical to the twin: %s\n", "(F) S5: Drive 8 -> 12 at 3.5 s, left 1.1 s later", (double) rec,
+                     (double) bot, word (v), diffText (d).c_str());
+        check (std::abs (bot - rec) >= 0.5f && v.keep && d < 0,
+               "(F) S5 under the host's NaN: B left 1.1 s after an edit (not measured) comes back as its evidence's mean, "
+               ">= 0.5 dB from the record, KEPT -- bit-identical to the finite twin");
+    }();
+    // =====================================================================================================
+    //  (G) THE RULE IS THE VELVET DENSITY'S ALONE: a NaN Multiband Split 1 still reads as a change
+    // =====================================================================================================
+    [&] {
+        Lane ln;
+        ln.hostId = "mbFreqLow";
+        ln.extra  = { { "mbEnable", 1.0f }, { "mbBands", 2.0f } };
+        ln.density = [qnan] (int b) { return b < 5 ? 180.0f : qnan; };
+        ln.preps.push_back (L);
+        ln.cap = L + 5;
+        run (ln);
+        const Verdict v = verdictOf (ln, 0);
+        const auto silentBlock = [&ln] (int b)
+        {
+            for (int i = 0; i < blk; ++i)
+                if (! juce::exactlyEqual (ln.out[(size_t) b * blk + (size_t) i], 0.0f)) return false;
+            return true;
+        };
+        int silentAfter = 0;
+        for (int b = L; b < ln.cap; ++b) silentAfter += silentBlock (b) ? 1 : 0;
+        const bool primedNaN = ln.prepRaw.size() == 1 && std::isnan (fromBits (ln.prepRaw.front()));
+        const bool premise = primedNaN && ! silentBlock (L - 1) && silentAfter == ln.cap - L;
+        std::printf ("  %-58s: primed with %08x | the block before audible: %s, silent after: %d of %d | prepareToPlay "
+                     "%+.4f -> %+.4f (%s)\n", "(G) control: a host NaN into Multiband Split 1 (2 bands)",
+                     ln.prepRaw.empty() ? 0u : (unsigned) ln.prepRaw.front(), silentBlock (L - 1) ? "no" : "yes",
+                     silentAfter, ln.cap - L, (double) v.before, (double) v.after, word (v));
+        check (premise,
+               "premise (G): a host NaN reaches Multiband Split 1's raw value and is held live (the block before the "
+               "prepareToPlay is audible), but a prepare does not hold it -- the output is silent after (worklog §B3)");
+        check (v.flush,
+               "(G) control: the rule is the Velvet Density's alone -- a NaN in another input reads as a change, and a "
+               "NaN crossover held live is not held through a prepare: the same-rate prepareToPlay FLUSHES");
+
+        // The sibling: a finite Split 1 move at block 5 (180 -> 190 Hz), reported there as (G)'s NaN is. The same
+        // prepareToPlay KEEPS: a block-5 report on this programme is confirmed by 3.5 s, so (G)'s flush is the prime's
+        Lane fin;
+        fin.hostId  = ln.hostId;
+        fin.extra   = ln.extra;
+        fin.density = [] (int b) { return b < 5 ? 180.0f : 190.0f; };
+        fin.preps.push_back (L);
+        fin.cap = L + 5;
+        run (fin);
+        const Verdict vf = verdictOf (fin, 0);
+        std::printf ("  %-58s: prepareToPlay %+.4f -> %+.4f (%s)\n", "(G) sibling: Split 1 180 -> 190 Hz at block 5",
+                     (double) vf.before, (double) vf.after, word (vf));
+        check (vf.keep,
+               "(G) sibling: a finite Split 1 move at block 5 is confirmed by 3.5 s -- the same prepareToPlay KEEPS, so "
+               "(G)'s FLUSH is its prime reading the NaN, not a report still unconfirmed");
+    }();
+
+    // =====================================================================================================
+    //  (H) THE TARGET, NOT THE GLIDE: A turned to Haas in the visit, where the Velvet does not run
+    // =====================================================================================================
+    [&] {
+        const int ret = L + away;
+        for (const bool write : { true, false })
+        {
+            Lane ln;
+            ln.density = [qnan, L, sec, write] (int b) { return write && b >= L + sec / 2 && b < L + sec ? 0.7f : qnan; };
+            abScript (ln, L, ret);
+            ln.ev.push_back ({ L + sec / 4, [&userEdit] (Proc& p) { userEdit (p, "algorithm", 0.0f); } });   // A: Haas
+            ln.silent.push_back ({ ret - 8, ret + kBot + 1 });
+            ln.preps.push_back (ret + kPrep);
+            ln.cap = ret + kPrep + 1;
+            Lane tw = twinOf (ln);
+            run (ln);
+            run (tw);
+            const Verdict v = verdictOf (ln, 0), vt = verdictOf (tw, 0);
+            const int d = firstDiff (ln, tw);
+            const float rec = ln.pub[(size_t) L - 1], bot = ln.pub[(size_t) ret + kBot];
+            std::printf ("  %-58s: B's record %+.4f, the bottom %+.4f | prepareToPlay %+.4f -> %+.4f (%s) | the twin %s | "
+                         "bit-identical to it: %s\n", write ? "(H) A at Haas, the host writes 0.7, then NaN" : "(H) control: "
+                         "the same visit, no write", (double) rec, (double) bot, (double) v.before, (double) v.after,
+                         word (v), word (vt), diffText (d).c_str());
+            if (write)
+                check (sameBits (bot, rec) && v.flush && vt.flush && d < 0,
+                       "(H) a Density the host writes while A plays Haas reaches the Velvet's target though its glide does "
+                       "not run: B's NaN comes back playing 0.7, not the 0.3 of its record -- restored bit for bit at the "
+                       "quiet bottom, NOT current: FLUSHED, as the twin is");
+            else
+                check (sameBits (bot, rec) && v.keep && d < 0,
+                       "(H) control: the same visit to Haas without the write leaves B's NaN playing the 0.3 of its record "
+                       "-- restored bit for bit, measured: KEPT, bit-identical to the finite twin");
+        }
+    }();
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -43608,6 +44188,7 @@ int main (int argc, char* argv[])
     testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor();
     testAnAbGainRestoredAtAnUpgradedBottomSurvivesAReprepareInTheFadeIn();
     testAnAbSlotCarriesItsPostChangeEvidence();
+    testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

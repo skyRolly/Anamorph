@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-26), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), and the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27 — whose entries are the **76th** to **85th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-26), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, and its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays) — whose entries are the **76th** to **86th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1446-1452` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1462-1468` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1919,7 +1919,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:237-245`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1270-1411`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1286-1427`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2108-2158` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2124-2174` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13002,6 +13002,88 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 86th pass — 2026-09-26, PR #156 (the Devin review: "Identical Velvet slots lose matched levels")
+
+**Scope.** Devin's review of `b82a294` found that a NaN Velvet Density in both A/B slots made
+`measurementInputsDiffer` reject a valid Level-Match record, so a same-rate `prepare()` flushed it. The finding
+is confirmed and fixed under the owner's authorization. All of it is 0.9.9, dated 2026-09-27
+(`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §S).
+
+**The decision.**
+- **Reproduced (head `b82a294`, through the processor).**
+  - A host writing NaN into Velvet Density every callback leaves the Velvet playing the density it held. With
+    Level Match off, the output is bit-identical to a twin at 0.3 over 1509 blocks.
+  - B's measured record came back not current (`measurementInputsDiffer (record, p)` = 1), and the
+    `prepareToPlay` after the return flushed it: State test 138 (A), −8.3086 → 0 dB, where the twin kept
+    −8.3285.
+  - With no A/B, every same-rate `prepareToPlay` flushed.
+  - At the engine API, +Inf → 0.7 read as no change.
+- **The rule: the Density a state plays.** Every Level-Match comparison reads a non-finite Velvet Density as
+  the one the Velvet holds: its target, not the glide's current value (`withPlayedVelvetDensity`,
+  `measurementChangeFrom`, `VelvetNoise::getTargetDensity`). The A/B record stores the Density its slot played.
+  Every other input keeps "NaN reads as a change", and finite comparisons are the identity.
+- **Options compared on ten twin-compared lanes.** Bitwise NaN equality and "any two non-finite equal" both
+  keep a record the other slot has invalidated, and both miss 0.3 → NaN. Only the played Density matches the
+  finite twin in every lane.
+- **Bounded audit.** Only the Velvet Density is an input a host can make non-finite whose module ignores it for
+  the whole lifecycle:
+  - a NaN crossover is muted by a reset or a prepare;
+  - Mono Maker Freq's module holds its cutoff on a NaN too, but a host's NaN never reaches its raw value, so it
+    reaches the comparison only through the engine API: recorded, not changed (worklog §S10);
+  - every other input's NaN disturbs the sound.
+
+**Tests.**
+- **DSP Test 74** (`testANonFiniteVelvetDensityIsTheHeldDensity`): 34 checks; 25 fail at `b82a294`.
+- **State test 138** (`testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure`): 15 checks; 10 fail at
+  `b82a294`. Its three premises, the Multiband-Split control (G) and (G)'s finite sibling pass there.
+- **The held density is the Velvet's target, not its glide** (Test 74 (5), State test 138 (H)). A test review
+  of this round refuted the first campaign's claim that reading the glide's current value was equivalent. The
+  float glide stalls 2e-5 short of a target in [0.5, 1): Test 74 (5a) reads the stall from the module itself.
+  The glide also does not run while another algorithm plays. Both tests now separate the two reads.
+- **Mutants:** 19, of which 18 are rejected. One is equivalent on every reachable path (worklog §S8): `to`
+  resolved against the Velvet's target.
+- **Validation (the final tree).** DSP 935 / 0 and State 5521 / 0 under a 1 MiB stack. This tree's tests
+  against `b82a294`'s sources fail exactly Test 74's 25 checks and State test 138's 10. The suites' output is
+  otherwise identical, thread-timing counters and wall-clock times aside, and the 186 finite hashes are
+  identical. The five Devin controls still fail their tests. `_GLIBCXX_ASSERTIONS` and memcheck are clean. The
+  GCC and clang-18 first-party warning sets are `b82a294`'s. The lint gates and `check-citations` (against
+  `b82a294`, `3a779f5` and `659ca0a`, and its self-test) pass.
+
+**Documents changed.**
+- **ADR-0007:** a *Note of 2026-09-26, the non-finite Velvet Density* (the reproduction, the rule, the options,
+  the decision, what it preserves, the coverage and the gate record). In place: the O4g predicate paragraph
+  and its Case-A condition 1, the A/B provenance restore rule and record contract, the F13(2) Q1 bottom
+  expression and Q5 condition 3, and the duckMeasDirty note's "Set" item.
+- **`KNOWN_ISSUES.md`:** KI-030 (the index row and the resolution summary).
+- **`CHANGELOG.md` `[0.9.9]`:** the decision and coverage references of the same-rate re-prepare entry and
+  the A/B entry. There is no new bullet: the defect never shipped. The same-rate keep and
+  `measurementInputsDiffer` are both 0.9.9 work (`CHANGELOG_POLICY.md`, "Writing an entry").
+- **`TESTING.md`:** Test 74, State test 138.
+- **Architecture:** `DSP_ALGORITHMS.md` (the A/B restore; `getTargetDensity`, the target and not the glide);
+  `API_REFERENCE.md`
+  (`requestAbSwitch`). `THREAD_MODEL.md` and `SERIALIZATION_REGISTRY.md` still read correctly: "the state and
+  rate it was measured for".
+- **`CI_CD.md`:** *Job timeouts* — the `sanitizers` cap of 60 minutes re-examined and kept. `b82a294`'s green
+  run took 45:06, and its memcheck step 36:23.
+- **The worklog:** §S.
+- **Code comments:**
+  - `AnamorphEngine.h`: `withPlayedVelvetDensity`, `measurementChangeFrom`, `primeParameters`,
+    `AbMatchMemory`.
+  - `AnamorphEngine.cpp`: `measurementInputsDiffer`, `measurementChangeFrom`, the capture and the restore.
+  - `VelvetNoise.h`: `getTargetDensity`.
+  - Seven `path:line` citations in engine comments re-anchored, and the FadeIn re-arm's, mis-aimed at the forced
+    entry since before this change, re-aimed to `:832`.
+- **Anchors.** `check-citations --fix` re-anchored 70 path-qualified anchors by the engine's line map:
+  `SIGNAL_FLOW.md` (26), ADR-0007, `PARAMETER_REFERENCE.md`, ADR-0009, `DOCUMENTATION_COVERAGE.md`,
+  `REALTIME_SAFETY_AUDIT.md`, ADR-0003, ADR-0005, ADR-0006, ADR-0039, ADR-0040, `DSP_GRAPH_REFERENCE.md`, `DSP_POLICY.md`,
+  `FUTURE_RISKS.md`, `KNOWN_ISSUES.md`, `POSTMORTEMS.md`, `SOURCE_OF_TRUTH.md` and the code comments. Bare
+  `:NNN` continuations, which it does not track, are unchanged except ten in ADR-0007. Five of those moved
+  with their code. The other five were mis-aimed at `b82a294` and are re-aimed by symbol, with the drift
+  reported in the worklog (§S8). A mechanical re-map of all 69 was tried and withdrawn after review: it
+  rewrote historical values in this file's earlier passes, and it mis-attributed two ADR-0040 anchors.
+- **`scripts/check-citations.py`:** fourteen `DELIBERATE_REAIMS` targets re-derived, none new.
+- **This file:** this entry and the *Last updated* line.
 
 ## 85th pass — 2026-09-26, PR #156 (the A/B residuals: an A/B record carries the measure's post-change evidence)
 

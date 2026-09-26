@@ -122,7 +122,7 @@ public:
     // (ADR-0007, Amendment of 2026-09-25, A/B provenance).
     void primeParameters (const EngineParameters& np) noexcept
     {
-        primeMeasChanged = primeMeasChanged || measurementInputsDiffer (p, np);
+        primeMeasChanged = primeMeasChanged || measurementChangeFrom (np);
         takeRequests (duckRequest.exchange (0, std::memory_order_relaxed));
         p = np;
         pendingP = np;
@@ -234,8 +234,22 @@ private:
     // processingDiffers (the path re-arm): this one decides whether a Level-Match-engaging bottom
     // may land the applied gain on the published value (ADR-0007, Amendment 2026-09-24), whether
     // an A/B injection re-arms the analysis, and whether a same-rate re-prepare keeps the
-    // published result (both ADR-0007, Amendment of 2026-09-24, F13(2)).
+    // published result (both ADR-0007, Amendment of 2026-09-24, F13(2)). Its callers hand it each state
+    // with the Velvet Density that state plays (measurementChangeFrom, the A/B record): read raw, a
+    // non-finite Density is a change the Velvet never makes (ADR-0007, Note of 2026-09-26).
     static bool measurementInputsDiffer (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // `s` with the Velvet Density it PLAYS: its own when finite, else `held`. VelvetNoise::setDensity ignores
+    // a non-finite density (ADR-0009) and the module keeps the one it holds, so a non-finite Density is no
+    // density, not a different one; the Level-Match comparisons read it this way (ADR-0007, Note of 2026-09-26,
+    // the non-finite Velvet Density).
+    static EngineParameters withPlayedVelvetDensity (EngineParameters s, float held) noexcept
+    {
+        if (! std::isfinite (s.velvetDensity)) s.velvetDensity = held;
+        return s;
+    }
+    // measurementInputsDiffer for adopting `to` after the state being heard (p), each with the Velvet Density
+    // it plays: a non-finite one in `to` leaves the Velvet on p's.
+    bool measurementChangeFrom (const EngineParameters& to) const noexcept;
     // Copies only the continuous (smoothed) fields, leaving discrete ones intact.
     static void copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept;
 
@@ -301,7 +315,7 @@ private:
     bool  pendingForced = false;
     // An ORDINARY duck makes its continuous controls live at once (copyContinuous), so by the
     // bottom `p` already holds them and cannot show what changed. Set when any snapshot made live
-    // during this duck changed a Level-Match measurement input (measurementInputsDiffer); retired by
+    // during this duck changed a Level-Match measurement input (measurementChangeFrom); retired by
     // the bottom that reports it, by reset() and at every fresh fade-out entry (ADR-0007, Note of
     // 2026-09-26). A forced duck makes nothing live: its bottom's (p, pendingP) test is complete.
     bool  duckMeasDirty = false;
@@ -378,7 +392,7 @@ private:
     {
         float gainDb = 0.0f;           // 0 dB: a slot never left (the fresh-instance value)
         bool  measured = false;        // the value was the measure's confirmed answer for `measuredFor`
-        EngineParameters measuredFor;  // the adopted state when the slot was left
+        EngineParameters measuredFor;  // the adopted state when the slot was left, with the Velvet Density it played
         double measuredAt = 0.0;       // ...and the sample rate it was measured at
         LoudnessMatch::Evidence evidence;   // not measured: the post-change evidence for `measuredFor`
     };

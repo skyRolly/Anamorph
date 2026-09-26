@@ -656,6 +656,48 @@ the record; 2 s on A per visit.
 no evidence (the head-equivalent composite) fails 17 of its checks. The variants rejected are listed in the test's
 header and worklog §R6.
 
+**A non-finite Velvet Density is compared as the density the Velvet plays — Test 74 (2026-09-26; ADR-0007,
+Note of 2026-09-26, the non-finite Velvet Density; worklog §S; Devin review "Identical Velvet slots lose matched
+levels").**
+
+*The contract.* `VelvetNoise::setDensity` ignores a non-finite density (ADR-0009): the Velvet keeps playing the
+one it holds. Every Level-Match comparison therefore reads the Density a state PLAYS — its own when finite, else
+the one the Velvet holds (`withPlayedVelvetDensity`; `measurementChangeFrom` for the seven consumers that compare
+the heard state with a new snapshot; the A/B record stores the Density its slot played). NaN of any payload or
+sign, and ±Inf at the engine API, are that held density; a finite Density is compared with it to the usual 1e-5.
+Every other input keeps "NaN reads as a change".
+
+**Test 74** (`testANonFiniteVelvetDensityIsTheHeldDensity`) runs every lane beside its TWIN — the same script
+with each non-finite Density replaced by the density the Velvet held then — and compares their published values
+and output bit for bit, every block; the verdict is a same-rate re-prepare, KEEP bit-identical or FLUSH exactly
+0 dB. Programme N (seed 6901), 48 kHz / 256; Velvet, Amount 0.8, Width 1, Drive 8, Level Match on; the Density
+0.3 from the first block.
+- **(0) Premise, Level Match off:** NaN, NaN 0x7fc00123, −NaN, +Inf and −Inf from block 5 play bit-identically
+  to 0.3; 0.7 does not.
+- **(1) The matrix:** the row's first Density at block 5, its second at block 20 (a live edit), a re-prepare at
+  22. The three same-bit rows (NaN → the same NaN, +Inf → +Inf, −Inf → −Inf) make no edit at block 20 — the
+  bitwise gate returns first — so they test block 5's edit and the prime. KEEP for NaN → NaN, → another payload,
+  → −NaN; ±Inf pairs (engine API); 0.3 → NaN; NaN → 0.3 (the held density); NaN → 0.300002 and 0.3 → 0.300002
+  (inside 1e-5); Output Gain under NaN. FLUSH for NaN → 0.30002 and 0.3 → 0.30002 (outside 1e-5), NaN → 0.7,
+  +Inf → 0.7, 0.3 → 0.7, and Drive 8 → 9 under NaN. Every lane twin-identical.
+- **(2) The duck consumers under NaN** (Bands 4 → 3, Multiband off): re-prepared in the fade-out, after the
+  bottom, and after a host reset in the fade-out — KEEP; the same duck carrying Drive 8 → 9 — FLUSH.
+- **(3) The A/B record**, B left 3.5 s in (measured from 2.56 s), 2 s on A, a re-prepare 3 audible blocks after
+  the bottom: identical NaN slots, B back as another payload or as −NaN, B +Inf with A −Inf — KEEP; A at Drive
+  4 and B at 8, both NaN, a quiet bottom — B's record −8.3353 back bit for bit, KEEP; A plays 0.7 for 0.5 s of
+  the visit, then NaN — FLUSH; S5 (B Drive 8 → 12, left 1.1 s later) — the evidence's mean −10.5988 against the
+  record −9.5818, KEEP; the identical route at 44.1 kHz — FLUSH.
+- **(4) O4g under NaN:** Level Match turned on at 3.5 s — twin-identical.
+- **(5) The held density is the Velvet's target, not its glide.** (5a) 0.3 → 0.7 at block 5: the float glide
+  stalls at 0.69998014, 2e-5 short of 0.7 and so further than 1e-5; after it is re-measured, NaN and then 0.7
+  again are no change — KEEP. (5b) B (NaN) left for A at Haas, under which the glide does not run: the host
+  writes 0.7 on A, then NaN, and B's record comes back bit for bit but not current — FLUSH, for B's NaN now
+  plays 0.7. The control, the same visit without the write, is KEPT. Twin-identical.
+
+34 checks, ~0.5 s native. Against `b82a294` 25 fail: ten of (1)'s eleven KEEPs and its +Inf → 0.7 FLUSH (KEPT
+there: `|Inf − 0.7| ≤ 1e-5 · Inf`), (2)'s three KEEPs, all eight of (3), (4), (5a) and (5b)'s control. The
+mutants are in worklog §S8.
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -5046,6 +5088,41 @@ flushes it, B being stale from the block-0 switch until the measure confirms it;
 54 checks, ~1 s native. Against the engine before the revision (`3a779f5`) 23 fail — (A) 1.1 / 2.1 s on both
 routes, all twelve of (B) (no return is ever kept), (C), (D2), (E1), (E2) at the same rate, (F) twice and (G)'s
 control — and every premise, flush and control passes there.
+
+**A NaN Velvet Density from the host is no change to what Level Match measures, through the processor — State
+test 138 (2026-09-26; ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; worklog §S).** This
+(`testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure`) is the processor half of Test 74 and the Devin
+reproduction. One heap processor per lane on State test 137's stream (seed 137), 48 kHz / 256; Advanced Mode,
+Velvet, Amount 80 %, Width 100 %, Multiband off, Drive 8, Output Gain −3, Level Match on, Density 0.3 before the
+first prepare. Each block runs the message thread's commands, a `prepareToPlay` if one is due, then the HOST's
+write of the Density (NaN in the lane; in its twin, the density the Velvet holds), then `processBlock`. A switch
+writes the slot's stored Density, and for a stored NaN that is the default (measured 0.5, a restore's repair),
+which the host's NaN then replaces, so the engine reads NaN on every block, as under a NaN automation lane. The
+verdict is `prepareToPlay` 4 blocks after a return; each lane is compared with its twin bit for bit.
+- **(A) The Devin case:** Copy A → B and switch at block 0, B left 3.5 s in, 2 s on A, back, `prepareToPlay` —
+  KEPT (−8.3285), twin-identical. Premises: the raw Density is NaN before the leave, in the visit, after the
+  return and at the prepare; the slots B, A, B; both saved slots store "nan" after the return; with Level Match
+  off the output is bit-identical to the twin's through the switches and the prepare; B is measured when left (on
+  the twin: a `prepareToPlay` at the leave block keeps, one 1.5 s in flushes).
+- **(A2) A quiet return:** the published value jumps from A's −8.1148 to −8.3287, 0.0005 dB from B's record
+  (identical slots keep their analysis), where without the return A's reads −8.1200 — the restore happened; kept.
+- **(B)** B at Drive 12, A at 8, a quiet return: B's record back bit for bit (−10.5744), kept.
+- **(C)** No A/B, `prepareToPlay` 3.5 s in, primed with the host's NaN: kept.
+- **(D)** The host's NaN changes payload (0x7fc00123) or sign at the return, reaching the raw value: kept.
+- **(E) Control:** the host writes 0.7 for 0.5 s of the visit, then NaN — flushed, as the twin is.
+- **(F) S5:** B's Drive 8 → 12 at 3.5 s, left 1.1 s later: the evidence's mean (−10.5601) 1.0 dB from the
+  record, kept.
+- **(G) Control, the rule is the Density's alone:** a host NaN into Multiband Split 1 (2 bands) is held live but
+  muted by a prepare (the output is silent after) — it reads as a change: flushed. Its sibling, a finite Split 1
+  move at the same block (180 → 190 Hz), is kept by the same `prepareToPlay`: the flush is the NaN's.
+- **(H) The target, not the glide:** A is turned to Haas in the visit, where the Velvet does not run; the host
+  writes 0.7 for 0.5 s, then NaN; a quiet return brings B's record back bit for bit but not current — flushed,
+  as the twin is, for B's NaN now plays 0.7. The same visit without the write is kept.
+
+15 checks, ~0.6 s native. Against `b82a294` 10 fail. The KEEPs of (A), (A2), (B), (C), both (D), (F) and (H)'s
+control flush there ((A) −8.3086 → 0 where the twin keeps −8.3285). (E) and (H) flush there too, but their NaN
+lanes leave their twins at the first switch's bottom. The three premises, (G), its sibling and every control's
+flush pass there.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

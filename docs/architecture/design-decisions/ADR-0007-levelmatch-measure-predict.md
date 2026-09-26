@@ -270,11 +270,13 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   starts from the value it publishes, converged or still converging on an earlier edit (*Note of
   2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1975`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1991`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
-     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:564`);
+     adopted at the bottom — `! measurementInputsDiffer (p, pendingP)` (`:568`; *since the Note of
+     2026-09-26, the non-finite Velvet Density: `measurementChangeFrom (pendingP)`, read through
+     `measChangedAtBottom`, the same comparison over the Densities played*);
   2. no such change was made live during the switch's own fade-out — `! duckMeasDirty`: an ORDINARY
      duck applies its continuous controls at once (`copyContinuous`), so by the bottom `p` already
      carries them and the comparison above cannot see them (`:675`, `:785-786`);
@@ -312,6 +314,8 @@ real edit is. It is not an equality over the whole struct: that version refused 
 preset whose Chorus Rate — inert under Haas — came back one ulp off. `scripts/check-state-coverage.py`
 holds the function to a declaration for every `EngineParameters` field (`MEASUREMENT_INPUTS`), as it
 does for the four lists before it, and derives from the code that the predict's inputs are exact.
+*(A non-finite Velvet Density is not compared as itself: every comparison hands the function the Density the
+Velvet plays — the Note of 2026-09-26, the non-finite Velvet Density, below.)*
 
 **Accepted, bounded, and stated rather than hidden** (all measured, worklog §J): `bypass` and the Level
 Match switch itself move the H4 dry reference while Level Match is off (the 0.8.9 Class-B difference;
@@ -365,7 +369,7 @@ records the ruling and the implementation, not an approval of the code.
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment; ADR-0004 and ADR-0035 (notes of the same date) |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; no DSP node, stage order, thread or cross-thread path changes |
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:564` (`measurementInputsDiffer`),
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:568` (`measurementInputsDiffer`),
 `:675` and `:785-786` (`duckMeasDirty`), `:1175` (the decision at the bottom), `:1867` (the landing);
 `scripts/check-state-coverage.py` (`MEASUREMENT_INPUTS`).
 
@@ -403,7 +407,9 @@ the result at the switch's silent bottom (#23). When the two slots differ in any
 reads, the carried analysis still describes the *source* slot's audio and drags that correct value
 toward the source for seconds — the one transition where the two halves disagree in the wrong
 direction (worklog §K3–§K4, KI-030). The analysis is now re-armed there: at the bottom the engine
-computes `measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP)` — the same
+computes `measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP)` (*since the Note of
+2026-09-26, the non-finite Velvet Density: `measurementChangeFrom (pendingP)`, the same comparison over the
+Densities played*) — the same
 answer the Case-A landing uses, now held once for both — and an injection consumed in that block
 calls `softReset()` before it writes the slot's value. Slots that differ in nothing the measurement
 reads keep a converged analysis, so the Note of 2026-09-22's dimMode table keeps its A/B row, and a
@@ -434,7 +440,8 @@ flush (:39-40) is the sample rate. The flush is now kept only where that reason 
    the measurement (the glide coefficients re-key on each block's length);
 3. the snapshot `primeParameters()` adopted before it changes nothing the measurement reads
    (`measurementInputsDiffer` — a restore that moved Drive between two prepares flushes; one that
-   moved only Output Gain keeps);
+   moved only Output Gain keeps; *since the Note of 2026-09-26, the non-finite Velvet Density:
+   `measurementChangeFrom (np)`, the same comparison over the Densities played*);
 4. the published value is finite;
 5. the published value is **current** — the measure has caught up with the last change to anything
    it reads, however that change arrived — and `reset()` will not adopt such a change from an
@@ -518,11 +525,11 @@ Gate: a text correction to this Accepted ADR, flagged in the PR #156 body and th
 compatibility trigger (no parameter, schema, thread, order or latency change — the write is on the
 prepare path).
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1273` (`measChangedAtBottom`, one
-answer for the Case-A landing and the injection re-arm), `:689` (the re-arm, since the A/B provenance
-amendment in `adoptRememberedMatch`, which the two consumers call at `:1391-1398` and `:1429-1436`), `:63` (`keepMatch`), `:77` and `:167` (the kept matcher skips
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1289` (`measChangedAtBottom`, one
+answer for the Case-A landing and the injection re-arm), `:705` (the re-arm, since the A/B provenance
+amendment in `adoptRememberedMatch`, which the two consumers call at `:1407-1414` and `:1445-1452`), `:63` (`keepMatch`), `:77` and `:167` (the kept matcher skips
 `loudness.prepare` and takes `softReset`), `:291` (`reset (everything)`), `:175-176` (the kept result
-becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:125` (`primeParameters` records
+becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:123-129` (`primeParameters` records
 `primeMeasChanged`).
 
 ## Amendment, 2026-09-25 — a same-rate re-prepare keeps only a result that is current (Devin review: live edits)
@@ -815,7 +822,8 @@ the fields are written.
   now only at the rate the engine runs at now and for the same measurement inputs
   (`measurementInputsDiffer`: the same tolerant comparison condition 3 uses, so the preset round-trip
   drift of the log-mapped crossovers and Mono Maker Freq, measured at up to 12 ulp, is not a
-  difference). Then a measured record comes back as its value, measured; a record that was not
+  difference; each side with the Velvet Density it plays, since the Note of 2026-09-26, the non-finite
+  Velvet Density). Then a measured record comes back as its value, measured; a record that was not
   measured comes back as its **evidence's mean, measured**, when that evidence is a measurement (share
   ≥ 0.5), and otherwise as its value, **not current**, with the evidence carried to the measure
   (revision of 2026-09-26, below). A record that does not describe the state is restored as its value,
@@ -1029,7 +1037,8 @@ un-measure, an unmeasured restore — kept by `softReset()`, and reads empty whi
 
 **The record's contract, from this revision.**
 - **What it holds:** the published value; whether it was **measured** (unchanged: the measure's confirmed
-  answer for `measuredFor`); `measuredFor` and `measuredAt`; and, only when it was not measured, the
+  answer for `measuredFor`); `measuredFor` (with the Velvet Density it played: the Note of 2026-09-26, the
+  non-finite Velvet Density) and `measuredAt`; and, only when it was not measured, the
   **evidence** for `measuredFor`. None while the in-flight rule above applies. One provenance: `measured`
   says the value is the measure's answer; the evidence is what the measure had toward one; a measured
   record carries none.
@@ -1123,7 +1132,7 @@ Related code (this revision): `src/dsp/LoudnessMatch.h` (`Evidence`, `getEvidenc
 ## Note, 2026-09-25 — a gain-only engage lands on the published value, current or not (Devin review: "Level Match engages on stale compensation"; "stale engage")
 
 Devin's review of `1c22d51` (PR #156) found *"Level Match engages on stale compensation"* at
-`src/dsp/AnamorphEngine.cpp:1286-1287`. The sequence it gives:
+`src/dsp/AnamorphEngine.cpp:1302-1303`. The sequence it gives:
 1. With Level Match off, a live edit to something the measurement reads leaves the result not current
    (`inputsChanged`; the Amendment of 2026-09-25, live edits).
 2. Level Match is turned on before the measure has caught up.
@@ -1305,8 +1314,8 @@ against the currency the matcher now reports.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, in place: the decision it records (Q4) stands |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change; no behaviour change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1273-1287` (the bottom's answer and the landing
-predicate), `:1959-1960` (the landing), `:1993-1994` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1289-1303` (the bottom's answer and the landing
+predicate), `:1991-1992` (the landing), `:2025-2026` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
 (`inputsChanged`, `isResultCurrent`). Tests: Test 71, State test 135.
 
 ## Note, 2026-09-26 — the bottom that reports an ordinary duck's live measurement change retires it (Devin review: "Valid A/B gain lost on re-prepare"; "the duckMeasDirty lifecycle")
@@ -1338,7 +1347,8 @@ Output Gain −3, Level Match on).
 
 **The lifecycle.** `duckMeasDirty` answers one question: has a measurement-input change gone live during this
 duck that nothing has reported to the matcher yet?
-- **Set** when an ordinary duck opens (`measurementInputsDiffer (p, np)`, before `copyContinuous` hides it), and
+- **Set** when an ordinary duck opens (`measurementInputsDiffer (p, np)` — `measurementChangeFrom (np)` since the
+  next note — before `copyContinuous` hides it), and
   by a snapshot heard while a non-forced duck is in flight. That path calls `inputsChanged()` itself.
 - **Read** by four consumers:
   - the bottom (`measChangedAtBottom`), which calls `inputsChanged()`, refuses the Case-A landing, and re-arms
@@ -1423,10 +1433,152 @@ flag is audio-thread state, written in `process()` beside the report it retires.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, and the three in-place clarifications it lists |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1272-1280` (the bottom's report and the retirement),
-`:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:643-646` (the A/B record),
-`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:302-307` (the flag). Tests: Test 72,
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1288-1296` (the bottom's report and the retirement),
+`:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:656-659` (the A/B record),
+`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:316-321` (the flag). Tests: Test 72,
 State test 136.
+
+## Note, 2026-09-26 — a non-finite Velvet Density is the density the Velvet plays (Devin review: "Identical Velvet slots lose matched levels"; "the non-finite Velvet Density")
+
+Devin's review of `b82a294` (PR #156) found *"Identical Velvet slots lose matched levels"* at the tolerant
+comparison in `measurementInputsDiffer` (`src/dsp/AnamorphEngine.cpp:572`). With Velvet Density NaN in both
+slots, the comparison rejects a valid record, and a same-rate `prepare()` then flushes it. It was a defect, and
+it is fixed here (worklog `NONFINITE_PARAMETERS_AND_F13.md` §S).
+
+**Reproduced** through the processor at 48 kHz / 256 (Velvet, Amount 80 %, Drive 8, Output Gain −3, Level Match
+on, Density 0.3 before the first prepare; the host writes NaN into Velvet Density at the start of every
+callback, as an automation lane at NaN does).
+- The Velvet ignores a non-finite density (`VelvetNoise::setDensity`; ADR-0009, Implementation note
+  2026-09-24) and plays the 0.3 it holds. With Level Match off, the NaN processor's output is bit-identical to a
+  twin whose host writes 0.3, through three A/B switches and a `prepareToPlay` (State test 138 (A)). The sound
+  is unchanged: this is a comparison defect, not an audio difference.
+- With Level Match on, B's record was measured and its Density field held NaN (worklog §S1). At the return's
+  bottom `measurementInputsDiffer (record, p)` read NaN against NaN as a change: the record came back not
+  current, and a `prepareToPlay` 4 blocks later flushed it. State test 138 (A) against `b82a294`: −8.3086 → 0 dB,
+  where the finite twin kept −8.3285.
+- With no A/B at all, every same-rate `prepareToPlay` flushed: the prime compares `p` (NaN) with the snapshot
+  (NaN). Every switch's bottom also read the NaN as a change the twin did not see (the lanes leave their twins
+  there, block 2), and a live 0.3 → NaN counted as an edit.
+- A slot cannot carry the NaN by itself. Applying a slot whose stored Density is NaN writes the parameter's
+  default (a restore's repair; measured 0.5), so the state needs a host that writes NaN after the switch. An
+  automation lane does, every callback. A host's NaN and the value box's "nan" reach the raw value (State test
+  128), and so does a host's NaN of another payload or sign (State test 138 (D)). A host's +Inf and the text
+  "inf" clamp to 1 at the parameter, and −Inf and "-inf" to 0 (measured, worklog §S4, L11), so they reach the
+  engine only through its API.
+- ±Inf also read wrongly there, in both directions: `Inf − Inf` is NaN (a change), and `|Inf − x| ≤
+  1e-5 · Inf` holds for every finite `x` (no change). +Inf → 0.7 was kept although the Velvet moved to 0.7
+  (Test 74 (1)).
+
+**The rule.** Every Level-Match comparison reads the Velvet Density a state **plays**: its own when finite,
+else the one the Velvet holds. `VelvetNoise` keeps the last finite target (`setDensity`), `prepare()` snaps
+the glide to it (`snapToTargets`) and `reset()` leaves it alone, so a non-finite Density is no density, not a
+different one.
+- The density held is the Velvet's **target** (`getTargetDensity`), not its glide's current value. A
+  non-finite Density leaves the module exactly as a write of its target does: both change nothing. The glide's
+  current value can sit further than 1e-5 from the target while the result is measured. The float glide stalls
+  2e-5 short of a target in [0.5, 1): its last step is under half an ulp, and 0.3 → 0.7 stops at 0.69998014. It
+  does not run at all while another algorithm plays, though a Density written then still reaches the target
+  (Test 74 (5), State test 138 (H)).
+- `withPlayedVelvetDensity (s, held)` replaces a non-finite `s.velvetDensity` with `held`.
+- `measurementChangeFrom (to)` asks whether adopting `to` after the heard state `p` changes what the
+  measurement reads. It resolves `p` against the Velvet's target (`getTargetDensity`) and `to` against the
+  Density `p` resolved to: a non-finite Density in `to` leaves the Velvet where `p` left it. The seven
+  consumers that compared `p` with a new snapshot now call it:
+  - the prime;
+  - `prepare()`'s and `reset()`'s pending test;
+  - an ordinary duck's opening;
+  - a live edit;
+  - a snapshot heard during a non-forced duck;
+  - every duck's bottom, ordinary or forced (`measChangedAtBottom`), and so the P1b re-arm and the Case-A
+    refusal, which read the bottom's answer.
+- The A/B record stores the Density its slot played, and the restore compares it with the Density played
+  now. A NaN held through the visit is the same density. One that the other slot moved in between (the host
+  wrote 0.7 there, then NaN again) is not, and the record is restored not current.
+- `measurementInputsDiffer` itself is unchanged, including its reading of NaN as a change for every other
+  input. The audit (worklog §S3) found no other input that a host can make non-finite and whose module ignores
+  it for the whole lifecycle. A NaN crossover (Multiband Split) is inert live, but a reset or a prepare mutes
+  the output (worklog §B3). Every other float disturbs the sound while it is NaN. Mono Maker Freq's module
+  holds its cutoff on a NaN too (ADR-0009; Test 64; it clamps ±Inf to its range), but its range maps a host's
+  NaN to a finite cutoff. A NaN one reaches the comparison only through the engine API, where NaN against NaN
+  still reads as a change: recorded, not changed (worklog §S10). The ±Inf Densities are in the rule because they are the same reachable parameter's
+  non-finite values: resolving only NaN would treat one non-finite Density differently from another.
+
+**Options** (worklog §S4; ten processor lanes against their finite twins, and an ingress check).
+- **(A) Bitwise NaN equality in `measurementInputsDiffer`.** It keeps identical NaN slots. A NaN of another
+  payload or sign still reads as a change, and so do a finite Density followed by NaN and a NaN followed by
+  the held value: each flushes, and the lane leaves its twin at the first switch's bottom. A Density the other
+  slot moved while both ends were NaN is kept: a false keep.
+- **(B) Any two non-finite Densities equal.** It also covers payload and sign, and keeps every other failure
+  of (A), the false keep included.
+- **(C) The Density played (adopted).** Every lane keeps or flushes as its finite twin does, bit for bit
+  wherever the twins are compared (every twin-compared lane of Test 74 and State test 138). The lane where the
+  Velvet moved in between flushes.
+
+**Decision** (the owner's authorization, below): (C).
+
+**What this preserves.**
+- **S5, the record's evidence.** A slot left 1.1 s after an edit under NaN comes back as its evidence's mean,
+  measured, and is kept (Test 74 (3), State test 138 (F)).
+- **F13(1b), O4g.** A gain-only engage under NaN is the one its finite twin makes (Test 74 (4)).
+- **F13(2).** A new rate still flushes (Test 74 (3)), and P1b re-arms only when an input played differs.
+- **Every finite comparison.** A finite Density on both sides compares exactly as before (worklog §S8, the
+  finite hashes).
+
+It changes no parameter ID or schema, DSP order, reported latency, thread or measurement math. The new read,
+the Velvet's target, is engine state read on the audio thread, or on the prepare and reset paths, which JUCE
+never runs concurrently with `process()`. This is the guarantee under which the prime already reads `p`.
+
+**What this changes in the text above.**
+- Each of these now says, in place, that the comparison is handed the Density played:
+  - the O4g amendment's `measurementInputsDiffer` paragraph;
+  - the A/B provenance amendment's restore rule;
+  - its record contract (the revision of 2026-09-26).
+- Where an earlier section names `measurementInputsDiffer (p, pendingP)` or `(p, np)` at a consumer, the
+  consumer now calls `measurementChangeFrom`, which is `measurementInputsDiffer` over the Densities played.
+  These are the O4g amendment's Case-A condition 1, the F13(2) amendment's Q1 and Q5 condition 3, and the
+  duckMeasDirty lifecycle note's "Set" item, each marked in place.
+
+**Regression coverage.** Test 74 (the engine, 34 checks) and State test 138 (the processor, 15 checks).
+- **Premises.**
+  - The host's NaN is the raw Density before the leave, in the visit, after the return and at the prepare.
+  - Both saved slots store NaN, and the switches happened.
+  - B is measured when it is left: on the finite twin, a `prepareToPlay` at the leave block keeps, and one 1.5 s
+    in flushes.
+  - The Level-Match-off output is bit-identical to the twin's.
+  - Three NaN payloads and ±Inf play as the held density.
+  - A quiet return shows the restore: the bottom jumps from A's value to B's record.
+- **Legs.**
+  - The Devin case (identical NaN slots, a return, `prepareToPlay`): kept, twin-identical.
+  - A differing slot: its record comes back bit for bit.
+  - No A/B at all.
+  - A NaN of another payload or sign.
+  - The matrix (17 cases).
+  - The duck consumers.
+  - S5, O4g, and a new rate.
+  - The target, not the glide. At a glide stalled short of 0.7 (read from the module: a VelvetNoise glided
+    0.3 → 0.7 plays bit-identically to one set to 0.69998014), NaN and then 0.7 again are kept. A Density
+    written under Haas, where the glide does not run, is flushed on the Velvet slot's return; the same visit
+    without the write is kept.
+- **Controls, each flushed.**
+  - The other slot moved the Velvet to 0.7.
+  - Another input changed under NaN.
+  - A NaN in Multiband Split 1: the rule is the Density's alone. A finite Split 1 move at the same block is kept
+    by the same `prepareToPlay`, so the flush is the NaN's.
+- **Against `b82a294`,** 25 of Test 74's checks and 10 of State test 138's fail.
+
+**Architecture Review Gate — owner authorization of 2026-09-26.**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #156 body and the implementing commit message: a change to what the Accepted ADR's comparison reads for one input (the O4g amendment's `measurementInputsDiffer`, which the A/B provenance amendment and every later section reuse), made precise in place |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's authorization of 2026-09-26**: *"You are explicitly authorized to make the owner decision for this issue. Do NOT stop and ask the owner to choose between the comparison strategies."* *"If the existing ADR contradicts the selected behavior but the repository evidence supports the change, amend the ADR in place according to repository conventions rather than stopping for approval."* *"Choose the narrowest semantically correct rule. Do not generalize non-finite equality merely because it makes this one test pass."* Review: pending, PR #156 |
+| 3 | if the change is a decision, an ADR is added/updated | this Note, and the in-place clarifications it lists |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
+
+Related code (this note): `src/dsp/AnamorphEngine.h:245-252` (`withPlayedVelvetDensity`, `measurementChangeFrom`),
+`src/dsp/AnamorphEngine.cpp:599-603` (`measurementChangeFrom`), `:664` (the capture), `:688-689` (the restore);
+the consumers `src/dsp/AnamorphEngine.h:123-129` (the prime) and `src/dsp/AnamorphEngine.cpp:62`, `:239`, `:796`, `:817`, `:906`,
+`:1289`; `src/dsp/VelvetNoise.h:40-45` (`setDensity`, `getTargetDensity`). Tests: Test 74, State test 138.
 
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
@@ -1437,8 +1589,8 @@ State test 136.
   un-measure), `:200-226` (measure/hold), `:124-133` (`softReset`: the analysis only), `:65-80` (`reset`:
   both halves), `:230-286` (the result's currency, its confirmation and the post-change evidence; the
   amendments of 2026-09-25 and the revision of 2026-09-26), `:82-95` (`restoreUnmeasured`)
-- `src/dsp/AnamorphEngine.cpp:1850-1851` (A(dry) reference), `:1954` (the measurement), `:1993-1994`
-  (silence-edge snap), `:598-683` (the A/B record: request, forget, capture, restore)
+- `src/dsp/AnamorphEngine.cpp:1866-1867` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
+  (silence-edge snap), `:611-692` (the A/B record: request, forget, capture, restore)
 - `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 
 Evidence [Verified]:
