@@ -13047,11 +13047,13 @@ defect; the bottom retires the flag it reports** (`worklogs/NONFINITE_PARAMETERS
 - **ADR-0007:** a new dated *Note* (the duckMeasDirty lifecycle): the reproduction, the lifecycle, the
   decision, the alternatives, what it preserves and the gate record. "In flight" in the live-edit
   amendment (the `prepare()` refusal and the host-reset row) and in the A/B provenance capture rule now
-  reads *before its bottom*.
+  reads *before its bottom*. The A/B provenance amendment's trade-off is re-measured (route-dependent),
+  and a slot adopted partly written under burst processing is recorded.
 - **`KNOWN_ISSUES.md`:** KI-030's A/B bullet and its table row.
 - **`CHANGELOG.md` `[0.9.9]`:** the same-rate re-prepare entry.
 - **`TESTING.md`:** Test 72, State test 136, and the Test 69 sentence on the in-flight guard.
-- **The worklog:** §Q, and a pointer from §P6.
+- **The worklog:** §Q (§Q7: the A/B residuals of §O8 re-measured, nothing changed), and a pointer from
+  §P6.
 - **Code comments:** `AnamorphEngine.cpp` (the retirement, `prepare()`'s guard, the A/B capture rule),
   `AnamorphEngine.h` (`duckMeasDirty`).
 - **Citations:** 52 anchors re-anchored by `check-citations.py --fix`; four `DELIBERATE_REAIMS` targets

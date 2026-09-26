@@ -921,7 +921,11 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
   value was closer (0.26–0.71 dB·s against the flush's 1.40). So is a slot visited within ~2.7 s of any
   flush, including A/B pressed right after playback starts. With switching faster than confirmation
   (~0.6 s at best), a restored not-measured value never confirms: nothing carries evidence across
-  visits. All three are conservative and cost only at a re-prepare.
+  visits. All three are conservative and cost only at a re-prepare. *Re-measured 2026-09-26 (worklog
+  §Q7):* the trade-off is route-dependent. After a Drive cut (8 → 2) the flush is closer at every *t*
+  (0.46 against 0.60–1.85 dB·s). The measure's post-change mean is within 0.13 dB of a fresh instance
+  from 0.3 s, and the published glide takes ~3 s to confirm it. Recording that mean with the slot is the
+  candidate for both residuals; it changes what a restore publishes, so it is not adopted here.
 
 **Recorded, not changed.**
 - **The predict floor over a measured restore (audio).** Returning to a slot whose Drive or Mix is
@@ -931,6 +935,12 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
 - **Copy carrying the live record.** A Copy's destination could take the source's live record: same
   state, same measurement. It would remove the flush after a Copy and the lurch HEAD already plays
   there. It changes what is restored, so it is a candidate.
+- **A slot adopted partly written (recorded 2026-09-26, worklog §Q7).** Under faster-than-real-time
+  processing, a free-running audio thread can reach the forced bottom within the 120–270 µs `abSwitchTo`
+  spends writing the slot. The bottom then adopts a mixed snapshot, and the record is restored not
+  current: 59 of 60 threaded toggles free-running, 0 at ≈ 75× real time or slower. This is conservative
+  (the value plays; only a re-prepare before re-confirmation flushes it), and every fix changes the
+  processor → engine handoff.
 - **Evidence across visits, cross-rate retention, and the measure's own scope.** Currency is a
   function of the measurement inputs and the rate: a programme change, or a bus-layout change before a
   same-rate re-prepare, is the measure's ordinary tracking, as for any converged result. The P1b

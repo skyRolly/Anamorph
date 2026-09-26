@@ -2299,3 +2299,74 @@ A is one rule for every bottom, and the rule `reset()` already follows.
   global `toEngine` sanitization; float→int UB; F9, F10, F12; R6a–R6d; ScopeBuffer threading; the
   vectorscope stop-state; historical doc cleanup; the per-block ramp restart; §P7's 5 ms boundary and
   positive stale step.
+
+### Q7. The A/B residuals of §O8, re-measured (bounded; nothing changed)
+
+Processor probes on this tree: seeded correlated noise, 48 kHz / 256, Haas 50 %, Output Gain −3, Level
+Match on. Slot B is a Copy of A, edited at 4 s and left *t* s later; 6 s on A; back; `prepareToPlay` 4
+blocks after the return. The error is |applied − fresh B| integrated over the 3 s after it.
+- **KEEP** is an engine variant that restores every record as measured: the counterfactual.
+- **Post mean** is the matcher's post-change mean (`postSum / postShare`) at the moment B is left.
+
+**(1) A slot left before it is measured flushes where keeping can cost less.**
+
+| route (confirmed after) | *t* (s) | HEAD (flush), dB·s | KEEP, dB·s | published at the leave, dB off fresh | post mean, dB off fresh (share) |
+|---|---|---|---|---|---|
+| Drive 8 → 12 (3.06 s) | 0.3 / 1.1 / 2.1 / 2.7 | 1.61 / 1.60 / 1.61 / 1.60 | 1.54 / 0.82 / 0.31 / 0.18 | 1.53 / 0.81 / 0.29 / — | 0.048 (0.03) / 0.004 (0.60) / 0.001 (0.87) / — |
+| Drive 12 → 8 (3.30 s) | 0.3 / 1.1 / 2.1 | 1.46 / 1.45 / 1.46 | 1.44 / 0.99 / 0.34 | 1.94 / 1.06 / 0.38 | 0.081 / 0.027 / 0.009 |
+| Drive 8 → 2 (3.78 s) | 0.1 / 0.3 / 1.1 / 2.1 | 0.46 / 0.47 / 0.46 / 0.46 | 1.85 / 1.73 / 1.50 / 0.60 | 3.32 / 3.14 / 1.76 / 0.64 | — (0.00) / 0.129 / 0.037 / 0.011 |
+| Drive 0 → 8 (3.76 s) | 0.3 / 1.1 / 2.1 | 1.46 / 1.45 / 1.46 | 1.45 / 1.44 / 0.63 | — | — |
+
+- **Neither policy dominates.** After a rise or a fall, keeping costs less, most at 1–2.7 s. After a
+  cut the predict floor lands near the new level, so the flush wins at every *t*: a KEEP would play the
+  old level up to 2.4 dB off.
+- **Root cause.** The result is confirmed only when the gliding published value comes within 0.1 dB of
+  the post-change mean, with that mean at least half the value. The mean itself is already
+  0.03–0.13 dB from fresh by 0.3 s, and its share passes 0.5 by ~1 s. The glide takes ~3 s to arrive. The
+  record carries the published value and one bit, not the mean.
+- **Candidate** (not adopted; ADR-0007 already records the trade-off and the S6 candidate): record the
+  post-change mean and its share with the slot, and restore the mean as measured once the share is at
+  least 0.5. It would beat both columns on every row above from ~1 s. It changes what a restore and a
+  re-prepare publish, so it needs an ADR amendment and the owner.
+
+**(2) Switching faster than confirmation never re-confirms.** After Drive 8 → 12, toggling every *T*:
+
+| *T* | B at the leave, dB off fresh | B's record measured | re-prepare after the last return |
+|---|---|---|---|
+| 0.3 s, 12 switches | 0.38 at 3.3 s | never | flushed, 1.59 dB·s |
+| 0.6 s, 12 switches | 0.08 at 6.6 s | never | flushed, 1.60 dB·s |
+| 1.0 s | 0.03 at 11 s | from the 5th visit | kept, 0.05 dB·s |
+| 1.5 s, 2.0 s | — | from the 2nd visit | kept, 0.05 / 0.04 dB·s |
+
+- **Root cause.** Every restore of a not-measured record calls `inputsChanged()`, which zeroes the
+  post-change share. When the slots differ, the P1b re-arm also empties the integrators, so nothing
+  accumulates across visits, and one visit needs ≳ 0.6 s at best.
+- **Same candidate as (1).** Carrying the share and mean across visits would confirm after about two
+  0.6 s visits. The ADR already records "evidence across visits" as not adopted.
+
+**(3) Burst processing adopts a partly written slot.** A threaded harness: a free-running audio thread
+calls `processBlock` while the main thread toggles `abSwitchTo`. Both slots are measured, and the check
+is made 40 blocks after each toggle.
+- **The failure.** `abSwitchTo` takes 120–270 µs on the message thread (one locked `replaceState`, then
+  the raw values re-asserted one by one). `processBlock` rebuilds `toEngine()` from those atomics every
+  block, and the free-running thread runs 9–10 blocks inside that window. The forced bottom, 2 blocks
+  after the request, adopts a mixed snapshot. The restore is judged against it (`measuredFor ≠ p`) and
+  comes back not current, and the rest of the writes land as live edits in the fade-in.
+- **Measured.**
+
+  | processing | toggles left not current |
+  |---|---|
+  | free-running | 59 of 60, and 291 of 300 |
+  | ≥ 50 µs per block (≈ 75× real time) | 0 of 60 |
+  | 200 µs or 1 ms per block | 0 of 60 |
+  | real time (5.3 ms) | 0 of 60 |
+  | free-running, audio paused around the call | 0 of 60 |
+
+  The design-1 figure of §O8 (1–2 in 120–400) came from a different harness.
+- **Cost.** Conservative: the restored value is still the slot's, and it plays. Only a same-rate
+  re-prepare within the ~3 s before re-confirmation flushes it. This needs a GUI A/B click during a
+  faster-than-real-time render.
+- **Fixes.** Each changes the processor → engine handoff: the destination snapshot delivered with the
+  request, or the bottom held until an apply generation matches. That is a threading-model change (a
+  hard stop), so it is recorded, not changed. This round's fix is not involved: the mixed adoption
+  happens before the bottom.
