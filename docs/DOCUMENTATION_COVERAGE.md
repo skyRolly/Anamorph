@@ -13033,7 +13033,7 @@ under burst processing — investigated only (no threading change). All of it is
 - **Revised, stronger:** Test 70 (3b)'s identity check (bit-identity with (3a)'s bottom); State test 134 (B)
   1.1 s (the certified keep, within 0.1 dB of fresh, in place of the flush).
 - **Against `3a779f5`:** State test 137 fails 23 of 54 (Test 73's API is new; the variant recording no evidence
-  fails 16 of its checks); State test 134 (B) 1.1 s fails its route and keep.
+  fails 17 of its checks); State test 134 (B) 1.1 s fails its route and keep.
 - **Suites:** DSP 901 / 0, State 5506 / 0 (`ulimit -s 1024`).
 - **What else moves:** only A/B returns of a record with a measurement's worth of evidence — State test 130 leg
   (6) and State test 131 (a) / (b) (closer to fresh; passing) and route hash S14; 22 of 23 route hashes and 186 of

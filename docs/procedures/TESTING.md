@@ -653,7 +653,7 @@ the record; 2 s on A per visit.
   mean, kept; at 44.1 kHz the record, flushed. A forget: 0 dB restored, flushed.
 
 56 checks, ~1 s native. It drives an API the revision adds, so it has no run at `3a779f5`; the variant that records
-no evidence (the head-equivalent composite) fails 16 of its checks. The variants rejected are listed in the test's
+no evidence (the head-equivalent composite) fails 17 of its checks. The variants rejected are listed in the test's
 header and worklog §R6.
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
