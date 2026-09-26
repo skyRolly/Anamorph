@@ -47,8 +47,11 @@ public:
 
     void prepare (double sampleRate, int maxBlockSize);
     // WHAT A FLUSH IS ALLOWED TO THROW AWAY. `everything` is the flush `prepare()`
-    // performs: a new sample rate or block size invalidates every measurement as
-    // well as every buffer, so the Level-Match integrators go with them.
+    // performs: every buffer and the Level-Match analysis go, and so does the published
+    // Level-Match result -- unless prepare() found it still valid (the same sample rate and
+    // the same measurement inputs; a block size is no input to the measurement), in which
+    // case the matcher is re-armed rather than flushed (ADR-0007, Amendment of 2026-09-24,
+    // F13(2)).
     //
     // `audioTailsOnly` is the HOST-RESET flush (R5/F2), and the difference is not a
     // refinement -- it is ADR-0007. A host's reset asks the plug-in to "stop any
@@ -63,6 +66,7 @@ public:
     enum class ResetScope
     {
         everything,       // prepare(): buffers AND the whole matcher, published gain included
+                          // unless prepare() keeps it (same rate, same measurement inputs)
         audioTailsOnly    // a host reset: AUDIO and the LIVE DISPLAY -- buffers, filters,
                           // rings, the duck, the matcher's analysis state, and the meter
                           // envelopes / bars / RMS readouts that describe audio that has
@@ -109,11 +113,19 @@ public:
     // `prepare()` on the very next line, which resizes and clears all four rings
     // and ends in `reset()`, which re-latches. A future mid-stream call would read
     // stale history at a new offset; if one is ever wanted, it has to clear too.
+    //
+    // It also records whether the snapshot it adopts changes anything the Level-Match
+    // measurement reads, for prepare() to decide whether the published result still describes
+    // the sound (ADR-0007, Amendment of 2026-09-24, F13(2) Q5). The requests it clears are taken
+    // first, against the state being left: the duck itself is dropped, as always, but an A/B
+    // switch still records the slot it leaves and restores its destination on the first block
+    // (ADR-0007, Amendment of 2026-09-25, A/B provenance).
     void primeParameters (const EngineParameters& np) noexcept
     {
+        primeMeasChanged = primeMeasChanged || measurementInputsDiffer (p, np);
+        takeRequests (duckRequest.exchange (0, std::memory_order_relaxed));
         p = np;
         pendingP = np;
-        duckRequest.store (0, std::memory_order_relaxed);
     }
 
     // Adopts a new parameter snapshot. Continuous controls update immediately
@@ -155,16 +167,35 @@ public:
     LevelMeters&      getLevels() noexcept         { return levels; }
     float getMatchGainDb() const noexcept         { return loudness.getMatchGainDb(); }
 
-    // A/B per-slot Level-Match memory (feedback #23): the wrapper restores a
-    // remembered match value on a slot switch; consumed on the audio thread.
+    // A/B SWITCH (feedback #1 and #23; ADR-0007, Amendment of 2026-09-25, A/B provenance). Call
+    // BEFORE applying the destination slot's parameters, in place of requestDuck(): it requests
+    // the same masking duck, and tells the engine which slot the live Level-Match result belongs
+    // to and which slot's remembered result to restore at the duck's bottom. The engine keeps
+    // each slot's memory -- the value published when the slot was left, whether that value was
+    // MEASURED (the measure's confirmed answer for the inputs then being read), and the state and
+    // rate it was measured for -- because all of it is audio-thread state, read where it is written;
+    // only the two slot indices cross. At the bottom the value is restored, measured only if it was
+    // measured when the slot was left, at the rate the engine now runs at, and the state now adopted
+    // reads the same measurement inputs; otherwise not current. Message thread; lock-free. Slot
+    // indices are clamped to [0, kAbSlots).
+    static constexpr int kAbSlots = 2;   // the processor asserts it equals anamorph::kNumAbSlots
+    void requestAbSwitch (int fromSlot, int toSlot) noexcept;
+    // A session restore replaced both slots: every remembered result belongs to the previous
+    // project, so the next block forgets them (ER-STATE-20) and drops any restore still pending.
+    void forgetAbMatchMemory() noexcept;
+
+    // Engine API: restore `db` at the next forced bottom (or, with no duck, the next block) as a
+    // MEASURED result -- the caller asserts it is a measurement of the state it is adopted with.
+    // The processor's A/B switch does not use it (requestAbSwitch carries its provenance).
     void injectMatchGainDb (float db) noexcept { matchInject.store (db, std::memory_order_relaxed); }
 
     // Request a short raised-cosine output duck around the NEXT parameter swap,
     // even if it's continuous-only (#1, 0.6.4 feedback): an A/B or preset jump can
     // move many params at once and pop, so the wrapper asks for the same masking
     // duck the engine already uses for discrete switches. Call BEFORE changing the
-    // parameters so the duck is already running when the new values arrive.
-    void requestDuck() noexcept { duckRequest.store (1, std::memory_order_relaxed); }
+    // parameters so the duck is already running when the new values arrive. It sets
+    // one bit of the request word, so it never cancels an A/B switch still pending.
+    void requestDuck() noexcept { duckRequest.fetch_or (kReqDuck, std::memory_order_relaxed); }
 
 private:
     void updateDerived();
@@ -193,9 +224,18 @@ private:
     // EngineParameters field: a new field MUST be added here too, or an edit
     // to it would be ignored while nothing else changes.
     static bool sameParameters (const EngineParameters& a, const EngineParameters& b) noexcept;
-    // True when the actual PROCESSING differs (excludes Level-Match / Bypass),
-    // i.e. when the loudness measurement is genuinely stale and must re-arm (#1).
+    // True when the SIGNAL PATH differs in a discrete field (excludes Level-Match / Bypass):
+    // the trigger for re-arming the loudness measurement at a duck bottom (#1). Continuous
+    // changes are not compared (F13(2), KI-030).
     static bool processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // True when a switch from `a` to `b` can change anything the Level-Match measurement reads
+    // -- the wet at the loudness tap, the dry reference, or the predict's inputs -- so the
+    // published value no longer describes the sound that will play. A different question from
+    // processingDiffers (the path re-arm): this one decides whether a Level-Match-engaging bottom
+    // may land the applied gain on the published value (ADR-0007, Amendment 2026-09-24), whether
+    // an A/B injection re-arms the analysis, and whether a same-rate re-prepare keeps the
+    // published result (both ADR-0007, Amendment of 2026-09-24, F13(2)).
+    static bool measurementInputsDiffer (const EngineParameters& a, const EngineParameters& b) noexcept;
     // Copies only the continuous (smoothed) fields, leaving discrete ones intact.
     static void copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept;
 
@@ -259,6 +299,19 @@ private:
     // forced bottom, dry-fill stays off -- see the FadeOut upgrade branch in
     // setParameters); landing during FadeIn it re-ducks via beginForcedDuck.
     bool  pendingForced = false;
+    // An ORDINARY duck makes its continuous controls live at once (copyContinuous), so by the
+    // bottom `p` already holds them and cannot show what changed. Set when any snapshot made live
+    // during this duck changed a Level-Match measurement input (measurementInputsDiffer); retired by
+    // the bottom that reports it, by reset() and at every fresh fade-out entry (ADR-0007, Note of
+    // 2026-09-26). A forced duck makes nothing live: its bottom's (p, pendingP) test is complete.
+    bool  duckMeasDirty = false;
+    // Set by primeParameters() when the snapshot it adopts changes a Level-Match measurement
+    // input; read and cleared by prepare(), which keeps the published result only if it did not.
+    bool  primeMeasChanged = false;
+    // True only while prepare() runs its reset() for a re-prepare that KEEPS the Level-Match
+    // result (same sample rate, same measurement inputs): reset() then re-arms the matcher's
+    // analysis (softReset) instead of flushing it (ADR-0007, Amendment of 2026-09-24, F13(2) Q5).
+    bool  keepMatchResult = false;
     // Dry-fill for the FORCED duck: while a forced duck is in flight the output is
     // crossfaded against the delay-aligned RAW input (the true-bypass ring, whose
     // writes are always warm -- H9) instead of dipping to silence, so an undo /
@@ -303,8 +356,41 @@ private:
     void  snapSmoothers() noexcept;
 
     static constexpr float kNoInject = -1000.0f;
-    std::atomic<float> matchInject { kNoInject }; // pending per-slot match restore (#23)
-    std::atomic<int>   duckRequest { 0 };         // force a duck around a bulk param swap (#1, 0.6.4)
+    std::atomic<float> matchInject { kNoInject }; // pending engine-API match restore (injectMatchGainDb)
+    // The request word (message thread -> audio thread; relaxed, lock-free): a forced duck around a
+    // bulk param swap (#1, 0.6.4), an A/B switch with its two slot indices, and a forget. Taken
+    // whole by one exchange per block (setParameters) or by the prime, so the fields never tear.
+    std::atomic<int>   duckRequest { 0 };
+    static constexpr int kReqDuck = 1, kReqAbSwitch = 2, kReqAbForget = 4;
+    static constexpr int kReqFromShift = 4, kReqToShift = 8, kReqSlotMask = 0xF;
+    static_assert (kAbSlots <= kReqSlotMask + 1, "an A/B slot index fits its field of the request word");
+
+    // THE A/B LEVEL-MATCH MEMORY (feedback #23; ADR-0007, Amendment of 2026-09-25, A/B provenance).
+    // One record per slot: the value the matcher published when the slot was left, whether it was
+    // MEASURED then (LoudnessMatch::isResultMeasured), the adopted state and sample rate it was
+    // measured for, and -- only when it was not measured -- the post-change evidence the measure had
+    // gathered for that state (LoudnessMatch::Evidence; empty for a measured record). One provenance:
+    // `measured` says the value is the measure's answer; `evidence` is what the measure had toward one.
+    // Written and read only by takeRequests() and restoreAbSlot(), on the audio thread or the prepare
+    // path, which JUCE never runs concurrently with process(). Never serialized; a session restore
+    // forgets it (forgetAbMatchMemory).
+    struct AbMatchMemory
+    {
+        float gainDb = 0.0f;           // 0 dB: a slot never left (the fresh-instance value)
+        bool  measured = false;        // the value was the measure's confirmed answer for `measuredFor`
+        EngineParameters measuredFor;  // the adopted state when the slot was left
+        double measuredAt = 0.0;       // ...and the sample rate it was measured at
+        LoudnessMatch::Evidence evidence;   // not measured: the post-change evidence for `measuredFor`
+    };
+    AbMatchMemory abMemory[kAbSlots];
+    int abRestoreSlot = -1;            // the slot the next forced bottom restores (-1: none)
+    // Takes one request word: forgets, records the slot a switch leaves (unless the engine never
+    // adopted it) and arms its destination's restore. Returns whether a forced duck was asked for.
+    bool takeRequests (int req) noexcept;
+    // Restores the armed slot's remembered value; `rearm` is the F13(2) re-arm (P1b). Returns
+    // whether a value was adopted.
+    bool restoreAbSlot (bool rearm) noexcept;
+    void adoptRememberedMatch (float db, bool measured, bool rearm, LoudnessMatch::Evidence evidence = {}) noexcept;
 
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;

@@ -8,7 +8,7 @@ architecture docs, and the ADRs. These must hold across releases.
 1. **The signal chain is strictly serial, in this fixed order** (see `SIGNAL_FLOW.md`):
    Input conditioning → Effect engine (Drive → algorithm → global Width → Multiband) →
    Dry/Wet Mix → Mono Maker → Output stage → Band Solo monitor → metering.
-   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:907-1473.
+   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1107-1709.
 
 2. **Mono Maker runs post-Mix, in place.** It collapses the lows of the *mixed* signal so the
    low end is mono at any Mix amount. (ADR-0006) Evidence: AnamorphEngine.cpp:761-766; test
@@ -42,7 +42,7 @@ architecture docs, and the ADRs. These must hold across releases.
 
 6. **Mono compatibility by construction.** Width/decorrelation modify only the Side; `L+R = 2·Mid`
    always. Band-split stages are Linkwitz-Riley applied identically to L and R (allpass-flat Mid).
-   Evidence: MidSide.h:38-40; VelvetNoise.h:13-18; MultibandWidth.h:24-27.
+   Evidence: MidSide.h:38-40; VelvetNoise.h:14-19; MultibandWidth.h:24-27.
 
 7. **The dry path is delay-compensated and phase-matched** to the wet (A(dry)); `Mix=0` is a
    bit-exact null. (ADR-0005) Evidence: AnamorphEngine.cpp:726-759; test `testMultibandMonoCompat`.

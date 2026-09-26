@@ -81,9 +81,9 @@ control; it fails against the pre-correction engine on 20 of its 22 checks.
 
 ## Related code
 - `src/dsp/MultibandWidth.cpp:154-168` (dry bank), `:104-123` (lockstep glide)
-- `src/dsp/AnamorphEngine.cpp:1009-1080` (A(dry) production), `:726-759` (smoothstep Mix)
+- `src/dsp/AnamorphEngine.cpp:1209-1306` (A(dry) production), `:726-759` (smoothstep Mix)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:1139-1192
+- Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:1718-1837
 - Tests: testMultibandMonoCompat, testMultibandUnityMatch, testMultibandEnableDrySourceNoStep
 - History [Partially Verified]: CHANGELOG.md [0.7.5]-[0.7.0] (0.7.2)

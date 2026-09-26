@@ -42,6 +42,28 @@ static bool osActiveFor (const EngineParameters& e) noexcept
 // ---------------------------------------------------------------------------
 void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 {
+    // THE LEVEL-MATCH RESULT ACROSS A RE-PREPARE (ADR-0007, Amendment of 2026-09-24, F13(2) Q5).
+    // A re-prepare at the SAME sample rate, for a snapshot whose measurement inputs are the ones
+    // the matcher was measuring (primeParameters() records any change), keeps the published result:
+    // it still describes the sound, the K-weighting coefficients and the 0.4 s window are functions
+    // of the rate alone, and a block size is no input to the measurement. The analysis still goes
+    // (reset() below re-arms it: the audio it describes has stopped). Flushing a valid result
+    // restarted the match from the predict floor and played it up to ~3 dB off for ~2 s. A NEW
+    // rate still flushes, by decision rather than by necessity: the coefficients must be rebuilt
+    // there, and carrying the result across a rate change, though measured close on Haas
+    // programmes, is not adopted (ADR-0007, F13(2)). The first prepare (no oversampler yet)
+    // always flushes: nothing is measured, and sr still reads its 44.1 kHz default (Test 67).
+    // The result must also be CURRENT (ADR-0007, Amendment of 2026-09-25; Test 69): a measurement
+    // input changed live or at a duck bottom is already in p, so the prime cannot see it, and until
+    // the measure catches up the result still describes the previous sound. A duck before its bottom
+    // reports its change only there, which reset() below replaces: an ordinary duck's live part
+    // (duckMeasDirty, retired by that bottom) and, on the unprimed engine API, its pending snapshot.
+    const bool adoptsMeasChange = switchState != SwitchState::Normal
+                               && (duckMeasDirty || measurementInputsDiffer (p, pendingP));
+    const bool keepMatch = os2 != nullptr && juce::exactlyEqual (sampleRate, sr)
+                        && ! primeMeasChanged && ! adoptsMeasChange
+                        && std::isfinite (loudness.getMatchGainDb()) && loudness.isResultCurrent();
+    primeMeasChanged = false;
     sr = sampleRate;
     maxBlock = juce::jmax (1, maxBlockSize);
 
@@ -52,7 +74,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     multiband.prepare (sr, maxBlock);
     monoMaker.prepare (sr, maxBlock);
     soloMonitor.prepare (sr, maxBlock);
-    loudness.prepare (sr);
+    if (! keepMatch) loudness.prepare (sr);   // same rate: the same coefficients (see above)
     correlation.prepare (sr);
     levels.prepare (sr);
 
@@ -75,7 +97,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     widthSmooth     .reset (sr, ramp);
     mixSmooth       .reset (sr, ramp);
     outGainSmooth   .reset (sr, ramp);
-    matchGainSmooth .reset (sr, 0.12); // gentle so an A/B level-match swap glides (#16)
+    matchGainSmooth .reset (sr, 0.12); // gentle, so a live match change glides (#16); lands at an A/B injection (#23), a silence->audio edge, a gain-only Match-on bottom and a kept re-prepare (ADR-0007)
     balanceSmooth   .reset (sr, ramp);
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
@@ -142,7 +164,16 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     loudnessRefScratch.setSize (2, maxBlock);
 
     updateDerived();
+    keepMatchResult = keepMatch;
     reset();
+    keepMatchResult = false;
+    // A KEPT RESULT IS ALSO THE APPLIED GAIN. With Level Match on in the state reset() settled, the
+    // kept value is already published (the re-armed measure holds it until its gate opens), so the
+    // applied gain starts there, not at the unity above: process()'s silence->audio snap never fires
+    // for audio under its ~-60 dBFS detector, and quiet resumed audio glided 120 ms from 0 dB (ADR-0007,
+    // F13(2) Q5; Test 68). Level Match off rests at unity, so a later engage starts as it would have.
+    if (keepMatch && p.autoGainMatch)
+        matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (loudness.getMatchGainDb()));
 
     // Settle every continuous smoother at the target updateDerived() just armed
     // from the live snapshot p. Without this, the neutral constants written
@@ -153,7 +184,8 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // blocks. prepare() has just cleared all delay/filter state, so snapping
     // is inaudible; the two blend crossfades were already settled from p above
     // (the same treatment the continuous set was missing). matchGainSmooth is
-    // deliberately excluded by snapSmoothers (its own glide/injection).
+    // deliberately excluded by snapSmoothers: ADR-0007 decides where it lands (an A/B injection,
+    // a silence->audio edge, a gain-only Match-on duck bottom, a kept re-prepare just above).
     snapSmoothers();
 
     // ...and the same treatment for the MODULES' own internal smoothers, which
@@ -204,10 +236,12 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // equals a clean start only where none of those was moving.
     if (switchState != SwitchState::Normal)
     {
+        const bool adoptsMeasChange = duckMeasDirty || measurementInputsDiffer (p, pendingP);
         p = pendingP;
         updateDerived();
         if (pendingForced)
             snapSmoothers();
+        if (adoptsMeasChange) loudness.inputsChanged();   // the result now trails the adopted state
     }
 
     haas.reset();
@@ -218,9 +252,13 @@ void AnamorphEngine::reset (ResetScope resetScope)
     soloMonitor.reset();
     // THE MEASUREMENT HALF, and the one place the two scopes genuinely differ.
     //
-    // `everything` is prepare()'s flush: a new sample rate or block size invalidates
-    // the K-weighting coefficients and every integrator, so the whole matcher goes --
-    // including the PUBLISHED gain, because there is no longer a measurement behind it.
+    // `everything` is prepare()'s flush: a new sample rate invalidates the K-weighting
+    // coefficients and every integrator, so the whole matcher goes -- including the
+    // PUBLISHED gain, because there is no longer a measurement behind it. A re-prepare at
+    // the SAME rate whose measurement inputs did not change keeps that result
+    // (`keepMatchResult`, set by prepare() only; ADR-0007, Amendment of 2026-09-24, F13(2)):
+    // there the matcher takes the host-reset treatment below -- a block size is no input to
+    // the measurement.
     //
     // `audioTailsOnly` is a host reset, and it takes `softReset()` instead. The
     // distinction is not cosmetic and neither half of it is optional:
@@ -250,8 +288,8 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // This is not a new semantic. It is the one the duck bottom already uses when the
     // processing changed (`if (procChanged) loudness.softReset()`), applied to the entry
     // point R5 added.
-    if (resetScope == ResetScope::everything) loudness.reset();
-    else                                      loudness.softReset();
+    if (resetScope == ResetScope::everything && ! keepMatchResult) loudness.reset();
+    else                                                         loudness.softReset();
 
     // THE DISPLAY METERS. Two halves, and `audioTailsOnly` takes exactly one of them.
     //
@@ -320,6 +358,7 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // session rather than adopted (#23). Clearing it here is what makes the flushed
     // state actually steady: the duck it described has just been resolved above.
     pendingForced = false;
+    duckMeasDirty = false;
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
     mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f); // settle the multiband crossfade
     mbRunning = p.mbEnable; // reset() above cleaned the bank: warm iff multiband is on
@@ -415,7 +454,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:813 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:1013 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -431,14 +470,14 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // states, which no module can observe.
         //
         // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
-        // (src/dsp/AnamorphEngine.cpp:385 (`a.dimMode`)),
+        // (src/dsp/AnamorphEngine.cpp:424 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
         // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:798 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:998 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -505,6 +544,154 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
         || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample;
 }
 
+// The Level-Match measurement reads three things (LoudnessMatch::process, called once per
+// block right after Mono Maker): the WET at the tap, the DRY REFERENCE (loudnessRefScratch),
+// and the predict's inputs (setDriveDb / setMix). A field belongs here when a change to it can
+// reach one of them; its guard is the condition under which its module's OUTPUT reaches the
+// tap (not merely the module -- haas.setSide runs unconditionally, yet under another algorithm
+// no Haas sample reaches the tap). Each answer was derived from the code and measured bitwise
+// on the matcher's state (worklog NONFINITE_PARAMETERS_AND_F13.md §J); scripts/check-state-
+// coverage.py holds this list to a declaration for every EngineParameters field.
+//
+// NOT compared: outputGainDb, outputBalance, bypass and mbSolo act after the tap (bypass and
+// the Level-Match switch itself also move the H4 dry reference, a documented 0.8.9 Class-B
+// difference measured at <= 0.0064 dB at an engage); autoGainMatch is the switch being asked
+// about. driveDb and mix are compared EXACTLY: they feed the predict, whose rise test fires on
+// any rise, one ulp included. Every other float is compared to a relative 1e-5 -- 6x the
+// largest representation drift a preset round trip produced (1.6e-6, the log-mapped crossovers
+// and Mono Maker Freq), and under a tenth of any snapped parameter's half grid step -- so a
+// round trip is not a change, and NaN reads as one.
+bool AnamorphEngine::measurementInputsDiffer (const EngineParameters& a, const EngineParameters& b) noexcept
+{
+    const auto differs = [] (float x, float y) noexcept
+    {
+        return ! (std::abs (x - y) <= 1.0e-5f * juce::jmax (1.0f, std::abs (x), std::abs (y)));
+    };
+    const auto either = [&a, &b] (Algorithm al) noexcept { return a.algorithm == al || b.algorithm == al; };
+    const bool mb    = a.mbEnable || b.mbEnable;
+    const int  bands = juce::jmax (a.mbBands, b.mbBands);
+    return a.channelMode != b.channelMode || a.monoSum  != b.monoSum  || a.swapLR    != b.swapLR
+        || a.polarityL   != b.polarityL   || a.polarityR != b.polarityR || a.msMode  != b.msMode
+        || a.solo        != b.solo        || a.algorithm != b.algorithm || a.mbEnable != b.mbEnable
+        || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample
+        || ! juce::exactlyEqual (a.driveDb, b.driveDb) || ! juce::exactlyEqual (a.mix, b.mix)
+        || differs (a.inputBalance, b.inputBalance) || differs (a.algoAmount, b.algoAmount)
+        || differs (a.width, b.width)
+        || (either (Algorithm::Haas)   && (differs (a.haasDelayMs, b.haasDelayMs) || a.haasSide != b.haasSide))
+        || (either (Algorithm::Velvet) && differs (a.velvetDensity, b.velvetDensity))
+        || (either (Algorithm::Chorus) && (differs (a.chorusRate, b.chorusRate) || differs (a.chorusDepth, b.chorusDepth)))
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
+                                    || b.algorithm == Algorithm::DimensionD))
+        || (mb && (a.mbBands != b.mbBands || differs (a.mbWidthLow, b.mbWidthLow)))
+        || (mb && bands >= 2 && (differs (a.mbFreqLow,  b.mbFreqLow)  || differs (a.mbWidthMid,   b.mbWidthMid)))
+        || (mb && bands >= 3 && (differs (a.mbFreqMid,  b.mbFreqMid)  || differs (a.mbWidthHiMid, b.mbWidthHiMid)))
+        || (mb && bands >= 4 && (differs (a.mbFreqHigh, b.mbFreqHigh) || differs (a.mbWidthHigh,  b.mbWidthHigh)))
+        || ((a.monoMakerEnable || b.monoMakerEnable) && differs (a.monoMakerFreq, b.monoMakerFreq));
+}
+
+// ---------------------------------------------------------------------------
+//  THE A/B LEVEL-MATCH MEMORY (feedback #23; ADR-0007, Amendment of 2026-09-25, A/B provenance).
+//  A slot's remembered value carries the validity of the result it was taken from: restoring the
+//  value and restoring its currency are two answers, and the second is decided here, on the audio
+//  thread, from state that lives here. The processor sends only the two slot indices.
+// ---------------------------------------------------------------------------
+void AnamorphEngine::requestAbSwitch (int fromSlot, int toSlot) noexcept
+{
+    const int from = juce::jlimit (0, kAbSlots - 1, fromSlot);
+    const int to   = juce::jlimit (0, kAbSlots - 1, toSlot);
+    int cur = duckRequest.load (std::memory_order_relaxed);
+    for (;;)
+    {
+        // A switch the engine has not taken yet keeps ITS source: the engine is still on that slot,
+        // and the slot in between was never adopted (A -> B -> A before a block: B keeps its record).
+        const int source = (cur & kReqAbSwitch) != 0 ? ((cur >> kReqFromShift) & kReqSlotMask) : from;
+        const int next = (cur & kReqAbForget) | kReqDuck | kReqAbSwitch
+                       | (source << kReqFromShift) | (to << kReqToShift);
+        if (duckRequest.compare_exchange_weak (cur, next, std::memory_order_relaxed))
+            return;
+    }
+}
+
+void AnamorphEngine::forgetAbMatchMemory() noexcept
+{
+    // Keeps a pending duck; drops a pending switch, whose slots the restore has replaced.
+    int cur = duckRequest.load (std::memory_order_relaxed);
+    while (! duckRequest.compare_exchange_weak (cur, (cur & kReqDuck) | kReqAbForget, std::memory_order_relaxed)) {}
+}
+
+bool AnamorphEngine::takeRequests (int req) noexcept
+{
+    if ((req & kReqAbForget) != 0)
+    {
+        for (auto& m : abMemory) m = AbMatchMemory {};
+        abRestoreSlot = -1;
+    }
+    if ((req & kReqAbSwitch) != 0)
+    {
+        const int from = juce::jlimit (0, kAbSlots - 1, (req >> kReqFromShift) & kReqSlotMask);
+        const int to   = juce::jlimit (0, kAbSlots - 1, (req >> kReqToShift) & kReqSlotMask);
+        // Record the slot being left, every answer read here, before this call adopts anything: the
+        // published value, whether it is MEASURED -- the measure's confirmed answer, not merely
+        // current: a flush's value is current only in the flush's own context -- and the state and
+        // rate it was measured for. Not while a restore is still armed -- the engine never adopted the slot
+        // that switch was going to, and the live result is still its source's, already recorded --
+        // and not in the word that forgets: the live result is the previous project's. Not measured
+        // either while a duck before its bottom has made a measurement-input change live that only
+        // that bottom will report (duckMeasDirty, retired there) -- the same rule prepare() applies --
+        // and then no evidence: what the measure gathered describes the inputs before that change. A
+        // record not measured otherwise carries the matcher's post-change evidence, which describes
+        // exactly `p` (every change to it reset that evidence).
+        if (abRestoreSlot < 0 && (req & kReqAbForget) == 0)
+        {
+            AbMatchMemory& m = abMemory[from];
+            const bool changeInFlight = switchState != SwitchState::Normal && duckMeasDirty;
+            m.gainDb      = loudness.getMatchGainDb();
+            m.measured    = loudness.isResultMeasured() && ! changeInFlight;
+            m.evidence    = changeInFlight ? LoudnessMatch::Evidence {} : loudness.getEvidence();
+            m.measuredFor = p;
+            m.measuredAt  = sr;   // a prime runs before its prepare: still the rate the result was measured at
+        }
+        abRestoreSlot = to;
+    }
+    return (req & kReqDuck) != 0;
+}
+
+bool AnamorphEngine::restoreAbSlot (bool rearm) noexcept
+{
+    const AbMatchMemory& m = abMemory[abRestoreSlot];
+    abRestoreSlot = -1;
+    if (! (m.gainDb > kNoInject + 1.0f))   // a NaN reading is not restored, as the injection never was
+        return false;
+    // The record describes this state only at the rate the engine runs at now (the K-weighting is a
+    // function of the rate: a record from another rate is no measurement here, and one from this rate
+    // still is, whatever rates came between) AND if the state adopted now reads the same measurement
+    // inputs: a Copy onto the slot, an Oversampling change made on the other slot, or an edit the
+    // engine had not yet adopted when the slot was left each fail that test. Then a measured record is
+    // restored measured, and one that was not brings its evidence back to the measure (which publishes
+    // the evidence's mean, measured, once it is a measurement). A record that fails the test is
+    // restored not current, and its evidence -- about other inputs -- is dropped.
+    const bool valid = juce::exactlyEqual (m.measuredAt, sr) && ! measurementInputsDiffer (m.measuredFor, p);
+    adoptRememberedMatch (m.gainDb, m.measured && valid, rearm, valid ? m.evidence : LoudnessMatch::Evidence {});
+    return true;
+}
+
+void AnamorphEngine::adoptRememberedMatch (float db, bool measured, bool rearm, LoudnessMatch::Evidence evidence) noexcept
+{
+    // The restored value describes the DESTINATION slot; the analysis still holds the source slot's
+    // audio. When the two slots differ in anything the measurement reads, that analysis would drag
+    // the restored value back toward the source for seconds (KI-030), so re-arm it: the result is
+    // the slot's, the analysis starts on the slot's sound. Identical slots, and slots that differ
+    // only after the tap (Output Gain, Level Match itself), keep a converged analysis (ADR-0007,
+    // Amendment of 2026-09-24, F13(2) Q1). The re-arm answers where the ANALYSIS came from;
+    // `measured` answers where the VALUE came from -- two questions, never one flag. A value that is not
+    // measured comes back with its evidence (empty from a record that does not describe this state), and
+    // the matcher decides what it publishes: the applied gain snaps to that.
+    if (rearm) loudness.softReset();
+    if (measured) loudness.setDisplayedGainDb (db, true);
+    else          loudness.restoreUnmeasured (db, evidence);
+    matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (loudness.getMatchGainDb()));
+}
+
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
 {
     // Keep dst's discrete fields; pull every smoothed/continuous field from src. Every
@@ -535,7 +722,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     // silent bottom (continuous included, smoothers snapped) so NOTHING can pop
     // mid-fade, not even an un-smoothed control or the Level-Match re-injection
     // (#1, 0.6.4/0.6.5 feedback).
-    const bool forceDuck = duckRequest.exchange (0, std::memory_order_relaxed) != 0;
+    // The same word carries the A/B switch (requestAbSwitch), taken first against the state being
+    // left (ADR-0007, Amendment of 2026-09-25, A/B provenance).
+    const bool forceDuck = takeRequests (duckRequest.exchange (0, std::memory_order_relaxed));
 
     // Begin (or re-begin) a forced duck: mark it forced and latch the dry-fill
     // decision against the state being heard RIGHT NOW (getLatencySamples() tracks
@@ -576,6 +765,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
             beginForcedDuck (np);
+            duckMeasDirty = false;           // nothing goes live on a forced duck
             switchState = SwitchState::FadeOut;
         }
         else if (discreteDiffers (np, p))
@@ -587,6 +777,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // FACTOR -- and it keeps its duck-to-silence behaviour unchanged.
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
+            duckMeasDirty = measurementInputsDiffer (p, np); // before the copy hides it (ADR-0007)
             copyContinuous (p, np);          // knobs respond immediately
             dryDuck = false;                 // ordinary discrete duck: duck-to-silence (unchanged)
             switchState = SwitchState::FadeOut;
@@ -607,6 +798,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // behaves exactly as its previous block did.
             if (! sameParameters (np, p))
             {
+                if (measurementInputsDiffer (p, np)) loudness.inputsChanged(); // a live edit (ADR-0007)
                 p = np;                      // continuous-only change
                 updateDerived();
             }
@@ -624,6 +816,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             pendingAlgoReset = (np.algorithm != p.algorithm);
             if (forceDuck) beginForcedDuck (np);      // re-latch against the state heard now
             else         { pendingForced = false; dryDuck = false; } // ordinary discrete re-duck
+            duckMeasDirty = false;                    // a fresh fade-out; the copy below marks it
             switchState = SwitchState::FadeOut;
         }
         else if (pendingForced)
@@ -657,9 +850,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:577), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:589) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:624) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:766), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:779) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:766) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -668,7 +861,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1075) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1301) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
@@ -694,16 +887,20 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         // continuous controls live during the duck.
         if (! pendingForced)
         {
+            const bool heard = measurementInputsDiffer (p, np);
+            duckMeasDirty = duckMeasDirty || heard;           // heard mid-duck (ADR-0007)
+            if (heard) loudness.inputsChanged();   // live now; in a fade-IN no bottom follows to report it
             copyContinuous (p, np);
             updateDerived();
         }
     }
 }
 
-// Snap every continuous smoother straight to its (new) target. Called where it is
-// inaudible: the silent bottom of a forced duck -- so the post-fade-in state is
-// already settled and a big level change never swells (#1) -- prepare(), and a host
-// reset() that completes a forced swap in flight in the bottom's place.
+// Snap every continuous smoother except the Level-Match gain straight to its (new)
+// target. Called where it is inaudible: the silent bottom of a forced duck -- so the
+// post-fade-in state is already settled and a big change of any snapped control never
+// swells (#1) -- prepare(), and a host reset() that completes a forced swap in flight in
+// the bottom's place. The Level-Match gain is ADR-0007's (see the note at the end).
 void AnamorphEngine::snapSmoothers() noexcept
 {
     auto snap = [] (juce::SmoothedValue<float>& s) { s.setCurrentAndTargetValue (s.getTargetValue()); };
@@ -721,7 +918,10 @@ void AnamorphEngine::snapSmoothers() noexcept
     // stage would immediately start a fresh blend anyway (measured: no change at
     // all). The forced-swap branch settles it explicitly instead, where the new `p`
     // is already in force.
-    // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
+    // matchGainSmooth is NOT snapped here: its target is fresh only after this block's
+    // loudness.process, so a Match-on bottom that changes nothing the measurement reads lands
+    // it there instead (measurementInputsDiffer; ADR-0007, Amendment 2026-09-24). An A/B injection
+    // lands it at the bottom, a silence->audio edge and a kept re-prepare (prepare()) too; else it glides.
 }
 
 // The oversampler for the SELECTED FACTOR, or nullptr when no factor is selected.
@@ -1053,12 +1253,38 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     float* L = buffer.getWritePointer (0);
     float* R = buffer.getWritePointer (1);
 
+    // Set at a duck bottom that turns Level Match on while changing nothing its measurement
+    // reads (ADR-0007, Amendment 2026-09-24); consumed right after this block's loudness.process,
+    // where the applied gain is landed on the value just published. Block-local: the bottom and
+    // the level-match stage run in the same call with no return between them.
+    bool landMatchAfterMeasure = false;
+    // Set at a duck bottom when the switch changes anything the Level-Match measurement reads --
+    // adopted there, or made live during an ordinary duck's fade-out (duckMeasDirty). One answer,
+    // two consumers: the Case-A landing above needs it false, and an A/B injection consumed in the
+    // same block re-arms the analysis when it is true (ADR-0007, Amendment of 2026-09-24, F13(2)).
+    bool measChangedAtBottom = false;
+
     // ---- Click-free switch machine: once the duck has reached silence, adopt
     //      the deferred discrete change (clearing stale algorithm tails) and
     //      fade back in. Pure continuous edits never enter here (#10 / #11). ----
     if (switchState == SwitchState::FadeOut && switchPhase <= 0.0f)
     {
         const bool procChanged = processingDiffers (pendingP, p);
+        measChangedAtBottom = duckMeasDirty || measurementInputsDiffer (p, pendingP);
+        if (measChangedAtBottom) loudness.inputsChanged();   // a restore below: current only if measured
+        // The duck's live change is REPORTED here, so its flag retires here: this bottom reads it through
+        // measChangedAtBottom, and from now on the result's currency -- or a restore's provenance -- carries it.
+        // Left set, it outlived its report into the fade-in, where a same-rate re-prepare, a host reset and an
+        // A/B record each read it as a change still in flight and discarded a measured restore (ADR-0007, Note
+        // of 2026-09-26, the duckMeasDirty lifecycle). A live edit during the fade-in reports itself.
+        duckMeasDirty = false;
+        // An engage that changes only the gain STARTS at the published value, current or not: the matcher
+        // runs with Level Match off too, so that value is what Level Match on throughout publishes here.
+        // Currency governs what a result is carried into (a re-prepare, an A/B record), not this landing
+        // (ADR-0007, Note of 2026-09-25, stale engage). Not when the measure re-arms here, or when what it
+        // reads changes across the switch or went live in an ordinary duck (duckMeasDirty): Case B.
+        landMatchAfterMeasure = ! p.autoGainMatch && pendingP.autoGainMatch && ! procChanged
+                             && ! measChangedAtBottom;
         // A change to the Multiband topology (band added/removed, or the module
         // toggled) needs its crossover filters cleared, captured before p is moved.
         const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
@@ -1108,16 +1334,18 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
             osRunning = osActiveFor (p);
         }
-        // Re-arm the loudness match ONLY when the processing actually changed (A/B
-        // swap, algorithm, ...). Toggling Level Match / Bypass must NOT re-measure,
-        // or enabling Match with a big boost slams loud for a moment (#1).
+        // Re-arm the loudness match ONLY when the processing actually changed: a DISCRETE field
+        // (`processingDiffers`), so a swap moving only Drive / Mix / Width does not re-arm (F13). Toggling
+        // Level Match / Bypass must NOT re-measure, or enabling Match with a big boost slams loud (#1).
+        // (An A/B injection below adds one case: slots that differ in a measurement input.)
         if (procChanged) loudness.softReset();
         updateDerived();
 
         // A forced bulk swap (A/B / preset / undo) finishes HERE, while silent: snap
         // the continuous smoothers to their new targets so the fade-in plays the
         // settled new state with no swell, and adopt any remembered Level-Match gain
-        // now (masked) instead of jumping it at full level -- the A/B pop (#1).
+        // now (masked) instead of jumping it at full level -- the A/B pop (#1). The
+        // Level-Match gain itself is not snapped here: see landMatchAfterMeasure.
         if (pendingForced)
         {
             snapSmoothers();
@@ -1158,11 +1386,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
             osRunning = osActiveFor (p);
             pendingAlgoReset = false; // already handled by the wholesale reset above
+            // The A/B slot's remembered value, with its own provenance (#23), then an engine-API
+            // injection, which its caller asserts is measured. Either takes priority over the landing.
+            if (abRestoreSlot >= 0 && restoreAbSlot (measChangedAtBottom))
+                landMatchAfterMeasure = false;   // the slot's own gain takes priority (#23)
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
             {
-                loudness.setDisplayedGainDb (inj);
-                matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+                adoptRememberedMatch (inj, true, measChangedAtBottom);
+                landMatchAfterMeasure = false;
             }
             pendingForced = false;
         }
@@ -1187,16 +1419,20 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // delay-aligned raw input (bypassDryScratch) instead of toward silence.
     const bool duckDry = fading && dryDuck;
 
-    // A Level-Match injection that arrived WITHOUT a forced duck (defensive: every
-    // A/B switch forces one, so normally this is consumed at the silent bottom
-    // above) still gets applied so it isn't lost.
+    // A Level-Match restore that arrived WITHOUT a forced duck still gets applied so it isn't
+    // lost. Every A/B switch forces one, so this is the switch a prime took (its duck dropped), a
+    // host reset that completed the duck in the bottom's place, or an engine-API injection with
+    // no duck. The re-arm is the same rule, false without a bottom: the prepare or reset that
+    // replaced the bottom re-armed the analysis itself.
     if (! pendingForced)
     {
+        if (abRestoreSlot >= 0 && restoreAbSlot (measChangedAtBottom))
+            landMatchAfterMeasure = false;
         const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
         if (inj > kNoInject + 1.0f)
         {
-            loudness.setDisplayedGainDb (inj);
-            matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+            adoptRememberedMatch (inj, true, measChangedAtBottom);
+            landMatchAfterMeasure = false;
         }
     }
 
@@ -1733,9 +1969,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // Multiband is off.
     loudness.process (loudnessRefScratch.getReadPointer (0), loudnessRefScratch.getReadPointer (1),
                       L, R, n);
-    const float matchTarget = p.autoGainMatch
-        ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f;
+    const float matchTarget = ! p.autoGainMatch ? 1.0f : std::isnan (loudness.getMatchGainDb()) ? matchGainSmooth.getTargetValue()
+        : juce::Decibels::decibelsToGain (loudness.getMatchGainDb()); // a NaN reading keeps the target (ADR-0009, Test 65)
     matchGainSmooth.setTargetValue (matchTarget);
+    if (landMatchAfterMeasure && std::isfinite (loudness.getMatchGainDb()))
+        matchGainSmooth.setCurrentAndTargetValue (matchTarget); // Level Match engages at the level it measured
 
     // Silence -> audio edge: SNAP the applied match gain to its (already pre-ducked)
     // target so the first audible block is compensated even if the host never ran the
@@ -1757,7 +1995,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // swap. If Match is ever made to engage WITHOUT a duck (removed from
     // discreteDiffers, or applied live), this gate must be revisited -- the
     // scan would then miss the pre-engage block and the silence->audio snap
-    // could be wrong on the first engaged block.
+    // could be wrong on the first engaged block. The gain-only engage landing
+    // (landMatchAfterMeasure, ADR-0007) depends on it too: no duck, no bottom.
     if (p.autoGainMatch || matchEngaging) // matchEngaging hoisted above the multiband stage (H4)
     {
         double inSq = 0.0;
@@ -1812,8 +2051,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     {
         // When Level Match is engaged the matched gain REPLACES Output Gain, so
         // the Output knob no longer shifts the matched level (feedback #1). Both
-        // smoothers advance every sample so toggling Match (a ducked switch) is
-        // seamless. Match's smoother is slow, so an A/B swap glides (feedback #16).
+        // smoothers advance every sample. Turning Match on is a ducked switch: at its silent
+        // bottom the match smoother takes an injected A/B slot gain, or the published value
+        // when the switch changes only the gain, so the fade-in starts matched; otherwise it
+        // starts from unity and glides (ADR-0007, Amendment 2026-09-24; KI-030).
+        // Match's smoother is slow, so a live match change glides (feedback #16).
         const float og = outGainSmooth.getNextValue();
         const float mg = matchGainSmooth.getNextValue();
         const float g  = p.autoGainMatch ? mg : og;

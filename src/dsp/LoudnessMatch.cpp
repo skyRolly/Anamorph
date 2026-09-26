@@ -57,6 +57,7 @@ void LoudnessMatch::prepare (double sr)
     const double tau = 0.4;
     smoothCoeff = 1.0 - std::exp (-1.0 / (tau * sr));
     coeffForN = -1;          // blockDur depends on sampleRate: re-key the coeff cache (Wave 5)
+    decayForN = -1;          // and the currency decay, which smoothCoeff keys too
     memoBoostValid = false;
     reset();
 }
@@ -68,6 +69,29 @@ void LoudnessMatch::reset()
     displayedGainDb = 0.0;
     prevPredictedGainDb = 0.0; // default state = no boost
     matchGainDb.store (0.0f, std::memory_order_relaxed);
+    // A flush is no measurement of a previous state -- the measure restarts on the current one --
+    // and no measurement of this one either, until the measure confirms it (isResultMeasured).
+    resultStale = false;
+    resultMeasured = false;
+    staleDry0 = staleWet0 = 0.0;
+    stalePreWeight = 1.0;
+    postShare = postSum = 0.0;
+    evidence = {};
+}
+
+void LoudnessMatch::restoreUnmeasured (float db, Evidence e) noexcept
+{
+    if (e.share >= kMeasuredShare && std::isfinite (e.share) && std::isfinite (e.sum / e.share))
+    {
+        displayedGainDb = e.sum / e.share;
+        matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);
+        resultStale    = false;
+        resultMeasured = true;
+        evidence = e;   // frozen with the rest of the bookkeeping while measured
+        return;
+    }
+    setDisplayedGainDb (db, false);
+    evidence = e;       // not current; the measure adds to the slot's evidence from here
 }
 
 // Estimated K-weighted loudness boost (dB) the peak-preserving tanh Drive adds.
@@ -102,7 +126,10 @@ void LoudnessMatch::softReset() noexcept
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
     // displayedGainDb / prevPredictedGainDb are intentionally preserved so the published
-    // gain glides and a re-arm doesn't spuriously pre-duck.
+    // gain glides and a re-arm doesn't spuriously pre-duck. So are the result's currency and its
+    // post-change share (the published value is untouched); only the pre-change energy is gone.
+    staleDry0 = staleWet0 = 0.0;
+    stalePreWeight = 1.0;
 }
 
 void LoudnessMatch::process (const float* dryL, const float* dryR,
@@ -152,10 +179,26 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     // first played block nor a live crank can slam. A FALLING estimate never jumps the
     // gain up here -- the measurement eases it back on play, so there is no surge. This
     // floor-only, absolute rule is what kills the old ratchet-to-(-24) behaviour.
-    if (predictDelta < 0.0)
-        displayedGainDb = std::min (displayedGainDb, predictedGainDb);
+    if (predictDelta < 0.0 && predictedGainDb < displayedGainDb)
+    {
+        displayedGainDb = predictedGainDb;
+        // A measured value the floor replaces is a prediction now, and the measure must confirm
+        // what follows it -- from audio heard after this block (ADR-0007, Amendment of 2026-09-25,
+        // A/B provenance). Reached only by a value restored as measured: every other rise the
+        // floor reads was reported by inputsChanged() first, or follows a flush.
+        if (resultMeasured)
+        {
+            resultMeasured = false;
+            staleDry0 = meanSqDry;
+            staleWet0 = meanSqWet;
+            stalePreWeight = 1.0;
+            postShare = postSum = 0.0;
+            evidence = {};
+        }
+    }
 
     // ---- MEASURE: ground truth while there is audio; frozen on silence ------------
+    double glideCoeff = 0.0;   // this block's glide step, for the currency bookkeeping below
     if (! silent)
     {
         // Convert to LUFS and take the difference -- computed HERE, its only
@@ -178,10 +221,70 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
         }
         const double coeff = (std::abs (diff) > 2.0) ? coeffFast : coeffSlow; // fast vs. slow
         displayedGainDb += coeff * diff;
+        glideCoeff = coeff;
     }
     // silent -> hold displayedGainDb (no drift); the predict floor above still guards.
 
     displayedGainDb = clampd (displayedGainDb, -24.0, 24.0);
+
+    // ---- CURRENCY: has the published value caught up with the last input change? --------
+    // (inputsChanged(); ADR-0007, Amendment of 2026-09-25.) An audible block glides the published
+    // value by glideCoeff toward its target. Of each step, the part that the audio heard SINCE the
+    // change asks for is summed in postShare / postSum: the integrators are linear, so that audio's
+    // energy is exactly each integrator minus its value at the change, decayed as the integrator
+    // decays it, and the measure's own target formula reads it. What else the published value holds
+    // -- its value at the change, and targets the pre-change energy still coloured -- fades with the
+    // same glide. Current again once the post-change measurements make up at least half of the
+    // published value (so their mean is itself a measurement) and it is within kCurrentDb of that
+    // mean: everything older moves it by no more than that. Silent blocks do not glide, so they
+    // confirm nothing, and a block adds share only when the INPUT heard since the change is itself a
+    // measurement: above the gate, and at least half of what the dry integrator holds. Pre-change audio
+    // still in the pipeline -- the dry reference's alignment and filters, a delay line emptying into the
+    // wet -- arrives after the change and counts as post-change audio; against no input, or a sliver of
+    // it, those tails are the whole ratio (the silence floor against a tail). The gate is absolute
+    // because the half is relative: a host reset's softReset() empties the snapshot, and then anything
+    // dominates. (The predict floor moves the value only in the block that first reads a raised Drive
+    // or Mix, a measurement input that inputsChanged() has already reported, or after a flush, or over
+    // a value restored as measured, which it un-measures above; the check reads the value itself.)
+    // The same confirmation makes the result MEASURED (isResultMeasured), so it also runs while a
+    // result that is current without being measured -- a flush's, or one the floor lowered -- awaits
+    // it; there it moves only resultMeasured (ADR-0007, Amendment of 2026-09-25, A/B provenance).
+    if (! resultMeasured)
+    {
+        if (numSamples != decayForN)
+        {
+            decayForN     = numSamples;
+            decayPerBlock = std::pow (1.0 - smoothCoeff, (double) numSamples);
+        }
+        stalePreWeight *= decayPerBlock;
+        if (! silent)
+        {
+            postShare *= 1.0 - glideCoeff;
+            postSum   *= 1.0 - glideCoeff;
+            evidence.share *= 1.0 - coeffSlow;
+            evidence.sum   *= 1.0 - coeffSlow;
+            const double preDry  = stalePreWeight * staleDry0;
+            const double postDry = meanSqDry - preDry;
+            const double postWet = meanSqWet - stalePreWeight * staleWet0;
+            if (postDry >= kSilence && postDry >= preDry)
+            {
+                constexpr double floorMs = 1.0e-7;
+                const double postTarget = clampd (10.0 * std::log10 (std::max (postDry, floorMs))
+                                                - 10.0 * std::log10 (std::max (postWet, floorMs)), -24.0, 24.0);
+                postShare += glideCoeff;
+                postSum   += glideCoeff * postTarget;
+                evidence.share += coeffSlow;
+                evidence.sum   += coeffSlow * postTarget;
+            }
+            constexpr double kCurrentDb = 0.1;   // the Level Match settle tolerance
+            if (postShare >= kMeasuredShare && std::abs (displayedGainDb - postSum / postShare) <= kCurrentDb)
+            {
+                resultStale    = false;
+                resultMeasured = true;
+            }
+        }
+    }
+
     matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);
 }
 

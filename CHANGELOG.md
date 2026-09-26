@@ -18,7 +18,7 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.9] — 2026-09-22
+## [0.9.9] — 2026-09-27
 
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
@@ -145,6 +145,85 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   in as soon as the host sends a valid value. Chorus and Dimension D were never affected, and nothing
   changes for ordinary automation. Decision: ADR-0009 (Implementation note, 2026-09-22). Regression
   coverage: State test 123 and Test 59. Evidence: PR #155. [Verified]
+- **An invalid Velvet Density value no longer freezes the Density control until the plug-in is
+  re-initialised.** Typing "nan" into the Density value box — or a host sending a value that is not a
+  number — left Velvet's density smoothing stuck. The sound did not drop out, so nothing flagged it,
+  but the **Density** control stopped doing anything: turning it, stopping the transport and a host
+  reset all left the sound where it was, until the host re-initialised the plug-in. A
+  re-initialisation while the value was still invalid switched Velvet's decorrelation off completely,
+  at any Amount. Velvet now ignores an invalid density and keeps the last valid one, so the next
+  valid value takes effect as usual. Nothing changes for ordinary values. Decision: ADR-0009
+  (Implementation note, 2026-09-24). Regression coverage: State test 128 and Test 64. Evidence:
+  PR #156. [Verified]
+- **Apply Gain can no longer silence the plug-in.** If the audio coming into Anamorph contained an
+  invalid sample — not a number, typically from a misbehaving plug-in earlier in the chain — Level
+  Match's measurement was invalid for a few microseconds until the plug-in's protection reset it. A
+  click on **Apply Gain** landing in that moment wrote the invalid value into **Output Gain**: the
+  plug-in went silent and stayed silent through stopping the transport and a host reset, the project
+  saved the invalid value, and Undo brought Output Gain back to 0 dB instead of your own setting.
+  Measured: silent on the first click inside that window. Apply now ignores an invalid measurement
+  and changes nothing; every valid Apply is exactly as before. Decision: ADR-0007 (note, 2026-09-24).
+  Regression coverage: State test 129. Evidence: PR #156. [Verified]
+- **A burst of invalid input samples no longer silences Anamorph when Level Match is on.** If the
+  audio coming in carried invalid samples — not a number, from a misbehaving plug-in earlier in the
+  chain — Anamorph's protection already replaced them and kept the sound going, and with Level Match
+  off it still does. With Level Match on, each invalid sample briefly made the match reading invalid,
+  and that was turned into a gain of zero: a sustained burst faded the output to silence for as long
+  as it lasted. Measured over one second of such input: 164–165 of 187 buffers silent with Level
+  Match on, 0–2 with it off. Level Match now keeps its last gain through an invalid reading, so the
+  sound carries on at the matched level; nothing changes for valid audio. Decision: ADR-0009
+  (Implementation note, 2026-09-24). Regression coverage: Test 65. Evidence: PR #156. [Verified]
+- **Turning Level Match on no longer briefly plays louder than both the level before and the level
+  after.** Undoing **Apply Gain**, switching Level Match back on by hand after Apply, or switching it
+  on while Output Gain was below the matched level brought the sound back from the switch's short
+  fade at its unmatched level and let it ease down to the matched level over about half a second —
+  measured at **+2.3 / +4.5 / +5.7 dB** above both levels at Drive 4 / 8 / 10 on pink noise, loudest
+  about 130 ms after the action (with a matched gain above 0 dB it was a small dip instead). When
+  the switch changes nothing about the sound itself — only Level Match, Output Gain, Output Balance,
+  Bypass or Band Solo — the sound now comes back from the fade already at the matched level, and
+  switching Level Match on from an Output Gain above the matched level lands on it the same way
+  instead of easing down. A switch that turns Level Match on **and** changes the sound — a preset,
+  undo or redo that also moves Drive, Mix or the algorithm — still eases in as before, because Level
+  Match's measurement at that moment still describes the previous sound. A/B, Apply itself, Redo,
+  switching Level Match off, and Level Match's measurement are unchanged. Decision: ADR-0007
+  (Amendment, 2026-09-24). Regression coverage: Test 66 and State test 130. Evidence: PR #156.
+  [Verified]
+- **Switching A/B between two versions that differ in Drive, Mix, Width or another tone setting no
+  longer lets Level Match wander away from the slot's own level.** With Level Match on, each A/B slot
+  remembers its matched level and gets it back on the switch — correctly — but Level Match's
+  loudness measurement was still listening to the other slot and pulled the level off it again for
+  two to three seconds: measured at **+1.6 / −1.8 dB** on pink noise for a Drive 2 ↔ 8 switch. The measurement
+  now starts afresh on the new slot's sound whenever the two slots differ in anything it listens to;
+  a switch that changes only Output Gain, Level Match itself or nothing at all keeps its settled
+  measurement, as before. Switching A → B → A within a few milliseconds, or while your host is not
+  processing audio, no longer hands slot B slot A's level: B keeps its own for the next time you switch to it (measured **1.6 dB**
+  closer). Decision: ADR-0007 (Amendment of 2026-09-24, F13(2), and Amendment of 2026-09-25, A/B
+  provenance). Regression coverage: Test 67, State test 131, Test 70 and State test 134. Evidence:
+  PR #156. [Verified]
+- **Re-preparing Anamorph at the same sample rate no longer throws away the Level Match level.** Hosts
+  re-prepare a plug-in when, for example, the audio buffer size changes or the plug-in is
+  re-activated. With Level Match on, the matched level was discarded and rebuilt from an estimate, so
+  the output played about **2–3 dB** away from the matched level for about two seconds afterwards. At
+  an unchanged sample rate, once Level Match has caught up with the latest change to the sound, the
+  matched level is now kept and plays from the very first moment, quiet passages included; a
+  sample-rate change, a re-prepare after loading a state that changes the sound, or one made within the
+  few seconds Level Match needs to catch up with a change, still measures it afresh. The same goes for
+  a re-prepare right after switching back to an A/B slot that you left before Level Match had caught
+  up with it. If Level Match had already heard about a second of that slot's new sound — in one visit,
+  or in several short ones that add up — the slot now comes back at the level Level Match had measured
+  for it, not at the level still catching up when you left, and a re-prepare keeps it: a slot left
+  1.1 s after a Drive change came back **0.8 dB** off and kept it; it now comes back and stays within
+  **0.03 dB**. With less than that heard, the slot's remembered level is restored as before, but it is
+  no longer kept as if it had been measured (a slot left 0.3 s after a Drive change was kept
+  **1.5 dB** off). And a slot's
+  correctly measured level is now kept when you switch A/B during the short fade of another change (a
+  Multiband band count, say) and the host re-prepares in the fade that follows: it used to be thrown
+  away there, playing about **1.6 dB** off for two seconds; a transport stop, or switching away again
+  within that fade, left it to be thrown away by a later re-prepare. Decision: ADR-0007 (Amendments of 2026-09-24, F13(2), and
+  2026-09-25, including A/B provenance and its revision of 2026-09-26; Note of 2026-09-26). Regression
+  coverage: Test 67, Test 68, Test 69, Test 70, Test 72, Test 73, State tests 131, 132, 133, 134, 136, 137
+  and 120. Evidence: PR #156.
+  [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

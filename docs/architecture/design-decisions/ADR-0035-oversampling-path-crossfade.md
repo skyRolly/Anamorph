@@ -158,6 +158,15 @@ Two independent sources fed it, one in each direction:
   on this probe and worth having anyway: the fade-in no longer plays ~12 ms of the nonlinear stage
   running at the base rate, which is the same argument point 10 makes for the forced swap.
 
+## Note, 2026-09-24 — "every other control is already snapped" does not include the Level-Match gain
+
+Point 10's "where every other control is already snapped" holds for the controls `snapSmoothers()`
+names; `matchGainSmooth` is not one of them. Since ADR-0007's Amendment of 2026-09-24 it is landed
+later in the same block — after the level-match stage's measurement, which runs after this stage —
+when the swap turns Level Match on and changes nothing the measurement reads; an A/B swap sets it to
+the injected slot gain instead (ADR-0007, #23); otherwise it glides.
+Point 10's measurement and reasoning concern the drive smoothers and `osBlend`, and are unaffected.
+
 ## Related code
 
 - `src/dsp/AnamorphEngine.cpp` — the OS stage's two paths and their mix; `discreteDiffers`;

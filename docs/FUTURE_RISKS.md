@@ -317,7 +317,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1864 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:2106 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -1233,7 +1233,7 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:2611`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `src/PluginProcessor.cpp:2613`, against `canUndo()`; the `abUndo` vector's internals twice, via
   `UndoStacks::operator=` (`src/PluginProcessor.h:733`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture

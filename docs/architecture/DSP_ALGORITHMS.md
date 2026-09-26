@@ -40,7 +40,10 @@ bit-identical output, streaming instead of 64 random-index reads per sample (`.c
 The density-glide, stop-fade and parked paths keep the original per-sample loop verbatim. A presence follower + fixed-time gate fades the tail; a play→stop edge applies
 a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
 Invariant: `amount 0 = identity`. `reset()` reseeds a non-finite wet glide to 0, as `HaasProcessor`
-does and for the same reason (ADR-0009, Implementation note 2026-09-22).
+does and for the same reason (ADR-0009, Implementation note 2026-09-22). A non-finite **density**
+target is ignored (`setDensity` keeps the last finite one): the density glide cannot leave NaN,
+`reset()` does not reseed it, and the output stays finite, so the self-heal never fires — it froze
+the density until a re-prepare (ADR-0009, Implementation note 2026-09-24; Test 64, State test 128).
 
 ## ChorusEngine — `src/dsp/ChorusEngine.{h,cpp}`
 
@@ -69,7 +72,11 @@ Phase-coherent low-frequency mono via a 4th-order Linkwitz-Riley crossover
 Sums the low bands to mono (`monoLow = (lowL+lowR)/2`), recombines `L = highL + monoLow`
 (`.cpp:39-45`).
 Cutoff glided per sample (`glideCoeff = exp2(8/sr)`, ~8 oct/s) to avoid pitch wobble.
-Nyquist-safe clamp `[20, max(1000, 0.45·sr)]`. Applied **post-Mix, in place** (0.8.0).
+Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` — for finite values: the clamp passes NaN, the
+glide ignores a NaN target, and `snapToTargets()` (every `prepare()`) keeps the current cutoff,
+re-clamped for the new rate, instead of copying it (ADR-0009, Implementation note 2026-09-24;
+Test 64). Applied **post-Mix, in
+place** (0.8.0).
 
 ## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`
 
@@ -176,13 +183,58 @@ of the transparent engine floor.
 
 Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(dry) − LUFS(wet)`.
 - **K-weighting (ITU-R BS.1770)**: stage-1 high-shelf (f0≈1681.97 Hz, ~+4 dB, Q≈0.707) +
-  stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`.cpp:15-43`). Mean-square loudness
-  integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
+  stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`src/dsp/LoudnessMatch.cpp:16-46`).
+  Mean-square loudness integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
 - **MEASURE**: one-pole toward `clamp(dLufs − wLufs, ±24)` with adaptive tau (0.06 s if |Δ|>2 dB
-  else 0.9 s); on silence it **holds** (no drift) (`.cpp:131-154`).
+  else 0.9 s); on silence it **holds** (no drift) (`src/dsp/LoudnessMatch.cpp:200-226`).
 - **PREDICT**: absolute feed-forward `estBoost(drive, mix)` from the tanh-Drive makeup
-  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled; floor-only pre-duck
-  `displayed = min(displayed, predicted)` only when the estimate **rises** (`.cpp:74-95,136-144`).
+  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled (`src/dsp/LoudnessMatch.cpp:101-122`); floor-only
+  pre-duck `displayed = min(displayed, predicted)` only when the estimate **rises**
+  (`src/dsp/LoudnessMatch.cpp:158-198`).
+- **Two halves, and who clears which** (ADR-0007): the *analysis* (the four K-weighting biquads and
+  both integrators) and the *result* (`displayedGainDb`, `prevPredictedGainDb`, the published
+  `matchGainDb`). `softReset()` clears the analysis and keeps the result; `reset()` clears both;
+  `setDisplayedGainDb (db, measured)` overwrites the result, with the caller's word on whether the value
+  is a measurement. The engine re-arms (`softReset`) at a switch bottom
+  that changes the signal path, at an A/B restore whose slots differ in anything the measurement
+  reads, on every host reset, and on a re-prepare at an unchanged sample rate whose measurement
+  inputs did not change and whose result is current (below); it flushes (`reset`, via `prepare`) on
+  any other re-prepare and in the NaN self-heal. An A/B switch overwrites the result with the slot's
+  remembered gain, which the engine keeps per slot with its provenance (below). The applied gain (`matchGainSmooth`) is the engine's: a kept re-prepare with Level
+  Match on starts it on the kept result (quiet audio never fires the silence→audio snap; Test 68), a
+  flush starts it at unity.
+- **Currency** (ADR-0007, Amendment of 2026-09-25): `inputsChanged()`, which the engine calls whenever
+  it adopts a change to anything the measurement reads (a live edit, a change heard during a duck, a
+  duck bottom, a host reset that lands a duck), marks the result as describing the
+  previous sound. Each audible block then splits what the published value glides toward: the target
+  of the audio heard since the change alone (exact, because the integrators are linear: their energy
+  minus the pre-change energy, decayed at their own rate), and everything older. A block counts only
+  while the input heard since the change is above the silence gate and at least half of the dry
+  integrator: pre-change audio still in the pipeline, such as a wet tail after the input stopped, is no
+  measurement. `isResultCurrent()`
+  is true again once those post-change measurements make up at least half of the published value and
+  it is within 0.1 dB of their glide-weighted mean (`src/dsp/LoudnessMatch.cpp:230-286`). A flush clears
+  the question; `softReset()` keeps it. `prepare()` keeps a result only while it is current. None of
+  this changes what is published.
+- **Measured** (ADR-0007, Amendment of 2026-09-25, A/B provenance): `isResultMeasured()` is stricter and
+  implies current — the same confirmation has vouched for the published value itself. A flush is current
+  but not measured (0 dB, then the predict floor, are no measurement), and neither is a measured value the
+  predict floor lowers; each becomes measured when the measure confirms it (the bookkeeping above runs
+  until then). An A/B slot records, when it is left, the published value, whether it is MEASURED (not
+  merely current: a flush's value is right only in the flush's own context), and the state and sample
+  rate it was measured for; the record is taken and restored on the audio thread, so only two slot
+  indices cross from the message thread. The restore at the switch's silent bottom adopts the value and
+  makes it measured only if it was measured, at this rate, for the measurement inputs it is restored into
+  (`measurementInputsDiffer`); otherwise the result is not current and the measure confirms it from
+  there. The engine-API `injectMatchGainDb` is caller-asserted measured. None of this changes what is
+  published or applied.
+- **The post-change evidence** (ADR-0007, A/B provenance, revision of 2026-09-26): while the result is not
+  measured, the counted post-change measurements are also summed with the slow glide's weight
+  (`LoudnessMatch::Evidence`; a share of 0.5 after 0.62 s of counted audio), reset with the post-change
+  share. A slot left not measured records it; restored at the same rate for the same measurement inputs,
+  evidence of share ≥ 0.5 publishes its mean, measured (`restoreUnmeasured`), and less is carried to the
+  next visit with the value restored not current. This one path changes what a restore publishes: the
+  mean in place of the recorded value.
 - Invariants: predict only ever lowers gain; absolute (non-accumulating) → cannot ratchet;
   measure freezes on silence; both clamped ±24 dB; IIR → essentially zero latency.
 
