@@ -186,11 +186,11 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
   stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`src/dsp/LoudnessMatch.cpp:16-46`).
   Mean-square loudness integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
 - **MEASURE**: one-pole toward `clamp(dLufs − wLufs, ±24)` with adaptive tau (0.06 s if |Δ|>2 dB
-  else 0.9 s); on silence it **holds** (no drift) (`src/dsp/LoudnessMatch.cpp:183-209`).
+  else 0.9 s); on silence it **holds** (no drift) (`src/dsp/LoudnessMatch.cpp:200-226`).
 - **PREDICT**: absolute feed-forward `estBoost(drive, mix)` from the tanh-Drive makeup
-  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled (`src/dsp/LoudnessMatch.cpp:85-106`); floor-only
+  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled (`src/dsp/LoudnessMatch.cpp:101-122`); floor-only
   pre-duck `displayed = min(displayed, predicted)` only when the estimate **rises**
-  (`src/dsp/LoudnessMatch.cpp:142-181`).
+  (`src/dsp/LoudnessMatch.cpp:158-198`).
 - **Two halves, and who clears which** (ADR-0007): the *analysis* (the four K-weighting biquads and
   both integrators) and the *result* (`displayedGainDb`, `prevPredictedGainDb`, the published
   `matchGainDb`). `softReset()` clears the analysis and keeps the result; `reset()` clears both;
@@ -213,7 +213,7 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
   integrator: pre-change audio still in the pipeline, such as a wet tail after the input stopped, is no
   measurement. `isResultCurrent()`
   is true again once those post-change measurements make up at least half of the published value and
-  it is within 0.1 dB of their glide-weighted mean (`src/dsp/LoudnessMatch.cpp:213-264`). A flush clears
+  it is within 0.1 dB of their glide-weighted mean (`src/dsp/LoudnessMatch.cpp:230-286`). A flush clears
   the question; `softReset()` keeps it. `prepare()` keeps a result only while it is current. None of
   this changes what is published.
 - **Measured** (ADR-0007, Amendment of 2026-09-25, A/B provenance): `isResultMeasured()` is stricter and
@@ -228,6 +228,13 @@ Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(
   (`measurementInputsDiffer`); otherwise the result is not current and the measure confirms it from
   there. The engine-API `injectMatchGainDb` is caller-asserted measured. None of this changes what is
   published or applied.
+- **The post-change evidence** (ADR-0007, A/B provenance, revision of 2026-09-26): while the result is not
+  measured, the counted post-change measurements are also summed with the slow glide's weight
+  (`LoudnessMatch::Evidence`; a share of 0.5 after 0.62 s of counted audio), reset with the post-change
+  share. A slot left not measured records it; restored at the same rate for the same measurement inputs,
+  evidence of share ≥ 0.5 publishes its mean, measured (`restoreUnmeasured`), and less is carried to the
+  next visit with the value restored not current. This one path changes what a restore publishes: the
+  mean in place of the recorded value.
 - Invariants: predict only ever lowers gain; absolute (non-accumulating) → cannot ratchet;
   measure freezes on silence; both clamped ±24 dB; IIR → essentially zero latency.
 

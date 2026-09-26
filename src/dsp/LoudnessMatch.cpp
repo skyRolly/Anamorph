@@ -76,6 +76,22 @@ void LoudnessMatch::reset()
     staleDry0 = staleWet0 = 0.0;
     stalePreWeight = 1.0;
     postShare = postSum = 0.0;
+    evidence = {};
+}
+
+void LoudnessMatch::restoreUnmeasured (float db, Evidence e) noexcept
+{
+    if (e.share >= kMeasuredShare && std::isfinite (e.share) && std::isfinite (e.sum / e.share))
+    {
+        displayedGainDb = e.sum / e.share;
+        matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);
+        resultStale    = false;
+        resultMeasured = true;
+        evidence = e;   // frozen with the rest of the bookkeeping while measured
+        return;
+    }
+    setDisplayedGainDb (db, false);
+    evidence = e;       // not current; the measure adds to the slot's evidence from here
 }
 
 // Estimated K-weighted loudness boost (dB) the peak-preserving tanh Drive adds.
@@ -177,6 +193,7 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
             staleWet0 = meanSqWet;
             stalePreWeight = 1.0;
             postShare = postSum = 0.0;
+            evidence = {};
         }
     }
 
@@ -244,18 +261,23 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
         {
             postShare *= 1.0 - glideCoeff;
             postSum   *= 1.0 - glideCoeff;
+            evidence.share *= 1.0 - coeffSlow;
+            evidence.sum   *= 1.0 - coeffSlow;
             const double preDry  = stalePreWeight * staleDry0;
             const double postDry = meanSqDry - preDry;
             const double postWet = meanSqWet - stalePreWeight * staleWet0;
             if (postDry >= kSilence && postDry >= preDry)
             {
                 constexpr double floorMs = 1.0e-7;
-                postShare += glideCoeff;
-                postSum   += glideCoeff * clampd (10.0 * std::log10 (std::max (postDry, floorMs))
+                const double postTarget = clampd (10.0 * std::log10 (std::max (postDry, floorMs))
                                                 - 10.0 * std::log10 (std::max (postWet, floorMs)), -24.0, 24.0);
+                postShare += glideCoeff;
+                postSum   += glideCoeff * postTarget;
+                evidence.share += coeffSlow;
+                evidence.sum   += coeffSlow * postTarget;
             }
             constexpr double kCurrentDb = 0.1;   // the Level Match settle tolerance
-            if (postShare >= 0.5 && std::abs (displayedGainDb - postSum / postShare) <= kCurrentDb)
+            if (postShare >= kMeasuredShare && std::abs (displayedGainDb - postSum / postShare) <= kCurrentDb)
             {
                 resultStale    = false;
                 resultMeasured = true;

@@ -454,7 +454,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:1003 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:1013 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -477,7 +477,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:988 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:998 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -637,12 +637,17 @@ bool AnamorphEngine::takeRequests (int req) noexcept
         // that switch was going to, and the live result is still its source's, already recorded --
         // and not in the word that forgets: the live result is the previous project's. Not measured
         // either while a duck before its bottom has made a measurement-input change live that only
-        // that bottom will report (duckMeasDirty, retired there) -- the same rule prepare() applies.
+        // that bottom will report (duckMeasDirty, retired there) -- the same rule prepare() applies --
+        // and then no evidence: what the measure gathered describes the inputs before that change. A
+        // record not measured otherwise carries the matcher's post-change evidence, which describes
+        // exactly `p` (every change to it reset that evidence).
         if (abRestoreSlot < 0 && (req & kReqAbForget) == 0)
         {
             AbMatchMemory& m = abMemory[from];
+            const bool changeInFlight = switchState != SwitchState::Normal && duckMeasDirty;
             m.gainDb      = loudness.getMatchGainDb();
-            m.measured    = loudness.isResultMeasured() && ! (switchState != SwitchState::Normal && duckMeasDirty);
+            m.measured    = loudness.isResultMeasured() && ! changeInFlight;
+            m.evidence    = changeInFlight ? LoudnessMatch::Evidence {} : loudness.getEvidence();
             m.measuredFor = p;
             m.measuredAt  = sr;   // a prime runs before its prepare: still the rate the result was measured at
         }
@@ -657,18 +662,20 @@ bool AnamorphEngine::restoreAbSlot (bool rearm) noexcept
     abRestoreSlot = -1;
     if (! (m.gainDb > kNoInject + 1.0f))   // a NaN reading is not restored, as the injection never was
         return false;
-    // Measured only if it was measured when the slot was left, at the rate the engine runs at now
-    // (the K-weighting is a function of the rate: a record from another rate is no measurement here,
-    // and one from this rate still is, whatever rates came between), AND the state adopted now reads
-    // the same measurement inputs: a Copy onto the slot, an Oversampling change made on the other
-    // slot, or an edit the engine had not yet adopted when the slot was left each fail that test.
-    const bool measured = m.measured && juce::exactlyEqual (m.measuredAt, sr)
-                       && ! measurementInputsDiffer (m.measuredFor, p);
-    adoptRememberedMatch (m.gainDb, measured, rearm);
+    // The record describes this state only at the rate the engine runs at now (the K-weighting is a
+    // function of the rate: a record from another rate is no measurement here, and one from this rate
+    // still is, whatever rates came between) AND if the state adopted now reads the same measurement
+    // inputs: a Copy onto the slot, an Oversampling change made on the other slot, or an edit the
+    // engine had not yet adopted when the slot was left each fail that test. Then a measured record is
+    // restored measured, and one that was not brings its evidence back to the measure (which publishes
+    // the evidence's mean, measured, once it is a measurement). A record that fails the test is
+    // restored not current, and its evidence -- about other inputs -- is dropped.
+    const bool valid = juce::exactlyEqual (m.measuredAt, sr) && ! measurementInputsDiffer (m.measuredFor, p);
+    adoptRememberedMatch (m.gainDb, m.measured && valid, rearm, valid ? m.evidence : LoudnessMatch::Evidence {});
     return true;
 }
 
-void AnamorphEngine::adoptRememberedMatch (float db, bool measured, bool rearm) noexcept
+void AnamorphEngine::adoptRememberedMatch (float db, bool measured, bool rearm, LoudnessMatch::Evidence evidence) noexcept
 {
     // The restored value describes the DESTINATION slot; the analysis still holds the source slot's
     // audio. When the two slots differ in anything the measurement reads, that analysis would drag
@@ -676,10 +683,13 @@ void AnamorphEngine::adoptRememberedMatch (float db, bool measured, bool rearm) 
     // the slot's, the analysis starts on the slot's sound. Identical slots, and slots that differ
     // only after the tap (Output Gain, Level Match itself), keep a converged analysis (ADR-0007,
     // Amendment of 2026-09-24, F13(2) Q1). The re-arm answers where the ANALYSIS came from;
-    // `measured` answers where the VALUE came from -- two questions, never one flag.
+    // `measured` answers where the VALUE came from -- two questions, never one flag. A value that is not
+    // measured comes back with its evidence (empty from a record that does not describe this state), and
+    // the matcher decides what it publishes: the applied gain snaps to that.
     if (rearm) loudness.softReset();
-    loudness.setDisplayedGainDb (db, measured);
-    matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (db));
+    if (measured) loudness.setDisplayedGainDb (db, true);
+    else          loudness.restoreUnmeasured (db, evidence);
+    matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (loudness.getMatchGainDb()));
 }
 
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
@@ -840,9 +850,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:756), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:769) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:756) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:766), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:779) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:766) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -851,7 +861,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1291) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1301) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:

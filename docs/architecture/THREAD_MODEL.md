@@ -105,8 +105,9 @@ freed while another thread can reach it, because a pointer is reachable from exa
 | UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1754 |
 
 **The A/B Level-Match memory is not shared state** (ADR-0007, Amendment of 2026-09-25, A/B provenance). Each
-slot's record -- the value published when the slot was left, whether it was measured, and the state and rate it
-was measured for -- lives in the engine (`AnamorphEngine::abMemory`) and is written and read only by
+slot's record -- the value published when the slot was left, whether it was measured, the state and rate it
+was measured for, and, when it was not measured, the measure's post-change evidence (two doubles; revision of
+2026-09-26) -- lives in the engine (`AnamorphEngine::abMemory`) and is written and read only by
 `takeRequests()` and `restoreAbSlot()`, on the audio thread or the prepare path, which the host never runs
 concurrently with `processBlock`. Only the two slot indices and the forget bit cross, in the request word above;
 the message thread reads no engine state for an A/B switch.

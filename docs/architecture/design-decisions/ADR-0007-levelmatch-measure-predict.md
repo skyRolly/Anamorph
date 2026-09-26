@@ -270,7 +270,7 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   starts from the value it publishes, converged or still converging on an earlier edit (*Note of
   2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1965`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1975`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
@@ -518,9 +518,9 @@ Gate: a text correction to this Accepted ADR, flagged in the PR #156 body and th
 compatibility trigger (no parameter, schema, thread, order or latency change — the write is on the
 prepare path).
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1263` (`measChangedAtBottom`, one
-answer for the Case-A landing and the injection re-arm), `:680` (the re-arm, since the A/B provenance
-amendment in `adoptRememberedMatch`, which the two consumers call at `:1375-1380` and `:1413-1418`), `:63` (`keepMatch`), `:77` and `:167` (the kept matcher skips
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1273` (`measChangedAtBottom`, one
+answer for the Case-A landing and the injection re-arm), `:689` (the re-arm, since the A/B provenance
+amendment in `adoptRememberedMatch`, which the two consumers call at `:1391-1398` and `:1429-1436`), `:63` (`keepMatch`), `:77` and `:167` (the kept matcher skips
 `loudness.prepare` and takes `softReset`), `:291` (`reset (everything)`), `:175-176` (the kept result
 becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:125` (`primeParameters` records
 `primeMeasChanged`).
@@ -720,7 +720,7 @@ candidate, not adopted.
 
 Related code (this amendment): `src/dsp/LoudnessMatch.h:94-103` (`inputsChanged`, `isResultCurrent`;
 `setDisplayedGainDb` at `:73-79` makes the result current, since the A/B provenance amendment only when
-its caller says the value is measured); `src/dsp/LoudnessMatch.cpp:213-264`
+its caller says the value is measured); `src/dsp/LoudnessMatch.cpp:230-286`
 (the currency bookkeeping); `src/dsp/AnamorphEngine.cpp:61-65` (`keepMatch`: `adoptsMeasChange` and
 `isResultCurrent`); `:239-244` (a host reset's adoption); `:791` and `:880-882` (a live edit, a change
 heard during a duck); `:1264` (the duck bottom).
@@ -786,33 +786,41 @@ value within 0.1 dB of their mean). It is:
 `isResultCurrent()` is unchanged, so condition 5 and every re-prepare verdict that involves no A/B
 restore are unchanged.
 
-**The record, and where it lives.** Each slot's record has four fields:
+**The record, and where it lives.** Each slot's record has five fields (the fifth since the revision of
+2026-09-26, below):
 - the value published when the slot was left;
 - whether it was measured;
 - the adopted state (`EngineParameters`) it was measured for;
-- the sample rate it was measured at.
+- the sample rate it was measured at;
+- when it was not measured, the measure's **post-change evidence** for that state (`LoudnessMatch::Evidence`:
+  a share and a sum; empty for a measured record).
 
-The record belongs to the **engine** (`AnamorphEngine::abMemory`), not the processor. All four fields
+The record belongs to the **engine** (`AnamorphEngine::abMemory`), not the processor. All five fields
 are audio-thread state; reading the currency from the message thread is a data race, and the fields
 must be read together. Capture and restore both run on the audio thread (or the prepare path), where
 the fields are written.
 - **Capture:** when the engine takes the switch (`takeRequests`, at the top of `setParameters`, or in
   `primeParameters` before it adopts the prime), it records the slot being left from its own `p`, `sr`
-  and matcher.
+  and matcher, the matcher's evidence included.
 - **Not measured during a duck in flight** — before its bottom — that has made a measurement-input change
   live which only that bottom will report (`duckMeasDirty`, the rule `prepare()` already applies; the bottom
-  retires it: Note of 2026-09-26, the duckMeasDirty lifecycle). Otherwise the record
+  retires it: Note of 2026-09-26, the duckMeasDirty lifecycle), **and then with no evidence**: what the
+  measure gathered describes the inputs before that change. Otherwise the record
   would pair the pre-change result with the post-change `p`: an ordinary duck opened by a
   non-measurement discrete change together with a Width edit, the switch inside its fade-out, was kept
-  2.13 dB off (State test 134, window (g)).
+  2.13 dB off (State test 134, window (g)); its evidence, restored, would have been 2.18 dB off (Test 73 (4a)).
 - **Not captured** while a restore is still armed, because the engine never adopted the slot that
   switch was going to, and not in the word that forgets.
-- **Restore:** at the forced bottom the destination's record is adopted, value always. It is measured
-  only if it was measured, at the rate the engine runs at now, for the measurement inputs it is
-  restored into (`measurementInputsDiffer`: the same tolerant comparison condition 3 uses, so the
-  preset round-trip drift of the log-mapped crossovers and Mono Maker Freq, measured at up to 12 ulp,
-  is not a difference). Otherwise it is restored **not current** (`inputsChanged()`), and the measure
-  confirms it from there.
+- **Restore:** at the forced bottom the destination's record is adopted. It describes the state adopted
+  now only at the rate the engine runs at now and for the same measurement inputs
+  (`measurementInputsDiffer`: the same tolerant comparison condition 3 uses, so the preset round-trip
+  drift of the log-mapped crossovers and Mono Maker Freq, measured at up to 12 ulp, is not a
+  difference). Then a measured record comes back as its value, measured; a record that was not
+  measured comes back as its **evidence's mean, measured**, when that evidence is a measurement (share
+  ≥ 0.5), and otherwise as its value, **not current**, with the evidence carried to the measure
+  (revision of 2026-09-26, below). A record that does not describe the state is restored as its value,
+  **not current** (`inputsChanged()`), its evidence dropped, and the measure confirms it from there. The
+  applied gain snaps to what the matcher publishes.
 - **Re-arm (P1b, F13(2) Q1):** unchanged, and separate. The re-arm answers where the *analysis* came
   from (the source slot's audio, re-armed when the two slots' measurement inputs differ). The
   measured bit answers where the *value* came from. Neither reads the other.
@@ -835,7 +843,7 @@ The writers never clobber one another:
 The message thread reads nothing of the engine's for a switch, and no audio-thread function waits,
 locks or allocates. The new audio-path functions are in `AnamorphEngine.cpp`, where the realtime lint
 reaches them from `setParameters` and `process` (a seeded lock is reported). They copy one 132-byte
-trivially copyable snapshot per switch. Under ThreadSanitizer, 5.2 M message-thread requests against 4000 audio blocks with a prime and a
+trivially copyable snapshot per switch (and, since 2026-09-26, two doubles of evidence). Under ThreadSanitizer, 5.2 M message-thread requests against 4000 audio blocks with a prime and a
 prepare every 500 gave no report; the same harness with the record written from the message thread gave
 four. `injectMatchGainDb` stays as an engine API whose caller asserts
 the value is measured (Tests 67 and 69 drive it); the processor no longer calls it.
@@ -844,10 +852,10 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
 
 | path | record taken | restored | measured when restored |
 |---|---|---|---|
-| `abSwitchTo` / `abToggle` (both reach `abSwitchToAdopted`) | the slot left, at the next block | at the forced bottom | if recorded measured, same rate, same measurement inputs |
+| `abSwitchTo` / `abToggle` (both reach `abSwitchToAdopted`) | the slot left, at the next block | at the forced bottom | if recorded measured, same rate, same measurement inputs; or, recorded not measured there, as its evidence's mean when that is a measurement (2026-09-26) |
 | a second switch before the first is taken (A → B → A) | the source of the pending one, once | the final destination | as above; the slot in between keeps its record |
 | a switch while a restore is armed | none | the new destination | as above |
-| `abCopyToOther` onto the inactive slot | unchanged (its state moves, its record does not) | at the next switch to it | no, if the copy moved a measurement input |
+| `abCopyToOther` onto the inactive slot | unchanged (its state moves, its record does not) | at the next switch to it | no, if the copy moved a measurement input (the evidence dropped with it); otherwise as the first row (State test 137 (D)) |
 | the shared Oversampling setting changed on the other slot | — | at the next switch | no (`oversample` is a measurement input) |
 | an edit to the slot not yet adopted when it was left, or made during the return fade | — | — | no (the recorded state differs from the adopted one) |
 | a switch the prime takes (`prepareToPlay` with a switch pending) | from the state before the prime | on the first block (the duck was dropped) | at the same rate as above; at a new rate no |
@@ -926,6 +934,10 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
   (0.46 against 0.60–1.85 dB·s). The measure's post-change mean is within 0.13 dB of a fresh instance
   from 0.3 s, and the published glide takes ~3 s to confirm it. Recording that mean with the slot is the
   candidate for both residuals; it changes what a restore publishes, so it is not adopted here.
+  *Adopted 2026-09-26 (revision below): the record carries the measure's slow-weighted post-change
+  evidence, and a restore publishes its mean, measured, once it is a measurement. The first two
+  residuals are closed; the third, a slot visited within ~2.7 s of a flush, is closed with them once
+  ~0.62 s of it has been heard.*
 
 **Recorded, not changed.**
 - **The predict floor over a measured restore (audio).** Returning to a slot whose Drive or Mix is
@@ -940,9 +952,15 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
   spends writing the slot. The bottom then adopts a mixed snapshot, and the record is restored not
   current: 59 of 60 threaded toggles free-running, 0 at ≈ 75× real time or slower. This is conservative
   (the value plays; only a re-prepare before re-confirmation flushes it), and every fix changes the
-  processor → engine handoff.
-- **Evidence across visits, cross-rate retention, and the measure's own scope.** Currency is a
-  function of the measurement inputs and the rate: a programme change, or a bus-layout change before a
+  processor → engine handoff. *Investigated 2026-09-26 (worklog §R7), not changed:* no Accepted contract
+  promises the audio thread a block-atomic snapshot (ADR-0036: "JUCE offers no block-atomic parameter
+  snapshot and never has"), so this is a masking and provenance miss, not a contract violation. Of the
+  architectures compared, the only one that makes the bottom adopt the complete slot is to hold the
+  forced bottom, capped, until the message thread marks the apply complete in the existing request word
+  (a release store, an acquire exchange); it is a threading-model change, a hard stop, and is recorded as
+  the recommendation for a future owner decision.
+- **Evidence across visits** — *adopted 2026-09-26 (revision below).* **Cross-rate retention, and the
+  measure's own scope.** Currency is a function of the measurement inputs and the rate: a programme change, or a bus-layout change before a
   same-rate re-prepare, is the measure's ordinary tracking, as for any converged result. The P1b
   re-arm's first blocks can move a measured restore 0.3–0.8 dB (shared with HEAD).
 
@@ -975,10 +993,137 @@ un-measure; the confirmation that sets `resultMeasured`), `src/dsp/AnamorphEngin
 (`abSwitchToAdopted`, `adoptRestoreTail`). Tests: Test 70, State test 134; State test 132 leg (6)'s
 pre-roll.
 
+**Revision of 2026-09-26 — the record carries the measure's post-change evidence (O8(1) and O8(2); worklog
+§R).** Two residuals of this amendment, measured in worklog §Q7 and reproduced through the processor again
+(worklog §R1; slot B a Copy of A at Drive 8, edited at 4 s, left *t* later, 6 s on A — 2 s in the visit and
+cycle scripts — back, `prepareToPlay` 4 blocks after the return):
+- **O8(1), one visit.** Left 1.1 s after Drive 8 → 12, B's published value is 0.81 dB off a fresh instance
+  and not measured, while the measure's own post-change mean is 0.004 dB off (its share 0.60). The record
+  kept only the value and the bit, so the return restored the lagging value and the re-prepare flushed it:
+  1.60 dB·s over the next 3 s, against 0.04 dB·s for keeping the mean. The live confirmation needs the
+  published glide to reach the mean, ~3 s after the edit.
+- **O8(2), repeated visits.** Toggled every 0.3 or 0.6 s after the edit, B never came back measured: every
+  unmeasured restore called `inputsChanged()`, which zeroed the post-change share, so nothing
+  accumulated across visits, and no visit is long enough alone.
+
+**The invariant.** From the currency bookkeeping (worklog §R2): the published value is exactly
+`D = (1 − S)·L + S·M + R`, where `S` is the post-change measurements' weight in its glide, `M` their
+glide-weighted mean, `L` the value at the change and `R` the pre-change colouring of counted blocks, the
+floor and the clamp. `M` is a mean of **measurements of the current inputs**; `D` is a glide that still holds
+`L`. The live criterion certifies `D` once `S ≥ 0.5` and `|D − M| ≤ 0.1 dB`, which, as its own comment says,
+is when "their mean is itself a measurement" and the published value has reached it. When a slot is left
+before the glide arrives, the authoritative piece of measurement state is therefore the post-change
+**evidence** — the measurements and their weight — not the published value.
+
+**The evidence, defined** (`LoudnessMatch::Evidence`, `getEvidence`). While the result is not measured, every
+block the currency counts is also summed with the **slow** glide's weight `c = 1 − exp(−block / 0.9 s)`,
+whatever step the published value takes, and every audible block decays it by the same `c`: its share is
+the weight those measurements would have in a published value that had glided slowly since the change, and
+`sum / share` is their mean. A share of 0.5 takes exactly `⌈ln 0.5 / ln (1 − c)⌉` counted blocks, 0.62 s of
+counted audio at any rate and block size — the live criterion's own "at least half", measured on its
+slowest path (Test 73 (1a): 117 blocks at 48 kHz / 256, the mean exact to 1e-4 dB on a proportional wet).
+The glide's own weights would not do: a few early blocks of a fast glide reach half on their own, and a mean
+so weighted, restored after a flush, was 0.08–0.45 dB off where the live criterion certified nothing (S2
+below). The evidence is reset wherever the post-change share is — `inputsChanged()`, `reset()`, the floor's
+un-measure, an unmeasured restore — kept by `softReset()`, and reads empty while the result is measured.
+
+**The record's contract, from this revision.**
+- **What it holds:** the published value; whether it was **measured** (unchanged: the measure's confirmed
+  answer for `measuredFor`); `measuredFor` and `measuredAt`; and, only when it was not measured, the
+  **evidence** for `measuredFor`. None while the in-flight rule above applies. One provenance: `measured`
+  says the value is the measure's answer; the evidence is what the measure had toward one; a measured
+  record carries none.
+- **When a restore is current.** For the rate and measurement inputs it was recorded at: a measured record —
+  its value, measured, as before; a record not measured whose evidence has a share of at least 0.5 — the
+  evidence's **mean**, published and **measured** (`LoudnessMatch::restoreUnmeasured`), because that mean
+  *is* the measure's answer for exactly those inputs, and the published value then equals it; any other
+  record not measured — its value, **not current**, as before, with the evidence carried into the measure.
+  A non-finite share or mean certifies nothing. Anything recorded for another rate or other inputs — its
+  value, not current, the evidence dropped. The applied gain snaps to what is published.
+- **Repeated visits.** A carried evidence decays by `c` per audible block and grows by `c` per counted
+  block, so the visits add up: 0.3 s visits come back measured from the 4th return, 0.6 s visits from the
+  2nd (State test 137 (B); Test 73 (3)). A visit whose record no longer describes the state — an edit in the
+  return's own turn — drops what came before (the event-matched controls flush).
+- **A same-rate re-prepare** keeps a certified restore (it is current); **a new rate** flushes it as it
+  flushes any record from another rate: the evidence is dropped with the rate stamp (Test 73 (4c), State test
+  137 (E)). The prime path and a host reset in the return's fade-out restore through the defensive consumer
+  with the same rules.
+- **Copy** moves a state, never a record. A Copy that moves a measurement input makes the destination's
+  record describe another state: its evidence is dropped and the value restored not current. A Copy that
+  leaves the destination reading the inputs its record describes changes nothing (State test 137 (D)).
+  Carrying the source's live record with a Copy stays a candidate (below).
+- **What is conservative.** A record is never made measured by the value beside it, only by the measure's
+  own evidence for the exact inputs and rate it is restored into, weighed as the slowest live certification
+  weighs it. Less than that is restored not current, as before.
+
+**Strategies compared** (worklog §R3; engine variants behind the same processor probe, noise, amplitude-
+modulated and burst programmes, rises, cuts and small edits, 216 edit routes):
+
+| strategy | verdict |
+|---|---|
+| S0 — head: the value; not current unless measured | O8(1) and O8(2) as above |
+| S1 — restore the glide-weighted mean when its share ≥ 0.5, no carry | O8(1) mostly; O8(2) not at 0.3 / 0.6 s visits after a rise (never certifies) |
+| S2 — S1, and the glide-weighted evidence carried | certifies startup-dominated means: a first visit of 0.1–0.5 s after a flush restored 0.08–0.19 dB off on noise, up to 0.33 dB on modulated and 0.45 dB on burst programme, where nothing live certified |
+| S3 — the mean whenever its share > 0 | worse than head after small edits on transient programme (0.35–0.38 dB off against 0.16–0.21) |
+| S4 — carry only; the live criterion confirms | slow: measured from the 5th to the 11th return |
+| **S5 — slow-weighted evidence, certified at 0.5, carried below (adopted)** | differs from head on 78 of 216 routes; certified restores 0.007 / 0.032 / 0.011 dB off at the median (noise / modulated / burst), within the envelope of live confirmations on the same programmes (0.028 / 0.045 / 0.026). Test 70 (3b)'s identity and State test 134 (B) 1.1 s change, both by design |
+
+**Measured on the implementation** (the processor probe of §R1; re-prepare 4 blocks after the return; error
+integrated over the 3 s after it, dB·s; head / this revision):
+
+| route | left after the edit | head | this revision |
+|---|---|---|---|
+| Drive 8 → 12 | 0.3 / 0.6 s | flushed 1.61 / 1.59 | the same, bit for bit |
+| | 1.0 / 1.1 / 2.0 / 2.1 s | flushed 1.60 / 1.60 / 1.61 / 1.61 | kept 0.038 / 0.038 / 0.036 / 0.035 |
+| | 3.2 / 4.3 s (measured) | kept 0.103 / 0.053 | the same, bit for bit |
+| Drive 8 → 2 | 0.3 / 0.6 s | flushed 0.47 / 0.46 | the same, bit for bit |
+| | 1.0 / 1.1 / 2.0 / 2.1 / 3.2 s | flushed 0.46 each | kept 0.020 / 0.014 / 0.016 / 0.012 / 0.017 |
+| visits every 0.3 s (8 → 12 / 8 → 2) | — | never measured; flushed 1.60 / 0.46 | measured from the 4th return; kept 0.10 / 0.08 |
+| visits every 0.6 s | — | never measured; flushed 1.58 / 0.46 | measured from the 2nd return; kept 0.06 / 0.05 |
+
+After a cut the old KEEP counterfactual lost to the flush (it kept the lagging value); the evidence's mean
+beats both. **Route-dependent trade-off (recorded):** on a sparse burst programme, after a rise, the certified
+mean plays up to 0.15 dB·s more over 3 s than the flush (0.10–0.15 at four of five leave times), whose predict
+floor lands near the level on that route
+(e.g. 1.36 against 1.25 dB·s at 1.0 s); the mean itself is within 0.07 dB of a fresh instance at the leave from
+0.9 s on, and within 0.26 dB at a return 6 s later, the programme's own movement, which a live-confirmed value
+shows too (0.22 dB).
+
+**What else moves.** Only A/B returns of a record left not measured with a measurement's worth of evidence: in the
+suites, State test 130 leg (6) (0.012 → 0.000 dB from the value it lands on) and State test 131 (a) (the bottom
+−7.127 → −7.263 dB against a fresh −7.266) and (b) (the source values that follow it), all passing, besides the two
+revised assertions (Test 70 (3b), State test 134 (B) 1.1 s); of the processor-route hashes, S14 (A/B, B left 2 s
+after its edit). Every other route hash, the 186 finite-value hashes and the rest of both suites' output are
+unchanged.
+
+**Cost.** Four multiply-adds per audible block while the result is not measured; 16 bytes in the matcher and 16
+per record (48 per engine). No allocation, lock, thread, atomic or cross-thread path: the evidence is
+audio-thread state, captured and restored exactly where the record is, by the same two functions.
+
+**Regression coverage.** Test 73 (the matcher and the engine, 55 checks) and State test 137 (the processor, 53
+checks); Test 70 (3b) now proves the double switch's bottom restores A's record by bit-identity with (3a)'s bottom
+(A's record, unmeasured with a measurement's worth of evidence, is restored as its mean), and State test 134 (B) 1.1 s
+asserts the certified keep in place of the flush — both stronger than the assertions they replace. The variants
+rejected are listed in Test 73's header and worklog §R6.
+
+**Architecture Review Gate — owner authorization of 2026-09-26 (O8).**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #156 body and the implementing commit message: a change to what this **Accepted** amendment says a restore adopts ("value always") |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's authorization of 2026-09-26**: *"You are authorized to make that owner decision from the evidence and your own recommendation. Do not stop merely because this changes the A/B restore contract."* The boundary: *"Do not let a remembered estimate become falsely 'measured' merely because it is numerically useful."* Review of the implementation: pending, PR #156 |
+| 3 | if the change is a decision, an ADR is added/updated | this revision, in place |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, serialization field (the record is never serialized), thread, atomic, DSP order or reported latency changes |
+
+Related code (this revision): `src/dsp/LoudnessMatch.h` (`Evidence`, `getEvidence`, `restoreUnmeasured`,
+`kMeasuredShare`), `src/dsp/LoudnessMatch.cpp` (`restoreUnmeasured`; the evidence beside the post-change share),
+`src/dsp/AnamorphEngine.h` (`AbMatchMemory::evidence`), `src/dsp/AnamorphEngine.cpp` (`takeRequests`,
+`restoreAbSlot`, `adoptRememberedMatch`). Tests: Test 73, State test 137; Test 70 (3b), State test 134 (B).
+
 ## Note, 2026-09-25 — a gain-only engage lands on the published value, current or not (Devin review: "Level Match engages on stale compensation"; "stale engage")
 
 Devin's review of `1c22d51` (PR #156) found *"Level Match engages on stale compensation"* at
-`src/dsp/AnamorphEngine.cpp:1276-1277`. The sequence it gives:
+`src/dsp/AnamorphEngine.cpp:1286-1287`. The sequence it gives:
 1. With Level Match off, a live edit to something the measurement reads leaves the result not current
    (`inputsChanged`; the Amendment of 2026-09-25, live edits).
 2. Level Match is turned on before the measure has caught up.
@@ -1160,7 +1305,7 @@ against the currency the matcher now reports.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, in place: the decision it records (Q4) stands |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change; no behaviour change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1263-1277` (the bottom's answer and the landing
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1273-1287` (the bottom's answer and the landing
 predicate), `:1959-1960` (the landing), `:1993-1994` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
 (`inputsChanged`, `isResultCurrent`). Tests: Test 71, State test 135.
 
@@ -1200,7 +1345,7 @@ duck that nothing has reported to the matcher yet?
     an A/B restore or injection (P1b);
   - `prepare()` (`adoptsMeasChange`: no keep);
   - `reset()` (`adoptsMeasChange`: `inputsChanged()`);
-  - the A/B record (`takeRequests`: not measured).
+  - the A/B record (`takeRequests`: not measured, and — since the revision of 2026-09-26 — no evidence).
 - **Cleared** by a forced entry, by a re-duck from the fade-in (whose copy then marks it again), by `reset()`,
   and — from this note — by the bottom that reports it.
 
@@ -1237,7 +1382,8 @@ in worklog §Q3.
   through the duck (the adopted state reads what the running one did) still re-arms, and holds on silence
   (Test 72 (G1)). With no measurement input changed it does not re-arm (G2).
 - **O4g and Case B.** The landing reads the same local, so both are unchanged.
-- **A/B provenance.** A not-measured record is still restored not current and flushed (leg (F)).
+- **A/B provenance.** A not-measured record is still restored not current and flushed (leg (F); its 0.5 s of
+  evidence is under the half the revision of 2026-09-26 certifies).
 - **Same-rate re-prepares.** One still keeps only a current result, and the kept value is the applied gain from
   the first block, a quiet resume included (Test 68's property). A new rate still flushes.
 - **Before the bottom,** a re-prepare, a host reset and an A/B record still treat the change as in flight.
@@ -1277,7 +1423,7 @@ flag is audio-thread state, written in `process()` beside the report it retires.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, and the three in-place clarifications it lists |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1262-1270` (the bottom's report and the retirement),
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1272-1280` (the bottom's report and the retirement),
 `:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:643-646` (the A/B record),
 `:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:302-307` (the flag). Tests: Test 72,
 State test 136.
@@ -1287,15 +1433,16 @@ State test 136.
 - Deliberately **not** a continuously-adapting AGC.
 
 ## Related code
-- `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:85-106` and `:142-181` (predict; the floor's
-  un-measure), `:183-209` (measure/hold), `:108-117` (`softReset`: the analysis only), `:65-79` (`reset`:
-  both halves), `:213-264` (the result's currency and its confirmation; the amendments of 2026-09-25)
-- `src/dsp/AnamorphEngine.cpp:1840-1841` (A(dry) reference), `:1954` (the measurement), `:1993-1994`
+- `src/dsp/LoudnessMatch.cpp:16-46` (K-weighting), `:101-122` and `:158-198` (predict; the floor's
+  un-measure), `:200-226` (measure/hold), `:124-133` (`softReset`: the analysis only), `:65-80` (`reset`:
+  both halves), `:230-286` (the result's currency, its confirmation and the post-change evidence; the
+  amendments of 2026-09-25 and the revision of 2026-09-26), `:82-95` (`restoreUnmeasured`)
+- `src/dsp/AnamorphEngine.cpp:1850-1851` (A(dry) reference), `:1954` (the measurement), `:1993-1994`
   (silence-edge snap), `:598-683` (the A/B record: request, forget, capture, restore)
 - `src/PluginProcessor.cpp:455` (`applyAutoGain`)
 
 Evidence [Verified]:
-- Source: src/dsp/LoudnessMatch.cpp:16-267
+- Source: src/dsp/LoudnessMatch.cpp:16-289
 - Tests: testLevelMatchUnity, testLevelMatchNoRatchet, testLevelMatchMixCouplingNoSlam,
   testLevelMatchSilenceFreeze, testMultibandUnityMatch
 - History [Partially Verified]: CHANGELOG.md [0.8.1]

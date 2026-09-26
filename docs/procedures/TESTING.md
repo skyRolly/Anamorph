@@ -455,7 +455,11 @@ A flush is current and not measured, and the predict floor lowering a measured v
 not measured. The engine keeps one record per A/B slot (`requestAbSwitch`): the value, whether it was
 measured, and the adopted state and sample rate it was measured for. At the switch's bottom the record's
 value is always restored, with the applied gain. It is restored as measured only if it was measured, at
-the rate running now, for the same measurement inputs; otherwise it is restored not current.
+the rate running now, for the same measurement inputs; otherwise it is restored not current. *Revised
+2026-09-26 (Test 73):* a record not measured also carries the measure's post-change evidence, and when that
+evidence is a measurement, at this rate for these inputs, the restore publishes its mean, measured. Leg
+(3b)'s double switch restores such a record (A's), so its identity is now asserted by bit-identity with
+(3a)'s bottom rather than by closeness to A's recorded value.
 
 **Test 70** (`testAbLevelMatchMemoryCarriesItsProvenance`) drives the matcher directly and the engine
 through the processor's prime / prepare / setParameters sequence. A same-rate re-prepare keeps a current
@@ -602,6 +606,52 @@ applied gain, the quiet resume, (H1) and (H2). Engine variants (worklog §Q3):
 - retired at the upgrade: (G1), and Tests 66 and 67;
 - retired before the bottom reads it: (G1), Tests 66 67 68 71, and State tests 130 132 135;
 - retired at a forced bottom only, or all three readers narrowed to the fade-out: 0 (equivalent, recorded).
+
+**An A/B slot left before its result is measured carries the measure's post-change evidence — Test 73
+(2026-09-26; ADR-0007, A/B provenance, revision of 2026-09-26; worklog §R, O8(1) and O8(2)).**
+
+*The contract.* While a result is not measured, `LoudnessMatch` sums the post-change measurements its
+currency counts a second time, with the slow glide's weight whatever step the published value takes
+(`LoudnessMatch::Evidence`): the share is 0.5 after 0.62 s of counted audio, and `sum / share` is their mean.
+It is reset with the post-change share, kept by `softReset`, and reads empty while measured. An A/B record
+left not measured carries it (none while a duck in flight carries a live measurement change). Restored at
+the rate and for the measurement inputs it was taken at, evidence of share ≥ 0.5 publishes its mean,
+measured (`restoreUnmeasured`); less is carried to the next visit with the value restored not current. A
+record for another rate or other inputs drops it. Measured records and records without evidence restore
+exactly as before.
+
+**Test 73** (`testAbRecordCarriesThePostChangeEvidence`) drives the matcher directly, then Test 72's engine
+lanes with Test 70's observation (digital silence from 8 blocks before a return through its bottom, so the
+bottom publishes exactly what was restored) and verdict (a same-rate re-prepare 3 audible blocks after the
+bottom: keep bit-exact, flush exactly 0 dB). Programme N, 48 kHz / 256; slot B is A (Haas, Drive 8) edited
+to Drive 12 or 2 at 4 s; 2 s on A per visit.
+- **(1) The matcher**, the wet 2× then 3× the dry (every block's post-change ratio is the target, −9.5424
+  dB). The first counted block 0.277 s after the change; the share follows `1 − (1 − c)^n` to 6e-16 and
+  reaches 0.5 after exactly 117 counted blocks (0.624 s), its mean exact, while the published value is
+  1.9 dB away and not measured (confirmed live 2.74 s later); after a 12 dB change, whose counted blocks glide
+  fast, the share still follows the slow step. That evidence restored publishes its mean,
+  measured; the block before it (share 0.4971) restores the value not current with the evidence carried
+  bit-exact, and the same audio then certifies it 0.496 s after the restore instead of 0.901 s. An empty
+  evidence is `setDisplayedGainDb (v, false)` bit for bit for 3 s; a non-finite share or mean certifies
+  nothing; `softReset` keeps the evidence, a change, a flush and an unmeasured restore clear it, and so does
+  the floor's un-measure of a certified value.
+- **(2) O8(1), one visit.** Left 0.3 s after the edit: the record restored exactly, flushed. Left 1.1 s
+  after it (not measured: a re-prepare there flushes): the bottom publishes the evidence's mean and a
+  re-prepare keeps it — Drive 8 → 12 −6.8000 (0.81 dB off fresh) → −7.6087 (0.020 off); 8 → 2 −3.9181 (1.76
+  off) → −2.1907 (0.028 off) — and a return 1 s later publishes the same value. Left 6 s after it
+  (measured): as before.
+- **(3) O8(2), repeated visits.** Visits of 0.3 s: returns 1–3 restore the record exactly and flush, the
+  4th restores the mean and keeps it (0.097 / 0.067 dB off fresh); visits of 0.6 s: from the 2nd return
+  (0.056 / 0.021). The event-matched control, each return's Drive 0.01 dB away from the record's
+  (alternately), flushes at the same return.
+- **(4) What drops the evidence.** A duck in flight carrying Width 1 → 2 when B is left (the Width-2 level
+  is 2.17 dB from the Width-1 one): the record exactly, flushed — the same duck without Width keeps the
+  mean. A return into Width 2: flushed. A return the prime takes: at 48 kHz the first block publishes the
+  mean, kept; at 44.1 kHz the record, flushed. A forget: 0 dB restored, flushed.
+
+55 checks, ~1 s native. It drives an API the revision adds, so it has no run at `3a779f5`; the variant that records
+no evidence (the head-equivalent composite) fails 16 of its checks. The variants rejected are listed in the test's
+header and worklog §R6.
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
@@ -4859,8 +4909,11 @@ setting. 63 heap processors run in lockstep on one seeded stream.
 
 Legs:
 - **(A) A slot left measured** is kept, 0.008 dB off.
-- **(B) Devin's case.** A slot left 0.1 / 0.3 / 1.1 s after a Drive edit flushes; the pre-fix processor
-  kept it 1.61 / 1.54 / 0.81 dB off.
+- **(B) Devin's case.** A slot left 0.1 / 0.3 s after a Drive edit flushes; the pre-fix processor kept
+  it 1.61 / 1.54 dB off. Left 1.1 s after it, the pre-fix processor kept it 0.81 dB off; since the revision
+  of 2026-09-26 (State test 137) its ~0.83 s of post-change evidence is a measurement: the bottom publishes
+  the evidence's mean (0.013 dB off fresh, ≥ 0.5 dB from the value recorded) and `prepareToPlay` keeps it
+  (0.016 dB off).
 - **(C) Re-establishing currency.** Re-confirmed on a later visit and left measured, the slot keeps.
   Beside a Level-Match-off twin, the not-measured value is still the applied gain from the bottom:
   the value and its validity are restored apart.
@@ -4958,6 +5011,37 @@ is driven as a host and the editor drive it: gestures, `abCopyToOther`, `abSwitc
 
 18 checks, ~1.5 s native. Against the pre-fix processor 8 fail: the four fade-in legs, the two applied
 gains, (H1) and (H2). Strategy B fails 6; the flag retired where the fade-in ends fails the same 8.
+
+**An A/B slot left before its Level-Match result is measured carries the measure's post-change evidence,
+through the processor — State test 137 (2026-09-26; ADR-0007, A/B provenance, revision of 2026-09-26;
+worklog §R).** This (`testAnAbSlotCarriesItsPostChangeEvidence`) is the processor half of Test 73, on
+State test 134's spine (slot B a Copy of A at Drive 8, active from the first block, edited to Drive 12 or 2
+at 4 s; 2 s on A per visit; `prepareToPlay` 4 blocks after a return). One heap processor per lane, seed
+137; driven by gestures, `abCopyToOther`, `abSwitchTo`, `processBlock`, `prepareToPlay` and `reset()`.
+- **(A) One visit.** Every premise asserted (a `prepareToPlay` at the leave flushes for 0.3–2.1 s and keeps at
+  6 s; A plays ≥ 1 dB from a fresh B). 0.3 / 0.6 s: flushed. 1.1 / 2.1 s: the bottom publishes the
+  evidence's mean and it is kept — Drive 8 → 12 0.021 / 0.009 dB off fresh (the value recorded 0.81 / 0.29
+  off); 8 → 2 0.032 / 0.003 (1.76 / 0.64). 6 s: kept.
+- **(B) Repeated visits**, a verdict lane per return: 0.3 s visits flush at returns 1–3 and keep from the 4th;
+  0.6 s visits flush at the 1st and keep from the 2nd (0.011–0.067 dB off fresh). The control — each
+  return's Drive moved 0.01 dB in its own turn, alternately — flushes there.
+- **(C) A cycle:** left at 0.6 s, back (flushed), 0.5 s more, left, back — kept 0.057 dB off; its control
+  flushes.
+- **(D) Copy.** B left 1.1 s after its edit (~0.83 s of evidence). A Copy that moves B's measurement inputs
+  (A at Drive 8 onto B's Drive-12 record): flushed. A
+  edited to Drive 12 first, then copied: B's evidence mean, kept 0.017 dB off.
+- **(E) Without a forced bottom.** `reset()` in the return's fade-out, and the return primed by
+  `prepareToPlay` in the same turn: the 1.1 s record kept on both, flushed when primed at 44.1 kHz; the
+  0.3 s record flushed on all three.
+- **(F) The applied gain.** The kept mean is applied from the first block of a −70 dBFS resume; without a
+  `prepareToPlay`, the return's first full-level block applies it too (not the value recorded, 0.8 dB
+  away).
+- **(G) A change in flight.** B left inside an ordinary duck (Bands 4 → 3, Multiband off) carrying Width
+  1 → 2: flushed; the band count alone: kept.
+
+53 checks, ~2 s native. Against the engine before the revision (`3a779f5`) 23 fail — (A) 1.1 / 2.1 s on both
+routes, all twelve of (B) (no return is ever kept), (C), (D2), (E1), (E2) at the same rate, (F) twice and (G)'s
+control — and every premise, flush and control passes there.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

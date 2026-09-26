@@ -99,6 +99,7 @@ public:
         staleWet0 = meanSqWet;
         stalePreWeight = 1.0;
         postShare = postSum = 0.0;
+        evidence = {};
     }
     bool isResultCurrent() const noexcept { return ! resultStale; }
 
@@ -111,6 +112,31 @@ public:
     // records when it is left: a value that is current only because a flush left it so is right
     // in the flush's own context (the floor lands the first block), not in another one.
     bool isResultMeasured() const noexcept { return resultMeasured; }
+
+    // THE POST-CHANGE EVIDENCE (ADR-0007, Amendment of 2026-09-25, A/B provenance, revised 2026-09-26: the
+    // record's evidence). While the result is not measured, the post-change measurements the currency counts are
+    // also summed with the SLOW glide's weight, whatever step the published value takes: `share` is the
+    // weight they would have in a published value that had glided slowly since the change -- 0.5 after
+    // ~0.62 s of counted audio at any rate and block size -- and sum / share their mean. That share is the
+    // live criterion's own "at least half" measured on the slowest path to it, so it never lets a few early
+    // blocks, weighted by a fast glide, stand for the mean. Empty while measured, and reset wherever the
+    // post-change share is (a change, a flush, the floor's un-measure). An A/B slot left before the measure
+    // confirmed it records this with its value (AnamorphEngine::AbMatchMemory).
+    struct Evidence
+    {
+        double share = 0.0;   // the post-change measurements' slow-glide weight
+        double sum   = 0.0;   // ...and their weighted sum (sum / share: their mean, in dB)
+    };
+    Evidence getEvidence() const noexcept { return resultMeasured ? Evidence {} : evidence; }
+
+    // Restores a remembered value that was NOT measured, for the inputs the matcher now reads (the caller
+    // has checked the rate and the measurement inputs), with the evidence recorded beside it. When that
+    // evidence is itself a measurement -- share >= kMeasuredShare -- its mean IS the measure's answer for
+    // those inputs: it is published, measured (and so current), exactly as the live criterion would once
+    // the published value reached it. Otherwise the value is restored not current, as setDisplayedGainDb
+    // (db, false) restores it, and the measure carries on from the evidence, so the next visit adds to it.
+    // An empty Evidence restores exactly what setDisplayedGainDb (db, false) does.
+    void restoreUnmeasured (float db, Evidence e) noexcept;
 
     // Tell the matcher the current state of the two big-gain controls. estBoostDb()
     // turns these into an ABSOLUTE predicted boost (no internal accumulation), so the
@@ -170,11 +196,14 @@ private:
     // after N samples -- the integrators' own decay, block by block (memo keyed on the block size).
     // postShare / postSum: the post-change measurements' weight in the published value's glide, and
     // their weighted sum (postSum / postShare is their glide-weighted mean). resultMeasured
-    // (isResultMeasured) implies ! resultStale; the bookkeeping runs until it is set.
+    // (isResultMeasured) implies ! resultStale; the bookkeeping runs until it is set, and is frozen
+    // (meaningless) after: everything that clears resultMeasured resets it.
     bool   resultStale = false;
     bool   resultMeasured = false;
     double staleDry0 = 0.0, staleWet0 = 0.0, stalePreWeight = 1.0;
     double postShare = 0.0, postSum = 0.0;
+    Evidence evidence;   // getEvidence(); runs with postShare, weighted by the slow glide
+    static constexpr double kMeasuredShare = 0.5;   // "at least half": the post-change mean is a measurement
     int    decayForN = -1;
     double decayPerBlock = 1.0;
 

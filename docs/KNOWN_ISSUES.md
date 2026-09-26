@@ -158,7 +158,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1280 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1290 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -1062,6 +1062,14 @@ engine API) are fixed.
 >   rate, for the same sound. A slot left 0.3 s after a Drive 8 → 12 edit, switched back to and
 >   re-prepared, used to keep its unconverged gain 1.53 dB off; it now measures afresh (Devin review,
 >   corrected 2026-09-25; ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134). A
+>   slot left before that confirmation, but after Level Match had heard about a second of its new sound
+>   — in one visit, or in several short ones that add up — now comes back at the level the measure had
+>   found for it, and a re-prepare keeps it: left 1.1 s after the same edit, it came back 0.81 dB off
+>   and was measured afresh by a re-prepare; it now comes back within 0.03 dB and is kept, and switching
+>   back and forth every 0.3 s confirms it by the fourth return instead of never (corrected 2026-09-26; ADR-0007, A/B
+>   provenance, revision of 2026-09-26; Test 73, State test 137). Still recorded, not changed: an A/B
+>   switch made while a host renders faster than roughly 20–50× real time can adopt a slot part-written,
+>   restoring its level not caught up (ADR-0007, A/B provenance, "A slot adopted partly written"). A
 >   caught-up gain restored by an A/B switch made during the fade-out of another switch — a band-count
 >   change, say — is now kept by a re-prepare in the ~28 ms fade-in that follows, too. It was flushed
 >   there, playing 1.6 dB off for the ~2 s the match took to come back; a transport stop or a switch

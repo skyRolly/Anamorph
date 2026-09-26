@@ -2328,6 +2328,7 @@ blocks after the return. The error is |applied − fresh B| integrated over the 
   post-change mean and its share with the slot, and restore the mean as measured once the share is at
   least 0.5. It would beat both columns on every row above from ~1 s. It changes what a restore and a
   re-prepare publish, so it needs an ADR amendment and the owner.
+  *Adopted 2026-09-26 with slow-glide weights (§R).*
 
 **(2) Switching faster than confirmation never re-confirms.** After Drive 8 → 12, toggling every *T*:
 
@@ -2370,3 +2371,266 @@ is made 40 blocks after each toggle.
   request, or the bottom held until an apply generation matches. That is a threading-model change (a
   hard stop), so it is recorded, not changed. This round's fix is not involved: the mixed adoption
   happens before the bottom.
+
+## R. The A/B residuals of §O8 and §Q7: O8(1) and O8(2) closed, O8(3) investigated (0.9.9)
+
+Continues PR #156 from `3a779f5`. The owner delegated the decision ("You are authorized to make that owner decision
+from the evidence and your own recommendation"); O8(3) is investigation only ("Do NOT implement a new Processor →
+Engine threading/state handoff architecture in this round"). Decision record: ADR-0007, A/B provenance, revision of
+2026-09-26. All of it is version 0.9.9, and the owner set the 0.9.9 release date to September 27, 2026 ("The 0.9.9
+release date must be updated to September 27, 2026"): `CHANGELOG.md`'s `[0.9.9]` heading is the one authoritative
+place that carries it.
+
+### R1. Reproduction through the processor (head `3a779f5`)
+
+A scratch probe (not committed) drives `AnamorphAudioProcessor` as State test 134 does: seeded correlated noise
+(seed 134), 48 kHz / 256, Advanced Mode, Haas 50 %, Width 100 %, Multiband off, Output Gain −3, Level Match on.
+Slot B, a Copy of A (Drive 8), is active from the first block and edited at 4 s; each visit to A lasts 6 s (2 s in
+the cycle and visit scripts); `prepareToPlay` 4 blocks after the last return. A fresh processor at B from sample 0
+is the reference. Recorded separately at each leave and return: the published value, currency and measured bits,
+the glide-weighted post-change share and mean, the record and its bit, and the applied gain; after the return the
+integrated |applied − fresh| over 3 s, and the re-prepare verdict.
+
+**O8(1), one visit, Drive 8 → 12** (8 → 2 in brackets):
+
+| left after the edit | published, dB off fresh | measured | post-change share | its mean, dB off fresh | re-prepare, then 3 s |
+|---|---|---|---|---|---|
+| 0.3 s | 1.532 (3.136) | no | 0.029 | 0.048 (0.129) | flushed 1.61 (0.47) dB·s |
+| 0.6 s | 1.262 (2.642) | no | 0.307 | 0.027 (0.071) | flushed 1.59 (0.46) |
+| 1.0 s | 0.894 (1.927) | no | 0.556 | 0.006 (0.042) | flushed 1.60 (0.46) |
+| 1.1 s | 0.812 (1.760) | no | 0.603 | 0.004 (0.037) | flushed 1.60 (0.46) |
+| 2.0 / 2.1 s | 0.321 / 0.288 (0.711 / 0.640 at the return) | no | 0.854 / 0.870 | 0.001 | flushed 1.61 (0.46) |
+| 3.2 / 4.3 s | 0.086 / 0.026 | yes | — | — | kept 0.103 / 0.053 |
+
+The return restores the value recorded, not current; the measure re-confirms it 2.51 s after the return (1.35 s
+after a cut), whatever *t* was. The post-change mean is within 0.13 dB of fresh from 0.3 s and its share passes
+0.5 by 1.0 s; the published glide needs ~3 s to reach it. **Root cause:** the record holds the published value
+and one bit, not the measurement behind it.
+
+**O8(2), repeated visits** (toggling every *T* from the edit on, 24 switches): at *T* = 0.3 s the share at every
+leave is 0.274 — it restarts at each return — and B is never measured (still 0.111 dB off at 6.9 s; the re-prepare
+after the last return flushes: 1.604 dB·s). *T* = 0.6 s: 0.307 then 0.482, never measured. The cycle leave 0.6 s /
+back / 0.5 s / leave / back: the second leave's share 0.420, not measured, flushed (1.593 dB·s). **Root cause:**
+every restore of an unmeasured record calls `inputsChanged()` (`setDisplayedGainDb (v, false)`), which zeroes the
+post-change share; with the slots differing, the P1b re-arm also empties the integrators. Nothing carries across
+visits, and a visit shorter than ~0.6 s can never confirm.
+
+### R2. The measurement invariant
+
+A read-only derivation of the bookkeeping (`LoudnessMatch.cpp`, the currency block), confirmed against a model of
+the recurrences:
+- `postSum / postShare` is exactly the mean of the counted blocks' post-only differences `P_k`, weighted as the
+  published value weights its targets (the same `glideCoeff`). Silent blocks move neither.
+- Exactly, `D = (1 − S)·L + S·M + R`: `L` the value at the change plus the uncounted steps, `M = Σ / S`, and `R` the
+  counted blocks' stale colouring `g_k (T_k − P_k)`, the floor's jumps and the clamp's corrections. `R = 0` only with
+  an empty snapshot (after `reset`, `prepare`, `softReset`). The live predicate tests `(1 − S)·|L_eff − M| ≤ 0.1`.
+- `S` and `Σ` freeze while measured, and every path that clears `resultMeasured` resets them, so "measured implies
+  current" holds structurally.
+- Borrowing a recorded `S` into the live predicate would confirm with no new audio (and `S = 0` gives a NaN mean);
+  restoring `M` with a GLIDE-weighted share certifies startup-dominated means, because a few fast-glide blocks reach
+  half by themselves.
+
+**The answer to the phase's question** — which piece of measurement state best represents the Level Match result
+when a slot is left before the published value has converged — is the post-change evidence: the measurements of
+the current inputs and their weight, not the published glide that still carries the previous state. Weighted by the
+SLOW glide, its share is the live criterion's own "at least half", measured on its slowest path (0.62 s of counted
+audio), so its mean is a measurement exactly when the live criterion would call it one.
+
+### R3. Strategies compared
+
+Six engine variants behind the same probe: three programmes (noise; noise amplitude-modulated 0.55 ± 0.45 at 0.7 ×
+3.1 Hz with 20 % gaps; 80 ms bursts every 0.47 s with 50 ms tails), eight edits (Drive 8 → 12 / 2 / 9 / 7 / 8.3,
+Width 1 → 2 / 1.05 / 0.95), nine leave times (216 routes), plus flush-origin first visits (0.1–1.5 s after the first
+prepare), repeated visits (*T* = 0.3 / 0.6 s), and cycles. The full suites were run against S2 and S5.
+
+| strategy | O8(1) | O8(2) | failure mode | full suites |
+|---|---|---|---|---|
+| S0 head | flushed ≤ 2.7 s | never | — | — |
+| S1 glide-weighted mean at share ≥ 0.5, no carry | kept ≥ 1 s | 8 → 12: never at 0.3 / 0.6 s | none new | — |
+| S2 S1 + carry | kept ≥ 1 s | from return 1–3 | certifies startup-dominated means after a flush or a 0 dB restore: 0.08–0.19 dB off (noise), 0.33 (modulated), 0.45 (burst) at 0.1–0.5 s | DSP 3 / State 7 failures |
+| S3 mean at any share | kept from 0.3 s | from return 0–3 | after small edits on burst programme restores 0.35–0.38 dB off where head plays 0.16–0.21 | — |
+| S4 carry only | — | from return 4–10 | slow | — |
+| **S5 slow-weighted evidence, certified at 0.5, carried below** | kept ≥ ~0.9 s | from return 1–3 | none found | DSP 1 / State 3 (the intended changes) |
+
+S5 against head on the 216 routes: 78 differ; the median integrated error after the re-prepare improves by
+0.778 dB·s. Certified restores sit within the envelope of live confirmations on the same programmes (median / max
+dB off fresh at the return — S5 certified: noise 0.007 / 0.041, modulated 0.032 / 0.083, burst 0.011 / 0.264; head
+live-confirmed: 0.028 / 0.102, 0.045 / 0.219, 0.026 / 0.219). The burst maximum is the programme moving over the
+6 s on A: at the leave the burst-programme evidence mean is within 0.07 dB of fresh from 0.9 s on (a time-series
+probe, 0.1 s steps to 5 s). On burst programme after a rise the kept mean plays up to 0.15 dB·s more than the
+flush (0.10–0.15 at four of five leave times; the predict floor lands near the level on that route) — the one
+route-dependent cost, recorded in ADR-0007.
+Flush-origin: S5 certifies nothing before 0.62 s of audio (0.1 / 0.3 / 0.5 s: flushed, as head), then 0.009–0.029 dB
+off (noise) at 0.8 s. Visits (S5; head never): *T* = 0.3 s measured from return 3 (8 → 12, 8 → 2, noise), 2
+(modulated); *T* = 0.6 s from return 1. Cycles: every head flush that S2 turned into a keep S5 keeps too, except
+four where the carried evidence is still under half — 0.3 / 0.3 s on both programmes after a rise and after a
+cut (noise 8 → 2, modulated 8 → 12 and 8 → 2) and 0.6 / 0.2 s after a cut (noise) — which stay flushed.
+
+Costs: CPU — four multiply-adds per audible block while not measured; memory — 16 bytes in `LoudnessMatch`, 16 per
+record; realtime — no allocation, lock or branch on anything but the block's own state; threading — none (the
+evidence is captured and restored by `takeRequests` / `restoreAbSlot`, the audio-thread functions that own the
+record); testability — the matcher's evidence is public (`getEvidence`, `restoreUnmeasured`), the engine's observable
+through the published value and the re-prepare verdict.
+
+### R4. Decision (S5)
+
+Adopted under the owner's delegation. It is correct from the measurement contract because it certifies nothing the
+live criterion would not: the mean of post-change measurements of the exact inputs and rate the record is restored
+into, with at least the weight the slowest live certification requires — and the published value then IS that mean,
+so the criterion's second half (`|D − M| ≤ 0.1`) holds with equality. It preserves every distinction the phase
+names: currency (`isResultCurrent`) and provenance (`isResultMeasured`) unchanged in meaning; the published result is
+the mean only when it is measured; the post-change measurement state is the evidence, recorded and restored as such;
+the remembered value is still the value recorded, restored not current whenever the evidence is not a measurement;
+the applied gain snaps to what is published. A remembered estimate is never made measured by being numerically
+close: the value recorded never certifies anything.
+
+### R5. Implementation
+
+- `LoudnessMatch`: `Evidence { share, sum }`; `getEvidence()` (empty while measured); `restoreUnmeasured (db, e)`
+  (the mean, measured, when `e.share ≥ kMeasuredShare` and the share and mean are finite; otherwise
+  `setDisplayedGainDb (db, false)` and the evidence carried); the evidence decays by `coeffSlow` every audible block
+  and adds `coeffSlow` / `coeffSlow · P_k` on counted blocks, beside `postShare`; reset in `inputsChanged`, `reset`
+  and the floor's un-measure; `kMeasuredShare = 0.5` names the live criterion's half (bit-identical).
+- `AnamorphEngine`: `AbMatchMemory::evidence`; `takeRequests` records it unless a duck in flight carries a live
+  measurement change; `restoreAbSlot` passes it only when the record is valid (rate and inputs);
+  `adoptRememberedMatch` restores a measured value as before and anything else through `restoreUnmeasured`, and
+  snaps the applied gain to what is published (bit-identical wherever the published value is the record's).
+- An empty evidence restores exactly what `setDisplayedGainDb (v, false)` did (Test 73 (1d)); measured records and
+  injections take the unchanged path. The implementation's DSP-suite output was byte-identical to the S5 prototype's.
+
+### R6. Tests, mutants, controls, hashes
+
+- **Test 73** (the matcher and the engine, 55 checks) and **State test 137** (the processor, 53 checks): see their
+  headers and TESTING.md. Every premise is asserted: the record not measured at the leave (a re-prepare there
+  flushes), the edit live, the leave and the return (A ≥ 1 dB from fresh B; the bottom's value), the mean's
+  representativeness (Test 73 (1a) against an exact target), each re-prepare (FLUSH exactly 0 dB, KEEP bit-exact),
+  and each control event-matched (a 0.01 dB Drive move in the return's own turn; the same duck without the Width
+  change; the same Copy with and without a measurement-input change).
+- **Accepted assertions revised** (both stronger): Test 70 (3b)'s identity check — the double switch's bottom is
+  now bit-identical to (3a)'s bottom and ≥ 1 dB from B's record, where it compared with A's recorded value within
+  0.05 dB (A's record, unmeasured with 1 s of evidence, now restores its mean, −5.5105, against A converged at
+  −5.5092 and the recorded −4.8005); State test 134 (B) 1.1 s — KEEP with the bottom ≥ 0.5 dB from the record and
+  within 0.1 dB of fresh, and the kept value within 0.1 dB of fresh, where it asserted FLUSH.
+- **Mutants** (each this tree with one change; failing checks in Tests 66–73 / State tests 134, 136, 137). All
+  eighteen are rejected:
+
+  | mutant | DSP | State | what catches it |
+  |---|---|---|---|
+  | M01 no evidence recorded (the head-equivalent composite) | 16 | 24 | Test 73 (2) (3) (4a)'s control (4c); State 137 (A) (B) (C) (D2) (E) (F) (G)'s control; State 134 (B) 1.1 s |
+  | M02 evidence recorded through a change in flight | 1 | 1 | Test 73 (4a); State 137 (G) |
+  | M03 evidence restored for other inputs | 5 | 6 | the (3) / (B) controls, (4b), (C)'s control, (D1) |
+  | M04 evidence restored for another rate | 1 | 1 | Test 73 (4c) at 44.1 kHz; State 137 (E2) at 44.1 kHz |
+  | M05 certified at any share | 14 | 27 | the 0.3 / 0.6 s flushes, the visits, (1c); Test 70 (2d) (2e) |
+  | M06 glide-weighted evidence | 5 | 5 | (1a)'s fast glide, (3), (B); Test 70 (2d); State 134 (F)'s stale lanes |
+  | M07 no carry | 14 | 13 | (1c), (3), (B) |
+  | M08 the floor keeps the evidence | 1 | 0 | (1f) |
+  | M09 a change keeps the evidence | 26 | 30 | (1a)–(1f), (2), (3), (A), (B) and more |
+  | M10 a flush keeps the evidence | 1 | 0 | (1f) |
+  | M11 decay only on counted blocks | 1 | 0 | (1c)'s formula |
+  | M12 no finite-share guard | 1 | 0 | (1e) |
+  | M13 the applied gain snapped to the value recorded | 0 | 1 | State 137 (F) (the first full-level block) |
+  | M14 certified at 0.75 | 10 | 15 | the 1.1 s legs, the visit bounds, (1b) |
+  | M15 certified at 0.4 | 6 | 2 | (1c); Test 70 (2d); Test 72 (F); State 136 (F); (C) |
+  | M16 the certified mean current but not measured | 2 | 0 | (1b), (1f) — **it survived its first run**: (1b)'s matcher was already measured before the restore, so a restore that never set the bit went unseen; (1b) now restores into a matcher neither current nor measured |
+  | M17 the certified restore publishes the value recorded | 9 | 16 | the 1.1 s legs, the visits, (1b); State 134 (B) 1.1 s |
+  | M18 measured records restored through the evidence path | 32 | 37 | Test 70's measured keeps, (2)'s control, and every measured leg |
+
+  M06 first survived (1a) too: the 2× → 3× change keeps the glide slow through the counted blocks, so glide and
+  slow weights coincide there; (1a) now adds a 12 dB change whose counted blocks glide fast.
+- **Suites** (under `ulimit -s 1024`): DSP 900 / 0, State 5505 / 0.
+- **What else moves**, against `3a779f5`: the DSP output is identical outside Test 73 except Test 70 (3b)'s line
+  (the bottom now −5.5105, the evidence's mean, where it was −4.8048); the State output is identical outside State
+  test 137 (thread-timing counters aside) except three places, all an A/B return of a record left not measured
+  with a measurement's worth of evidence, all passing: State test 130 leg (6) (slot B → slot A, the same sound:
+  D_F −0.000 dB against +0.012, the published value −6.157 against −5.816), State test 131 (a) (Drive 0 → 10: the
+  bottom −7.263 against −7.127, the fresh destination −7.266; D +0.003 dB at 0 s against +0.140) and (b) (the
+  sources that follow it, −6.154 against −5.961; every probe unchanged), and State test 134 (B) 1.1 s (revised).
+  The 186 finite-value hashes are identical; 22 of the 23 processor-route hashes are identical, and S14 — A/B
+  switches between slots that differ in Width and Drive, B left 2 s after its edit — moves (its final published
+  value by 0.001 dB), for the same reason.
+- **Devin controls** (each Devin mechanism removed from this tree; failing checks by State test; no new Devin
+  finding this round): the NaN guard — 129 ×6; Apply disabled — 129 ×5, 130 ×45, 131 ×8, 132 ×2, 133 ×3, 135 ×2;
+  the kept-result init — 132 ×30, 133 ×3, 134 ×4, 136 ×1, 137 ×1; the live-edit report — 133 ×24, 134 ×1,
+  135 ×7, 137 ×16; `setDisplayedGainDb` honouring `measured` — 134 ×20, 135 ×2, 136 ×1, 137 ×21. Every
+  control still fails the tests it was written against (129, 132, 133, 134 and 136 as in §Q5); State test 134's
+  count under the last one is 20 where it was 21, because its (B) 1.1 s record is now certified by its evidence,
+  a path that does not pass through `setDisplayedGainDb`.
+- **Static checks:** `check-docs`, `check-realtime`, `check-dispatch`, `check-portability` and
+  `check-state-coverage` pass; `check-citations` passes against `3a779f5` and `659ca0a` (76 anchors re-anchored,
+  seven `DELIBERATE_REAIMS` targets re-derived) and its self-test passes. GCC with the gate's flags gives the same
+  gated-warning sets as `3a779f5` on both test files, the engine, the matcher and the processor (the ungated,
+  structural `-Wmismatched-new-delete` from `AllocationGuard.h` counts more sites, as every new allocation in a
+  test does). `-fstack-usage`: Test 73 8,016 B (its lambdas ≤ 3,248), State test 137 2,592 B; the engine's
+  `restoreAbSlot` 64 → 80 B, `adoptRememberedMatch` 48 → 64 B, `LoudnessMatch::process` 512 → 544 B; the
+  suites' largest frames grow by the engine's 48 bytes per automatic (DSP 290,208 → 290,304; State 711,824 →
+  712,064), inside the 1 MiB guard both suites pass under.
+
+### R7. O8(3), burst processing: investigated, not changed
+
+A read-only audit of the write sequence against the pinned JUCE 9.0.2 source, and the round-§Q7 measurements.
+- **The partial states.** `abSwitchToAdopted` requests the switch first, captures the leaving slot, then
+  `applyStateSet` → `replaceState`: JUCE's `valueTreeRedirected` walks the new tree's PARAM children in its order
+  (the APVTS adapter map's: `advancedMode` first, `width` last) and stores each raw atomic through
+  `setValueNotifyingHost`; the re-assert loop after it normally changes nothing; the Bypass view value is written
+  back last. `processBlock` rebuilds `EngineParameters` from 36 independent atomic loads every block. Nothing orders
+  the two, so a snapshot can mix old and new values across any two fields (never within one). The mixtures that
+  matter are semantic groups: `advancedMode` against the 21 fields it gates (a snapshot right after it can carry
+  Advanced-off defaults neither slot holds), the algorithm against its own parameters, the band count and enable
+  against the crossovers and band widths, `autoGainMatch` against `outputGainDb`, and a transient Bypass.
+- **What the engine does with them.** The request is always taken in the block of the first new value (the CAS is
+  sequenced before the parameter stores, which synchronise with the loads), so the leaving slot's record is never
+  corrupted. The forced bottom adopts whatever the bottom block read; the restore is judged against it and comes
+  back not current (the conservative answer); writes landing in the fade-in go live as edits (continuous) or
+  re-duck as ordinary ducks (discrete).
+- **Observable outside the harness?** Only when the host processes the ~6 ms fade-out faster than the write window
+  (0.12–0.27 ms measured): faster than ~22–50× real time — an offline render with the editor open, a host that
+  renders ahead on workers, one that splits a device buffer into back-to-back calls — or a message-thread stall of
+  ≳ 6 ms inside the loop. Every route needs a GUI A/B click.
+- **Contract.** No Accepted document promises a block-atomic snapshot; ADR-0036 states the opposite ("JUCE offers no
+  block-atomic parameter snapshot and never has") and classes the duck consumed before the parameters move as "a
+  masking miss, never a click". ADR-0007 already records O8(3). Two textual tensions: ADR-0004's "defer *all*
+  params to the bottom" and `AnamorphEngine.h`'s "Call BEFORE changing the parameters" hold in letter only in real
+  time; ADR-0036 §24 residual 5 / §25 item 5 give a lock-contention cause and a "two host installs" bound that the
+  round-28 admission (the gate held across the whole body) appears to have made stale, and do not name the burst
+  cause. Reported here, not edited (no broad historical cleanup this round).
+- **Architectures compared.** (A) hand the engine the destination `EngineParameters` with the request: needs a new
+  wait-free channel and still sees the half-written atomics after the bottom — dominated by (B). **(B) hold the
+  forced bottom, capped, until the apply is complete** — variant B2: the existing request word becomes two-phase
+  (requested, complete, with a sequence number in the free bits), the completion a release CAS, the per-block
+  exchange an acquire; no new path, no lock, no wait; real time unchanged (the hold never engages when the writes
+  finish inside the fade-out). (C) a seqlock snapshot: a data race without per-word atomics and fences, and a
+  bounded retry that fails under preemption — rejected. (D) request after the writes: reintroduces unmasked A/B
+  pops — rejected. (E) move the capture before the request: shortens the window, proves nothing. (F) judge currency
+  at the fade-in's end: cannot tell late apply writes from a user edit — rejected.
+- **Recommendation: B2**, as a future owner decision. It strengthens the ordering of an existing atomic and lets the
+  bottom hold — a threading-model change and a hard stop under `ARCHITECTURE_REVIEW_GATE.md`, and a change to
+  ADR-0004, ADR-0007's "one existing atomic, no new path", ADR-0036 §24, THREAD_MODEL.md and THREADING_POLICY.md.
+  Until then the recorded disposition stands: conservative (the slot's value plays; only a same-rate re-prepare in
+  the ~3 s before re-confirmation flushes it).
+
+### R8. Copy, and the record's lifecycle (audited)
+
+- **Copy.** `abCopyToOther` never reaches the engine: the destination's state moves, its record does not. The
+  invariant needs no change here: the restore judges the record against the state it is restored into, so a Copy
+  that moves a measurement input drops the evidence and restores the value not current (State test 137 (D1);
+  State test 134 (d)), and one that leaves the inputs as recorded restores the evidence's mean, measured (D2).
+  Carrying the source's live record with a Copy stays a candidate (it would need a new request in the word).
+- **One provenance.** Every write of the record is in `takeRequests` (capture) or its forget (`AbMatchMemory {}`),
+  and every read in `restoreAbSlot`. `measured` and `evidence` cannot drift apart: the evidence is taken from
+  `getEvidence()`, which is empty whenever the result is measured, and cleared with `measured` under the in-flight
+  rule. No second flag was added. Paths traced: `abSwitchTo` / `abToggle`, the prime, `prepare()` (does not touch
+  the records), host `reset()` (an armed restore survives into the defensive consumer), Copy, preset load and
+  undo / redo (never touch the records), `setStateInformation` (forgets them), and `injectMatchGainDb` (not a
+  record; measured by the caller).
+- **Side findings, not changed:** the `duckMeasDirty` comment in `AnamorphEngine.h` says the flag marks a change
+  "made live", while the entry test also counts discrete fields still pending (the effect is conservative); a switch
+  pending in the word before an off-thread session install could restore the previous project's record into the
+  new project's state, measured only if its inputs and rate match (inferred, untested; the later forget cannot undo
+  it).
+
+### R9. Recorded, not changed (deferred)
+
+- O8(3) (R7): recommendation B2, gated.
+- Copy carrying the live record; the predict floor over a measured restore; cross-rate retention; the P1b
+  re-arm's first blocks moving a measured restore 0.3–0.8 dB (all as ADR-0007 records them).
+- The route-dependent cost of R3 (burst programme after a rise: the kept mean up to 0.15 dB·s over the flush).

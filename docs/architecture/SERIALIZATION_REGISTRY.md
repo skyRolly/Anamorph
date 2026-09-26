@@ -367,8 +367,8 @@ ER-STATE-20). The remembered Level-Match gain is the one piece of a slot that is
 a runtime record of what the loudness matcher had published when that slot was last left. It was the
 processor's `abMatchGain[]`, restored on the way in by `abSwitchTo`'s closing
 `engine.injectMatchGainDb (abMatchGain[slot])`; since 2026-09-25 it is the engine's per-slot record
-(`AnamorphEngine::abMemory`: the value, whether it was measured, and the state and sample rate it was
-measured for), taken and restored on the audio thread through `requestAbSwitch`, and a restore
+(`AnamorphEngine::abMemory`: the value, whether it was measured, the state and sample rate it was
+measured for, and — since 2026-09-26 — the post-change evidence of a record not measured), taken and restored on the audio thread through `requestAbSwitch`, and a restore
 forgets it with `forgetAbMatchMemory()` (ADR-0007, Amendment of 2026-09-25, A/B provenance). Still not
 serialized, and still no format change. The history below describes the processor member. Because it is
 absent from the format, nothing on the restore path ever overwrote it, so it survived every restore

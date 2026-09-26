@@ -367,16 +367,20 @@ private:
 
     // THE A/B LEVEL-MATCH MEMORY (feedback #23; ADR-0007, Amendment of 2026-09-25, A/B provenance).
     // One record per slot: the value the matcher published when the slot was left, whether it was
-    // MEASURED then (LoudnessMatch::isResultMeasured), and the adopted state and sample rate it was
-    // measured for. Written and read only by takeRequests() and restoreAbSlot(), on the audio thread
-    // or the prepare path, which JUCE never runs concurrently with process(). Never serialized; a
-    // session restore forgets it (forgetAbMatchMemory).
+    // MEASURED then (LoudnessMatch::isResultMeasured), the adopted state and sample rate it was
+    // measured for, and -- only when it was not measured -- the post-change evidence the measure had
+    // gathered for that state (LoudnessMatch::Evidence; empty for a measured record). One provenance:
+    // `measured` says the value is the measure's answer; `evidence` is what the measure had toward one.
+    // Written and read only by takeRequests() and restoreAbSlot(), on the audio thread or the prepare
+    // path, which JUCE never runs concurrently with process(). Never serialized; a session restore
+    // forgets it (forgetAbMatchMemory).
     struct AbMatchMemory
     {
         float gainDb = 0.0f;           // 0 dB: a slot never left (the fresh-instance value)
         bool  measured = false;        // the value was the measure's confirmed answer for `measuredFor`
         EngineParameters measuredFor;  // the adopted state when the slot was left
         double measuredAt = 0.0;       // ...and the sample rate it was measured at
+        LoudnessMatch::Evidence evidence;   // not measured: the post-change evidence for `measuredFor`
     };
     AbMatchMemory abMemory[kAbSlots];
     int abRestoreSlot = -1;            // the slot the next forced bottom restores (-1: none)
@@ -386,7 +390,7 @@ private:
     // Restores the armed slot's remembered value; `rearm` is the F13(2) re-arm (P1b). Returns
     // whether a value was adopted.
     bool restoreAbSlot (bool rearm) noexcept;
-    void adoptRememberedMatch (float db, bool measured, bool rearm) noexcept;
+    void adoptRememberedMatch (float db, bool measured, bool rearm, LoudnessMatch::Evidence evidence = {}) noexcept;
 
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;

@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-26), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), and its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in) — whose entries are the **76th** to **84th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-26), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), and the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27 — whose entries are the **76th** to **85th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1436-1442` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1446-1452` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1919,7 +1919,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:237-245`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1260-1401`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1270-1411`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2098-2148` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2108-2158` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13002,6 +13002,61 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 85th pass — 2026-09-26, PR #156 (the A/B residuals: an A/B record carries the measure's post-change evidence)
+
+**Scope.** The residuals §Q7 re-measured, under the owner's delegated decision: O8(1), a slot left before its
+result is confirmed, and O8(2), repeated visits before confirmation — closed; O8(3), a slot adopted part-written
+under burst processing — investigated only (no threading change). All of it is 0.9.9; the release date moves to
+2026-09-27 (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §R).
+
+**The decision.**
+- **Reproduced (head `3a779f5`).** Left 1.1 s after Drive 8 → 12, B's published value was 0.81 dB off and not
+  measured while the post-change mean was 0.004 dB off (share 0.60); the return restored the value and a
+  re-prepare flushed it (1.60 dB·s). Toggled every 0.3 / 0.6 s, B was never measured: each unmeasured restore
+  zeroed the post-change share.
+- **The invariant.** `D = (1 − S)·L + S·M + R`: the post-change evidence (`M`, `S`), not the glide `D`, is the
+  measurement of the current inputs. Weighted by the slow glide, its share is the live criterion's own "at least
+  half" (0.62 s of counted audio).
+- **Strategies S0–S5** measured on 216 edit routes, flush origins, visits and cycles; S5 adopted: the record
+  carries the slow-weighted evidence, a restore publishes its mean, measured, at share ≥ 0.5, and carries it
+  below. S2 (glide weights) certified startup-dominated means up to 0.45 dB off; S3 regressed small edits; S4
+  was slow; S1 missed O8(2).
+- **Copy** unchanged: it moves a state, never a record; the restore judges the record against the state.
+- **O8(3):** no Accepted contract promises a block-atomic snapshot; the recommendation (hold the forced bottom,
+  capped, until the apply is complete, in the existing request word) is a threading-model change, recorded for
+  a future owner decision.
+
+**Tests.**
+- **DSP Test 73** (`testAbRecordCarriesThePostChangeEvidence`): 55 checks.
+- **State test 137** (`testAnAbSlotCarriesItsPostChangeEvidence`): 53 checks.
+- **Revised, stronger:** Test 70 (3b)'s identity check (bit-identity with (3a)'s bottom); State test 134 (B)
+  1.1 s (the certified keep, within 0.1 dB of fresh, in place of the flush).
+- **Against `3a779f5`:** State test 137 fails 23 of 53 (Test 73's API is new; the variant recording no evidence
+  fails 16 of its checks); State test 134 (B) 1.1 s fails its route and keep.
+- **Suites:** DSP 900 / 0, State 5505 / 0 (`ulimit -s 1024`).
+- **What else moves:** only A/B returns of a record with a measurement's worth of evidence — State test 130 leg
+  (6) and State test 131 (a) / (b) (closer to fresh; passing) and route hash S14; 22 of 23 route hashes and 186 of
+  186 finite hashes unchanged.
+- **Mutants:** 18, all rejected (worklog §R6); M16 and M06 first survived and the tests were tightened.
+- **Devin controls:** the five mechanisms, each removed, still fail their intended tests.
+
+**Documents changed.**
+- **ADR-0007:** the A/B provenance amendment amended in place — the record's five fields, the capture and
+  restore rules, the path table, the trade-off and "Recorded, not changed" (evidence across visits adopted;
+  O8(3) investigated) — and a *Revision of 2026-09-26* block: the reproduction, the invariant, the evidence's
+  definition, the record's contract (contents, "measured", when a restore is current, repeated visits,
+  same-rate and new-rate prepare, Copy, what is conservative), the strategies, the measurements, the cost, the
+  coverage and the gate record. The duckMeasDirty note's two A/B lines follow it.
+- **`KNOWN_ISSUES.md`:** KI-030's A/B bullet (the evidence; O8(3) recorded).
+- **`CHANGELOG.md` `[0.9.9]`:** the date (2026-09-27) and the same-rate re-prepare entry's A/B sentence.
+- **`TESTING.md`:** Test 73, State test 137, Test 70's contract and State test 134 (B).
+- **Architecture:** `DSP_ALGORITHMS.md` (the evidence), `THREAD_MODEL.md` (the record's fields),
+  `SERIALIZATION_REGISTRY.md` (the record, still never serialized), `API_REFERENCE.md` (`requestAbSwitch`).
+- **The worklog:** §R, and §Q7's candidate marked adopted.
+- **Code comments:** `LoudnessMatch.h` (`Evidence`, `getEvidence`, `restoreUnmeasured`, the bookkeeping),
+  `AnamorphEngine.h` (`AbMatchMemory`), `AnamorphEngine.cpp` (capture, restore, `adoptRememberedMatch`).
+- **This file:** this entry and the *Last updated* line.
 
 ## 84th pass — 2026-09-26, PR #156 (the Devin review: "Valid A/B gain lost on re-prepare")
 
