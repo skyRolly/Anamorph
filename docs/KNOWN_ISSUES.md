@@ -4,7 +4,17 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
+Version-synced to **v0.9.9** (PR #156, 2026-09-27). **0.9.9 added four issues**, all found in that PR's
+review: **KI-029**, a non-finite parameter value (open), and **KI-030**, **KI-031** and **KI-032**, each
+fixed in the same change set and kept as a RESOLVED row with its record. **KI-029 is a reused number:**
+the 0.9.7 change set filed a different KI-029 — a preset loaded while automation was moving a control
+read *unmodified* against the wrong sound — and fixed and removed it in the same change set
+(`POSTMORTEMS.md` INC-013, ADR-0036 §18); every reference to KI-029 dated before 2026-09-24 means that
+one. The 0.9.7 and 0.9.8 syncs were not recorded in this header, and the history supplies them: 0.9.7
+filed and removed that first KI-029 and amended KI-027 (ADR-0034); 0.9.8 closed **KI-010** (2026-09-13).
+Net for 0.9.9: **four issues added (one open, three resolved in place), none removed.**
+
+Prior sync: **v0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
 one issue** — **KI-028**, a lost mouse release leaving the value box's host gesture open, found by
 reviewing round 1's own fix — and **corrected KI-027 on four points** after re-verifying it against
 the pinned JUCE: the expensive branch needs oversampling to have been selected by hand (it is not a
@@ -145,6 +155,10 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-028 | ~~A value-box drag whose mouse RELEASE is never delivered leaves the host change gesture OPEN~~ | — | **RESOLVED 2026-09-01 (round 4).** Linux/Windows were fixed in round 3 by the `anamorph::gui::DragGestureOwner` sweep; the macOS residual was never the sweep but its TRIGGER, which asked JUCE for the button state and got a cached copy (KI-013). `anamorph::gui::anyPhysicalMouseButtonDown()` now calls `+[NSEvent pressedMouseButtons]` on macOS and forwards to JUCE elsewhere. State tests 21 and 23; the macOS-discriminating assertion is `#if JUCE_MAC` and is verified by the macOS CI job, which runs this suite |
 | KI-027 | ~~Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched — a condition ADR-0034 has since made unreachable) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`)~~ | — | **RESOLVED 2026-09-01 (round 4, decision D-1 — APPROVED by the maintainer and implemented).** The chain was confirmed as filed (ER-RT-01, two independent verifications) and the fix is the one the gate was asked to approve: `requestLatencyUpdate()` keeps delivery synchronous on the message thread and, from any other thread, does one atomic store that a **processor-owned** 20 Hz timer serves on the message thread — no editor polling, no `AsyncUpdater`. Round 11 closed a double-clear window in that path (ER-STATE-14) and round 12 added a deterministic barrier test for requests landing mid-delivery. State tests 22 and 27; `docs/architecture/LATENCY_MODEL.md`. Round 15 routed `prepareToPlay` through the same request (ER-STATE-19; State test 30). This row had gone stale — it still read "fix gated … awaiting maintainer sign-off" for three rounds after the approval landed; corrected in round 12 |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
+| KI-029 | A **non-finite parameter value** — the text "nan" typed into a knob's value box, or a NaN from a host — mutes or changes several controls **while it is present** (Width, Haas Delay, Chorus Rate / Depth, Output Gain and the multiband widths / crossovers mute; Mix plays fully wet; the Level-Match gain is discarded; saving the session meanwhile reaches undefined behaviour in JUCE's number formatting) | Low | Confirmed; recovers as soon as a valid value arrives. What a NaN value should mean is an **owner decision** (ADR-0009 note 2026-09-24) |
+| KI-030 | ~~After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back~~ | — | **RESOLVED 2026-09-24** (ADR-0007, Amendment of 2026-09-24, F13(2)). An A/B switch whose slots differ in anything the Level-Match measurement reads now re-arms the analysis where the slot's gain is restored, and a re-prepare at an unchanged sample rate keeps the match instead of rebuilding it, once Level Match has caught up with the latest change to the sound (Test 67, State test 131; Test 69, State test 133). An A/B slot's remembered gain counts as caught up only if it was a confirmed measurement when the slot was left (ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134), and it stays caught up through the fade-in of a switch made during another switch's fade-out (ADR-0007, Note of 2026-09-26; Test 72, State test 136), and when Velvet Density holds a NaN the Velvet ignores (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). The engage cases recorded with it are decided behaviour, not defects: see the entry |
+| KI-031 | ~~**Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after (+2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10)~~ | — | **RESOLVED 2026-09-24** (owner ruling O4g; ADR-0007, Amendment 2026-09-24). A switch that turns Level Match on and changes nothing its measurement reads now starts at the matched level (Test 66, State test 130). Outside an A/B switch, an engage that also changes the sound still glides from unity: a measurement-staleness case, kept by the F13(2) decision (KI-030) |
+| KI-032 | ~~An **A/B switch, undo, redo or preset load made while the host processes much faster than real time** — an offline render, a host that renders ahead, one that splits its callback into small blocks — or while the message thread stalls for ~10 ms or more (at 256-sample buffers), can adopt a **partly written sound**: some of the destination's settings with the rest of the previous sound's, or the previous sound whole. It plays that into the switch's fade-in, then glides (or ducks a second time) to the destination, and a same-rate re-prepare before the destination's level is re-measured throws its matched level away~~ | — | **RESOLVED 2026-09-27** (ADR-0057, **Accepted** on the repository owner's approval and implemented; 0.9.9). A bulk swap's completion is now published after its last parameter store and acquired by the audio thread, which keeps the previous sound playing until then and lands the swap whole (Test 75, State tests 139 and 140; worklog §V) |
 
 ---
 
@@ -155,7 +169,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1064 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1451 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -1014,3 +1028,243 @@ it, and the notification is an RAII member.
   (`parameterGestureChanged` counting `openGestures`, `pollUndoCoalesce`'s mid-gesture guard);
   pinned JUCE `juce_Slider.cpp` (`ScopedDragNotification` sends drag start/end from its
   constructor/destructor).
+
+## KI-029 — a non-finite parameter value mutes or changes several controls while it is present
+
+A parameter can hold a value that is not a number: JUCE's value-box and host text parsers accept the
+text "nan", and a host (or a damaged automation lane) can send one. The value reaches the audio engine
+unchanged. While it is present, measured through the processor: **Width, Haas Delay, Chorus Rate /
+Depth, Output Gain and the multiband widths and crossovers mute** (the engine's self-heal zeroes the
+non-finite output), **Mix plays fully wet**, and the self-heal's reset **discards the Level-Match
+gain**. Mono Maker Freq is the exception: its range turns NaN into 500 Hz. Nothing latches — each
+recovers within one block (or one smoother ramp) of a valid value — and no non-finite sample ever
+reaches the host. The two glides that did latch (Velvet density, and the Mono Maker cutoff through the
+engine API) are fixed.
+
+- **Why it is not fixed here:** the stateless fix (a non-finite value treated as the parameter's
+  default where parameters enter the engine) was measured and removes every mute, but it decides what
+  a NaN value *means* — an Output Gain NaN would play at 0 dB — which ADR_POLICY makes an owner
+  decision. The text parsers accepting "nan" belong to the same decision.
+- **Saving a session while a value is NaN** converts that NaN to an integer inside JUCE's number
+  formatting (`juce::serialiseDouble`, reached from `getStateInformation` for each parameter's saved
+  `value` and `raw`, and for the A/B slots' copies): undefined behaviour, which the `sanitizers` job's
+  UBSan flagged on 2026-09-26. On Linux x86-64 the bytes written read `nan`, and a restore reads that as
+  not a number and uses the parameter's default (the rule an A/B slot follows, measured there: 0.5 for
+  Velvet Density). A fix changes what the state writes, so it belongs to the same owner decision
+  (worklog §S10).
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §B–§C and §S10; State tests 123 and 128;
+  ADR-0009, Implementation note 2026-09-24.
+
+## KI-030 — Level Match drifts after an A/B switch between slots that differ only in continuous controls
+
+> **RESOLVED 2026-09-24 (ADR-0007, Amendment of 2026-09-24, F13(2); worklog §K–§L).**
+> - **The A/B drift — fixed.** Where the destination slot's gain is restored, the engine now re-arms
+>   the loudness analysis whenever the two slots differ in anything it reads, so the correct restored
+>   value is no longer dragged back toward the previous slot: +1.59 / −1.84 dB → +0.10 / +0.04 dB
+>   against a fresh instance at the destination, settling in ~0.12 s instead of ~2.5 s on a Drive
+>   2 ↔ 8 switch (Test 67, State test 131). Slots that differ only in Output Gain, Level Match itself
+>   or nothing at all keep their settled analysis, as before.
+> - **A re-prepare at an unchanged sample rate — fixed.** The match is kept (bit-identical) and only
+>   the analysis restarts: +2.46 dB for ~2.2 s → +0.04 dB at Drive 8. With Level Match on, the kept value
+>   is also the applied gain from the first block — audio resumed below the silence→audio detector used
+>   to glide 0.12 s from 0 dB to it (−70 dBFS: 6.03 dB off at the first sample; Devin review, corrected
+>   2026-09-25; Test 68, State test 132). A re-prepare after a restore
+>   that changed what the measurement reads still measures afresh, and so does one made before the match
+>   has caught up with a change to what it reads, however that change arrived: a live edit or drag,
+>   an undo, redo, preset or A/B switch. Keeping it there played the previous sound's match — 2.25 dB
+>   loud for Width 1 → 2, 3.02 dB for Drive 8 → 2, at a re-prepare 5 ms after the edit (Devin review,
+>   corrected 2026-09-25; ADR-0007, Amendment of 2026-09-25; Test 69, State test 133). The match is
+>   kept again once it has caught up, 2–4 s after a large change. The same holds for an **A/B slot's
+>   remembered gain**: the engine now records, with each slot's gain, whether it was the measure's
+>   confirmed answer for that slot's sound, and restores it as caught up only then, at the same sample
+>   rate, for the same sound. A slot left 0.3 s after a Drive 8 → 12 edit, switched back to and
+>   re-prepared, used to keep its unconverged gain 1.53 dB off; it now measures afresh (Devin review,
+>   corrected 2026-09-25; ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134). A
+>   slot left before that confirmation, but after Level Match had heard about a second of its new sound
+>   — in one visit, or in several short ones that add up — now comes back at the level the measure had
+>   found for it, and a re-prepare keeps it: left 1.1 s after the same edit, it came back 0.81 dB off
+>   and was measured afresh by a re-prepare; it now comes back within 0.03 dB and is kept, and switching
+>   back and forth every 0.3 s confirms it by the fourth return instead of never (corrected 2026-09-26; ADR-0007, A/B
+>   provenance, revision of 2026-09-26; Test 73, State test 137). Still recorded, not changed, and since
+>   2026-09-27 filed as its own issue, **KI-032**: an A/B switch made while the host processes far faster than
+>   real time, or while the message thread stalls, can adopt a partly written slot. That is more than a level
+>   not caught up: the switch plays a sound neither slot holds, and the slot's measured level is thrown away
+>   (ADR-0007, A/B provenance, "A slot adopted partly written", reclassified 2026-09-27) — **fixed the same
+>   day** (ADR-0057, Accepted; KI-032 RESOLVED): the switch lands whole, and a measured slot lands measured. A
+>   caught-up gain restored by an A/B switch made during the fade-out of another switch — a band-count
+>   change, say — is now kept by a re-prepare in the ~28 ms fade-in that follows, too. It was flushed
+>   there, playing 1.6 dB off for the ~2 s the match took to come back; a transport stop or a switch
+>   away there left it to be thrown away by a later re-prepare (Devin review, corrected 2026-09-26; ADR-0007, Note of
+>   2026-09-26, the duckMeasDirty lifecycle; Test 72, State test 136). Nor is the caught-up gain thrown away
+>   any longer when **Velvet Density holds a NaN** — from a host's automation, or "nan" typed into its value box —
+>   which the Velvet ignores, playing the density it had: the match counted it as a change to the sound, so
+>   every same-rate re-prepare measured afresh, and so did the one after a return to an identical Velvet slot
+>   (−8.31 → 0 dB, where the same processor given the density itself kept −8.33; Devin review, corrected
+>   2026-09-26; ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). A
+>   **new sample rate** still measures afresh, by decision: it plays +2.7 to +3.3 dB off at Drive 8–10 for ~3 s, where carrying the value across
+>   measured within 0.13 dB on Haas programmes — recorded as a candidate, not adopted (ADR-0007,
+>   F13(2) Q5; worklog §L3–§L4).
+> - **The engage cases — decided, not defects.** A Level Match engage that also changes the sound still
+>   starts from unity (from the slot's gain at an A/B switch), and a gain-only engage made shortly
+>   after a sound change lands on a value that is still converging; forced swaps without an A/B
+>   switch (preset load, undo, redo) keep behaving like the same live edit. All three are the
+>   measure's own accepted lag, kept by the F13(2) decision (questions 2–4). The gain-only engage
+>   lands on that value whether or not the measure has caught up with the change: it is the value
+>   Level Match left on throughout would be publishing, and heading for, at that moment. Starting
+>   from unity instead measured worse in 54 of 75 engine cases, split about evenly on a wider
+>   processor set, and brought back KI-031's swell on Undo of Apply after an edit (Devin review,
+>   re-examined 2026-09-25; ADR-0007, Note of 2026-09-25, stale engage; Test 71, State test 135).
+>   One consequence is recorded with it: after an edit that makes the sound louder while Level
+>   Match is boosting — a narrowed image widened at Drive 0 — the engage steps up to the old boost
+>   (+4.25 dB above the level before on uncorrelated noise), louder than both the level before and
+>   the level after, the surge Level Match on throughout plays too, because the prediction reads
+>   only Drive and Mix.
+> Everything below is the pre-resolution record.
+
+An A/B switch restores the destination slot's remembered Level-Match gain, and that value is right
+(within 0.03 dB of a fresh instance at the destination). But the loudness analysis is re-armed only
+when the switch changes the signal path — a discrete field such as the algorithm — so when the slots
+differ only in Drive, Mix, Width or Amount, the integrators still describe the previous slot's audio
+and pull the gain away from the restored value within ~100 ms. Measured through the processor: 0.22 to
+5.8 dB off, depending on the change and the programme, back within 0.1 dB after 1.8–4.5 s. Switches
+that change a discrete field, preset loads, undo and redo are not affected in this way.
+
+- **Why it is not fixed here:** re-arming the analysis when a slot's gain is restored keeps the gain
+  within 0.042 dB, but it changes ADR-0007's "re-armed in exactly one place" rule and reverses the A/B
+  row of its dimMode table — an ADR amendment and an owner decision. Re-measured for F13(2) (worklog
+  §K): this is the one transition where the matcher's two halves disagree — the restored gain is the
+  slot's, the analysis the previous slot's — and a narrower re-arm, only when the slots differ in
+  something the measurement reads, removes it (+1.59 → +0.10 dB, settle 2.4 s → 0.12 s) without
+  touching identical slots or any other route. It still changes ADR-0007's re-arm rule: owner
+  question 1 of §K6.
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §E, §K; ADR-0007, note 2026-09-24.
+- **The same staleness, at a Level Match engage (2026-09-24):** since KI-031's resolution a switch that
+  turns Level Match on starts at the published value only when nothing the measurement reads changes.
+  An engage that also changes the sound still starts from unity — or, at an A/B switch, from the
+  slot's injected gain — (measured −7.72 to +7.43 dB against a fresh instance at its worst), and a gain-only engage within ~2 s of a sound change lands on a value
+  still converging (4.5–5.7 dB mean error over the first 500 ms at 16 ms after the change). Both wait
+  on the same F13(2) decision (worklog §J4, §K).
+- **A re-prepare at an unchanged sample rate (2026-09-24):** with Level Match on, every
+  `prepareToPlay` flushes the published gain (decided: ADR-0007's review-gate scope, "a re-prepare
+  still resets all of it"), so the output plays 2.3–3.1 dB louder than matched (three programmes) for
+  ~2 s while the measure re-converges — although the flushed value was still right (keeping it:
+  +0.04 dB). Whether to keep it
+  at an unchanged rate is owner question 5 of worklog §K6.
+
+## KI-031 — turning Level Match on can briefly play louder than before and after
+
+> **RESOLVED 2026-09-24 (owner ruling O4g; ADR-0007, Amendment 2026-09-24).** A switch that turns
+> Level Match on and changes nothing Level Match's measurement reads — Undo of Apply, re-engaging by
+> hand after Apply, an engage from a low Output Gain, a preset or undo that only turns Level Match on —
+> now starts at the matched level: +2.3 / +4.5 / +5.7 dB → 0.00 dB at Drive 4 / 8 / 10, and the dip at
+> a positive match is gone (Test 66, State test 130; worklog §J). What remains is not this issue's
+> mechanism but the measurement's: an engage that also changes the sound still starts from unity
+> (outside an A/B switch), because the published value describes the previous sound, and a gain-only
+> engage made shortly after a sound change lands on a value that is still converging. Both are F13(2), recorded under KI-030 and since kept by decision (ADR-0007, Amendment of 2026-09-24, F13(2)).
+> That landing was re-examined against Level Match's currency on 2026-09-25 and kept (ADR-0007, Note of
+> 2026-09-25, stale engage). Where the converging value is a boost above the level heard before —
+> an edit that made the sound louder while Level Match was boosting — the engage steps above both
+> levels, this issue's signature from the measurement's side; it is recorded under KI-030.
+> Everything below is the pre-ruling record.
+
+While Level Match is off, the gain it would apply rests at unity (0 dB). When a switch turns it on,
+the output hands over from Output Gain to that gain at the silent bottom of the switch's fade, and
+the gain then glides to the matched value, within 0.1 dB after about 0.6 s. The fade-in therefore
+starts at the processed signal's unmatched level. When the level before and the matched level are
+both below that — **Undo of Apply** (Apply set Output Gain to the matched gain), re-engaging Level
+Match by hand after Apply, or engaging it with Output Gain below the matched gain — the output swells
+above both. Measured through the processor (48 kHz / 256, pink noise at −18 dBFS, Haas):
++2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10 for Undo of Apply, peaking ~130 ms after the action;
++4.4 dB for the hand re-engage; +4.5 dB for an engage from Output Gain −12 dB; +0.7 dB for a user
+preset that turns Level Match on from −3 dB. With a matched gain above 0 dB it is a small dip instead
+(−0.35 dB at +0.7 dB). The size scales with the matched gain. An A/B switch, turning Level Match
+off, Apply itself and Redo are not affected, and a host reset during the switch lands the gain.
+
+- **Why it is not fixed here:** every fix changes how the Level-Match engage sounds, which ADR-0007's
+  note of 2026-09-24 reserves for the owner. Six behaviours were measured; all leave the measurement,
+  A/B and both suites unchanged, and they differ in which engages they fix and what else they touch.
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §I (decision record §I6);
+  ADR-0007, note 2026-09-24.
+
+## KI-032 — a bulk swap under burst processing can adopt a partly written sound
+
+> **RESOLVED 2026-09-27 (ADR-0057, Accepted — approved by the repository owner and implemented; 0.9.9).**
+> An A/B switch, Undo, Redo and a preset load now publish a completion after their last parameter store,
+> and the audio thread, which takes the request word with acquire before and after reading the
+> parameters, adopts nothing until it has taken that completion. The previous sound keeps playing at full
+> level while the new one is written; the swap then starts, ducked, on a snapshot holding the complete new
+> sound, so the bottom, a host reset and a re-prepare all adopt the complete destination or nothing, and a
+> measured Level Match record lands measured. Real-time playback without a stall is unchanged; in an
+> offline render the switch lands later by the time the writing took. **The workaround below is no longer
+> needed.** Evidence: DSP Test 75 (7,791 engine-level interleavings), State test 139 (rewritten as the
+> regression), State test 140 (1,358 interleavings through the processor on x86-64 Linux, every path), the deterministic
+> enumeration of worklog §U4 (0 of 1,245 on the final code; the pre-fix head 689), the permanent probes
+> `--bulk-swap-probe` and `--bulk-swap-stress` (ADR-0057, *Evidence*; worklog §V). Everything below is the
+> diagnosis, kept as the record; its "not fixed" and "Proposed" language is historical.
+
+**Confirmed 2026-09-27** (the Devin review of `9e38310`, "A/B switches can adopt incomplete slot state";
+worklog §T). **Not fixed:** every fix is a threading-model change, gated on Architecture Review
+(`ARCHITECTURE_REVIEW_GATE.md`; KI-027 is the precedent). The owner's decision and the recommended fix
+are ADR-0057, **Proposed**.
+
+An A/B switch, Undo, Redo and a preset load each ask the audio thread for a short masking duck and
+then write the new sound one parameter at a time. The duck swaps everything at its silent bottom, about
+6 ms of audio after the request is taken, using whatever the parameters read in that block. Nothing
+tells the audio thread whether the writes are finished. In real time they are: the writes take about a
+tenth of a millisecond here and the duck takes six. When the host processes those 6 ms of audio faster
+than the writes take, the bottom adopts a partly written sound:
+- **Burst processing:** an offline render, a host that renders ahead of playback, or one that calls the
+  plug-in with many small blocks back to back.
+- **A stalled message thread:** a slow host parameter notification, or the GUI thread preempted for
+  longer than the audio takes to reach the bottom (~10 ms at 256-sample buffers).
+
+**Measured** (x86-64 Linux, 48 kHz / 256, through the processor):
+- **When it happens.** A switch between slots differing in 2–8 settings was always complete at 1–4×
+  real time.
+  - At 16× it was complete in all but one of 240 trials: the message thread was ~1 ms late with that
+    switch's writes (worklog §U1).
+  - At 64× it rarely adopted the previous slot whole: 5 of 240 trials in §T, and 8 of 240 in §U, one of
+    them a mixture.
+  - From ~100× on it adopted a mixture (for example B's Drive with A's Width, the Devin case) or the
+    previous slot whole.
+  - At real time, a single message-thread stall of ~12 ms after the first write gave a mixture in about
+    a third of switches (40 of 120 in §U).
+- **What is heard.** The fade-in plays the adopted mixture. The remaining settings then glide in, or a
+  discrete one ducks a second time.
+  - The output differs from a complete switch from the bottom on, by −0.8 to −6.2 dB relative to the
+    signal over the fade-in: −19.4 to +3.1 dB across §U1's six combinations.
+  - In the case State test 139 measures it is identical again about 50 ms later.
+  - It is never a click: every path is ducked.
+- **Level Match.** The destination slot's measured level is restored as not measured, because it was
+  judged against the mixture. A same-rate re-prepare in the fade-in then throws it away (−8.08 dB → 0,
+  where a complete switch keeps −8.79 dB), and it re-measures over ~2 s.
+- **Other paths.** A host reset or a re-prepare that lands inside the writes adopts the partly written
+  sound too, and so does a factory preset load.
+
+**Workaround:** none needed during real-time playback. During an offline render, avoid switching A/B,
+undoing or loading a preset mid-render. If you do, the render settles to the new sound shortly after
+(about 50 ms in the measured case). With Level Match on, a same-rate re-prepare before it has
+re-measured makes it measure the new slot's level again, over ~2 s.
+
+- **Why it is not fixed here:** making the swap wait for the writes needs the audio thread to learn,
+  with an acquire, that they are finished. The request word it reads is relaxed and carries no
+  completion, and a new atomic ordering is a threading-model change (`THREADING_POLICY.md`,
+  *Enforcement*).
+- **The fix, specified (ADR-0057, Proposed; completed 2026-09-27, worklog §U).** The request word gains a
+  sequence number and a completion published with release. The audio thread takes it with acquire before
+  and after reading the parameters. It keeps the previous sound playing, at full level, while the writes
+  run, and starts the swap only on a snapshot read after the completion. So nothing waits at the silent
+  bottom and no time-out is needed.
+- **The prototype.** On a scratch prototype it adopted no partly written sound:
+  - in 1,245 enumerated interleavings;
+  - in 9,240 threaded trials, from real time to free-running and through 12 ms stalls;
+  - in the 1,680 + 120 trials of the probe that measured this issue, where every bottom took the complete
+    new sound and kept its measured level. It left both existing suites unchanged outside State test 139, and each of five
+  deliberately broken variants let the defect through again.
+- **What remains:** a human Architecture Review, as ADR-0057's gate record states. *(Given 2026-09-27 by
+  the repository owner; implemented the same day — see the banner above.)*
+- **Evidence [Verified]:** State test 139 (the adoption field by field, the Level-Match loss, the
+  settling, a host reset and a re-prepare, the algorithm written first, a threaded race); worklog §T
+  (the threaded probes, TSan clean, the stall, the preset load, the prototype); worklog §U (the
+  reproduction on the branch head, the protocol, its proof and its prototype evidence); ADR-0057; ADR-0007
+  (A/B provenance, "A slot adopted partly written", reclassified); ADR-0036 §25 (note of 2026-09-27).

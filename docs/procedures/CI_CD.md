@@ -186,9 +186,10 @@ edge above must not be read as release non-blocking.
   **scalar** engine state (`dryDelayWrite`, `pendingForced`), cleared by assignment rather than by a
   call and covered by State tests 57 and 118–120 instead; and **which** reset a module takes —
   `reset()` and `softReset()` both count, so swapping them between scopes passes (measured: the
-  host-reset half of that swap fails State tests 118, 120 and 121; the re-prepare half alone fails
-  nothing because it changes nothing — `prepare()` has already zeroed the matcher through
-  `loudness.prepare()`, and removing both flushes fails State test 120). A **partial** reset, `levels.resetLive()`, is deliberately not counted, so the
+  host-reset half of that swap fails State tests 118, 120 and 121; the re-prepare half is pinned
+  by behaviour since ADR-0007's F13(2) amendment — `prepare()` keeps the published gain only at an
+  unchanged rate with unchanged measurement inputs and flushes it otherwise, which State test 120
+  (leg 2), State test 131 and Test 67 assert). A **partial** reset, `levels.resetLive()`, is deliberately not counted, so the
   full `levels.reset()` still cannot return to the host-reset path unseen; State test 122 pins the
   partial one.
   Each of the five runs its own `--self-test` **first**, in this job and ahead of the lint it
@@ -676,6 +677,23 @@ for that long too. The ceiling is real rather than theoretical: `scripts/run-plu
 their own. Each value is roughly double the measured runtime, which leaves room for a cold cache and
 a slow runner while still failing inside the hour.
 
+**`sanitizers`: 45 → 60 minutes (2026-09-26, PR #156).** Its valgrind half grows with every test the
+suites gain, and it had outgrown the rule above: green runs on this PR's heads took 29:08, 31:07, 33:55,
+36:25, 34:13 and 42:28 (`3a779f5`: setup, the builds and the ASan run 8 min, memcheck 12:38 on the DSP
+suite and 21:47 on the State suite), and the next head, `311fa70`, was cancelled at 45:14 inside State
+test 137 under memcheck. That head added Test 73 and State test 137 (Test 73 took 56 s under memcheck
+in that run; locally, under the lane's flags, 56 s and 69 s); on that runner the lane without them
+projects to about 44 minutes, so the cap no longer left room for a slow runner at all. Both tests were
+first made cheaper (slot B's edit at 3 s instead of 4 s, fresh lanes capped, Test 73's later-return
+lane only where it asserts: 43 s and 57 s locally), and the head that carried the first cut of that,
+`fba78ec`, took 44:37. The cap then moves to the 60 minutes the build jobs already use — still failing
+inside the hour, with the command, the suites and their strictness unchanged. This is growth, not a
+pathological test: the paced-spinner fix below is the precedent for the other kind. **Re-examined on
+`b82a294`** (the owner asked for the change to stay only if the workload needs it): that head's green run
+took **45:06**, its memcheck step alone 36:23, so the 45-minute cap would have cancelled it. The next head
+adds Test 74 and State test 138 to both memcheck passes (32 s and 34 s under local memcheck). The cap stays
+at 60 minutes, and nothing in the lane was weakened or skipped to fit it.
+
 ## Pipeline (per job)
 
 1. **Checkout** (`actions/checkout@v7`), then — on every Ninja job — **restore the compiler cache**
@@ -1128,7 +1146,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:270-280 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:276-286 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1412,7 +1430,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1424,7 +1442,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15549` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15552` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when
@@ -1483,11 +1501,55 @@ The probe is opt-in, so the guard step never runs it; `--risk014-probe census` w
 `ulimit -s 1024` separately and is green — `main` (80 bytes) → `runRisk014Probe` → `reportShape` is
 **~284 KB, 27 %** of the reserve, and the two never nest more deeply than that.
 
+**Re-measured for PR #156's one new claim, and DISPOSED `DO NOT FIX`.** Diffed by *byte value* across
+the `prefast-sarif-*` artifacts: `main` at `659ca0a` carries 179 `C6262`, and every head of this PR
+from `f155978` on carries 180 — **one added, none removed**: `Function uses '20528' bytes of stack` at
+`tests/dsp_tests.cpp:7509`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
+It is absent on `5f28e2b`, the commit before the test landed, and unchanged on every later head. The
+other 127 claims in `state_tests.cpp` each moved by an exact multiple of **64 bytes** — one
+`std::function` (MSVC's size) per stack-allocated `AnamorphAudioProcessor`, the State-test-129 seam
+member this PR added (`Seams::atApplyMeasurement`); no `dsp_tests.cpp` value and no rule count moved.
+`g++ -fstack-usage` on ninja's compile line measures the function's real frame at **14,480 bytes**
+(`dynamic,bounded`; largest lambda 1,216) — **1.4 %** of the 1 MiB reserve, 5 % of the DSP suite's
+largest frame. `/analyze`'s 20,528 is 1.42× that: it sums disjoint sibling scopes, and MSVC's
+`std::function` is 64 bytes against libstdc++'s 32. The objects are the field sweep's `char verdict[5][36][48]`
+(8,640 bytes, 60 % of the real frame), its `Row rows[36]` (48 bytes each here, 80 on MSVC, a
+`std::function` apiece), and the other legs' local descriptor arrays and `char nm[96]` labels; the
+engines are already on the heap. Test-only, green under the `ulimit -s 1024` guard step: nothing
+to fix, and moving a 9 KB table to the heap would change nothing measurable.
+
+**The A/B record's evidence (2026-09-26, `311fa70`) adds no `C6262`.** Still 180, none added or
+removed: every claim that moved did so by an exact multiple of **48 bytes** — the engine's growth per
+automatic (two A/B records at 16 bytes each and the matcher's 16) — and the new Test 73 and State test
+137 raise none (GCC frames 8,016 and 2,592 bytes). `C26495` is unchanged. That head's two new `C26498`
+findings, both on Test 73's non-finite constants (`inf`, `nan` not marked `constexpr`), are fixed at
+the source in the following commit, not suppressed.
+
+**ADR-0057's implementation (2026-09-27, `5f818da`) adds one `C6262`, disposed `DO NOT FIX`.** Diffed
+by byte value against `f12cc80` (180 `C6262`, 8 `C26495`, 4 `C26498`): 181, 8 and 4 — the `C26495` and
+`C26498` sets identical, no `C6262` removed, and one added: `Function uses '19136' bytes of stack` on
+`testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates` (State test 140, new). `g++ -fstack-usage` on
+ninja's compile line measures its real frame at **7,392 bytes** (`dynamic,bounded`; largest lambda 352) —
+**0.7 %** of the 1 MiB reserve, 1 % of the State suite's largest frame (712,320). `/analyze`'s 19,136 is
+2.6× that: it counts every sibling scope's locals separately, and the function declares sixteen rigs
+across its scenario scopes — 16 `Rig`s at 768 bytes (GCC's `sizeof`), 17 tallies and 7 parameter
+snapshots sum to about 14.4 KB at GCC's type sizes, and MSVC's own type sizes and the temporaries make up
+the rest; GCC lets the disjoint scopes share their slots. Re-audited before merge (2026-09-27): the test runs on
+the main thread and starts no thread, `tests/state_tests.cpp` is compiled into `AnamorphStateTests` only
+(`CMakeLists.txt:569`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
+main thread's 1 MiB, where the `windows` job runs the suite natively. Every claim that
+moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
+`state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;
+the engine's 16) and **16 bytes** per engine in `dsp_tests.cpp`. GCC's `sizeof` moves by 56 and 16 from
+`f12cc80` to the head (its `std::function` is 32). Test-only, and the suite passes under the
+`ulimit -s 1024` guard step: nothing to fix, and no suppression.
+
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 
-`sanitizers` runs both suites twice: once under ASan+UBSan (about a minute) and once under
-`valgrind --tool=memcheck`, in a **45-minute** job. memcheck is not just slow, it is **serialising**:
-it runs one thread at a time and instruments every instruction. A state test that keeps an unpaced
+`sanitizers` runs both suites twice: once under ASan+UBSan (about two minutes) and once under
+`valgrind --tool=memcheck`, in a **45-minute** job (60 since 2026-09-26, see "Job timeouts").
+memcheck is not just slow, it is **serialising**: it runs one thread at a time and instruments every
+instruction. A state test that keeps an unpaced
 background thread alive for the whole of an operation therefore hands that thread half the machine
 while the thread under test sleeps in a bounded poll — and the D-2 tests do exactly that by design.
 Measured on `3182e11`: the DSP suite cleared memcheck in 3 m 30 s, State tests 1–37 in about 25 s,

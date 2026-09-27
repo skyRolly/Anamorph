@@ -71,7 +71,11 @@ repository ever grows a real package manifest.
    how the 8.0.14 → 9.0.0 run first produced a scenario set that left `algoAmount` at its identity
    default and hashed all four algorithms the same, reporting a confident nothing. The committed
    harness checks itself for exactly that before printing anything (`docs/procedures/TESTING.md`
-   §Proving a dependency bump is bit-identical).
+   §Proving a dependency bump is bit-identical). **And re-verify ADR-0057's store-side precondition**
+   (precondition 2): `AudioProcessorValueTreeState`'s `ParameterAdapter` must still store
+   `unnormalisedValue` release-or-stronger (at 9.0.2, a `seq_cst` assignment in `parameterValueChanged`).
+   A relaxed store there lets the bulk-swap handshake trust a mixed snapshot on ARMv8, and no x86-64 test
+   and no lint can see it.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump —
    **and the two shipped attribution documents**: `THIRD_PARTY_LICENSES.md` *and* `NOTICE` both state
    the pinned JUCE version/commit, and both must move with the pin. (Added 2026-08-31: the 9.0.0 → 9.0.1

@@ -84,7 +84,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-007 — Multiband Enable mute/dropout
 - **Date:** 2026-06-28 (`10fbfa0`) · **Affected version:** ≤0.8.5, fixed 0.8.6 · **Severity:** Medium
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:137-138, :513, :920-921 (`mbEnableBlend` crossfade).
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:159-160, :513, :920-921 (`mbEnableBlend` crossfade).
 
 - **Problem:** Toggling Multiband Enable briefly muted/dropped the output.
 - **Symptom:** A momentary dropout on enable/disable.
@@ -108,7 +108,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-009 — Band Solo + Multiband Enable click
 - **Date:** 2026-06-28 (`6a24b82`) · **Affected version:** 0.8.6, fixed 0.8.7 · **Severity:** Medium
-- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:1864 (`soloMonitor.process`, every block); ADR-0004.
+- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:2267 (`soloMonitor.process`, every block); ADR-0004.
 
 - **Problem:** With a Band Solo active, toggling Multiband Enable clicked on both edges (a regression introduced by INC-007's 0.8.6 change).
 - **Symptom:** An audible click (amplitude + phase step) on both enable and disable edges, only when a band was soloed.
@@ -170,7 +170,9 @@ required) · Fix · Why this fix · Prevention.
 ## INC-013 — A preset loaded while automation was moving a control could read "unmodified" against the wrong sound
 
 **Filed as KI-029 and fixed in the same 0.9.7 change set** (D-2 round 10, ADR-0036 §18). Kept here
-because the two-round history is the useful part.
+because the two-round history is the useful part. (That KI-029 was removed from `KNOWN_ISSUES.md` once
+fixed; the number was reused in 0.9.9 for an unrelated issue, a non-finite parameter value. This entry
+means the 0.9.7 one.)
 
 - **Problem.** `PresetManager::load` / `loadFile` applied the preset's sound and then took the clean
   baseline from a second, live read of the parameters (`sigAtLoad = soundSig()`).

@@ -50,8 +50,10 @@ public:
     void reset();
 
     // Re-arm the measurement (clear filter state + integrators) WITHOUT zeroing
-    // the published gain, so an A/B switch re-converges smoothly from the current
-    // value instead of snapping (feedback #16).
+    // the published gain, so a re-arm (a swap that changes the signal path, an A/B injection
+    // whose slots differ in what the measurement reads, a host reset, or a same-rate re-prepare
+    // that keeps its result -- ADR-0007) re-converges smoothly from the current value instead of
+    // snapping (feedback #16).
     void softReset() noexcept;
 
     // Feeds both signals; updates the published match gain. Audio-thread safe.
@@ -61,12 +63,80 @@ public:
     float getMatchGainDb() const noexcept { return matchGainDb.load (std::memory_order_relaxed); }
 
     // Restore a remembered match value (per A/B slot) so a switch doesn't have to
-    // re-converge from scratch and lurch in level (feedback #23).
-    void setDisplayedGainDb (float db) noexcept
+    // re-converge from scratch and lurch in level (feedback #23). Restoring the value and
+    // restoring its validity are two answers, and the caller gives both: `measured` says whether
+    // the value is the measure's confirmed answer for the inputs the matcher now reads (ADR-0007,
+    // Amendment of 2026-09-25, A/B provenance). One that is not -- a slot left before the measure
+    // had confirmed it, or restored into a state that reads different inputs -- is a value from
+    // another time, so it starts not current, exactly as a change reported by inputsChanged()
+    // does, and the measure confirms it from there.
+    void setDisplayedGainDb (float db, bool measured) noexcept
     {
         displayedGainDb = (double) db;
         matchGainDb.store (db, std::memory_order_relaxed);
+        if (measured) { resultStale = false; resultMeasured = true; }
+        else          inputsChanged();
     }
+
+    // IS THE PUBLISHED RESULT A MEASUREMENT OF THE CURRENT INPUTS? (ADR-0007, Amendment of
+    // 2026-09-25.) The engine calls inputsChanged() whenever it adopts a change to anything this
+    // measurement reads -- a live edit, a duck bottom, a forced swap. From then on the published
+    // value, and the analysis behind it, describe the PREVIOUS state: the integrators still hold
+    // its energy (tau 0.4 s) and the published value glides after them. process() separates, in
+    // what the published value glides toward, the measurement of the audio heard since the change
+    // alone (the linear integrators give it exactly: their energy minus the pre-change energy,
+    // decayed) from everything older. The result is current again once those post-change
+    // measurements make up at least half of the published value and it is within kCurrentDb of
+    // their mean -- everything older moves it by no more than that. An A/B slot's restored value is
+    // current when its caller says it is measured (setDisplayedGainDb); a flush (reset) is no
+    // measurement of another state, so it clears the question. prepare() keeps a result only while
+    // it is current; a Case-A engage lands on it either way (ADR-0007, Note of 2026-09-25, stale engage).
+    void inputsChanged() noexcept
+    {
+        resultStale = true;
+        resultMeasured = false;
+        staleDry0 = meanSqDry;
+        staleWet0 = meanSqWet;
+        stalePreWeight = 1.0;
+        postShare = postSum = 0.0;
+        evidence = {};
+    }
+    bool isResultCurrent() const noexcept { return ! resultStale; }
+
+    // IS THE PUBLISHED RESULT THE MEASURE'S OWN ANSWER? (ADR-0007, Amendment of 2026-09-25, A/B
+    // provenance.) Stricter than current, which it implies: current says the value describes no
+    // PREVIOUS state; measured says the measure has confirmed it for the inputs it now reads, by
+    // the same criterion that makes a changed result current again. A flush is current but not
+    // measured -- 0 dB, then the predict floor, are no measurement -- and so is a value the predict
+    // floor lowers; either becomes measured when the measure confirms it. What an A/B slot
+    // records when it is left: a value that is current only because a flush left it so is right
+    // in the flush's own context (the floor lands the first block), not in another one.
+    bool isResultMeasured() const noexcept { return resultMeasured; }
+
+    // THE POST-CHANGE EVIDENCE (ADR-0007, Amendment of 2026-09-25, A/B provenance, revised 2026-09-26: the
+    // record's evidence). While the result is not measured, the post-change measurements the currency counts are
+    // also summed with the SLOW glide's weight, whatever step the published value takes: `share` is the
+    // weight they would have in a published value that had glided slowly since the change -- 0.5 after
+    // ~0.62 s of counted audio at any rate and block size -- and sum / share their mean. That share is the
+    // live criterion's own "at least half" measured on the slowest path to it, so it never lets a few early
+    // blocks, weighted by a fast glide, stand for the mean. Empty while measured, and reset wherever the
+    // post-change share is (a change, a flush, the floor's un-measure). An A/B slot left before the measure
+    // confirmed it records this with its value (AnamorphEngine::AbMatchMemory).
+    struct Evidence
+    {
+        double share = 0.0;   // the post-change measurements' slow-glide weight
+        double sum   = 0.0;   // ...and their weighted sum (sum / share: their mean, in dB)
+    };
+    Evidence getEvidence() const noexcept { return resultMeasured ? Evidence {} : evidence; }
+
+    // Restores a remembered value that was NOT measured, for the inputs the matcher now reads (the caller
+    // has checked the rate and the measurement inputs), with the evidence recorded beside it. When that
+    // evidence is itself a measurement -- share >= kMeasuredShare -- its mean IS the measure's answer for
+    // those inputs: it is published, measured (and so current), exactly as the live criterion would once
+    // the published value reached it. Otherwise the value is restored not current, as setDisplayedGainDb
+    // (db, false) restores it, and the measure carries on from the evidence, so the next visit adds to it.
+    // An empty Evidence restores exactly what setDisplayedGainDb (db, false) does.
+    void restoreUnmeasured (float db, Evidence e) noexcept;
 
     // Tell the matcher the current state of the two big-gain controls. estBoostDb()
     // turns these into an ABSOLUTE predicted boost (no internal accumulation), so the
@@ -120,6 +190,22 @@ private:
     bool   memoBoostValid = false;
     int    coeffForN = -1;
     double coeffFast = 0.0, coeffSlow = 0.0;
+
+    // The result's currency (inputsChanged()). staleDry0 / staleWet0: the integrators at the last
+    // change; stalePreWeight: the share of that pre-change energy still in them, (1 - smoothCoeff)^N
+    // after N samples -- the integrators' own decay, block by block (memo keyed on the block size).
+    // postShare / postSum: the post-change measurements' weight in the published value's glide, and
+    // their weighted sum (postSum / postShare is their glide-weighted mean). resultMeasured
+    // (isResultMeasured) implies ! resultStale; the bookkeeping runs until it is set, and is frozen
+    // (meaningless) after: everything that clears resultMeasured resets it.
+    bool   resultStale = false;
+    bool   resultMeasured = false;
+    double staleDry0 = 0.0, staleWet0 = 0.0, stalePreWeight = 1.0;
+    double postShare = 0.0, postSum = 0.0;
+    Evidence evidence;   // getEvidence(); runs with postShare, weighted by the slow glide
+    static constexpr double kMeasuredShare = 0.5;   // "at least half": the post-change mean is a measurement
+    int    decayForN = -1;
+    double decayPerBlock = 1.0;
 
     std::atomic<float> matchGainDb { 0.0f };
 };

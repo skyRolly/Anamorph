@@ -137,7 +137,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 - **What the risk was.** ADR-0055 (0.9.9) put a byte-level boundary in front of `juce::parseXML` for
   `.anamorph` files and its scope ruling left two paths alone: the host session blob
-  (`src/PluginProcessor.cpp:2839`, via `getXmlFromBinary`) and the A/B slot payload
+  (`src/PluginProcessor.cpp:2877`, via `getXmlFromBinary`) and the A/B slot payload
   (`:2946-2956`, via `parseXML` on a string the session carried). Round 50 measured both through the
   real `setStateInformation` on `de89b1a` rather than reasoning from the preset path:
   - **Crash, both paths, same thresholds.** SIGSEGV between 2 500 and 3 000 levels of nesting on a
@@ -317,7 +317,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1864 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:2267 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -392,9 +392,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:618-621`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:823`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:1403-1580`) touches two ints — the last
+  (`src/PluginProcessor.h:622-625`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:827`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:1414-1591`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -531,7 +531,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   change with no defect behind it.
 
   **Residual, stated rather than claimed away.** `PresetManager::saveUser`
-  (`src/PresetManager.cpp:1277`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  (`src/PresetManager.cpp:1303`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
   `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
   only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
   because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a
@@ -643,9 +643,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   cancelled save's completion closed a newer dialog) — and both are fixed, so the command path was
   walked again for anything Anamorph owns that can WAIT. **Nothing was found, and the inventory is
   the evidence rather than the conclusion.** Every `ScopedLock (soundReplacement)` a command can
-  reach — `applyStatePreservingView` (`src/PluginProcessor.cpp:1093`), `copyStateWithRawValues`
+  reach — `applyStatePreservingView` (`src/PluginProcessor.cpp:1104`), `copyStateWithRawValues`
   (`:1134`), `applySoundTree` (`:1374`), `PresetManager::applyDefaults`
-  (`src/PresetManager.cpp:198`), `PresetManager::applySoundTree` (`:313`) and the factory half of
+  (`src/PresetManager.cpp:219`), `PresetManager::applySoundTree` (`:313`) and the factory half of
   `loadAdopted` (`:550`) — runs underneath the gate's own held lock and is a free recursive
   re-entry on the same thread; every drain a command makes is `adoptPendingHostState (false)`. The
   two BLOCKING `adoptPendingHostState()` calls that remain are in `getStateInformation` and
@@ -681,7 +681,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
-  **ten separate `std::atomic<float>::load()` calls** (`src/PluginParameters.cpp:365-374`), with no
+  **ten separate `std::atomic<float>::load()` calls** (`src/PluginParameters.cpp:369-378`), with no
   seqlock, generation counter or coherence guard. The audio thread can therefore observe a band
   count from one instant and a solo word, width or split from another. The GUI is not the only
   writer: host automation writes these parameters from the audio thread through the format wrapper.
@@ -693,7 +693,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   count under newer values, is reachable. **Narrowed 2026-09-08 (ADR-0046 round), because the
   sentence used to claim more than is proved (and, 2026-09-08 wheel-gesture round, "read
   **first**" corrected to what is actually true — `e.mbEnable` is loaded at
-  `src/PluginParameters.cpp:365`, one line ahead of the count, and no topology transaction writes
+  `src/PluginParameters.cpp:369`, one line ahead of the count, and no topology transaction writes
   `mbEnable`; the solo word, the splits and the widths, which ARE the parameters the count
   reinterprets, are all loaded after it):** the store-order argument covers
   `addBandAt` and `removeBand`, the only writers that order their stores deliberately. It does
@@ -733,10 +733,19 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   `src/PluginParameters.cpp`, which the PR does not touch at all. Fixing a writer cannot narrow a
   tearing window on the reader side, so none of them is evidence about this risk in either
   direction.
+- **Narrowed for forced bulk swaps, 2026-09-27 (ADR-0057, Accepted).** An A/B switch, undo, redo and a
+  preset load now publish a completion after their last parameter store, and the engine adopts nothing
+  read inside their writes: the forced bottom adopts a snapshot read between two acquire takes after the
+  completion, which holds every store of the swap. The torn multiband layout this record describes can
+  therefore no longer be ADOPTED from a forced bulk swap. It is unchanged for automation, for GUI
+  transactions (`addBandAt` / `removeBand`) and for a whole-state session restore, none of which raises a
+  duck. `toEngine`'s default `seq_cst` loads are now load-bearing for ADR-0057 too (its precondition 2),
+  and `check-realtime.py` rejects a weak order there, so the load order this record relies on is also
+  pinned mechanically.
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps — **RESOLVED (rounds 24 and 25, three doors)**
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1403-1579`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1414-1590`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -748,7 +757,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:1403-1579` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:1414-1590` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
@@ -1146,7 +1155,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:3085-3184 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:3123-3222 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -1224,7 +1233,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:3085`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:3123`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -1233,8 +1242,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:2611`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:733`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:2651`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:737`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

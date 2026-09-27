@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:618-621"): "parameterValueChanged",
+     "src/PluginProcessor.h:622-625"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:823"): "parameterValueChanged",
+     "src/PluginProcessor.h:827"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:733"): "UndoStacks",
+     "src/PluginProcessor.h:737"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1403-1579"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1414-1590"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1403-1579"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1414-1590"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:1403-1580"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1414-1591"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:733"): "UndoStacks",
+     "src/PluginProcessor.h:737"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:3085-3184"): "setStateInformation",
+     "src/PluginProcessor.cpp:3123-3222"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:3085"): "setStateInformation",
+     "src/PluginProcessor.cpp:3123"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:2611"): "abActive",
+     "src/PluginProcessor.cpp:2651"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -476,7 +476,7 @@ DELIBERATE_REAIMS = {
     # the same anchor is a plain move that came along with it.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:922, 1251-1254",
-     "src/PluginProcessor.cpp:1328, 1773-1777"): "openGestures",
+     "src/PluginProcessor.cpp:1339, 1784-1788"): "openGestures",
     # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
     # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
     # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
@@ -485,7 +485,7 @@ DELIBERATE_REAIMS = {
     # while another did not, and the green one was the one that got read.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:737, 870-873",
-     "src/PluginProcessor.cpp:1328, 1773-1777"): "openGestures",
+     "src/PluginProcessor.cpp:1339, 1784-1788"): "openGestures",
     # 2026-09-15 (round 26): THE SAME ENTRY, RE-AIMED, not a second one. Round 26 inserted comment
     # lines above `syncCommitted` in `PluginProcessor.cpp`, so the ADR's span end moved 713 -> 810
     # while its two ends kept naming the same banner and the same function. That is ordinary drift
@@ -498,7 +498,7 @@ DELIBERATE_REAIMS = {
     # neither spelling of the pair is behind it -- the run's own note says "keep it".
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
-     "src/PluginProcessor.cpp:524-984"): "syncCommitted",
+     "src/PluginProcessor.cpp:535-995"): "syncCommitted",
 
     # ROUND 30 (d75a4c8 -> this push), and the same shape as the round-28 entries above: the SOURCE
     # did not move within this push, so every re-anchor below is indistinguishable from drift to the
@@ -590,16 +590,16 @@ DELIBERATE_REAIMS = {
      "src/PluginEditor.cpp:2308"): "createDirectory",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1247-1424",
-     "src/PluginProcessor.cpp:1403-1580"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1414-1591"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1247-1423",
-     "src/PluginProcessor.cpp:1403-1579"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1414-1590"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PresetManager.cpp:776",
-     "src/PresetManager.cpp:1277"): "copyState",
+     "src/PresetManager.cpp:1303"): "copyState",
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:470-847",
-     "src/PluginProcessor.cpp:524-984"): "syncCommitted",
+     "src/PluginProcessor.cpp:535-995"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
@@ -630,7 +630,7 @@ DELIBERATE_REAIMS = {
     # the file settled fails here rather than going quiet.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:923",
-     "src/PluginProcessor.cpp:1116"): "viewParams",
+     "src/PluginProcessor.cpp:1127"): "viewParams",
     # ...and the SAME transition from the branch's OTHER two bases, which both carry `:526`. A
     # declaration is keyed on the PAIR, so the entry above answers only for the base that carries
     # `:923`; leaving the older spelling undeclared is what let an anchor ship stale once already
@@ -639,7 +639,7 @@ DELIBERATE_REAIMS = {
     # entry covers both.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:526",
-     "src/PluginProcessor.cpp:1116"): "viewParams",
+     "src/PluginProcessor.cpp:1127"): "viewParams",
     ("docs/FUTURE_RISKS.md",
      "src/gui/SpectrumImager.cpp:898-913",
      "src/gui/SpectrumImager.cpp:899-914"): "beginChangeGesture",
@@ -651,7 +651,7 @@ DELIBERATE_REAIMS = {
     # first commit.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:1135, 1483-1487",
-     "src/PluginProcessor.cpp:1328, 1773-1777"): "openGestures",
+     "src/PluginProcessor.cpp:1339, 1784-1788"): "openGestures",
     #
     # 2026-09-23 (PR #155, the host reset inside a forced swap): FOUR ENTRIES -- two documents, two
     # old spellings each -- for ONE EDIT, and each needs the table for the reason it exists. Both documents cite `reset()`'s duck flush for the
@@ -662,19 +662,155 @@ DELIBERATE_REAIMS = {
     # re-aimed by hand onto the adoption block at the top of the function, which is what the
     # sentence describes. The token is resolved at the new spelling. The merge base and
     # `origin/main` carry `:208-215` for the same sentence; that transition is declared too, since
-    # a declaration answers only for the base that carries its old spelling.
+    # a declaration answers only for the base that carries its old spelling. (PR #156's O4g round
+    # moved the same block down one line, to `:206-212`; its F13(2) round, which added the Level-Match
+    # keep decision to prepare(), sixteen more, and its fix for the Devin review's quiet-resume finding
+    # seven more, so the target spelling was `:229-235`; its fix for the live-edit finding put eight more
+    # lines above the block and two inside it, so it is now `:237-245`.)
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:237-245"): "pendingP",
+    #
+    # 2026-09-24 (PR #156, F13(2)): ADR-0007's *Related code* list was stale before this PR -- its
+    # own Note of 2026-09-24 reported it -- and the line map carried the stale spellings along
+    # faithfully, still aimed at the wrong code: `:15-43` stopped short of the K-weighting's last
+    # coefficient, the engine span landed on the injection fallback and the bypass capture, and
+    # `:402-424` is no longer `applyAutoGain`. Each is re-aimed by hand onto what its line says it
+    # cites. The two bases (the branch's previous head and the merge base) spell the engine span
+    # differently, so that one is declared twice; the other three spell the same on both.
+    # 2026-09-25 (the Devin review's A/B finding, "A/B provenance"): FOUR NEW entries, each a span this
+    # change EDITED, so the line map gives it no target. API_REFERENCE's engine range grows by the A/B
+    # API; DSP_ALGORITHMS' predict span now holds the floor's un-measure. ADR-0005's and ADR-0006's
+    # Source anchors had been ADOPTED pointing at the forced bottom and the defensive injection (the
+    # code this change edits), not at what their sentences name, so each is re-derived from its own
+    # symbol: the A(dry) production (SIGNAL_FLOW.md's phase-matched range) and `monoMaker.process`.
+    ("docs/architecture/API_REFERENCE.md",
+     "src/dsp/AnamorphEngine.h:46-176",
+     "src/dsp/AnamorphEngine.h:46-265"): "requestAbSwitch",
+    ("docs/architecture/DSP_ALGORITHMS.md",
+     "src/dsp/LoudnessMatch.cpp:140-165",
+     "src/dsp/LoudnessMatch.cpp:158-198"): "predictDelta",
+    ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
+     "src/dsp/AnamorphEngine.cpp:1256-1318",
+     "src/dsp/AnamorphEngine.cpp:1879-1998"): "dryAlignScratch",
+    ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
+     "src/dsp/AnamorphEngine.cpp:1320-1326",
+     "src/dsp/AnamorphEngine.cpp:2115"): "monoMaker.process",
+    # The same four transitions from the older bases this branch is checked against (0fbce03 and
+    # 043c7e3, a7d2b88, 659ca0a), which spell those anchors at their own lines; and the `:15-156`
+    # entry's target, which follows the re-anchored `:16-267` (a pure move of its end).
+    ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
+     "src/dsp/AnamorphEngine.cpp:1242-1304",
+     "src/dsp/AnamorphEngine.cpp:1879-1998"): "dryAlignScratch",
+    ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
+     "src/dsp/AnamorphEngine.cpp:1306-1312",
+     "src/dsp/AnamorphEngine.cpp:2115"): "monoMaker.process",
+    ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
+     "src/dsp/AnamorphEngine.cpp:1235-1297",
+     "src/dsp/AnamorphEngine.cpp:1879-1998"): "dryAlignScratch",
+    ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
+     "src/dsp/AnamorphEngine.cpp:1299-1305",
+     "src/dsp/AnamorphEngine.cpp:2115"): "monoMaker.process",
+    ("docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md",
+     "src/dsp/AnamorphEngine.cpp:1139-1192",
+     "src/dsp/AnamorphEngine.cpp:1879-1998"): "dryAlignScratch",
+    ("docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
+     "src/dsp/AnamorphEngine.cpp:1194-1199",
+     "src/dsp/AnamorphEngine.cpp:2115"): "monoMaker.process",
+    ("docs/architecture/API_REFERENCE.md",
+     "src/dsp/AnamorphEngine.h:46-167",
+     "src/dsp/AnamorphEngine.h:46-265"): "requestAbSwitch",
+    #
+    # 2026-09-26 (the Devin review's Velvet finding, "the non-finite Velvet Density"): the targets of the
+    # `dryAlignScratch`, `monoMaker.process`, `loudnessRefScratch`, `landMatchAfterMeasure`,
+    # `measurementInputsDiffer` and `measChangedAtBottom` entries are RE-DERIVED, none is new. `measurementInputsDiffer`'s comment gains four
+    # lines; `measurementChangeFrom` after it and the restore's comment and condition add twelve more above the
+    # bottom's decision, the A(dry) reference, `monoMaker.process` and the landing.
+    #
+    # 2026-09-26 (the A/B record's evidence, O8(1)/(2)): the targets of the `dryAlignScratch`,
+    # `monoMaker.process`, `loudnessRefScratch`, `landMatchAfterMeasure` and `measChangedAtBottom` entries are RE-DERIVED,
+    # none is new. The A/B record's capture, restore and adoption gain ten lines above the bottom; in
+    # LoudnessMatch.cpp `restoreUnmeasured` and the evidence move the predict to `:158-198` and the end of
+    # `process()` to `:289` (the `predictDelta` and `displayedGainDb` entries).
+    #
+    # 2026-09-26 (the Devin review's re-prepare finding, "the duckMeasDirty lifecycle"): the targets of
+    # the `dryAlignScratch`, `monoMaker.process`, `loudnessRefScratch` and `landMatchAfterMeasure`
+    # entries are RE-DERIVED, none is new. The bottom retires the flag it reports: six lines below
+    # `measChangedAtBottom`.
+    #
+    # 2026-09-25 (the Devin review's A/B finding, "A/B provenance"): the targets of FIVE entries below
+    # and of FUTURE_RISKS.md's `abActive` entry above are RE-DERIVED, none is new. The engine gains the
+    # A/B record's functions after `measurementInputsDiffer` and the request word's comment in
+    # `setParameters` (95 lines above the bottom's decision, 92 above the A(dry) reference and the
+    # landing), and `adoptRestoreTail` two lines above `abActive = d.abActive`.
+    #
+    # 2026-09-25 (the Devin review's live-edit finding): every target below is RE-DERIVED, none is new.
+    # The result's currency adds ten lines above `measurementInputsDiffer`, thirteen above the bottom's
+    # decision and fourteen above the A(dry) reference and the landing, and its bookkeeping grows
+    # `LoudnessMatch::process()` to `:16-245`.
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/LoudnessMatch.cpp:15-43",
+     "src/dsp/LoudnessMatch.cpp:16-46"): "setSampleRate",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1272-1305",
+     "src/dsp/AnamorphEngine.cpp:2011-2012"): "loudnessRefScratch",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1201-1234",
+     "src/dsp/AnamorphEngine.cpp:2011-2012"): "loudnessRefScratch",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/PluginProcessor.cpp:402-424",
+     "src/PluginProcessor.cpp:466"): "applyAutoGain",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/LoudnessMatch.cpp:15-156",
+     "src/dsp/LoudnessMatch.cpp:16-289"): "displayedGainDb",
+    #
+    # The same round's second engine commit added two comment lines to prepare() and was pushed
+    # with four of ADR-0007's engine anchors still on the pre-comment lines, so against that head
+    # they name the line two above what their text cites (the NaN-reading target, a comment, a
+    # brace, the dry-alignment delay). Re-aimed onto the landing, the function, the bottom's
+    # decision and the A(dry) reference they name.
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1844",
+     "src/dsp/AnamorphEngine.cpp:2136"): "landMatchAfterMeasure",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:545",
+     "src/dsp/AnamorphEngine.cpp:568"): "measurementInputsDiffer",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1146",
+     "src/dsp/AnamorphEngine.cpp:1434"): "measChangedAtBottom",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.cpp:1719-1720",
+     "src/dsp/AnamorphEngine.cpp:2011-2012"): "loudnessRefScratch",
+    #
+    # 2026-09-27 (ADR-0057, the bulk-swap handshake): two spans whose cited lines were themselves
+    # rewritten, so the mapping reports them UNMAPPABLE and they are re-aimed by hand. The engine's
+    # public API section grew (`setParametersFrom`, `primeParametersFrom`, `prepareFrom`,
+    # `completeBulkApply`, the observers), so API_REFERENCE's evidence span now ends at the
+    # `private:` line; and the prime ADR-0007 cites became `primeParameters` / `primeParametersFrom`
+    # over `primeSnapshot`, which still records `primeMeasChanged`. Every OTHER anchor this change moved
+    # was a plain move and was re-anchored by `--fix`; the 25 declarations above whose current
+    # spelling moved were re-derived through the same line map (their base spellings unchanged).
+    ("docs/architecture/API_REFERENCE.md",
+     "src/dsp/AnamorphEngine.h:46-198",
+     "src/dsp/AnamorphEngine.h:46-265"): "requestAbSwitch",
+    ("docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md",
+     "src/dsp/AnamorphEngine.h:123-129",
+     "src/dsp/AnamorphEngine.h:130-138"): "primeParameters",
+    # ARCHITECTURE's per-block anchor was ALREADY stale at the base (`:436-441` held the seek
+    # detector, not the snapshot), so `--fix` preserved the wrong text faithfully. It is re-aimed onto
+    # the call its sentence names -- the read inside `engine.setParametersFrom`, then `engine.process`.
+    ("docs/architecture/ARCHITECTURE.md",
+     "src/PluginProcessor.cpp:436-441",
+     "src/PluginProcessor.cpp:455-462"): "setParametersFrom",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

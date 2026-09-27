@@ -114,11 +114,11 @@ folder) are not disjoint.
 - `src/PresetManager.h:32-38` (`Entry::factoryId`), `:54-76` (`Selection`, incl. its equality
   operators), `:78-94` (`SelectionFields`, `encodeSelection`/`decodeSelection`), `:123`
   (`selection()`), `:127-155` (`setMeta`), `:162-169` (`adoptRestoredState`), `:177-183` (`onSaved`)
-- `src/PresetManager.cpp:24-63` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
+- `src/PresetManager.cpp:24-84` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-314` (`saveUser`), `:316-327`
   (`adoptRestoredState`), `:333-386` (`encodeSelection`/`decodeSelection`)
-- `src/PluginProcessor.h:663-675` (`StateSet::selection`)
-- `src/PluginProcessor.cpp:70-112` (the hooks, incl. `onSaved`), `:256-272`
+- `src/PluginProcessor.h:667-679` (`StateSet::selection`)
+- `src/PluginProcessor.cpp:70-116` (the hooks, incl. `onSaved`), `:256-272`
   (`currentStateSet`/`applyStateSet`), `:430-462` (`commitPresetSwitchUndoStep`, incl. the
   identity-moved guard on redo), `:563-584` (`writeSelection`/`readSelection`), `:665-706`
   (`readSlot`)

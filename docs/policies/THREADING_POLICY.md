@@ -11,15 +11,17 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 
 | Direction | Mechanism | Rule |
 |---|---|---|
-| GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`. |
+| GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`, with the default `seq_cst` loads, BETWEEN the engine's two acquire takes of the request word (`setParametersFrom` / `primeParametersFrom`), and never reused across two engine calls — ADR-0057 preconditions 2 and 5 (below). |
 | GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). The same generation decides whether an adoption re-installs its own restore's SOUND (ADR-0036 §10), which a separate relaxed counter (`soundSetGen`, wholesale sound replacements only) narrows to the case that needs it, so a user's sound edit made while a restore is pending survives its adoption (§12). That counter is read as the value the allocating `fetch_add` RETURNS, never read back afterwards, so a replacement overlapping a restore's decode cannot be recorded as the restore's own (§13). |
 | Audio / host state thread → GUI (automatable param VALUES) | the same APVTS `std::atomic<float>` the row above uses, written from the other end | **The direction this table used to describe only in one direction.** Host automation reaches `setValueNotifyingHost` on the **audio** thread through the format wrapper (the KI-027 note below records the same fact for the latency path), and `setStateInformation` reaches the APVTS on the **host state** thread, so a value the GUI reads can change under it between any two reads. No new mechanism and no new hazard class — the atomics were always written from both ends; what the table lacked was a row saying so. The GUI's rule is ADR-0047: any place that plans from a value and proves ownership against it takes **one** reading and derives both, so there is no pair of reads for a foreign write to fall between. Measured before that rule: 92 laundered splits in 1200 drags against a moving lane (`AnamorphStateTests --split-snapshot-probe`). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
+| GUI → Audio (forced duck / A/B switch / A/B forget / a bulk swap's completion) | `std::atomic<int> duckRequest` | One request word: the duck bit, the A/B switch bit with its two slot indices, the forget bit, and — ADR-0057, Accepted 2026-09-27 — a bulk swap's sequence and its completion. The message thread writes it ONLY with read-modify-writes (`fetch_or` / CAS; no plain store), so no request clobbers another and every modification continues a completion's release sequence; the requests are relaxed, and **`completeBulkApply` is a RELEASE CAS, published after the swap's last parameter store**. The audio thread (`setParametersFrom`) and the prepare path (`prepareFrom`) take it whole with an **ACQUIRE `exchange`** twice — before and after reading the snapshot — and adopt nothing while a swap's completion is awaited. The per-slot Level-Match records it drives are engine-owned, audio-thread / prepare-path state; nothing engine-side is read back on the message thread (ADR-0007, Amendment of 2026-09-25, A/B provenance). |
+| GUI → Audio (engine-API match injection) | `std::atomic<float> matchInject` | Relaxed store / `exchange`; an engine API the processor no longer calls. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
 | Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. The meter and correlation resets also publish once each — `reset()` from a prepare, `levels.resetLive()` / `correlation.reset()` from a host reset — on the host's thread, which the format contract keeps from running concurrently with `processBlock` (`THREAD_MODEL.md` host rows). |
 | Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
-| Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | The one ordering-critical pair besides the scope ring: the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously when the caller IS the message thread. |
+| Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | An ordering-critical pair (the second of the four listed under *Atomic usage rules*): the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously when the caller IS the message thread. |
 | Audio → GUI (view-param / InternalState generations, Wave 2 / H15) | `std::atomic<uint32> viewParamGen`; `InternalState::gen` (relaxed) | The identical staleness-hint pattern, extended so the editor's 60 Hz micro-anim poll re-arms on counter loads instead of hashing every animated widget per frame: `viewParamGen` is bumped by a dedicated no-gesture listener on the view params (Bypass), `InternalState::gen` by its property-change callback (Settings values, incl. session restore). No payload, no ordering role. |
 | Host state thread → Message (a restore's metadata tail, D-2 / ADR-0036) | `ExchangeCell<RestoreDecode> pendingRestore` — one `std::atomic<T*>`, `exchange` with **acq_rel** on both sides | An off-message-thread `setStateInformation` first ANNOUNCES its generation in the engine-config word (a CAS, tagged with this restore's generation — from that instant the restore is authoritative and every older one obsolete, ADR-0036 §25), then installs the sound (the APVTS, JUCE-locked, under the whole-sound replacement lock), on the caller's thread, then publishes the DECODED metadata tail as one immutable object carrying that generation; the message thread adopts it (`adoptPendingHostState`) from the processor's 20 Hz timer and at the top of every entry point that mutates program state, draining to a FIXED POINT so a restore that arrives during an adoption is adopted in the same pass and the caller never goes on to edit a session already superseded (ADR-0036 §15). Ownership transfers with the exchange — whichever side's exchange returns the pointer frees it — so at most one object exists and nothing is freed while reachable elsewhere. The decode carries the parameter tree it installed, so the adoption commits the restore's SOUND and metadata together and a message-thread action taken in the handoff window cannot be left half-applied under the new session's identity (ADR-0036 §10). On the message thread the tail is adopted inline, after the pending one is drained; nothing is deferred. |
 | Message → Host state thread (the program snapshot, D-2 / ADR-0036) | `ExchangeCell<ProgramSnapshot> programMailbox` (same cell); the snapshot carries the generation of the last restore the message thread had adopted when it published | The message thread republishes an immutable snapshot of the program state it owns after every mutation (`PresetManager::onMetaChanged`, `InternalState::onChanged`, the A/B paths); an off-message-thread `getStateInformation` takes the latest into its own view and serializes from it plus the JUCE-locked `copyState()`. While the newest snapshot it holds carries a generation older than its own last restore, it serializes from the view it built from that restore, so a save after a restore on the same host thread describes the sound it applied — and because the generation is part of the snapshot, the decision is about the object in hand, never about a generation read at another moment (round 2, review finding 1). |
@@ -295,7 +297,7 @@ relies on.
 - `soundParamGen`: `memory_order_relaxed` — a generation / staleness counter only. It gates a
   message-thread cache rebuild and transfers no payload, so it is deliberately **not** an
   ordering/publication primitive (unlike the scope index below).
-- Scope ring index: `release` on write, `acquire` on read (the one ordering-critical pair). The
+- Scope ring index: `release` on write, `acquire` on read (the first ordering-critical pair). The
   index is published **once per block** (`pushBlock`), so a reader that acquires it sees a whole
   committed block — never a partially written one.
 - `latencyUpdateRequest`: `release` on the store, `acquire` on the `exchange` — the second
@@ -307,6 +309,34 @@ relies on.
   the objects (a decode's, a snapshot's), so no separate atomic pair is read at a different moment
   than the object it is about. The one relaxed load is the empty-check fast path, which only decides
   whether to attempt the exchange.
+- The request word (`AnamorphEngine::duckRequest`, ADR-0057, Accepted 2026-09-27): `completeBulkApply` a
+  **release** CAS on the message thread, `takeRequestWord` an **acquire** `exchange (0)` on the audio
+  thread / prepare path — the fourth ordering-critical pair. The completion PUBLISHES every parameter
+  store of its bulk swap (an A/B switch, undo, redo, a preset load) to the take that reads it, and the
+  engine starts the swap's forced duck only on a snapshot read between two such takes after it, so the
+  forced bottom adopts the complete destination or nothing. Its requests (`requestDuck`,
+  `requestAbSwitch`, `forgetAbMatchMemory`) stay relaxed: they order nothing, and a request that a
+  snapshot's read may have raced is caught by the second take. The proof (ADR-0057, Claims 1–4) holds
+  only under five preconditions, which are binding here:
+  1. every parameter store of a bulk swap is sequenced before its completion, on the thread that
+     publishes it (the swaps are synchronous message-thread commands: `BulkApply::complete()` after
+     `abApplySlot` / `applyUndoEntry`, `onSoundApplied` after a preset's last write);
+  2. every audio-thread read of a swap-carried value is an acquire or stronger — `toEngine`'s
+     default `seq_cst` `load()`s; `check-realtime.py` rejects a relaxed or consume order there,
+     because a relaxed read breaks Claim 2 on ARMv8 while every x86-64 test still passes — and every
+     message-thread store of one is a release or stronger: JUCE's `ParameterAdapter` assigns its
+     `std::atomic<float>` with the default `seq_cst`, and the processor's silent re-assert stores
+     `seq_cst` too. No lint reaches JUCE's source, so a JUCE bump re-verifies it (`DEPENDENCY_POLICY.md`
+     rule 2; made explicit by the pre-merge audit, 2026-09-27);
+  3. every modification of the word is a read-modify-write, so every later modification is in a
+     completion's release sequence;
+  4. exactly one completion follows each request, after its last store, on every exit path an
+     exception included (`BulkApply`'s destructor; PresetManager's `SoundAppliedGuard`);
+  5. the snapshot is read between the two takes and never reused across two engine calls — the
+     processor's entries (`setParametersFrom`, `prepareFrom`) take a callable reader and run the read
+     themselves, so the order is structural; the engine API's `setParameters (np)` /
+     `primeParameters (np)` make one take and trust `np` only when no swap was awaited before it, and
+     their caller must have read `np` after the engine's previous call returned.
 - The engine-config word (`InternalState::engineConfig`): `compare_exchange` with `acq_rel` on
   the writers (a host-thread restore, the message thread's tree writes), `relaxed` on the audio
   reader — a value with no payload behind it. The tag is the generation of the arrival, and the
@@ -316,11 +346,16 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:150-241; src/dsp/Correlation.h:62-202;
-  src/PluginProcessor.cpp:162-184, 395; src/InternalState.h:175, 548-571
+  src/PluginProcessor.cpp:166-188, 401; src/InternalState.h:175, 548-571
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in
   `.github/workflows/build.yml`
+- The request word (ADR-0057): src/dsp/AnamorphEngine.h (`duckRequest`'s layout, `completeBulkApply`,
+  `setParametersFrom` / `primeParametersFrom` / `prepareFrom`, the handshake state);
+  src/dsp/AnamorphEngine.cpp (`completeBulkApply`, `takeRequestWord`, `startTakenRequests`);
+  src/PluginProcessor.h (`BulkApply`); src/PresetManager.cpp (`SoundAppliedGuard`);
+  src/PluginParameters.cpp (`toEngine`, precondition 2); DSP Test 75, State tests 139 and 140
 
 ## Enforcement
 

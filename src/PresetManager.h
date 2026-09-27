@@ -323,6 +323,12 @@ public:
     // (record ONE undo step for the switch). Only load()/loadFile() fire them -- never session
     // restore, saveUser, or construction. Empty when no processor is bracketing (safe to skip).
     std::function<void()> onAboutToLoad, onLoaded;
+    // A LOAD IS A BULK SWAP (ADR-0057). onAboutToLoad raises the engine's forced duck with the swap's
+    // sequence; onSoundApplied fires right after the load's LAST parameter store, and the processor
+    // publishes the swap's completion there. The manager fires it EXACTLY ONCE for every
+    // onAboutToLoad, on every exit path an exception included (SoundAppliedGuard), extending the
+    // pairing rule above: a completion never missing, so the audio thread never waits for one.
+    std::function<void()> onSoundApplied;
 
     // ADR-0008, ROUND 25 (Devin R1279-1283). A LOAD, A STEP AND A SAVE ARE STATE-REPLACING USER
     // COMMANDS, and one of them arriving from inside a multi-store user transaction is the same

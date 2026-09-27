@@ -80,7 +80,11 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // refusal checks and before `step` derives its row, so a drain at this point could only
     // adopt something AFTER a relative target had been chosen. The flush and the duck stay --
     // the duck deliberately after every check that can refuse (round 26).
-    presets.onAboutToLoad = [this] { pollUndoCoalesceAdopted(); engine.requestDuck(); };
+    // A LOAD IS A BULK SWAP (ADR-0057): the request carries the swap's sequence, and the manager
+    // fires `onSoundApplied` after the load's last parameter store -- exactly once for every
+    // onAboutToLoad, on every exit path -- which publishes its completion.
+    presets.onAboutToLoad = [this] { pollUndoCoalesceAdopted(); engine.requestDuck (beginBulkApply()); };
+    presets.onSoundApplied = [this] { endBulkApply(); };
     // NO COMPLETION BUMP HERE. `soundSetGen` is published from inside the load's own write-loop
     // scope (`presets.noteReplaced`), with the §24 lock still held -- the same point the two
     // processor replacement sites publish theirs. ADR-0036 §24 states the invariant and the race
@@ -225,13 +229,15 @@ void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     // priming first is what makes a session the host restored BEFORE activation
     // (the ordinary VST3/AU order: setState, then setActive/prepareToPlay) come
     // up correct from the first sample instead of ramping to it. The trailing
-    // setParameters is the ordinary steady-state entry and now finds nothing to
-    // do -- its bitwise no-change gate skips it -- but it stays as the single
-    // path by which live parameters ever reach the engine.
-    const auto e = params.toEngine (internal.oversampleIndex());
-    engine.primeParameters (e);
-    engine.prepare (sampleRate, samplesPerBlock);
-    engine.setParameters (e);
+    // adoption is the ordinary steady-state entry and, with no bulk swap in
+    // flight, finds nothing to do -- its bitwise no-change gate skips it -- but
+    // it stays as the single path by which live parameters ever reach the engine.
+    // The engine runs that order itself (`prepareFrom`), reading the parameters between its two
+    // takes of the request word for EACH of the prime and the trailing adoption: the trailing one
+    // never re-uses the prime's snapshot, which a bulk swap's completion taken by the prime may
+    // postdate (ADR-0057, precondition 5). A swap completed by the prime's first take may start in the
+    // prime (its duck dropped); any other starts, ducked, at the first adoption that reads it complete.
+    engine.prepareFrom (sampleRate, samplesPerBlock, [this] { return readEngineSnapshot(); });
 
     // Through D-1's request path, NOT updateLatency() directly (round 15,
     // ER-STATE-19). On the message thread -- every in-spec VST3 activation, the
@@ -264,7 +270,7 @@ void AnamorphAudioProcessor::deliverLatency()
     // part: three CriticalSections, and on a real change a heap append and a pipe
     // write) stays set and is served by the next tick. A second clear after the
     // first would swallow exactly those requests.
-    setLatencySamples (engine.predictLatency (params.toEngine (internal.oversampleIndex())));
+    setLatencySamples (engine.predictLatency (readEngineSnapshot()));
 }
 
 void AnamorphAudioProcessor::updateLatency()
@@ -444,10 +450,15 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     prevPlaying = playing;
 
     engine.setTransportPlaying (playing); // a pause edge kills Velvet's noise tail (#4)
-    auto e = params.toEngine (internal.oversampleIndex());
-    if (const int sp = soloPreviewMask.load (std::memory_order_relaxed); sp >= 0)
-        e.mbSolo = sp; // momentary hold audition overrides the latched solo (#8)
-    engine.setParameters (e);
+    // The snapshot is read BETWEEN the engine's two acquire takes of the request word, so a bulk
+    // swap's forced bottom adopts only a complete destination (ADR-0057).
+    engine.setParametersFrom ([this]
+    {
+        auto e = readEngineSnapshot();
+        if (const int sp = soloPreviewMask.load (std::memory_order_relaxed); sp >= 0)
+            e.mbSolo = sp; // momentary hold audition overrides the latched solo (#8)
+        return e;
+    });
     engine.process (buffer);
 }
 
@@ -462,11 +473,11 @@ void AnamorphAudioProcessor::applyAutoGain()
     const auto admit = admitStateCommand ([this] { applyAutoGain(); });
     if (! admit.admitted()) return;
 
-    // "Apply": OVERRIDE Output Gain with the measured loudness compensation as a
-    // fixed value (feedback #18). The match gain is measured pre-output-gain, so
-    // setting Output Gain = matchDb makes the output sit at the dry loudness.
-    // (Override, not add -- otherwise repeated Apply presses keep dropping it.)
-    const float matchDb = engine.getMatchGainDb();
+    // "Apply": OVERRIDE (not add -- repeated presses would keep dropping it) Output Gain with the measured,
+    // pre-output-gain loudness compensation, so the output sits at the dry loudness (feedback #18). NaN is
+    float matchDb = engine.getMatchGainDb();   // no measurement, and the one value `jlimit` below cannot bound
+    if (seams.atApplyMeasurement) seams.atApplyMeasurement (matchDb);   // test seam: State test 129
+    if (std::isnan (matchDb)) return;
 
     // ADR-0008, ROUND 23. THESE TWO STORES SAY WHAT THEY PRODUCED (Devin R1117-1119).
     // Apply is a USER ACTION with its own change gesture, and until this round it was the last bare
@@ -2053,6 +2064,24 @@ void AnamorphAudioProcessor::applyUndoEntry (const UndoEntry& e, bool toAfter)
     applyStateSet (target);
 }
 
+// THE BULK-SWAP HANDSHAKE, message-thread side (ADR-0057). A swap begun while another is open joins
+// it: the same sequence, and only the outermost end publishes the completion -- so the completion
+// always follows every write of every swap in flight. The admission gate runs state commands one at a
+// time, so nesting is not expected; joining keeps the rule true without depending on that.
+int AnamorphAudioProcessor::beginBulkApply() noexcept
+{
+    if (bulkDepth++ == 0)
+        bulkSeq = bulkSeq % anamorph::AnamorphEngine::kBulkSeqCount + 1;   // 1..15; 0 is the engine API's
+    return bulkSeq;
+}
+
+void AnamorphAudioProcessor::endBulkApply() noexcept
+{
+    jassert (bulkDepth > 0);   // every end pairs a begin (BulkApply, PresetManager's guard)
+    if (bulkDepth > 0 && --bulkDepth == 0)
+        engine.completeBulkApply (bulkSeq);
+}
+
 void AnamorphAudioProcessor::undo()
 {
     // ADR-0008 round 25 (R1279-1283) and ADR-0036 round 28 (R802-807): not inside a user
@@ -2072,7 +2101,8 @@ void AnamorphAudioProcessor::undo()
     pollUndoCoalesce();
     auto& st = abUndo[abActive];
     if (st.undo.empty()) return;
-    engine.requestDuck(); // mask the level jump (#1, 0.6.4)
+    BulkApply swap (*this);                      // ADR-0057: the request's sequence, and its completion
+    engine.requestDuck (swap.sequence()); // mask the level jump (#1, 0.6.4)
     // ADR-0008 as amended (round 14). THE ENTRY MOVES BETWEEN THE STACKS rather than a new one
     // being manufactured from the live parameters here -- which is what used to make a host write
     // landing between the step and this Undo the value Redo restored. Undo installs the entry's
@@ -2081,6 +2111,7 @@ void AnamorphAudioProcessor::undo()
     // apply moves only part of it.
     auto entry = std::move (st.undo.back()); st.undo.pop_back();
     applyUndoEntry (entry, /*toAfter*/ false);
+    swap.complete();                             // after the last parameter store (ADR-0057)
     st.redo.push_back (std::move (entry));
     committed = currentStateSet();
     committedSig = soundSignature();
@@ -2103,9 +2134,11 @@ void AnamorphAudioProcessor::redo()
     pollUndoCoalesce(); // same settled-gesture flush as undo()
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
-    engine.requestDuck(); // mask the level jump (#1, 0.6.4)
+    BulkApply swap (*this);                      // ADR-0057: the request's sequence, and its completion
+    engine.requestDuck (swap.sequence()); // mask the level jump (#1, 0.6.4)
     auto entry = std::move (st.redo.back()); st.redo.pop_back();   // the same entry, read forwards
     applyUndoEntry (entry, /*toAfter*/ true);
+    swap.complete();                             // after the last parameter store (ADR-0057)
     st.undo.push_back (std::move (entry));
     committed = currentStateSet();
     committedSig = soundSignature();
@@ -2179,12 +2212,19 @@ void AnamorphAudioProcessor::abSwitchToAdopted (int slot)
     slot = juce::jlimit (0, anamorph::kNumAbSlots - 1, slot); // defensive: never index out of bounds
     abEnsureInit();
     if (slot == abActive) return;
-    engine.requestDuck();                              // mask the level jump (#1, 0.6.4)
+    // The duck that masks the level jump (#1, 0.6.4) AND the per-slot Level-Match memory (#23):
+    // the engine records the slot being left and restores this one's at the duck's bottom, each
+    // value with the currency of the result it was taken from (ADR-0007, Amendment of 2026-09-25,
+    // A/B provenance). Before the parameters move, as requestDuck() always was.
+    // The request carries the swap's sequence, and its completion follows the destination's last
+    // parameter store: until then the engine adopts nothing, so the forced bottom adopts the slot
+    // whole, never part of it (ADR-0057; Devin "A/B switches adopt incomplete slot states").
+    BulkApply swap (*this);
+    engine.requestAbSwitch (abActive, slot, swap.sequence());
     abSlot[abActive] = currentStateSet();              // store the whole state set in the old slot
-    abMatchGain[abActive] = engine.getMatchGainDb();   // remember this slot's match (#23)
     abActive = slot;
     abApplySlot (slot);                                // ...whose setMeta republishes the snapshot (D-2)
-    engine.injectMatchGainDb (abMatchGain[slot]);      // restore the new slot's match (#23)
+    swap.complete();                                   // after the last parameter store (ADR-0057)
     syncCommitted();                                   // the switch itself isn't undoable (#11)
 }
 
@@ -2601,19 +2641,17 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d, bool mayB
     // The slot set as a WHOLE -- both slots, the active index and the per-slot
     // Level-Match memory -- from the one decode, so no half of it can come from a
     // different project than the other half (the rule readSlot states per slot,
-    // applied to the set). `abMatchGain` is the one member of the set that is never
-    // serialized -- a runtime cache of what the matcher had settled on when each slot
-    // was last left -- so there is nothing to overlay it with and every restore
-    // resets it (ER-STATE-20, round 16; State test 31): leaving it alone let the
-    // PREVIOUS project's figure survive into this session's first switch, which
-    // ends with `engine.injectMatchGainDb (abMatchGain[slot])`. 0.0f is the member's
-    // own initialiser, which is what makes this exactly the fresh-instance path.
+    // applied to the set). The Level-Match memory is the one member of the set that is
+    // never serialized -- a runtime record, kept by the engine, of what the matcher had
+    // published when each slot was last left -- so there is nothing to overlay it with and
+    // every restore forgets it (ER-STATE-20, round 16; State test 31): keeping it let the
+    // PREVIOUS project's figure survive into this session's first switch. Forgotten, each
+    // slot restores 0 dB, not current -- the fresh-instance record (ADR-0007, Amendment of
+    // 2026-09-25, A/B provenance).
     abActive = d.abActive;
     for (int i = 0; i < anamorph::kNumAbSlots; ++i)
-    {
-        abSlot[i]      = d.abSlot[i];
-        abMatchGain[i] = 0.0f;
-    }
+        abSlot[i] = d.abSlot[i];
+    engine.forgetAbMatchMemory();
 
     // Fresh session: clear undo history.
     abUndo[0] = {}; abUndo[1] = {};

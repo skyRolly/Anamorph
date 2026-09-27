@@ -60,6 +60,27 @@ namespace
     }
 
     const juce::String kPresetExt = PresetManager::fileSuffix();
+
+    // A LOAD IS A BULK SWAP (ADR-0057). Fires `onSoundApplied` exactly once: at `fire()`, right after
+    // the load's last parameter store, or when the scope ends on any other path -- an exception
+    // included -- so the swap's completion is never missing and the audio thread never waits for one.
+    class SoundAppliedGuard
+    {
+    public:
+        explicit SoundAppliedGuard (const std::function<void()>& h) noexcept : hook (h) {}
+        ~SoundAppliedGuard() { fire(); }
+        SoundAppliedGuard (const SoundAppliedGuard&) = delete;
+        SoundAppliedGuard& operator= (const SoundAppliedGuard&) = delete;
+        void fire() noexcept
+        {
+            if (fired) return;
+            fired = true;
+            if (hook) hook();
+        }
+    private:
+        const std::function<void()>& hook;
+        bool fired = false;
+    };
 }
 
 // ----------------------------------------------------------------------------
@@ -843,6 +864,7 @@ PresetManager::OpResult PresetManager::loadAdopted (int index, const juce::Value
     }
 
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
+    SoundAppliedGuard soundApplied (onSoundApplied);   // ADR-0057: the swap's completion, exactly once
 
     // THE BASELINE IS FIXED FROM WHAT THE LOAD WRITES, NOT FROM A READ-BACK (D-2 round
     // 10, ADR-0036 §18; this closes KI-029). It used to be `sigAtLoad = soundSig()` after
@@ -870,6 +892,7 @@ PresetManager::OpResult PresetManager::loadAdopted (int index, const juce::Value
                     anamorph::param::setValueNotifyingHost (rp, rp->convertTo0to1 (o.value));
             if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
         }
+        soundApplied.fire();   // after the last parameter store: the engine may adopt the preset (ADR-0057)
         // The resolver mirrors the two writes above: an override's value where the table
         // names the parameter, the default applyDefaults() wrote everywhere else. (The
         // signature only ever asks about preset-carried parameters, so an override on a
@@ -886,6 +909,7 @@ PresetManager::OpResult PresetManager::loadAdopted (int index, const juce::Value
     else
     {
         applySoundTree (userSound);
+        soundApplied.fire();   // after the last parameter store: the engine may adopt the preset (ADR-0057)
         if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
         applied = soundSignatureAfterLoading (apvts, userSound);
     }
@@ -1008,7 +1032,9 @@ void PresetManager::applyParsedFile (const juce::File& f, const juce::ValueTree&
     // ROUND 28: the drain that was here is the admission's, taken at `loadFile`'s top (or at the
     // top of the deferred retry) -- before the lock, never underneath it.
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
+    SoundAppliedGuard soundApplied (onSoundApplied);   // ADR-0057: the swap's completion, exactly once
     applySoundTree (sound);
+    soundApplied.fire();   // after the last parameter store: the engine may adopt the preset (ADR-0057)
     if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
     current = f.getFileNameWithoutExtension();
     // The chooser can point ANYWHERE, so the file is the identity whether or not it
