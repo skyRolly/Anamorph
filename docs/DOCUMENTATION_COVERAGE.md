@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13003,6 +13003,70 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 91st pass — 2026-09-27, the Dimensional rename (0.9.9; release date set to 2026-09-29)
+
+**Scope.** An owner naming decision, implemented: the fourth widening algorithm is named **Dimensional**. Its two
+display strings, its tooltip, the internal identifiers that carried its former name, and every repository reference
+to that name — including the wording that tied the algorithm to a specific hardware product — were renamed or
+rewritten (commit `1f0bc7c`). On owner instruction the 0.9.9 release date moved to 2026-09-29. Naming and
+documentation only; the engine's code is unchanged.
+
+**Identity and behaviour, verified rather than assumed.**
+- **Parameter identity.** The IDs `algorithm` and `dimMode`, the choice order, ranges, defaults and every serialized
+  key are unchanged (`src/PluginParameters.h` is untouched). `tests/fixtures/parameter_registry.snapshot` was
+  re-frozen with `AnamorphStateTests --write-snapshot`: two lines move (`stepText3` and `dimMode`'s `name`), and the
+  regenerated file is byte-identical to the edit. PARAMETER_COMPATIBILITY_POLICY rule 2 and ADR-0002 allow a display
+  name to change without a new ADR; the `Haas Side` → `Haas Focus` rename is the precedent.
+- **The text path.** `RawChoice::getValueForText` is the one text-keyed path: a host that sets a choice from typed
+  text. Nothing Anamorph persists stores parameter text (APVTS `value` attributes and preset files are numeric), so
+  there is no migration.
+- **The code.** `Algorithm::Dimensional` and `ChorusEngine::Voice::Dimensional` keep the values of the enumerators they
+  replace. Each touched translation unit was compiled from `origin/main` and from this tree with the plugin target's
+  own flags (`-fno-lto -g0`, so real machine code is compared): `AnamorphEngine`, `ChorusEngine`, `PluginProcessor`
+  and `PresetManager` are identical in text and read-only data; `PluginParameters` and `PluginEditor` differ only in
+  where their string literals sit. The line count of every `src/` file is unchanged, so no citation moved.
+- **Through the product.** A scratch harness driving the production processor and editor: choice 3 reads
+  `Dimensional` and `getValueForText ("Dimensional")` returns it; it reaches the engine as `Algorithm::Dimensional`;
+  it survives a save and restore; and the editor shows `Dimensional` and `Wide` in both layouts, the name unsqueezed
+  (76.3 px in an 86 px text area, narrower than `Velvet Noise`). 41 checks, 0 failures.
+- **Suites.** DSP 944 / 0, State 5,593 / 0 (under a 1 MiB stack). The lint gates and the citation gate are clean.
+
+**Documents and records changed.**
+- **Product surface:** `src/PluginParameters.cpp` (the choice label, `Dimensional Style`), `src/PluginEditor.cpp`
+  (the tooltip), the registry snapshot.
+- **Identifiers and comments:** `src/dsp/{EngineParameters.h, ChorusEngine.h, ChorusEngine.cpp, AnamorphEngine.h,
+  AnamorphEngine.cpp}`. `ChorusEngine.h`'s banner no longer calls the voice an emulation.
+- **Tests and tools:** `tests/{dsp_tests.cpp, state_tests.cpp, bench.cpp, dsp_dump.cpp}` (identifiers and printed
+  labels only; the dump's scenario name is now `dimensional`, noted in `TESTING.md`) and
+  `scripts/check-state-coverage.py` (the guard text it matches).
+- **User and developer documents:** `README.md`, `USER_MANUAL.md` (§4 describes the algorithm itself),
+  `PARAMETER_REGISTRY.md` (a new § footnote), `PARAMETER_REFERENCE.md`, `SIGNAL_FLOW.md`, `DSP_GRAPH_REFERENCE.md`,
+  `DSP_ALGORITHMS.md`, `ARCHITECTURE.md`, `API_REFERENCE.md`, `LATENCY_MODEL.md`, `PERFORMANCE_BUDGET.md`,
+  `DSP_POLICY.md`, ADR-0003/0004/0007/0012/0026/0027/0034 (wording only; no decision changes), `TESTING.md`,
+  `HANDOVER.md`, `KNOWN_ISSUES.md`, `REPOSITORY_MAP.md`.
+- **Legal and commercial records:** `TRADEMARKS.md` §4 loses the open item on the former name (the table renumbered);
+  `COMMERCIAL_STATUS.md` decision 6 keeps only the trademark status of the product and company names. No legal
+  determination is made or implied.
+- **History:** `CHANGELOG.md` names the algorithm Dimensional throughout, with a preamble sentence saying so, and its
+  0.8.8 display-name entry is reworded neutrally; the worklogs use the new name, and the v0.9.0 keynote script now
+  describes the algorithm by what it does.
+
+**Kept, deliberately.** The factory preset **Synth Dimension** (key `synthDimension`). Its name uses the ordinary
+word and not the former algorithm name; its key is persisted preset identity; and a new display name would be UI
+copy, which only the owner specifies (`AI_AGENT_POLICY.md` C8). Reported for the owner's decision.
+
+**Drift reported (C6):**
+- `TRADEMARKS.md` §4 cited `docs/user/USER_MANUAL.md:287` for text at `:313`. It went with the item.
+- `ChorusEngine.h` called the voice an emulation while `USER_MANUAL.md` said "-style" and the keynote script said no
+  imitation was implied. All three now describe the algorithm itself.
+- The snapshot writer's header (`tests/state_tests.cpp`) says a regeneration needs an ADR, while
+  PARAMETER_COMPATIBILITY_POLICY rule 2 and ADR-0002 allow a display-name change without one. Not changed.
+
+**The record:** `CHANGELOG.md` `[0.9.9]` — one Changed entry citing `1f0bc7c`, and the heading dated 2026-09-29;
+`HANDOVER.md`'s Current Version row.
+
+**This file:** this entry, the *Last updated* line, and the legal-set entry's description of the former review item.
 
 ## 90th pass — 2026-09-27, PR #156 (the pre-merge audit: no production defect; State test 141; docs synced)
 

@@ -20,7 +20,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
-## [0.9.9] — 2026-09-27
+## [0.9.9] — 2026-09-29
+
+### Changed
+- **The fourth widening algorithm is now called Dimensional.** The Widen Algorithm menu and your host's
+  automation list show it as **Dimensional**, its voicing control is **Dimensional Style**, and that control's
+  tooltip reads *Voicing of the Dimensional widener*. Only the names changed: the parameter IDs (`algorithm`,
+  `dimMode`), the order of the choices, the four voicings and the sound are all the same, so saved sessions,
+  presets, A/B slots and automation recall exactly as before. Evidence: commit `1f0bc7c`. [Verified]
 
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
