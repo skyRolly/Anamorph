@@ -5140,6 +5140,15 @@ It pins the engine as it is: the fix inverts (A), (B), (C) and (E), and its host
   parameters, and a COMPLETE TWIN, both switched completely before the same blocks. With Level Match off the
   output from a forced bottom on is a function of the state adopted there alone, so bit-identity to the partial
   twin means the partly written slot was adopted, field for field.
+- **The twin must read what the race reads.** Every partial-twin comparison also asserts that, at its blocks, the
+  twin reads the edited parameters' raw values exactly as the race does at its blocks. A parameter JUCE never wrote
+  holds its default's unsnapped normalised round trip (`ParameterAdapter`); one written, by a slot restore for
+  example, holds the snapped value. For Chorus Rate that is 0.49999997 Hz against 0.5. The first version of (E) left
+  A's Rate at its default: the race's `setUp` restored it from A's slot, while the partial twin never wrote it. The
+  one-ulp rate drifted the two Choruses' phase apart. That was invisible on the x86-64 baseline (`-ffp-contract=off`,
+  ADR-0031), but CI's arm64 slice contracts to FMA and failed (E); a local x86-64 build with contraction on
+  reproduced it. (E) now writes A's Rate and Depth in every rig, at 5 Hz (the range end, which the range clamps to)
+  and 50 %. With the check, the first version fails on x86-64 too.
 - **The rigs.** One heap processor per rig, 48 kHz / 256, seed 139. A: Haas, Amount 80 %, Drive 8, Width 100 %,
   Mix 100 %, Output Gain −3. B, a Copy edited on B: Drive 12, Width 180 %, Mix 70 %, Output Balance +0.2, Haas
   Delay 20 ms, Input Balance +0.3, Mono Maker on at 200 Hz — eight writes.
@@ -5165,13 +5174,14 @@ The legs:
 - **(D) A host reset and a same-rate `prepareToPlay`,** one block after the request at position 4, adopt the
   partly written slot too: bit-identical to the partial twin's same sequence, not the complete twin's.
 - **(E) The algorithm first.** Haas → Chorus (2 Hz, 80 %), position 1, six blocks inside: Chorus at A's rate and
-  depth.
+  depth (5 Hz, 50 %).
 - **(F) A real race, for the `tsan` lane.** A paced audio thread (`d2::Pace`) runs against six switches from the
   message thread. The output is finite and the switches land. Nothing about the timing is asserted; under the
   `tsan` lane the leg proves there is no data race while the engine adopts whatever it reads.
 
-26 checks, ~0.4 s native. On ADR-0057's scratch prototype (worklog §T5) 11 fail — every (A) position, (B)'s two
-flushes and its position-8 keep, (C) and (E) — and every other test of both suites passes.
+26 checks, ~0.4 s native; they also pass built with FMA contraction on x86-64. On ADR-0057's scratch prototype
+(worklog §T5) 11 fail — every (A) position, (B)'s two flushes and its position-8 keep, (C) and (E) — and every
+other test of both suites passes.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

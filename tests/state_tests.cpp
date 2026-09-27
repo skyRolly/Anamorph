@@ -44018,6 +44018,10 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
 //  -- and with a COMPLETE TWIN switched to B completely. The forced bottom resets every stateful node and snaps every
 //  smoother the edits here reach, so with Level Match off the output from the bottom on is a function of the state
 //  adopted there: a race bit-identical to its partial twin adopted exactly the partly written slot, field for field.
+//  That holds only if the twin reads the edited parameters EXACTLY as the race does, which each comparison also asserts:
+//  a field the race's setUp restored from an A/B slot and the twin never wrote can sit one ulp apart (a Chorus Rate left
+//  at its default: 0.49999997 Hz never written, 0.5 restored), and whether that ulp reaches the output within a few
+//  blocks depends on the build's FMA contraction -- the first version of (E) passed on x86-64 and failed on arm64.
 //
 //  THE METRIC. One heap processor per rig, 48 kHz / 256, the stream of seed 139. A: Advanced Mode, Haas, Amount 80 %,
 //  Width 100 %, Multiband off, Drive 8, Mix 100 %, Output Gain -3. B, a Copy of A edited on B: Drive 12, Width 180 %,
@@ -44046,8 +44050,8 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
 //       adopt the partly written slot too: the three blocks are bit-identical to the partial twin's same sequence and
 //       not the complete twin's.
 //   (E) The algorithm first: Haas -> Chorus (Rate 2 Hz, Depth 80 %) with six blocks inside the writes, at position 1 --
-//       the Algorithm written, Rate and Depth not -- plays Chorus at A's rate and depth: bit-identical to the partial
-//       twin, not the complete twin.
+//       the Algorithm written, Rate and Depth not -- plays Chorus at A's rate and depth (5 Hz, 50 %, written in every
+//       rig at values each write path lands on exactly): bit-identical to the partial twin, not the complete twin.
 //   (F) The real race, for the tsan lane: a paced audio thread against six switches from the message thread; the output
 //       stays finite and the switches land. Nothing about the race's timing is asserted -- only, under the tsan lane,
 //       that there is no data race while the engine adopts whatever it reads.
@@ -44178,6 +44182,21 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
                 if (id == did) kv.push_back ({ did, v });
         return kv;
     };
+    // The edited parameters' raw values, as the audio thread reads them. A partial twin is a valid comparator only if,
+    // at its blocks, it reads these exactly as the race does at its blocks: a field the race restored from an A/B slot
+    // and the twin never wrote can differ by one ulp (a never-written Chorus Rate reads its default's normalised round
+    // trip, 0.49999997 Hz; the same default restored from a slot reads 0.5), and whether that ulp reaches the output
+    // within a few blocks depends on the build's FMA contraction (arm64 yes, the x86-64 baseline no).
+    const auto rawOf = [] (Proc& p, const KV& kv)
+    {
+        std::vector<float> v;
+        for (const auto& kvp : kv) v.push_back (p.getAPVTS().getRawParameterValue (kvp.first)->load());
+        return v;
+    };
+    const auto sameRaw = [] (const std::vector<float>& x, const std::vector<float>& y)
+    {
+        return x.size() == y.size() && std::equal (x.begin(), x.end(), y.begin(), [] (float u, float w) { return juce::exactlyEqual (u, w); });
+    };
     const auto names = [] (const KV& kv, const KV& all, bool in)
     {
         juce::String s;
@@ -44208,14 +44227,17 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
     for (const int k : { 0, 1, 4, 7, 8 })
     {
         Rig r; setUp (r, bEdits, a, false);
-        const Race rc = race (r, k, [&] { runBlocks (r, kIn, true); });
+        std::vector<float> rRaw, twRaw;
+        const Race rc = race (r, k, [&] { rRaw = rawOf (*r.p, bEdits); runBlocks (r, kIn, true); });
         const KV partial = partialOf (rc, bEdits);
-        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); runBlocks (tw, kIn, true);
-        const bool asPartial = rc.reached && r.out == tw.out;
+        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); twRaw = rawOf (*tw.p, bEdits); runBlocks (tw, kIn, true);
+        const bool sameIn = sameRaw (rRaw, twRaw);
+        const bool asPartial = rc.reached && sameIn && r.out == tw.out;
         const bool asComplete = r.out == fullOff.out;
-        std::printf ("  (A) position %d/%d: B's %s written, A's %s | the three blocks bit-identical to the partial twin: %s, "
-                     "to the complete twin: %s\n", k, nWrites, names (partial, bEdits, true).toRawUTF8(),
-                     names (partial, bEdits, false).toRawUTF8(), asPartial ? "yes" : "no", asComplete ? "yes" : "no");
+        std::printf ("  (A) position %d/%d: B's %s written, A's %s | the partial twin reads them exactly: %s; the three blocks "
+                     "bit-identical to it: %s, to the complete twin: %s\n", k, nWrites, names (partial, bEdits, true).toRawUTF8(),
+                     names (partial, bEdits, false).toRawUTF8(), sameIn ? "yes" : "no", r.out == tw.out ? "yes" : "no",
+                     asComplete ? "yes" : "no");
         check (asPartial, "State test 139 (A): the forced bottom reached inside the writes adopts exactly the partly written slot");
         check (k == nWrites ? asComplete : ! asComplete,
                k == nWrites ? "State test 139 (A): with every write done the bottom adopts B"
@@ -44292,14 +44314,16 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
             runBlocks (r, kIn - 1, true);
         };
         Rig r; setUp (r, bEdits, a, false);
-        const Race rc = race (r, 4, [&] { seq (r); });
+        std::vector<float> rRaw, twRaw;
+        const Race rc = race (r, 4, [&] { rRaw = rawOf (*r.p, bEdits); seq (r); });
         const KV partial = partialOf (rc, bEdits);
-        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); seq (tw);
+        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); twRaw = rawOf (*tw.p, bEdits); seq (tw);
         Rig full; setUp (full, bEdits, a, false); full.p->abSwitchTo (1); seq (full);
-        const bool asPartial = rc.reached && r.out == tw.out, asComplete = r.out == full.out;
-        std::printf ("  (D) %s one block after the request, position 4: bit-identical to the partial twin: %s, to the complete "
-                     "twin: %s\n", variant == 0 ? "a host reset" : "a same-rate prepareToPlay", asPartial ? "yes" : "no",
-                     asComplete ? "yes" : "no");
+        const bool sameIn = sameRaw (rRaw, twRaw);
+        const bool asPartial = rc.reached && sameIn && r.out == tw.out, asComplete = r.out == full.out;
+        std::printf ("  (D) %s one block after the request, position 4: the partial twin reads the edits exactly: %s; "
+                     "bit-identical to it: %s, to the complete twin: %s\n", variant == 0 ? "a host reset" : "a same-rate prepareToPlay",
+                     sameIn ? "yes" : "no", r.out == tw.out ? "yes" : "no", asComplete ? "yes" : "no");
         check (asPartial && ! asComplete, variant == 0 ? "State test 139 (D): a host reset inside the writes completes the swap with the partly written slot"
                                                        : "State test 139 (D): a same-rate prepareToPlay inside the writes primes the partly written slot");
     }
@@ -44307,15 +44331,25 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
     // ---- (E) the algorithm first -------------------------------------------------------------------------------------
     {
         const int kLong = 6;
-        Rig r; setUp (r, chorus, a, false);
-        const Race rc = race (r, 1, [&] { runBlocks (r, kLong, true); });
+        // A's Chorus Rate and Depth are written in every rig, at values each write path lands on exactly: the Rate's
+        // range end (normalised 1, which the range clamps to) and the Depth's midpoint on its linear range. Left at its
+        // default, the Rate the race restores from A's slot and the Rate the partial twin never writes are one ulp apart
+        // (above), and the two Choruses drift apart in phase: invisible without FMA contraction, not with it.
+        KV aE = a;
+        aE.push_back ({ "chorusRate", 5.0f });
+        aE.push_back ({ "chorusDepth", 0.5f });
+        Rig r; setUp (r, chorus, aE, false);
+        std::vector<float> rRaw, twRaw;
+        const Race rc = race (r, 1, [&] { rRaw = rawOf (*r.p, chorus); runBlocks (r, kLong, true); });
         const KV partial = partialOf (rc, chorus);
-        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); runBlocks (tw, kLong, true);
-        Rig full; setUp (full, chorus, a, false); full.p->abSwitchTo (1); runBlocks (full, kLong, true);
-        const bool asPartial = rc.reached && r.out == tw.out, asComplete = r.out == full.out;
-        std::printf ("  (E) Haas -> Chorus, position 1: %s written, %s not | bit-identical to the partial twin: %s, to the "
-                     "complete twin: %s\n", names (partial, chorus, true).toRawUTF8(), names (partial, chorus, false).toRawUTF8(),
-                     asPartial ? "yes" : "no", asComplete ? "yes" : "no");
+        Rig tw; setUp (tw, partial, aE, false); tw.p->abSwitchTo (1); twRaw = rawOf (*tw.p, chorus); runBlocks (tw, kLong, true);
+        Rig full; setUp (full, chorus, aE, false); full.p->abSwitchTo (1); runBlocks (full, kLong, true);
+        const bool sameIn = sameRaw (rRaw, twRaw);
+        const bool asPartial = rc.reached && sameIn && r.out == tw.out, asComplete = r.out == full.out;
+        std::printf ("  (E) Haas -> Chorus, position 1: %s written, %s not | the partial twin reads them exactly: %s; "
+                     "bit-identical to it: %s, to the complete twin: %s\n", names (partial, chorus, true).toRawUTF8(),
+                     names (partial, chorus, false).toRawUTF8(), sameIn ? "yes" : "no", r.out == tw.out ? "yes" : "no",
+                     asComplete ? "yes" : "no");
         check (partial.size() == 1 && std::strcmp (partial[0].first, "algorithm") == 0,
                "State test 139 (E) premise: the Algorithm is written before its own Rate and Depth");
         check (asPartial && ! asComplete, "State test 139 (E): the bottom adopts Chorus at A's rate and depth");

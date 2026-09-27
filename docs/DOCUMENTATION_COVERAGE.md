@@ -13031,6 +13031,12 @@ production file changes. All of it is 0.9.9, dated 2026-09-27 (`worklogs/NONFINI
 - **State test 139** (`testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot`): 26 checks. It
   characterizes the head, deterministically and field by field, through the production path. On the prototype
   11 of its checks fail — every one a defect-characterizing check — and every other check of both suites passes.
+- **The arm64 finding (CI on `9eea7c4`).** The first version's leg (E) passed on x86-64 and failed on the macOS
+  arm64 slice. Its partial twin read A's Chorus Rate one ulp away from the race: never written, JUCE holds a
+  parameter at its default's unsnapped round trip (0.49999997 Hz); restored from a slot, at the snapped 0.5. The
+  arm64 slice contracts to FMA, and there the ulp reached the output. Reproduced on x86-64 with contraction on and
+  fixed in the test: (E) writes A's Rate and Depth at exact values, and every partial-twin comparison asserts the
+  twin reads the race's edited parameters bit for bit (worklog §T7).
 - **Validation (the final tree).** DSP 935 / 0 and State 5547 / 0 under a 1 MiB stack. The output is `9e38310`'s
   outside State test 139 (thread-timing counters aside); the DSP output is identical in all 73 sections. The
   five Devin controls fail as before, and State test 139 under none of them. memcheck is clean on the new

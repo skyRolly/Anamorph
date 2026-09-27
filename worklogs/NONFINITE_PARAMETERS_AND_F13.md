@@ -3254,6 +3254,32 @@ Amount reaches every later block. The first draft, with Amount, failed (A) at po
 first sample, before the switch. A partial twin that never visited B's Amount does not share the race's
 history.
 
+**The arm64 finding (CI on `9eea7c4`).** The `macos` job's native arm64 run failed one check, (E): not bit-identical
+to the partial twin, and not to the complete twin. The x86-64 slice under Rosetta, and Linux, passed.
+- **Reproduced locally.** A local x86-64 build with contraction on (`-ffp-contract=fast` in place of the baseline's
+  `-ffp-contract=off`, ADR-0031; the shipped arm64 slice contracts, `FMLA` being base ISA) failed (E) alone, 25 of 26
+  passing. The first difference was in block 5, sample 171, with max |d| 2.2e-5.
+- **Cause, in the test.** Reading the engine's adopted `p` and the Chorus's state per block (scratch, internals
+  opened) showed the race at `chorusRate` 0.5 and the partial twin at 0.49999997. A's Rate was left at its default:
+  - JUCE's `ParameterAdapter` seeds a never-written parameter's raw value from `convertFrom0to1 (default)`, unsnapped
+    by design;
+  - a written value is stored snapped;
+  - the race's `setUp` restored A's Rate from A's slot after B's edits;
+  - the partial twin's `setUp` never wrote it.
+
+  The one-ulp rate difference drifts the LFO phase. Whether it reaches the output within six blocks depends on
+  rounding: not on the x86-64 baseline, and it does with FMA.
+- **Not the finding.** Making the two histories identical (no blocks between B's edits and the switch back) still
+  left the race and the twin one ulp apart, and then (E) failed without FMA too. The difference is in the values,
+  not in the audio history.
+- **Fix, test only.** (E) now writes A's Rate and Depth in every rig, at values every write path lands on exactly:
+  5 Hz, the range end, which the range clamps to; and 50 %, on a linear range. Every partial-twin comparison ((A),
+  (D), (E)) also asserts that, at its blocks, the twin reads the edited parameters' raw values exactly as the race
+  does at its blocks.
+  - Against the first version's (E), the assertion fails on the x86-64 baseline too: a lucky pass becomes a
+    deterministic failure.
+  - The final test passes 26 / 0 built both ways. On the prototype it still fails the same 11.
+
 ### T8. Validation, and the drift reported
 
 The final tree is `9e38310`'s `src/`, unchanged, with State test 139 added.
@@ -3278,15 +3304,18 @@ The final tree is `9e38310`'s `src/`, unchanged, with State test 139 added.
   These are §S8's counts exactly. State test 139 fails under none of them: it pins the handoff, which no
   control touches. The controls' objects were rebuilt from scratch this round, because their runner does not
   track header dependencies. The counts did not move, so §S8's stand.
-- **ThreadSanitizer** (clang-18, the `tsan` lane's `TSAN_OPTIONS` and suppression file). The whole State
-  suite, State test 139's threaded leg (F) included, ran 5547 / 0 in 278 s, with no report. The four
+- **ThreadSanitizer** (clang-18, the `tsan` lane's `TSAN_OPTIONS` and suppression file; `9eea7c4`'s tree, whose
+  leg (F) the arm64 fix does not touch). The whole State suite, State test 139's threaded leg (F) included, ran
+  5547 / 0 in 278 s, with no report. The four
   suppressions matched are the file's existing `deadlock:` entries, each naming its test's seat.
 - **ASan + UBSan** (clang-18, the `sanitizers` lane's flags with `halt_on_error=0` to list every site; CI's
-  step uses clang 22). The whole State suite ran 5547 / 0 in 151 s, with no AddressSanitizer or leak report.
+  step uses clang 22; `9eea7c4`'s tree). The whole State suite ran 5547 / 0 in 151 s, with no AddressSanitizer or leak report.
   UBSan's 13 reports are all in JUCE's bundled HarfBuzz, the same set as §S8's replica; none is in
   first-party code.
 - **memcheck** (the lane's flags, `ANAMORPH_NO_ALLOC_GUARD`, `ANAMORPH_TESTS_NO_FTZ=1`). State test 139 alone
-  ran 26 / 0 with 0 errors, in 20 s. The `sanitizers` lane grows by about that.
+  ran 26 / 0 with 0 errors, in 18 s. The `sanitizers` lane grows by about that.
+- **FMA contraction.** State test 139 built with `-ffp-contract=fast` on x86-64 (the arm64 slice's contraction
+  class) ran 26 / 0 (§T7, the arm64 finding).
 - **Warnings and frames.**
   - GCC 13 with the gate's flags on `state_tests.cpp`: the same first-party warning set as `9e38310`'s.
   - clang-18 with the gate's warning flags: the same first-party set as `9e38310`'s, and nothing in the new
@@ -3294,7 +3323,7 @@ The final tree is `9e38310`'s `src/`, unchanged, with State test 139 added.
     `state_tests.cpp` row, plus three in two headers (`PluginEditor.h`, `ScopeBuffer.h`). The first comparison exited 1 on both trees at
     `state_tests.cpp:129`. The cause was the harness, not the code: it escaped the quotes of
     `ANAMORPH_FIXTURE_DIR`. With the define quoted, both trees parse clean. The Clang 22 gate runs in CI.
-  - Frames (GCC `-fstack-usage`): State test 139 is 1,136 B, and its largest lambda 448 B. The file's
+  - Frames (GCC `-fstack-usage`): State test 139 is 1,248 B, and its largest lambda 448 B. The file's
     largest frames are unchanged. Every member of the test's local structs is initialized.
 - **Static checks.** `check-docs`, `check-realtime`, `check-dispatch`, `check-portability` and
   `check-state-coverage` pass. `check-citations` passes against `9e38310` (573 anchors), `b82a294` and
