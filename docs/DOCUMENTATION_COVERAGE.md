@@ -13043,9 +13043,10 @@ that approval; ADR-0057 is **Accepted** and records it. All of it is 0.9.9, date
 - **`KNOWN_ISSUES.md`:** KI-032 **RESOLVED** (struck-through row, banner; KI-030's cross-reference).
 - **`CHANGELOG.md` `[0.9.9]`:** the KI-032 lead removed; one *Fixed* bullet. The version and the date are unchanged.
 - **`TESTING.md`:** Test 75, State tests 139 and 140, the probes, and the ARMv8-ordering coverage gap.
-- **`CI_CD.md`:** unchanged — no job, command, flag or timeout changed (`.github/workflows/build.yml` gains only one
-  re-anchored line number in a comment). The `sanitizers` lane's time on this head is recorded in the PR #156
-  description, against the 60-minute cap kept on 2026-09-26.
+- **`CI_CD.md`:** no job, command, flag or timeout changed (`.github/workflows/build.yml` gains only one
+  re-anchored line number in a comment). One paragraph added: PREfast's one new `C6262` (State test 140's frame,
+  real 7,392 bytes), disposed `DO NOT FIX` with the byte-value diff against `f12cc80`. The `sanitizers` lane's
+  time on this head is recorded in the PR #156 description, against the 60-minute cap kept on 2026-09-26.
 - **Re-anchored by `check-citations.py --fix`** (anchor-only, no prose change): the anchors of about thirty other
   documents that cite the moved lines, `PRIVACY.md` and a comment in `.github/workflows/build.yml` among them;
   `DELIBERATE_REAIMS` re-derived, and three hand re-aims declared (worklog §V4).

@@ -3759,7 +3759,17 @@ Release, x86-64 Linux, GCC 13, 48 kHz / 256, `ulimit -s 1024`.
   guest's accesses with the x86-64 host's TSO ordering: this is the AArch64 code's logic, not weak ordering. The
   native arm64 run is CI's `macos` job: its result on the pushed head is recorded in the PR #156 description.
 - **Lints:** `check-docs` (and its self-test, 464 cases), `check-dispatch`, `check-portability`, `check-realtime` (97 self-test cases), `check-state-coverage`, and `check-citations --check` against `HEAD` (`f12cc80`, 574 anchors), `659ca0a` (542) and `e49a90e` (573) all pass; its self-test passes (269 cases). The re-anchoring: `--fix` against `f12cc80` moved 157 anchors (plain moves, three self-references in `AnamorphEngine.cpp` comments and two anchor-only comment lines in `.github/workflows/build.yml` and `PRIVACY.md` among them); 31 declared re-aims were re-derived through the same line map; three spans whose cited lines were rewritten were re-aimed by hand and declared (API_REFERENCE's engine span, ADR-0007's prime); and ARCHITECTURE's per-block anchor, already stale at the base (it cited the seek detector), was re-aimed and declared. Two more stale anchors the parser does not track (`ScopedNoDenormals` at `:240` / `:119`) were corrected by hand
-- **CI, PREfast, the sanitizer lane:** run on the pushed head; their record (the PREfast comparison against the 180 C6262 / 8 C26495 / 4 C26498 baseline, the `sanitizers` lane's time, the arm64 `macos` job) is in the PR #156 description
+- **ASan / UBSan and memcheck (local).** ASan + UBSan (clang 18, RelWithDebInfo): DSP 940 / 0, State 5,573 / 0;
+  no ASan report; the only UBSan reports are implicit-conversion findings inside JUCE's bundled HarfBuzz
+  (third-party). The State suite needs a 64 MB stack under ASan here (clang 18's `main` frame; the same on `f12cc80`).
+  memcheck (built with `-DANAMORPH_NO_ALLOC_GUARD`, as the `sanitizers` lane builds it): DSP 0 errors (873 s),
+  State 0 errors (1,736 s), both of `5f818da`'s code, whose `src/` is the final head's.
+- **PREfast** (the `prefast-sarif-*` artifact of `5f818da` against `f12cc80`'s): 181 `C6262`, 8 `C26495`, 4 `C26498`;
+  the `C26495` and `C26498` sets identical; one `C6262` added, none removed: State test 140's frame (19,136 by
+  `/analyze`, 7,392 by `g++ -fstack-usage`), disposed `DO NOT FIX` in `CI_CD.md`; every other claim moved by an
+  exact multiple of 88 bytes (a processor's growth on MSVC) or 16 (an engine's). No suppression.
+- **CI and the sanitizer lane:** run on the pushed head; their record (the `sanitizers` lane's time, the arm64
+  `macos` job) is in the PR #156 description
 
 ### V5. Recorded, not changed (deferred)
 

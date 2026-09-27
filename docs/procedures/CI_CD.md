@@ -1525,6 +1525,19 @@ automatic (two A/B records at 16 bytes each and the matcher's 16) — and the ne
 findings, both on Test 73's non-finite constants (`inf`, `nan` not marked `constexpr`), are fixed at
 the source in the following commit, not suppressed.
 
+**ADR-0057's implementation (2026-09-27, `5f818da`) adds one `C6262`, disposed `DO NOT FIX`.** Diffed
+by byte value against `f12cc80` (180 `C6262`, 8 `C26495`, 4 `C26498`): 181, 8 and 4 — the `C26495` and
+`C26498` sets identical, no `C6262` removed, and one added: `Function uses '19136' bytes of stack` on
+`testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates` (State test 140, new). `g++ -fstack-usage` on
+ninja's compile line measures its real frame at **7,392 bytes** (`dynamic,bounded`; largest lambda 352) —
+**0.7 %** of the 1 MiB reserve, 1 % of the State suite's largest frame (712,320). `/analyze`'s 19,136 is
+2.6× that: it sums the disjoint scenario scopes' rigs, tallies and `std::function` plans. Every claim that
+moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
+`state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;
+the engine's 16) and **16 bytes** per engine in `dsp_tests.cpp`. GCC's `sizeof` moves by 56 and 16 from
+`f12cc80` to the head (its `std::function` is 32). Test-only, and the suite passes under the
+`ulimit -s 1024` guard step: nothing to fix, and no suppression.
+
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 
 `sanitizers` runs both suites twice: once under ASan+UBSan (about two minutes) and once under
