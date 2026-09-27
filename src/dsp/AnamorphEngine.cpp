@@ -737,8 +737,8 @@ bool AnamorphEngine::startTakenRequests() noexcept
     if (startPending)
     {
         // The swap starts NOW, on a snapshot that holds all of its writes. Its A/B bookkeeping runs first,
-        // against the state being left -- `p`, unchanged since the request was taken, because nothing is
-        // adopted while a swap is awaited -- and the forced duck follows.
+        // against the state being left -- `p`: nothing new is adopted while a swap is awaited, though a duck
+        // in flight at its request may land its own trusted target meanwhile -- and the forced duck follows.
         startPending = false;
         if (stashAb)
             switchAbSlots (stashFrom, stashTo, ! stashNoRecord);
@@ -859,7 +859,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
 void AnamorphEngine::primeSnapshot (const EngineParameters& np, bool trusted) noexcept
 {
     // A bulk swap is being written, or this snapshot may predate its completion (ADR-0057): the prime
-    // keeps the state it has, and the swap starts, ducked, at the first block that reads it complete.
+    // keeps the state it has, and the swap starts, ducked, at the first adoption that reads it complete.
     if (! trusted)
         return;
     primeMeasChanged = primeMeasChanged || measurementChangeFrom (np);

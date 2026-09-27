@@ -810,8 +810,9 @@ the fields are written.
   `primeParameters` before it adopts the prime), it records the slot being left from its own `p`, `sr`
   and matcher, the matcher's evidence included. *Since ADR-0057 (2026-09-27):* when the swap STARTS —
   `startTakenRequests` → `switchAbSlots`, on the first trusted snapshot after the swap's completion, or
-  in a trusted prime. Nothing is adopted between the request and that start, so the state recorded is
-  still the source's, exactly what the request-time capture recorded; the engine API's sequence-0 switch
+  in a trusted prime. No new snapshot is adopted between the request and that start (a duck already in flight may still reach its
+  bottom and adopt its own earlier, trusted target, and the measure keeps running), so the state recorded is
+  still the source slot's, as it stands at the start, not necessarily what a request-time capture would have recorded; the engine API's sequence-0 switch
   (`takeRequests`) is recorded at the next trusted snapshot, as before.
 - **Not measured during a duck in flight** — before its bottom — that has made a measurement-input change
   live which only that bottom will report (`duckMeasDirty`, the rule `prepare()` already applies; the bottom
@@ -883,7 +884,7 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
 | `abCopyToOther` onto the inactive slot | unchanged (its state moves, its record does not) | at the next switch to it | no, if the copy moved a measurement input (the evidence dropped with it); otherwise as the first row (State test 137 (D)) |
 | the shared Oversampling setting changed on the other slot | — | at the next switch | no (`oversample` is a measurement input) |
 | an edit to the slot not yet adopted when it was left, or made during the return fade | — | — | no (the recorded state differs from the adopted one) |
-| a switch the prime takes (`prepareToPlay` with a switch pending; since ADR-0057 only a completed one, on a trusted snapshot — one still being written stays pending and starts, ducked, at the first block that reads it complete) | from the state before the prime | on the first block (the duck was dropped) | at the same rate as above; at a new rate no |
+| a switch the prime takes (`prepareToPlay` with a switch pending; since ADR-0057 only a completed one, on a trusted snapshot — one still being written stays pending and starts, ducked, at the first adoption that reads it complete — `prepareFrom`'s trailing one, or a block) | from the state before the prime | on the first block (the duck was dropped) | at the same rate as above; at a new rate no |
 | a new sample rate | kept, stamped with its rate | — | no at the new rate; yes again back at the rate it was measured at |
 | a host `reset()` with a switch in flight | as taken | on the next block | as above (since ADR-0057 a reset adopts only `pendingP`, always a trusted snapshot: a switch still awaited is not landed, and starts at its completion) |
 | `setStateInformation` (`adoptRestoreTail`) | every record forgotten: 0 dB, not measured; a pending switch dropped | — | no |

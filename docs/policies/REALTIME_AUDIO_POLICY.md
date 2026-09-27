@@ -35,7 +35,7 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 audio path; all allocation confined to `prepare()`. Full audit: `docs/architecture/REALTIME_SAFETY_AUDIT.md`.
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:390-463 (`processBlock`; `ScopedNoDenormals` at :392), src/dsp/AnamorphEngine.cpp:43-213 (prepare allocations) vs :660-1339 (alloc-free process)
+- Source: src/PluginProcessor.cpp:390-463 (`processBlock`; `ScopedNoDenormals` at :392), src/dsp/AnamorphEngine.cpp:43-213 (prepare allocations) vs :1388-2358 (alloc-free process)
 - Audit: docs/architecture/REALTIME_SAFETY_AUDIT.md
 
 ## Enforcement
@@ -46,9 +46,11 @@ Evidence [Verified]:
   chain **below the annotated `process` entry** aborts the job at the offending frame. The
   per-block wrapper path *above* it (`processBlock` → `AnamorphEngine::setParametersFrom`, which
   takes the request word (`takeRequestWord`), calls the wrapper's read (`readEngineSnapshot` →
-  `PluginParameters::toEngine`), takes the word again and adopts through `adoptSnapshot`) is outside
-  RTSan's enforcement; its non-allocation classes are gated by `check-realtime.py`, which seeds those
-  names directly (ER-RT-02, 2026-08-31; `setParametersFrom` and `takeRequestWord` since ADR-0057), and
+  `ParamPointers::toEngine`), takes the word again and adopts through `adoptSnapshot`) is outside
+  RTSan's enforcement; its non-allocation classes are gated by `check-realtime.py`, which seeds `processBlock`,
+  `setParameters` and `toEngine` directly (ER-RT-02, 2026-08-31; `setParametersFrom` and `takeRequestWord`
+  since ADR-0057) and reaches `adoptSnapshot` through `setParameters`'s same-file closure; the one-line
+  header inline `readEngineSnapshot` (`PluginProcessor.h`) is not scanned, only the `toEngine` it forwards to; and
   its allocations by Test 38's and Test 75's armed guards. This is the first mechanical detector for the rule
   above — ASan, UBSan and valgrind all treat an audio-path allocation as perfectly correct code.
   Its bounds are stated in the ADR and are real: it is Clang/Linux+macOS only, it sees only what the

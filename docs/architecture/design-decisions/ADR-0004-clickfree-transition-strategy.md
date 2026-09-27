@@ -140,7 +140,8 @@ than real time or the message thread stalled, a mixture neither side holds (`KNO
 [ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md) keeps the mechanism and moves its start:
 
 - The request still precedes the first write, and from the block that takes it the engine adopts
-  nothing — the source keeps playing at full level, unducked, while the destination is written.
+  nothing new — the source keeps playing (at full level, unless a duck already in flight at the request
+  is still landing on its own earlier, trusted target) while the destination is written.
 - The swap's completion (a release publication after its last parameter store) starts the forced
   duck, on the first snapshot read between two acquire takes of the request word after it. That
   snapshot is the duck's target, so the bottom — and a host reset that completes the duck — adopts

@@ -277,8 +277,8 @@ Audio thread (every `processBlock`), and the prepare path the same:
    snapshot was read after the engine's previous call returned (precondition 5). The processor never uses them.
 6. **When the forced bottom may adopt: always.** A forced duck is only ever started on a trusted snapshot. At the
    first trusted snapshot while `startPending` (`startTakenRequests`), the engine applies the engine-API requests
-   first, then the stash — the A/B bookkeeping (`switchAbSlots`), recording the leaving slot against the source,
-   unchanged since the request — and begins the forced duck with that snapshot as its target. A mid-duck retarget
+   first, then the stash — the A/B bookkeeping (`switchAbSlots`), recording the leaving slot against the state being played: the source, or the trusted target of a duck
+   already in flight at the request, which may land during the wait (point 7) — and begins the forced duck with that snapshot as its target. A mid-duck retarget
    is also a trusted snapshot. So the bottom adopts a complete state, and so does a host reset, which adopts
    `pendingP`. A prime that takes a completion with a snapshot it cannot trust leaves the swap pending, and the
    trailing `setParametersFrom` of `prepareFrom`, or the first block, starts it.
@@ -355,8 +355,9 @@ sequenced before W′, then this block's E<sub>a</sub> or E<sub>b</sub> takes R�
 - W′ is a `seq_cst` store (a release) and the load is `seq_cst` (an acquire). Reading W′ makes W′
   synchronize with the load, so R′ happens-before the load, and hence before E<sub>b</sub>.
 - By write-read coherence, E<sub>b</sub> reads R′ or a later value.
-- Only A's own takes clear a request. Every writer keeps a pending request's duck bit and sequence; the
-  forget CAS drops only a switch's slot indices, by design.
+- Only A's own takes clear a request. Every writer keeps a pending request's duck bit and a non-zero
+  sequence (a newer bulk request replaces the sequence with its own, which E<sub>b</sub> reports as new all the
+  same); the forget CAS drops only a switch's flag and slot indices, by design.
 - So either E<sub>a</sub> already read R′, and the swap was awaited after E<sub>a</sub>, or
   E<sub>b</sub> sees R′'s bits. Either way the snapshot is untrusted.
 
@@ -384,7 +385,7 @@ semantics.
     A relaxed C (`STXR`, or a relaxed `CAS`) can become visible to A before W<sub>n</sub>.
   - An `LDAR` in L orders only the accesses **after** it. So with a relaxed E<sub>a</sub> (`LDXR`), L's
     loads may be satisfied before E<sub>a</sub>'s.
-  - With C as `STLXR` / `CASL` and E<sub>a</sub> as `LDAXR` / `SWPAL`, both orders hold.
+  - With C as `STLXR` / `CASL` and E<sub>a</sub> as `LDAXR` / `SWPA`, both orders hold.
   - Claim 2 holds on ARMv8 because `STLR` orders R′ before W′; the architecture is other-multi-copy
     atomic; and L's `LDAR` orders E<sub>b</sub> after it.
 - **x86-64 hides all of this.** It is TSO, and every RMW is a locked instruction, so no x86-64 run can
@@ -399,6 +400,13 @@ semantics.
    `->load()`. A relaxed read there would break Claim 2. Pinned by a comment at `ParamPointers::toEngine` and by
    `check-realtime.py`, which rejects `memory_order_relaxed` / `consume` in `toEngine`'s body (with self-test
    cases in both directions); the AArch64 disassembly of `toEngine` shows 36 `LDAR` for its 36 loads.
+   **The other half of the pair is binding too** (made explicit by the pre-merge audit, 2026-09-27; the proof's
+   notation always assumed it): every message-thread store of a swap-carried value is a release or stronger.
+   The stores are JUCE's — `ParameterAdapter::parameterValueChanged` assigns the `std::atomic<float>`
+   `unnormalisedValue` with the default `seq_cst` (`juce_AudioProcessorValueTreeState.cpp:155` at the pinned
+   JUCE 9.0.2, `72782788`) — plus the processor's silent re-assert, whose `atom->store` is `seq_cst` too. A
+   relaxed store there breaks Claim 2 exactly as a relaxed read does. No lint can see it (it is JUCE's source), so
+   a JUCE bump re-verifies it (`DEPENDENCY_POLICY.md`, upgrade rule 2).
 3. Every modification of the word is a read-modify-write (the request-word comment in `AnamorphEngine.h`).
 4. Exactly one completion follows each request, after its last store, on every exit path (`BulkApply`,
    `SoundAppliedGuard`).
@@ -551,7 +559,8 @@ Release, x86-64 Linux, GCC 13, 48 kHz / 256, under a 1 MB stack.
 | prime / prepare | adopts its snapshot wholesale; the trailing `setParameters` re-uses it | `prepareFrom`: adopts only a trusted snapshot, then re-reads (State test 139 (D); State test 140 S8, S9c–e; Test 75 (3)) |
 | Copy | no write, no request | unaffected: the word is unchanged by a Copy (State test 140 S12) |
 | session restore | no duck: ordinary automation, ADR-0036 §24 | out of scope; its forget keeps the duck, the sequence and the completion |
-| engine API (sequence 0) | `requestDuck()` / `requestAbSwitch (from, to)` + `setParameters (np)` | unchanged behaviour; one take with its own trust rule (Test 75 (1) and (4); Test 70) |
+| engine API (sequence 0) | `requestDuck()` / `requestAbSwitch (from, to)` + `setParameters (np)` | unchanged behaviour while no bulk sequence is pending (a sequence-0 request raised while one is folds into that swap, `AnamorphEngine.cpp:616-618`); one take with its own trust rule (Test 75 (1) and (4); Test 70) |
+| other multi-store actions (Apply's two stores, the imager's band transactions) | no request | not bulk swaps: they raise no forced duck, so the handshake does not apply; a block between their stores adopts the intermediate state as a live edit, as before (pre-merge audit, 2026-09-27) |
 
 ## Consequences
 
@@ -620,7 +629,7 @@ preset completion point; the A/B completion point after the Bypass / view write-
 - `src/PluginProcessor.h:185` (`readEngineSnapshot`); `src/PluginProcessor.h:970-1001` (the handshake block and
   `BulkApply`).
 - `src/PresetManager.cpp:64-84` (`SoundAppliedGuard`); `src/PresetManager.cpp:867`, `src/PresetManager.cpp:895`,
-  `src/PresetManager.cpp:912`, `src/PresetManager.cpp:1035-1037` (the guard and its two completion points per loader);
+  `src/PresetManager.cpp:867`, `src/PresetManager.cpp:895`, `src/PresetManager.cpp:912`, `src/PresetManager.cpp:1035-1037` (each loader's guard and its explicit completion points: `loadAdopted`'s factory and user-file branches, `applyParsedFile`'s one);
   `src/PresetManager.h:326-331` (`onSoundApplied`).
 - `src/dsp/AnamorphEngine.h:130-172` (the prime, `setParameters`, `setParametersFrom`, `prepareFrom`),
   `src/dsp/AnamorphEngine.h:228-246` (`completeBulkApply`, the observers), `src/dsp/AnamorphEngine.h:439-486` (the word

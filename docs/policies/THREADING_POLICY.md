@@ -323,7 +323,11 @@ relies on.
      `abApplySlot` / `applyUndoEntry`, `onSoundApplied` after a preset's last write);
   2. every audio-thread read of a swap-carried value is an acquire or stronger — `toEngine`'s
      default `seq_cst` `load()`s; `check-realtime.py` rejects a relaxed or consume order there,
-     because a relaxed read breaks Claim 2 on ARMv8 while every x86-64 test still passes;
+     because a relaxed read breaks Claim 2 on ARMv8 while every x86-64 test still passes — and every
+     message-thread store of one is a release or stronger: JUCE's `ParameterAdapter` assigns its
+     `std::atomic<float>` with the default `seq_cst`, and the processor's silent re-assert stores
+     `seq_cst` too. No lint reaches JUCE's source, so a JUCE bump re-verifies it (`DEPENDENCY_POLICY.md`
+     rule 2; made explicit by the pre-merge audit, 2026-09-27);
   3. every modification of the word is a read-modify-write, so every later modification is in a
      completion's release sequence;
   4. exactly one completion follows each request, after its last store, on every exit path an

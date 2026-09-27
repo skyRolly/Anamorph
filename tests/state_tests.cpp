@@ -45183,6 +45183,142 @@ static void testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates()
     check (totalBad == 0, "State test 140: every block, host reset and re-prepare adopted a complete state; every command landed; nothing is left pending; every measured record landed measured; every twin is bit-identical");
 }
 
+// =====================================================================================================================
+//  State test 141 -- EVERY BULK SWAP'S REQUEST IS COMPLETED, ON ITS REFUSAL AND EXCEPTION PATHS (ADR-0057,
+//  precondition 4; the pre-merge audit, worklog §W).
+//
+//  The engine adopts nothing while a swap's completion is awaited, so a request that is never completed freezes the
+//  adopted sound for good: every later bulk swap JOINS the open one (`bulkDepth`) and never completes either. The
+//  ordinary paths complete explicitly (`BulkApply::complete()`, `SoundAppliedGuard::fire()`), and State tests 139 and
+//  140 pin those. This test pins the rest:
+//    (R)  a REFUSED preset load -- a user row whose file is gone, a foreign root, an unparsable file; through the
+//         menu's `load (idx)` and the chooser's `loadFile` -- raises no request: nothing is left pending, the adopted
+//         sound is the live one, and the next A/B switch lands whole;
+//    (E1) an exception thrown inside an A/B switch's writes still publishes the completion as `BulkApply` unwinds:
+//         nothing stays pending, the engine adopts what the parameters hold, and the next switch lands whole;
+//    (E2) the same inside a factory preset's writes, through `SoundAppliedGuard`'s destructor.
+//  The exception is injected at the processor's `insideSoundReplacement` seam, part-way through the write loop. What a
+//  half-applied command leaves in the PARAMETERS is the command's failure, not this test's subject; the engine must
+//  only never freeze on it. Negative controls (worklog §W): `~BulkApply` without its completion fails (E1),
+//  `~SoundAppliedGuard` without its fire() fails (E2), `onAboutToLoad` raised before `loadAdopted`'s refusals fails (R).
+// =====================================================================================================================
+static void testEveryBulkSwapRequestIsCompletedOnItsRefusalAndExceptionPaths()
+{
+    std::printf ("State test 141: every bulk swap's request is completed on its refusal and exception paths -- nothing "
+                 "stays pending (ADR-0057)\n");
+    using namespace bulkswap;
+    using Op = anamorph::PresetManager::OpResult;
+    auto proc = std::make_unique<Proc>();   // ~138 kB: on the heap (State test 59)
+    auto& p = *proc;
+    auto& e = p.getEngine();
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midi;
+    int k = 0;
+    const auto run = [&] (int n) { for (int i = 0; i < n; ++i) { fill (buf, k++); p.processBlock (buf, midi); } };
+    // Settled: nothing awaited or about to start, and the engine holds exactly what the parameters hold.
+    const auto settled = [&] { return ! e.isBulkSwapPending() && same (e.getAdoptedParameters(), p.readEngineSnapshot()); };
+
+    // Two A/B slots that differ in a continuous and a discrete field, each settled.
+    for (const auto& [id, v] : combos()[2].a) store (p, id, v);
+    p.pollUndoCoalesce();
+    p.prepareToPlay (sr, block);
+    run (40);
+    p.abCopyToOther();
+    p.abSwitchTo (1);
+    run (40);
+    for (const auto& [id, v] : combos()[2].b) store (p, id, v);
+    p.pollUndoCoalesce();
+    run (40);
+    const EP refB = e.getAdoptedParameters();
+    p.abSwitchTo (0);
+    run (40);
+    const EP refA = e.getAdoptedParameters();
+    check (! same (refA, refB) && settled(), "State test 141 premise: the two slots differ and the engine is settled on A");
+
+    // ---- (R) refused loads ------------------------------------------------------------------------------------------
+    auto dir = anamorph::PresetManager::presetDirectory();
+    check (dir.createDirectory(), "State test 141 (R) premise: the preset directory is available");
+    auto fileFor = [&] (const char* n) { return dir.getChildFile (juce::String (n) + anamorph::PresetManager::fileSuffix()); };
+    auto gone = fileFor ("__BulkSwap141Gone__"), foreign = fileFor ("__BulkSwap141Foreign__"), garbage = fileFor ("__BulkSwap141Garbage__");
+    {
+        auto xml = p.getAPVTS().copyState().createXml();
+        check (xml != nullptr && gone.replaceWithText (xml->toString()), "State test 141 (R) premise: a valid preset is written");
+    }
+    check (foreign.replaceWithText ("<SomeOtherPluginPreset version=\"2\">\n  <PARAM id=\"width\" value=\"0.05\"/>\n</SomeOtherPluginPreset>\n")
+           && garbage.replaceWithText ("this is not a preset <<<"), "State test 141 (R) premise: the refused files are written");
+    p.getPresets().refresh();
+    auto rowOf = [&] (const char* name)
+    {
+        const auto& es = p.getPresets().entries();
+        for (int i = 0; i < es.size(); ++i) if (es[i].name == name) return i;
+        return -1;
+    };
+    const int idxGone = rowOf ("__BulkSwap141Gone__"), idxForeign = rowOf ("__BulkSwap141Foreign__"), idxGarbage = rowOf ("__BulkSwap141Garbage__");
+    check (idxGone >= 0 && idxForeign >= 0 && idxGarbage >= 0, "State test 141 (R) premise: the three harness rows are listed");
+    check (gone.deleteFile(), "State test 141 (R) premise: the listed row's file is deleted before its load");
+    struct Refusal { const char* what; std::function<Op()> load; };
+    const Refusal refusals[] = {
+        { "load (idx) of a row whose file is gone",    [&] { return p.getPresets().load (idxGone); } },
+        { "load (idx) of a foreign-rooted file",       [&] { return p.getPresets().load (idxForeign); } },
+        { "load (idx) of an unparsable file",          [&] { return p.getPresets().load (idxGarbage); } },
+        { "loadFile of a foreign-rooted file",         [&] { return p.getPresets().loadFile (foreign); } },
+        { "loadFile of an unparsable file",            [&] { return p.getPresets().loadFile (garbage); } },
+        { "loadFile of a missing file",                [&] { return p.getPresets().loadFile (gone); } },
+    };
+    int refusedOk = 0;
+    for (const auto& rf : refusals)
+    {
+        const std::string what (rf.what);
+        const bool refused = rf.load() == Op::failed;
+        run (12);
+        const bool ok = refused && settled() && same (e.getAdoptedParameters(), refA);
+        refusedOk += ok ? 1 : 0;
+        check (ok, ("State test 141 (R): " + what + " is refused, raises no request, and leaves the engine settled on A").c_str());
+    }
+    foreign.deleteFile();
+    garbage.deleteFile();
+    p.abSwitchTo (1);
+    run (40);
+    const bool rLands = settled() && same (e.getAdoptedParameters(), refB);
+    check (rLands, "State test 141 (R): after the refusals the next A/B switch lands on B whole, nothing pending");
+
+    // ---- (E1) an exception inside an A/B switch's writes ------------------------------------------------------------
+    bool armed = false, thrown = false;
+    p.seams.insideSoundReplacement = [&] { if (armed) { armed = false; throw std::runtime_error ("State test 141: injected"); } };
+    armed = true;
+    try { p.abSwitchTo (0); } catch (const std::runtime_error&) { thrown = true; }
+    armed = false;
+    check (thrown, "State test 141 (E1) premise: the exception was thrown inside the A/B switch's writes");
+    run (40);
+    const bool e1Settled = settled();
+    check (e1Settled, "State test 141 (E1): after the exception the swap was completed -- nothing pending, the engine holds what the parameters hold");
+    // abActive moved before the writes, so the switch back re-applies slot B whole.
+    p.abSwitchTo (1);
+    run (40);
+    const bool e1Lands = settled() && same (e.getAdoptedParameters(), refB);
+    check (e1Lands, "State test 141 (E1): the next A/B switch lands on B whole, nothing pending");
+
+    // ---- (E2) an exception inside a factory preset's writes ---------------------------------------------------------
+    const int idxFactory = factoryPresetIndex (p, "Vocal Air");
+    check (idxFactory >= 0, "State test 141 (E2) premise: the factory preset exists");
+    thrown = false;
+    armed = true;
+    try { (void) p.getPresets().load (idxFactory); } catch (const std::runtime_error&) { thrown = true; }
+    armed = false;
+    p.seams.insideSoundReplacement = nullptr;
+    check (thrown, "State test 141 (E2) premise: the exception was thrown inside the preset's writes");
+    run (40);
+    const bool e2Settled = settled();
+    check (e2Settled, "State test 141 (E2): after the exception the load was completed -- nothing pending, the engine holds what the parameters hold");
+    p.abSwitchTo (0);
+    run (40);
+    const bool e2Lands = settled() && same (e.getAdoptedParameters(), p.readEngineSnapshot());
+    check (e2Lands, "State test 141 (E2): the next A/B switch lands whole, nothing pending");
+    std::printf ("  (R) %d of 6 refusals left nothing pending; next switch lands: %s | (E1) completed: %s, next switch lands: %s | "
+                 "(E2) completed: %s, next switch lands: %s\n", refusedOk, rLands ? "yes" : "NO", e1Settled ? "yes" : "NO",
+                 e1Lands ? "yes" : "NO", e2Settled ? "yes" : "NO", e2Lands ? "yes" : "NO");
+}
+
 // =====================================================================================================
 //  --bulk-swap-probe [trials] [stall-us] -- THE DEVIN REPRODUCTION, THREADED (ADR-0057; KI-032; worklog §U1, §V).
 //
@@ -45680,6 +45816,7 @@ int main (int argc, char* argv[])
     testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure();
     testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination();
     testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates();
+    testEveryBulkSwapRequestIsCompletedOnItsRefusalAndExceptionPaths();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

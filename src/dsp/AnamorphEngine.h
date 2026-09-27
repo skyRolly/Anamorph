@@ -109,7 +109,7 @@ public:
     // COUPLED TO prepare(), AND ONLY SAFE BECAUSE OF IT (ADR-0034). Writing `p`
     // writes `p.oversample`, which is what `getLatencySamples()` now reads -- so
     // this moves the read offset of every delay ring without clearing any of them
-    // and without re-latching `osEngaged`. Its one caller (`prepareToPlay`) calls
+    // and without re-latching `osEngaged`. Its processor caller (`prepareFrom`) calls
     // `prepare()` on the very next line, which resizes and clears all four rings
     // and ends in `reset()`, which re-latches. A future mid-stream call would read
     // stale history at a new offset; if one is ever wanted, it has to clear too.
@@ -123,7 +123,7 @@ public:
     //
     // A BULK SWAP STILL BEING WRITTEN IS NOT PRIMED (ADR-0057). The prime adopts only a snapshot the
     // handshake below trusts; while a swap's completion is awaited it keeps the state it has, and the
-    // swap starts, ducked, at the first block that reads it complete.
+    // swap starts, ducked, at the first adoption that reads it complete (prepareFrom's trailing one, or a block).
     //
     // `primeParameters` takes a snapshot read BEFORE the call (the engine API); `primeParametersFrom`
     // reads it itself, between its two takes of the request word -- the form the processor uses.
@@ -234,7 +234,7 @@ public:
     // newest sequence, adopts nothing while it waits, and starts the forced duck only on a snapshot read
     // between two takes after that completion -- so the bottom adopts the complete destination, never
     // a mixture. Sequence 0 is the engine API: complete by construction, because its caller hands the
-    // whole state to setParameters; it behaves exactly as before. Message thread; lock-free (one CAS).
+    // whole state to setParameters; it behaves exactly as before. Message thread; lock-free (a CAS loop).
     static constexpr int kBulkSeqCount = 15;
     void completeBulkApply (int bulkSeq) noexcept;
 
@@ -479,7 +479,7 @@ private:
         return ! wasAwaiting && ! newRequest;
     }
     // Applies what the takes left for a trusted snapshot: the engine-API requests, then a completed
-    // swap's A/B bookkeeping (against the state being left, unchanged since its request). Returns
+    // swap's A/B bookkeeping (against the state playing, which only an in-flight duck can move). Returns
     // whether a forced duck was asked for.
     bool startTakenRequests() noexcept;
     void adoptSnapshot (const EngineParameters& np, bool trusted) noexcept;   // setParameters' body

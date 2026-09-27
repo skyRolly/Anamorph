@@ -91,8 +91,8 @@ shadow RTSan's own and blind that lane (ADR-0029 §7). That stand-down is detect
 declared while the guard is still live, so a renamed or removed feature name fails the build
 instead of silently hollowing out the lane.
 
-The newest DSP test is the **A7-9 near-silent parked-identity guard**
-(`testA79ParkedNearSilentIdentity`, Test 42). A 2026-08-30 review pass measured that the pre-A7-9
+The **A7-9 near-silent parked-identity guard**
+(`testA79ParkedNearSilentIdentity`, Test 42, added 2026-08-30). A 2026-08-30 review pass measured that the pre-A7-9
 stalled paths moved **near-silent NONZERO** input too — the absorption `x + residual == x` needs
 `|x| >= 2^24 * |residual|`, and tails at 1e-25…1e-37 of full scale with warm loud history differ
 from the parked paths by up to 1.204e-35 inside the delay-history window
@@ -713,8 +713,9 @@ message thread whose "live" snapshot moves from a source S toward the destinatio
 field among them). Each case assigns every event of the swap — the request, each write, the completion — a slot
 relative to the audio thread's blocks: before a block's first take, between that take and the read, between the
 read and the second take (the reader runs them — the engine calls it between its takes), or after the last block.
-EVERY non-decreasing assignment runs, so each interleaving the memory model allows between one block's three steps
-and the swap's events is covered exactly. After every block and host reset the adopted snapshot must equal one of
+EVERY non-decreasing assignment runs, so each sequentially consistent placement of the swap's events between one
+block's three steps is covered exactly (that a weak-memory execution adopts only a complete state too is ADR-0057's
+Claims 1–4, not this test). After every block and host reset the adopted snapshot must equal one of
 the complete states bit for bit; after the tail it must be the final destination with nothing pending, and a swap
 whose completion was published must start by the end of the next block.
 - **(1) One swap**, 4 writes, two blocks: 924 interleavings × 5 ways — both blocks `setParametersFrom` (no reset, a
@@ -4720,7 +4721,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**63 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**138 tests**, State tests 1–141 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):
@@ -5254,6 +5255,22 @@ switch has returned and 48 blocks more. With a stall, it runs at 1× only, with 
 first write. `--bulk-swap-stress [trials] [stall-us]` free-runs an audio thread (1×–256×, unpaced) against A/B,
 repeated, superseding, undo, redo, preset, Copy, host-reset and re-prepare commands, each optionally stalled at a
 random write, and checks every block, reset and re-prepare. Results on the final code are in ADR-0057, *Evidence*.
+
+**Every bulk swap's request is completed on its refusal and exception paths — State test 141 (2026-09-27; ADR-0057,
+precondition 4; the pre-merge audit, worklog §W).** The engine adopts nothing while a completion is awaited, so a
+request that is never completed would freeze the adopted sound for good — every later swap joins the open one and
+never completes either. The ordinary paths complete explicitly and are State tests 139 and 140's; this test pins the
+others, on an A/B pair that differs in a continuous and a discrete field:
+- **(R)** six refused preset loads — through the menu's `load (idx)`, a row whose file is gone, a foreign root and an
+  unparsable file, and through the chooser's `loadFile` the same three — each refused, raising no request, leaving
+  nothing pending and the engine on A; then the next A/B switch lands on B whole;
+- **(E1)** an exception thrown at the processor's `insideSoundReplacement` seam, part-way through an A/B switch's
+  writes: `BulkApply`'s destructor publishes the completion, nothing stays pending, the engine holds what the
+  parameters hold, and the next switch lands on B whole;
+- **(E2)** the same inside a factory preset's writes, through `SoundAppliedGuard`'s destructor.
+
+What a half-applied command leaves in the parameters is that command's failure, not this test's subject; the engine
+must only never freeze on it. 20 checks.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

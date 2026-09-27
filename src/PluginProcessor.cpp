@@ -235,8 +235,8 @@ void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     // The engine runs that order itself (`prepareFrom`), reading the parameters between its two
     // takes of the request word for EACH of the prime and the trailing adoption: the trailing one
     // never re-uses the prime's snapshot, which a bulk swap's completion taken by the prime may
-    // postdate (ADR-0057, precondition 5). A swap whose completion the prime took starts there,
-    // ducked; one still being written starts at the first block that reads it complete.
+    // postdate (ADR-0057, precondition 5). A swap completed by the prime's first take may start in the
+    // prime (its duck dropped); any other starts, ducked, at the first adoption that reads it complete.
     engine.prepareFrom (sampleRate, samplesPerBlock, [this] { return readEngineSnapshot(); });
 
     // Through D-1's request path, NOT updateLatency() directly (round 15,
