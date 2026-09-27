@@ -170,7 +170,9 @@ required) · Fix · Why this fix · Prevention.
 ## INC-013 — A preset loaded while automation was moving a control could read "unmodified" against the wrong sound
 
 **Filed as KI-029 and fixed in the same 0.9.7 change set** (D-2 round 10, ADR-0036 §18). Kept here
-because the two-round history is the useful part.
+because the two-round history is the useful part. (That KI-029 was removed from `KNOWN_ISSUES.md` once
+fixed; the number was reused in 0.9.9 for an unrelated issue, a non-finite parameter value. This entry
+means the 0.9.7 one.)
 
 - **Problem.** `PresetManager::load` / `loadFile` applied the preset's sound and then took the clean
   baseline from a second, live read of the parameters (`sigAtLoad = soundSig()`).

@@ -4,7 +4,17 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
+Version-synced to **v0.9.9** (PR #156, 2026-09-27). **0.9.9 added four issues**, all found in that PR's
+review: **KI-029**, a non-finite parameter value (open), and **KI-030**, **KI-031** and **KI-032**, each
+fixed in the same change set and kept as a RESOLVED row with its record. **KI-029 is a reused number:**
+the 0.9.7 change set filed a different KI-029 — a preset loaded while automation was moving a control
+read *unmodified* against the wrong sound — and fixed and removed it in the same change set
+(`POSTMORTEMS.md` INC-013, ADR-0036 §18); every reference to KI-029 dated before 2026-09-24 means that
+one. The 0.9.7 and 0.9.8 syncs were not recorded in this header, and the history supplies them: 0.9.7
+filed and removed that first KI-029 and amended KI-027 (ADR-0034); 0.9.8 closed **KI-010** (2026-09-13).
+Net for 0.9.9: **four issues added (one open, three resolved in place), none removed.**
+
+Prior sync: **v0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
 one issue** — **KI-028**, a lost mouse release leaving the value box's host gesture open, found by
 reviewing round 1's own fix — and **corrected KI-027 on four points** after re-verifying it against
 the pinned JUCE: the expensive branch needs oversampling to have been selected by hand (it is not a

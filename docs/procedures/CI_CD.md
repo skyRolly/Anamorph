@@ -1531,7 +1531,13 @@ by byte value against `f12cc80` (180 `C6262`, 8 `C26495`, 4 `C26498`): 181, 8 an
 `testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates` (State test 140, new). `g++ -fstack-usage` on
 ninja's compile line measures its real frame at **7,392 bytes** (`dynamic,bounded`; largest lambda 352) —
 **0.7 %** of the 1 MiB reserve, 1 % of the State suite's largest frame (712,320). `/analyze`'s 19,136 is
-2.6× that: it sums the disjoint scenario scopes' rigs, tallies and `std::function` plans. Every claim that
+2.6× that: it counts every sibling scope's locals separately, and the function declares sixteen rigs
+across its scenario scopes — 16 `Rig`s at 768 bytes (GCC's `sizeof`), 17 tallies and 7 parameter
+snapshots sum to about 14.4 KB at GCC's type sizes, and MSVC's own type sizes and the temporaries make up
+the rest; GCC lets the disjoint scopes share their slots. Re-audited before merge (2026-09-27): the test runs on
+the main thread and starts no thread, `tests/state_tests.cpp` is compiled into `AnamorphStateTests` only
+(`CMakeLists.txt:569`), never into the plug-in, and even the /analyze figure is 1.9 % of the Windows
+main thread's 1 MiB, where the `windows` job runs the suite natively. Every claim that
 moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
 `state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;
 the engine's 16) and **16 bytes** per engine in `dsp_tests.cpp`. GCC's `sizeof` moves by 56 and 16 from
