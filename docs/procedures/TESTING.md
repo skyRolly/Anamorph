@@ -5127,6 +5127,52 @@ control flush there ((A) −8.3086 → 0 where the twin keeps −8.3285). (E) an
 lanes leave their twins at the first switch's bottom. The three premises, (G), its sibling and every control's
 flush pass there.
 
+**An A/B switch whose forced bottom is reached inside the destination's writes adopts the partly written slot —
+State test 139 (2026-09-27; `KNOWN_ISSUES.md` KI-032; ADR-0057, Proposed; worklog §T).** This
+(`testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot`) CHARACTERIZES a recorded residual — the Devin
+finding "A/B switches can adopt incomplete slot state" — and is the regression-in-waiting for ADR-0057's handoff.
+It pins the engine as it is: the fix inverts (A), (B), (C) and (E), and its host-reset / prime rule inverts (D).
+- **The method.** Deterministic, the production path, no engine internals. The audio thread's progress runs ON
+  the message thread at an exact point of the switch's write sequence: the processor's seam
+  `beforeSoundReplacementWrites` (position 0: after the request and the leaving capture, before the first write)
+  or an APVTS listener right after the k-th parameter the switch changes.
+- **The twins.** A race is compared with a PARTIAL TWIN, whose destination slot holds exactly the k written
+  parameters, and a COMPLETE TWIN, both switched completely before the same blocks. With Level Match off the
+  output from a forced bottom on is a function of the state adopted there alone, so bit-identity to the partial
+  twin means the partly written slot was adopted, field for field.
+- **The rigs.** One heap processor per rig, 48 kHz / 256, seed 139. A: Haas, Amount 80 %, Drive 8, Width 100 %,
+  Mix 100 %, Output Gain −3. B, a Copy edited on B: Drive 12, Width 180 %, Mix 70 %, Output Balance +0.2, Haas
+  Delay 20 ms, Input Balance +0.3, Mono Maker on at 200 Hz — eight writes.
+- **Why not Amount.** A forced bottom deliberately leaves the algorithm's wet glide running
+  (`AnamorphEngine::prepare`'s note), so a B visit's Amount would reach every later block and no twin could be
+  bit-identical.
+
+The legs:
+- **(A) Field by field,** Level Match off, at write positions 0, 1, 4, 7 and 8 of 8. At 4, B's Drive, Mix, Haas
+  Delay and Input Balance are written; A's Width, Output Balance and Mono Maker are not. The three blocks —
+  request taken, fade-out, bottom — are bit-identical to the partial twin. They differ from the complete twin
+  below 8 and match it at 8.
+- **(B) Level Match,** on.
+  - Premise: B is measured when left. The complete twin's same-rate `prepareToPlay` 4 blocks after the bottom's
+    block keeps −8.7907.
+  - At positions 0 and 4 the same `prepareToPlay` FLUSHES B's record (−8.3165 / −8.0785 → 0): it was judged
+    against the adopted state. At 8 it KEEPS it, bit-identical.
+  - After every race a complete return to A keeps A's record (−5.8063): the leaving capture is A's complete
+    state, measured.
+- **(C) The mixture settles.** After position 4 the parameters read B's everywhere, and the output is the
+  complete twin's again, bit for bit, from the ninth block after the bottom (asserted: within an eighth of a
+  second).
+- **(D) A host reset and a same-rate `prepareToPlay`,** one block after the request at position 4, adopt the
+  partly written slot too: bit-identical to the partial twin's same sequence, not the complete twin's.
+- **(E) The algorithm first.** Haas → Chorus (2 Hz, 80 %), position 1, six blocks inside: Chorus at A's rate and
+  depth.
+- **(F) A real race, for the `tsan` lane.** A paced audio thread (`d2::Pace`) runs against six switches from the
+  message thread. The output is finite and the switches land. Nothing about the timing is asserted; under the
+  `tsan` lane the leg proves there is no data race while the engine adopts whatever it reads.
+
+26 checks, ~0.4 s native. On ADR-0057's scratch prototype (worklog §T5) 11 fail — every (A) position, (B)'s two
+flushes and its position-8 keep, (C) and (E) — and every other test of both suites passes.
+
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
 `AnamorphStateTests --write-snapshot` and let the snapshot diff be reviewed in the PR. An

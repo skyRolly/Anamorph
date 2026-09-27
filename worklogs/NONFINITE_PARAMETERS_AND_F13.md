@@ -3045,3 +3045,294 @@ already over 45 minutes without them.
   not changed. The Velvet Density's ±Inf are in its rule as the same reachable parameter's non-finite values.
 - **One equivalent mutant (§S8):** `to` resolved against the Velvet's target instead of `from`'s Density (V14).
   The other the first campaign called equivalent, V15, is not: Test 74 (5) and State test 138 (H) reject it.
+
+## T. The Devin review of `9e38310`: "A/B switches can adopt incomplete slot state" (0.9.9)
+
+Continues PR #156 from `9e38310`. The owner authorized the semantic decision (*"You are authorized to make
+product/semantic owner decisions for this investigation"*) and withheld the threading one (*"You are NOT
+authorized to bypass an existing threading-model hard stop … If fixing it requires a new threading/state
+handoff architecture, do NOT implement that architectural change in this round unless the repository
+already has an accepted ADR explicitly permitting it"*). The outcome is **B**: the defect is real and
+reproduced. Its fix needs a new atomic ordering on the message → audio request word, so it is recorded
+as ADR-0057, **Proposed**, and `KNOWN_ISSUES.md` KI-032. No production file changes in this round. Version
+0.9.9, dated 2026-09-27, unchanged.
+
+### T1. Reproduction through the processor (head `9e38310`)
+
+**The threaded probe** (scratch, not committed; x86-64 Linux, Release, 48 kHz / 256).
+- **Setup.** One fresh processor per trial: A set, Copy A → B, B edited on B (measured 3.5 s), back on A
+  (3.5 s).
+- **The race.** An audio thread runs `processBlock` at a set multiple of real time (busy-paced) or
+  free-running. The message thread calls `abSwitchTo (1)` at a random phase.
+- **What is recorded.** An APVTS listener timestamps every write where JUCE stores the raw value the
+  audio thread reads. The audio thread records the block that takes the request and the block of the
+  forced bottom. It reads the engine's adopted `p` there (internals opened in the scratch build only)
+  and compares it field by field with both slots.
+- **Scale.** Six combinations × 12 speeds × 40 trials.
+
+| combination | 1× | 16× | 64× | 112× | 256× / free |
+|---|---|---|---|---|---|
+| Drive + Width | 40 complete | 40 | 39, 1 A-only | 8 complete / 12 hybrid / 20 A-only | 0–1 complete, 39–40 A-only |
+| Mix + Amount | 40 | 40 | 39 / 1 | 17 / 7 / 16 | 0–1 / 39–40 |
+| Haas delay + side | 40 | 40 | 40 | 15 / 4 / 21 | 1–3 / 37–39 |
+| Haas → Chorus + rate + depth | 40 | 40 | 40 | 15 / 4 / 21 | 0–1 / 39–40 |
+| Multiband bands + split + widths | 40 | 40 | 38 / 2 | 39 / 1 hybrid | 39–40 complete (heavier blocks) |
+| Eight fields | 40 | 40 | 39 / 1 | 0 / 23 / 17 | 0 / 0–2 / 38–40 |
+
+- **Timings (medians from the call).**
+  - The request is published at the call: the first statement of `abSwitchToAdopted` after admission,
+    `src/PluginProcessor.cpp:2186`.
+  - The first destination write lands at +99–157 µs, after the leaving slot's capture
+    (`src/PluginProcessor.cpp:2187`). The last lands at +103–166 µs, and `abSwitchTo` returns at
+    +226–295 µs.
+  - The audio thread takes the request at its next block (+2.7 ms at 1×, +20–65 µs from 64× up).
+  - The forced bottom reads its snapshot two blocks later: +13.3 ms at 1×, +0.84–0.89 ms at 16×,
+    +0.19–0.23 ms at 64×, +0.12 ms at 112× (inside the writes) and +0.065–0.09 ms at 256× and
+    free-running (before the first write).
+- **The Devin case, exactly** (112×). Request taken at +27.6 µs, snapshot at +122.3 µs. Drive written at
+  +117.6 µs, Width at +125.5 µs. The bottom adopted B's Drive 12 with A's Width 1.0, and `abSwitchTo`
+  returned at +260.3 µs.
+- **Level Match.** Every incomplete trial restored B's record not measured, 0 of N; every complete one
+  restored it measured. A same-rate `prepareToPlay` at the end of a 64-block window (~0.3 s after the bottom) flushed every
+  incomplete trial and kept every complete one. With 256 blocks before the prepare, 5 of 22 incomplete trials had re-confirmed live
+  and kept the re-measured value.
+- **Capture integrity.** The record of the slot left was A's complete state, measured, in every trial of
+  every combination and speed. The request, sequenced before the writes, is taken no later than the first
+  block that reads one (T2).
+- **The mixture's parameters settle** to B in every trial. With a discrete late field (Mono Maker on),
+  38–39 of 40 trials duck a second time after the bottom.
+- **At real time, behind a stall.** An emulated slow host notification stalls the message thread once,
+  after the first destination write. A 12 ms stall gave hybrids in 6–7 of 20 trials in each combination.
+  2 ms and 7 ms gave none: at 256 samples the bottom comes two blocks (10.7 ms) after the request is taken.
+
+**Deterministic, at every write position** (scratch, then State test 139). Three blocks are run inside the
+switch at an exact point: the processor's seam `beforeSoundReplacementWrites` (`src/PluginProcessor.cpp:1087`)
+before the first write, or an APVTS listener after the k-th. The race is compared with a complete twin.
+- **Field by field.** With k of n written, the bottom adopts exactly those k from B and the rest from A,
+  in all four combinations and at every position.
+- **Level Match on.**
+  - The output leaves the complete twin at the bottom's block. The difference over the fade-in is −0.8 to
+    −6.2 dB relative to the signal.
+  - B's measured record comes back not measured (published −12.74 against the record −13.28 for Drive +
+    Width), and a same-rate `prepareToPlay` 4 blocks later flushes it. The twin keeps −13.21.
+  - At k = n everything is bit-identical to the twin.
+- **A host reset or a same-rate prepare**, one block after the request inside the writes, adopts the
+  partial state too. A reset completes the forced swap with `pendingP` (`src/dsp/AnamorphEngine.cpp:240`);
+  the prime adopts the snapshot wholesale (`src/dsp/AnamorphEngine.h:123`).
+- **A factory preset load** (`presets.load`, 34–36 changed writes, the listener at every position). The
+  bottom adopted mixtures, for example 4 preset fields and 4 of the previous sound after write 17 of 34,
+  and settled to the preset afterwards. Undo and redo reach the same forced bottom through the same
+  `applyStatePreservingView` write path as A/B (`src/PluginProcessor.cpp:2075`, `:2106`).
+
+### T2. The concurrency model
+
+The handoff:
+1. The request, a relaxed CAS (`src/dsp/AnamorphEngine.cpp:611`).
+2. The leaving capture (`src/PluginProcessor.cpp:2187`).
+3. The apply: `replaceState`, one `setValueNotifyingHost` per changed parameter
+   (`src/PluginProcessor.cpp:1106`), then `reassertParameters` (`:1113`) and the view write-back.
+4. On the audio thread, per block: `toEngine` (sequentially consistent loads of the APVTS values), then
+   `setParameters`, whose relaxed `exchange` takes the word (`src/dsp/AnamorphEngine.cpp:743`).
+5. The forced entry keeps the source live. Every fade-out block records the latest snapshot (`:826`), and
+   the bottom adopts it (`:1286`, `:1317`) and restores the destination's A/B record against it (`:1407`).
+
+- **A formal data race: none.** Every cross-thread access is atomic: the APVTS values, the request word,
+  and engine state touched by the audio thread alone. ThreadSanitizer (clang-18, CI's options, the
+  suppression file whose only entries are deadlocks) reported nothing in 120 instrumented probe trials.
+  The 100 from 16× up all adopted the source whole.
+- **An atomic ordering problem: none in what exists.** The first B value the audio thread loads is a
+  seq_cst store, and the relaxed request is sequenced before it. So the request happens-before that load,
+  and the same block's `exchange` must see the request. It is taken no later than the first block that
+  reads a destination write, which is why the leaving record is always A's.
+- **The slot is logically exposed** one parameter at a time, before it is complete. The adoption point is
+  fixed in audio time (event + 2 at 256 samples); the application's end is fixed in wall time (~0.1–0.3 ms
+  here, unbounded behind notifications, contention or preemption). Nothing relates them.
+- **Valid but wrong intermediate snapshots.** Every snapshot is a legal state; the one adopted is neither
+  slot.
+- **The violated contract.** Feedback #1 / ADR-0004: a bulk swap is applied entirely at the silent bottom.
+  The request word's doc (`AnamorphEngine.h`: "call BEFORE changing the parameters so the duck is already
+  running when the new values arrive") holds, but nothing says when they have *all* arrived. ADR-0036 §24's
+  "the mixture cannot SETTLE" holds for the parameters but not for the swap, whose result is the mixture.
+  §25 item 5's "a masking miss, never a click" is incomplete (T8).
+
+### T3. The invariant (owner decision, 2026-09-27)
+
+**A forced bulk swap adopts the complete destination or nothing.** Wherever a pending forced swap is
+adopted (its bottom, a host reset that completes it, the prime), the state adopted is one of two:
+- the destination exactly as its application wrote it; or
+- the source, still live, with the swap still pending.
+
+It is never a mixture, and never the source taken for the destination. The destination's Level-Match
+provenance is judged against the complete destination.
+
+### T4. The strategies
+
+ADR-0057's table, in short:
+
+| strategy | verdict |
+|---|---|
+| **A.** A separate completion atomic (release / acquire) and a bottom hold | Correct, but a new path, a new ordering, and two atomics whose sequences must agree. |
+| **B (B2).** The two-phase request word: the request as today; a sequence-tagged completion stored with release after the application's last write; the per-block exchange with acquire; the bottom holding, bounded, and aborting to the source at the cap | Correct, the narrowest. **Recommended.** |
+| **C.** An immutable snapshot handed over | Not enough alone: after the adoption the late live writes read as edits. It needs a completion as well; a new path and an ownership / lifetime problem on the audio thread; it duplicates the parameter → engine mapping. |
+| **D1.** A settle heuristic (hold while the snapshot changes) | No guarantee: a stalled writer looks settled. |
+| **D2.** Comparing against the destination's A/B record | No guarantee: no record after a Copy, restore or first visit; a Copy can make a mixture look complete. |
+| **D3.** Request after the writes | Unmasked writes, and a mixed leaving capture (§R7). |
+| **D4.** `suspendProcessing` | Puts the audio thread on JUCE's callback lock. |
+| **D5.** A trailing second duck | The first bottom still adopts the mixture. |
+| **D6.** A content hash in the word | Defeated by automation during the swap; still a protocol change. |
+
+**Every correct option is gated.** The audio thread must learn "complete" with acquire semantics relative to
+the parameter writes, and a relaxed flag does not order them.
+- The C++ model gives no happens-before from a relaxed store.
+- On ARMv8, a shipped target, a later relaxed store can become visible before an earlier store-release.
+- x86-64 is TSO and hides it.
+
+Every message → audio path in the thread model is relaxed. The APVTS values each order only themselves.
+No existing pair gives the audio thread an acquire a completion could ride on.
+
+### T5. The prototype (scratch, not committed)
+
+B2's steps 1–4, A/B only, built from a copy of `src/`.
+- **Engine.**
+  - A 4-bit sequence in the request (bits 13–16).
+  - `completeAbSwitch (s)`: a CAS with `memory_order_release` (done flag bit 12, done sequence bits
+    17–20).
+  - `exchange (0, std::memory_order_acquire)` in `setParameters`.
+  - The forced bottom holds while awaiting, and until one block after the acquire that saw the completion,
+    because that block's snapshot was read before it.
+  - Sequence 0, the engine API's, never awaits.
+- **Processor.** `abSwitchToAdopted` passes 1–15 and calls `completeAbSwitch` after `abApplySlot`.
+- **Not prototyped:** the host reset and prime rule, undo / redo / preset loads, and the abort at the cap
+  (the cap was set out of reach).
+
+Measured:
+- **The threaded probe** (6 × 12 × 40 = 2,880 trials, idle machine).
+  - 0 hybrids, 0 A-only adoptions; every destination measured at its bottom and kept by the same-rate
+    `prepareToPlay`.
+  - Holds: none at 1–16×. From 64× up, a median of 1–7 blocks, with a maximum of 66 at 256× (352 ms of
+    audio, 1.4 ms of wall time). No trial reached a cap.
+  - A first run beside a TSan build (3 of 4 cores busy) starved the message thread. Several holds outlasted
+    the probe's 64-block window, which shows the hold is bounded by the application's wall time.
+- **The suites.**
+  - With the engine API's sequence 0 awaiting nothing: DSP 935 / 0, output identical to `9e38310`'s in all
+    73 sections; State 5521 / 0, differing only in the thread-timing counters (State tests 22, 38, 39, 41,
+    62, 113, 116).
+  - The first version had engine-API requests await a completion no caller sent: 79 DSP checks failed, all
+    in Tests 70, 72, 73 and 74, the engine-API callers. That is why sequence 0 exists.
+- **State test 139** fails 11 of 26 on the prototype: every (A) position, (B)'s two flushes and its
+  position-8 keep, (C) and (E). (D) passes there because the prototype did not implement the reset and
+  prime rule; ADR-0057 adds it.
+
+### T6. Architecture decision and hard-stop status
+
+**Outcome B.** Implementation is blocked. B2's steps 2–3 add an atomic ordering (release on the completion,
+acquire on the per-block exchange) and a new message to the message → audio path.
+- `THREADING_POLICY.md` (*Enforcement*): *"A change to the thread model, a new shared-state path, or a new
+  atomic ordering triggers the Architecture Review Gate and an AI Agent Hard Stop. Changing this policy
+  requires an ADR."*
+- `ARCHITECTURE_REVIEW_GATE.md` lists *"Thread Model change — new thread, new cross-thread path, new atomic
+  ordering"*.
+- Step 4 changes what the Accepted ADR-0036 §24 / §25 accepted as a residual, and ADR-0007's gate record
+  ("the thread model gains no thread, no direction and no ordering").
+
+No Accepted ADR permits it; §R7 classified B2 the same way. The recommendation, its measured evidence, the
+owner's invariant and the list of documents it changes on acceptance are ADR-0057 (Proposed).
+
+### T7. Tests
+
+**State test 139 (26 checks, ~0.4 s native)** characterizes the head; see TESTING.md.
+- (A) Field-level adoption at positions 0 / 1 / 4 / 7 / 8, against a partial twin and a complete twin.
+- (B) The Level-Match flush, with A's record intact.
+- (C) The settling: bit-identical to the complete twin from the ninth block after the bottom.
+- (D) A host reset and a same-rate prepare inside the writes.
+- (E) The algorithm written first.
+- (F) A paced threaded race, for the `tsan` lane.
+
+**Amount is not among B's edits.** A forced bottom deliberately leaves the algorithm's wet glide running
+(`HaasProcessor::reset` snaps the delay, not `currentAmount`; `AnamorphEngine::prepare`'s note), so a B visit's
+Amount reaches every later block. The first draft, with Amount, failed (A) at position 0 by 3e-6 from the
+first sample, before the switch. A partial twin that never visited B's Amount does not share the race's
+history.
+
+### T8. Validation, and the drift reported
+
+The final tree is `9e38310`'s `src/`, unchanged, with State test 139 added.
+- **Suites** (Release, `ulimit -s 1024`): DSP 935 / 0 and State 5547 / 0, which is 5521 plus State test 139's
+  26. Tests 66–74, State test 120 and State tests 129–138 are unchanged and pass.
+- **Nothing else moved.** The printed output was compared with `9e38310`'s:
+  - DSP: identical in all 73 sections.
+  - State: differs only in the new State test 139, and in the thread-timing counters and wall-clock times of
+    State tests 22, 38, 41, 62, 113 and 116.
+- **O8(1) and O8(2) (S5), and F13.** Test 73 and State test 137 are unchanged and pass. So do the F13 tests,
+  Tests 66–72 and State tests 130–136. Their output is identical to `9e38310`'s.
+  - The Level-Match loss that KI-032 causes is not an F13 regression. The A/B record is judged correctly
+    against the state the bottom adopted; the adoption itself is the fault.
+- **Devin controls.** Each Devin mechanism was removed from this tree in turn, and the whole State suite was
+  run. Failing checks by State test:
+  - the NaN guard: 129 ×6;
+  - Apply disabled: 129 ×5, 130 ×45, 131 ×8, 132 ×2, 133 ×3, 135 ×2;
+  - the kept-result init: 132 ×30, 133 ×3, 134 ×4, 136 ×1, 137 ×1;
+  - the live-edit report: 133 ×24, 134 ×1, 135 ×7, 137 ×16, 138 ×1;
+  - `setDisplayedGainDb` honouring `measured`: 134 ×20, 135 ×2, 136 ×1, 137 ×22, 138 ×3.
+
+  These are §S8's counts exactly. State test 139 fails under none of them: it pins the handoff, which no
+  control touches. The controls' objects were rebuilt from scratch this round, because their runner does not
+  track header dependencies. The counts did not move, so §S8's stand.
+- **ThreadSanitizer** (clang-18, the `tsan` lane's `TSAN_OPTIONS` and suppression file). The whole State
+  suite, State test 139's threaded leg (F) included, ran 5547 / 0 in 278 s, with no report. The four
+  suppressions matched are the file's existing `deadlock:` entries, each naming its test's seat.
+- **ASan + UBSan** (clang-18, the `sanitizers` lane's flags with `halt_on_error=0` to list every site; CI's
+  step uses clang 22). The whole State suite ran 5547 / 0 in 151 s, with no AddressSanitizer or leak report.
+  UBSan's 13 reports are all in JUCE's bundled HarfBuzz, the same set as §S8's replica; none is in
+  first-party code.
+- **memcheck** (the lane's flags, `ANAMORPH_NO_ALLOC_GUARD`, `ANAMORPH_TESTS_NO_FTZ=1`). State test 139 alone
+  ran 26 / 0 with 0 errors, in 20 s. The `sanitizers` lane grows by about that.
+- **Warnings and frames.**
+  - GCC 13 with the gate's flags on `state_tests.cpp`: the same first-party warning set as `9e38310`'s.
+  - clang-18 with the gate's warning flags: the same first-party set as `9e38310`'s, and nothing in the new
+    test. That set is the four `-Wmissing-prototypes` of `scripts/clang-warning-baseline.txt`'s
+    `state_tests.cpp` row, plus three in two headers (`PluginEditor.h`, `ScopeBuffer.h`). The first comparison exited 1 on both trees at
+    `state_tests.cpp:129`. The cause was the harness, not the code: it escaped the quotes of
+    `ANAMORPH_FIXTURE_DIR`. With the define quoted, both trees parse clean. The Clang 22 gate runs in CI.
+  - Frames (GCC `-fstack-usage`): State test 139 is 1,136 B, and its largest lambda 448 B. The file's
+    largest frames are unchanged. Every member of the test's local structs is initialized.
+- **Static checks.** `check-docs`, `check-realtime`, `check-dispatch`, `check-portability` and
+  `check-state-coverage` pass. `check-citations` passes against `9e38310` (573 anchors), `b82a294` and
+  `659ca0a`, and its self-test passes (266 cases). No anchor needed re-aiming.
+- **PREfast** runs in CI. The pushed head's record is in the PR #156 description. The round adds no
+  production code.
+
+**Drift reported** (AI_AGENT_POLICY C6; documentation against code; only the documents were corrected):
+- **ADR-0036 §25 item 5** classified a forced duck that runs ahead of the writes as *"a masking miss, never a
+  click"*. The bottom does not miss: it adopts the mixture. The item keeps its text and gains the Note of
+  2026-09-27.
+- **ADR-0007, A/B provenance, "A slot adopted partly written"** (O8(3), §R7) called it a masking and
+  provenance miss, recorded as conservative. Measured, it is a defect: the swap's result is a state neither
+  slot holds. It is reclassified in place, and the proposal it named is ADR-0057.
+- **KI-030's closing sentence** described the same case as a level not caught up. It now points to KI-032.
+- **The request word's contract** (`src/dsp/AnamorphEngine.h`, `requestDuck`: *"call BEFORE changing the
+  parameters so the duck is already running when the new values arrive"*) holds, but it is incomplete:
+  nothing says when the values have all arrived. This is reported only; the source is not touched this
+  round. `THREAD_MODEL.md`'s request-word row now states it.
+
+### T9. Recorded, not changed (deferred)
+
+- **KI-032 itself**: ADR-0057 awaits Architecture Review. On acceptance, the steps are:
+  - the request word's completion and the bottom's hold (steps 1–4);
+  - the host reset and prime rule;
+  - undo, redo and the preset load on the same protocol;
+  - the abort at the cap;
+  - inverting State test 139's (A)–(E) with the fix.
+
+  The prototype covered steps 1–4 for A/B only. The reset, prime, undo, redo, preset and abort legs are
+  reasoned, not measured.
+- **The Amount wet glide across a forced bottom** is a documented design choice (`AnamorphEngine::prepare`'s
+  note), not part of this defect. Only State test 139's choice of B's edits depends on it (§T7).
+- **The explicit defer list of the brief:**
+  - cross-rate retention, the quiet glide after a flush, and automation currency;
+  - KI-029, a global non-finite ingress policy, `toEngine` sanitization, and float → int UB;
+  - F9, F10 and F12; R6a–R6d;
+  - ScopeBuffer threading and the vectorscope stop-state;
+  - historical documentation cleanup;
+  - the per-block ramp-restart redesign.
+- **§S10's items stand as recorded.**

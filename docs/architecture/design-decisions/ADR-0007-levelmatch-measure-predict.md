@@ -967,6 +967,23 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
   forced bottom, capped, until the message thread marks the apply complete in the existing request word
   (a release store, an acquire exchange); it is a threading-model change, a hard stop, and is recorded as
   the recommendation for a future owner decision.
+  *Reclassified 2026-09-27 (the Devin review of `9e38310`, "A/B switches can adopt incomplete slot state";
+  worklog §T): a defect, not a masking and provenance miss.* The bottom adopts a state neither slot holds,
+  or the source whole, field for field (State test 139). It plays that state into the fade-in, and it
+  judges the destination's record against it. A measured record therefore comes back not measured, and
+  a same-rate re-prepare flushes it (−8.08 dB → 0, where a complete switch keeps −8.79 dB). A host
+  reset or a prime landing inside the writes adopts the partly written slot too. So do undo and redo,
+  which raise the same duck and apply through the same write sequence, and a preset load, which raises
+  it before its own per-parameter loop (a factory preset was measured, worklog §T1). The measured exposure is
+  worklog §T1's: with 256-sample blocks, rarely at 64× real time (the source whole) and routinely from
+  ~100×, and at real time behind a ~12 ms stall of the message thread.
+  - **The owner's invariant** (2026-09-27): a forced swap adopts the complete destination or nothing.
+  - **The recommended architecture:** the two-phase request word this bullet names, with an abort to
+    the source at the cap. It is **ADR-0057, Proposed**. It is blocked at the Architecture Review
+    Gate because it adds an atomic ordering to the request word. It would change this amendment's
+    "The handoff: one existing atomic, no new path" and its gate record's "The thread model gains no
+    thread, no direction and no ordering".
+  - **Status:** open, `KNOWN_ISSUES.md` KI-032.
 - **Evidence across visits** — *adopted 2026-09-26 (revision below).* **Cross-rate retention, and the
   measure's own scope.** Currency is a function of the measurement inputs and the rate: a programme change, or a bus-layout change before a
   same-rate re-prepare, is the measure's ordinary tracking, as for any converged result. The P1b

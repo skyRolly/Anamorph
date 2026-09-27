@@ -1533,6 +1533,23 @@ turn late) and leaves a save issued on the host thread right after its restore d
     The contract at `AnamorphEngine.h` ("call before changing the parameters so the duck is already
     running when the new values arrive") holds up to that bound.
 
+    *Note of 2026-09-27 (the Devin review of `9e38310`; worklog §T; `KNOWN_ISSUES.md` KI-032).* The
+    classification above is incomplete, and is corrected here with the measurement. §24's lock and
+    this item's bound are not changed.
+    - **What happens.** A forced duck does not merely miss: its bottom ADOPTS the snapshot of its own
+      block. When that block falls inside the write loop, the swap's result is a state neither side
+      holds, or the outgoing sound whole. The engine snaps the smoothers to it, resets the modules
+      into it and plays it into the fade-in, and ADR-0007 judges the destination's A/B record
+      against it.
+    - **Measured.** With no contention at all, with 256-sample blocks: rarely at 64× real time (the
+      outgoing sound whole) and routinely from ~100×; and at real time behind a ~12 ms stall of the
+      message thread (State test 139; worklog §T1).
+    - **What still holds.** It is still never a click. "The mixture cannot SETTLE" still holds for
+      the parameters, which end as the incoming sound's, but not for the swap.
+    - **The remedy.** The owner's invariant, a forced swap adopts the complete destination or nothing,
+      needs a completion the audio thread acquires. That is a Thread Model change: ADR-0057,
+      Proposed.
+
     One more transient belongs to §15 rather than here: a restore taken by the message thread
     while a newer one completes and frees an untaken middle one (R0 in hand, R2's `put` freeing an
     untaken R1) skips its re-install, publishes its own metadata briefly over the newer sound, and

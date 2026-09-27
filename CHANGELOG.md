@@ -20,6 +20,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.9] — 2026-09-27
 
+**Known issues**
+- **KI-032 (confirmed, not fixed):** an A/B switch, Undo, Redo or a preset load made while your host
+  processes much faster than real time (an offline render, a host that renders ahead) — or while its
+  user-interface thread stalls for ~10 ms or more (at 256-sample buffers) — can take the new sound
+  partly written. The switch's fade-in plays some of the new settings with the rest of the old sound,
+  then settles to the new sound (about 50 ms later in the measured case). The new slot's Level Match
+  level is thrown away if the host re-prepares before it has re-measured. Real-time playback without
+  such a stall is not affected. The fix changes how a new sound is handed to the audio thread and is
+  awaiting architecture review (ADR-0057, Proposed; `docs/KNOWN_ISSUES.md` KI-032).
+
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
   was replacing.** Anamorph writes a preset to a temporary file and then swaps it into place, which is
