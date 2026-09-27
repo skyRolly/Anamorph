@@ -1187,7 +1187,7 @@ off, Apply itself and Redo are not affected, and a host reset during the switch 
 > measured Level Match record lands measured. Real-time playback without a stall is unchanged; in an
 > offline render the switch lands later by the time the writing took. **The workaround below is no longer
 > needed.** Evidence: DSP Test 75 (7,791 engine-level interleavings), State test 139 (rewritten as the
-> regression), State test 140 (1,358 interleavings through the processor, every path), the deterministic
+> regression), State test 140 (1,358 interleavings through the processor on x86-64 Linux, every path), the deterministic
 > enumeration of worklog §U4 (0 of 1,245 on the final code; the pre-fix head 689), the permanent probes
 > `--bulk-swap-probe` and `--bulk-swap-stress` (ADR-0057, *Evidence*; worklog §V). Everything below is the
 > diagnosis, kept as the record; its "not fixed" and "Proposed" language is historical.

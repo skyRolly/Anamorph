@@ -5203,7 +5203,9 @@ The legs:
   written, Rate and Depth not): bit-identical to the twin, never Chorus at A's rate and depth.
 - **(F1) The real race.** An audio thread — paced to real time, then free-running — against 6 + 20 switches from
   the message thread: after EVERY block the adopted state is A's or B's complete state; the output is finite; every
-  switch lands.
+  switch lands. The audio thread runs until the switches are done (a 60 s wall-clock cap bounds a hang): the first
+  version stopped at a block count, which CI's arm64 macOS runner reached while the message thread was still
+  switching, leaving the last swap — correctly — unstarted.
 - **(F2) The ordering, for the `tsan` lane.** A plain `int` the message thread writes after a swap's writes and
   before its completion, read by the audio thread once its own take has seen that completion (200 swaps). The
   release / acquire pair is the only edge between the two threads there, so ThreadSanitizer reports a data race on
@@ -5237,7 +5239,7 @@ measured; each output twin must be bit-identical. Five combinations of 2 / 2 / 3
 - **S10** a completion and the next request in one word (42). **S11** supersession during a completed switch's
   fade (288; Level Match ON). **S12** Copy between switches and around one (48).
 
-1,358 cases, 0 with a failure; each scenario asserts it ran; ~4 s native. The negative controls (worklog §V): the
+1,358 cases on x86-64 Linux, 0 with a failure (1,352 on arm64 macOS, where the two factory presets' loads change 80 / 50 parameters instead of 84 / 52; the floor is 1,300 and each scenario asserts it ran); ~4 s native. The negative controls (worklog §V): the
 completion before the writes — 1,066 cases; no sequence — S3 70, S10 42, S11 34 (123 landings not measured); the
 read before the first take — S9e 12; no second take — S9e 28, S13b 15; trust after an awaited first take — 1,075;
 the one-take path ignoring an awaited swap — S9b–d 84; the activation re-using the prime's snapshot — S9e 14; the

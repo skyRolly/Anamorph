@@ -485,7 +485,7 @@ Every figure below is from the production code of this change — no prototype, 
 Release, x86-64 Linux, GCC 13, 48 kHz / 256, under a 1 MB stack.
 - **The suites.** DSP 944 checks, 0 failures; State 5,573 checks, 0 failures. New: DSP Test 75
   (7,791 engine-level interleavings; 0 incomplete, 0 allocations), State test 139 rewritten as the regression,
-  State test 140 (1,358 interleavings through the processor, every path; 0 failures). F13, O8(1) and O8(2) — State
+  State test 140 (1,358 interleavings through the processor on x86-64 Linux — 1,352 on arm64 macOS, whose preset loads change fewer parameters — every path; 0 failures). F13, O8(1) and O8(2) — State
   tests 130–138 and Tests 66–74 — pass unchanged; State test 127 (*"a host reset inside an A/B, preset, undo or
   redo swap lands settled"*) and State test 130 (7) pass unchanged.
 - **The deterministic enumeration of worklog §U4**, ported to the final API (scratch harness, the same 1,245 cases):

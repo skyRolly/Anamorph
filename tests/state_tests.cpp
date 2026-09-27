@@ -44612,7 +44612,11 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination()
             juce::AudioBuffer<float> buf (2, kBlock);
             juce::MidiBuffer midi;
             d2::Pace pace;
-            for (int b = 0; b < 120 * sec && ! stop.load (std::memory_order_acquire); ++b)
+            // Until the switches are done -- NOT a block count: free-running, a fast runner (arm64 macOS) used to reach
+            // a 120 s block cap while the message thread was still switching, and the last switch, correctly, never
+            // started. The wall-clock cap only bounds a hang.
+            const auto t0 = std::chrono::steady_clock::now();
+            for (int b = 0; ! stop.load (std::memory_order_acquire) && std::chrono::steady_clock::now() - t0 < std::chrono::seconds (60); ++b)
             {
                 const float* x = stream.data() + (size_t) (b % nBlk) * kBlk;
                 for (int s = 0; s < kBlock; ++s) { buf.setSample (0, s, x[2 * s]); buf.setSample (1, s, x[2 * s + 1]); }
@@ -44727,6 +44731,7 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination()
 //   S3  repeated alternation, a random position and 1-5 blocks inside each of 8 switches (120).
 //   S4, S5  undo and redo of one multi-field step at every write position x 1, 2, 3 or 8 blocks (96 each).
 //   S6  two factory presets, a block or three after every write (84); S6f a user preset FILE, the same (loadFile; 52).
+//       (80 and 50 on arm64 macOS: a preset's write count is what its load changes, and it differs by platform.)
 //   S7, S8  a host reset / a re-prepare at every write position after 0, 1 or 3 blocks there (72 each).
 //   S9  a snapshot read inside the writes and handed in after the completion -- to `setParameters` and a block, the
 //       same and a host reset, a prime and its activation, the same and a host reset (42 x 4); S9e `prepareFrom` whose
@@ -45172,7 +45177,9 @@ static void testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates()
         check (wordMoves == 0, "State test 140 (S12): a Copy raises no request and completes nothing");
     }
     std::printf ("  total: %ld cases, %ld with a failure\n", totalCases, totalBad);
-    check (totalCases >= 1358, "State test 140 non-vacuity: the whole enumeration ran (1,358 cases at 0.9.9)");
+    // 1,358 on x86-64 Linux, 1,352 on arm64 macOS: a factory preset's write count is what the load changes, and it
+    // differs by platform (S6 84 / 80, S6f 52 / 50). Every other scenario is platform-independent (1,222 cases).
+    check (totalCases >= 1300, "State test 140 non-vacuity: the whole enumeration ran (at least 1,300 cases)");
     check (totalBad == 0, "State test 140: every block, host reset and re-prepare adopted a complete state; every command landed; nothing is left pending; every measured record landed measured; every twin is bit-identical");
 }
 

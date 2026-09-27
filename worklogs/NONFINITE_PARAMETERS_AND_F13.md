@@ -3705,6 +3705,13 @@ no duck. The exception path's bookkeeping (a guard completion after a throw at t
   written and completed, and 7 of 40 Mix+Amount trials reported "never landed" with no illegal block — a correct
   pending swap outside the window, not a protocol failure. The audio thread now runs until the command has
   returned and 48 blocks more (capped), and the run below is of that version.
+- **CI's native arm64 run of `5f818da` failed two test harness bounds, not the protocol** (0 blocks adopted a state
+  no swap completed there too). State test 139 (F1)'s audio thread stopped at a block cap (22,560 blocks) that the
+  fast runner's free-running thread reached while the message thread was still switching, so the last switch —
+  correctly — never started ("ends on A, nothing pending: NO", and the non-vacuity check); it now runs until the
+  switches are done, under a 60 s wall-clock cap. State test 140 asserted an exact x86-64 total (1,358); arm64
+  macOS enumerates 1,352, because the two factory presets' loads change 80 / 50 parameters there instead of 84 / 52
+  (every other scenario is the same 1,222 cases); the floor is now 1,300, each scenario still asserting it ran.
 - **Warnings.** GCC 13 (the suite flags) and clang 18 (JUCE's recommended set, the gated flags' superset) report
   nothing new in any changed translation unit against `f12cc80`, after replacing the new tests' `==` on doubles
   with `juce::exactlyEqual`, two partial `switch`es with `if` chains, and one narrowing `rng()`.
