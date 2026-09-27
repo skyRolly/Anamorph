@@ -20,7 +20,7 @@ namespace anamorph
 {
 
 enum class ChannelMode  { Stereo = 0, LeftOnly, RightOnly };   // "kill a channel" (Mono is its own toggle)
-enum class Algorithm    { Haas = 0, Velvet, Chorus, DimensionD };
+enum class Algorithm    { Haas = 0, Velvet, Chorus, Dimensional };
 enum class HaasSide     { Left = 0, Right };
 enum class SoloMode     { Off = 0, Mid, Side };
 enum class OversampleFactor { Off = 0, x2, x4, x8 };
@@ -58,7 +58,7 @@ struct EngineParameters
     float       chorusRate  = 0.5f;    // Hz
     float       chorusDepth = 0.5f;    // 0 .. 1
 
-    // Dimension-D (anti-phase, no pitch wobble). Mode selects a voicing.
+    // Dimensional (anti-phase, no pitch wobble). Mode selects a voicing.
     int         dimMode     = 1;       // 1 .. 4 voicings
 
     // Global width (MS-domain). 1.0 (== 100%) is identity (spec feedback #3).

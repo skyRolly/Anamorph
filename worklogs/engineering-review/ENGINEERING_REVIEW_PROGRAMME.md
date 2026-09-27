@@ -2858,7 +2858,7 @@ becomes visible.
 **Reproduced first, with the product's own signal.** `AnamorphStateTests --restore-fade-probe` saves
 a real non-default session, restores it into a FRESH instance in the ordinary host order (state,
 then activate) and prints each module's per-block deviation over twelve blocks. Before the fix, the
-first block sat at **0.17** (Haas), **0.09** (Velvet), **0.29** (Chorus), **0.39** (Dimension-D) and
+first block sat at **0.17** (Haas), **0.09** (Velvet), **0.29** (Chorus), **0.39** (Dimensional) and
 **0.35** (Mono Maker crossover) of the settled figure, arriving over the next ~10–100 ms. The user
 statement of that is the one in the CHANGELOG: opening a project played the *previous* settings
 sliding into the saved ones.
@@ -4807,7 +4807,7 @@ from `prepareToPlay` before `prepare()`. Valid precisely because nothing is audi
 documented as **not** a substitute for `setParameters` once audio flows. Two false starts are
 recorded here because they cost time and would cost it again: an assertion that `Mix=0` must be a
 bit-exact null through the processor is wrong when the multiband allpasses are engaged (the
-phase-matched dry is not the input), and a level assertion on an engaged Dim-D session measures
+phase-matched dry is not the input), and a level assertion on an engaged Dimensional session measures
 the algorithm's delay lines filling from empty, which is correct behaviour, not a duck.
 
 ### ER-STATE-03 — round 1's mechanism was half wrong
@@ -5082,7 +5082,7 @@ tooling false-positive; it added 6 findings (1 medium).
 | ER-STATE-01 | PARAM nodes absent from a restored session keep the previous project's values on a REUSED live instance (policy rule 2 held only vacuously, on fresh instances) | Med | **~~FIXED~~ → PREMISE REFUTED in round 2 (ER-STATE-07 probe step 0b).** `apvts.replaceState` already resets absent nodes to their defaults, with host notification. The shipped default branch in `reassertParameters` is a redundant, idempotent backstop — kept, but it is not what makes rule 2 hold. Code comments, SERIALIZATION_REGISTRY and the CHANGELOG entry corrected in round 2; the state-suite assertion stands (it pins the contract, whoever satisfies it). The genuine instance of this leak class was in the **host-hidden Settings**, found and fixed in round 2 as ER-STATE-08 |
 | ER-STATE-02 | Parsable-but-wrong-typed A/B slot payload re-types the live APVTS on apply → every later save silently loses all 36 parameters for a fresh instance | Med | **FIXED**: `readSlot` accepts only `apvts.state.getType()` (wrong type = unparsable = slot re-seeded); end-to-end state regression (restore → `abSwitchTo` → re-save → fresh-instance restore); registry sentence extended |
 | ER-GUI-01 | Value-box vertical drag is a third gesture-less edit path — no Undo step, no host change gesture; KI-010 claimed the list complete | Low | **FIXED**: `ScopedDragNotification` held across the ValueBox press (knob-drag parity); KI-010 dated correction |
-| ER-TST-01 | Tests 2 & 38 ran the whole algorithm×OS matrix with `algoAmount` at its 0 identity default — the engaged wet synthesis of all four algorithms outside both the NaN/denormal and allocation invariants; Dimension-D engaged by NO assertion-bearing test | High | **FIXED**: both matrices at `algoAmount 0.7`; Test 2 sweeps dimMode 1–4 for Dimension-D. Result: all green — the engaged paths were clean, now they are *proven* clean per push |
+| ER-TST-01 | Tests 2 & 38 ran the whole algorithm×OS matrix with `algoAmount` at its 0 identity default — the engaged wet synthesis of all four algorithms outside both the NaN/denormal and allocation invariants; Dimensional engaged by NO assertion-bearing test | High | **FIXED**: both matrices at `algoAmount 0.7`; Test 2 sweeps dimMode 1–4 for Dimensional. Result: all green — the engaged paths were clean, now they are *proven* clean per push |
 | ER-TST-02 | The twin-dump/ADR-0032-gate bit-identity claim is steady-state-scoped; blind axes (duck/adopt, crossfades, solo, xover glide, NaN-heal) named nowhere | Med | **DOCUMENTED**: TESTING.md §Gaps coverage-boundary entry + KI-026 scope qualifier. Matrix extension = round-2 candidate (not committed) |
 | ER-TST-04 | channelMode/swapLR/inputBalance/polarity + chorusRate/chorusDepth/dimMode: zero behavioural coverage anywhere (chorus family zero even at module level) | Med | **FIXED**: Test 46 — conditioning semantics pinned on the transparent chain (incl. exact polarity sign-flip) + discrimination checks (rate, depth, all six dimMode pairs) |
 | ER-CI-01 | `run-pluginval.ps1` retried genuine Win32-exception crashes 3× per pass — the masking removed from macOS 2026-08-18 survived on Windows; its null-exit justification was retired by the KI-007 WaitForExit fix | Med | **FIXED**: real abnormal exit fails immediately; retry only for `$null` (launch failure). TESTING.md §retry, RISK-004, and the sh-side comment re-synced |

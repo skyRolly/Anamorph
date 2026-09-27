@@ -688,8 +688,8 @@ inputs (`setDriveDb`, `setMix`). Two independent derivations, then a reconciliat
 Result — compared exactly: `channelMode`, `monoSum`, `swapLR`, `polarityL/R`, `msMode`, `solo`,
 `algorithm`, `mbEnable`, `monoMakerEnable`, `oversample`, `driveDb`, `mix`; to a relative 1e-5:
 `inputBalance`, `algoAmount`, `width`; guarded: `haasDelayMs`, `haasSide` (Haas either side),
-`velvetDensity` (Velvet), `chorusRate`, `chorusDepth` (Chorus only — not Dimension D), `dimMode`
-(Dimension D), `mbBands`, `mbWidthLow` (Multiband either side), `mbFreqLow`/`mbWidthMid`,
+`velvetDensity` (Velvet), `chorusRate`, `chorusDepth` (Chorus only — not Dimensional), `dimMode`
+(Dimensional), `mbBands`, `mbWidthLow` (Multiband either side), `mbFreqLow`/`mbWidthMid`,
 `mbFreqMid`/`mbWidthHiMid`, `mbFreqHigh`/`mbWidthHigh` (and ≥ 2 / 3 / 4 bands), `monoMakerFreq` (Mono
 Maker either side); not compared: `outputGainDb`, `outputBalance`, `mbSolo`, `bypass`, `autoGainMatch`.
 
@@ -1030,7 +1030,7 @@ agrees within 0.002 dB), and harmonics above the lower rate's Nyquist add at mos
 
 The flush is kept anyway: the authorization limits P4 to the same rate (*"Do not automatically
 generalize this to different-rate re-prepare."*), the evidence covers Haas only on stationary noise
-and multisine programmes (not Velvet, Chorus, Dimension D, Multiband, 4× / 8× oversampling, music or
+and multisine programmes (not Velvet, Chorus, Dimensional, Multiband, 4× / 8× oversampling, music or
 transients), and a rate change is rare next to a same-rate re-prepare. Keeping across a rate change
 is a candidate for a later owner decision, with this evidence; the engine's and State test 120's
 comments now say "by decision" instead of the band argument.
@@ -1972,7 +1972,7 @@ throughout is publishing too, so the observed error is the measure's own lag, no
 
 Setup:
 - **Engine set:** 75 non-current landings.
-  - Algorithms and modules: Haas, Velvet, Chorus, Dimension D, Multiband and Mono Maker.
+  - Algorithms and modules: Haas, Velvet, Chorus, Dimensional, Multiband and Mono Maker.
   - Edits: Width, Drive, Mix, Haas Delay, Multiband band width and Mono Maker frequency.
   - Also forced engages and Undo of Apply.
 - **Processor set:** 665 engages, 505 of them non-current landings.

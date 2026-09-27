@@ -279,7 +279,7 @@ flag that the non-fast paths and `reset()` clear.
 | 192 kHz | 32 | 4178.7 | 2829.7 | 1349.0 | **−32.3 %** |
 | 192 kHz | 128 | 2242.9 | 1905.7 | 337.2 | −15.0 % |
 
-**Bit-exact across 144 configurations** — 9 scenarios (working, mb-off, Haas, Chorus, Dim-D, OS ×8,
+**Bit-exact across 144 configurations** — 9 scenarios (working, mb-off, Haas, Chorus, Dimensional, OS ×8,
 defaults, bypass, multiband drag) × 4 block sizes × 4 sample rates, compared by an FNV-1a hash over
 **every output sample of both channels**. Zero mismatches. Class A by measurement, not by argument.
 

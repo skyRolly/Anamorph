@@ -7,7 +7,7 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Headline features
 - **Turn mono into stereo** and control stereo **Width** (global + up to 4 phase-coherent bands).
-- Widening engine: **Haas / Velvet-Noise / Chorus / Dimension-D**, with **Drive** (oversampled).
+- Widening engine: **Haas / Velvet-Noise / Chorus / Dimensional**, with **Drive** (oversampled).
 - Full stereo toolkit: **M/S** mode, **Mono Maker**, channel kill/swap/balance/polarity, **Band Solo**.
 - **Level Match** (BS.1770) for fair A/B; **A/B compare** + per-slot Undo/Redo; **presets**.
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.

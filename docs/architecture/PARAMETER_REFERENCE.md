@@ -32,13 +32,13 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1050-1128, :614-617.
 | Param | Behaviour |
 |---|---|
 | `drive` | 0..24 dB pre-saturation; peak-preserving tanh with makeup `1/tanh(g)`; identity at 0 dB via a 0..2 dB blend. Runs inside oversampling. |
-| `algorithm` | Selects Haas / Velvet Noise / Chorus / Dimension-D. |
+| `algorithm` | Selects Haas / Velvet Noise / Chorus / Dimensional. |
 | `amount` | Unified widening intensity 0..1. **0 = identity** (transparent on load). Each algorithm smooths it internally. |
 | `haasDelay` | Haas precedence delay 1..35 ms. |
 | `haasSide` (Haas Focus) | The *perceived* side (precedence): the opposite channel is delayed. |
 | `velvetDensity` | Velvet-noise diffusion character (active-tap count). |
 | `chorusRate` / `chorusDepth` | Chorus LFO rate (Hz) / depth. |
-| `dimMode` (Dim-D Style) | Dimension-D voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. Read only by the Dimension-D algorithm, so a move made under any other algorithm is adopted without a transition duck (ADR-0004, Correction of 2026-09-21). |
+| `dimMode` (Dimensional Style) | Dimensional voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. Read only by the Dimensional algorithm, so a move made under any other algorithm is adopted without a transition duck (ADR-0004, Correction of 2026-09-21). |
 | `width` | Global MS width: 0 = mono, 1.0 = identity, 2 = wide. |
 
 Evidence [Verified]: src/dsp/AnamorphEngine.cpp:950-1047, :442-469, :648-653; src/PluginParameters.cpp:257.

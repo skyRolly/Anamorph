@@ -59,7 +59,7 @@ substantial compatibility or long-term maintenance problems that cannot reasonab
 - **DSP bit-identity proven, not assumed**: the ADR-0022/0026 twin-dump harness re-pointed from
   two JUCE trees to **two language standards** — the 8 `AnamorphDSP` sources plus the
   deterministic driver compiled against the **same** JUCE 9.0.1 checkout with the same shipped
-  flags, differing only in `-std=c++17` vs `-std=c++23`; 32 scenarios (Haas/Velvet/Chorus/Dim-D ×
+  flags, differing only in `-std=c++17` vs `-std=c++23`; 32 scenarios (Haas/Velvet/Chorus/Dimensional ×
   OS Off/2x/4x/8x × M/S on/off; 120 noise + 120 silence blocks each at 48 kHz/512), FNV-1a over
   every output byte — produced **identical hashes and identical predicted and reported latencies
   for all 32 scenarios**. The 32 hashes are mutually distinct, so the matrix discriminates.

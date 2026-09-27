@@ -89,7 +89,7 @@ Anamorph/
 | `MidSide.h` | MS matrix (1/√2) + `applyWidth`. |
 | `HaasProcessor.{h,cpp}` | Precedence delay widening. |
 | `VelvetNoise.{h,cpp}` | Velvet-noise decorrelation (mono→stereo). |
-| `ChorusEngine.{h,cpp}` | Chorus + Dimension-D. |
+| `ChorusEngine.{h,cpp}` | Chorus + Dimensional. |
 | `MonoMaker.{h,cpp}` | LR4 low-freq mono (post-Mix). |
 | `MultibandWidth.{h,cpp}` | 1–4 band per-band width + phase-matched A(dry). |
 | `LR4Xover.h` | Flat-state Linkwitz–Riley crossover clone (Wave-2 H6; bit-identical to the `juce::dsp` original). |

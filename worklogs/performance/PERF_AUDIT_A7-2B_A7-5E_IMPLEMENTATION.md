@@ -136,7 +136,7 @@ passing `--self-check`, and the 32 scenario hashes diffed.
 |---|---|
 | **arm64 vs x86_64, shipped flags** | **32 of 32 scenarios differ** |
 | **arm64 vs x86_64, `-ffp-contract=off` on both** | **24 differ, 8 agree** |
-| the 8 that agree | `chorus-os1-lr/ms`, `dimd-os1-lr/ms`, `haas-os1-lr/ms`, `velvet-os1-lr/ms` — **every scenario at oversampling ×1, and only those** |
+| the 8 that agree | `chorus-os1-lr/ms`, `dimensional-os1-lr/ms`, `haas-os1-lr/ms`, `velvet-os1-lr/ms` — **every scenario at oversampling ×1, and only those** |
 
 **This is the Linux pattern exactly** — same counts, same split, same scenario names. The two
 mechanisms and their proportions are properties of the architectures and of the libm boundary, not

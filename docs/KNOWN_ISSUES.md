@@ -927,7 +927,7 @@ APVTS `LockedListeners` mutex).
   Settings. This is a precondition the original filing did not state.
 - **When it fires:** with oversampling so selected, a Drive automation lane crossing the engage
   threshold (Drive defaults to 0 dB, so any upward lane crosses it on its first ramp), or an
-  Algorithm lane switching between the linear and Chorus/Dimension-D classes, triggers the
+  Algorithm lane switching between the linear and Chorus/Dimensional classes, triggers the
   wrapper's `audioProcessorChanged` → `ComponentRestarter`: on the audio thread that is
   `triggerAsyncUpdate` → (Linux) `InternalMessageQueue::postMessage` = a `ScopedLock`, a
   `ReferenceCountedArray::add` (heap), and a `write()` syscall — inside `process()`. The

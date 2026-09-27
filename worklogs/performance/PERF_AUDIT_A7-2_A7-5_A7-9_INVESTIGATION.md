@@ -304,7 +304,7 @@ container is a masked-CPU shared machine and wall-clock is not a datum here:*
 | defaults (transparent) | 82 ms | 71 ms | −13.4 % |
 | working | 292 ms | 227 ms | −22.3 % |
 | oversampling ×8 | 680 ms | 574 ms | −15.6 % |
-| Dimension-D | 311 ms | 240 ms | −22.8 % |
+| Dimensional | 311 ms | 240 ms | −22.8 % |
 | Chorus | 299 ms | 232 ms | −22.4 % |
 | Haas | 282 ms | 222 ms | −21.3 % |
 

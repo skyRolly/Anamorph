@@ -80,7 +80,7 @@ recorded in ADR-0022 and flagged on the PR.
 * **DSP bit-identity (twin dump)** — the core "identical DSP behavior" proof: a scratchpad tool
   (methodology recorded here; tool not committed, per the `xbench.cpp` precedent) compiles the
   8 `AnamorphDSP` sources + a deterministic scenario driver against **both** JUCE checkouts with
-  identical flags, runs **32 scenarios** (Haas/Velvet/Chorus/Dim-D × OS Off/2x/4x/8x × M/S
+  identical flags, runs **32 scenarios** (Haas/Velvet/Chorus/Dimensional × OS Off/2x/4x/8x × M/S
   on/off; drive 8 dB, amount 0.7, width 1.6, mix 0.8, multiband + mono-maker + level-match on;
   120 noise + 120 silence blocks each at 48 kHz/512) and FNV-1a-hashes every output byte.
   **All 32 hashes and all reported latencies are identical 8.0.14 vs 9.0.0** — including the

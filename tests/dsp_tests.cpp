@@ -120,7 +120,7 @@ static void testNoBadSamples()
     engine.prepare (sr, block);
 
     using namespace anamorph;
-    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD };
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::Dimensional };
     const OversampleFactor os[] = { OversampleFactor::Off, OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8 };
 
     bool anyBad = false;
@@ -129,10 +129,10 @@ static void testNoBadSamples()
         for (auto o : os)
             for (int variant = 0; variant < 2; ++variant)
             {
-                // Dimension-D: sweep all four voicings -- the only automated
+                // Dimensional: sweep all four voicings -- the only automated
                 // execution this voice's ENGAGED synthesis otherwise gets is the
                 // assertion-free dsp_dump. Other algorithms ignore dimMode.
-                const int dimModes = (a == Algorithm::DimensionD) ? 4 : 1;
+                const int dimModes = (a == Algorithm::Dimensional) ? 4 : 1;
                 for (int dm = 1; dm <= dimModes; ++dm)
                 {
                     EngineParameters p;
@@ -3170,7 +3170,7 @@ static void testProcessIsAllocationFree()
     engine.prepare (sr, block);
 
     using namespace anamorph;
-    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD };
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::Dimensional };
     const OversampleFactor os[] = { OversampleFactor::Off, OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8 };
 
     // The buffer is made ONCE, outside every armed region: constructing an
@@ -4586,11 +4586,11 @@ static void testInputConditioningAndCharacterParams()
         for (int m2 = m1 + 1; m2 <= 4 && dimAllDistinct; ++m2)
         {
             const double d = engagedDiff (
-                [m1] (EngineParameters& p) { p.algorithm = Algorithm::DimensionD; p.dimMode = m1; },
-                [m2] (EngineParameters& p) { p.algorithm = Algorithm::DimensionD; p.dimMode = m2; });
+                [m1] (EngineParameters& p) { p.algorithm = Algorithm::Dimensional; p.dimMode = m1; },
+                [m2] (EngineParameters& p) { p.algorithm = Algorithm::Dimensional; p.dimMode = m2; });
             if (! (d > 1.0e-3)) dimAllDistinct = false;
         }
-    check (dimAllDistinct, "all four Dimension-D voicings are pairwise distinct engaged");
+    check (dimAllDistinct, "all four Dimensional voicings are pairwise distinct engaged");
 }
 
 
@@ -4983,7 +4983,7 @@ static int runOsLatencyProbe()
                                                 anamorph::OversampleFactor::x2,
                                                 anamorph::OversampleFactor::x4,
                                                 anamorph::OversampleFactor::x8 };
-    const char* algoName[4] = { "Haas", "Velvet", "Chorus", "DimensionD" };
+    const char* algoName[4] = { "Haas", "Velvet", "Chorus", "Dimensional" };
 
     std::printf ("  OS   algorithm   drive |  predict  report  actual\n");
     for (int o = 0; o < 4; ++o)
@@ -5010,7 +5010,7 @@ static int runOsLatencyProbe()
 //  CPU saving is deliberate: the resampling round trip is the single largest cost
 //  in the engine. What used to travel with it was the wrap's LATENCY. With a
 //  factor selected, Drive crossing 0.01 dB (or Algorithm crossing into or out of
-//  Chorus / Dimension-D) moved the reported PDC between 0 and the factor's
+//  Chorus / Dimensional) moved the reported PDC between 0 and the factor's
 //  latency, and a host answers a latency change by restarting its graph. The
 //  user hears an ordinary knob move as a dropout. Measured with
 //  `--os-latency-probe` on the pre-fix build: predict 0 -> 4 at 2x, 0 -> 6 at 4x
@@ -5775,7 +5775,7 @@ static void testOversamplingOffHandoffKeepsProcessing()
 //  That is the right trade for a change that genuinely rewires the graph, because
 //  the swap then happens at silence and no stale tail survives it. It is the wrong
 //  trade for `dimMode`, which is read by exactly one line -- `chorus.setDimMode`,
-//  inside `else if (p.algorithm == Algorithm::DimensionD)` -- so under any other
+//  inside `else if (p.algorithm == Algorithm::Dimensional)` -- so under any other
 //  algorithm the value reaches nothing at all and the duck buys nothing.
 //
 //  MEASURED, on this engine, before the fix: a host lane toggling dimMode between
@@ -5886,23 +5886,23 @@ static void testInertDiscreteChangeDoesNotDuck()
     //     rather than a deletion. Measured at -34.4 dB; asserted at -20.
     {
         const double sr = 48000.0; const int block = 128;
-        const auto ctl = render (sr, block, 300, anamorph::Algorithm::DimensionD, 1, Lane::None, 0);
-        const auto aut = render (sr, block, 300, anamorph::Algorithm::DimensionD, 1, Lane::DimMode, 1);
+        const auto ctl = render (sr, block, 300, anamorph::Algorithm::Dimensional, 1, Lane::None, 0);
+        const auto aut = render (sr, block, 300, anamorph::Algorithm::Dimensional, 1, Lane::DimMode, 1);
         const double d = dbBetween (aut.rms, ctl.rms);
-        std::printf ("  control: dimMode lane under Dimension D still ducks to %+.2f dB\n", d);
+        std::printf ("  control: dimMode lane under Dimensional still ducks to %+.2f dB\n", d);
         check (d < -20.0, "dimMode still ducks under the algorithm that reads it");
     }
 
     // --- CONTROL 3: the value is still ADOPTED while inert. Not ducking must not
     //     mean not adopting: `sameParameters` still compares dimMode, so the change
-    //     takes the ordinary continuous path and a later switch to Dimension D has
+    //     takes the ordinary continuous path and a later switch to Dimensional has
     //     to hear the NEW value. Asserted externally: move dimMode under Haas, then
-    //     switch to Dimension D, and require the settled output to match an engine
+    //     switch to Dimensional, and require the settled output to match an engine
     //     that carried the new value all along -- and NOT to match one that kept the
     //     old value. Two renders that must agree and one that must not.
     {
         const double sr = 48000.0; const int block = 128;
-        auto switchToDimD = [&] (int dimBefore, int dimAfter) -> std::vector<float>
+        auto switchToDimensional = [&] (int dimBefore, int dimAfter) -> std::vector<float>
         {
             anamorph::AnamorphEngine engine;
             engine.prepare (sr, block);
@@ -5918,7 +5918,7 @@ static void testInertDiscreteChangeDoesNotDuck()
             for (int b = 0; b < 240; ++b)
             {
                 if (b == 40) p.dimMode = dimAfter;                              // inert here
-                if (b == 80) p.algorithm = anamorph::Algorithm::DimensionD;     // now it matters
+                if (b == 80) p.algorithm = anamorph::Algorithm::Dimensional;    // now it matters
                 engine.setParameters (p);
                 for (int i = 0; i < block; ++i)
                 {
@@ -5946,13 +5946,13 @@ static void testInertDiscreteChangeDoesNotDuck()
             return worst;
         };
         const size_t settledFrom = (size_t) (160 * block);
-        const auto moved   = switchToDimD (1, 3);   // 1 -> 3 while inert, then Dimension D
-        const auto carried = switchToDimD (3, 3);   // 3 throughout
-        const auto stale   = switchToDimD (1, 1);   // never moved: the wrong mode
+        const auto moved   = switchToDimensional (1, 3);   // 1 -> 3 while inert, then Dimensional
+        const auto carried = switchToDimensional (3, 3);   // 3 throughout
+        const auto stale   = switchToDimensional (1, 1);   // never moved: the wrong mode
         std::printf ("  control: adopted-while-inert tail |moved-carried| = %.3e, |moved-stale| = %.3e\n",
                      tailDiff (moved, carried, settledFrom), tailDiff (moved, stale, settledFrom));
         check (tailDiff (moved, carried, settledFrom) < 1e-6,
-               "a dimMode moved while inert is adopted -- Dimension D hears the new mode");
+               "a dimMode moved while inert is adopted -- Dimensional hears the new mode");
         check (tailDiff (moved, stale, settledFrom) > 1e-3,
                "the adoption control is sharp: the stale mode sounds different");
     }
@@ -6082,15 +6082,15 @@ static void testMultibandEnableDrySourceNoStep()
 //      block N+1 : change the algorithm   -> pendingP retargeted, flag NOT refreshed
 //  adopted the new algorithm without clearing the old one's state.
 //
-//  WHICH PAIRS THIS CAN BE HEARD ON. Only a change between Chorus and Dimension D.
+//  WHICH PAIRS THIS CAN BE HEARD ON. Only a change between Chorus and Dimensional.
 //  A module is processed only while it IS the selected algorithm (:1281-1282 and
 //  the `isModAlgorithm` gate at :859), so every other incoming module starts from
-//  silence and a skipped reset costs nothing. Chorus and Dimension D are two
+//  silence and a skipped reset costs nothing. Chorus and Dimensional are two
 //  VOICES OF ONE ChorusEngine, so there the incoming voice inherits a delay line
 //  full of the outgoing voice's audio. Measured through AnamorphAudioProcessor
-//  with host-style parameter writes: peak 0.587 (Chorus -> Dimension D, block 64)
-//  and 1.519 (Dimension D -> Chorus, block 128) against a 0.7-amplitude source --
-//  and 0.000 for Haas -> Velvet / Chorus / Dimension D and for Chorus -> Haas,
+//  with host-style parameter writes: peak 0.587 (Chorus -> Dimensional, block 64)
+//  and 1.519 (Dimensional -> Chorus, block 128) against a 0.7-amplitude source --
+//  and 0.000 for Haas -> Velvet / Chorus / Dimensional and for Chorus -> Haas,
 //  which is why the pair matters and the others are kept here as controls.
 //
 //  WHAT THIS ASSERTS. Not the flag: the SAMPLES. The same end state is reached by
@@ -6142,11 +6142,11 @@ static void testAlgoResetSurvivesMidFadeRetarget()
     };
 
     const struct { anamorph::Algorithm from, to; const char* name; } pairs[] = {
-        { anamorph::Algorithm::Chorus,      anamorph::Algorithm::DimensionD, "Chorus -> Dimension D" },
-        { anamorph::Algorithm::DimensionD,  anamorph::Algorithm::Chorus,     "Dimension D -> Chorus" },
-        { anamorph::Algorithm::Haas,        anamorph::Algorithm::Velvet,     "Haas -> Velvet (control)" },
-        { anamorph::Algorithm::Haas,        anamorph::Algorithm::DimensionD, "Haas -> Dimension D (control)" },
-        { anamorph::Algorithm::Chorus,      anamorph::Algorithm::Haas,       "Chorus -> Haas (control)" },
+        { anamorph::Algorithm::Chorus,      anamorph::Algorithm::Dimensional, "Chorus -> Dimensional" },
+        { anamorph::Algorithm::Dimensional, anamorph::Algorithm::Chorus,      "Dimensional -> Chorus" },
+        { anamorph::Algorithm::Haas,        anamorph::Algorithm::Velvet,      "Haas -> Velvet (control)" },
+        { anamorph::Algorithm::Haas,        anamorph::Algorithm::Dimensional, "Haas -> Dimensional (control)" },
+        { anamorph::Algorithm::Chorus,      anamorph::Algorithm::Haas,        "Chorus -> Haas (control)" },
     };
 
     // The fade-out is ~6 ms (ADR-0004): at block 64 that is 4.5 blocks and at
@@ -6174,9 +6174,9 @@ static void testAlgoResetSurvivesMidFadeRetarget()
 // ---------------------------------------------------------------------------
 //  Regression (R8 / review): an INERT dimMode move must not re-arm Level Match.
 //
-//  R4 gave `discreteDiffers` a Dimension-D relevance guard on `dimMode` (Test 55
+//  R4 gave `discreteDiffers` a Dimensional relevance guard on `dimMode` (Test 55
 //  above) because `chorus.setDimMode (p.dimMode)` is the field's only reader and it
-//  sits inside `else if (p.algorithm == Algorithm::DimensionD)`. `processingDiffers`
+//  sits inside `else if (p.algorithm == Algorithm::Dimensional)`. `processingDiffers`
 //  asks the NARROWER question -- "did the signal path change?" -- and still compared
 //  `dimMode` unconditionally. Its one consumer is the silent duck bottom:
 //
@@ -6185,7 +6185,7 @@ static void testAlgoResetSurvivesMidFadeRetarget()
 //      if (procChanged) loudness.softReset();
 //
 //  THE REPORTED SCENARIO DOES NOT REPRODUCE, and that is worth a control rather than
-//  a correction in prose. A plain Dim-D Style move under Haas opens NO duck at all
+//  a correction in prose. A plain Dimensional Style move under Haas opens NO duck at all
 //  after R4, so this function is never consulted and the measurement is untouched.
 //  Leg 1 asserts exactly that, so a future widening of `discreteDiffers` cannot make
 //  this test pass for the wrong reason.
@@ -6286,7 +6286,7 @@ static void testInertDimModeDoesNotReArmLevelMatch()
     };
 
     const auto haas = base (anamorph::Algorithm::Haas);
-    const auto dimD = base (anamorph::Algorithm::DimensionD);
+    const auto dimensional = base (anamorph::Algorithm::Dimensional);
 
     // --- The baseline this test reads everything against: no change at all.
     leg ("R8 control: no change -- the ordinary silent drift", moveAfter (haas, haas, false), true);
@@ -6295,7 +6295,7 @@ static void testInertDimModeDoesNotReArmLevelMatch()
     //     here is consulted -- asserted so it cannot start passing for another reason.
     {
         auto p = haas; p.dimMode = 3;
-        leg ("R8: a plain Dim-D Style move under Haas", moveAfter (haas, p, false), true);
+        leg ("R8: a plain Dimensional Style move under Haas", moveAfter (haas, p, false), true);
     }
 
     // --- Leg 2: the forced-duck route (A/B / preset / undo).
@@ -6322,12 +6322,12 @@ static void testInertDimModeDoesNotReArmLevelMatch()
     //     the legs a fix that simply deleted dimMode from the list would also pass, so
     //     they are what pins the GUARD rather than the removal.
     {
-        auto p = dimD; p.dimMode = 3;                     // audible: Dimension D is live
-        leg ("R8: dimMode WHILE Dimension D is active", moveAfter (dimD, p, false), false);
+        auto p = dimensional; p.dimMode = 3;              // audible: Dimensional is live
+        leg ("R8: dimMode WHILE Dimensional is active", moveAfter (dimensional, p, false), false);
     }
     {
-        auto p = haas; p.algorithm = anamorph::Algorithm::DimensionD;
-        leg ("R8: switching TO Dimension D", moveAfter (haas, p, false), false);
+        auto p = haas; p.algorithm = anamorph::Algorithm::Dimensional;
+        leg ("R8: switching TO Dimensional", moveAfter (haas, p, false), false);
     }
     {
         auto p = haas; p.haasSide = anamorph::HaasSide::Right;
@@ -6359,7 +6359,7 @@ static void testInertDimModeDoesNotReArmLevelMatch()
 //  same block with those samples at 0.
 //
 //  THE COMPARISON IS PER-BLOCK RMS, NOT SAMPLE-EXACT, because the guard's own reset is a
-//  state change the twin never makes. Chorus and Dimension D restart their LFO phase and
+//  state change the twin never makes. Chorus and Dimensional restart their LFO phase and
 //  then differ from the twin by up to 1.8 dB for as long as the modulation runs; with
 //  Level Match on, A re-converges from a cleared matcher. Haas and Velvet carry no such
 //  phase, and with Level Match off they return to the twin to within 0.1 dB -- the
@@ -6367,7 +6367,7 @@ static void testInertDimModeDoesNotReArmLevelMatch()
 //
 //  MEASURED, 4 algorithms x Oversampling Off / 2x, Multiband and Mono Maker on, Level
 //  Match off and on: no non-finite output block anywhere; from 10 blocks after the burst
-//  the worst per-block distance from the twin is 2.83 dB (Dim-D, Level Match on) against a
+//  the worst per-block distance from the twin is 2.83 dB (Dimensional, Level Match on) against a
 //  6 dB bound -- a latched chain reads -180 dB, so the bound sits ~170 dB from the failure
 //  and ~3 dB from the widest healthy leg; Haas / Velvet within 0.1 dB after 4-13 blocks.
 //  AND WHAT EACH ASSERTION CATCHES, measured by deleting pieces of the guard:
@@ -6411,8 +6411,8 @@ static void testNonFiniteBurstSelfHeals()
 
     using anamorph::Algorithm;
     using anamorph::OversampleFactor;
-    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD };
-    const char* names[]     = { "Haas", "Velvet", "Chorus", "Dim-D" };
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::Dimensional };
+    const char* names[]     = { "Haas", "Velvet", "Chorus", "Dimensional" };
 
     bool outFinite = true, gainFinite = true, tracks = true, returns = true;
     for (int lm = 0; lm <= 1; ++lm)
@@ -6694,19 +6694,19 @@ static void testScopeRingHandsTheNewestFramesOldestFirst()
 //  (Devin review of PR #155, "Chorus fades in after host reset"; State test 126 is the
 //  user-facing half, through the processor)
 //
-//  `AnamorphEngine::reset (audioTailsOnly)` ends by re-seeding the Chorus / Dimension-D wet
+//  `AnamorphEngine::reset (audioTailsOnly)` ends by re-seeding the Chorus / Dimensional wet
 //  and depth glides (`chorus.snapToTargets()`), as prepare() does. State test 126 proves the
 //  defect and the fix. This pins the three decisions behind that line, each of which an
 //  innocent-looking edit could undo without failing anything else:
 //    C1. it runs AFTER the in-flight duck flush. A forced swap (A/B, preset, undo) holds the
 //        new Amount in pendingP until `p = pendingP`, so a host reset landing inside the
 //        fade-out must start at the NEW Amount -- bit-identical to a fresh engine at it;
-//    C2. an ordinary duck in flight (Haas -> Dimension-D) is adopted and starts at the new
+//    C2. an ordinary duck in flight (Haas -> Dimensional) is adopted and starts at the new
 //        algorithm's configured sound, which also pins that the algorithm test reads the
 //        FLUSHED snapshot;
 //    G.  a NaN Amount pending at the reset is not seeded: when the host sends a finite value
 //        again, no block after the reset is zeroed by the self-heal (ADR-0009, R7);
-//    H.  outside Chorus / Dimension-D the idle chorus is left alone: a Haas session that is
+//    H.  outside Chorus / Dimensional the idle chorus is left alone: a Haas session that is
 //        host-reset and then switched to Chorus sounds exactly like the same session with no
 //        reset.
 //  Mutants and their failures: worklog R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §U.
@@ -6768,9 +6768,9 @@ static void testHostResetChorusSeedIsScoped()
     swaps[0].name = "C1 forced swap, Chorus 0.3 -> 0.9"; swaps[0].forced = true;
     swaps[0].from.algorithm = Algorithm::Chorus; swaps[0].from.algoAmount = 0.3f;
     swaps[0].to = swaps[0].from; swaps[0].to.algoAmount = 0.9f;
-    swaps[1].name = "C2 ordinary duck, Haas -> Dimension-D"; swaps[1].forced = false;
+    swaps[1].name = "C2 ordinary duck, Haas -> Dimensional"; swaps[1].forced = false;
     swaps[1].from.algorithm = Algorithm::Haas; swaps[1].from.algoAmount = 0.7f;
-    swaps[1].to = swaps[1].from; swaps[1].to.algorithm = Algorithm::DimensionD; swaps[1].to.dimMode = 3;
+    swaps[1].to = swaps[1].from; swaps[1].to.algorithm = Algorithm::Dimensional; swaps[1].to.dimMode = 3;
     for (const auto& s : swaps)
     {
         const auto e = activate (s.from);
@@ -6820,7 +6820,7 @@ static void testHostResetChorusSeedIsScoped()
                "a NaN Amount pending at a host reset is not seeded -- no self-healed block when the host recovers");
     }
 
-    // --- H: outside Chorus / Dimension-D the idle chorus is left alone -------------
+    // --- H: outside Chorus / Dimensional the idle chorus is left alone -------------
     {
         anamorph::EngineParameters chorusP; chorusP.algorithm = Algorithm::Chorus; chorusP.algoAmount = 0.7f;
         auto haasP = chorusP; haasP.algorithm = Algorithm::Haas;
@@ -6838,7 +6838,7 @@ static void testHostResetChorusSeedIsScoped()
         const bool ok = same (outs[0], outs[1]);
         std::printf ("  H  Haas session host-reset, then switched to Chorus: %s the same session without the reset\n",
                      ok ? "bit-identical to" : "DIFFERENT from");
-        check (ok, "a host reset outside Chorus / Dimension-D leaves the idle chorus alone");
+        check (ok, "a host reset outside Chorus / Dimensional leaves the idle chorus alone");
     }
 }
 
@@ -6862,7 +6862,7 @@ static void testHostResetChorusSeedIsScoped()
 //        (289 = the fade has reached silence and the bottom has not run yet);
 //    L2  Haas delay, both directions;  L3  multiband crossover, band width and Band Solo;
 //    L4  Oversampling Off -> 2x with Drive (a latency-changing swap: no dry fill);
-//    L5  into Chorus / Dimension-D with the smoothers, so the Chorus re-seed (Test 62) and
+//    L5  into Chorus / Dimensional with the smoothers, so the Chorus re-seed (Test 62) and
 //        this landing compose;
 //    L6  the other three ways into a forced fade-out: an ordinary duck upgraded to forced,
 //        a forced re-arm from the fade-in, a forced swap retargeted mid fade-out.
@@ -7010,13 +7010,13 @@ static void testHostResetInAForcedSwapLandsSettled()
     }
 
     // --- L5: into the modulation voices, where Test 62's re-seed runs too -------------
-    for (const auto alg : { Algorithm::Chorus, Algorithm::DimensionD })
+    for (const auto alg : { Algorithm::Chorus, Algorithm::Dimensional })
     {
         const auto to = with (smooth, [alg] (Params& p) { p.algorithm = alg; p.algoAmount = 0.7f; p.dimMode = 3; });
         std::snprintf (name, sizeof name, "L5 Haas -> %s with the smoothers, reset @64",
-                       alg == Algorithm::Chorus ? "Chorus" : "Dimension-D");
+                       alg == Algorithm::Chorus ? "Chorus" : "Dimensional");
         check (compare (name, afterReset (haas, to, forcedAt (to, 64)), fresh (to)),
-               "a host reset inside a forced swap into Chorus / Dimension-D starts at the configured sound");
+               "a host reset inside a forced swap into Chorus / Dimensional starts at the configured sound");
     }
 
     // --- L6: the other three ways into a forced fade-out -------------------------------
@@ -8363,13 +8363,13 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //   (1) THE PREDICATE, per field: an A/B-shaped forced swap (requestDuck, the slot's snapshot, an injection
 //       6 dB below the published value) changing ONE EngineParameters member (all 36; the structured binding
 //       makes the count a compile error to get wrong) under four bases -- H (Haas, Multiband off, Mono Maker
-//       off), V (Velvet, Multiband 2 bands, Mono Maker on), C (Chorus, Multiband 4 bands) and D (Dimension D,
+//       off), V (Velvet, Multiband 2 bands, Mono Maker on), C (Chorus, Multiband 4 bands) and D (Dimensional,
 //       Multiband 1 band, Mono Maker on) -- plus the identical slot. HOLD iff the field is a measurement input
 //       for that base ("meas") or a processingDiffers path change ("m+p" / "path": these hold before and
 //       after the change -- haasSide off Haas and mbBands with Multiband off are "path" only); the post-tap
 //       fields ("post": Output Gain / Balance, Band Solo, Bypass, the Level Match switch), the guarded-out
-//       ones ("off": Haas fields off Haas, Chorus fields off Chorus -- Dimension D included --, Velvet density
-//       off Velvet, dimMode off Dimension D, a crossover or band width with too few bands or Multiband off,
+//       ones ("off": Haas fields off Haas, Chorus fields off Chorus -- Dimensional included --, Velvet density
+//       off Velvet, dimMode off Dimensional, a crossover or band width with too few bands or Multiband off,
 //       Mono Maker Freq with it off) and the identical slot MOVE. (1b) The re-arm clears the ANALYSIS only:
 //       every row above injects below the predict floor, so an injection ABOVE it (-0.5 dB against Drive 8's
 //       -4.06, slots differing in Width) must be published exactly at the bottom and hold -- a re-arm through
@@ -8618,7 +8618,7 @@ static void testLevelMatchAbRearmAndSameRateReprepare()
             { "chorusDepth",     [] (Params& s) { s.chorusDepth = 0.8f; },
                                  [] (const Params& b) { return b.algorithm == Algorithm::Chorus ? (int) kMeas : (int) kOff; } },
             { "dimMode",         [] (Params& s) { s.dimMode = 3; },
-                                 [] (const Params& b) { return b.algorithm == Algorithm::DimensionD ? kMeas | kPath : (int) kOff; } },
+                                 [] (const Params& b) { return b.algorithm == Algorithm::Dimensional ? kMeas | kPath : (int) kOff; } },
             { "width",           [] (Params& s) { s.width += 0.3f; },                [] (const Params&) { return (int) kMeas; } },
             { "mbEnable",        [] (Params& s) { s.mbEnable = ! s.mbEnable; },      [] (const Params&) { return kMeas | kPath; } },
             { "mbBands",         [] (Params& s) { s.mbBands = s.mbBands == 3 ? 2 : 3; },
@@ -8656,7 +8656,7 @@ static void testLevelMatchAbRearmAndSameRateReprepare()
         Params bH = base (Algorithm::Haas, 8.0f);
         Params bV = base (Algorithm::Velvet, 8.0f);     bV.mbEnable = true; bV.mbBands = 2; bV.monoMakerEnable = true;
         Params bC = base (Algorithm::Chorus, 8.0f);     bC.mbEnable = true;
-        Params bD = base (Algorithm::DimensionD, 8.0f); bD.mbEnable = true; bD.mbBands = 1; bD.monoMakerEnable = true;
+        Params bD = base (Algorithm::Dimensional, 8.0f); bD.mbEnable = true; bD.mbBands = 1; bD.monoMakerEnable = true;
         const Params* const bases[] = { &bH, &bV, &bC, &bD };
         const char* const baseNames[] = { "H", "V", "C", "D" };
         constexpr int nBases = 4;

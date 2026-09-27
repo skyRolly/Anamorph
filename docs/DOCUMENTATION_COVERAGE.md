@@ -5400,7 +5400,8 @@ the closed-source + public-tracker notice. **New:** `EULA.md` (an **unapproved d
 force and not shipped, every open owner/legal decision marked), `PRIVACY.md` (collects nothing,
 sends nothing; every disk write and the one About-screen link cited to source), `TRADEMARKS.md`
 (name status, third-party marks used descriptively, the naming obligations IJG/Xiph/zlib impose,
-and the `Dim-D` / "Roland Dimension-D-style" review item) and `docs/COMMERCIAL_STATUS.md` (the
+and a review item on the fourth widening algorithm's name, closed when 0.9.9 renamed it
+**Dimensional**) and `docs/COMMERCIAL_STATUS.md` (the
 internal index of product model, distribution model and the eight open owner/legal decisions —
 including the newly recorded fact that the GitHub repository is public with forking enabled while
 the product model is closed-source). README regrouped its documentation index into **four
@@ -7301,7 +7302,7 @@ guard / 245. The `[0.9.6]` Fixed count is unchanged at 25 — nothing user-visib
 
 **ER-DSP-09 — a restored non-default session GLIDED into its own sound.** Reproduced with the
 product's own signal before anything was changed (`AnamorphStateTests --restore-fade-probe`): block 1
-against the settled figure read 0.17 (Haas), 0.09 (Velvet), 0.29 (Chorus), 0.39 (Dimension-D), 0.35
+against the settled figure read 0.17 (Haas), 0.09 (Velvet), 0.29 (Chorus), 0.39 (Dimensional), 0.35
 (Mono Maker crossover). Cause: each module's own `prepare()` snaps its smoothers, but it runs before
 `updateDerived()` installs the restored snapshot, and `reset()` then re-zeroed the chorus blend.
 Fixed at that ordering — four `snapToTargets()` calls at the END of `AnamorphEngine::prepare()`,
@@ -14040,7 +14041,7 @@ swap (unverified, adjacent to F13).
 
 **Scope.** The review finding "Chorus fades in after host reset", measured before any change
 (`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §U). Confirmed: `ResetScope::audioTailsOnly`
-ran `chorus.reset()`, which zeroes the Chorus / Dimension-D wet and modulation depth, and nothing on
+ran `chorus.reset()`, which zeroes the Chorus / Dimensional wet and modulation depth, and nothing on
 the host path re-seeded them as `prepare()` does (ER-DSP-09). In a settled session every other
 module was already bit-identical to a clean start (a forced swap in flight: the 75th pass).
 

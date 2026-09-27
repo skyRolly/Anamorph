@@ -197,11 +197,11 @@ PR's earlier rounds, have no entry here yet; their evidence is in CHANGELOG `[0.
 corrections those entries cite.
 
 **The host reset's chorus re-seed — Test 62 (PR #155, 2026-09-23).** A host reset
-(`ResetScope::audioTailsOnly`) now re-seeds the Chorus / Dimension-D wet and depth, as `prepare()`
+(`ResetScope::audioTailsOnly`) now re-seeds the Chorus / Dimensional wet and depth, as `prepare()`
 does (ER-DSP-09); State test 126 below proves the sound. **Test 62**
 (`testHostResetChorusSeedIsScoped`) pins where that seed sits and when it must not run, at engine
 level: a host reset inside a forced swap (Chorus 0.3 → 0.9) and inside an ordinary duck (Haas →
-Dimension-D) is bit-identical to a fresh engine at the NEW settings, so the seed runs after the duck
+Dimensional) is bit-identical to a fresh engine at the NEW settings, so the seed runs after the duck
 flush; a NaN Amount pending at the reset is not seeded, so no block is self-healed when the host
 recovers (ADR-0009); and a Haas session host-reset then switched to Chorus is bit-identical to the
 same session with no reset, so an idle chorus is left alone. Against the pre-fix engine: 2 of its 4
@@ -218,7 +218,7 @@ for good. **Test 63** (`testHostResetInAForcedSwapLandsSettled`) compares, bit-e
 a host reset inside the fade with a fresh engine at the target: the engine smoothers in both
 directions with the reset 1, 64 and 289 samples in (289: silent, bottom not yet run); the Haas delay
 both ways; crossover, band width and Band Solo; a latency-changing Oversampling Off → 2× swap with
-Drive; swaps into Chorus and Dimension-D (with Test 62's re-seed); and the other three ways into a
+Drive; swaps into Chorus and Dimensional (with Test 62's re-seed); and the other three ways into a
 forced fade-out (an ordinary duck upgraded, a re-arm from the fade-in, a retarget). Its adversarial
 legs pass on both engines: a swap finished before the reset, a reset in the fade-in, a live edit's
 glide (engine smoothers, Haas amount, Mono Maker cutoff, Velvet density) and an ordinary duck's
@@ -310,7 +310,7 @@ measured; MOVE > 1 dB, 1.88–4.67 measured), and every probe first proves its i
 the block it judges. Transients are read against a fresh engine prepared at the destination and fed
 the same seeded input from sample 0 — the published D(t) and a per-block least-squares output gain,
 for 3 s. Legs: (1) an A/B-shaped forced swap for every `EngineParameters` member under four bases
-(Haas; Velvet, 2 bands, Mono Maker; Chorus, 4 bands; Dimension D, 1 band, Mono Maker) plus the
+(Haas; Velvet, 2 bands, Mono Maker; Chorus, 4 bands; Dimensional, 1 band, Mono Maker) plus the
 identical slot — the value holds iff the field is a measurement input or a `processingDiffers` path
 change, and the post-tap, guarded-out and identical rows move; (2) a continuous-only A/B, Drive 2 ↔ 8,
 injecting the fresh destination's converged value — within 0.1 dB of the fresh engine for 3 s (0.018 /
@@ -1393,7 +1393,7 @@ header: a smoother gliding from the wrong start (the defect) and empty delay-lin
 filling up (not a defect — `prepare` clears that history by contract, and Haas's own 28 ms line is
 longer than the block the first point covers). So the ratio RISES when the fix lands without
 reaching 1.0 — measured block1/block12 before → after: Haas 0.17 → 0.72, Velvet 0.09 → 0.18,
-Chorus 0.29 → 0.68, Dimension-D 0.39 → 0.90, Mono Maker 0.35 → 0.58 — and a ratio below 1.0 here
+Chorus 0.29 → 0.68, Dimensional 0.39 → 0.90, Mono Maker 0.35 → 0.58 — and a ratio below 1.0 here
 is not by itself evidence of a defect. **DSP Test 49 is the discriminating instrument**, because its
 reference cancels the history term exactly.
 
@@ -4798,7 +4798,7 @@ position is 0, and the continuous-playback leg passes for the wrong reason.
 **The host reset keeps the configured modulation sound — State test 126 (PR #155, 2026-09-23).**
 **State test 126** (`testAHostResetKeepsTheConfiguredChorusSound`) drives
 `AnamorphAudioProcessor::reset()` — the call VST3 `setProcessing(false)` and AU `Reset()` make —
-for Chorus and Dimension-D. It asserts that the configured Amount (1.0 and 0.7) is the effective wet
+for Chorus and Dimensional. It asserts that the configured Amount (1.0 and 0.7) is the effective wet
 from the first sample after the reset; that the output is bit-identical to a fresh processor for
 0.5 s at Oversampling Off and 2× × Amount 1.0 and 0.7; that audio tails are still cleared (silence
 after loud material is exactly 0, against a no-reset control that rings); that `prepare()` is
@@ -4883,7 +4883,7 @@ sample 0: D per block, and g, the per-block least-squares gain of the outputs, r
 Legs: (a) A/B between slots that differ only in Drive (2 ↔ 8, 0 ↔ 10; Level Match on in both, each
 slot left converged) — the bottom block publishes the destination slot's remembered gain, then
 max|D| and max|g| ≤ 0.3 dB for 3 s (0.020–0.147 dB; pre-change 1.38–4.92 dB) and the probe holds;
-(b) A/B between slots that differ only in Output Gain, in Level Match (off → on) or in Dim-D Style
+(b) A/B between slots that differ only in Output Gain, in Level Match (off → on) or in Dimensional Style
 under Haas, the destination's memory deliberately stale — not re-armed (the probe moves 2.12 dB) and
 bit-identical from the first full-level block to the same switch between identical slots, whose probe
 moves too; control: a Width one grid step off is re-armed (its probe holds); (c) Undo and a user preset
@@ -5375,6 +5375,9 @@ diff dump-JUCE-old.txt dump-JUCE-new.txt && echo "bit-identical"
 
 An empty diff is the proof. Any differing line names the exact scenario to investigate, and the
 latency column moving is its own finding — a reported-latency change is an AI-agent hard stop.
+Scenario names are `<algorithm>-<factor>-<lr|ms>`. The fourth algorithm's name is `dimensional` from
+0.9.9, when the algorithm was renamed, so a dump from an older tree differs from a newer one in those
+eight names alone; compare such a pair on the hash and latency columns.
 
 **The tool checks itself before it reports, every run, not on request.** Two properties, because
 they fail independently: every scenario must be **repeatable** (the same scenario run twice hashes

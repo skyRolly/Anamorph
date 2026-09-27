@@ -494,7 +494,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (algoOptLabel);
 
     setupCombo (haasSideBox, pid::haasSide, "Which side the sound leans toward.");
-    setupCombo (dimModeBox,  pid::dimMode,  "Voicing of the Dim-D widener."); // #5
+    setupCombo (dimModeBox,  pid::dimMode,  "Voicing of the Dimensional widener."); // #5
 
     setupRotary (driveK,  driveL,  "Drive",  "Adds gentle saturation / density - 0 dB is clean");
     setupRotary (amountK, amountL, "Amount", "How much widening - 0% is fully transparent");

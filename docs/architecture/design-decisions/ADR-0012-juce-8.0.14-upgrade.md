@@ -43,7 +43,7 @@ headlessly"*).
 
 **Attested — maintainer, 2026-06-29.** After the green CI run, the JUCE **8.0.14** build was loaded
 in a DAW and auditioned **against the JUCE 8.0.8 baseline** across the algorithms (Haas / Velvet /
-Chorus / Dim-D), the global and per-band Width, Mono Maker, Mix, Bypass, and the editor. **No
+Chorus / Dimensional), the global and per-band Width, Mono Maker, Mix, Bypass, and the editor. **No
 perceptual regressions were found** — no audible DSP, level, latency, or editor differences versus
 8.0.8. This satisfies the Level-5 sign-off for the upgrade and closes the open item raised in PR #51
 review (*"manual audition not headlessly verifiable"*).

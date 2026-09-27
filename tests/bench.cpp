@@ -125,10 +125,10 @@ namespace
     {
         switch (a)
         {
-            case Algorithm::Haas:       return "Haas";
-            case Algorithm::Velvet:     return "Velvet";
-            case Algorithm::Chorus:     return "Chorus";
-            case Algorithm::DimensionD: return "Dim-D";
+            case Algorithm::Haas:        return "Haas";
+            case Algorithm::Velvet:      return "Velvet";
+            case Algorithm::Chorus:      return "Chorus";
+            case Algorithm::Dimensional: return "Dimensional";
         }
         return "?";
     }
@@ -311,7 +311,7 @@ int main()
     { Cell c; c.label = "bypass";               c.p = working; c.p.bypass = true; row (c); }
 
     header ("Algorithm (48 kHz / 128, working)");
-    for (auto a : { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD })
+    for (auto a : { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::Dimensional })
     { Cell c; c.label = algoName (a); c.p = working; c.p.algorithm = a; row (c); }
 
     header ("Sample rate (128 samples, working)");

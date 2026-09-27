@@ -69,7 +69,7 @@ and the material being discussed. Music, if any, under the first and last ~20 se
 Every frame captured from a real build (the repo contains no media assets).
 
 Demo sources: one mono synth line (§1, recurring), doubled rhythm guitars (§3 Haas), a mono
-pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dim-D), a full mix
+pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dimensional), a full mix
 (§5).
 
 Narration ≈ 904 words total; runtime ≈ 7:25. Pacing assumes ~145–155 wpm spoken, with
@@ -133,7 +133,7 @@ it. Here they are."
 
 **ON SCREEN:** One section per method. The selector changes; the method's own controls slide
 in (Delay + Focus for Haas; Density for Velvet Noise; Rate + Depth for Chorus; Style for
-Dim-D). Each demo plays on its own source, and the scope is visible in every shot — its
+Dimensional). Each demo plays on its own source, and the scope is visible in every shot — its
 behavior quietly differs per method, which §4 will pick up. No comparison charts, no
 checklists.
 
@@ -154,8 +154,8 @@ piano)* The character is motion — and motion is the point. When a part should 
 movement becomes the character. When a part needs to stay still, that movement becomes the
 trade-off. That's the whole personality.
 
-And Dim-D — one answer to the opening request. My take on a hardware-inspired dimensional
-expansion approach: two modulated taps in each channel, working against each other, so most
+And Dimensional — one answer to the opening request. My take on dimensional expansion:
+two modulated taps in each channel, working against each other, so most
 of the pitch movement cancels itself. What's left is size. *(string bus)* Four voicings,
 Subtle through Lush. Its character is not about taking a side or obvious shimmer. The image
 gains dimension without becoming an obvious effect.
@@ -165,10 +165,10 @@ pass the input through untouched — and there's a Drive stage in front, for whe
 density first."
 
 **NOTE:** No method is framed as superior; each beat is process → character → the request it
-answers → what comes with it — and all four carry something, Dim-D included (it won't take a
+answers → what comes with it — and all four carry something, Dimensional included (it won't take a
 side or shimmer). Every summing difference is spoken as character, never as a warning. Keep
 internal figures (tap counts, modulation offsets, window lengths) out of narration — wrong
-altitude. The hardware behind Dim-D is never named. Width's role is set conceptually in §2
+altitude. Width's role is set conceptually in §2
 ("how much of that space you end up with"); its range shows on the on-screen control.
 
 ---
@@ -177,13 +177,13 @@ altitude. The hardware behind Dim-D is never named. Width's role is set conceptu
 
 **ON SCREEN:** The diamond scope, full frame. Quick intercuts: the §3 sources replayed for
 two seconds each — the trace leans (Haas), becomes a cloud (Velvet), breathes (Chorus),
-widens in place (Dim-D). Then the correlation meter at the scope's right edge, moving with
+widens in place (Dimensional). Then the correlation meter at the scope's right edge, moving with
 the material.
 
 **VOICE:**
 "Now — the diamond. The scope is drawn so mono is a vertical line, and Side content spreads it
 sideways. Which means each method tends to draw its own picture. On this source: Haas leans
-the trace. Velvet turns it into a cloud. Chorus breathes. Dim-D expands the image without the
+the trace. Velvet turns it into a cloud. Chorus breathes. Dimensional expands the image without the
 same visible motion. You can watch the process you chose.
 
 Beside it, correlation — plus one to minus one. Width creates Side energy, and Side energy
@@ -219,7 +219,7 @@ all of it takes automation — crossovers included."
 
 ### §6 · 5:30–6:20 — Getting back to it *(101 words)*
 
-**ON SCREEN:** The A/B pill in the top bar. A holds Velvet Noise, B holds Dim-D, same part.
+**ON SCREEN:** The A/B pill in the top bar. A holds Velvet Noise, B holds Dimensional, same part.
 Switching between them; each slot's preset name visible. Level Match engaged — the readout
 settles; the two states now sit at the same loudness. APPLY GAIN clicked once. Undo stepped
 back through a knob gesture. A preset file shown in a file browser, then the same preset open
@@ -264,7 +264,7 @@ finished."
 ### §8 · 6:55–7:25 — Close *(51 words)*
 
 **ON SCREEN:** Back to the opening session. The mono synth from §1, now sitting wide and
-still — the Dim-D setting from the cold open. The scope holds. Cut to black. Tagline, plain
+still — the Dimensional setting from the cold open. The scope holds. Cut to black. Tagline, plain
 text, no music swell: **Create the space you hear.** Then a plain availability card
 (finalize at release).
 
@@ -296,10 +296,9 @@ Create the space you hear."
 - §7 shows the absence of an account/activation flow — a clean launch straight to the
   interface. No network-monitoring or traffic-inspection visual: the plugin is not framed as
   a privacy or security product.
-- Dim-D: "a hardware-inspired dimensional expansion approach" — no original hardware or
-  manufacturer is named on screen or in narration, and no direct imitation is implied (open
-  trademark review item). Dim-D is dimensional/stereo expansion, not room or ambience
-  simulation — never describe it in reverb terms.
+- Dimensional: "my take on dimensional expansion" — described by what it does (two
+  modulated taps per channel working against each other). It is dimensional/stereo
+  expansion, not room or ambience simulation — never describe it in reverb terms.
 - No ™/® anywhere. Banned vocabulary: revolutionary, ultimate, next-generation, perfect,
   intelligent, powerful, innovative, professional-grade, comprehensive; avoid "precision,"
   "transparent," "advanced" (except the UI's own labels), "optimized."
@@ -323,7 +322,7 @@ Create the space you hear."
   `src/dsp/VelvetNoise.{h,cpp}`, `src/dsp/ChorusEngine.{h,cpp}`; user manual §3.3–4
 - Haas 1–35 ms + Focus; distinct summing behavior → `EngineParameters.h`, user manual §4
 - Velvet: Side built from Mid; center untouched in a sum → `VelvetNoise.h`, DSP_POLICY inv. 6
-- Dim-D: two anti-phase taps, pitch movement cancels; four voicings → `ChorusEngine.{h,cpp}`
+- Dimensional: two anti-phase taps, pitch movement cancels; four voicings → `ChorusEngine.{h,cpp}`
 - Amount 0 designed as identity; Width 0–200%; Drive ahead of the method →
   DSP_POLICY invariant 8, `docs/architecture/SIGNAL_FLOW.md`, user manual §3.3
 - Scope orientation (mono vertical / Side horizontal); correlation ±1 →

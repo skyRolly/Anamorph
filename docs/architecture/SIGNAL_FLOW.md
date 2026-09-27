@@ -29,7 +29,7 @@ Raw stereo input (mono upmixed to stereo by the wrapper)
      dry/wet Mix, and the same buffer the silence-edge scan reads
   │
   2. Effect engine
-       2a. Oversampled nonlinear region:        Drive (tanh) -> Chorus/Dim-D
+       2a. Oversampled nonlinear region:        Drive (tanh) -> Chorus/Dimensional
            (only Drive>0 or mod algorithm engages OS; else base rate)
        2b. Linear algorithm at base rate:       Haas OR Velvet
        2c. Global Width (MS-domain)             applyWidth
@@ -88,7 +88,7 @@ which is what it is for and what does not rot.
 | **Dry path is delay-compensated** to the wet (oversampling) latency. | src/dsp/AnamorphEngine.cpp:2000-2108, getLatencySamples | testBypassNullAndLatency |
 | **Dry path is phase-matched** through the same crossovers as the wet (A(dry)) so a partial Mix never combs the mono sum. The reconstruction is gated off in the settled-full-wet state (Mix exactly 1, Match off, no crossfade — Wave 2 / H4) and re-engages phase-matched on a Mix dip. | src/dsp/AnamorphEngine.cpp:1879-1998, 2000-2108 | testMultibandMonoCompat, testDryAlignGateRecomb |
 | **Mix = 0 is a bit-exact null** (smoothstep clean→aligned crossfade over first ~5% of Mix). | src/dsp/AnamorphEngine.cpp:2013, 2047-2067 (`kAlignMix`) | testBypassNullAndLatency / testTransparentDefault |
-| **Oversampling wraps only Drive + Chorus/Dim-D**; linear stages stay outside; OS off ⇒ 0 latency. | src/dsp/AnamorphEngine.cpp (`osActiveFor`, the wrap and its `else` arm) | testBypassNullAndLatency |
+| **Oversampling wraps only Drive + Chorus/Dimensional**; linear stages stay outside; OS off ⇒ 0 latency. | src/dsp/AnamorphEngine.cpp (`osActiveFor`, the wrap and its `else` arm) | testBypassNullAndLatency |
 | **Engaging / disengaging the oversampling wrap is a CROSSFADE, not a ducked switch** (ADR-0035). `osBlend` (12 ms) mixes the base-rate and the wrapped path, which is only possible because ADR-0034 gave them the same latency and so made them sample-aligned. A duck cannot mask this swap: the duck's gain is applied at the output stage, downstream of Haas (12–35 ms) and Velvet (~21 ms), so the handover's discontinuity entered their delay lines at full level and re-emerged after the fade. An oversampling **factor** change still ducks — that one moves the latency, so the paths are not aligned and must not be mixed; that duck therefore **settles** the blend on the state it adopts rather than carrying it across, and the mix reads its wrapped path from the live oversampler pointer, so it can never weight a path that does not exist. | src/dsp/AnamorphEngine.cpp (`osBlend`, the two paths and their mix) | testDriveCrossingIsSeamlessWithOversampling, testOversamplingOffHandoffKeepsProcessing |
 | **Reported latency follows the SELECTED FACTOR, not the wrap's engagement** (ADR-0034). Where the wrap is skipped for want of nonlinear work, a 2-channel integer ring stands in for its group delay **in the wrap's own place in the chain**, so the five `-lat` ring reads below measure from an unchanged point and no parameter can move the host's PDC. | src/dsp/AnamorphEngine.cpp (`osCompDelayBuffer`, `osLatencyFor`) | testOversamplingLatencyIsFactorOnly |
 | **Bypass is a click-free crossfade to the delay-aligned RAW input**, not a mute; chain + analysis always run. | src/dsp/AnamorphEngine.cpp:1607-1678, 2321-2346 (`bypassBlend`) | testBypassCrossfadeClickFree, testLevelMatchRunsInBypass |
@@ -103,8 +103,8 @@ which is what it is for and what does not rot.
 - **Discrete switches** (algorithm/routing/band-count/oversampling-path) are applied at the
   silent bottom of a raised-cosine duck (fade-out ~6 ms, fade-in ~28 ms). Bypass, Multiband
   Enable, and Band Solo are **not** ducked — they use their own click-free crossfades. Nor is a
-  **`dimMode` move while neither side is Dimension D**: that value is read by one line inside the
-  Dimension-D branch, so under any other algorithm it reaches no module and there is nothing to
+  **`dimMode` move while neither side is Dimensional**: that value is read by one line inside the
+  Dimensional branch, so under any other algorithm it reaches no module and there is nothing to
   swap at silence (it is still adopted, by the ordinary continuous path). ADR-0004's Correction
   of 2026-09-21 carries the measurement.
   Source: src/dsp/AnamorphEngine.cpp:447-510 (`discreteDiffers`); the duck fade

@@ -241,7 +241,7 @@ The creative heart of the plug-in.
 | Control | Range | What it does |
 |---|---|---|
 | **Drive** | 0 … 24 dB | Gentle saturation/density ahead of the modulated algorithms. 0 dB is bit-clean (the stage is a true identity). Peak-preserving makeup gain is built in. |
-| **Algorithm** | Haas / Velvet Noise / Chorus / Dim-D | Selects the widening engine (§4). |
+| **Algorithm** | Haas / Velvet Noise / Chorus / Dimensional | Selects the widening engine (§4). |
 | **Amount** | 0 … 100 % | How much widening the algorithm applies. **0 % is fully transparent** for every algorithm. Default is 0 — Anamorph does nothing until you raise it. |
 | **Width** | 0 … 200 % | Global Mid/Side width applied after the algorithm: 0 % collapses to mono, 100 % leaves the image unchanged, 200 % doubles the Side level. |
 
@@ -253,7 +253,7 @@ One knob slot changes with the algorithm:
   the sparse noise taps are active.
 - **Chorus** → **Rate** (0.05 … 5 Hz) and **Depth** (0 … 100 %); host parameters *Chorus
   Rate* / *Chorus Depth*.
-- **Dim-D** → **STYLE** selector (Subtle / Classic / Wide / Lush — progressively wider,
+- **Dimensional** → **STYLE** selector (Subtle / Classic / Wide / Lush — progressively wider,
   deeper, slower voicings).
 
 ### 3.4 INPUT panel (Advanced only)
@@ -287,7 +287,7 @@ presets, and are invisible to host automation:
 
 | Setting | Options | Notes |
 |---|---|---|
-| **Oversampling** | Off (1×) / 2× / 4× / 8× | For the nonlinear stages (Drive, Chorus, Dim-D). **Off adds no latency.** Choosing 2×/4×/8× adds a small, host-compensated latency **for as long as it is selected** — a few samples, and it never changes again until you change the setting. The extra CPU is still only spent when there is nonlinear work to do (§5). |
+| **Oversampling** | Off (1×) / 2× / 4× / 8× | For the nonlinear stages (Drive, Chorus, Dimensional). **Off adds no latency.** Choosing 2×/4×/8× adds a small, host-compensated latency **for as long as it is selected** — a few samples, and it never changes again until you change the setting. The extra CPU is still only spent when there is nonlinear work to do (§5). |
 | **UI Scale** | XS / S / M / L / XL | Scales the whole window (75 % … 150 %); M is the original size. (Labelled *Window Size* before 0.9.2.) |
 | **Vectorscope Persistence** | 0 … 100 % | Afterglow length. While you drag it, the Settings panel becomes see-through so you can watch the scope behind it. (Labelled *Vectorscope Persist* before 0.9.7.) |
 | **Tooltips** | on/off | Default off. |
@@ -310,7 +310,7 @@ All four are **transparent at Amount 0 %**.
 3. **Chorus** — *classic modulated widening.* One modulated delay tap per channel with
    opposite LFO phase, so even a mono source becomes wide, lush and slightly in motion.
    Rate and Depth are yours; audible pitch movement is part of the charm.
-4. **Dim-D** — *Roland Dimension-D-style widening.* Two anti-phase-modulated taps per
+4. **Dimensional** — *anti-phase dual-tap widening.* Two anti-phase-modulated taps per
    channel cancel each other's pitch wobble to first order: spaciousness and width with
    **no seasick vibrato**. Four voicings from Subtle to Lush.
 
@@ -321,7 +321,7 @@ All four are **transparent at Amount 0 %**.
 ```
 input → input conditioning (channel/Mono/Swap/Balance/ø/M-S decode)
       → M/S Solo
-      → widening engine  [Drive + Chorus/Dim-D run inside oversampling;
+      → widening engine  [Drive + Chorus/Dimensional run inside oversampling;
                           Haas/Velvet are linear and run at base rate]
       → global Width (Mid/Side)
       → MULTIBAND per-band Width (phase-coherent crossovers)
@@ -490,7 +490,7 @@ session.
    or: Algorithm **Velvet Noise**, raise **Amount** to ~40–60 %.
 2. Watch the vectorscope open up horizontally; the correlation meter should stay
    comfortably positive — Velvet keeps the mono sum identical by construction.
-3. Want more character instead? Try **Dim-D / Classic** (clean spaciousness) or
+3. Want more character instead? Try **Dimensional / Classic** (clean spaciousness) or
    **Chorus** (audible motion). For hard left-right placement, **Haas** with 10–20 ms —
    then *check mono*: use the INPUT panel's **Mono** toggle or your console's mono
    button, and listen for comb-filtering.
@@ -572,7 +572,7 @@ That is Gatekeeper, because the binaries are not notarized yet.
 
 **How much CPU should I expect, and how do I reduce it?**
 **Oversampling** is by far the largest cost — it is a Settings item, and it only changes
-the character of the nonlinear stages (Drive, Chorus, Dim-D) at high drive, so Off or 2×
+the character of the nonlinear stages (Drive, Chorus, Dimensional) at high drive, so Off or 2×
 is a reasonable working setting. The **Multiband** section costs more than global width
 (more filters per band). On the GUI side, closing the editor window removes essentially
 all of it; hiding the meters helps too. The Linux build renders the graphics on the CPU by
@@ -587,7 +587,7 @@ time automatically.
 
 **Why it is reported even when nothing nonlinear is running.** Up to 0.9.6 the number followed
 the oversampler's *engagement*, so turning Drive up from zero (or switching to Chorus /
-Dimension-D) made the reported latency jump — and hosts answer a latency change by restarting
+Dimensional) made the reported latency jump — and hosts answer a latency change by restarting
 their processing graph, which you hear as a dropout in the middle of a knob move. Since 0.9.7
 the number is fixed by the Oversampling setting alone, so that can no longer happen. The
 oversampler itself is still switched off when there is no nonlinear work for it, so the CPU

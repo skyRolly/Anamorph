@@ -114,9 +114,9 @@ all — it only retargets `pendingP`. (That second fact is §E.)
 ### B.6 The fix, and why this one
 
 `dimMode` is read by exactly one line — `chorus.setDimMode (p.dimMode)` at `:603`, inside
-`else if (p.algorithm == Algorithm::DimensionD)`. Under any other algorithm the value reaches no
+`else if (p.algorithm == Algorithm::Dimensional)`. Under any other algorithm the value reaches no
 module, so the duck has nothing to swap at silence: the whole cost, none of the purpose. The fix
-narrows `discreteDiffers`' `dimMode` term to fire only when either side is Dimension D.
+narrows `discreteDiffers`' `dimMode` term to fire only when either side is Dimensional.
 
 Three properties made this the right fix rather than the smallest one:
 
@@ -132,7 +132,7 @@ Three properties made this the right fix rather than the smallest one:
   alongside the others and is unchanged.
 
 Nothing is lost by not ducking: `sameParameters` still compares `dimMode` (`:269`), so the value is
-adopted through the continuous path, and a later switch **to** Dimension D is an `algorithm`
+adopted through the continuous path, and a later switch **to** Dimensional is an `algorithm`
 difference that ducks, adopts the whole snapshot at the bottom and runs `chorus.setDimMode` with the
 value already in `p`.
 
@@ -141,7 +141,7 @@ value already in `p`.
 Bit-exact. Zero differing samples against the un-automated engine at 44.1 / 48 / 96 kHz and blocks
 64 / 128 / 512, at toggle cadences of every 1, 2 and 4 blocks. The five audible probes (band count,
 algorithm, oversampling factor, Band Solo, `haasSide`) are **byte-identical** to their pre-fix
-sweep output across 4 rates × 6 block sizes × 8 cadences; a `dimMode` lane under Dimension D still
+sweep output across 4 rates × 6 block sizes × 8 cadences; a `dimMode` lane under Dimensional still
 ducks (−34.4 dB at one crossing per block).
 
 ---
@@ -225,16 +225,16 @@ bottom, adopts the new algorithm and skips `haas/velvet/chorus.reset()`.
 
 **Audible, on one pair.** A module is processed only while it *is* the selected algorithm
 (`:1281-1282`, and the `isModAlgorithm` gate at `:859`), so every other incoming module starts from
-silence and a skipped reset costs nothing. Chorus and Dimension D are two voices of **one**
+silence and a skipped reset costs nothing. Chorus and Dimensional are two voices of **one**
 `ChorusEngine`, and there the incoming voice inherits a delay line full of the outgoing voice's
 audio. Measured through `AnamorphAudioProcessor` with host-style parameter writes, against the
 identical end state reached by the entry route:
 
 | pair | block 64 | block 128 |
 |---|---|---|
-| Chorus → Dimension D | **0.587** | **1.099** |
-| Dimension D → Chorus | **1.214** | **1.519** |
-| Haas → Velvet / Chorus / Dimension D | 0.000 | 0.000 |
+| Chorus → Dimensional | **0.587** | **1.099** |
+| Dimensional → Chorus | **1.214** | **1.519** |
+| Haas → Velvet / Chorus / Dimensional | 0.000 | 0.000 |
 | Chorus → Haas | 0.000 | 0.000 |
 
 on a 0.7-amplitude source. With the flag refreshed, every route is 0.000.
@@ -255,7 +255,7 @@ each of which sets the flag itself.
 
 | file | change |
 |---|---|
-| `src/dsp/AnamorphEngine.cpp` | `discreteDiffers`: the `dimMode` term fires only when either side is Dimension D (F11) |
+| `src/dsp/AnamorphEngine.cpp` | `discreteDiffers`: the `dimMode` term fires only when either side is Dimensional (F11) |
 | `src/dsp/AnamorphEngine.cpp` | the `mbEnableBlend` crossfade loop also glides `A(dry)` toward the clean dry (F8) |
 | `src/dsp/AnamorphEngine.cpp` | the mid-`FadeOut` retarget branch recomputes `pendingAlgoReset` (Part 6) |
 | `tests/dsp_tests.cpp` | Tests 55, 56, 57 |
@@ -278,9 +278,9 @@ Accepted ADRs and are recorded as dated Corrections in those ADRs, which is what
 
 | test | asserts | pre-fix |
 |---|---|---|
-| **55** `testInertDiscreteChangeDoesNotDuck` | an inert `dimMode` lane leaves the stream **bit-exact**, at 3 rates × 3 block sizes × 3 cadences; plus three positive controls: an audible discrete change still ducks (< −20 dB), `dimMode` under Dimension D still ducks (< −20 dB), and a `dimMode` moved while inert is still **adopted** (its Dimension D tail matches an engine that carried the value all along, and differs from one that kept the old value) | **27 of its 27 lane checks fail** |
+| **55** `testInertDiscreteChangeDoesNotDuck` | an inert `dimMode` lane leaves the stream **bit-exact**, at 3 rates × 3 block sizes × 3 cadences; plus three positive controls: an audible discrete change still ducks (< −20 dB), `dimMode` under Dimensional still ducks (< −20 dB), and a `dimMode` moved while inert is still **adopted** (its Dimensional tail matches an engine that carried the value all along, and differs from one that kept the old value) | **27 of its 27 lane checks fail** |
 | **56** `testMultibandEnableDrySourceNoStep` | the worst single-sample delta over the whole transition is < 3× the signal's own median slew — both directions, 2 and 4 bands, Mix 0.05–0.75, blocks 64–1024, with the one-band case as a control | **20 of its 22 checks fail** |
-| **57** `testAlgoResetSurvivesMidFadeRetarget` | a mid-fade-out algorithm retarget produces output **identical** to the entry route, over Chorus ↔ Dimension D plus three controls, at two block sizes and two retarget delays | **12 of its 20 checks fail** |
+| **57** `testAlgoResetSurvivesMidFadeRetarget` | a mid-fade-out algorithm retarget produces output **identical** to the entry route, over Chorus ↔ Dimensional plus three controls, at two block sizes and two retarget delays | **12 of its 20 checks fail** |
 
 All three assert externally meaningful processing behaviour — output samples — not internal state.
 The thresholds are derived from measurement: bit-exactness where the post-fix result is bit-exact,
@@ -307,7 +307,7 @@ Release only.
 |---|---|
 | **F8** | **Confirmed and fixed.** Impact now Verified: up to +3.9 dBFS, 89× the signal's own slew. My own earlier refutation is withdrawn — it was an instrument defect |
 | **F11** | **Confirmed and fixed**, with two corrections: the cadence is an interval in ms, not a block count; and it is not perpetual (recovery 21–27 ms) |
-| **F11 companion** (`pendingAlgoReset`) | **Confirmed and fixed.** Distinct mechanism; audible on the Chorus ↔ Dimension D pair only |
+| **F11 companion** (`pendingAlgoReset`) | **Confirmed and fixed.** Distinct mechanism; audible on the Chorus ↔ Dimensional pair only |
 
 ### G.2 The road map
 

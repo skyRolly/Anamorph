@@ -48,10 +48,10 @@ Two defects found by measurement (worklog
 changes the three mechanisms or which control belongs to which; both make mechanism 1 behave the
 way this Decision already says it does.
 
-### 1. A fourth exclusion: `dimMode` when neither side is Dimension D
+### 1. A fourth exclusion: `dimMode` when neither side is Dimensional
 
 `dimMode` is read by exactly one line — `chorus.setDimMode (p.dimMode)`, inside
-`else if (p.algorithm == Algorithm::DimensionD)` — so under any other algorithm the value reaches
+`else if (p.algorithm == Algorithm::Dimensional)` — so under any other algorithm the value reaches
 no module and there is nothing for a duck to swap at silence. It was nevertheless in
 `discreteDiffers`, so a host lane crossing one of its step boundaries opened a full-depth duck
 every time.
@@ -77,11 +77,11 @@ explicit:
 - **The duck is not perpetual.** Once the automation stops the level is back within 0.5 dB in
   8–10 blocks (21–27 ms at 48 kHz/128) — the fade-in's own length, no more.
 
-The exclusion is written symmetrically: the duck still fires if **either** side is Dimension D.
+The exclusion is written symmetrically: the duck still fires if **either** side is Dimensional.
 When only one side is, `algorithm` already differs and the guard changes nothing; the one
 behaviour removed is a duck for a `dimMode` move between two states where no module can observe
 it. Nothing is lost by not ducking, because `sameParameters` still compares `dimMode`: the value
-is adopted the ordinary continuous way, and a later switch **to** Dimension D is an `algorithm`
+is adopted the ordinary continuous way, and a later switch **to** Dimensional is an `algorithm`
 difference that ducks, adopts the whole snapshot at the bottom and runs `chorus.setDimMode` with
 the value already in `p`.
 
@@ -102,13 +102,13 @@ fade-out is already running, which the `FadeIn`-only re-arm guard lets fall stra
 an ordinary two-step sequence — band count on one block, algorithm on the next — reached the
 bottom, adopted the new algorithm and skipped the clear.
 
-It can only be **heard** on a change between Chorus and Dimension D, because a module is processed
+It can only be **heard** on a change between Chorus and Dimensional, because a module is processed
 only while it is the selected algorithm, so every other incoming module starts from silence
 anyway. Those two are voices of one `ChorusEngine`, and there the incoming voice inherited a delay
 line full of the outgoing voice's audio. Measured through `AnamorphAudioProcessor` with host-style
 parameter writes, against the identical end state reached by the entry route: peak **0.587**
-(Chorus → Dimension D, block 64) and **1.519** (Dimension D → Chorus, block 128) on a
-0.7-amplitude source; 0.000 for Haas → Velvet / Chorus / Dimension D and for Chorus → Haas. With
+(Chorus → Dimensional, block 64) and **1.519** (Dimensional → Chorus, block 128) on a
+0.7-amplitude source; 0.000 for Haas → Velvet / Chorus / Dimensional and for Chorus → Haas. With
 the flag refreshed, every route is bit-identical to the entry route.
 
 ### Consequences of the correction

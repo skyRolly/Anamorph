@@ -86,7 +86,7 @@ None of these is an engineering task; no code change can close any of them.
 | 3 | **EULA** for the distributed binaries. A draft exists ([`EULA.md`](../EULA.md)) with 10 marked open decisions; no installer presents it. | commercial sale | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #3; `EULA.md` §"Open decisions" |
 | 4 | **Steinberg VST 3 review.** The SDK code bundled with JUCE 9.0.2 is MIT, but the VST name/logo and the plug-in development/distribution terms are governed separately. | commercial VST3 distribution | `THIRD_PARTY_LICENSES.md` §3; `RH-R10`/`RH-F2`; `TRADEMARKS.md` §4 |
 | 5 | **Repository visibility.** The GitHub repository `skyRolly/Anamorph` is **public**, with forking enabled and no `LICENSE` file, while the product model is closed-source commercial. Whether the source stays publicly readable is an owner decision with a direct bearing on decisions 1–3. Stated as a fact; no determination is made here. | should be settled alongside 1–3 | *this document* |
-| 6 | **Trademark status** of "Anamorph" and "RollyTech"; the `Dim-D` / "Roland Dimension-D-style" naming reference. | any ™/® use; commercial release | `TRADEMARKS.md` §1, §4 |
+| 6 | **Trademark status** of "Anamorph" and "RollyTech". | any ™/® use; commercial release | `TRADEMARKS.md` §1, §4 |
 | 7 | **Privacy/controller identity** and any statutory disclosure required in a market of sale. Anamorph collects nothing, so the factual position is simple; the formal disclosure is not written. | commercial sale in regulated markets | `PRIVACY.md` §7 |
 | 8 | **Ownership of tester feedback.** | tester programme | `EULA.md` §6 |
 

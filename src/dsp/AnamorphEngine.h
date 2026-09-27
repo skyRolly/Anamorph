@@ -28,9 +28,9 @@ namespace anamorph
 //
 //    1. Input conditioning   channel kill / Swap / Balance / polarity; plus M/S
 //                            decode + M/S solo when M/S mode is on
-//    2. Effect engine        Drive -> algorithm (Haas / Velvet / Chorus / Dim-D)
+//    2. Effect engine        Drive -> algorithm (Haas / Velvet / Chorus / Dimensional)
 //                            -> global Width -> Multiband Width. Drive + Chorus/
-//                            Dim-D run INSIDE oversampling; the rest are linear.
+//                            Dimensional run INSIDE oversampling; the rest are linear.
 //    3. Mix (dry/wet)        dry is delay-compensated AND phase-matched (A(dry))
 //    4. Mono Maker           lows -> mono, POST-Mix, in place
 //    5. Output stage         Output Balance / Gain / Level Match + switch duck
@@ -266,7 +266,7 @@ private:
     void updateDerived();
     void applyInputConditioning (float* L, float* R, int n) noexcept;
     // `runMod` is false only for the base-rate call while an OS-path crossfade is in
-    // flight: the mod algorithms (Chorus / Dimension-D) belong to the wrapped path
+    // flight: the mod algorithms (Chorus / Dimensional) belong to the wrapped path
     // whenever a factor is selected, and running the ONE chorus instance from both
     // paths in the same block would advance its LFO and delay state twice.
     //

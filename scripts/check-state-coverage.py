@@ -53,11 +53,11 @@ both name a field, they must attach the SAME condition to it.  `discreteDiffers`
 `processingDiffers` ask different questions ("must this be swapped at silence?" and "did the signal
 path change?"), but a field's CONDITION in both is the same test -- does the value reach a module --
 so a difference between them is a decision rather than a detail.  This is the narrowest rule that
-would have caught a measured defect: R4 gave `dimMode` a Dimension-D relevance guard in
+would have caught a measured defect: R4 gave `dimMode` a Dimensional relevance guard in
 `discreteDiffers` and left `processingDiffers` comparing it unconditionally, and the lint stayed
-green for four rounds because "the field is named" was true either way.  An inert Dim-D Style move
+green for four rounds because "the field is named" was true either way.  An inert Dimensional Style move
 then threw away a converged Level-Match reading through a forced duck (Test 58).
-  * It still does not claim the guard is CORRECT.  Rewriting `Algorithm::DimensionD` to the wrong
+  * It still does not claim the guard is CORRECT.  Rewriting `Algorithm::Dimensional` to the wrong
     enumerator keeps both lists in agreement and this check silent; Test 58 is what catches that,
     and the four "must still re-arm" legs in it exist for exactly that reason.
   * A divergence CAN be legitimate, since the questions differ, so it is declared in
@@ -154,7 +154,7 @@ DISCRETE = {
 
 # Fields whose relevance CONDITION is deliberately different between `discreteDiffers` and
 # `processingDiffers`, with the reason. Empty today, and that is the finding: `dimMode` carries
-# the same Dimension-D guard in both, because both are asking the same thing about it -- does
+# the same Dimensional guard in both, because both are asking the same thing about it -- does
 # the value reach a module. A future field whose two answers really must differ goes here.
 GUARD_DIVERGENCE = {}
 
@@ -188,7 +188,7 @@ PROCESSING_DIFFERS_EXCLUDED = {
 # NONFINITE_PARAMETERS_AND_F13.md §J). The lint holds the code to the table; it does not claim the
 # table is right -- Test 66 is what measures that.
 _HAAS, _VELVET, _CHORUS = "either (Algorithm::Haas)", "either (Algorithm::Velvet)", "either (Algorithm::Chorus)"
-_DIMD = "(a.algorithm == Algorithm::DimensionD || b.algorithm == Algorithm::DimensionD)"
+_DIMENSIONAL = "(a.algorithm == Algorithm::Dimensional || b.algorithm == Algorithm::Dimensional)"
 MEASUREMENT_INPUTS = {
     "channelMode": ("exact", None), "monoSum": ("exact", None), "swapLR": ("exact", None),
     "polarityL": ("exact", None), "polarityR": ("exact", None), "msMode": ("exact", None),
@@ -201,7 +201,7 @@ MEASUREMENT_INPUTS = {
     "haasDelayMs": ("tol", _HAAS), "haasSide": ("exact", _HAAS),
     "velvetDensity": ("tol", _VELVET),
     "chorusRate": ("tol", _CHORUS), "chorusDepth": ("tol", _CHORUS),
-    "dimMode": ("exact", _DIMD),
+    "dimMode": ("exact", _DIMENSIONAL),
     "mbBands": ("exact", "mb"), "mbWidthLow": ("tol", "mb"),
     "mbFreqLow": ("tol", "mb && bands >= 2"), "mbWidthMid": ("tol", "mb && bands >= 2"),
     "mbFreqMid": ("tol", "mb && bands >= 3"), "mbWidthHiMid": ("tol", "mb && bands >= 3"),
@@ -556,8 +556,8 @@ def guard_of(body, field):
     The two selection lists are `||` chains of `a.X != b.X`. A field whose relevance is
     conditional is written as one parenthesised term --
 
-        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
-                                    || b.algorithm == Algorithm::DimensionD))
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::Dimensional
+                                    || b.algorithm == Algorithm::Dimensional))
 
     -- so the guard is everything after the `&&` up to the paren that opened the term.
     Whitespace is collapsed so a re-wrap is not a difference; anything else is.
@@ -665,9 +665,9 @@ def check_engine_params(params_h, engine_cpp):
 
     # --- GUARD PARITY between the two selection lists ----------------------------------------
     # The narrowest rule this lint could add that would have caught a real, measured defect:
-    # R4 gave `dimMode` a Dimension-D relevance guard in `discreteDiffers` and left
+    # R4 gave `dimMode` a Dimensional relevance guard in `discreteDiffers` and left
     # `processingDiffers` comparing it unconditionally. The lint stayed green for four rounds,
-    # because "the field is named" was satisfied either way -- and an inert Dim-D Style move
+    # because "the field is named" was satisfied either way -- and an inert Dimensional Style move
     # then threw away a converged Level-Match reading through a forced duck (Test 58).
     #
     # WHAT THIS CLAIMS, and it is deliberately not more: the two lists must give the SAME

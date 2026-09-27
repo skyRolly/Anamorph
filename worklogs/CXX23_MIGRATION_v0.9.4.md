@@ -110,7 +110,7 @@ The counts equal the C++17 baseline exactly (140 / 894).
 The ADR-0022/0026 twin-dump harness, re-pointed from "two JUCE trees" to **two language
 standards**: the 8 `AnamorphDSP` sources plus the deterministic scenario driver compiled twice
 against the **same** JUCE 9.0.1 checkout with the same shipped hardening flags, differing only in
-`-std=c++17` vs `-std=c++23`. 32 scenarios (Haas/Velvet/Chorus/Dim-D × OS Off/2x/4x/8x × M/S
+`-std=c++17` vs `-std=c++23`. 32 scenarios (Haas/Velvet/Chorus/Dimensional × OS Off/2x/4x/8x × M/S
 on/off; 120 noise + 120 silence blocks each at 48 kHz / 512), FNV-1a over every output byte.
 
 **Result: all 32 hashes and all 32 predicted/reported latency pairs identical.** The 32 hashes

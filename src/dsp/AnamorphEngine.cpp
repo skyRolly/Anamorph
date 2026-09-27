@@ -10,7 +10,7 @@ using juce::dsp::Oversampling;
 
 // ---------------------------------------------------------------------------
 //  Is oversampling actually doing WORK? Only when wrapping a nonlinear /
-//  modulation stage (Drive, or Chorus / Dimension-D). Linear-only chains skip
+//  modulation stage (Drive, or Chorus / Dimensional). Linear-only chains skip
 //  the whole resampling round trip -- the CPU saving this predicate exists for,
 //  and the largest single one in the engine (spec section 2.2 / 9).
 //
@@ -30,7 +30,7 @@ using juce::dsp::Oversampling;
 // ---------------------------------------------------------------------------
 static bool isModAlgorithm (Algorithm a) noexcept
 {
-    return a == Algorithm::Chorus || a == Algorithm::DimensionD;
+    return a == Algorithm::Chorus || a == Algorithm::Dimensional;
 }
 
 static bool osActiveFor (const EngineParameters& e) noexcept
@@ -197,7 +197,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // chorus blend outright. The result was that a restored non-default session
     // GLIDED into its own sound over the first ~10-100 ms instead of opening in
     // it. Measured before this line existed (--restore-fade-probe, first block vs
-    // the twelfth): Haas 0.17, Velvet 0.09, Chorus 0.29, Dimension-D 0.39 and the
+    // the twelfth): Haas 0.17, Velvet 0.09, Chorus 0.29, Dimensional 0.39 and the
     // Mono Maker crossover 0.35 of their settled values.
     //
     // Placed HERE, not inside the modules' reset() and not inside snapSmoothers():
@@ -368,7 +368,7 @@ void AnamorphEngine::reset (ResetScope resetScope)
     osRunning = osActiveFor (p); // reset() cleared the oversamplers: warm iff engaged
 
     // ...AND THE USER'S MODULATION SOUND, on a host reset. `chorus.reset()` above zeroes the
-    // Chorus / Dimension-D wet blend and modulation depth along with the delay line. That is
+    // Chorus / Dimensional wet blend and modulation depth along with the delay line. That is
     // right for its direct callers -- the duck bottoms, the OS-path restart and the NaN
     // self-heal, where a fade masks it or the glide must go -- and prepare() re-seeds both
     // (ER-DSP-09). The host reset had nothing that did, so every transport stop (and every AU
@@ -378,7 +378,7 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // 126, Test 62).
     //  * LAST, after the duck flush: a forced swap in flight holds the Amount in pendingP.
     //  * audioTailsOnly only: `everything` is prepare()'s flush, and prepare() snaps itself.
-    //  * Chorus / Dimension-D only: an idle chorus is left exactly as it was, so a host reset
+    //  * Chorus / Dimensional only: an idle chorus is left exactly as it was, so a host reset
     //    changes nothing a later algorithm switch would hear.
     //  * finite Amount only: a NaN target stays parked at the 0 chorus.reset() gave it
     //    (ADR-0009 -- the rule R7 put in HaasProcessor / VelvetNoise::reset()).
@@ -455,7 +455,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
         // src/dsp/AnamorphEngine.cpp:1174 (`chorus.setDimMode`), inside
-        // `else if (p.algorithm == Algorithm::DimensionD)`.
+        // `else if (p.algorithm == Algorithm::Dimensional)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
         // -42.2 dB of steady output under a host lane toggling it once per 128-sample
@@ -464,15 +464,15 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // change is not one of the changes it is for.
         //
         // The condition is symmetric and deliberately conservative. If EITHER side is
-        // DimensionD the duck still fires -- and when only one side is, `algorithm`
+        // Dimensional the duck still fires -- and when only one side is, `algorithm`
         // already differs two lines up, so the guard changes nothing there. The one
-        // behaviour it removes is a duck for a dimMode move between two non-DimensionD
+        // behaviour it removes is a duck for a dimMode move between two non-Dimensional
         // states, which no module can observe.
         //
         // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
         // (src/dsp/AnamorphEngine.cpp:424 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
-        // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
+        // and a later switch TO Dimensional is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
@@ -480,8 +480,8 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // src/dsp/AnamorphEngine.cpp:1159 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
-        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
-                                    || b.algorithm == Algorithm::DimensionD))
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::Dimensional
+                                    || b.algorithm == Algorithm::Dimensional))
         || a.mbBands          != b.mbBands
         // Multiband Enable is NOT listed: like Bypass it is now a click-free OUTPUT
         // crossfade (mbEnableBlend) with the crossover bank kept warm, NOT a duck-to-
@@ -515,9 +515,9 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
         || a.msMode      != b.msMode      || a.solo     != b.solo     || a.algorithm != b.algorithm
         || a.haasSide    != b.haasSide    || a.mbEnable != b.mbEnable
         || a.mbBands     != b.mbBands
-        // dimMode carries THE SAME Dimension-D relevance guard `discreteDiffers` has, and
+        // dimMode carries THE SAME Dimensional relevance guard `discreteDiffers` has, and
         // for the same one-line reason: `chorus.setDimMode (p.dimMode)` is the only reader
-        // and it sits inside `else if (p.algorithm == Algorithm::DimensionD)`. With any
+        // and it sits inside `else if (p.algorithm == Algorithm::Dimensional)`. With any
         // other algorithm adopted the value reaches no module, so the SIGNAL PATH did not
         // change and re-arming the Level-Match measurement for it throws away a converged
         // reading for nothing.
@@ -537,10 +537,10 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
         // away (0.000 dB, frozen) on both of those routes. With the guard, both preserve.
         //
         // Symmetric and conservative, exactly as in `discreteDiffers`: if EITHER side is
-        // DimensionD this still fires, and when only one side is, `algorithm` already
+        // Dimensional this still fires, and when only one side is, `algorithm` already
         // differs on the line above, so the guard changes nothing there.
-        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
-                                    || b.algorithm == Algorithm::DimensionD))
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::Dimensional
+                                    || b.algorithm == Algorithm::Dimensional))
         || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample;
 }
 
@@ -584,8 +584,8 @@ bool AnamorphEngine::measurementInputsDiffer (const EngineParameters& a, const E
         || (either (Algorithm::Haas)   && (differs (a.haasDelayMs, b.haasDelayMs) || a.haasSide != b.haasSide))
         || (either (Algorithm::Velvet) && differs (a.velvetDensity, b.velvetDensity))
         || (either (Algorithm::Chorus) && (differs (a.chorusRate, b.chorusRate) || differs (a.chorusDepth, b.chorusDepth)))
-        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
-                                    || b.algorithm == Algorithm::DimensionD))
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::Dimensional
+                                    || b.algorithm == Algorithm::Dimensional))
         || (mb && (a.mbBands != b.mbBands || differs (a.mbWidthLow, b.mbWidthLow)))
         || (mb && bands >= 2 && (differs (a.mbFreqLow,  b.mbFreqLow)  || differs (a.mbWidthMid,   b.mbWidthMid)))
         || (mb && bands >= 3 && (differs (a.mbFreqMid,  b.mbFreqMid)  || differs (a.mbWidthHiMid, b.mbWidthHiMid)))
@@ -1028,7 +1028,7 @@ void AnamorphEngine::adoptSnapshot (const EngineParameters& np, bool trusted) no
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
             // Haas -> Chorus produced a worst step of 0.1335 against 0.1026 for
             // the identical end state reached by the entry route (1.30x), and
-            // Haas -> Dimension D 0.0525 against 0.0455 (1.15x). With this line
+            // Haas -> Dimensional 0.0525 against 0.0455 (1.15x). With this line
             // in place both routes are BIT-IDENTICAL, which is what identifies
             // the flag -- not the arrival timing -- as the whole of the
             // difference. Haas -> Velvet was already identical either way.
@@ -1168,9 +1168,9 @@ void AnamorphEngine::updateDerived()
         chorus.setRate  (p.chorusRate);
         chorus.setDepth (p.chorusDepth);
     }
-    else if (p.algorithm == Algorithm::DimensionD)
+    else if (p.algorithm == Algorithm::Dimensional)
     {
-        chorus.setVoice (ChorusEngine::Voice::DimensionD);
+        chorus.setVoice (ChorusEngine::Voice::Dimensional);
         chorus.setDimMode (p.dimMode);
     }
 

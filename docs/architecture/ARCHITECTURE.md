@@ -57,7 +57,7 @@ Evidence [Verified]:
 | DSP | `MidSide` | `src/dsp/MidSide.h` | MS matrix (1/√2) + width helper |
 | DSP | `HaasProcessor` | `src/dsp/HaasProcessor.{h,cpp}` | Precedence delay widening |
 | DSP | `VelvetNoise` | `src/dsp/VelvetNoise.{h,cpp}` | Velvet-noise decorrelation |
-| DSP | `ChorusEngine` | `src/dsp/ChorusEngine.{h,cpp}` | Chorus + Dimension-D |
+| DSP | `ChorusEngine` | `src/dsp/ChorusEngine.{h,cpp}` | Chorus + Dimensional |
 | DSP | `MonoMaker` | `src/dsp/MonoMaker.{h,cpp}` | LR4 low-freq mono (post-Mix) |
 | DSP | `MultibandWidth` | `src/dsp/MultibandWidth.{h,cpp}` | 1–4 band per-band width |
 | DSP | `SoloMonitor` | `src/dsp/SoloMonitor.{h,cpp}` | Post-everything band audition |

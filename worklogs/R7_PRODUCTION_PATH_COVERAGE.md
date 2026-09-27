@@ -53,12 +53,12 @@ those samples at 0; four algorithms × Oversampling Off / 2× × Level Match off
 Width 1.6, Mix 0.8, Multiband and Mono Maker on. Measured (worst per-block |dB| vs the twin from
 10 blocks after the burst):
 
-| | Haas | Velvet | Chorus | Dim-D |
+| | Haas | Velvet | Chorus | Dimensional |
 |---|---|---|---|---|
 | Level Match off, OS off / 2× | 0.00 / 0.00 (back within 0.1 dB at +4) | 0.17 / 0.18 (within 0.1 dB at +13) | 0.99 / 0.80 | 1.80 / 1.29 |
 | Level Match on, OS off / 2× | 0.51 / 0.42 | 0.65 / 0.58 | 1.88 / 1.57 | **2.83** / 2.66 |
 
-No non-finite output block and no non-finite published gain anywhere. Chorus and Dim-D restart
+No non-finite output block and no non-finite published gain anywhere. Chorus and Dimensional restart
 their LFO phase in the self-heal, and with Level Match on A re-converges from a cleared matcher;
 that is why the bound is 6 dB (a latched chain reads −180) and the 0.1 dB return is asserted only
 for Haas and Velvet with Level Match off.
@@ -93,7 +93,7 @@ Measured through the processor, pre-fix (the level of the same material before t
 | Haas (−11.70 dB) | **−180.00** | **−180.00** | **−180.00** | −11.53 |
 | Velvet (−10.02 dB) | **−180.00** | **−180.00** | **−180.00** | −9.36 |
 
-Chorus and Dim-D recovered (no such glide). Post-fix, the same harness: Haas −11.83, Velvet −9.80
+Chorus and Dimensional recovered (no such glide). Post-fix, the same harness: Haas −11.83, Velvet −9.80
 one second after, and every column recovered. This is the global review's root cause 5 — one
 module-reset list serving two recovery paths — in its measured form.
 

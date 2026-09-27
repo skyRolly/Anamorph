@@ -63,7 +63,7 @@ get it goes away.
 ## 3. Both are bit-exact
 
 Each prototype was compared against the shipped v0.9.5 engine over **180 configurations** — 9
-scenarios (working, multiband off, Haas, Chorus, Dimension-D, oversampling ×8, defaults, bypass,
+scenarios (working, multiband off, Haas, Chorus, Dimensional, oversampling ×8, defaults, bypass,
 split drag) × 5 block sizes × 4 sample rates — hashed (FNV-1a) over every output sample of both
 channels.
 
