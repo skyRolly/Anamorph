@@ -3365,3 +3365,277 @@ The final tree is `9e38310`'s `src/`, unchanged, with State test 139 added.
   - historical documentation cleanup;
   - the per-block ramp-restart redesign.
 - **§S10's items stand as recorded.**
+
+## U. The O8(3) architecture decision: the completion protocol specified, proved and validated (0.9.9)
+
+Continues PR #156 from `e49a90e`.
+- **Drift reported.** The round's brief names `9e38310` as the current final head. The branch head is
+  `e49a90e`, which carries §T's KI-032, ADR-0057 (Proposed) and State test 139 on top of it. Its `src/` is
+  `9e38310`'s, so every head measurement below measures the same code. The work continues from
+  `e49a90e`.
+- **The brief's two outcomes.** It asks for either **A**, an implementation *"if the existing repository
+  architecture/gating evidence permits the B2 protocol without requiring an additional approval step"*,
+  or **B**, a complete proposal with the implementation deferred.
+- **The outcome is B.** The repository's gate requires a human Architecture Review for a new atomic
+  ordering (§U7), and no approval exists. The brief withholds that decision too: *"You are NOT
+  authorized to silently override an existing threading-model hard stop."*
+- **What the round produced.** No production file changed. ADR-0057 is completed as the proposed
+  decision: the protocol, its proof, the comparison, the evidence, the risks, the approval it needs and
+  the implementation plan. KI-032 stays open. Version 0.9.9, dated 2026-09-27, unchanged.
+
+### U1. Reproduction on the branch head (`e49a90e`)
+
+A threaded probe through the processor (scratch; §T1's probe extended):
+- the message thread calls `abSwitchTo` while an audio thread runs `processBlock` at 1×, 4×, 16×, 64×,
+  112× and 256× real time, or unpaced;
+- six combinations of changed parameters, 40 trials each: 1,680 trials.
+
+Per trial the probe recorded:
+- the request's publication (the `beforeSoundReplacementWrites` seam), every destination write where
+  JUCE stores the raw value, and the block that took the request;
+- the forced bottom's snapshot field by field, the intended final state and the mixed fields;
+- the restored Level-Match answer, and a same-rate `prepareToPlay`'s verdict on it;
+- the output against a twin switched completely at the block that took the request.
+
+The per-combination table is ADR-0057's *Problem*.
+- **1× and 4×:** 480 of 480 complete.
+- **16×:** 239 of 240. The miss is a Multiband switch whose writes the message thread was ~1 ms late with
+  (+1,015 µs after the call); the bottom read its snapshot at +786 µs.
+- **64×:** 8 of 240 incomplete (7 source-only, 1 hybrid).
+- **112×:** 72 of 240 complete, 32 hybrid, 136 source-only.
+- **256× and unpaced:** 6 of 400 complete in the five light combinations. Multiband, whose blocks are
+  heavier, was 78 of 80 complete.
+- **Totals:** 573 of 1,680 incomplete: 36 hybrid, 537 source-only.
+- **The Devin case again** (112×, Drive + Width): the request was taken at +27.5 µs and the bottom read
+  its snapshot at +122.5 µs. B's Drive had been written at +122.4 µs; B's Width was written only at
+  +131.0 µs. The bottom adopted Drive 12 with Width 1.
+- **A real-time stall.** One 12 ms stall after the first destination write of each switch, at 1×: 40 of
+  120 trials were hybrids, 6–7 of 20 in every combination.
+- **Level Match.** Every incomplete adoption restored B's measured record as not measured: 573 of 573,
+  and 40 of 40 under the stall. A same-rate `prepareToPlay` then threw the published level away in 368 of
+  the 573.
+- **Output.** Every incomplete trial left the complete twin at the bottom and never became bit-identical
+  to it within 24 blocks. The fade-in's maximum relative error ran from −19.4 dB to +3.1 dB. The
+  Haas → Chorus switch, the algorithm written first, ran over the twin.
+
+### U2. The protocol
+
+ADR-0057's *Decision* states it in full: the eleven points, the word layout, the proof, the preconditions
+and the real-time bound. In one paragraph:
+- the request word gains a 4-bit sequence and a completion flag;
+- the message thread publishes the completion with `release` after the application's last store, from a
+  scope guard;
+- the audio thread takes the word with `acquire` twice per block, before `toEngine` reads the snapshot
+  and inside `setParameters` after it;
+- a snapshot read between two takes, after every awaited completion and before any new request, is
+  *trusted*. It is complete (Claims 1–3);
+- while a swap is awaited the engine adopts nothing and the source plays;
+- the swap's forced duck starts only on a trusted snapshot, so its bottom never waits;
+- sequence 0 keeps the engine API's meaning.
+
+### U3. Two designs rejected
+
+- **The first prototype started the fade at the completion but trusted nothing read before the only
+  take.**
+  - The completion's own block therefore carried an untrusted target. The bottom could hold, and a
+    host reset in that block had to defer its adoption to the next block.
+  - The State suite failed 22 checks: 13 of State test 139's; 7 of State test 127's, at *"A/B … reset 64
+    samples in: the output is a clean start at the new settings"* and its preset, undo and redo rows; and 2
+    of State test 130 (7).
+  - That is established behaviour, so the design was wrong: the fix is to read the snapshot **between**
+    two takes, which makes the completion's own block trusted.
+- **A reused snapshot.** `prepareToPlay` hands the prime's snapshot to its trailing `setParameters`
+  (`src/PluginProcessor.cpp:231`–`src/PluginProcessor.cpp:234`). Found in review of the protocol, before
+  the prototype kept it: under any snapshot-trust rule that reuse re-opens the window.
+  - The snapshot was read before the prime's take, and the trailing call has no take of its own before
+    it.
+  - A prime that took the completion therefore keeps the source correctly, and then the trailing call
+    trusts the same partial snapshot.
+  - The prototype re-acquires and re-reads there. A fifth negative control keeps the reuse (§U4).
+  - ADR-0057 pins it as precondition 5.
+
+A third variant, arming the fade one block after the completion, was argued and not built. It delays
+every swap by one block and moves the timing of every existing test.
+
+### U4. Deterministic enumeration (scratch harness, single thread)
+
+A harness runs, on the message thread and at an exact point of the command's write sequence, any of:
+- audio blocks;
+- a host reset;
+- a re-prepare;
+- a snapshot capture handed to the engine later.
+
+The point is an APVTS listener after write k, or the processor's seam before the first write. Every
+position is enumerated, not sampled. After every block, reset and re-prepare the harness asserts that the
+engine's adopted state is one of the command's complete states. It builds against the head and against
+the prototype. The scenarios (cases per build in brackets):
+- **S1 (96).** A/B at every write position, with 1, 2, 3 or 8 blocks there, for Drive + Width, Mix + Amount,
+  Haas → Chorus, Multiband and eight fields. The prototype's output is compared, bit for bit, with a twin
+  that ran the same blocks and then switched atomically.
+- **S2 (10).** Slow writes: a block after every write, and three after every third.
+- **S3 (120).** Eight alternating switches, blocks at random positions, 0–3 blocks between switches.
+- **S4, S5 (116, 96).** Undo and redo of one multi-field step at every write position, against the
+  destination an atomic twin produces, with the output twin.
+- **S6 (140).** Two factory presets (32 and 38 writes) at every write, with the output twin.
+- **S7, S8 (72 each).** A host reset, or a re-prepare, at every write after 0, 1 or 3 blocks.
+- **S9 (3 × 42, then S9d's 42).** A snapshot read mid-writes and handed to the engine after the
+  completion, which is the interleaving the memory model allows. Then: processing continues; a host reset
+  follows; that snapshot is a re-prepare's prime; or (S9d) the prime is followed by a host reset.
+- **S10 (42).** A completion and the next request in one word.
+- **S11 (288).** A second switch at every write position, 0–3 blocks after the first.
+- **S12 (48).** Copy between switches; the word must be unchanged by the Copy.
+- **S13 (19).** A snapshot read inside a new swap's writes after the block's first take.
+
+Results (1,245 cases per build):
+- **Head:** 689 cases adopted an incomplete state. By scenario: S1 34, S2 6, S3 120, S4 34, S5 34, S6 66,
+  S7 34, S8 51, S9 14 / 42 / 42, S10 42, S11 153, S12 17. In 131 cases the destination's measured record
+  was not restored measured.
+- **Prototype:** **0**.
+  - Every case ended on the right state, with no swap awaited or pending.
+  - Every A/B landing restored the destination's record measured (S1, S11).
+  - The 458 output twins were all bit-identical.
+  - The longest pending interval was 11 blocks (repeated switching).
+- **Negative controls**, each the prototype with one rule broken:
+  - the completion published right after the request: 689, exactly the head's cases, and all 458 output
+    twins differ;
+  - no sequence (any completion ends the wait): 146 — S10 42 of 42, S11 34, S3 70;
+  - the snapshot read before the block's first take: 84 — S9's host reset and prime, 42 of 42 each;
+  - no re-check after the read: 15 of S13's 19;
+  - `prepareToPlay`'s trailing `setParameters` reusing the prime's snapshot (precondition 5): 42 of 42 in
+    S9d.
+
+  S9d was added for that fifth control: a re-prepare, then a host reset (the AU order), after a partial
+  read. Its first run found nothing, because the next block's snapshot retargets the reused one before the
+  forced bottom; the host reset adopts it at once. The head fails S9d 42 of 42, and the prototype passes it
+  0 of 42.
+
+  Every broken rule is observable, and each only in the scenarios its rule guards.
+- **Allocation, engine only** (no processor, so no JUCE timer thread for the process-wide guard to count):
+  - the guard was armed around every engine call, the message-thread calls included;
+  - 60 swaps, 135 frozen blocks, supersessions, a forget, host resets and primes;
+  - **0** `operator new` and **0** `malloc`, on the prototype and on the head's equivalent sequence.
+- **A harness artifact, found and fixed.** The first undo / redo runs flagged 20 + 16 Haas → Chorus cases
+  on every build, at every speed, 1× included. The Chorus Rate that no step had written read JUCE's
+  unsnapped default (0.49999997 Hz) before the step, and the snapped 0.5 after the undo: State test
+  139 (E)'s one-ulp effect. The harness now writes A's Chorus Rate and Depth, and takes each undo's
+  destination from an atomic twin.
+
+### U5. Threaded adversarial runs (scratch harness)
+
+A real audio thread free-runs `processBlock` at 1×, 4×, 16×, 64×, 112× or 256×, or unpaced, while the
+message thread runs one of nine modes:
+- a single A/B switch;
+- six alternating switches with 0–3 blocks between;
+- three back-to-back superseding switches;
+- undo; redo; a factory preset;
+- Copy between two switches;
+- a switch with host resets, or re-prepares, on the audio thread between blocks.
+
+Combinations: Drive + Width, Haas → Chorus, Multiband, eight fields. Optionally, a stall of a random
+length up to 12 ms at a random write (write 1–12). The audio thread checks the adopted state after every
+block, reset and re-prepare.
+- **Prototype, no stall:** 4,620 trials, 0 incomplete adoptions, 0 wrong final states, 0 swaps left
+  awaited or pending.
+- **Prototype, with the stall:** 4,620 trials, the same. The longest pending interval was
+  648 blocks (unpaced, a 12 ms stall). The source played through it, and the switch landed
+  complete.
+- **Head:** 567 of 2,310 trials with an incomplete adoption. By mode: A/B 61, repeated 113, superseding
+  89, undo 48, redo 42, Copy 59, host resets 80, re-prepares 75, preset 0.
+- **The completion published before the writes (negative control):** 544 of 2,310 trials.
+- **§U1's probe, run on the prototype**, classifies every bottom as complete, hybrid or source-only.
+  - 1,680 of 1,680 complete, where the head had 573 incomplete.
+  - Every trial was bit-identical to the twin that switched completely at the block that started it.
+  - B's record came back measured in every trial, and a same-rate `prepareToPlay` kept it in every trial;
+    the head flushed 368.
+  - Behind the 12 ms stall at 1×: 120 of 120 complete, where the head had 40 hybrids. The bottom's snapshot
+    moved from +13.3 ms to +26.3 ms: the swap started after the completion (+12.5 ms), with the source
+    playing until then.
+  - The longest pending interval was 53 blocks (unpaced).
+- **The check's blind spot.** This per-block check accepts the source as a complete state. It therefore
+  misses a head bottom that adopts the source whole, if the late writes then land between two blocks. That
+  is the preset's 0: its request precedes a long pre-write phase. The deterministic harness sees those
+  cases, 66 of 140 in S6. For the prototype the question is closed twice. Every forced bottom is
+  bit-identical to the atomic twin's, which adopts the destination. §U1's probe, which classifies source-only
+  bottoms, found none.
+
+### U6. The suites and the happens-before witness
+
+- **The existing suites on the prototype** (Release, `ulimit -s 1024`), compared with the head's output:
+  - DSP 935 / 0, identical in every line.
+  - State 5547 checks, 13 failures, every one a State test 139 check that describes an adoption inside the
+    writes. The rest of the output is identical to the head's, except the thread-timing counters and
+    wall-clock timings of State tests 38, 39, 41, 62, 113 and 116.
+  - Under the prototype, State test 139 (B) keeps B's record, measured, at every position (−8.8130 dB),
+    and (D)'s host reset and re-prepare inside the writes no longer adopt the partial slot.
+- **ThreadSanitizer witness** (clang-18, the `tsan` lane's flags; the prototype's engine and a scratch
+  program).
+  - A plain `int` is written before `completeBulkApply` and read after the audio thread's take sees the
+    completion.
+  - With release / acquire: nothing (200 completions, 0 stale reads).
+  - With both relaxed (`B2_NEG_RELAXED`): a data race on the witness read, exit 66.
+  - This shows the compiled protocol has the edge. It is not evidence of snapshot consistency, which
+    ADR-0057's Claims 1–4 carry.
+
+### U7. The gate decision (Outcome B)
+
+- `ARCHITECTURE_REVIEW_GATE.md` lists *"Thread Model change — new thread, new cross-thread path, new atomic
+  ordering"* as requiring human Architecture Review. The protocol adds an ordering and a message to the
+  message → audio request word.
+- `THREADING_POLICY.md` (*Enforcement*): *"A change to the thread model, a new shared-state path, or a new
+  atomic ordering triggers the Architecture Review Gate and an AI Agent Hard Stop. Changing this policy
+  requires an ADR."*
+- `AI_AGENT_POLICY.md`: *"A passing build/test/pluginval does not clear a Hard Stop — only human review
+  does."*
+- The protocol also changes what the Accepted ADR-0007 (A/B provenance: no new ordering), ADR-0036
+  §24 / §25 and ADR-0004 (decision 1) record.
+- No Accepted ADR permits it, and ADR-0057 is Proposed. **The approval that is still required:** a
+  human reviewer with DSP/audio context reviews ADR-0057 against those documents, and records the
+  decision by setting its Status to Accepted in the change that implements it. That change must not be
+  auto-merged.
+
+### U8. Validation of the final head
+
+No production file changed, so the head's behaviour is `e49a90e`'s.
+- **Suites** (Release, `ulimit -s 1024`): DSP 935 / 0 and State 5547 / 0.
+  - Tests 66–74, State test 120 and State tests 129–139 pass unchanged.
+  - The output is `e49a90e`'s, thread-timing counters aside.
+- **Devin controls** (each mechanism removed from this tree; the whole State suite; failing checks by State
+  test):
+  - the NaN guard: 129 ×6;
+  - Apply disabled: 129 ×5, 130 ×45, 131 ×8, 132 ×2, 133 ×3, 135 ×2;
+  - the kept-result init: 132 ×30, 133 ×3, 134 ×4, 136 ×1, 137 ×1;
+  - the live-edit report: 133 ×24, 134 ×1, 135 ×7, 137 ×16, 138 ×1;
+  - `setDisplayedGainDb` honouring `measured`: 134 ×20, 135 ×2, 136 ×1, 137 ×22, 138 ×3.
+
+  These are §T8's counts exactly, and State test 139 fails under none of them. They cover the brief's list:
+  - the NaN Apply guard;
+  - the retained-gain init and live-edit invalidation;
+  - stale-engage (State test 130 under Apply disabled);
+  - A/B provenance;
+  - the `duckMeasDirty` lifecycle (State test 136);
+  - S5's evidence (State test 137).
+- **Lint gates.** `check-docs`, `check-realtime`, `check-dispatch`, `check-portability` and
+  `check-state-coverage` pass. `check-citations --check` passes against `e49a90e` (605 anchors), `9e38310`
+  (573) and `659ca0a` (543), and its self-test passes (266 cases).
+- **Warnings.** The round changes no compiled file. On the prototype's two changed translation units,
+  GCC 13 with the gate's flags reports the head's diagnostics, message for message (3 each).
+- **CI and PREfast** run on the pushed head; their record is in the PR #156 description.
+
+### U9. Recorded, not changed (deferred)
+
+- **KI-032.** On acceptance, ADR-0057's table of required changes is the implementation plan:
+  - the engine;
+  - the processor's call sites and the `prepareToPlay` re-read;
+  - the preset hooks' guard;
+  - State test 139 rewritten as the regression, with the brief's legs A–H;
+  - the thread-model documents.
+- **The explicit defer list of the brief:**
+  - cross-rate Level-Match retention, the quiet glide after a flush, and automation currency;
+  - KI-029, global `toEngine` sanitization, and float → int UB;
+  - F9, F10 and F12; R6a–R6d;
+  - ScopeBuffer threading and the vectorscope stop-state;
+  - historical documentation cleanup;
+  - the per-block Level-Match ramp redesign.
+
+  S5, F13(1b) and the stale-engage decision are not reopened.
+- **§T9's and §S10's items stand as recorded.**

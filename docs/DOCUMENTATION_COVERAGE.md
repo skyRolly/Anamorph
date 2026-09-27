@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review) — whose entries are the **76th** to **87th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented) — whose entries are the **76th** to **88th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,66 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 88th pass — 2026-09-27, PR #156 (the O8(3) architecture decision: ADR-0057 completed, still gated)
+
+**Scope.** The brief asked for either an implementation, if the repository's gate permits the completion
+protocol without another approval step, or a complete, reviewable proposal with the implementation deferred.
+The gate requires a human Architecture Review for a new atomic ordering, and none exists, so it is the
+second. **No production file changes, KI-032 stays open, and ADR-0057 stays Proposed.** All of it is 0.9.9,
+dated 2026-09-27 (`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §U).
+
+**The record.**
+- **Reproduced again on the branch head `e49a90e`** (whose `src/` is `9e38310`'s), through the processor:
+  - 1,680 threaded trials, 1× to unpaced, six combinations: 573 adopted an incomplete destination;
+  - at 1× behind a stall of up to 12 ms: 40 of 120;
+  - every one restored B's measured record as not measured;
+  - deterministically, 689 of 1,245 enumerated interleavings on the head, across the A/B switch, undo, redo,
+    a preset, a host reset, the prime, supersession and Copy.
+- **The protocol**, specified to the brief's eleven points:
+  - the request word gains a sequence and a completion published with release;
+  - the audio thread takes it with acquire before and after reading the parameters;
+  - the source plays while the destination is written;
+  - the swap starts only on a snapshot read between the two, so the forced bottom never waits and no cap
+    exists.
+- **The proof.** Four claims from the C++ memory model, with the ARMv8 argument and why a relaxed completion
+  or take fails. The preconditions include the `seq_cst` parameter loads and the re-read in `prepareToPlay`.
+- **The comparison:** B2 against the earlier hold-at-the-bottom draft, a separate completion atomic, a
+  handed-over snapshot, and the repository's existing mechanisms, on the brief's 22 criteria.
+- **The prototype (scratch).**
+  - 0 incomplete adoptions:
+    - in the 1,245 deterministic cases;
+    - in 9,240 threaded trials from 1× to unpaced, stalls included;
+    - in the reproduction's own probe (1,800 trials; the head: 613).
+  - Bit-identical to an atomic twin in 458 of 458 comparisons.
+  - 0 audio-path allocations.
+  - The existing suites unchanged outside State test 139.
+  - Five negative controls, each one broken rule, all observable. A TSan witness of the one new
+    happens-before edge.
+- **Two designs rejected on the prototype:**
+  - a completion block whose snapshot was untrusted broke State test 127's settled host reset;
+  - `prepareToPlay`'s reused snapshot re-opened the window.
+
+**Tests.** None added or changed. State test 139 still characterizes the head; on the prototype its 13 checks
+that describe an adoption inside the writes fail, and nothing else does.
+
+**Documents changed.**
+- **ADR-0057** (still **Proposed**): rewritten as the complete proposed decision, with its `ADR_INDEX.md` row:
+  - the gate record, with the exact approval still required;
+  - the head's measurements, the invariant, the comparison;
+  - the protocol, its proof and preconditions, and the prototype's evidence;
+  - the adoption-path audit, the consequences, the risks, and the implementation plan with the smallest file
+    set.
+- **ADR-0007:** A/B provenance, "A slot adopted partly written": the recommendation revised in place (the swap
+  starts at its completion; no hold at the bottom, no cap).
+- **`KNOWN_ISSUES.md`:** KI-032's index row and its *When it happens* bullet take this round's measurements. Its
+  fix paragraph describes the revised protocol and the evidence, and what remains (a human review).
+- **`TESTING.md`:** State test 139's entry records its result on the prototype.
+- **The worklog:** §U.
+- **`CHANGELOG.md` `[0.9.9]`:** unchanged. Its KI-032 lead already says *"awaiting architecture review"*, and
+  nothing user-visible changed. The date stays 2026-09-27.
+- **Code:** none. `src/` is untouched this round.
+- **This file:** this entry and the *Last updated* line.
 
 ## 87th pass — 2026-09-27, PR #156 (the Devin review: "A/B switches can adopt incomplete slot state")
 

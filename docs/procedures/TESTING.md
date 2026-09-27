@@ -5132,6 +5132,9 @@ State test 139 (2026-09-27; `KNOWN_ISSUES.md` KI-032; ADR-0057, Proposed; worklo
 (`testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot`) CHARACTERIZES a recorded residual — the Devin
 finding "A/B switches can adopt incomplete slot state" — and is the regression-in-waiting for ADR-0057's handoff.
 It pins the engine as it is: the fix inverts (A), (B), (C) and (E), and its host-reset / prime rule inverts (D).
+On ADR-0057's revised prototype (worklog §U6) the State suite's only failures are 13 of this test's checks.
+They are every (A)–(E) check that describes an adoption inside the writes. That includes the two at position 8,
+whose blocks run inside the last write's notification, before the completion is published.
 - **The method.** Deterministic, the production path, no engine internals. The audio thread's progress runs ON
   the message thread at an exact point of the switch's write sequence: the processor's seam
   `beforeSoundReplacementWrites` (position 0: after the request and the leaving capture, before the first write)

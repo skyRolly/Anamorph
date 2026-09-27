@@ -148,7 +148,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-029 | A **non-finite parameter value** — the text "nan" typed into a knob's value box, or a NaN from a host — mutes or changes several controls **while it is present** (Width, Haas Delay, Chorus Rate / Depth, Output Gain and the multiband widths / crossovers mute; Mix plays fully wet; the Level-Match gain is discarded; saving the session meanwhile reaches undefined behaviour in JUCE's number formatting) | Low | Confirmed; recovers as soon as a valid value arrives. What a NaN value should mean is an **owner decision** (ADR-0009 note 2026-09-24) |
 | KI-030 | ~~After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back~~ | — | **RESOLVED 2026-09-24** (ADR-0007, Amendment of 2026-09-24, F13(2)). An A/B switch whose slots differ in anything the Level-Match measurement reads now re-arms the analysis where the slot's gain is restored, and a re-prepare at an unchanged sample rate keeps the match instead of rebuilding it, once Level Match has caught up with the latest change to the sound (Test 67, State test 131; Test 69, State test 133). An A/B slot's remembered gain counts as caught up only if it was a confirmed measurement when the slot was left (ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134), and it stays caught up through the fade-in of a switch made during another switch's fade-out (ADR-0007, Note of 2026-09-26; Test 72, State test 136), and when Velvet Density holds a NaN the Velvet ignores (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). The engage cases recorded with it are decided behaviour, not defects: see the entry |
 | KI-031 | ~~**Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after (+2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10)~~ | — | **RESOLVED 2026-09-24** (owner ruling O4g; ADR-0007, Amendment 2026-09-24). A switch that turns Level Match on and changes nothing its measurement reads now starts at the matched level (Test 66, State test 130). Outside an A/B switch, an engage that also changes the sound still glides from unity: a measurement-staleness case, kept by the F13(2) decision (KI-030) |
-| KI-032 | An **A/B switch, undo, redo or preset load made while the host processes much faster than real time** — an offline render, a host that renders ahead, one that splits its callback into small blocks — or while the message thread stalls for ~10 ms or more (at 256-sample buffers), can adopt a **partly written sound**: some of the destination's settings with the rest of the previous sound's, or the previous sound whole. It plays that into the switch's fade-in, then glides (or ducks a second time) to the destination, and a same-rate re-prepare before the destination's level is re-measured throws its matched level away | Medium | Confirmed, **measured** (State test 139; worklog §T); **not fixed — the fix is a threading-model change gated on Architecture Review** (ADR-0057, Proposed). Real-time playback without such a stall is not affected |
+| KI-032 | An **A/B switch, undo, redo or preset load made while the host processes much faster than real time** — an offline render, a host that renders ahead, one that splits its callback into small blocks — or while the message thread stalls for ~10 ms or more (at 256-sample buffers), can adopt a **partly written sound**: some of the destination's settings with the rest of the previous sound's, or the previous sound whole. It plays that into the switch's fade-in, then glides (or ducks a second time) to the destination, and a same-rate re-prepare before the destination's level is re-measured throws its matched level away | Medium | Confirmed, **measured** (State test 139; worklog §T, §U); **not fixed — the fix is a threading-model change gated on Architecture Review** (ADR-0057, Proposed: the protocol specified, proved and validated on a prototype, awaiting a human reviewer). Real-time playback without such a stall is not affected |
 
 ---
 
@@ -1194,15 +1194,22 @@ than the writes take, the bottom adopts a partly written sound:
   longer than the audio takes to reach the bottom (~10 ms at 256-sample buffers).
 
 **Measured** (x86-64 Linux, 48 kHz / 256, through the processor):
-- **When it happens.** A switch between slots differing in 2–8 settings was always complete at 1–16×
-  real time. At 64× it rarely adopted the previous slot whole (5 of 240 trials). From ~100× on it
-  adopted a mixture (for example B's Drive with A's Width, the Devin case) or the previous slot whole.
-  At real time, a single message-thread stall of ~12 ms after the first write gave a mixture in about
-  a third of switches.
+- **When it happens.** A switch between slots differing in 2–8 settings was always complete at 1–4×
+  real time.
+  - At 16× it was complete in all but one of 240 trials: the message thread was ~1 ms late with that
+    switch's writes (worklog §U1).
+  - At 64× it rarely adopted the previous slot whole: 5 of 240 trials in §T, and 8 of 240 in §U, one of
+    them a mixture.
+  - From ~100× on it adopted a mixture (for example B's Drive with A's Width, the Devin case) or the
+    previous slot whole.
+  - At real time, a single message-thread stall of ~12 ms after the first write gave a mixture in about
+    a third of switches (40 of 120 in §U).
 - **What is heard.** The fade-in plays the adopted mixture. The remaining settings then glide in, or a
-  discrete one ducks a second time. The output differs from a complete switch from the bottom on, by
-  −0.8 to −6.2 dB relative to the signal over the fade-in. In the case State test 139 measures it is
-  identical again about 50 ms later. It is never a click: every path is ducked.
+  discrete one ducks a second time.
+  - The output differs from a complete switch from the bottom on, by −0.8 to −6.2 dB relative to the
+    signal over the fade-in: −19.4 to +3.1 dB across §U1's six combinations.
+  - In the case State test 139 measures it is identical again about 50 ms later.
+  - It is never a click: every path is ducked.
 - **Level Match.** The destination slot's measured level is restored as not measured, because it was
   judged against the mixture. A same-rate re-prepare in the fade-in then throws it away (−8.08 dB → 0,
   where a complete switch keeps −8.79 dB), and it re-measures over ~2 s.
@@ -1214,14 +1221,24 @@ undoing or loading a preset mid-render. If you do, the render settles to the new
 (about 50 ms in the measured case). With Level Match on, a same-rate re-prepare before it has
 re-measured makes it measure the new slot's level again, over ~2 s.
 
-- **Why it is not fixed here:** making the bottom wait for the writes needs the audio thread to learn,
+- **Why it is not fixed here:** making the swap wait for the writes needs the audio thread to learn,
   with an acquire, that they are finished. The request word it reads is relaxed and carries no
   completion, and a new atomic ordering is a threading-model change (`THREADING_POLICY.md`,
-  *Enforcement*). ADR-0057 records the measured options and the recommendation. A two-phase request
-  word holds the bottom, bounded, until the writes are marked complete, and aborts to the previous
-  sound rather than ever adopting a mixture. On a scratch prototype it adopted no partly written slot
-  in 2,880 threaded trials, held nothing at real time, and left both existing suites unchanged.
+  *Enforcement*).
+- **The fix, specified (ADR-0057, Proposed; completed 2026-09-27, worklog §U).** The request word gains a
+  sequence number and a completion published with release. The audio thread takes it with acquire before
+  and after reading the parameters. It keeps the previous sound playing, at full level, while the writes
+  run, and starts the swap only on a snapshot read after the completion. So nothing waits at the silent
+  bottom and no time-out is needed.
+- **The prototype.** On a scratch prototype it adopted no partly written sound:
+  - in 1,245 enumerated interleavings;
+  - in 9,240 threaded trials, from real time to free-running and through 12 ms stalls;
+  - in the 1,680 + 120 trials of the probe that measured this issue, where every bottom took the complete
+    new sound and kept its measured level. It left both existing suites unchanged outside State test 139, and each of five
+  deliberately broken variants let the defect through again.
+- **What remains:** a human Architecture Review, as ADR-0057's gate record states.
 - **Evidence [Verified]:** State test 139 (the adoption field by field, the Level-Match loss, the
   settling, a host reset and a re-prepare, the algorithm written first, a threaded race); worklog §T
-  (the threaded probes, TSan clean, the stall, the preset load, the prototype); ADR-0057; ADR-0007
+  (the threaded probes, TSan clean, the stall, the preset load, the prototype); worklog §U (the
+  reproduction on the branch head, the protocol, its proof and its prototype evidence); ADR-0057; ADR-0007
   (A/B provenance, "A slot adopted partly written", reclassified); ADR-0036 §25 (note of 2026-09-27).

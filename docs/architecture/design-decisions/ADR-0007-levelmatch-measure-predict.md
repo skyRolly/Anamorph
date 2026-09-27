@@ -978,9 +978,14 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
   worklog §T1's: with 256-sample blocks, rarely at 64× real time (the source whole) and routinely from
   ~100×, and at real time behind a ~12 ms stall of the message thread.
   - **The owner's invariant** (2026-09-27): a forced swap adopts the complete destination or nothing.
-  - **The recommended architecture:** the two-phase request word this bullet names, with an abort to
-    the source at the cap. It is **ADR-0057, Proposed**. It is blocked at the Architecture Review
-    Gate because it adds an atomic ordering to the request word. It would change this amendment's
+  - **The recommended architecture:** the two-phase request word this bullet names. It is **ADR-0057,
+    Proposed**. It is blocked at the Architecture Review Gate because it adds an atomic ordering to the
+    request word.
+    - *Revised 2026-09-27 (worklog §U).* The swap starts at its completion, and the source plays
+      until then. There is no hold at the bottom and no cap.
+    - The A/B bookkeeping this amendment defines runs at that start, against the unchanged source, so
+      every record is the same as today's. The destination's is judged against the complete
+      destination. It would change this amendment's
     "The handoff: one existing atomic, no new path" and its gate record's "The thread model gains no
     thread, no direction and no ordering".
   - **Status:** open, `KNOWN_ISSUES.md` KI-032.
