@@ -5270,7 +5270,10 @@ others, on an A/B pair that differs in a continuous and a discrete field:
 - **(E2)** the same inside a factory preset's writes, through `SoundAppliedGuard`'s destructor.
 
 What a half-applied command leaves in the parameters is that command's failure, not this test's subject; the engine
-must only never freeze on it. 20 checks.
+must only never freeze on it. 20 checks. Its negative controls (worklog §W), each failing State test 141 and nothing
+else in the suite: `~BulkApply` without its completion — 4 checks, (E1) and then (E2) (the open swap swallows every
+later one); `~SoundAppliedGuard` without its `fire()` — 2, (E2); the request raised before `loadAdopted`'s refusals —
+11, every refusal and then everything after it. No committed test failed any of the three before this one.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

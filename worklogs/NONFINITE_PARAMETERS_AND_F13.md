@@ -3778,7 +3778,222 @@ Release, x86-64 Linux, GCC 13, 48 kHz / 256, `ulimit -s 1024`.
   threading and the vectorscope stop-state; historical documentation cleanup; the per-block Level-Match ramp
   redesign. S5, F13(1b) and the stale-engage decision are not reopened; `isResultCurrent()` is not a Case-A guard.
 - **Drift reported, not corrected:** `TESTING.md`'s "53 DSP tests"; `KNOWN_ISSUES.md`'s "version-synced to
-  v0.9.6"; `HANDOVER.md`'s "five Fixed entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013's KI-029.
+  v0.9.6"; `HANDOVER.md`'s "five Fixed entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013's KI-029. (All four corrected
+  by the pre-merge audit, §W3.)
 - **Not re-run this round:** §U8's five earlier Devin controls (the NaN guard, Apply disabled, the kept-result
   init, the live-edit report, `setDisplayedGainDb` honouring `measured`); their scratch patches no longer exist.
-  The tests they exercised (State tests 129–138, Tests 66–74) pass unchanged on the final code.
+  The tests they exercised (State tests 129–138, Tests 66–74) pass unchanged on the final code. (Re-created and re-run by the
+  pre-merge audit: §W6.)
+
+## W. The pre-merge audit: B2 re-audited on the final code, the Devin finding re-closed, State test 141 (0.9.9)
+
+A final pre-merge round on `89f363d`, not a design round. The B2 protocol is not reopened. The version stays 0.9.9,
+dated 2026-09-27.
+
+### W1. Where it started
+
+- **Repository.** The branch, `origin` and the local tree were all at `89f363d`, clean. `main` was `659ca0a`, the
+  merge base. PR #156 was open and mergeable ("clean"). `main` has no branch protection and no ruleset.
+- **Review threads on PR #156: two, both from the PREfast bot.**
+  - A `C26498` thread, resolved and outdated.
+  - A `C6262` thread on Test 66 (`tests/dsp_tests.cpp:7509`), unresolved. Its disposition is `DO NOT FIX`
+    (`CI_CD.md`). Re-measured here, the frame is still 14,480 bytes.
+- **No Devin review thread exists on GitHub.** The Devin findings reached this branch through the task briefs. So
+  "A/B switches adopt incomplete slot states" has no open thread to close. Its closure is the evidence in §W3.
+
+### W2. The source-level audit (a workflow; scratch results, not committed)
+
+**Method.** Six independent auditors, one per dimension:
+- the request word;
+- adoption and trust;
+- the processor's paths;
+- the preset paths;
+- the C++ memory model on ARMv8;
+- real-time safety and invariants.
+
+Each defect or risk finding went to three skeptics told to refute it. A completeness critic then traced every path
+no auditor had covered: re-prepare, both switch directions, no source-as-destination adoption, `processBlock`'s early
+exits and session restore's forget.
+
+**Result: no defect in the production implementation.**
+
+Confirmed, and acted on:
+- **Two test-coverage gaps** (three of three skeptics agreed, as risks).
+  - A refused preset load that raised a request would freeze the engine silently. No test detected it.
+  - The exception-path completions (`~BulkApply`, `~SoundAppliedGuard`) were never exercised. A mutant deleting
+    either survived every suite.
+  - Now State test 141 (§W5).
+- **The store side of Claim 2 was not binding** (three of three). The proof needs every destination store to be a
+  release. The preconditions stated only the load side, and the store is JUCE's
+  (`juce_AudioProcessorValueTreeState.cpp:155`, a `seq_cst` assignment at the pinned 9.0.2, `72782788`). It is now
+  half of precondition 2:
+  - ADR-0057;
+  - `THREADING_POLICY.md`;
+  - `DEPENDENCY_POLICY.md` upgrade rule 2, which re-verifies it on a JUCE bump.
+
+  No mechanical check reaches JUCE's source. That is recorded, not built.
+- **Comment and document drifts.** The code behaves correctly in each case; the text overstated it.
+  - A swap completed by the prime's first take starts IN the prime, its duck dropped, not "there, ducked".
+  - A duck already in flight at a request may land its own trusted target while the swap is awaited, so "`p`,
+    unchanged since the request" was too strong.
+  - ADR-0057 Claim 2's writer sentence.
+  - The sequence-0 engine-API row. A sequence-0 request folds into a pending bulk swap.
+  - The adoption-path audit omitted the non-swap multi-store actions: Apply and the imager's band transactions.
+  - `primeParameters`' caller.
+  - "one CAS", which is a CAS loop.
+
+Refuted or recorded:
+- **Refuted: a sequence-0 switch mixed with a pending sequenced one** replays in reverse order. No caller can reach
+  it, because every production request carries a `BulkApply` sequence. Refuted by three of three.
+- **Recorded, not changed** (nits):
+  - no test for a sequence wrap with no take in between, or for the nested (join) path;
+  - an exception before the destination is written lands the source as the "complete" swap, with the A/B
+    bookkeeping of a switch the processor never made (liveness over bookkeeping, by design; a `bad_alloc`-class
+    event);
+  - the preset hooks' pairing relies on the processor installing both;
+  - State test 140 does not drive `step()`;
+  - a stale pre-B2 constructor comment about `onLoaded`;
+  - `readEngineSnapshot` and `toEngine` are not `noexcept`.
+
+### W3. The documentation audit (a workflow)
+
+**Method.** Five readers, one per document group, each drift checked by two skeptics.
+
+**Result.** Fourteen drifts were confirmed by both skeptics and corrected in place:
+- ADR-0057:
+  - `SWPA`, not `SWPAL`;
+  - the preset-guard anchors;
+- `ADR_INDEX.md`: the arm64 count;
+- `REALTIME_AUDIO_POLICY.md`:
+  - `ParamPointers::toEngine`;
+  - the lint's real seeds (it scans `adoptSnapshot` only through `setParameters`'s closure, and `readEngineSnapshot`
+    not at all);
+  - the process range;
+- `THREAD_MODEL.md`:
+  - the solo-preview anchors;
+  - the `primeMeasChanged` writer;
+- ADR-0007 and ADR-0004: an in-flight duck during the wait;
+- `HANDOVER.md`: 15 Clang-baseline sites, not 17;
+- `TESTING.md`:
+  - Test 42 is not "the newest";
+  - 138 State tests, not 63;
+  - Test 75 enumerates sequentially consistent placements, and Claims 1–4 are the weak-memory argument;
+- `CI_CD.md`: 1.8 %, not 1.9 %.
+
+**Refuted** (both skeptics, or one of two):
+- ADR-0036's "Proposed" in a dated note;
+- the historical State test 139 citations in ADR-0036 and ADR-0007;
+- `THREAD_MODEL.md`'s `toEngine` range;
+- a present-tense sentence in KI-030's banner.
+
+**Separately, the four stale current-state statements named in §V5, fixed:**
+- `TESTING.md` says 75 DSP tests (Tests 3 and 4 run as one), plus the A/B clamp guard. Copies of the same stale
+  count were corrected in `README.md`, `TESTING_POLICY.md` and `HANDOVER.md`.
+- `KNOWN_ISSUES.md` is synced to v0.9.9. The header also records the unrecorded 0.9.7 and 0.9.8 syncs, reconstructed
+  from the history:
+  - 0.9.7 filed and removed a KI-029 and amended KI-027;
+  - 0.9.8 closed KI-010.
+- `HANDOVER.md`'s `[0.9.9]` has twenty-five Fixed entries.
+- `POSTMORTEMS.md` INC-013: its KI-029 is the retired 0.9.7 one. The number was reused in 0.9.9. The history is
+  kept, with a note.
+
+Drift found and **reported, not corrected**:
+- `HANDOVER.md`'s Release Status ("the release in preparation is now v0.9.7") and Known Blockers (the v0.9.6 tag);
+- ADR-0036's "Apply writes one parameter" (two since round 24);
+- `RELEASE_HARDENING_PLAN.md`'s dated baseline row;
+- the dated frame figures in `build.yml`'s stack-guard comment.
+
+### W4. The Devin finding on the final code, with a fresh pre-fix run beside it
+
+The runs below were built from `89f363d`'s `src/`. Since then this round has changed `src/` only in comments, with
+line counts kept. The object code is identical: `objdump -d` of `AnamorphEngine.cpp`, `PluginProcessor.cpp` and
+`PresetManager.cpp`, compiled from both trees with the suite's flags, is the same. So these are the final head's
+results.
+
+**The deterministic enumeration** (the §U4 harness ported to the final API, scratch `det_pm.cpp`). It now also
+counts the exact Devin class: one slot's Drive with the other slot's Width. Drive is written before the snapshot,
+Width after, in either direction.
+- **The final code (`89f363d`'s `src/`):** 0 of 1,287 cases incomplete (the §U4 1,245 plus S9d's 42). 0 wrong
+  final states, 0 stuck, 0 Level-Match landings wrong. The Devin class: **0 of 650 eligible cases**.
+- **The pre-fix tree (`f12cc80`'s `src/`, identical to `e49a90e`'s) through the same harness:** 731 of 1,287
+  incomplete. The Devin class: **317 of 650 cases, 1,208 adopted hybrid states**. 131 Level-Match landings were
+  wrong.
+
+**The committed probes on the final code, rebuilt at the final head:**
+- `--bulk-swap-probe 40`: **0 of 1,680** failed;
+- `--bulk-swap-probe 20 12000`: **0 of 120**;
+- `--bulk-swap-stress 20`: 0 of 4,620 with a state no swap completed, 0 wrong, 0 pending;
+- `--bulk-swap-stress 20 12000`: 0 of 4,620, 0 wrong, 0 pending.
+
+**The §U probe on the pre-fix tree, re-run the same day on the same machine:**
+- 1,680 trials: 347 adopted an incomplete destination (15 a mixture, 332 the source as the destination). §U1
+  recorded 573; the rate depends on scheduling.
+- Behind a 12 ms stall: 35 of 120, all mixtures (§U1: 40).
+
+**Level Match provenance:**
+- the enumeration's Level-Match verdicts, 0 wrong on the final code;
+- the probe's "landed not measured" and "same-rate prepare flushed", both 0;
+- State test 139 (B).
+
+**Allocation.** The ported enumeration arms the allocation guard around every `processBlock` of its 1,287 cases on the
+final code. The guard is process-wide, and it counted 80 allocations while armed; a stack-dumping hook resolved every one
+(`addr2line`): 3 in its own start-up self-check (`selfCheck`, called from `main` before any block, on purpose) and 77
+on JUCE's `Timer::TimerThread` posting to the message queue. **None on the thread calling `processBlock`.** Test 75
+(every engine call armed, one thread) counts 0.
+
+### W5. State test 141: every bulk swap's request is completed on its refusal and exception paths
+
+There are three legs, on an A/B pair that differs in a continuous and a discrete field (`TESTING.md`):
+- **(R)** Six refused preset loads leave nothing pending, and the next switch lands whole. The loads go through
+  `load (idx)`: a row whose file is gone, a foreign root, an unparsable file. They also go through `loadFile`: the
+  same three.
+- **(E1)** An exception at `insideSoundReplacement` mid-way through an A/B switch's writes. `BulkApply`'s destructor
+  completes the swap, nothing stays pending, and the next switch lands whole.
+- **(E2)** The same inside a factory preset's writes, through `SoundAppliedGuard`'s destructor.
+
+It adds 20 checks and raises no GCC or clang warning.
+
+**Negative controls** (scratch `pm/ctl141`, full rebuilds). Each fails State test 141 and nothing else:
+
+| mutant | checks failed |
+|---|---|
+| `~BulkApply` without its completion | 4 |
+| `~SoundAppliedGuard` without its `fire()` | 2 |
+| the request raised before `loadAdopted`'s refusals | 11 |
+
+### W6. The five earlier Devin controls, re-created and re-run
+
+The §U8 patches were gone. Each mechanism is one line, so each was re-created as a patch against the final tree
+(scratch `pm/ctl`), and both suites were built and run:
+
+| control | State failures, by test | also fails DSP |
+|---|---|---|
+| NaN guard removed | 129 ×6 | — |
+| Apply disabled | 71: 96 ×4, 98 ×2, 129 ×5, 130 ×45, 131 ×8, 132 ×2, 133 ×3, 135 ×2 | — |
+| kept-result init removed | 132 ×30, 133 ×3, 134 ×4, 136, 137 | Tests 68 ×5, 69, 72 |
+| live-edit report removed | 133 ×24, 134, 135 ×7, 137 ×16, 138 | Tests 69 ×23, 70 ×2, 71 ×9, 73 ×10, 74 ×7 |
+| `setDisplayedGainDb` ignoring `measured` | 134 ×20, 135 ×2, 136, 137 ×22, 138 ×3 | Tests 70 ×16, 72, 73 ×21, 74 ×2 |
+
+**Every State count is exactly the one §S and §U recorded.** The baseline is 944 / 0 and 5,573 / 0. The first
+`setDisplayedGainDb` run was invalid and is discarded: its mutation lives in a header, and the object-seeded build
+did not recompile it, so it reported 0. The rebuild from scratch is the row above.
+
+### W7. PREfast's `C6262` on State test 140, re-audited
+
+- The frame is 7,392 bytes by GCC. `/analyze` counts every sibling scope's locals separately: sixteen rigs of 768
+  bytes, 17 tallies and 7 snapshots come to about 14.4 KB at GCC's sizes.
+- It runs on the main thread and starts no thread. The source is test-only (`CMakeLists.txt:569`).
+- Even the `/analyze` figure is 1.8 % of Windows' 1 MiB, where the `windows` job runs it natively. The State suite's
+  largest frame is 712,320 bytes.
+- `DO NOT FIX` stands, with no suppression (`CI_CD.md`).
+
+### W8. The gates, and what this round does not claim
+
+- **DAW.** No DAW run happened. The repository's gate does not require one to merge. Level 5 (a DAW audition) is
+  release sign-off: `RELEASE_POLICY.md` precondition 7 and `TESTING_POLICY.md` ("cannot gate CI"). The owner's
+  merge is itself the human step `ARCHITECTURE_REVIEW_GATE.md` requires, because a gated change is never
+  auto-merged.
+- **ARM64.** The production code changed only in comments this round. Native arm64 validation is CI's `macos` job
+  on the final head, recorded in the PR #156 description. No test can force a weak-memory reordering; the ordering
+  is ADR-0057's Claims 1–4.
+- **The final head's suites, sanitizers, CI and PREfast** are recorded in the PR #156 description.

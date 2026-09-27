@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed — whose entries are the **76th** to **89th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,60 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 90th pass — 2026-09-27, PR #156 (the pre-merge audit: no production defect; State test 141; docs synced)
+
+**Scope.** A final pre-merge round on the implemented B2 protocol, not a design round. A source-level audit of every
+bulk-swap path (six auditors, each defect or risk finding checked by three skeptics, and a completeness critic)
+found **no defect in the production implementation**. It confirmed two test-coverage gaps, one unstated half of a
+precondition, and a set of documentation and comment drifts. Nothing in the protocol changed
+(`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §W).
+
+**The record.**
+- **The Devin finding re-closed on the final code**, with a fresh pre-fix run beside it. The deterministic
+  enumeration: 0 of 1,287 cases on the final code, against 731 on the pre-fix tree. The exact Devin class (one slot's
+  Drive with the other slot's Width): 0 of 650 eligible cases, against 317 of 650 (1,208 adopted hybrid states). The
+  probe: 0 of 1,680. The 12 ms stall: 0 of 120. The threaded stress: 0 of 9,240.
+- **The five earlier Devin controls re-created as patches and re-run.** Each fails exactly the State checks its
+  earlier record names.
+- **State test 141 (new).** It pins "exactly one completion per request on every exit path" for refused preset
+  loads and for exceptions inside a swap's writes. Three negative controls each fail it, and nothing else.
+- **Precondition 2 covers both halves of Claim 2's pair.** Message-thread stores of a swap-carried value must be
+  release-or-stronger (JUCE's `seq_cst` assignment). A JUCE bump re-verifies it.
+- **The State test 140 `C6262` disposition re-audited** with the frame breakdown.
+
+**Documents changed.**
+- **Stale current-state statements**, the four named in the 89th pass:
+  - `TESTING.md` (75 DSP tests, 138 State tests);
+  - `KNOWN_ISSUES.md` (synced to v0.9.9, with the reused KI-029 number disambiguated);
+  - `HANDOVER.md` (twenty-five Fixed entries; the Test Status counts);
+  - `POSTMORTEMS.md` INC-013 (the retired 0.9.7 KI-029, history kept).
+  Their copies, corrected too: `README.md`, `TESTING_POLICY.md`, and `HANDOVER.md`'s Clang-baseline count.
+- **Drifts confirmed by two skeptics each** (worklog §W3):
+  - ADR-0057: `SWPA`; Claim 2's writer sentence; the preset-guard anchors; the engine-API qualifier; the
+    non-swap multi-store row; point 6's state-being-left;
+  - `ADR_INDEX.md`: the arm64 count;
+  - `REALTIME_AUDIO_POLICY.md`: `ParamPointers::toEngine`; the lint's real seeds; the process range;
+  - `THREAD_MODEL.md`: the solo-preview anchors; the `primeMeasChanged` writer;
+  - ADR-0004, ADR-0007: an in-flight duck may land during the wait; the prime's timing;
+  - `API_REFERENCE.md`: the prime's timing;
+  - `TESTING.md`: two present-tense claims; Test 75's scope;
+  - `CI_CD.md`: 1.8 %.
+- **The precondition:** ADR-0057 point 2, `THREADING_POLICY.md` precondition 2, and `DEPENDENCY_POLICY.md` upgrade
+  rule 2.
+- **`TESTING.md`:** State test 141, with its negative controls.
+- **`CI_CD.md`:** the C6262 audit.
+- **Code comments** (line counts kept; no object-code change): `AnamorphEngine.{h,cpp}`, `PluginProcessor.cpp`.
+
+**Code.** `tests/state_tests.cpp` (State test 141). The production code changes only in comments.
+
+**Drift reported, not corrected:**
+- ADR-0036's "Apply writes one parameter" (it writes two since round 24; not the bulk-swap boundary);
+- `HANDOVER.md`'s Release Status ("the release in preparation is now v0.9.7") and Known Blockers (the v0.9.6 tag);
+- `RELEASE_HARDENING_PLAN.md`'s dated baseline row;
+- the dated stack-frame figures in `build.yml`'s stack-guard comment.
+
+**This file:** this entry and the *Last updated* line.
 
 ## 89th pass — 2026-09-27, PR #156 (ADR-0057 accepted and implemented; KI-032 fixed)
 
