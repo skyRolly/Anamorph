@@ -69,7 +69,7 @@ mask store, which is the case its guard tests. It is corrected in place rather t
   terminate deterministically, because the rollback's own stores dispatch and can be answered again.
 * **D. Snapshot / version architecture — publish a coherent layout as one versioned unit.**
   Rejected here, not on taste but on reach: `PluginParameters::toEngine` reads the ten multiband
-  atomics with ten separate `load()` calls per block (`src/PluginParameters.cpp:365-374`), so the
+  atomics with ten separate `load()` calls per block (`src/PluginParameters.cpp:369-378`), so the
   **reader tears** and a versioned write-side unit would be re-torn on the audio side. Making it
   real means replacing the read as well — a threading-model and DSP-parameter change, and so an
   `ARCHITECTURE_REVIEW_GATE` item, not a review-round fix. Recorded, not attempted.
@@ -196,7 +196,7 @@ Evidence [Verified]:
   `:82`, `:111-121`; `juce_AudioProcessor.cpp:1467`.
 - DSP clamping: `src/dsp/MultibandWidth.cpp` (`setCrossovers`, `setBandCount`);
   `src/dsp/SoloMonitor.cpp:85`.
-- The torn reader that rules out option D: `src/PluginParameters.cpp:365-374`.
+- The torn reader that rules out option D: `src/PluginParameters.cpp:369-378`.
 - Suites: state 2 733 / 0, DSP 396 / 0.
 
 ---

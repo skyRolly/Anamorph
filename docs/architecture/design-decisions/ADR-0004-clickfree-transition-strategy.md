@@ -1,6 +1,6 @@
 # ADR-0004 — Click-free transition strategy (duck / crossfade / warm monitor)
 
-**Status:** Accepted — **amended by [ADR-0035](ADR-0035-oversampling-path-crossfade.md)** (2026-09-03) and by the **Correction of 2026-09-21** below (a fourth `discreteDiffers` exclusion, and one path that did not keep this ADR's own swap-at-the-bottom promise): engaging or disengaging the oversampling **wrap** moves from the duck class to the crossfade class, on the evidence that a duck cannot mask it (the duck's gain is applied downstream of the wideners' delay lines). Every other transition keeps the mechanism assigned here; an oversampling **factor** change still ducks.
+**Status:** Accepted — **amended by [ADR-0035](ADR-0035-oversampling-path-crossfade.md)** (2026-09-03), by **[ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md)** (2026-09-27: a forced bulk swap's duck starts at the swap's completion — the *Amendment of 2026-09-27* below) and by the **Correction of 2026-09-21** below (a fourth `discreteDiffers` exclusion, and one path that did not keep this ADR's own swap-at-the-bottom promise): engaging or disengaging the oversampling **wrap** moves from the duck class to the crossfade class, on the evidence that a duck cannot mask it (the duck's gain is applied downstream of the wideners' delay lines). Every other transition keeps the mechanism assigned here; an oversampling **factor** change still ducks.
 
 ## Context
 Toggling discrete controls (algorithm, routing, band count, OS path) or jumping many params at
@@ -20,8 +20,10 @@ a continuous-feeling toggle must not mute.
 Three coordinated mechanisms:
 1. **Raised-cosine duck** for genuine discrete changes (`discreteDiffers` set): fade out (~6 ms,
    asymmetric), swap state at the silent bottom (clearing stale tails/oversamplers), gentle
-   fade-in (~28 ms). Forced bulk swaps (A/B/preset/undo, `requestDuck`) defer *all* params to the
-   bottom and snap smoothers there so nothing pops mid-fade.
+   fade-in (~28 ms). Forced bulk swaps (A/B/preset/undo/redo, `requestAbSwitch` / `requestDuck`)
+   defer *all* params to the bottom and snap smoothers there so nothing pops mid-fade. Since
+   ADR-0057 (the *Amendment of 2026-09-27* below) the forced duck STARTS at the swap's completion,
+   not at its request, so the bottom adopts the complete destination.
 2. **Output crossfade** for Bypass (`bypassBlend`, ~10 ms) and Multiband Enable (`mbEnableBlend`,
    ~12 ms): the chain stays running, output crossfades between processed and the alternative;
    bit-exact at the endpoints, no duck.
@@ -129,13 +131,37 @@ three mechanisms, and which control belongs to which, are unchanged. (The measur
 same A/B bottom — the analysis is re-armed there when the two slots differ in anything it reads — is
 ADR-0007's F13(2) amendment of the same date; it does not move the applied gain.)
 
+## Amendment, 2026-09-27 — a forced swap's duck starts at its completion (ADR-0057, Accepted)
+
+Decision 1 promised that a forced bulk swap is applied *entirely* at the silent bottom. The request
+was the swap's only message and it preceded the writes, so the duck started at the next block and
+the bottom adopted whichever snapshot it read — inside the writes, when the host processed faster
+than real time or the message thread stalled, a mixture neither side holds (`KNOWN_ISSUES.md` KI-032).
+[ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md) keeps the mechanism and moves its start:
+
+- The request still precedes the first write, and from the block that takes it the engine adopts
+  nothing — the source keeps playing at full level, unducked, while the destination is written.
+- The swap's completion (a release publication after its last parameter store) starts the forced
+  duck, on the first snapshot read between two acquire takes of the request word after it. That
+  snapshot is the duck's target, so the bottom — and a host reset that completes the duck — adopts
+  the complete destination, with every parameter deferred to it and the smoothers snapped, exactly
+  as decision 1 says.
+- The bottom never waits: the wait happens before the fade-out, at full level, and it has no cap.
+
+In real time with no message-thread stall the writes end between two blocks, so the request and
+the completion are taken in the same block and the swap is bit-identical to what it was: the same
+start, the same bottom, the same output. Under burst processing or a stalled message thread the swap
+lands later in the rendered timeline, by the application's wall time, and whole. Mechanisms 2 and 3
+and the class of every other control are unchanged. Evidence: ADR-0057, *Evidence*; State tests 139
+and 140; DSP Test 75.
+
 ## Related code
 - `src/dsp/AnamorphEngine.cpp:394-421` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:394-421, 1506-1717; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:394-421, 1651-1862; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree,
   testInertDiscreteChangeDoesNotDuck, testAlgoResetSurvivesMidFadeRetarget

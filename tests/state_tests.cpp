@@ -61,6 +61,9 @@
  #include <sys/resource.h>
 #endif
 #include <functional>
+#include <map>
+#include <string>
+#include <type_traits>
 #include <limits>
 
 namespace
@@ -23098,7 +23101,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2634).
+//  baseline", src/PluginProcessor.cpp:2672).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -23331,7 +23334,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2178).
+//  targets", src/PluginProcessor.cpp:2211).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -23708,7 +23711,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2819).
+//  mixed sound", src/PluginProcessor.cpp:2857).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -36193,7 +36196,7 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
     //     rule outright: "on a number click or a playback RESTART". There are exactly
     //     two paths in the product, and neither is a transport stop --
     //     `src/gui/LevelMeter.h:27` (mouseDown on the readout) and
-    //     `src/PluginProcessor.cpp:442` (a PLAY edge or a seek).
+    //     `src/PluginProcessor.cpp:448` (a PLAY edge or a seek).
     //
     //     So a stop must KEEP the reading -- stopping to look at it is what the latch
     //     is for -- while the next play must still clear it. Leg 3 asserts the first
@@ -43996,82 +43999,333 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
 }
 
 // =====================================================================================================
-//  State test 139 -- AN A/B SWITCH WHOSE FORCED BOTTOM IS REACHED INSIDE THE DESTINATION'S WRITES ADOPTS THE PARTLY
-//  WRITTEN SLOT: THE RECORDED RESIDUAL (KNOWN_ISSUES KI-032; ADR-0057, Proposed; Devin review "A/B switches can adopt
-//  incomplete slot state"; worklog §T). It CHARACTERIZES the engine as it is. The handoff ADR-0057 proposes -- the
-//  bottom holds until the message thread marks the slot's application complete -- inverts legs (A), (B), (C) and (E),
-//  and this test becomes that change's regression.
+//  THE BULK-SWAP HANDSHAKE THROUGH THE PROCESSOR (ADR-0057, Accepted 2026-09-27; KNOWN_ISSUES KI-032, fixed). Shared by
+//  State tests 139 and 140 and by the `--bulk-swap-probe` / `--bulk-swap-stress` modes.
 //
-//  THE FINDING. `abSwitchToAdopted` requests the switch (the request word, relaxed), captures the slot it leaves, and
-//  only then writes the destination one parameter at a time (`replaceState`'s per-parameter `setValueNotifyingHost`,
-//  then `reassertParameters`). Nothing tells the audio thread when those writes are complete: the engine takes the
-//  request at its next block, keeps the source live through the ~6 ms fade-out, and at the silent bottom adopts
-//  whatever snapshot `processBlock` read in that block. When the host processes the fade-out faster than the message
-//  thread writes the slot -- measured from ~100x real time with 256-sample blocks, and at real time behind a
-//  message-thread stall of ~10 ms -- the bottom adopts a state neither slot holds, or the source whole.
+//  An A/B switch, undo, redo and a preset load raise the engine's forced duck and then write the new sound one
+//  parameter at a time. The request carries the swap's sequence, and its completion -- published with release after
+//  the last parameter store -- is what the engine waits for: it takes the request word with acquire before and after
+//  reading each snapshot and adopts nothing while a completion is awaited. So the forced bottom, a host reset and a
+//  prime can only ever adopt a state some swap left complete. These tests hold the engine to exactly that, after every
+//  block, host reset and re-prepare, through the production path (the processor's own `abSwitchTo`, `undo`, `redo`,
+//  preset loads, `processBlock`, `reset` and `prepareToPlay`).
+namespace bulkswap
+{
+    using Proc = AnamorphAudioProcessor;
+    using EP   = anamorph::EngineParameters;
+    using KV   = std::vector<std::pair<const char*, float>>;
+    constexpr double sr    = 48000.0;
+    constexpr int    block = 256;
+    const int        sec   = (int) std::lround (sr / block);
+
+    // EVERY FIELD, BIT FOR BIT (floats by pattern). The binding fails to compile if a field is added and this is not.
+    static bool same (const EP& x, const EP& y)
+    {
+        const auto eq = [] (const auto& u, const auto& v)
+        {
+            if constexpr (std::is_same_v<std::decay_t<decltype (u)>, float>) return std::memcmp (&u, &v, sizeof (float)) == 0;
+            else return u == v;
+        };
+        const auto& [x01, x02, x03, x04, x05, x06, x07, x08, x09, x10, x11, x12, x13, x14, x15, x16, x17, x18,
+                     x19, x20, x21, x22, x23, x24, x25, x26, x27, x28, x29, x30, x31, x32, x33, x34, x35, x36] = x;
+        const auto& [y01, y02, y03, y04, y05, y06, y07, y08, y09, y10, y11, y12, y13, y14, y15, y16, y17, y18,
+                     y19, y20, y21, y22, y23, y24, y25, y26, y27, y28, y29, y30, y31, y32, y33, y34, y35, y36] = y;
+        return eq (x01, y01) && eq (x02, y02) && eq (x03, y03) && eq (x04, y04) && eq (x05, y05) && eq (x06, y06)
+            && eq (x07, y07) && eq (x08, y08) && eq (x09, y09) && eq (x10, y10) && eq (x11, y11) && eq (x12, y12)
+            && eq (x13, y13) && eq (x14, y14) && eq (x15, y15) && eq (x16, y16) && eq (x17, y17) && eq (x18, y18)
+            && eq (x19, y19) && eq (x20, y20) && eq (x21, y21) && eq (x22, y22) && eq (x23, y23) && eq (x24, y24)
+            && eq (x25, y25) && eq (x26, y26) && eq (x27, y27) && eq (x28, y28) && eq (x29, y29) && eq (x30, y30)
+            && eq (x31, y31) && eq (x32, y32) && eq (x33, y33) && eq (x34, y34) && eq (x35, y35) && eq (x36, y36);
+    }
+
+    // For a failure's message: which of the fields `a` and `b` disagree on `x` took from each.
+    struct Field { const char* name; double (*get) (const EP&); };
+    #define BULKSWAP_FIELD(expr) Field { #expr, [] (const EP& e) { return (double) (e.expr); } }
+    static const Field fields[] = {
+        BULKSWAP_FIELD (inputBalance), BULKSWAP_FIELD (driveDb), BULKSWAP_FIELD (algoAmount), BULKSWAP_FIELD (haasDelayMs),
+        BULKSWAP_FIELD (velvetDensity), BULKSWAP_FIELD (chorusRate), BULKSWAP_FIELD (chorusDepth), BULKSWAP_FIELD (dimMode),
+        BULKSWAP_FIELD (width), BULKSWAP_FIELD (mbEnable), BULKSWAP_FIELD (mbBands), BULKSWAP_FIELD (mbFreqLow),
+        BULKSWAP_FIELD (mbFreqMid), BULKSWAP_FIELD (mbFreqHigh), BULKSWAP_FIELD (mbWidthLow), BULKSWAP_FIELD (mbWidthMid),
+        BULKSWAP_FIELD (mbWidthHiMid), BULKSWAP_FIELD (mbWidthHigh), BULKSWAP_FIELD (monoMakerEnable), BULKSWAP_FIELD (monoMakerFreq),
+        BULKSWAP_FIELD (mix), BULKSWAP_FIELD (outputGainDb), BULKSWAP_FIELD (outputBalance), BULKSWAP_FIELD (autoGainMatch),
+        Field { "algorithm", [] (const EP& e) { return (double) (int) e.algorithm; } },
+        Field { "haasSide",  [] (const EP& e) { return (double) (int) e.haasSide; } },
+    };
+    #undef BULKSWAP_FIELD
+    static std::string origin (const EP& x, const EP& a, const EP& b)
+    {
+        std::string fromA, fromB, other;
+        for (const auto& f : fields)
+        {
+            if (juce::exactlyEqual (f.get (a), f.get (b))) { if (! juce::exactlyEqual (f.get (x), f.get (a))) other += std::string (f.name) + " "; continue; }
+            if (juce::exactlyEqual (f.get (x), f.get (a)))      fromA += std::string (f.name) + " ";
+            else if (juce::exactlyEqual (f.get (x), f.get (b))) fromB += std::string (f.name) + " ";
+            else                             other += std::string (f.name) + " ";
+        }
+        return "source{ " + fromA + "} destination{ " + fromB + "} neither{ " + other + "}";
+    }
+
+    static const std::vector<float>& noise()
+    {
+        static const std::vector<float> n = []
+        {
+            std::mt19937 rng (0xb2u);
+            std::normal_distribution<float> nd (0.0f, 0.1f);
+            std::vector<float> v ((size_t) (2 * block) * 512);
+            for (auto& x : v) x = nd (rng);
+            return v;
+        }();
+        return n;
+    }
+    static void fill (juce::AudioBuffer<float>& b, int k)
+    {
+        const auto& n = noise();
+        const size_t off = (size_t) (k % (int) (n.size() / (2 * block))) * 2 * block;
+        for (int c = 0; c < 2; ++c) std::memcpy (b.getWritePointer (c), n.data() + off + (size_t) c * block, sizeof (float) * block);
+    }
+    static void store (Proc& p, const char* id, float v)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+    }
+
+    struct Combo { const char* name; KV a, b; };
+    static KV base (float algo)
+    {
+        return { { "advancedMode", 1.0f }, { "algorithm", algo }, { "amount", 0.8f }, { "width", 1.0f }, { "mbEnable", 0.0f },
+                 { "drive", 8.0f }, { "mix", 1.0f }, { "outputGain", -3.0f } };
+    }
+    // The five of ADR-0057's enumeration: two, two, three, four and eight writes per switch (a discrete field among them).
+    static const std::vector<Combo>& combos()
+    {
+        static const std::vector<Combo> c = {
+            { "Drive+Width",  base (0.0f), { { "drive", 12.0f }, { "width", 1.8f } } },
+            { "Mix+Amount",   base (0.0f), { { "mix", 0.6f }, { "amount", 0.4f } } },
+            { "Haas->Chorus", [] { auto v = base (0.0f); v.push_back ({ "chorusRate", 0.5f }); v.push_back ({ "chorusDepth", 0.5f }); return v; }(),
+                              { { "algorithm", 2.0f }, { "chorusRate", 2.0f }, { "chorusDepth", 0.8f } } },
+            { "Multiband",    [] { auto v = base (1.0f); v.push_back ({ "mbEnable", 1.0f }); return v; }(),
+                              { { "mbBands", 3.0f }, { "mbFreqLow", 250.0f }, { "mbWidthLow", 0.5f }, { "mbWidthHigh", 1.6f } } },
+            { "Eight fields", base (0.0f), { { "drive", 12.0f }, { "width", 1.8f }, { "mix", 0.7f }, { "amount", 0.5f },
+                                             { "haasDelay", 20.0f }, { "inputBalance", 0.3f }, { "monoMakerOn", 1.0f }, { "monoMakerFreq", 200.0f } } },
+        };
+        return c;
+    }
+
+    // AN ACTION RIGHT AFTER THE COMMAND'S WRITE #n (1-based), on the writing thread, where JUCE has just stored the raw
+    // value the audio thread reads; #0 is the processor's seam before a replacement's first write.
+    struct Injector : juce::AudioProcessorValueTreeState::Listener
+    {
+        int writes = 0;
+        bool armed = false;
+        std::map<int, std::function<void()>> plan;
+        void parameterChanged (const juce::String&, float) override
+        {
+            if (! armed) return;
+            ++writes;
+            if (auto it = plan.find (writes); it != plan.end()) { auto f = it->second; f(); }
+        }
+        void atSeam() { if (armed) if (auto it = plan.find (0); it != plan.end()) { auto f = it->second; f(); } }
+    };
+
+    // One processor, its injector, and the verdict: after every block, host reset and re-prepare the engine's adopted
+    // state must be one of `legal` (the complete states of the command under test), bit for bit.
+    struct Rig
+    {
+        std::unique_ptr<Proc> p { std::make_unique<Proc>() };
+        Injector inj;
+        juce::AudioBuffer<float> buf { 2, block };
+        juce::MidiBuffer midi;
+        int k = 0;
+        std::vector<EP> legal;
+        EP refA {}, refB {};
+        int bad = 0;
+        std::string badWhat;
+        bool capture = false;
+        std::vector<float> out;
+        const EP* landTarget = nullptr;
+        bool landed = false, landMeasured = false;
+        Rig()
+        {
+            for (auto* ap : p->getParameters())
+                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ap)) p->getAPVTS().addParameterListener (rp->paramID, &inj);
+            p->seams.beforeSoundReplacementWrites = [this] { inj.atSeam(); };
+        }
+        ~Rig()
+        {
+            p->seams.beforeSoundReplacementWrites = nullptr;
+            for (auto* ap : p->getParameters())
+                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ap)) p->getAPVTS().removeParameterListener (rp->paramID, &inj);
+        }
+        Rig (const Rig&) = delete;
+        Rig& operator= (const Rig&) = delete;
+        anamorph::AnamorphEngine& e() { return p->getEngine(); }
+        void check (const char* where)
+        {
+            if (legal.empty()) return;
+            const EP& x = e().getAdoptedParameters();
+            for (const auto& l : legal) if (same (x, l)) return;
+            if (bad++ == 0) badWhat = std::string (where) + ": " + origin (x, legal.front(), legal.back());
+        }
+        void run (int n)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                fill (buf, k++);
+                p->processBlock (buf, midi);
+                check ("a block");
+                if (landTarget != nullptr && ! landed && same (e().getAdoptedParameters(), *landTarget))
+                {
+                    landed = true;
+                    landMeasured = e().isMatchResultMeasured();
+                }
+                if (capture)
+                    for (int c = 0; c < 2; ++c) out.insert (out.end(), buf.getReadPointer (c), buf.getReadPointer (c) + block);
+            }
+        }
+        void hostReset() { p->reset(); check ("a host reset"); }
+        void rePrepare() { p->prepareToPlay (sr, block); check ("a re-prepare"); }
+        // The command, with the injection plan armed across it; the plan is spent afterwards.
+        template <typename F> void armed (F&& command)
+        {
+            inj.writes = 0;
+            inj.armed = true;
+            command();
+            inj.armed = false;
+            inj.plan.clear();
+        }
+        int writesOf (const std::function<void()>& command)
+        {
+            armed (command);
+            return inj.writes;
+        }
+    };
+
+    // On slot A, settled; slot B holds `b` and was left settled. With Level Match on, B's record is MEASURED when left
+    // (~7 s of history); off, the history is a few ducks long.
+    static void abHistory (Rig& r, const Combo& c, bool lm)
+    {
+        auto& p = *r.p;
+        for (const auto& [id, v] : c.a) store (p, id, v);
+        store (p, "autoGainMatch", lm ? 1.0f : 0.0f);
+        p.pollUndoCoalesce();
+        p.prepareToPlay (sr, block);
+        r.run (lm ? sec : 12);
+        p.abCopyToOther();
+        p.abSwitchTo (1);
+        r.run (lm ? sec / 5 : 12);
+        for (const auto& [id, v] : c.b) store (p, id, v);
+        r.run (lm ? sec * 7 / 2 : 12);
+        r.refB = r.e().getAdoptedParameters();
+        p.abSwitchTo (0);
+        r.run (lm ? sec * 7 / 2 : 12);
+        r.refA = r.e().getAdoptedParameters();
+    }
+
+    // ONE UNDO STEP changing several fields: gestures opened on all of them, the writes, then the gestures closed.
+    static void multiFieldStep (Proc& p, const KV& kvs)
+    {
+        std::vector<juce::RangedAudioParameter*> ps;
+        for (const auto& kv : kvs) ps.push_back (p.getAPVTS().getParameter (kv.first));
+        for (auto* rp : ps) rp->beginChangeGesture();
+        for (const auto& [id, v] : kvs) store (p, id, v);
+        for (auto* rp : ps) rp->endChangeGesture();
+        p.pollUndoCoalesce();
+    }
+
+    static int factoryPresetIndex (Proc& p, const char* name)
+    {
+        const auto& es = p.getPresets().entries();
+        for (int i = 0; i < es.size(); ++i)
+            if (es.getReference (i).isFactory && es.getReference (i).name == name) return i;
+        return -1;
+    }
+
+    // A scenario's tally.
+    struct Tally
+    {
+        int cases = 0, incomplete = 0, finalWrong = 0, pending = 0, lmWrong = 0, twins = 0, twinMismatch = 0;
+        std::string first;
+        void add (Rig& r, bool finalOk, const std::string& tag)
+        {
+            ++cases;
+            if (r.bad > 0 && incomplete++ == 0 && first.empty()) first = tag + " | " + r.badWhat;
+            if (! finalOk && finalWrong++ == 0 && first.empty()) first = tag + " | the final state is not the command's destination";
+            if (r.e().isBulkSwapPending() && pending++ == 0 && first.empty()) first = tag + " | a bulk swap is still pending";
+            r.bad = 0;
+            r.badWhat.clear();
+        }
+        void print (const char* name) const
+        {
+            std::printf ("  %-34s %4d cases | a state no swap completed %d | final wrong %d | pending %d | Level Match not measured "
+                         "at landing %d | output twins %d, mismatched %d\n", name, cases, incomplete, finalWrong, pending, lmWrong,
+                         twins, twinMismatch);
+            if (! first.empty()) std::printf ("    first: %s\n", first.c_str());
+        }
+    };
+}
+
+// =====================================================================================================
+//  State test 139 -- AN A/B SWITCH WHOSE FORCED BOTTOM WOULD HAVE FALLEN INSIDE THE DESTINATION'S WRITES ADOPTS THE
+//  COMPLETE DESTINATION (ADR-0057, Accepted 2026-09-27; KNOWN_ISSUES KI-032, fixed in 0.9.9; the Devin review "A/B switches
+//  adopt incomplete slot states", src/PluginProcessor.cpp R2186; worklogs §T, §U, §V).
 //
-//  THE METHOD. Deterministic, the production path, no engine internals. The audio thread's progress runs ON the message
-//  thread at an exact point of the write sequence: the processor's seam `beforeSoundReplacementWrites` (after the
-//  request and the leaving slot's capture, before the first write), or an APVTS listener right after the k-th
-//  parameter the switch changes. Each race is compared with a PARTIAL TWIN -- a processor whose destination slot holds
-//  exactly the k parameters the race had written and A's values elsewhere, switched completely before the same blocks
-//  -- and with a COMPLETE TWIN switched to B completely. The forced bottom resets every stateful node and snaps every
-//  smoother the edits here reach, so with Level Match off the output from the bottom on is a function of the state
-//  adopted there: a race bit-identical to its partial twin adopted exactly the partly written slot, field for field.
-//  That holds only if the twin reads the edited parameters EXACTLY as the race does, which each comparison also asserts:
-//  a field the race's setUp restored from an A/B slot and the twin never wrote can sit one ulp apart (a Chorus Rate left
-//  at its default: 0.49999997 Hz never written, 0.5 restored), and whether that ulp reaches the output within a few
-//  blocks depends on the build's FMA contraction -- the first version of (E) passed on x86-64 and failed on arm64.
+//  THE DEFECT IT PINS. `abSwitchToAdopted` requested the switch, captured the slot it leaves, and then wrote the
+//  destination one parameter at a time, and nothing told the audio thread when those writes were complete: a block
+//  inside them started the forced duck, and the silent bottom adopted whatever snapshot its block read -- a state
+//  neither slot holds (measured on the pre-fix head: B's Drive with A's Width at 112x real time, 689 of 1,245
+//  enumerated interleavings, 40 of 120 switches behind one 12 ms message-thread stall at real time). Until 0.9.9 this
+//  test characterized that behaviour; it now holds the fix.
+//
+//  THE METHOD. Deterministic, the production path. The audio thread's progress runs ON the message thread at an exact
+//  point of the write sequence: the processor's seam `beforeSoundReplacementWrites` (after the request and the leaving
+//  slot's capture, before the first write), or an APVTS listener right after the k-th parameter the switch changes.
+//  Each race is compared, bit for bit, with a COMPLETE-AT-COMPLETION TWIN: a processor with the same history that runs
+//  the same blocks BEFORE switching and then switches completely -- which is what the handshake promises: nothing is
+//  adopted while the swap is written, and the swap then lands exactly as an atomic switch made at its completion. A
+//  PARTIAL TWIN (the destination slot holding only the k parameters the race had written, switched completely) shows
+//  what a partial adoption would have played, so each comparison is known to be able to fail.
 //
 //  THE METRIC. One heap processor per rig, 48 kHz / 256, the stream of seed 139. A: Advanced Mode, Haas, Amount 80 %,
 //  Width 100 %, Multiband off, Drive 8, Mix 100 %, Output Gain -3. B, a Copy of A edited on B: Drive 12, Width 180 %,
 //  Mix 70 %, Output Balance +0.2, Haas Delay 20 ms, Input Balance +0.3, Mono Maker on at 200 Hz -- the eight parameters
-//  the switch writes, in the tree's order. Not Amount: a forced bottom deliberately leaves the algorithm's wet glide
-//  running (AnamorphEngine::prepare's note), so a B visit's Amount would reach every later block and no twin could be
-//  bit-identical. A rig with Level Match on plays A 1 s, Copy, B 0.2 s, B's edits, B 3.5 s (B measured from ~2.7 s),
-//  A 3.5 s; one with it off plays 0.2 s for each of the three. Then the switch to B under test, with three blocks inside
-//  the writes: the request taken, the fade-out, the bottom (event + 2, State tests 131-138).
+//  the switch writes, in the tree's order. A rig with Level Match on plays A 1 s, Copy, B 0.2 s, B's edits, B 3.5 s
+//  (B measured from ~2.7 s), A 3.5 s; one with it off plays 0.2 s for each of the three. Then the switch to B under test,
+//  with three blocks inside its writes (the request taken, the fade-out, the bottom -- where the pre-fix engine adopted).
 //
-//  THE LEGS (measured)
-//   (A) Field-level adoption, Level Match off, at write positions 0, 1, 4, 7 and 8 of 8 (at 4: B's Drive, Mix, Haas
-//       Delay and Input Balance written, A's Width, Output Balance and Mono Maker not): the three blocks are
-//       bit-identical to the partial twin's; below 8 they are not the complete twin's -- the state adopted at the
-//       bottom is not B -- and at 8 they are.
-//   (B) Level Match on. B is measured when left: the complete twin's same-rate prepareToPlay 4 blocks after the
-//       bottom's block KEEPS its record (-8.7907). A race at position 0 or 4 restores B's record NOT measured -- judged
-//       against the state the bottom adopted -- and the same prepareToPlay FLUSHES it (-8.3165 / -8.0785 -> 0); at 8 it
-//       KEEPS it, bit-identical to the twin. A's record, taken when the race's request was, is A's complete state,
-//       measured: after every race a complete return to A restores it and the prepareToPlay 4 blocks after that bottom
-//       KEEPS it (-5.8063).
-//   (C) The mixture settles: after the race at position 4 finishes its writes, the parameters read B's everywhere and
-//       the late ones reach the engine as live edits; the output is the complete twin's again, bit for bit, from the
-//       ninth block after the bottom (asserted: within an eighth of a second).
-//   (D) A host reset (AudioProcessor::reset) and a same-rate prepareToPlay one block after the request, at position 4,
-//       adopt the partly written slot too: the three blocks are bit-identical to the partial twin's same sequence and
-//       not the complete twin's.
-//   (E) The algorithm first: Haas -> Chorus (Rate 2 Hz, Depth 80 %) with six blocks inside the writes, at position 1 --
-//       the Algorithm written, Rate and Depth not -- plays Chorus at A's rate and depth (5 Hz, 50 %, written in every
-//       rig at values each write path lands on exactly): bit-identical to the partial twin, not the complete twin.
-//   (F) The real race, for the tsan lane: a paced audio thread against six switches from the message thread; the output
-//       stays finite and the switches land. Nothing about the race's timing is asserted -- only, under the tsan lane,
-//       that there is no data race while the engine adopts whatever it reads.
-//  AGAINST THE PROPOSED HANDOFF (a scratch prototype of ADR-0057's two-phase request word, worklog §T5) 11 of the 26
-//  checks fail: every (A) position (the bottom holds until the application is marked complete, so the three blocks
-//  carry no adoption), (B)'s two flushes and its position-8 keep (B is kept everywhere), (C) (the hold moves the
-//  fade-in) and (E). (D) passes there: the prototype held only the forced bottom, and ADR-0057 extends the rule to a
-//  host reset and the prime. Runtime ~0.4 s.
-static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
+//  THE LEGS
+//   (A) Field-level: at write positions 0, 1, 4, 7 and 8 of 8, Level Match off, the three blocks inside the writes and
+//       the 24 after them are bit-identical to the complete-at-completion twin (nothing adopted inside the writes; the
+//       switch lands whole); below 8 the partial twin plays something else (a partial adoption would be caught).
+//   (B) Level Match on, positions 0, 4 and 8: B's record is restored MEASURED -- judged against the complete destination
+//       -- and a same-rate prepareToPlay 4 blocks later KEEPS it, bit-identical to the twin (the pre-fix engine flushed
+//       it to 0 dB at 0 and 4); A's record, taken with the request, is A's complete state: a complete return to A keeps it.
+//   (C) Settling: after the race at position 4 the parameters read B's everywhere and the output is the twin's, bit for
+//       bit, for two seconds.
+//   (D) A host reset, and a same-rate prepareToPlay, one block after the request at position 4: bit-identical to the
+//       twin making the same call before its switch -- neither completes nor primes the partly written slot.
+//   (E) The algorithm first: Haas -> Chorus (Rate 2 Hz, Depth 80 %), six blocks inside the writes at position 1 -- the
+//       Algorithm written, Rate and Depth not: bit-identical to the twin, never Chorus at A's rate and depth.
+//   (F) The real race. (F1) An audio thread -- paced to real time, then free-running -- against 6 + 20 switches from
+//       the message thread: after EVERY block the adopted state is A's or B's complete state, the output finite, every
+//       switch lands. (F2) The ordering itself, for the tsan lane: a plain int the message thread writes after a swap's
+//       writes and before its completion, read by the audio thread once its own take has seen that completion. The
+//       release / acquire pair is the only edge between the two threads there, so ThreadSanitizer reports a data race
+//       on it if either side is relaxed; with the pair, every read sees the value written (200 swaps).
+//  Runtime ~1.5 s.
+static void testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination()
 {
-    std::printf ("State test 139: an A/B switch whose forced bottom is reached inside the destination's writes adopts the "
-                 "partly written slot -- the recorded residual (KI-032; ADR-0057, Proposed; Devin)\n");
+    std::printf ("State test 139: an A/B switch whose forced bottom would have fallen inside the destination's writes adopts the "
+                 "complete destination -- the fixed invariant (KI-032; ADR-0057, Accepted; Devin)\n");
 
     using Proc = AnamorphAudioProcessor;
     using KV   = std::vector<std::pair<const char*, float>>;
+    using bulkswap::same;
     static constexpr double sr = 48000.0;
     static constexpr int kBlock = 256, kBlk = 2 * kBlock;
-    const int sec   = (int) std::lround (sr / kBlock);      // 188 blocks: one second
-    const int kIn   = 3;                                    // inside the writes: the request taken, the fade-out, the bottom
-    const int kPrep = 4;                                    // the verdict: prepareToPlay 4 blocks after the bottom's block
+    const int sec    = (int) std::lround (sr / kBlock);     // 188 blocks: one second
+    const int kIn    = 3;                                   // inside the writes: where the pre-fix bottom adopted
+    const int kAfter = 24;                                  // after them: the swap starts, ducks and lands
+    const int kPrep  = 4;                                   // the verdict: prepareToPlay 4 blocks after
 
     const auto setPlain = [] (Proc& p, const char* id, float v)
     {
@@ -44182,21 +44436,6 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
                 if (id == did) kv.push_back ({ did, v });
         return kv;
     };
-    // The edited parameters' raw values, as the audio thread reads them. A partial twin is a valid comparator only if,
-    // at its blocks, it reads these exactly as the race does at its blocks: a field the race restored from an A/B slot
-    // and the twin never wrote can differ by one ulp (a never-written Chorus Rate reads its default's normalised round
-    // trip, 0.49999997 Hz; the same default restored from a slot reads 0.5), and whether that ulp reaches the output
-    // within a few blocks depends on the build's FMA contraction (arm64 yes, the x86-64 baseline no).
-    const auto rawOf = [] (Proc& p, const KV& kv)
-    {
-        std::vector<float> v;
-        for (const auto& kvp : kv) v.push_back (p.getAPVTS().getRawParameterValue (kvp.first)->load());
-        return v;
-    };
-    const auto sameRaw = [] (const std::vector<float>& x, const std::vector<float>& y)
-    {
-        return x.size() == y.size() && std::equal (x.begin(), x.end(), y.begin(), [] (float u, float w) { return juce::exactlyEqual (u, w); });
-    };
     const auto names = [] (const KV& kv, const KV& all, bool in)
     {
         juce::String s;
@@ -44208,8 +44447,24 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
         }
         return s.isEmpty() ? juce::String ("(none)") : s;
     };
+    // The complete-at-completion twin: the same history, the race's blocks run BEFORE the switch, then a complete switch.
+    const auto completeTwin = [&] (const KV& dest, const KV& base, bool lmOn, const std::function<void (Rig&)>& before, int after)
+    {
+        Rig tw; setUp (tw, dest, base, lmOn);
+        before (tw);
+        tw.p->abSwitchTo (1);
+        runBlocks (tw, after, true);
+        return tw;
+    };
+    const auto firstDiff = [] (const std::vector<float>& x, const std::vector<float>& y)
+    {
+        if (x.size() != y.size()) return -2;
+        for (size_t i = 0; i < x.size(); ++i)
+            if (! juce::exactlyEqual (x[i], y[i])) return (int) (i / kBlk);
+        return -1;
+    };
 
-    // ---- (A) field-level adoption --------------------------------------------------------------------------------------
+    // ---- (A) field-level: nothing adopted inside the writes, the switch lands whole -------------------------------
     int nWrites = 0;
     {
         Rig r; setUp (r, bEdits, a, false);
@@ -44223,28 +44478,26 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
         std::printf ("  (A) premise: the switch writes %d parameters, each one B's edits change: %s\n", nWrites, allEdits ? "yes" : "NO");
         check (allEdits, "State test 139 (A) premise: the switch to B writes exactly the eight parameters B's edits change");
     }
-    Rig fullOff; setUp (fullOff, bEdits, a, false); fullOff.p->abSwitchTo (1); runBlocks (fullOff, kIn, true);
     for (const int k : { 0, 1, 4, 7, 8 })
     {
         Rig r; setUp (r, bEdits, a, false);
-        std::vector<float> rRaw, twRaw;
-        const Race rc = race (r, k, [&] { rRaw = rawOf (*r.p, bEdits); runBlocks (r, kIn, true); });
+        const Race rc = race (r, k, [&] { runBlocks (r, kIn, true); });
+        runBlocks (r, kAfter, true);
         const KV partial = partialOf (rc, bEdits);
-        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); twRaw = rawOf (*tw.p, bEdits); runBlocks (tw, kIn, true);
-        const bool sameIn = sameRaw (rRaw, twRaw);
-        const bool asPartial = rc.reached && sameIn && r.out == tw.out;
-        const bool asComplete = r.out == fullOff.out;
-        std::printf ("  (A) position %d/%d: B's %s written, A's %s | the partial twin reads them exactly: %s; the three blocks "
-                     "bit-identical to it: %s, to the complete twin: %s\n", k, nWrites, names (partial, bEdits, true).toRawUTF8(),
-                     names (partial, bEdits, false).toRawUTF8(), sameIn ? "yes" : "no", r.out == tw.out ? "yes" : "no",
-                     asComplete ? "yes" : "no");
-        check (asPartial, "State test 139 (A): the forced bottom reached inside the writes adopts exactly the partly written slot");
-        check (k == nWrites ? asComplete : ! asComplete,
-               k == nWrites ? "State test 139 (A): with every write done the bottom adopts B"
-                            : "State test 139 (A): with writes still to come the bottom adopts a state that is not B");
+        const Rig tw = completeTwin (bEdits, a, false, [&] (Rig& t) { runBlocks (t, kIn, true); }, kAfter);
+        Rig pt; setUp (pt, partial, a, false); pt.p->abSwitchTo (1); runBlocks (pt, kIn + kAfter, true);
+        const int d = firstDiff (r.out, tw.out);
+        const bool partialDiffers = pt.out != tw.out;
+        std::printf ("  (A) position %d/%d: B's %s written, A's %s | bit-identical to the complete-at-completion twin: %s "
+                     "(first differing block %d) | the partial twin plays something else: %s\n", k, nWrites,
+                     names (partial, bEdits, true).toRawUTF8(), names (partial, bEdits, false).toRawUTF8(), d == -1 ? "yes" : "NO",
+                     d, partialDiffers ? "yes" : "no");
+        check (rc.reached && d == -1, "State test 139 (A): nothing is adopted inside the writes, and the switch lands exactly as a complete one made at its completion");
+        if (k < nWrites)
+            check (partialDiffers, "State test 139 (A) non-vacuity: a partial adoption at this position would have played something else");
     }
 
-    // ---- (B) Level Match: B's measured record judged against the adopted state; A's record intact --------------------
+    // ---- (B) Level Match: B's measured record is judged against the complete destination --------------------------
     const auto verdict = [&] (Rig& r)                           // KEEP: bit-identical; FLUSH: exactly 0 dB
     {
         runBlocks (r, kPrep, false);
@@ -44253,55 +44506,44 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
         const float after = r.p->getEngine().getMatchGainDb();
         return std::pair<float, float> { before, after };
     };
-    const auto kept    = [] (std::pair<float, float> v) { return juce::exactlyEqual (v.first, v.second) && ! juce::exactlyEqual (v.first, 0.0f); };
-    const auto flushed = [] (std::pair<float, float> v) { return juce::exactlyEqual (v.second, 0.0f) && ! juce::exactlyEqual (v.first, 0.0f); };
-    Rig fullOn; setUp (fullOn, bEdits, a, true); fullOn.p->abSwitchTo (1); runBlocks (fullOn, kIn, false);
-    const auto vFull = verdict (fullOn);
-    std::printf ("  (B) premise: the complete twin's prepareToPlay %+.4f -> %+.4f (%s)\n", (double) vFull.first, (double) vFull.second,
-                 kept (vFull) ? "KEPT" : "not kept");
-    check (kept (vFull), "State test 139 (B) premise: B is measured when left -- the complete twin's same-rate prepareToPlay keeps its record");
+    const auto kept = [] (std::pair<float, float> v) { return juce::exactlyEqual (v.first, v.second) && ! juce::exactlyEqual (v.first, 0.0f); };
     for (const int k : { 0, 4, 8 })
     {
         Rig r; setUp (r, bEdits, a, true);
         (void) race (r, k, [&] { runBlocks (r, kIn, false); });
+        runBlocks (r, kAfter - kPrep, false);
+        const bool measured = r.p->getEngine().isMatchResultMeasured();
         const auto v = verdict (r);
+        Rig tw; setUp (tw, bEdits, a, true); runBlocks (tw, kIn, false); tw.p->abSwitchTo (1); runBlocks (tw, kAfter - kPrep, false);
+        const auto vTw = verdict (tw);
         r.p->abSwitchTo (0);                                    // a complete return to A
         runBlocks (r, kIn, false);
         const auto vA = verdict (r);
-        std::printf ("  (B) position %d/%d: prepareToPlay %+.4f -> %+.4f (%s) | back to A, prepareToPlay %+.4f -> %+.4f (%s)\n",
-                     k, nWrites, (double) v.first, (double) v.second, kept (v) ? "KEPT" : flushed (v) ? "FLUSHED" : "?",
-                     (double) vA.first, (double) vA.second, kept (vA) ? "KEPT" : flushed (vA) ? "FLUSHED" : "?");
-        if (k == nWrites)
-            check (kept (v) && juce::exactlyEqual (v.first, vFull.first),
-                   "State test 139 (B): with every write done B's record is restored measured and kept, bit-identical to the twin");
-        else
-            check (flushed (v), "State test 139 (B): with writes still to come B's measured record is judged against the adopted state and flushed");
+        std::printf ("  (B) position %d/%d: after the landing measured %s; prepareToPlay %+.4f -> %+.4f (%s), the twin %+.4f -> %+.4f | "
+                     "back to A, prepareToPlay %+.4f -> %+.4f (%s)\n", k, nWrites, measured ? "yes" : "NO", (double) v.first,
+                     (double) v.second, kept (v) ? "KEPT" : "not kept", (double) vTw.first, (double) vTw.second,
+                     (double) vA.first, (double) vA.second, kept (vA) ? "KEPT" : "not kept");
+        check (measured && kept (v) && juce::exactlyEqual (v.first, vTw.first) && juce::exactlyEqual (v.second, vTw.second),
+               "State test 139 (B): B's measured record is restored measured and kept, bit-identical to the complete-at-completion twin");
         check (kept (vA), "State test 139 (B): A's record, taken with the race's request, is A's complete state, measured: kept");
     }
 
-    // ---- (C) the mixture settles --------------------------------------------------------------------------------------
+    // ---- (C) settling -------------------------------------------------------------------------------------------------
     {
         Rig r; setUp (r, bEdits, a, false);
         (void) race (r, 4, [&] { runBlocks (r, kIn, true); });
         runBlocks (r, 2 * sec, true);
-        Rig tw; setUp (tw, bEdits, a, false); tw.p->abSwitchTo (1); runBlocks (tw, kIn + 2 * sec, true);
-        int lastDiff = -1;
-        for (size_t bi = 0; bi < r.out.size() / kBlk; ++bi)
-            for (size_t s = 0; s < (size_t) kBlk; ++s)
-                if (! juce::exactlyEqual (r.out[bi * kBlk + s], tw.out[bi * kBlk + s])) { lastDiff = (int) bi; break; }
-        double maxLate = 0.0;
-        for (size_t i = r.out.size() - (size_t) sec * kBlk; i < r.out.size(); ++i) maxLate = std::max (maxLate, (double) std::abs (r.out[i] - tw.out[i]));
+        const Rig tw = completeTwin (bEdits, a, false, [&] (Rig& t) { runBlocks (t, kIn, true); }, 2 * sec);
         bool paramsB = true;
         for (const auto& [id, v] : bEdits)
         {
             auto* rp = r.p->getAPVTS().getParameter (id);
             paramsB = paramsB && juce::exactlyEqual (rp->getValue(), rp->convertTo0to1 (v));
         }
-        std::printf ("  (C) position 4: the parameters read B's: %s | the output leaves the complete twin at the bottom; last "
-                     "differing block %d of %d; max |d| over the last second %.3g\n", paramsB ? "yes" : "no", lastDiff,
-                     (int) (r.out.size() / kBlk), maxLate);
-        check (paramsB, "State test 139 (C): the mixture settles -- after the writes the parameters read B's everywhere");
-        check (lastDiff >= 0 && lastDiff < 3 + sec / 8, "State test 139 (C): the mixture settles -- within an eighth of a second the output is the complete twin's, bit for bit");
+        const int d = firstDiff (r.out, tw.out);
+        std::printf ("  (C) position 4: the parameters read B's: %s | the output is the complete-at-completion twin's for %d blocks: %s "
+                     "(first differing block %d)\n", paramsB ? "yes" : "NO", (int) (r.out.size() / kBlk), d == -1 ? "yes" : "NO", d);
+        check (paramsB && d == -1, "State test 139 (C): the switch settles on B exactly as a complete one does, bit for bit, for two seconds");
     }
 
     // ---- (D) a host reset and a same-rate prepareToPlay inside the writes ---------------------------------------------
@@ -44314,90 +44556,913 @@ static void testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot()
             runBlocks (r, kIn - 1, true);
         };
         Rig r; setUp (r, bEdits, a, false);
-        std::vector<float> rRaw, twRaw;
-        const Race rc = race (r, 4, [&] { rRaw = rawOf (*r.p, bEdits); seq (r); });
-        const KV partial = partialOf (rc, bEdits);
-        Rig tw; setUp (tw, partial, a, false); tw.p->abSwitchTo (1); twRaw = rawOf (*tw.p, bEdits); seq (tw);
-        Rig full; setUp (full, bEdits, a, false); full.p->abSwitchTo (1); seq (full);
-        const bool sameIn = sameRaw (rRaw, twRaw);
-        const bool asPartial = rc.reached && sameIn && r.out == tw.out, asComplete = r.out == full.out;
-        std::printf ("  (D) %s one block after the request, position 4: the partial twin reads the edits exactly: %s; "
-                     "bit-identical to it: %s, to the complete twin: %s\n", variant == 0 ? "a host reset" : "a same-rate prepareToPlay",
-                     sameIn ? "yes" : "no", r.out == tw.out ? "yes" : "no", asComplete ? "yes" : "no");
-        check (asPartial && ! asComplete, variant == 0 ? "State test 139 (D): a host reset inside the writes completes the swap with the partly written slot"
-                                                       : "State test 139 (D): a same-rate prepareToPlay inside the writes primes the partly written slot");
+        const Race rc = race (r, 4, [&] { seq (r); });
+        runBlocks (r, kAfter, true);
+        const Rig tw = completeTwin (bEdits, a, false, seq, kAfter);
+        Rig pt; setUp (pt, partialOf (rc, bEdits), a, false); pt.p->abSwitchTo (1); seq (pt); runBlocks (pt, kAfter, true);
+        const int d = firstDiff (r.out, tw.out);
+        std::printf ("  (D) %s one block after the request, position 4: bit-identical to the twin making it before its switch: %s "
+                     "(first differing block %d) | the partial twin differs: %s\n", variant == 0 ? "a host reset" : "a same-rate prepareToPlay",
+                     d == -1 ? "yes" : "NO", d, pt.out != tw.out ? "yes" : "no");
+        check (rc.reached && d == -1, variant == 0 ? "State test 139 (D): a host reset inside the writes completes nothing partly written"
+                                                   : "State test 139 (D): a same-rate prepareToPlay inside the writes primes nothing partly written");
+        check (pt.out != tw.out, "State test 139 (D) non-vacuity: the partly written slot would have played something else");
     }
 
     // ---- (E) the algorithm first -------------------------------------------------------------------------------------
     {
         const int kLong = 6;
-        // A's Chorus Rate and Depth are written in every rig, at values each write path lands on exactly: the Rate's
-        // range end (normalised 1, which the range clamps to) and the Depth's midpoint on its linear range. Left at its
-        // default, the Rate the race restores from A's slot and the Rate the partial twin never writes are one ulp apart
-        // (above), and the two Choruses drift apart in phase: invisible without FMA contraction, not with it.
+        // A's Chorus Rate and Depth are written in every rig, at values each write path lands on exactly (a Rate left at
+        // its default reads one ulp apart through a slot and through a never-written parameter, and FMA contraction can
+        // carry that ulp into the output -- the arm64 flaw of 9eea7c4, worklog §T).
         KV aE = a;
         aE.push_back ({ "chorusRate", 5.0f });
         aE.push_back ({ "chorusDepth", 0.5f });
         Rig r; setUp (r, chorus, aE, false);
-        std::vector<float> rRaw, twRaw;
-        const Race rc = race (r, 1, [&] { rRaw = rawOf (*r.p, chorus); runBlocks (r, kLong, true); });
+        const Race rc = race (r, 1, [&] { runBlocks (r, kLong, true); });
+        runBlocks (r, kAfter, true);
         const KV partial = partialOf (rc, chorus);
-        Rig tw; setUp (tw, partial, aE, false); tw.p->abSwitchTo (1); twRaw = rawOf (*tw.p, chorus); runBlocks (tw, kLong, true);
-        Rig full; setUp (full, chorus, aE, false); full.p->abSwitchTo (1); runBlocks (full, kLong, true);
-        const bool sameIn = sameRaw (rRaw, twRaw);
-        const bool asPartial = rc.reached && sameIn && r.out == tw.out, asComplete = r.out == full.out;
-        std::printf ("  (E) Haas -> Chorus, position 1: %s written, %s not | the partial twin reads them exactly: %s; "
-                     "bit-identical to it: %s, to the complete twin: %s\n", names (partial, chorus, true).toRawUTF8(),
-                     names (partial, chorus, false).toRawUTF8(), sameIn ? "yes" : "no", r.out == tw.out ? "yes" : "no",
-                     asComplete ? "yes" : "no");
+        const Rig tw = completeTwin (chorus, aE, false, [&] (Rig& t) { runBlocks (t, kLong, true); }, kAfter);
+        Rig pt; setUp (pt, partial, aE, false); pt.p->abSwitchTo (1); runBlocks (pt, kLong + kAfter, true);
+        const int d = firstDiff (r.out, tw.out);
+        std::printf ("  (E) Haas -> Chorus, position 1: %s written, %s not | bit-identical to the complete-at-completion twin: %s "
+                     "(first differing block %d) | Chorus at A's rate and depth would differ: %s\n", names (partial, chorus, true).toRawUTF8(),
+                     names (partial, chorus, false).toRawUTF8(), d == -1 ? "yes" : "NO", d, pt.out != tw.out ? "yes" : "no");
         check (partial.size() == 1 && std::strcmp (partial[0].first, "algorithm") == 0,
                "State test 139 (E) premise: the Algorithm is written before its own Rate and Depth");
-        check (asPartial && ! asComplete, "State test 139 (E): the bottom adopts Chorus at A's rate and depth");
+        check (rc.reached && d == -1 && pt.out != tw.out, "State test 139 (E): the switch never plays Chorus at A's rate and depth -- it lands whole");
     }
 
-    // ---- (F) the real race, for the tsan lane --------------------------------------------------------------------------
+    // ---- (F1) the real race: every block adopts a complete state ------------------------------------------------------
     {
         Rig r; setUp (r, bEdits, a, true);
-        std::atomic<bool> stop { false }, finite { true };
-        std::atomic<int> done { 0 };
+        anamorph::EngineParameters stA = r.p->getEngine().getAdoptedParameters(), stB {};
+        {
+            Rig q; setUp (q, bEdits, a, false);
+            q.p->abSwitchTo (1);
+            runBlocks (q, 12, false);
+            stB = q.p->getEngine().getAdoptedParameters();
+            // Level Match differs between the rigs: B's complete state is A's apart from the edits, as r adopts it
+            stB.autoGainMatch = stA.autoGainMatch;
+        }
+        std::atomic<bool> stop { false }, finite { true }, paced { true };
+        std::atomic<int> done { 0 }, incomplete { 0 };
         std::thread audio ([&]
         {
             juce::AudioBuffer<float> buf (2, kBlock);
             juce::MidiBuffer midi;
             d2::Pace pace;
-            for (int b = 0; b < 60 * sec && ! stop.load (std::memory_order_acquire); ++b)
+            for (int b = 0; b < 120 * sec && ! stop.load (std::memory_order_acquire); ++b)
             {
                 const float* x = stream.data() + (size_t) (b % nBlk) * kBlk;
                 for (int s = 0; s < kBlock; ++s) { buf.setSample (0, s, x[2 * s]); buf.setSample (1, s, x[2 * s + 1]); }
                 midi.clear();
                 r.p->processBlock (buf, midi);
+                const auto& adopted = r.p->getEngine().getAdoptedParameters();
+                if (! same (adopted, stA) && ! same (adopted, stB)) incomplete.fetch_add (1, std::memory_order_relaxed);
                 for (int ch = 0; ch < 2; ++ch)
                     for (int s = 0; s < kBlock; ++s)
                         if (! std::isfinite (buf.getSample (ch, s))) finite.store (false, std::memory_order_relaxed);
                 done.store (b + 1, std::memory_order_release);
-                pace.rest();
+                if (paced.load (std::memory_order_relaxed)) pace.rest();
+                else std::this_thread::yield();   // free-running, but never starving a serialising checker
             }
         });
         const bool started = d2::waitFor ([&] { return done.load (std::memory_order_acquire) > 0; });
-        int landed = 0;
-        for (int i = 0; i < 6 && started; ++i)
+        int landed = 0, switches = 0;
+        for (int i = 0; i < 26 && started; ++i)
         {
-            const int at = done.load (std::memory_order_acquire) + 4;
+            if (i == 6) paced.store (false, std::memory_order_relaxed);   // then free-running: the pre-fix defect's regime
+            const int at = done.load (std::memory_order_acquire) + (i < 6 ? 4 : 2);
             d2::waitFor ([&] { return done.load (std::memory_order_acquire) >= at; });
             const int to = (i % 2 == 0) ? 1 : 0;
             r.p->abSwitchTo (to);
+            ++switches;
             landed += r.p->abActiveSlot() == to ? 1 : 0;
         }
         const int before = done.load (std::memory_order_acquire);
-        d2::waitFor ([&] { return done.load (std::memory_order_acquire) >= before + 8; });
+        d2::waitFor ([&] { return done.load (std::memory_order_acquire) >= before + 16; });
         stop.store (true, std::memory_order_release);
         audio.join();
-        std::printf ("  (F) a paced audio thread ran %d blocks against %d switches from the message thread; output finite: %s\n",
-                     done.load(), landed, finite.load() ? "yes" : "no");
-        check (started && done.load() > before, "State test 139 (F) non-vacuity: the audio thread processed through the switches");
-        check (landed == 6 && finite.load(), "State test 139 (F): six switches land against a running audio thread, the output finite");
+        const bool settledOnA = same (r.p->getEngine().getAdoptedParameters(), stA) && ! r.p->getEngine().isBulkSwapPending();
+        std::printf ("  (F1) an audio thread (paced, then free-running) ran %d blocks against %d switches: blocks that adopted a state "
+                     "neither slot holds %d; output finite: %s; ends on A, nothing pending: %s\n", done.load(), switches,
+                     incomplete.load(), finite.load() ? "yes" : "no", settledOnA ? "yes" : "NO");
+        check (started && done.load() > before, "State test 139 (F1) non-vacuity: the audio thread processed through the switches");
+        check (landed == switches && switches == 26 && finite.load(), "State test 139 (F1): every switch lands against a running audio thread, the output finite");
+        check (incomplete.load() == 0 && settledOnA, "State test 139 (F1): after every block the engine holds A's or B's complete state");
+    }
+
+    // ---- (F2) the release / acquire edge itself, for the tsan lane -----------------------------------------------------
+    {
+        auto engine = std::make_unique<anamorph::AnamorphEngine>();
+        auto& e = *engine;
+        anamorph::EngineParameters s {};
+        s.algorithm = anamorph::Algorithm::Haas; s.algoAmount = 0.5f;
+        e.primeParameters (s);
+        e.prepare (sr, 64);
+        int witness = 0;                                         // plain: ordered only by the handshake
+        std::atomic<int> sawRequest { 0 }, sawCompletion { 0 }, wrong { 0 };
+        std::atomic<bool> stop { false };
+        constexpr int rounds = 200;
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buf (2, 64);
+            buf.clear();
+            d2::Pace pace;
+            int round = 0;
+            bool pending = false;
+            while (! stop.load (std::memory_order_relaxed) && round < rounds)
+            {
+                e.setParametersFrom ([&] { return s; });
+                e.process (buf);
+                const bool now = e.isBulkSwapPending();
+                if (now && ! pending) sawRequest.store (round + 1, std::memory_order_relaxed);
+                if (! now && pending)
+                {
+                    ++round;                                     // this thread's take has read the completion:
+                    if (witness != round) wrong.fetch_add (1, std::memory_order_relaxed);   // ...so the write is visible
+                    sawCompletion.store (round, std::memory_order_release);   // orders this read before the next write
+                }
+                pending = now;
+                pace.rest();
+            }
+        });
+        int sq = 0;
+        bool ok = true;
+        for (int i = 1; i <= rounds && ok; ++i)
+        {
+            sq = sq % anamorph::AnamorphEngine::kBulkSeqCount + 1;
+            e.requestDuck (sq);
+            ok = d2::waitFor ([&] { return sawRequest.load (std::memory_order_relaxed) >= i; }, 5000);
+            witness = i;                                         // after the "writes", before the completion
+            e.completeBulkApply (sq);
+            ok = ok && d2::waitFor ([&] { return sawCompletion.load (std::memory_order_acquire) >= i; }, 5000);
+        }
+        stop.store (true, std::memory_order_relaxed);
+        audio.join();
+        std::printf ("  (F2) %d swaps: the audio thread read the value written before each completion %d times, a stale one %d times\n",
+                     sawCompletion.load(), sawCompletion.load() - wrong.load(), wrong.load());
+        check (ok && sawCompletion.load() == rounds, "State test 139 (F2) non-vacuity: every completion was taken by the audio thread");
+        check (wrong.load() == 0, "State test 139 (F2): what the message thread wrote before a completion is visible to the take that reads it");
     }
 }
+
+// =====================================================================================================
+//  State test 140 -- EVERY INTERLEAVING OF A BULK SWAP'S WRITES WITH THE AUDIO THREAD ADOPTS ONLY COMPLETE STATES, ON
+//  EVERY PATH THAT RAISES ONE (ADR-0057, Accepted 2026-09-27; KI-032, fixed; worklog §V).
+//
+//  ADR-0057's enumeration, through the production processor: blocks, host resets, re-prepares and snapshot reads are
+//  run from INSIDE the message thread's bulk writes, at the APVTS notification that follows each raw-value store the
+//  audio thread reads, so every placement between a swap's writes is enumerated exactly rather than sampled. After EVERY
+//  block, host reset and re-prepare the engine's adopted snapshot must be one of the command's complete states, bit for
+//  bit; each command must end on its destination with nothing pending. The pre-fix engine failed 689 of the 1,245
+//  cases of the scratch enumeration this test makes permanent (worklog §U4); the final engine fails none of them, nor
+//  of the 1,358 here (worklog §V).
+//
+//  THE SCENARIOS (five combinations of 2 / 2 / 3 / 4 / 8 written fields, Level Match off unless stated)
+//   S1  A/B at every write position x 1, 2, 3 or 8 blocks there (96; Level Match ON: B's measured record must land
+//       MEASURED); S1t the same at 1 and 3 blocks against a complete-at-completion twin, output bit for bit (48 twins).
+//   S2  slow writes: a block after every write, and three after every third (10).
+//   S3  repeated alternation, a random position and 1-5 blocks inside each of 8 switches (120).
+//   S4, S5  undo and redo of one multi-field step at every write position x 1, 2, 3 or 8 blocks (96 each).
+//   S6  two factory presets, a block or three after every write (84); S6f a user preset FILE, the same (loadFile; 52).
+//   S7, S8  a host reset / a re-prepare at every write position after 0, 1 or 3 blocks there (72 each).
+//   S9  a snapshot read inside the writes and handed in after the completion -- to `setParameters` and a block, the
+//       same and a host reset, a prime and its activation, the same and a host reset (42 x 4); S9e `prepareFrom` whose
+//       first read runs the whole switch, with and without a host reset after it (28).
+//   S13 the re-check: a snapshot read inside the writes after the engine's previous take, handed in there (19); and
+//       one read by `setParametersFrom` whose read runs the whole switch (19).
+//   S10 a completion and the next request in one word (42).   S11 supersession during a completed switch's fade (288;
+//       Level Match ON: the landing back on A must be MEASURED).   S12 Copy between switches, and around one (48).
+//  Runtime ~4 s.
+static void testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates()
+{
+    std::printf ("State test 140: every interleaving of a bulk swap's writes with the audio thread adopts only complete states, on "
+                 "every path that raises one (ADR-0057, Accepted; KI-032)\n");
+    using namespace bulkswap;
+    const auto& cs = combos();
+    long totalCases = 0, totalBad = 0;
+    const auto account = [&] (const Tally& t, const char* name)
+    {
+        t.print (name);
+        const std::string ran = std::string ("State test 140 non-vacuity: scenario ") + name + " ran";
+        check (t.cases > 0, ran.c_str());
+        totalCases += t.cases;
+        totalBad += t.incomplete + t.finalWrong + t.pending + t.lmWrong + t.twinMismatch;
+    };
+    const auto tag = [] (const Combo& c, const std::string& what) { return std::string (c.name) + " " + what; };
+    // Each combination's write count, from a dry run of the switch on a fresh history.
+    std::vector<int> nW;
+    for (const auto& c : cs)
+    {
+        Rig d; abHistory (d, c, false);
+        nW.push_back (d.writesOf ([&] { d.p->abSwitchTo (1); }));
+    }
+    std::printf ("  the switch writes: ");
+    for (size_t i = 0; i < cs.size(); ++i) std::printf ("%s %d%s", cs[i].name, nW[i], i + 1 < cs.size() ? ", " : "\n");
+
+    // An A/B switch to B with `plan` armed, 16 blocks, then a complete return to A (and 16 blocks): the rig is back where
+    // it began for the next case.
+    const auto abRound = [] (Rig& r, const std::map<int, std::function<void()>>& plan, Tally& t, const std::string& what, bool lm)
+    {
+        r.legal = { r.refA, r.refB };
+        r.inj.plan = plan;
+        r.landTarget = lm ? &r.refB : nullptr;
+        r.landed = false;
+        r.armed ([&] { r.p->abSwitchTo (1); });
+        r.run (16);
+        const bool ok = same (r.e().getAdoptedParameters(), r.refB);
+        if (lm && ! (r.landed && r.landMeasured)) { if (t.lmWrong++ == 0 && t.first.empty()) t.first = what + " | B's measured record landed not measured"; }
+        r.landTarget = nullptr;
+        t.add (r, ok, what);
+        r.p->abSwitchTo (0);
+        r.run (16);
+        r.legal.clear();
+    };
+
+    // ---- S1: every write position x 1, 2, 3, 8 blocks, Level Match on ------------------------------------------------
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], true);
+            for (int pos = 0; pos <= nW[ci]; ++pos)
+                for (const int m : { 1, 2, 3, 8 })
+                    abRound (r, { { pos, [&r, m] { r.run (m); } } }, t, tag (cs[ci], "pos " + std::to_string (pos) + " x" + std::to_string (m)), true);
+        }
+        account (t, "S1 A/B, every write position");
+    }
+    // ---- S1t: complete-at-completion twins, bit for bit ---------------------------------------------------------------
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+            for (int pos = 0; pos <= nW[ci]; ++pos)
+                for (const int m : { 1, 3 })
+                {
+                    Rig r; abHistory (r, cs[ci], false);
+                    r.legal = { r.refA, r.refB };
+                    r.capture = true;
+                    r.inj.plan[pos] = [&r, m] { r.run (m); };
+                    r.armed ([&] { r.p->abSwitchTo (1); });
+                    r.run (24);
+                    t.add (r, same (r.e().getAdoptedParameters(), r.refB), tag (cs[ci], "twin pos " + std::to_string (pos)));
+                    Rig q; abHistory (q, cs[ci], false);
+                    q.capture = true;
+                    q.run (m);
+                    q.p->abSwitchTo (1);
+                    q.run (24);
+                    ++t.twins;
+                    if (r.out != q.out && t.twinMismatch++ == 0 && t.first.empty())
+                        t.first = tag (cs[ci], "pos " + std::to_string (pos) + " x" + std::to_string (m) + " | the output differs from the complete-at-completion twin");
+                }
+        account (t, "S1t output twins");
+    }
+    // ---- S2: slow writes ------------------------------------------------------------------------------------------------
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            std::map<int, std::function<void()>> every, third;
+            for (int i = 0; i <= nW[ci]; ++i)
+            {
+                every[i] = [&r] { r.run (1); };
+                if (i % 3 == 0) third[i] = [&r] { r.run (3); };
+            }
+            abRound (r, every, t, tag (cs[ci], "a block after every write"), false);
+            abRound (r, third, t, tag (cs[ci], "three blocks after every third write"), false);
+        }
+        account (t, "S2 slow writes");
+    }
+    // ---- S3: repeated alternation --------------------------------------------------------------------------------------
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            for (unsigned seed = 0; seed < 24; ++seed)
+            {
+                r.legal = { r.refA, r.refB };
+                std::mt19937 rng (100 + seed);
+                int target = 1;
+                for (int s = 0; s < 8; ++s, target ^= 1)
+                {
+                    const int pos = (int) (rng() % (unsigned) (nW[ci] + 1));
+                    const int n = 1 + (int) (rng() % 5u);
+                    r.inj.plan[pos] = [&r, n] { r.run (n); };
+                    r.armed ([&] { r.p->abSwitchTo (target); });
+                    r.run ((int) (rng() % 4u));
+                }
+                r.run (16);
+                t.add (r, same (r.e().getAdoptedParameters(), r.refA), tag (cs[ci], "seed " + std::to_string (seed)));
+                r.legal.clear();
+            }
+        }
+        account (t, "S3 repeated switching");
+    }
+    // ---- S4 / S5: undo and redo -------------------------------------------------------------------------------------------
+    for (const bool redo : { false, true })
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r;
+            auto& p = *r.p;
+            for (const auto& [id, v] : cs[ci].a) store (p, id, v);
+            store (p, "autoGainMatch", 0.0f);
+            p.pollUndoCoalesce();
+            p.prepareToPlay (sr, block);
+            r.run (12);
+            multiFieldStep (p, cs[ci].b);
+            r.run (12);
+            // Each end as the command itself produces it: a complete undo, then a complete redo.
+            p.undo(); r.run (16);
+            const EP before = r.e().getAdoptedParameters();
+            p.redo(); r.run (16);
+            const EP after = r.e().getAdoptedParameters();
+            if (redo) { p.undo(); r.run (16); }
+            const int n = r.writesOf ([&] { if (redo) p.redo(); else p.undo(); });
+            r.run (16);
+            if (redo) { p.undo(); r.run (16); } else { p.redo(); r.run (16); }
+            for (int pos = 0; pos <= n; ++pos)
+                for (const int m : { 1, 2, 3, 8 })
+                {
+                    r.legal = { before, after };
+                    r.inj.plan[pos] = [&r, m] { r.run (m); };
+                    r.armed ([&] { if (redo) p.redo(); else p.undo(); });
+                    r.run (16);
+                    t.add (r, same (r.e().getAdoptedParameters(), redo ? after : before),
+                           tag (cs[ci], std::string (redo ? "redo" : "undo") + " pos " + std::to_string (pos) + " x" + std::to_string (m)));
+                    if (redo) p.undo(); else p.redo();
+                    r.run (16);
+                    r.legal.clear();
+                }
+        }
+        account (t, redo ? "S5 redo" : "S4 undo");
+    }
+    // ---- S6: factory presets, S6f: a user preset file ---------------------------------------------------------------------
+    {
+        Tally t;
+        const Combo& c = cs[0];
+        Rig r;
+        auto& p = *r.p;
+        for (const auto& [id, v] : c.a) store (p, id, v);
+        store (p, "autoGainMatch", 0.0f);
+        p.pollUndoCoalesce();
+        p.prepareToPlay (sr, block);
+        r.run (12);
+        for (const char* name : { "Default", "Vocal Air" })
+        {
+            const int idx = factoryPresetIndex (p, name);
+            if (idx < 0) { check (false, "State test 140 (S6) premise: the factory preset exists"); continue; }
+            const int n = r.writesOf ([&] { (void) p.getPresets().load (idx); });
+            r.run (16);
+            const EP dst = r.e().getAdoptedParameters();
+            p.undo(); r.run (16);
+            for (int pos = 1; pos <= n; ++pos)
+                for (const int m : { 1, 3 })
+                {
+                    r.legal = { r.e().getAdoptedParameters(), dst };   // the source as the undo left it
+                    r.inj.plan[pos] = [&r, m] { r.run (m); };
+                    r.armed ([&] { (void) p.getPresets().load (idx); });
+                    r.run (16);
+                    t.add (r, same (r.e().getAdoptedParameters(), dst), std::string ("preset ") + name + " pos " + std::to_string (pos) + " x" + std::to_string (m));
+                    p.undo(); r.run (16);
+                    r.legal.clear();
+                }
+        }
+        account (t, "S6 factory preset loads");
+    }
+    {
+        Tally t;
+        const Combo& c = cs[4];
+        Rig r;
+        auto& p = *r.p;
+        // The destination's sound, written to a file the way a user preset is (the APVTS tree, one document).
+        for (const auto& [id, v] : c.a) store (p, id, v);
+        for (const auto& [id, v] : c.b) store (p, id, v);
+        auto file = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+        {
+            const auto xml = p.getAPVTS().copyState().createXml();
+            check (xml != nullptr && file.replaceWithText (xml->toString()), "State test 140 (S6f) premise: the preset file is written");
+        }
+        for (const auto& [id, v] : c.a) store (p, id, v);
+        store (p, "autoGainMatch", 0.0f);
+        p.pollUndoCoalesce();
+        p.prepareToPlay (sr, block);
+        r.run (12);
+        const int n = r.writesOf ([&] { (void) p.getPresets().loadFile (file); });
+        r.run (16);
+        const EP dst = r.e().getAdoptedParameters();
+        p.undo(); r.run (16);
+        for (int pos = 1; pos <= n; ++pos)
+            for (const int m : { 1, 3 })
+            {
+                r.legal = { r.e().getAdoptedParameters(), dst };     // the source as the undo left it
+                r.inj.plan[pos] = [&r, m] { r.run (m); };
+                r.armed ([&] { (void) p.getPresets().loadFile (file); });
+                r.run (16);
+                t.add (r, same (r.e().getAdoptedParameters(), dst), "preset file pos " + std::to_string (pos) + " x" + std::to_string (m));
+                p.undo(); r.run (16);
+                r.legal.clear();
+            }
+        file.deleteFile();
+        account (t, "S6f a user preset file (loadFile)");
+    }
+    // ---- S7 / S8: a host reset / a re-prepare inside the writes ----------------------------------------------------------
+    for (const bool prepare : { false, true })
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            for (int pos = 0; pos <= nW[ci]; ++pos)
+                for (const int n : { 0, 1, 3 })
+                    abRound (r, { { pos, [&r, n, prepare] { r.run (n); if (prepare) r.rePrepare(); else r.hostReset(); r.run (1); } } }, t,
+                             tag (cs[ci], std::string (prepare ? "re-prepare" : "host reset") + " at " + std::to_string (pos) + " after " + std::to_string (n)), false);
+        }
+        account (t, prepare ? "S8 a re-prepare inside the writes" : "S7 a host reset inside the writes");
+    }
+    // ---- S9: a snapshot read inside the writes, handed in after the completion ------------------------------------------
+    {
+        Tally t[4];
+        const char* const nm[4] = { "S9a partial read, then a block", "S9b ...and a host reset", "S9c ...primed, activated",
+                                    "S9d ...primed, activated, reset" };
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            for (int pos = 1; pos < nW[ci]; ++pos)
+                for (int v = 0; v < 4; ++v)
+                    for (const int pre : { 0, 1, 3 })
+                    {
+                        r.legal = { r.refA, r.refB };
+                        EP partial {};
+                        bool got = false;
+                        r.inj.plan[pos] = [&] { r.run (pre); partial = r.p->readEngineSnapshot(); got = true; };
+                        r.armed ([&] { r.p->abSwitchTo (1); });
+                        auto& e = r.e();
+                        if (v < 2)
+                        {
+                            fill (r.buf, r.k++);
+                            e.setParameters (partial);           // one take: the snapshot predates the completion it finds
+                            e.process (r.buf);
+                            r.check ("the block handed the partial snapshot");
+                            if (v == 1) r.hostReset();
+                        }
+                        else
+                        {
+                            e.primeParameters (partial);         // one take, the same
+                            r.check ("the prime");
+                            e.prepare (sr, block);
+                            r.check ("the prepare");
+                            e.setParametersFrom ([&] { return r.p->readEngineSnapshot(); });   // prepareFrom's trailing, fresh read
+                            r.check ("the activation's adoption");
+                            if (v == 3) r.hostReset();             // JUCE's AU order: Reset() right after prepareToPlay()
+                        }
+                        r.run (16);
+                        t[v].add (r, got && same (e.getAdoptedParameters(), r.refB),
+                                  tag (cs[ci], "pos " + std::to_string (pos) + " pre " + std::to_string (pre)));
+                        r.p->abSwitchTo (0);
+                        r.run (16);
+                        r.legal.clear();
+                    }
+        }
+        for (int v = 0; v < 4; ++v) account (t[v], nm[v]);
+    }
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            for (int pos = 1; pos < nW[ci]; ++pos)
+                for (const bool reset : { false, true })
+                {
+                    r.legal = { r.refA, r.refB };
+                    int reads = 0;
+                    r.p->getEngine().prepareFrom (sr, block, [&]
+                    {
+                        if (reads++ > 0) return r.p->readEngineSnapshot();
+                        EP partial {};
+                        r.inj.plan[pos] = [&] { partial = r.p->readEngineSnapshot(); };
+                        r.armed ([&] { r.p->abSwitchTo (1); });   // the whole switch, inside the prime's read
+                        return partial;
+                    });
+                    r.check ("the activation");
+                    if (reset) r.hostReset();
+                    r.run (16);
+                    t.add (r, same (r.e().getAdoptedParameters(), r.refB), tag (cs[ci], "pos " + std::to_string (pos) + (reset ? " reset" : "")));
+                    r.p->abSwitchTo (0);
+                    r.run (16);
+                    r.legal.clear();
+                }
+        }
+        account (t, "S9e prepareFrom, the switch in its read");
+    }
+    // ---- S13: the re-check ----------------------------------------------------------------------------------------------
+    for (const bool reader : { false, true })
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            for (int pos = 1; pos <= nW[ci]; ++pos)
+            {
+                r.legal = { r.refA, r.refB };
+                auto& e = r.e();
+                if (! reader)
+                {
+                    // read after the engine's previous take (the last block), inside the writes, and handed in there
+                    r.inj.plan[pos] = [&] { const EP np = r.p->readEngineSnapshot(); fill (r.buf, r.k++); e.setParameters (np); e.process (r.buf); r.check ("the block inside the writes"); };
+                    r.armed ([&] { r.p->abSwitchTo (1); });
+                }
+                else
+                {
+                    fill (r.buf, r.k++);
+                    e.setParametersFrom ([&]
+                    {
+                        EP partial {};
+                        r.inj.plan[pos] = [&] { partial = r.p->readEngineSnapshot(); };
+                        r.armed ([&] { r.p->abSwitchTo (1); });   // the whole switch between the two takes
+                        return partial;
+                    });
+                    e.process (r.buf);
+                    r.check ("the block whose read ran the switch");
+                }
+                r.run (16);
+                t.add (r, same (e.getAdoptedParameters(), r.refB), tag (cs[ci], "pos " + std::to_string (pos)));
+                r.p->abSwitchTo (0);
+                r.run (16);
+                r.legal.clear();
+            }
+        }
+        account (t, reader ? "S13b the switch between the two takes" : "S13 a read inside the writes");
+    }
+    // ---- S10: a completion and the next request in one word ---------------------------------------------------------------
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], false);
+            for (int pos = 1; pos < nW[ci]; ++pos)
+                for (const int n : { 3, 4, 6 })
+                {
+                    r.legal = { r.refA, r.refB };
+                    r.inj.plan[0] = [&r] { r.run (1); };           // switch 1's request taken, then its writes and completion
+                    r.armed ([&] { r.p->abSwitchTo (1); });
+                    r.inj.plan[pos] = [&r, n] { r.run (n); };      // switch 2 (back), blocks inside its writes
+                    r.armed ([&] { r.p->abSwitchTo (0); });
+                    r.run (16);
+                    t.add (r, same (r.e().getAdoptedParameters(), r.refA), tag (cs[ci], "pos " + std::to_string (pos) + " x" + std::to_string (n)));
+                    r.legal.clear();
+                }
+        }
+        account (t, "S10 a completion and a request together");
+    }
+    // ---- S11: supersession during a completed switch's fade, Level Match on -----------------------------------------------
+    {
+        Tally t;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+        {
+            Rig r; abHistory (r, cs[ci], true);
+            for (const int between : { 0, 1, 2, 3 })
+                for (int pos = 0; pos <= nW[ci]; ++pos)
+                    for (const int n : { 1, 3, 6 })
+                    {
+                        r.legal = { r.refA, r.refB };
+                        r.p->abSwitchTo (1);
+                        r.run (between);
+                        r.inj.plan[pos] = [&r, n] { r.run (n); };
+                        r.landTarget = &r.refA;
+                        r.landed = false;
+                        r.armed ([&] { r.p->abSwitchTo (0); });
+                        r.run (16);
+                        if (! (r.landed && r.landMeasured) && t.lmWrong++ == 0 && t.first.empty())
+                            t.first = tag (cs[ci], "between " + std::to_string (between) + " pos " + std::to_string (pos) + " | A's record landed not measured");
+                        r.landTarget = nullptr;
+                        t.add (r, same (r.e().getAdoptedParameters(), r.refA),
+                               tag (cs[ci], "between " + std::to_string (between) + " pos " + std::to_string (pos) + " x" + std::to_string (n)));
+                        r.legal.clear();
+                    }
+        }
+        account (t, "S11 supersession inside a fade");
+    }
+    // ---- S12: Copy -----------------------------------------------------------------------------------------------------------
+    {
+        Tally t;
+        int wordMoves = 0;
+        for (size_t ci = 0; ci < cs.size(); ++ci)
+            for (int pos = 0; pos <= nW[ci]; ++pos)
+                for (const int n : { 1, 3 })
+                {
+                    Rig r; abHistory (r, cs[ci], false);          // Copy rewrites slot A: a fresh history each time
+                    r.legal = { r.refA, r.refB };
+                    r.inj.plan[pos] = [&r, n] { r.run (n); };
+                    r.armed ([&] { r.p->abSwitchTo (1); });
+                    const bool pendingBefore = r.e().isBulkSwapPending();
+                    r.p->abCopyToOther();                          // B's state onto slot A: no parameter write, no request
+                    wordMoves += r.e().isBulkSwapPending() != pendingBefore ? 1 : 0;
+                    r.run (2);
+                    r.inj.plan[pos] = [&r, n] { r.run (n); };
+                    r.armed ([&] { r.p->abSwitchTo (0); });        // to slot A, now a copy of B
+                    r.run (16);
+                    t.add (r, same (r.e().getAdoptedParameters(), r.refB), tag (cs[ci], "pos " + std::to_string (pos) + " x" + std::to_string (n)));
+                }
+        account (t, "S12 Copy");
+        check (wordMoves == 0, "State test 140 (S12): a Copy raises no request and completes nothing");
+    }
+    std::printf ("  total: %ld cases, %ld with a failure\n", totalCases, totalBad);
+    check (totalCases >= 1358, "State test 140 non-vacuity: the whole enumeration ran (1,358 cases at 0.9.9)");
+    check (totalBad == 0, "State test 140: every block, host reset and re-prepare adopted a complete state; every command landed; nothing is left pending; every measured record landed measured; every twin is bit-identical");
+}
+
+// =====================================================================================================
+//  --bulk-swap-probe [trials] [stall-us] -- THE DEVIN REPRODUCTION, THREADED (ADR-0057; KI-032; worklog §U1, §V).
+//
+//  NOT part of the suite: it measures timing-dependent behaviour against a real audio thread. The message thread (this
+//  one) calls `abSwitchTo (B)` while an audio thread runs `processBlock` at 1x, 4x, 16x, 64x, 112x, 256x real time or
+//  free-running, 256 blocks per trial, on six combinations with Level Match on and B's record measured. A trial FAILS if
+//  any block leaves the engine holding a state neither slot holds, if the landing on B does not restore B's record
+//  MEASURED, if the switch does not end on B with nothing pending, or if a same-rate prepareToPlay then flushes B's
+//  level. With `stall-us` > 0 only 1x runs, and the host's parameter notification stalls once, after the switch's first
+//  write, for that long (a preempted user-interface thread). The pre-fix engine failed 573 of 1,680 trials (40 trials
+//  per combination and speed) and 40 of 120 behind a 12 ms stall; the fixed engine must fail none.
+//
+//      AnamorphStateTests --bulk-swap-probe 40            (1,680 trials)
+//      AnamorphStateTests --bulk-swap-probe 20 12000      (120 trials behind a 12 ms stall)
+static int runBulkSwapProbe (int trials, int stallUs)
+{
+    using namespace bulkswap;
+    using Clock = std::chrono::steady_clock;
+    std::printf ("--bulk-swap-probe: %d trials per combination and speed%s\n", trials,
+                 stallUs > 0 ? (", 1x only, one " + std::to_string (stallUs) + " us stall after the first write").c_str() : "");
+    std::vector<Combo> cs = combos();
+    cs.insert (cs.begin() + 2, Combo { "Haas delay+side", base (0.0f), { { "haasDelay", 25.0f }, { "haasSide", 1.0f } } });
+    const std::vector<double> speeds = { 1.0, 4.0, 16.0, 64.0, 112.0, 256.0, 0.0 };   // 0: free-running
+
+    struct StallHost : juce::AudioProcessorListener
+    {
+        std::atomic<int> left { 0 };
+        int us = 0;
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override
+        {
+            if (left.load() > 0 && left.fetch_sub (1) > 0) std::this_thread::sleep_for (std::chrono::microseconds (us));
+        }
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+    };
+
+    long long total = 0, failed = 0, illegalTrials = 0, notMeasured = 0, finalWrong = 0, flushed = 0;
+    for (const auto& c : cs)
+        for (const double speed : speeds)
+        {
+            if (stallUs > 0 && ! juce::exactlyEqual (speed, 1.0)) continue;
+            int fails = 0;
+            std::string first;
+            for (int t = 0; t < trials; ++t)
+            {
+                Rig r; abHistory (r, c, true);
+                auto& p = *r.p;
+                StallHost host;
+                host.us = stallUs;
+                p.addListener (&host);
+                std::atomic<int> done { 0 }, illegal { 0 };
+                std::atomic<bool> landed { false }, landMeasured { false }, returned { false };
+                const EP refA = r.refA, refB = r.refB;
+                const int k0 = r.k;
+                // The audio thread runs at least 256 blocks, and on until the switch has RETURNED (its completion
+                // published) and 48 blocks more -- the swap starts at its completion, so a window that could end
+                // before the message thread finished writing would report a correct pending swap as a failure.
+                // Capped, so a swap that never starts is reported ("ends on B no") rather than hanging.
+                std::thread audio ([&]
+                {
+                    juce::AudioBuffer<float> ab (2, block);
+                    juce::MidiBuffer m;
+                    const double blockUs = speed > 0 ? 1.0e6 * block / sr / speed : 0.0;
+                    const auto a0 = Clock::now();
+                    int tailEnd = -1;
+                    for (int i = 0; i < (1 << 20) && (i < 256 || tailEnd < 0 || i < tailEnd); ++i)
+                    {
+                        if (tailEnd < 0 && returned.load()) tailEnd = i + 48;
+                        if (speed > 0.0)
+                        {
+                            const auto target = a0 + std::chrono::microseconds ((long long) (i * blockUs));
+                            while (Clock::now() < target) {}
+                        }
+                        fill (ab, k0 + i);
+                        p.processBlock (ab, m);
+                        const auto& x = p.getEngine().getAdoptedParameters();
+                        if (! same (x, refA) && ! same (x, refB)) illegal.fetch_add (1);
+                        if (! landed.load() && same (x, refB))
+                        {
+                            landMeasured.store (p.getEngine().isMatchResultMeasured());
+                            landed.store (true);
+                        }
+                        done.store (i + 1);
+                    }
+                });
+                std::mt19937 rng ((unsigned) (1000 + t));
+                const int wait = 2 + (int) (rng() % 4);
+                while (done.load() < wait) {}
+                if (speed > 0.0 && speed < 64.0)   // a random phase inside the block
+                    std::this_thread::sleep_for (std::chrono::microseconds ((long long) (rng() % (unsigned) (1.0e6 * block / sr / speed))));
+                host.left = stallUs > 0 ? 1 : 0;
+                p.abSwitchTo (1);
+                returned.store (true);
+                audio.join();
+                p.removeListener (&host);
+                const bool finalOk = same (p.getEngine().getAdoptedParameters(), refB) && ! p.getEngine().isBulkSwapPending();
+                const float before = p.getEngine().getMatchGainDb();
+                p.prepareToPlay (sr, block);
+                const bool kept = juce::exactlyEqual (before, p.getEngine().getMatchGainDb());
+                const bool fail = illegal.load() > 0 || ! landed.load() || ! landMeasured.load() || ! finalOk || ! kept;
+                illegalTrials += illegal.load() > 0 ? 1 : 0;
+                notMeasured += (landed.load() && ! landMeasured.load()) ? 1 : 0;
+                finalWrong += finalOk ? 0 : 1;
+                flushed += kept ? 0 : 1;
+                ++total;
+                if (fail && fails++ == 0)
+                    first = "trial " + std::to_string (t) + ": blocks holding neither slot " + std::to_string (illegal.load())
+                          + ", landed on B " + (landed.load() ? "yes" : "no") + ", measured " + (landMeasured.load() ? "yes" : "no")
+                          + ", ends on B " + (finalOk ? "yes" : "no") + ", same-rate prepare kept B's level " + (kept ? "yes" : "no");
+            }
+            failed += fails;
+            std::printf ("  %-30s %-5s %3d trials | failed %d%s%s\n", c.name, speed > 0 ? juce::String (speed, 0).toRawUTF8() : "free",
+                         trials, fails, first.empty() ? "" : " | first: ", first.c_str());
+        }
+    std::printf ("TOTAL %lld trials | failed %lld (a block holding neither slot %lld, landed not measured %lld, final wrong %lld, "
+                 "same-rate prepare flushed %lld)\n", total, failed, illegalTrials, notMeasured, finalWrong, flushed);
+    return failed == 0 ? 0 : 1;
+}
+
+// =====================================================================================================
+//  --bulk-swap-stress [trials] [stall-us] -- THE THREADED ADVERSARIAL RUN (ADR-0057; worklog §U5, §V).
+//
+//  NOT part of the suite. A real audio thread free-runs `processBlock` (1x..256x or unpaced) while this thread runs
+//  bulk commands -- an A/B switch, repeated switches, back-to-back superseding switches, undo, redo, a factory preset,
+//  Copy between switches, and switches against an audio thread that host-resets or re-prepares at random -- each
+//  optionally stalled at a random write for a random time up to `stall-us`. After EVERY block, host reset and
+//  re-prepare the engine's adopted state must be one of the command's complete states; each trial must end on its
+//  destination with nothing pending. The pre-fix engine failed 567 of 2,310 trials; the fixed engine must fail none.
+//
+//      AnamorphStateTests --bulk-swap-stress 20           (4,620 trials)
+//      AnamorphStateTests --bulk-swap-stress 20 12000     (4,620 trials, stalls up to 12 ms)
+static int runBulkSwapStress (int trials, int stallUs)
+{
+    using namespace bulkswap;
+    using Clock = std::chrono::steady_clock;
+    std::printf ("--bulk-swap-stress: %d trials per mode, combination and speed; stalls up to %d us\n", trials, stallUs);
+    std::vector<Combo> cs;
+    for (const auto& c : combos()) if (std::string (c.name) != "Mix+Amount") cs.push_back (c);
+    enum class Mode { ab, repeat, supersede, undo, redo, preset, copy, reset, prepare };
+    const std::pair<Mode, const char*> modes[] = { { Mode::ab, "ab" }, { Mode::repeat, "repeat" }, { Mode::supersede, "supersede" },
+                                                   { Mode::undo, "undo" }, { Mode::redo, "redo" }, { Mode::preset, "preset" },
+                                                   { Mode::copy, "copy" }, { Mode::reset, "reset" }, { Mode::prepare, "prepare" } };
+    const std::vector<double> speeds = { 1.0, 4.0, 16.0, 64.0, 112.0, 256.0, 0.0 };
+
+    struct Staller : juce::AudioProcessorValueTreeState::Listener
+    {
+        std::atomic<bool> armed { false };
+        int writes = 0, at = -1, us = 0;
+        void parameterChanged (const juce::String&, float) override
+        {
+            if (! armed.load()) return;
+            if (++writes == at && us > 0) std::this_thread::sleep_for (std::chrono::microseconds (us));
+        }
+    };
+
+    long long total = 0, bad = 0, finalBad = 0, stuck = 0;
+    for (const auto& [mode, modeName] : modes)
+        for (const auto& c : cs)
+        {
+            if (mode == Mode::preset && &c != &cs.front()) continue;
+            for (const double speed : speeds)
+            {
+                int nBad = 0, nFinal = 0, nStuck = 0;
+                std::string first;
+                for (int t = 0; t < trials; ++t)
+                {
+                    std::mt19937 rng (9000u + (unsigned) t * 131u + (unsigned) (speed * 7));
+                    Rig r;
+                    auto& p = *r.p;
+                    EP s0 {}, s1 {};
+                    int presetIdx = -1;
+                    if (mode == Mode::undo || mode == Mode::redo || mode == Mode::preset)
+                    {
+                        for (const auto& [id, v] : c.a) store (p, id, v);
+                        store (p, "autoGainMatch", 1.0f);
+                        p.pollUndoCoalesce();
+                        p.prepareToPlay (sr, block);
+                        r.run (sec);
+                        if (mode == Mode::preset)
+                        {
+                            presetIdx = factoryPresetIndex (p, "Default");
+                            (void) p.getPresets().load (presetIdx); r.run (sec);
+                            s1 = r.e().getAdoptedParameters();
+                            p.undo(); r.run (sec);
+                            s0 = r.e().getAdoptedParameters();
+                        }
+                        else
+                        {
+                            multiFieldStep (p, c.b); r.run (sec);
+                            p.undo(); r.run (sec); s0 = r.e().getAdoptedParameters();
+                            p.redo(); r.run (sec); s1 = r.e().getAdoptedParameters();
+                            if (mode == Mode::redo) { p.undo(); r.run (sec); }
+                        }
+                    }
+                    else
+                    {
+                        abHistory (r, c, true);
+                        s0 = r.refA; s1 = r.refB;
+                    }
+                    Staller stall;
+                    for (auto* ap : p.getParameters())
+                        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ap)) p.getAPVTS().addParameterListener (rp->paramID, &stall);
+                    std::atomic<bool> stop { false };
+                    std::atomic<int> done { 0 }, illegal { 0 };
+                    const unsigned audioSeed = (unsigned) rng();
+                    const int k0 = r.k;
+                    std::thread audio ([&]
+                    {
+                        std::mt19937 ar (audioSeed);
+                        juce::AudioBuffer<float> ab (2, block);
+                        juce::MidiBuffer m;
+                        const double blockUs = speed > 0 ? 1.0e6 * block / sr / speed : 0.0;
+                        const auto a0 = Clock::now();
+                        const auto legalNow = [&]
+                        {
+                            const auto& x = p.getEngine().getAdoptedParameters();
+                            if (! same (x, s0) && ! same (x, s1)) illegal.fetch_add (1);
+                        };
+                        for (int i = 0; ! stop.load (std::memory_order_relaxed); ++i)
+                        {
+                            if (speed > 0.0)
+                            {
+                                const auto target = a0 + std::chrono::microseconds ((long long) (i * blockUs));
+                                while (Clock::now() < target) {}
+                            }
+                            if (mode == Mode::reset && ar() % 7u == 0) { p.reset(); legalNow(); }
+                            if (mode == Mode::prepare && ar() % 11u == 0) { p.prepareToPlay (sr, block); legalNow(); }
+                            fill (ab, k0 + i);
+                            p.processBlock (ab, m);
+                            legalNow();
+                            done.store (i + 1, std::memory_order_relaxed);
+                        }
+                    });
+                    while (done.load() < 2 + (int) (rng() % 4u)) {}
+                    const auto command = [&] (int target)
+                    {
+                        stall.writes = 0;
+                        stall.at = stallUs > 0 ? 1 + (int) (rng() % 12u) : -1;
+                        stall.us = stallUs > 0 ? (int) (rng() % (unsigned) stallUs) : 0;
+                        stall.armed = true;
+                        if (mode == Mode::undo)        p.undo();
+                        else if (mode == Mode::redo)   p.redo();
+                        else if (mode == Mode::preset) (void) p.getPresets().load (presetIdx);
+                        else                           p.abSwitchTo (target);
+                        stall.armed = false;
+                    };
+                    const auto waitBlocks = [&] (int n) { const int to = done.load() + n; while (done.load() < to) {} };
+                    int finalTarget = 1;
+                    if (mode == Mode::repeat)
+                    {
+                        for (int s = 0; s < 6; ++s) { command ((s & 1) == 0 ? 1 : 0); waitBlocks ((int) (rng() % 4u)); }
+                        finalTarget = 0;
+                    }
+                    else if (mode == Mode::supersede)
+                    {
+                        command (1); command (0); command (1);
+                    }
+                    else if (mode == Mode::copy)
+                    {
+                        command (1); waitBlocks ((int) (rng() % 3u)); p.abCopyToOther(); waitBlocks ((int) (rng() % 3u)); command (0);
+                        // slot A now holds B's state
+                    }
+                    else
+                        command (1);
+                    waitBlocks (40);
+                    stop = true;
+                    audio.join();
+                    for (auto* ap : p.getParameters())
+                        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ap)) p.getAPVTS().removeParameterListener (rp->paramID, &stall);
+                    const EP& want = mode == Mode::undo ? s0 : mode == Mode::redo || mode == Mode::preset ? s1 : (finalTarget == 1 ? s1 : s0);
+                    const bool finalOk = same (p.getEngine().getAdoptedParameters(), want);
+                    const bool pend = p.getEngine().isBulkSwapPending();
+                    ++total;
+                    if (illegal.load() > 0 && nBad++ == 0) first = "trial " + std::to_string (t) + ": " + std::to_string (illegal.load()) + " blocks held neither state";
+                    nFinal += finalOk ? 0 : 1;
+                    nStuck += pend ? 1 : 0;
+                }
+                bad += nBad; finalBad += nFinal; stuck += nStuck;
+                if (nBad > 0 || nFinal > 0 || nStuck > 0 || juce::exactlyEqual (speed, 0.0))
+                    std::printf ("  %-9s %-13s %-5s %3d trials | with a state no swap completed %d | final wrong %d | pending %d%s%s\n",
+                                 modeName, c.name, speed > 0 ? juce::String (speed, 0).toRawUTF8() : "free", trials, nBad, nFinal, nStuck,
+                                 first.empty() ? "" : " | first: ", first.c_str());
+            }
+        }
+    std::printf ("TOTAL %lld trials | with a state no swap completed %lld | final wrong %lld | pending %lld\n", total, bad, finalBad, stuck);
+    return bad == 0 && finalBad == 0 && stuck == 0 ? 0 : 1;
+}
+
 
 int main (int argc, char* argv[])
 {
@@ -44477,6 +45542,12 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--band-move-adopt-probe") == 0)
         return runBandMoveAdoptProbe (argc > 2 ? std::atoi (argv[2]) : 300);
+
+    if (argc > 1 && std::strcmp (argv[1], "--bulk-swap-probe") == 0)
+        return runBulkSwapProbe (argc > 2 ? std::atoi (argv[2]) : 40, argc > 3 ? std::atoi (argv[3]) : 0);
+
+    if (argc > 1 && std::strcmp (argv[1], "--bulk-swap-stress") == 0)
+        return runBulkSwapStress (argc > 2 ? std::atoi (argv[2]) : 20, argc > 3 ? std::atoi (argv[3]) : 0);
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -44600,7 +45671,8 @@ int main (int argc, char* argv[])
     testAnAbGainRestoredAtAnUpgradedBottomSurvivesAReprepareInTheFadeIn();
     testAnAbSlotCarriesItsPostChangeEvidence();
     testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure();
-    testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot();
+    testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination();
+    testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

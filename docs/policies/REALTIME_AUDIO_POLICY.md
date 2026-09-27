@@ -20,6 +20,10 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 
 - Reads/writes of pre-allocated buffers and scalar state.
 - Atomic loads/stores (relaxed for published meters; release/acquire for the scope ring).
+- The request word's ACQUIRE `exchange`, twice per block, before and after the parameter snapshot is read
+  (ADR-0057, Accepted 2026-09-27). It is a single lock-free read-modify-write each time — no wait, no
+  spin, no lock, no allocation — and a bulk swap whose completion has not arrived is handled by adopting
+  nothing that block, never by waiting for it (`THREADING_POLICY.md`, *Atomic usage rules*).
 - In-place IIR coefficient recompute (`LR4Xover::setCutoffFrequency`) — bounded.
 - `std::fill` over a pre-sized buffer (no resize) — e.g. `reset()` and Velvet's transport-stop flush.
 - Transcendental functions (`tanh`, `sin`, `log10`, `pow`) — bounded, no allocation.
@@ -31,7 +35,7 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 audio path; all allocation confined to `prepare()`. Full audit: `docs/architecture/REALTIME_SAFETY_AUDIT.md`.
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:384-452 (`processBlock`; `ScopedNoDenormals` at :119), src/dsp/AnamorphEngine.cpp:43-213 (prepare allocations) vs :660-1339 (alloc-free process)
+- Source: src/PluginProcessor.cpp:390-463 (`processBlock`; `ScopedNoDenormals` at :392), src/dsp/AnamorphEngine.cpp:43-213 (prepare allocations) vs :660-1339 (alloc-free process)
 - Audit: docs/architecture/REALTIME_SAFETY_AUDIT.md
 
 ## Enforcement
@@ -40,10 +44,12 @@ Evidence [Verified]:
   `ANAMORPH_NONBLOCKING` (`src/dsp/RealtimeAnnotations.h`), and the `realtime` job builds the DSP
   suite with `-fsanitize=realtime` and runs it: an allocation, lock or blocking call anywhere in the
   chain **below the annotated `process` entry** aborts the job at the offending frame. The
-  per-block wrapper path *above* it (`processBlock` → `PluginParameters::toEngine` →
-  `AnamorphEngine::setParameters`) is outside RTSan's enforcement; its non-allocation classes are
-  gated by `check-realtime.py`, which seeds those names directly (ER-RT-02, 2026-08-31), and its
-  allocations by Test 38's armed guard. This is the first mechanical detector for the rule
+  per-block wrapper path *above* it (`processBlock` → `AnamorphEngine::setParametersFrom`, which
+  takes the request word (`takeRequestWord`), calls the wrapper's read (`readEngineSnapshot` →
+  `PluginParameters::toEngine`), takes the word again and adopts through `adoptSnapshot`) is outside
+  RTSan's enforcement; its non-allocation classes are gated by `check-realtime.py`, which seeds those
+  names directly (ER-RT-02, 2026-08-31; `setParametersFrom` and `takeRequestWord` since ADR-0057), and
+  its allocations by Test 38's and Test 75's armed guards. This is the first mechanical detector for the rule
   above — ASan, UBSan and valgrind all treat an audio-path allocation as perfectly correct code.
   Its bounds are stated in the ADR and are real: it is Clang/Linux+macOS only, it sees only what the
   suite executes, and the shipped Windows and macOS binaries are built by compilers it never runs on.
@@ -60,7 +66,10 @@ Evidence [Verified]:
   own `--self-test`). Both runtime tiers see only the code the suite executes; this one reads the
   branches it never takes, on every platform, with no build. Its scope is this rule's scope: the
   wrapper `processBlock`, `AnamorphEngine::process`, every module's `reset`/`softReset`, and —
-  since ER-RT-02 — `setParameters`/`toEngine`, which the audio thread also enters every block.
+  since ER-RT-02 — `setParameters`/`toEngine`, which the audio thread also enters every block, and
+  since ADR-0057 `setParametersFrom` (the header template the processor now calls) and
+  `takeRequestWord` (the acquire take, reached only from header inlines). The same lint pins ADR-0057
+  precondition 2: a relaxed or consume load order inside `toEngine` is a violation.
   It is function-scoped — `prepare()` is required to allocate, so a file-wide scan would flag the
   legitimate sizing there. Scoped does NOT mean "seeds only": the lint computes the transitive set
   of bodies those seeds reach, so a helper is scanned because it is CALLED from an audio path, not

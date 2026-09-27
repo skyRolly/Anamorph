@@ -454,7 +454,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:1029 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:1174 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -477,7 +477,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:1014 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:1159 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -525,7 +525,7 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
         // WHY THIS WAS REACHABLE AT ALL, since R4's guard means an inert dimMode move opens
         // no duck of its own and this function is read only at the duck BOTTOM. Two routes,
         // both measured (Test 58, tests/dsp_tests.cpp):
-        //   * a FORCED duck -- A/B, preset load, undo (`requestDuck`, PluginProcessor.cpp)
+        //   * a FORCED duck -- A/B, preset load, undo, redo (`requestAbSwitch` / `requestDuck`, PluginProcessor.cpp)
         //     -- ducks regardless of what differs, so a slot or preset whose only
         //     processing delta is dimMode reached this line and re-armed.
         //   * `autoGainMatch` is the ONE field in `discreteDiffers` but not here, so
@@ -608,28 +608,144 @@ bool AnamorphEngine::measurementChangeFrom (const EngineParameters& to) const no
 //  value and restoring its currency are two answers, and the second is decided here, on the audio
 //  thread, from state that lives here. The processor sends only the two slot indices.
 // ---------------------------------------------------------------------------
-void AnamorphEngine::requestAbSwitch (int fromSlot, int toSlot) noexcept
+void AnamorphEngine::requestAbSwitch (int fromSlot, int toSlot, int bulkSeq) noexcept
 {
     const int from = juce::jlimit (0, kAbSlots - 1, fromSlot);
     const int to   = juce::jlimit (0, kAbSlots - 1, toSlot);
+    const int seq  = bulkSeq & kReqSeqMask;
+    // A bulk swap's request names ITS sequence: the newest request is the one the engine awaits. The
+    // engine API's (0) leaves a pending swap's sequence in place. Either keeps a completion not yet
+    // taken: it belongs to an earlier swap, whose writes a later completion covers anyway.
+    const int keep = kReqAbForget | kReqDoneBits | (seq == 0 ? kReqSeqBits : 0);
     int cur = duckRequest.load (std::memory_order_relaxed);
     for (;;)
     {
         // A switch the engine has not taken yet keeps ITS source: the engine is still on that slot,
         // and the slot in between was never adopted (A -> B -> A before a block: B keeps its record).
         const int source = (cur & kReqAbSwitch) != 0 ? ((cur >> kReqFromShift) & kReqSlotMask) : from;
-        const int next = (cur & kReqAbForget) | kReqDuck | kReqAbSwitch
-                       | (source << kReqFromShift) | (to << kReqToShift);
+        const int next = (cur & keep) | kReqDuck | kReqAbSwitch
+                       | (source << kReqFromShift) | (to << kReqToShift) | (seq << kReqSeqShift);
         if (duckRequest.compare_exchange_weak (cur, next, std::memory_order_relaxed))
             return;
     }
 }
 
+void AnamorphEngine::requestDuck (int bulkSeq) noexcept
+{
+    const int seq = bulkSeq & kReqSeqMask;
+    if (seq == 0)
+    {
+        duckRequest.fetch_or (kReqDuck, std::memory_order_relaxed);
+        return;
+    }
+    int cur = duckRequest.load (std::memory_order_relaxed);
+    while (! duckRequest.compare_exchange_weak (cur, (cur & ~kReqSeqBits) | kReqDuck | (seq << kReqSeqShift),
+                                                std::memory_order_relaxed)) {}
+}
+
+// THE COMPLETION (ADR-0057). RELEASE: every parameter store of the swap is sequenced before this
+// read-modify-write on the message thread, so the audio thread's acquire take that reads it -- or reads
+// any later value of the word, every one of which is written by a read-modify-write and so continues
+// this release sequence -- synchronizes with it, and each of those stores happens before the snapshot
+// that take is followed by. A relaxed completion would order nothing: on ARMv8 it could become visible
+// before the last store does.
+void AnamorphEngine::completeBulkApply (int bulkSeq) noexcept
+{
+    const int seq = bulkSeq & kReqSeqMask;
+    int cur = duckRequest.load (std::memory_order_relaxed);
+    while (! duckRequest.compare_exchange_weak (cur, (cur & ~kReqDoneBits) | kReqDone | (seq << kReqDoneShift),
+                                                std::memory_order_release, std::memory_order_relaxed)) {}
+}
+
 void AnamorphEngine::forgetAbMatchMemory() noexcept
 {
-    // Keeps a pending duck; drops a pending switch, whose slots the restore has replaced.
+    // Keeps a pending duck, and a bulk swap's sequence and completion; drops a pending switch, whose
+    // slots the restore has replaced.
     int cur = duckRequest.load (std::memory_order_relaxed);
-    while (! duckRequest.compare_exchange_weak (cur, (cur & kReqDuck) | kReqAbForget, std::memory_order_relaxed)) {}
+    while (! duckRequest.compare_exchange_weak (cur, (cur & (kReqDuck | kReqSeqBits | kReqDoneBits)) | kReqAbForget,
+                                                std::memory_order_relaxed)) {}
+}
+
+// ONE TAKE OF THE REQUEST WORD (ADR-0057). ACQUIRE: a take that reads a bulk swap's completion (or any
+// later value of the word) makes every parameter store of that swap -- and of every swap before it, whose
+// completions head the same chain of read-modify-writes -- happen before whatever this thread reads next.
+bool AnamorphEngine::takeRequestWord() noexcept
+{
+    const int w = duckRequest.exchange (0, std::memory_order_acquire);
+    if (w == 0)
+        return false;
+    const bool forget = (w & kReqAbForget) != 0;
+    if (forget)
+    {
+        // A session restore replaced both slots: forget every record, and any switch not yet started --
+        // the restore replaced its slots. A switch requested AFTER the forget is in this same word (the
+        // forget's CAS drops one requested before it), below.
+        for (auto& m : abMemory) m = AbMatchMemory {};
+        abRestoreSlot = -1;
+        stashAb = stashNoRecord = false;
+        legacyReq &= ~(kReqAbSwitch | kReqSlotBits);
+    }
+    bool newRequest = false;
+    if ((w & (kReqDuck | kReqAbSwitch)) != 0)
+    {
+        const int seq  = (w >> kReqSeqShift) & kReqSeqMask;
+        const int from = (w >> kReqFromShift) & kReqSlotMask;
+        const int to   = (w >> kReqToShift) & kReqSlotMask;
+        if (seq == 0)
+        {
+            // The engine API: applied, exactly as before, with the next snapshot the engine adopts.
+            if ((w & kReqDuck) != 0) legacyReq |= kReqDuck;
+            if ((w & kReqAbSwitch) != 0)
+            {
+                const int source = (legacyReq & kReqAbSwitch) != 0 ? ((legacyReq >> kReqFromShift) & kReqSlotMask) : from;
+                legacyReq = (legacyReq & ~kReqSlotBits) | kReqAbSwitch | (source << kReqFromShift) | (to << kReqToShift);
+                if (forget) legacyReq |= kReqAbForget;           // no record in the word that forgets
+            }
+        }
+        else
+        {
+            // A bulk swap: the newest request is the one awaited. Its A/B switch is stashed until the swap
+            // starts; a switch not yet started keeps ITS source (the engine is still on that slot).
+            newRequest = true;
+            awaitSeq = seq;
+            if ((w & kReqAbSwitch) != 0)
+            {
+                if (! stashAb) stashFrom = from;
+                stashTo = to;
+                stashAb = true;
+                stashNoRecord = stashNoRecord || forget;
+            }
+        }
+    }
+    // The awaited swap's completion; an older one's is ignored (its writes precede the newer request).
+    if ((w & kReqDone) != 0 && awaitSeq != 0 && ((w >> kReqDoneShift) & kReqSeqMask) == awaitSeq)
+    {
+        awaitSeq = 0;
+        startPending = true;
+    }
+    return newRequest;
+}
+
+bool AnamorphEngine::startTakenRequests() noexcept
+{
+    bool force = false;
+    if (legacyReq != 0)
+    {
+        force = takeRequests (legacyReq);
+        legacyReq = 0;
+    }
+    if (startPending)
+    {
+        // The swap starts NOW, on a snapshot that holds all of its writes. Its A/B bookkeeping runs first,
+        // against the state being left -- `p`, unchanged since the request was taken, because nothing is
+        // adopted while a swap is awaited -- and the forced duck follows.
+        startPending = false;
+        if (stashAb)
+            switchAbSlots (stashFrom, stashTo, ! stashNoRecord);
+        stashAb = stashNoRecord = false;
+        force = true;
+    }
+    return force;
 }
 
 bool AnamorphEngine::takeRequests (int req) noexcept
@@ -640,33 +756,37 @@ bool AnamorphEngine::takeRequests (int req) noexcept
         abRestoreSlot = -1;
     }
     if ((req & kReqAbSwitch) != 0)
-    {
-        const int from = juce::jlimit (0, kAbSlots - 1, (req >> kReqFromShift) & kReqSlotMask);
-        const int to   = juce::jlimit (0, kAbSlots - 1, (req >> kReqToShift) & kReqSlotMask);
-        // Record the slot being left, every answer read here, before this call adopts anything: the
-        // published value, whether it is MEASURED -- the measure's confirmed answer, not merely
-        // current: a flush's value is current only in the flush's own context -- and the state and
-        // rate it was measured for. Not while a restore is still armed -- the engine never adopted the slot
-        // that switch was going to, and the live result is still its source's, already recorded --
-        // and not in the word that forgets: the live result is the previous project's. Not measured
-        // either while a duck before its bottom has made a measurement-input change live that only
-        // that bottom will report (duckMeasDirty, retired there) -- the same rule prepare() applies --
-        // and then no evidence: what the measure gathered describes the inputs before that change. A
-        // record not measured otherwise carries the matcher's post-change evidence, which describes
-        // exactly `p` (every change to it reset that evidence).
-        if (abRestoreSlot < 0 && (req & kReqAbForget) == 0)
-        {
-            AbMatchMemory& m = abMemory[from];
-            const bool changeInFlight = switchState != SwitchState::Normal && duckMeasDirty;
-            m.gainDb      = loudness.getMatchGainDb();
-            m.measured    = loudness.isResultMeasured() && ! changeInFlight;
-            m.evidence    = changeInFlight ? LoudnessMatch::Evidence {} : loudness.getEvidence();
-            m.measuredFor = withPlayedVelvetDensity (p, velvet.getTargetDensity());   // the Density it played
-            m.measuredAt  = sr;   // a prime runs before its prepare: still the rate the result was measured at
-        }
-        abRestoreSlot = to;
-    }
+        switchAbSlots ((req >> kReqFromShift) & kReqSlotMask, (req >> kReqToShift) & kReqSlotMask,
+                       (req & kReqAbForget) == 0);
     return (req & kReqDuck) != 0;
+}
+
+void AnamorphEngine::switchAbSlots (int fromSlot, int toSlot, bool record) noexcept
+{
+    const int from = juce::jlimit (0, kAbSlots - 1, fromSlot);
+    const int to   = juce::jlimit (0, kAbSlots - 1, toSlot);
+    // Record the slot being left, every answer read here, before this call adopts anything: the
+    // published value, whether it is MEASURED -- the measure's confirmed answer, not merely
+    // current: a flush's value is current only in the flush's own context -- and the state and
+    // rate it was measured for. Not while a restore is still armed -- the engine never adopted the slot
+    // that switch was going to, and the live result is still its source's, already recorded --
+    // and not in the word that forgets (`record` false): the live result is the previous project's. Not
+    // measured either while a duck before its bottom has made a measurement-input change live that only
+    // that bottom will report (duckMeasDirty, retired there) -- the same rule prepare() applies --
+    // and then no evidence: what the measure gathered describes the inputs before that change. A
+    // record not measured otherwise carries the matcher's post-change evidence, which describes
+    // exactly `p` (every change to it reset that evidence).
+    if (abRestoreSlot < 0 && record)
+    {
+        AbMatchMemory& m = abMemory[from];
+        const bool changeInFlight = switchState != SwitchState::Normal && duckMeasDirty;
+        m.gainDb      = loudness.getMatchGainDb();
+        m.measured    = loudness.isResultMeasured() && ! changeInFlight;
+        m.evidence    = changeInFlight ? LoudnessMatch::Evidence {} : loudness.getEvidence();
+        m.measuredFor = withPlayedVelvetDensity (p, velvet.getTargetDensity());   // the Density it played
+        m.measuredAt  = sr;   // a prime runs before its prepare: still the rate the result was measured at
+    }
+    abRestoreSlot = to;
 }
 
 bool AnamorphEngine::restoreAbSlot (bool rearm) noexcept
@@ -733,14 +853,39 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
 
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
 {
+    adoptSnapshot (np, acquireForEarlierSnapshot());
+}
+
+void AnamorphEngine::primeSnapshot (const EngineParameters& np, bool trusted) noexcept
+{
+    // A bulk swap is being written, or this snapshot may predate its completion (ADR-0057): the prime
+    // keeps the state it has, and the swap starts, ducked, at the first block that reads it complete.
+    if (! trusted)
+        return;
+    primeMeasChanged = primeMeasChanged || measurementChangeFrom (np);
+    (void) startTakenRequests();   // a swap the prime takes: its A/B bookkeeping; its duck dropped, as always
+    p = np;
+    pendingP = np;
+}
+
+void AnamorphEngine::adoptSnapshot (const EngineParameters& np, bool trusted) noexcept
+{
+    // FROZEN (ADR-0057). A bulk swap is being written, or this snapshot may have been read before its
+    // completion was taken: nothing read now is adopted -- no live edit, no duck entry, no new target.
+    // The state already adopted plays on, and a duck already in flight lands on its own target, which a
+    // trusted snapshot set. Real-time bound: two takes and a few branches; nothing waits.
+    if (! trusted)
+        return;
+
     // A bulk swap (A/B, preset, undo) asks for a masking duck even when only
     // continuous controls move, and -- crucially -- is applied ENTIRELY at the
     // silent bottom (continuous included, smoothers snapped) so NOTHING can pop
     // mid-fade, not even an un-smoothed control or the Level-Match re-injection
-    // (#1, 0.6.4/0.6.5 feedback).
-    // The same word carries the A/B switch (requestAbSwitch), taken first against the state being
+    // (#1, 0.6.4/0.6.5 feedback). It starts here, on a snapshot that holds every one of
+    // its writes (ADR-0057), so that bottom adopts the complete destination.
+    // The same word carries the A/B switch (requestAbSwitch), applied first against the state being
     // left (ADR-0007, Amendment of 2026-09-25, A/B provenance).
-    const bool forceDuck = takeRequests (duckRequest.exchange (0, std::memory_order_relaxed));
+    const bool forceDuck = startTakenRequests();
 
     // Begin (or re-begin) a forced duck: mark it forced and latch the dry-fill
     // decision against the state being heard RIGHT NOW (getLatencySamples() tracks
@@ -866,9 +1011,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:782), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:795) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:832) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:927), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:940) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:977) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -877,7 +1022,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1317) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1462) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:

@@ -1032,7 +1032,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2634`).
+    (`src/PluginProcessor.cpp:2672`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1101,7 +1101,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:2178`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:2211`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1207,7 +1207,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2819`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2857`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1287,6 +1287,14 @@ turn late) and leaves a save issued on the host thread right after its restore d
     SETTLE. §10's precedence is likewise unchanged: an action after a restore's arrival still lands on
     top of it; the lock orders two replacements, it does not choose between them.
 
+    *Note of 2026-09-27 ([ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md), Accepted; `KNOWN_ISSUES.md` KI-032, fixed in 0.9.9).* For a FORCED bulk swap — an A/B
+    switch, undo, redo, a preset load — the engine no longer ADOPTS such a snapshot. The swap's
+    request freezes adoption, its completion is published with release after its last parameter
+    store, and the forced duck starts only on a snapshot read between two acquire takes after that
+    completion, so the bottom adopts the complete destination or nothing. The reader still SAMPLES
+    part of each side while a swap is written; it no longer adopts what it samples. A session restore
+    raises no duck and is outside ADR-0057: for it this paragraph stands as written.
+
     **The bounded audit of the family.**
 
     | site | replacement | excluded before | verdict |
@@ -1363,7 +1371,10 @@ turn late) and leaves a save issued on the host thread right after its restore d
        retarget branch keeps it click-free, so this is a masking miss, not a click. Recorded rather
        than fixed: moving the duck inside the exclusion would hold a DSP request across a write loop.
        **Classified in round 18 (§25) as an intentionally accepted residual — a masking miss, never a
-       click — with its bound stated.**
+       click — with its bound stated.** *(Note of 2026-09-27: the A/B switch has called
+       `engine.requestAbSwitch` since 2026-09-25, not `requestDuck`; and since ADR-0057 the duck cannot
+       open before the swap's completion, which follows its last write, so this residual is closed for
+       forced swaps — §25 item 5's note.)*
 
     Same review, corrected on one point: the exclusion is NOT nested-safe on a single thread. The
     lock is recursive by necessity (the adoption's guard nests `applySoundTree`; the factory apply
@@ -1549,6 +1560,22 @@ turn late) and leaves a save issued on the host thread right after its restore d
     - **The remedy.** The owner's invariant, a forced swap adopts the complete destination or nothing,
       needs a completion the audio thread acquires. That is a Thread Model change: ADR-0057,
       Proposed.
+
+    *Resolved 2026-09-27 ([ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md), **Accepted** on the repository owner's approval and implemented;
+    KI-032 fixed in 0.9.9).* The item-5 residual is closed for forced swaps. Every forced swap's request
+    carries a sequence, and its completion is a release publication after its last parameter store
+    (the processor's `BulkApply`; PresetManager's `onSoundApplied`). The engine takes the request word
+    with acquire before and after reading each snapshot, adopts nothing while a completion is awaited,
+    and starts the forced duck only on a snapshot read between two takes after it. The duck therefore
+    cannot open before the parameters have moved — the masking miss is gone, not merely bounded — and
+    the bottom adopts the complete destination. A lock-contended switch now simply keeps the source
+    playing, unducked, until its completion. The contract at `AnamorphEngine.h` now reads: *"Call
+    BEFORE changing the parameters. With sequence 0 (the engine API) the duck starts at the next block
+    … With a `bulkSeq` (the processor's bulk swaps) the engine adopts nothing until the swap's
+    completion, published after its last write (completeBulkApply), and the duck starts then, on the
+    complete destination."* §24's lock and bound are unchanged. The host-pumped restore or GUI
+    transaction nested inside a swap's window (§24's examined residual) is also unchanged: it is not a
+    bulk swap and raises no duck.
 
     One more transient belongs to §15 rather than here: a restore taken by the message thread
     while a newer one completes and frees an untaken middle one (R0 in hand, R2's `put` freeing an

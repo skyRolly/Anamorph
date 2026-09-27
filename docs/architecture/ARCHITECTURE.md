@@ -35,11 +35,13 @@ Evidence [Verified]:
 
 The wrapper reads the APVTS atomics once per block and fills an `EngineParameters` POD
 (`ParamPointers::toEngine`), then hands it to the engine. The engine never touches a
-parameter ID.
+parameter ID. Since ADR-0057 the wrapper hands the engine a READER rather than a snapshot
+(`engine.setParametersFrom`): the engine calls it between its two acquire takes of the request
+word, so a bulk swap's forced bottom adopts only a complete destination.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:326-406 (`toEngine`)
-- Source: src/PluginProcessor.cpp:436-441 (per-block snapshot → `engine.setParameters` → `engine.process`)
+- Source: src/PluginParameters.cpp:330-410 (`toEngine`)
+- Source: src/PluginProcessor.cpp:455-462 (per-block read inside `engine.setParametersFrom` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -74,7 +76,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:386 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:392 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 
@@ -83,7 +85,7 @@ Evidence [Verified]:
 - Output is **always stereo**. **mono → mono is Not Supported** (deliberately rejected).
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:209-219 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
+- Source: src/PluginProcessor.cpp:213-223 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
 
 ## 6. Cross-references
 

@@ -10,7 +10,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 
 | Module | Audio-path status | Allocation (prepare only) | Evidence |
 |---|---|---|---|
-| `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO | n/a (engine.prepare) | src/PluginProcessor.cpp:384-452 |
+| `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO. Since ADR-0057 the snapshot is read inside `engine.setParametersFrom`, between two acquire `exchange`s of the request word, plus O(1) branches: no wait, spin, lock or allocation (Test 75's armed guard counts 0 across every handshake path; `check-realtime.py` seeds `setParametersFrom` and `takeRequestWord`) | n/a (engine.prepare) | src/PluginProcessor.cpp:390-463 |
 | `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | src/dsp/AnamorphEngine.cpp:43-213 vs :660-1339 |
 | `MidSide` | **Verified** — pure arithmetic, `noexcept` | none | MidSide.h:21-42 |
 | `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:15-22,46-63 |
@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: src/dsp/AnamorphEngine.cpp:2124-2174.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:2269-2319.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 
@@ -94,7 +94,7 @@ calls per run) rather than once in a session.
 
 **The SWITCH is armed as well as the steady state, since 2026-08-19, and until then it was not.**
 Each of the 32 configurations is now applied *inside* the armed region, so the block that adopts a
-discrete change — `src/dsp/AnamorphEngine.cpp:1286-1427`: algorithm tails cleared, the three
+discrete change — `src/dsp/AnamorphEngine.cpp:1431-1572`: algorithm tails cleared, the three
 oversamplers and the chorus reset on an oversampling-path change, the crossover cleared on a
 topology change — runs with the counters watching. Before that the configuration was applied and
 then `reset()` *outside* the armed region, and `reset()` flushes an in-flight duck straight to its

@@ -84,9 +84,13 @@ SCAN_DIRS = ["src"]
 # (ER-RT-02; a seeded no-alloc `std::mutex` + `lock_guard` was measured
 # invisible). Seeding the names scans their bodies -- and their own same-file
 # closures -- directly.
+# `setParametersFrom` and `takeRequestWord` for the same reason (ADR-0057): the
+# per-block entry became the header template `setParametersFrom`, whose name the
+# `setParameters` seed does not match, and its request take (`takeRequestWord`,
+# in the .cpp) is called only from header inlines, so no same-file walk reached it.
 AUDIO_FN = re.compile(r"\b(process|processBlock|processSample|applyInputConditioning|"
                       r"processNonlinearRegion|pushBlock|publish|reset|softReset|"
-                      r"setParameters|toEngine)\b")
+                      r"setParameters|setParametersFrom|takeRequestWord|toEngine)\b")
 
 # (regex, human-readable violation class). Kept deliberately small: every entry
 # is a construct from the policy's forbidden list that can be written literally.
@@ -665,6 +669,16 @@ def reachable_bodies(clean: str):
                 queue.append((f"{label} -> {callee}", callee, cs, ce))
 
 
+# ADR-0057, PRECONDITION 2: every audio-thread read of a swap-carried value is an
+# acquire or stronger. `toEngine` reads the whole snapshot, and a bulk swap's
+# forced bottom adopts a destination only as complete as those loads are ordered:
+# a relaxed (or consume) load there breaks Claim 2 on weakly ordered hardware
+# (ARMv8) while every x86-64 test still passes. So the explicit weak orders are a
+# violation inside `toEngine`'s own body; the default `load()` is seq_cst.
+WEAK_ORDER = re.compile(r"\bmemory_order_(relaxed|consume)\b|\bmemory_order::(relaxed|consume)\b")
+ORDERED_FN = re.compile(r"\b(toEngine)\b")
+
+
 def scan_text(text: str, path: str):
     """Return a list of (path, line, function, violation-class, source-line)."""
     clean = strip_comments_and_strings(text)
@@ -678,6 +692,14 @@ def scan_text(text: str, path: str):
                 line_no = base_line + segment.count("\n", 0, hit.start())
                 src = raw_lines[line_no - 1].strip() if line_no - 1 < len(raw_lines) else ""
                 findings.append((path, line_no, name, label, src))
+    for name, start, end in _bodies(clean, ORDERED_FN):
+        segment = clean[start:end]
+        base_line = clean.count("\n", 0, start) + 1
+        for hit in WEAK_ORDER.finditer(segment):
+            line_no = base_line + segment.count("\n", 0, hit.start())
+            src = raw_lines[line_no - 1].strip() if line_no - 1 < len(raw_lines) else ""
+            findings.append((path, line_no, name,
+                             "a weak load order where ADR-0057 precondition 2 needs acquire or stronger", src))
     return findings
 
 
@@ -719,6 +741,15 @@ MUST_FIRE = [
     ("a same-file helper called from setParameters is scanned too",
      "void Engine::applyDuck() { usleep (100); }\n"
      "void AnamorphEngine::setParameters (const EngineParameters& in) noexcept { applyDuck(); }"),
+    # ---- ADR-0057: the per-block entry and its request take ------------------
+    ("a relaxed load in toEngine -- ADR-0057 precondition 2",
+     "anamorph::EngineParameters ParamPointers::toEngine (int os) const"
+     " { EngineParameters e; e.width = width->load (std::memory_order_relaxed); return e; }"),
+    ("a lock in setParametersFrom -- the processor's per-block entry since ADR-0057",
+     "template <typename R> void setParametersFrom (R&& read) noexcept"
+     " { std::lock_guard<std::mutex> g (m); adoptSnapshot (read(), true); }"),
+    ("a sleep in takeRequestWord -- reached only from header inlines",
+     "bool AnamorphEngine::takeRequestWord() noexcept { usleep (100); return false; }"),
     ("blocking IO in toEngine -- the wrapper's other cross-file per-block callee",
      "anamorph::EngineParameters PluginParameters::toEngine (int os) const"
      " { std::fprintf (f, \"x\"); return {}; }"),
@@ -862,6 +893,9 @@ MUST_FIRE = [
 ]
 
 MUST_STAY_SILENT = [
+    ("toEngine's default (seq_cst) loads satisfy ADR-0057 precondition 2",
+     "anamorph::EngineParameters ParamPointers::toEngine (int os) const"
+     " { EngineParameters e; e.width = width->load(); e.mix = mix->load (std::memory_order_acquire); return e; }"),
     # THE FALSE-POSITIVE CLASS THE UNBOUNDED BRACE SEARCH CREATED, and the reason
     # `_is_declarator_tail` exists. A call whose arguments include a lambda puts a
     # `{` after its `)` with no `;` in between -- the lambda's `;` comes AFTER the

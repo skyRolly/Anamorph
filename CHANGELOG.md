@@ -20,16 +20,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.9] — 2026-09-27
 
-**Known issues**
-- **KI-032 (confirmed, not fixed):** an A/B switch, Undo, Redo or a preset load made while your host
-  processes much faster than real time (an offline render, a host that renders ahead) — or while its
-  user-interface thread stalls for ~10 ms or more (at 256-sample buffers) — can take the new sound
-  partly written. The switch's fade-in plays some of the new settings with the rest of the old sound,
-  then settles to the new sound (about 50 ms later in the measured case). The new slot's Level Match
-  level is thrown away if the host re-prepares before it has re-measured. Real-time playback without
-  such a stall is not affected. The fix changes how a new sound is handed to the audio thread and is
-  awaiting architecture review (ADR-0057, Proposed; `docs/KNOWN_ISSUES.md` KI-032).
-
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
   was replacing.** Anamorph writes a preset to a temporary file and then swaps it into place, which is
@@ -234,6 +224,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   coverage: Test 67, Test 68, Test 69, Test 70, Test 72, Test 73, Test 74, State tests 131, 132, 133, 134,
   136, 137, 138 and 120. Evidence: PR #156.
   [Verified]
+- **An A/B switch, Undo, Redo or a preset load no longer lands on a half-written sound during an
+  offline render or a stalled host.** Each of these swaps the whole sound behind a short masking fade,
+  and the new settings are written one at a time. The fade used to swap at a fixed point in the audio
+  whether or not the writing had finished, so when the host processed audio much faster than real time
+  (an offline render, a host that renders ahead) or its user-interface thread stalled for ~10 ms or
+  more, the fade-in could play some of the new settings with the rest of the old sound — B's Drive with
+  A's Width — or the old sound whole, before settling. The previous sound now keeps playing, at full
+  level, until the new one is completely written, and the switch then lands whole. Real-time playback
+  without such a stall is unchanged; in an offline render the switch lands later in the rendered
+  timeline, by the time the writing took. Decision: ADR-0057.
+  Regression coverage: Test 75, State tests 139 and 140. Evidence: PR #156. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

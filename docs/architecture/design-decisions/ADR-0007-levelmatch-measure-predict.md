@@ -1,6 +1,6 @@
 # ADR-0007 — Level Match = BS.1770 Measure + absolute Predict
 
-**Status:** Accepted
+**Status:** Accepted — its A/B provenance handoff (Amendment of 2026-09-25) amended by [ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md) (2026-09-27: the request word gains a release completion and acquire takes; the switch is applied when the swap starts)
 
 ## Context
 A fair A/B needs the processed output loudness-matched to the dry in real time. A pure measured
@@ -86,7 +86,7 @@ path: a host reset clears **audio**, and leaves **display and the user's own lat
 same pass found `levels.reset()` on this path wiping `peakHoldL/R` — a held peak `LevelMeters.h`
 documents as "never falls", with its reset rule stated in the same header: *"on a number click or a
 playback restart"*. The product has exactly two such paths and a transport stop is neither
-(`src/gui/LevelMeter.h:27`, `src/PluginProcessor.cpp:442`). Measured, a transport stop turned a held
+(`src/gui/LevelMeter.h:27`, `src/PluginProcessor.cpp:448`). Measured, a transport stop turned a held
 −0.92 dB into −100.00 dB — destroying the reading at the moment the user stopped to read it.
 `correlation` and `levels` are now cleared under `ResetScope::everything` only, and the play-edge
 and seek clears are measured intact (−0.92 dB kept across the stop, −33.98 dB after the next play).
@@ -219,7 +219,7 @@ against a fresh instance at the destination state:
   input sample and the self-heal's `loudness.reset()` (ADR-0009), and `applyAutoGain`'s `jlimit`
   passes NaN: Output Gain became NaN (silence through a host reset and a re-prepare, `value="nan"`
   saved, Undo to 0 dB instead of the user's value). "Apply locks the measured gain" has nothing to
-  lock there, so Apply now does nothing (`src/PluginProcessor.cpp:469`); every finite Apply is
+  lock there, so Apply now does nothing (`src/PluginProcessor.cpp:480`); every finite Apply is
   unchanged. State test 129.
 
 **Recorded for the owner, not decided here** (each is a change to this ADR, not a defect of it):
@@ -270,7 +270,7 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   starts from the value it publishes, converged or still converging on an earlier edit (*Note of
   2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:1991`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:2136`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
@@ -525,11 +525,11 @@ Gate: a text correction to this Accepted ADR, flagged in the PR #156 body and th
 compatibility trigger (no parameter, schema, thread, order or latency change — the write is on the
 prepare path).
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1289` (`measChangedAtBottom`, one
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1434` (`measChangedAtBottom`, one
 answer for the Case-A landing and the injection re-arm), `:705` (the re-arm, since the A/B provenance
 amendment in `adoptRememberedMatch`, which the two consumers call at `:1407-1414` and `:1445-1452`), `:63` (`keepMatch`), `:77` and `:167` (the kept matcher skips
 `loudness.prepare` and takes `softReset`), `:291` (`reset (everything)`), `:175-176` (the kept result
-becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:123-129` (`primeParameters` records
+becomes the applied gain; the correction); `src/dsp/AnamorphEngine.h:130-138` (`primeParameters` records
 `primeMeasChanged`).
 
 ## Amendment, 2026-09-25 — a same-rate re-prepare keeps only a result that is current (Devin review: live edits)
@@ -808,7 +808,11 @@ must be read together. Capture and restore both run on the audio thread (or the 
 the fields are written.
 - **Capture:** when the engine takes the switch (`takeRequests`, at the top of `setParameters`, or in
   `primeParameters` before it adopts the prime), it records the slot being left from its own `p`, `sr`
-  and matcher, the matcher's evidence included.
+  and matcher, the matcher's evidence included. *Since ADR-0057 (2026-09-27):* when the swap STARTS —
+  `startTakenRequests` → `switchAbSlots`, on the first trusted snapshot after the swap's completion, or
+  in a trusted prime. Nothing is adopted between the request and that start, so the state recorded is
+  still the source's, exactly what the request-time capture recorded; the engine API's sequence-0 switch
+  (`takeRequests`) is recorded at the next trusted snapshot, as before.
 - **Not measured during a duck in flight** — before its bottom — that has made a measurement-input change
   live which only that bottom will report (`duckMeasDirty`, the rule `prepare()` already applies; the bottom
   retires it: Note of 2026-09-26, the duckMeasDirty lifecycle), **and then with no evidence**: what the
@@ -848,9 +852,22 @@ The writers never clobber one another:
 - `forgetAbMatchMemory()`, from `adoptRestoreTail` (ER-STATE-20), is a CAS that keeps a pending duck
   and drops a pending switch.
 
+*Amended 2026-09-27 by [ADR-0057](ADR-0057-a-bulk-swap-adopts-only-a-completely-applied-destination.md) (Accepted on the repository owner's approval; KI-032, fixed in 0.9.9).* The
+word is no longer taken with one relaxed `exchange`, and this handoff is no longer ordering-free. It also
+carries bit 12 (a bulk swap's completion), bits 13–16 (the request's sequence) and bits 17–20 (the
+completion's sequence); `requestAbSwitch (from, to, bulkSeq)` stores the switch's sequence;
+`completeBulkApply` publishes the completion with a **release** CAS after the destination's last
+parameter store; the engine takes the word with an **acquire** `exchange` before and after reading
+each snapshot (`takeRequestWord`), stashes the switch until its completion, and applies the A/B
+bookkeeping above when the swap starts, on a snapshot holding the complete destination.
+`forgetAbMatchMemory()` keeps the duck, the sequence and the completion bits. The destination's record is
+therefore judged against the complete destination: a measured record lands measured.
+
 The message thread reads nothing of the engine's for a switch, and no audio-thread function waits,
 locks or allocates. The new audio-path functions are in `AnamorphEngine.cpp`, where the realtime lint
-reaches them from `setParameters` and `process` (a seeded lock is reported). They copy one 132-byte
+reaches them from `setParameters` and `process` (a seeded lock is reported) — and, since ADR-0057,
+from `takeRequestWord` and `setParametersFrom`, seeds of their own, because the acquire take is called
+only from header inlines that no same-file walk from `setParameters` reaches. They copy one 132-byte
 trivially copyable snapshot per switch (and, since 2026-09-26, two doubles of evidence). Under ThreadSanitizer, 5.2 M message-thread requests against 4000 audio blocks with a prime and a
 prepare every 500 gave no report; the same harness with the record written from the message thread gave
 four. `injectMatchGainDb` stays as an engine API whose caller asserts
@@ -860,15 +877,15 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
 
 | path | record taken | restored | measured when restored |
 |---|---|---|---|
-| `abSwitchTo` / `abToggle` (both reach `abSwitchToAdopted`) | the slot left, at the next block | at the forced bottom | if recorded measured, same rate, same measurement inputs; or, recorded not measured there, as its evidence's mean when that is a measurement (2026-09-26) |
-| a second switch before the first is taken (A → B → A) | the source of the pending one, once | the final destination | as above; the slot in between keeps its record |
+| `abSwitchTo` / `abToggle` (both reach `abSwitchToAdopted`) | the slot left, at the next block (since ADR-0057: when the swap starts, its completion taken — the same source state) | at the forced bottom | if recorded measured, same rate, same measurement inputs; or, recorded not measured there, as its evidence's mean when that is a measurement (2026-09-26) |
+| a second switch before the first is taken (A → B → A; since ADR-0057: before the first starts) | the source of the pending one, once | the final destination | as above; the slot in between keeps its record |
 | a switch while a restore is armed | none | the new destination | as above |
 | `abCopyToOther` onto the inactive slot | unchanged (its state moves, its record does not) | at the next switch to it | no, if the copy moved a measurement input (the evidence dropped with it); otherwise as the first row (State test 137 (D)) |
 | the shared Oversampling setting changed on the other slot | — | at the next switch | no (`oversample` is a measurement input) |
 | an edit to the slot not yet adopted when it was left, or made during the return fade | — | — | no (the recorded state differs from the adopted one) |
-| a switch the prime takes (`prepareToPlay` with a switch pending) | from the state before the prime | on the first block (the duck was dropped) | at the same rate as above; at a new rate no |
+| a switch the prime takes (`prepareToPlay` with a switch pending; since ADR-0057 only a completed one, on a trusted snapshot — one still being written stays pending and starts, ducked, at the first block that reads it complete) | from the state before the prime | on the first block (the duck was dropped) | at the same rate as above; at a new rate no |
 | a new sample rate | kept, stamped with its rate | — | no at the new rate; yes again back at the rate it was measured at |
-| a host `reset()` with a switch in flight | as taken | on the next block | as above |
+| a host `reset()` with a switch in flight | as taken | on the next block | as above (since ADR-0057 a reset adopts only `pendingP`, always a trusted snapshot: a switch still awaited is not landed, and starts at its completion) |
 | `setStateInformation` (`adoptRestoreTail`) | every record forgotten: 0 dB, not measured; a pending switch dropped | — | no |
 | NaN self-heal, first prepare, any flush | the live result becomes current, not measured | — | a slot left before the measure confirms is not measured |
 | `injectMatchGainDb` (engine API) | — | at the next forced bottom, or the next block | yes, by the caller's word |
@@ -978,17 +995,21 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
   worklog §T1's: with 256-sample blocks, rarely at 64× real time (the source whole) and routinely from
   ~100×, and at real time behind a ~12 ms stall of the message thread.
   - **The owner's invariant** (2026-09-27): a forced swap adopts the complete destination or nothing.
-  - **The recommended architecture:** the two-phase request word this bullet names. It is **ADR-0057,
-    Proposed**. It is blocked at the Architecture Review Gate because it adds an atomic ordering to the
-    request word.
+  - **The architecture:** the two-phase request word this bullet names. It was **ADR-0057,
+    Proposed**, blocked at the Architecture Review Gate because it adds an atomic ordering to the
+    request word; it is now **Accepted** (below).
     - *Revised 2026-09-27 (worklog §U).* The swap starts at its completion, and the source plays
       until then. There is no hold at the bottom and no cap.
     - The A/B bookkeeping this amendment defines runs at that start, against the unchanged source, so
       every record is the same as today's. The destination's is judged against the complete
-      destination. It would change this amendment's
-    "The handoff: one existing atomic, no new path" and its gate record's "The thread model gains no
-    thread, no direction and no ordering".
-  - **Status:** open, `KNOWN_ISSUES.md` KI-032.
+      destination. It changed this amendment's
+      "The handoff: one existing atomic, no new path" and its gate record's "The thread model gains no
+      thread, no direction and no ordering" (both annotated in place).
+  - **Status: RESOLVED 2026-09-27.** ADR-0057 is **Accepted** (the repository owner's approval, recorded
+    in ADR-0057) and implemented; `KNOWN_ISSUES.md` KI-032 is fixed in 0.9.9. A forced bottom adopts the
+    complete destination or nothing, and the destination's measured record lands measured at every write
+    position (State test 139 (B); State test 140 S1 and S11; ADR-0057, *Evidence*). The provenance rules
+    of this amendment are unchanged: only the moment the switch is applied moved, to the swap's start.
 - **Evidence across visits** — *adopted 2026-09-26 (revision below).* **Cross-rate retention, and the
   measure's own scope.** Currency is a function of the measurement inputs and the rate: a programme change, or a bus-layout change before a
   same-rate re-prepare, is the measure's ordinary tracking, as for any converged result. The P1b
@@ -1012,13 +1033,14 @@ the value is measured (Tests 67 and 69 drive it); the processor no longer calls 
 | 1 | the author flags the change as gated | the PR #156 body and the implementing commit message: a change to an **Accepted ADR** (the amendment above's A/B currency and its recorded case) and to the payload of an existing cross-thread atomic |
 | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's authorization of 2026-09-25**: *"Do not ask for another owner decision unless the repository contains genuinely contradictory requirements that make a technically defensible decision impossible."* The boundary: *"A remembered A/B Level Match gain must carry the validity state of the measurement result that produced it."* and *"Do not simply add a boolean because it is easy if the actual lifecycle requires stronger provenance."* The threading constraints: *"No audio-thread mutexes."*, *"No new audio-thread shared mutable state that introduces a race."*, *"Do not make the Processor depend on engine-thread-only mutable state without an established handoff mechanism."* Review of the implementation: pending, PR #156 |
 | 3 | if the change is a decision, an ADR is added/updated | this Amendment, in place |
-| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter ID, range, default, automation flag, serialization field (the record was never serialized) or reported-latency value changes, and no DSP node or stage order changes. The thread model gains no thread, no direction and no ordering. The existing relaxed request word carries two slot indices and a forget bit (`THREAD_MODEL.md`, `THREADING_POLICY.md`), and the processor's `abMatchGain[]` becomes engine state written and read only where the matcher is. |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter ID, range, default, automation flag, serialization field (the record was never serialized) or reported-latency value changes, and no DSP node or stage order changes. The thread model gains no thread, no direction and no ordering. The existing relaxed request word carries two slot indices and a forget bit (`THREAD_MODEL.md`, `THREADING_POLICY.md`), and the processor's `abMatchGain[]` becomes engine state written and read only where the matcher is. *(Superseded on 2026-09-27 by ADR-0057, which adds a release/acquire ordering and a completion to this word under its own Architecture Review, approved by the repository owner.)* |
 
 Related code (this amendment): `src/dsp/LoudnessMatch.h` (`setDisplayedGainDb (db, measured)`,
 `isResultMeasured`, `inputsChanged`), `src/dsp/LoudnessMatch.cpp` (`reset`; the predict floor's
 un-measure; the confirmation that sets `resultMeasured`), `src/dsp/AnamorphEngine.h`
 (`requestAbSwitch`, `forgetAbMatchMemory`, `requestDuck`, `AbMatchMemory`, the request-word bits),
-`src/dsp/AnamorphEngine.cpp` (`requestAbSwitch`, `forgetAbMatchMemory`, `takeRequests`,
+`src/dsp/AnamorphEngine.cpp` (`requestAbSwitch`, `forgetAbMatchMemory`, `takeRequests` — since ADR-0057
+also `takeRequestWord`, `startTakenRequests` and `switchAbSlots`, where the record is now written —
 `restoreAbSlot`, `adoptRememberedMatch`, and the two consumers in `process`), `src/PluginProcessor.cpp`
 (`abSwitchToAdopted`, `adoptRestoreTail`). Tests: Test 70, State test 134; State test 132 leg (6)'s
 pre-roll.
@@ -1148,13 +1170,13 @@ rejected are listed in Test 73's header and worklog §R6.
 
 Related code (this revision): `src/dsp/LoudnessMatch.h` (`Evidence`, `getEvidence`, `restoreUnmeasured`,
 `kMeasuredShare`), `src/dsp/LoudnessMatch.cpp` (`restoreUnmeasured`; the evidence beside the post-change share),
-`src/dsp/AnamorphEngine.h` (`AbMatchMemory::evidence`), `src/dsp/AnamorphEngine.cpp` (`takeRequests`,
-`restoreAbSlot`, `adoptRememberedMatch`). Tests: Test 73, State test 137; Test 70 (3b), State test 134 (B).
+`src/dsp/AnamorphEngine.h` (`AbMatchMemory::evidence`), `src/dsp/AnamorphEngine.cpp` (`takeRequests` —
+`switchAbSlots` since ADR-0057 — `restoreAbSlot`, `adoptRememberedMatch`). Tests: Test 73, State test 137; Test 70 (3b), State test 134 (B).
 
 ## Note, 2026-09-25 — a gain-only engage lands on the published value, current or not (Devin review: "Level Match engages on stale compensation"; "stale engage")
 
 Devin's review of `1c22d51` (PR #156) found *"Level Match engages on stale compensation"* at
-`src/dsp/AnamorphEngine.cpp:1302-1303`. The sequence it gives:
+`src/dsp/AnamorphEngine.cpp:1447-1448`. The sequence it gives:
 1. With Level Match off, a live edit to something the measurement reads leaves the result not current
    (`inputsChanged`; the Amendment of 2026-09-25, live edits).
 2. Level Match is turned on before the measure has caught up.
@@ -1336,7 +1358,7 @@ against the currency the matcher now reports.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, in place: the decision it records (Q4) stands |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change; no behaviour change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1289-1303` (the bottom's answer and the landing
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1434-1448` (the bottom's answer and the landing
 predicate), `:1991-1992` (the landing), `:2025-2026` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
 (`inputsChanged`, `isResultCurrent`). Tests: Test 71, State test 135.
 
@@ -1377,7 +1399,7 @@ duck that nothing has reported to the matcher yet?
     an A/B restore or injection (P1b);
   - `prepare()` (`adoptsMeasChange`: no keep);
   - `reset()` (`adoptsMeasChange`: `inputsChanged()`);
-  - the A/B record (`takeRequests`: not measured, and — since the revision of 2026-09-26 — no evidence).
+  - the A/B record (`takeRequests`, `switchAbSlots` since ADR-0057: not measured, and — since the revision of 2026-09-26 — no evidence).
 - **Cleared** by a forced entry, by a re-duck from the fade-in (whose copy then marks it again), by `reset()`,
   and — from this note — by the bottom that reports it.
 
@@ -1455,9 +1477,9 @@ flag is audio-thread state, written in `process()` beside the report it retires.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, and the three in-place clarifications it lists |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1288-1296` (the bottom's report and the retirement),
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1433-1441` (the bottom's report and the retirement),
 `:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:656-659` (the A/B record),
-`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:316-321` (the flag). Tests: Test 72,
+`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:381-386` (the flag). Tests: Test 72,
 State test 136.
 
 ## Note, 2026-09-26 — a non-finite Velvet Density is the density the Velvet plays (Devin review: "Identical Velvet slots lose matched levels"; "the non-finite Velvet Density")
@@ -1598,9 +1620,9 @@ never runs concurrently with `process()`. This is the guarantee under which the 
 | 3 | if the change is a decision, an ADR is added/updated | this Note, and the in-place clarifications it lists |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
 
-Related code (this note): `src/dsp/AnamorphEngine.h:245-252` (`withPlayedVelvetDensity`, `measurementChangeFrom`),
+Related code (this note): `src/dsp/AnamorphEngine.h:310-317` (`withPlayedVelvetDensity`, `measurementChangeFrom`),
 `src/dsp/AnamorphEngine.cpp:599-603` (`measurementChangeFrom`), `:664` (the capture), `:688-689` (the restore);
-the consumers `src/dsp/AnamorphEngine.h:123-129` (the prime) and `src/dsp/AnamorphEngine.cpp:62`, `:239`, `:796`, `:817`, `:906`,
+the consumers `src/dsp/AnamorphEngine.h:130-138` (the prime) and `src/dsp/AnamorphEngine.cpp:62`, `:239`, `:796`, `:817`, `:906`,
 `:1289`; `src/dsp/VelvetNoise.h:40-45` (`setDensity`, `getTargetDensity`). Tests: Test 74, State test 138.
 
 ## Consequences
@@ -1612,9 +1634,9 @@ the consumers `src/dsp/AnamorphEngine.h:123-129` (the prime) and `src/dsp/Anamor
   un-measure), `:200-226` (measure/hold), `:124-133` (`softReset`: the analysis only), `:65-80` (`reset`:
   both halves), `:230-286` (the result's currency, its confirmation and the post-change evidence; the
   amendments of 2026-09-25 and the revision of 2026-09-26), `:82-95` (`restoreUnmeasured`)
-- `src/dsp/AnamorphEngine.cpp:1866-1867` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
+- `src/dsp/AnamorphEngine.cpp:2011-2012` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
   (silence-edge snap), `:611-692` (the A/B record: request, forget, capture, restore)
-- `src/PluginProcessor.cpp:455` (`applyAutoGain`)
+- `src/PluginProcessor.cpp:466` (`applyAutoGain`)
 
 Evidence [Verified]:
 - Source: src/dsp/LoudnessMatch.cpp:16-289

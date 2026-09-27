@@ -3346,7 +3346,8 @@ The final tree is `9e38310`'s `src/`, unchanged, with State test 139 added.
 
 ### T9. Recorded, not changed (deferred)
 
-- **KI-032 itself**: ADR-0057 awaits Architecture Review. On acceptance, the steps are:
+- **KI-032 itself** *(superseded: B2, not this B2-H plan, was approved and implemented on 2026-09-27 — §V)*:
+  ADR-0057 awaits Architecture Review. On acceptance, the steps are:
   - the request word's completion and the bottom's hold (steps 1–4);
   - the host reset and prime rule;
   - undo, redo and the preset load on the same protocol;
@@ -3623,7 +3624,8 @@ No production file changed, so the head's behaviour is `e49a90e`'s.
 
 ### U9. Recorded, not changed (deferred)
 
-- **KI-032.** On acceptance, ADR-0057's table of required changes is the implementation plan:
+- **KI-032** *(done 2026-09-27: ADR-0057 accepted on the repository owner's approval and implemented — §V)*.
+  On acceptance, ADR-0057's table of required changes is the implementation plan:
   - the engine;
   - the processor's call sites and the `prepareToPlay` re-read;
   - the preset hooks' guard;
@@ -3639,3 +3641,127 @@ No production file changed, so the head's behaviour is `e49a90e`'s.
 
   S5, F13(1b) and the stale-engage decision are not reopened.
 - **§T9's and §S10's items stand as recorded.**
+
+## V. ADR-0057 accepted and implemented: a forced bulk swap adopts the complete destination (0.9.9)
+
+Continues PR #156 from `f12cc80`. The repository owner approved B2 — not B2-H — in the task that asked for its
+implementation, with the version kept at 0.9.9, the changelog date at 2026-09-27, and no further architecture
+approval step. That approval is the Architecture Review Gate's human decision; ADR-0057 records it as its Status.
+No reviewer other than the repository owner is named anywhere.
+
+### V1. The root cause (unchanged from §T, §U)
+
+A forced bulk swap's request was its only message, and it preceded the writes. The engine started the duck at the
+next block and adopted, at the bottom, whatever snapshot its block read. Nothing told it the destination was
+complete, so under burst processing or a stalled message thread the bottom adopted a mixture or the source whole.
+Every access was atomic: a snapshot-consistency defect, not a data race.
+
+### V2. The implementation
+
+- **Engine** (`src/dsp/AnamorphEngine.{h,cpp}`): the request word's bits 12 (completion), 13–16 (request
+  sequence) and 17–20 (completion sequence); every writer an RMW that keeps them; `completeBulkApply` a release
+  CAS; `takeRequestWord` the acquire take and its processing (`awaitSeq`, `startPending`, the stash — first
+  source, newest destination —, `legacyReq` for sequence 0, a forget dropping the stash);
+  `setParametersFrom` / `primeParametersFrom` / `prepareFrom`, which call a reader between two takes;
+  `adoptSnapshot` / `primeSnapshot`, which return while untrusted; `startTakenRequests`, which applies the
+  engine-API requests and then starts a completed swap (its A/B bookkeeping through `switchAbSlots`, then the
+  forced duck). The engine API's `setParameters (np)` / `primeParameters (np)` make one take
+  (`acquireForEarlierSnapshot`).
+- **Processor** (`src/PluginProcessor.{h,cpp}`): `readEngineSnapshot()`; `beginBulkApply` / `endBulkApply` and
+  the scoped `BulkApply` — a swap begun inside another joins it; `abSwitchToAdopted`, `undo`, `redo` use it,
+  completing right after the last store; the preset hooks request with a sequence in `onAboutToLoad` and
+  complete in `onSoundApplied`; `processBlock` calls `setParametersFrom`; `prepareToPlay` calls `prepareFrom`.
+- **Presets** (`src/PresetManager.{h,cpp}`): `onSoundApplied`, fired exactly once per `onAboutToLoad` by
+  `SoundAppliedGuard` — after the factory override loop, after a user preset's `applySoundTree`, after
+  `loadFile`'s `applySoundTree`, or by the guard's destructor on any other path.
+- **Precondition 2** (`src/PluginParameters.cpp` comment; `scripts/check-realtime.py`): a relaxed or consume
+  load order inside `toEngine` is a lint violation; `setParametersFrom` and `takeRequestWord` are now seeds (the
+  old `\bsetParameters\b` seed did not match the template, and `takeRequestWord` is called only from header
+  inlines). Self-test: 97 cases.
+
+**Deviations from ADR-0057's design text**, each recorded in the ADR: the callable-reader API instead of a
+separate `acquireRequests()` (the read-before-take and reuse mistakes become impossible in the processor, and
+their negative controls deterministic); the engine API's one-take trust rule; join semantics for a nested swap;
+`onSoundApplied` / `SoundAppliedGuard` as the preset's completion point; the A/B / undo / redo completion after
+the Bypass / view write-back that follows `reassertParameters` (the design text named `reassertParameters`).
+
+**Audited, not changed.** Only four sites raise a bulk-swap request (A/B, undo, redo, the preset hook). A
+host-pumped restore or GUI transaction nested inside a swap's window is ADR-0036 §24's examined residual and raises
+no duck. The exception path's bookkeeping (a guard completion after a throw at the capture) is the same as before.
+
+### V3. Tests
+
+- **DSP Test 75** (new): every interleaving of the handshake through the engine API — 7,791 cases, 0 incomplete,
+  0 allocations with the guard armed on every engine call. A failure is recorded with the guard paused (the first
+  draft built its failure strings while armed, so a control that broke the protocol also tripped the allocation
+  check; fixed before the final run).
+- **State test 139** rewritten from the characterization into the regression: legs (A)–(E) against a
+  complete-at-completion twin, with a partial twin for non-vacuity; (F1) a threaded race checked every block;
+  (F2) the TSan witness.
+- **State test 140** (new): the §U4 enumeration made permanent through the processor, 1,358 cases, every path;
+  each scenario asserts it ran.
+- **`--bulk-swap-probe`** and **`--bulk-swap-stress`** (opt-in). The probe's first version ended its audio thread
+  after a fixed 256 blocks; under a loaded machine the free-running thread finished before `abSwitchTo` had
+  written and completed, and 7 of 40 Mix+Amount trials reported "never landed" with no illegal block — a correct
+  pending swap outside the window, not a protocol failure. The audio thread now runs until the command has
+  returned and 48 blocks more (capped), and the run below is of that version.
+- **Warnings.** GCC 13 (the suite flags) and clang 18 (JUCE's recommended set, the gated flags' superset) report
+  nothing new in any changed translation unit against `f12cc80`, after replacing the new tests' `==` on doubles
+  with `juce::exactlyEqual`, two partial `switch`es with `if` chains, and one narrowing `rng()`.
+
+### V4. Results on the final code
+
+Release, x86-64 Linux, GCC 13, 48 kHz / 256, `ulimit -s 1024`.
+- **Suites:** DSP 944 / 0; State 5,573 / 0 (State tests 127, 129–138 and 130 (7), Tests 66–74 unchanged).
+- **The §U4 enumeration, ported to the final API** (scratch harness `det_final.cpp`, the same 1,245 cases and the
+  S9d addition): final **0 of 1,245** (S9d 0 of 42), twins 458 of 458 bit-identical, 0 stuck; the pre-fix tree
+  (`f12cc80`'s `src/`) through the same harness **689 of 1,245** (S9d 42 of 42). Engine-only allocation: 0.
+- **Probe:** `--bulk-swap-probe 40` **0 of 1,680** (a block holding neither slot 0, landed not measured 0, final
+  wrong 0, flushed 0); pre-fix §U1 573. `--bulk-swap-probe 20 12000` **0 of 120**; pre-fix 40.
+- **Stress:** `--bulk-swap-stress 20` 4,620 trials and `--bulk-swap-stress 20 12000` 4,620 trials (stalls up to 12 ms at a random write): **0 with a state no swap completed, 0 wrong final states, 0 pending** of 9,240; pre-fix §U5 567 of 2,310. The stress mode checks states, not allocations; the audio path's allocation is measured by Test 75 (engine, guard armed on every call: 0) and by the ported enumeration's armed `processBlock` (the next bullet).
+- **Allocation on the processor's audio path.** The ported enumeration arms the allocation guard around every
+  `processBlock` (1,287 cases). The guard is process-wide, and it counted 164 allocations while armed; with the
+  processor's 20 Hz timer stopped, 4 and 12 in two runs. A scratch hook that dumps the allocating thread and stack
+  (`backtrace_symbols_fd`, which does not allocate) classified every armed allocation of that run, twin and
+  write-count rigs included (19): 16 on JUCE's `TimerThread` posting to the
+  message queue — another thread, which the harness's own S14 note names — and 3 in the guard's start-up
+  self-check, which allocates on purpose. **None on the thread calling `processBlock`.** Test 75 (engine, every
+  call armed, one thread) counts 0.
+- **Negative controls** (the final tree with one rule broken, both suites built and run for each; scratch
+  `b2mut/`):
+
+  | control | DSP | State |
+  |---|---|---|
+  | N1 completion before the writes | 944 / 0 (the engine API alone cannot express it) | 14 fail: State test 139 ×13, 140 (1,066 cases) |
+  | N2 no sequence | Test 75 (4) | State test 140 (S3 70, S10 42, S11 34) |
+  | N3 read before the first take | Test 75 ((1) 141, (3) 12) | State test 140 (S9e 12) |
+  | N4 no second take | Test 75 ((1) 564, (2) 490, (3) 24) | State test 140 (S9e 28, S13b 15) |
+  | N5 `prepareFrom` re-using the prime's snapshot | Test 75 ((3) 15) | State test 140 (S9e 14) |
+  | N6 trust after an awaited first take | Test 75 (3,704 cases; (4) ×2) | State test 139 ×12, 140 (1,075) |
+  | N7 one-take path ignoring an awaited swap | Test 75 ((1) 391) | State test 140 (S9b–d 84) |
+  | N8 release and acquire both relaxed (TSan) | — | a data race on State test 139 (F2)'s witness (plus the four suppressed lock-order reports); the final code: none |
+  | N9 the pre-fix behaviour (sequence 0 everywhere) | 944 / 0 (processor-only) | State test 139 ×12, 140 (1,120) |
+  | N10 no completion published | 944 / 0 (processor-only) | 257: State test 140 1,358 of 1,358 (every command pending), 139 ×8, 31, 35, 127, 130–138 |
+  | N11 one take per block in `processBlock` | 944 / 0 (processor-only) | 96: every swap a block late — State tests 35, 127, 130–138; 139 and 140 pass (one take is conservative, not incomplete) |
+
+- **ThreadSanitizer** (clang 18, the State suite): 5,573 / 0; no data race. Its four reports are the pre-existing
+  lock-order inversions of State tests 75, 100, 103 and 113, each matched by `tests/tsan-suppressions.txt`.
+- **AArch64.** Cross-built (`aarch64-linux-gnu-g++` 13.3, Release): `completeBulkApply` → `__aarch64_cas4_rel`
+  (`CASL`, or `LDXR` / `STLXR`); `takeRequestWord` → `__aarch64_swp4_acq` (`SWPA`, or `LDAXR` / `STXR`);
+  `toEngine` 36 `LDAR` for 36 loads. The DSP suite under `qemu-aarch64`: 944 / 0, Test 75 7,791 / 0. qemu runs the
+  guest's accesses with the x86-64 host's TSO ordering: this is the AArch64 code's logic, not weak ordering. The
+  native arm64 run is CI's `macos` job: its result on the pushed head is recorded in the PR #156 description.
+- **Lints:** `check-docs` (and its self-test, 464 cases), `check-dispatch`, `check-portability`, `check-realtime` (97 self-test cases), `check-state-coverage`, and `check-citations --check` against `HEAD` (`f12cc80`, 574 anchors), `659ca0a` (542) and `e49a90e` (573) all pass; its self-test passes (269 cases). The re-anchoring: `--fix` against `f12cc80` moved 157 anchors (plain moves, three self-references in `AnamorphEngine.cpp` comments and two anchor-only comment lines in `.github/workflows/build.yml` and `PRIVACY.md` among them); 31 declared re-aims were re-derived through the same line map; three spans whose cited lines were rewritten were re-aimed by hand and declared (API_REFERENCE's engine span, ADR-0007's prime); and ARCHITECTURE's per-block anchor, already stale at the base (it cited the seek detector), was re-aimed and declared. Two more stale anchors the parser does not track (`ScopedNoDenormals` at `:240` / `:119`) were corrected by hand
+- **CI, PREfast, the sanitizer lane:** run on the pushed head; their record (the PREfast comparison against the 180 C6262 / 8 C26495 / 4 C26498 baseline, the `sanitizers` lane's time, the arm64 `macos` job) is in the PR #156 description
+
+### V5. Recorded, not changed (deferred)
+
+- **The explicit defer list of the brief** stands: cross-rate Level-Match retention, the quiet glide after a flush,
+  automation currency; KI-029, global `toEngine` sanitization, float → int UB; F9, F10, F12; R6a–R6d; ScopeBuffer
+  threading and the vectorscope stop-state; historical documentation cleanup; the per-block Level-Match ramp
+  redesign. S5, F13(1b) and the stale-engage decision are not reopened; `isResultCurrent()` is not a Case-A guard.
+- **Drift reported, not corrected:** `TESTING.md`'s "53 DSP tests"; `KNOWN_ISSUES.md`'s "version-synced to
+  v0.9.6"; `HANDOVER.md`'s "five Fixed entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013's KI-029.
+- **Not re-run this round:** §U8's five earlier Devin controls (the NaN guard, Apply disabled, the kept-result
+  init, the live-edit report, `setDisplayedGainDb` honouring `measured`); their scratch patches no longer exist.
+  The tests they exercised (State tests 129–138, Tests 66–74) pass unchanged on the final code.

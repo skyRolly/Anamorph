@@ -323,6 +323,10 @@ void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
     advancedMode  = s.getRawParameterValue (pid::advancedMode);
 }
 
+// ADR-0057, PRECONDITION 2. Every load below is the default (seq_cst) `load()`: a bulk swap's forced
+// bottom adopts the destination only as complete as these reads are ordered. A relaxed load here would
+// let the engine trust a snapshot holding a NEWER swap's write without seeing its request (Claim 2) --
+// on ARMv8, invisibly to every x86-64 test. check-realtime.py rejects a weak order in this body.
 anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
 {
     using namespace anamorph;

@@ -14262,6 +14262,366 @@ static int runOsOffHandoffProbe()
     return 0;
 }
 
+// =====================================================================================================
+//  Test 75 -- A FORCED BULK SWAP ADOPTS THE COMPLETE DESTINATION OR NOTHING: EVERY INTERLEAVING OF THE HANDSHAKE
+//  (ADR-0057; KNOWN_ISSUES KI-032, fixed; the Devin review "A/B switches adopt incomplete slot states").
+//
+//  THE RULE. A bulk swap (an A/B switch, undo, redo, a preset load) raises its request -- carrying a sequence --
+//  writes the new sound one parameter at a time, and publishes its completion with RELEASE after the last write.
+//  The engine takes the request word with ACQUIRE before it reads each snapshot and again after
+//  (`setParametersFrom`), awaits the newest sequence, adopts nothing while it waits, and starts the forced duck
+//  only on a snapshot read between two takes after the completion. So every state the engine ever adopts -- at a
+//  block, at the forced bottom, at a host reset, at a prime -- is a state some swap left COMPLETE: never a
+//  mixture, never the source taken for the destination.
+//
+//  THE METHOD. The engine API alone, one thread, a MODEL of the message thread. A source S and destinations that
+//  differ in several fields, a discrete one among them; the model's "live" snapshot moves from S toward the
+//  destination one field per write. Each case assigns every event of the swap -- the request, each write, the
+//  completion -- a SLOT relative to the audio thread's blocks: before a block's first take, between that take and
+//  the read, between the read and the second take (the reader runs them: the engine calls it between its
+//  takes), or after the last enumerated block. EVERY non-decreasing assignment is run, so every interleaving the
+//  memory model allows between one block's three steps and the swap's events is covered exactly, not sampled.
+//  After every block and every host reset the engine's adopted snapshot must equal one of the complete states
+//  bit for bit; after the tail it must be the final destination with nothing pending, and a swap whose
+//  completion has been published starts by the end of the next block (nothing waits).
+//
+//  THE FAMILIES
+//   (1) One swap, 4 writes, two blocks: 924 interleavings, each run five ways -- both blocks `setParametersFrom`
+//       (with no reset, a host reset after the first block, or after the second), or one block handing in a
+//       snapshot it read earlier (`setParameters`, one take). The swap is an A/B switch or a bare forced duck,
+//       alternately.
+//   (2) Two swaps back to back, 2 writes each, two blocks: 3,003 interleavings -- a completion and the next
+//       request in one word, a completion of a swap already superseded, a newer request inside a read. The
+//       complete states are S, the first destination and the second.
+//   (3) The activation (`prepareFrom`): the prime's read inside the writes, 84 interleavings, each without and
+//       with a host reset right after (JUCE's AU order) -- 168; the trailing adoption must read afresh.
+//   (4) Sequences: 40 swaps in a row wrap the 4-bit sequence (1..15) twice; a completion carrying another
+//       sequence is ignored and the matching one starts the swap; a forget while a swap is awaited drops its A/B
+//       switch, not the swap; an engine-API (sequence 0) request behaves exactly as before.
+//  Every case of families (1), (2) and (4) runs with the allocation guard armed around every engine call, the
+//  message-thread ones included (Test 38's pattern).
+//
+//  WHAT EACH RULE IS PINNED BY (the negative controls, worklog §V): a completion that ignores the sequence fails
+//  family (4); a snapshot read before the first take fails families (1) and (3); a missing second take, or trust
+//  granted after a first take that left a swap awaited, fails families (1) to (3); the one-take path trusting a
+//  snapshot while a swap was awaited fails family (1)'s `setParameters` runs; an activation re-using the prime's
+//  snapshot fails family (3). The ordering itself (release / acquire) is not observable on one thread: State
+//  test 139 (F2) is its ThreadSanitizer witness.
+static void testABulkSwapIsAdoptedOnlyWhenComplete()
+{
+    std::printf ("Test 75: a forced bulk swap adopts the complete destination or nothing -- every interleaving of its "
+                 "request, writes and completion with the engine's two takes (ADR-0057; KI-032)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    using anamorph::AnamorphEngine;
+    using Params = anamorph::EngineParameters;
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 64;
+
+    // EVERY FIELD, BIT FOR BIT (floats by pattern). The structured binding fails to compile if a field is added
+    // and this list is not.
+    const auto same = [] (const Params& x, const Params& y)
+    {
+        const auto eq = [] (const auto& u, const auto& v)
+        {
+            if constexpr (std::is_same_v<std::decay_t<decltype (u)>, float>) return std::memcmp (&u, &v, sizeof (float)) == 0;
+            else return u == v;
+        };
+        const auto& [x01, x02, x03, x04, x05, x06, x07, x08, x09, x10, x11, x12, x13, x14, x15, x16, x17, x18,
+                     x19, x20, x21, x22, x23, x24, x25, x26, x27, x28, x29, x30, x31, x32, x33, x34, x35, x36] = x;
+        const auto& [y01, y02, y03, y04, y05, y06, y07, y08, y09, y10, y11, y12, y13, y14, y15, y16, y17, y18,
+                     y19, y20, y21, y22, y23, y24, y25, y26, y27, y28, y29, y30, y31, y32, y33, y34, y35, y36] = y;
+        return eq (x01, y01) && eq (x02, y02) && eq (x03, y03) && eq (x04, y04) && eq (x05, y05) && eq (x06, y06)
+            && eq (x07, y07) && eq (x08, y08) && eq (x09, y09) && eq (x10, y10) && eq (x11, y11) && eq (x12, y12)
+            && eq (x13, y13) && eq (x14, y14) && eq (x15, y15) && eq (x16, y16) && eq (x17, y17) && eq (x18, y18)
+            && eq (x19, y19) && eq (x20, y20) && eq (x21, y21) && eq (x22, y22) && eq (x23, y23) && eq (x24, y24)
+            && eq (x25, y25) && eq (x26, y26) && eq (x27, y27) && eq (x28, y28) && eq (x29, y29) && eq (x30, y30)
+            && eq (x31, y31) && eq (x32, y32) && eq (x33, y33) && eq (x34, y34) && eq (x35, y35) && eq (x36, y36);
+    };
+
+    // The source and two destinations. Each write moves ONE field, a discrete one (the algorithm, Multiband on)
+    // among them, so every partly written state differs from every complete one.
+    Params S {};
+    S.algorithm = anamorph::Algorithm::Haas; S.algoAmount = 0.8f; S.driveDb = 8.0f; S.width = 1.0f; S.mix = 1.0f;
+    S.outputGainDb = -3.0f; S.autoGainMatch = true;
+    using Write = void (*) (Params&);
+    static constexpr Write w1[] = { [] (Params& q) { q.driveDb = 12.0f; }, [] (Params& q) { q.algorithm = anamorph::Algorithm::Chorus; },
+                                    [] (Params& q) { q.width = 1.8f; },    [] (Params& q) { q.mix = 0.7f; } };
+    static constexpr Write w2[] = { [] (Params& q) { q.mbEnable = true; }, [] (Params& q) { q.haasDelayMs = 20.0f; } };
+    const auto applied = [] (Params q, const Write* w, int n) { for (int i = 0; i < n; ++i) w[i] (q); return q; };
+    const Params D1 = applied (S, w1, 4);          // family (1)'s destination
+    const Params E1 = applied (S, w1, 2);          // family (2): the first destination (2 writes)...
+    const Params E2 = applied (E1, w2, 2);         // ...and the second, written over it
+
+    const auto guard = anamorph::testing::selfCheck();
+    const bool guardLive = guard.newLive || guard.mallocLive;
+    if (! guardLive)
+        std::printf ("::warning::the allocation guard is compiled out in this build -- Test 75's handshake is NOT "
+                     "allocation-checked by it in this run (RealtimeSanitizer, where present, covers the process path).\n");
+
+    const auto engine = std::make_unique<AnamorphEngine>();     // heap: the engine is large
+    AnamorphEngine& e = *engine;
+    e.prepare (sr, bs);
+    juce::AudioBuffer<float> buf (2, bs);
+    juce::Random rng (75);
+    const auto fill = [&]
+    {
+        for (int c = 0; c < 2; ++c)
+            for (int s = 0; s < bs; ++s) buf.setSample (c, s, 0.3f * (rng.nextFloat() - 0.5f));
+    };
+    int seq = 0;
+    const auto nextSeq = [&seq] { seq = seq % AnamorphEngine::kBulkSeqCount + 1; return seq; };
+
+    // THE MESSAGE THREAD'S MODEL: an ordered list of events over one or two swaps.
+    struct Swap { const Write* w; int n; int seq; bool ab; int from, to; };
+    struct Event { const Swap* s; int k; };           // k: 0 = the request, 1..n = a write, n + 1 = the completion
+    Params live {};
+    const auto fire = [&] (const Event& ev)
+    {
+        if (ev.k == 0) { if (ev.s->ab) e.requestAbSwitch (ev.s->from, ev.s->to, ev.s->seq); else e.requestDuck (ev.s->seq); }
+        else if (ev.k <= ev.s->n) ev.s->w[ev.k - 1] (live);
+        else e.completeBulkApply (ev.s->seq);
+    };
+    // Back to S, settled, nothing pending (the previous case's own verdict covers what it left).
+    const auto toSource = [&] { e.primeParameters (S); e.reset(); live = S; };
+
+    long cases = 0, bad = 0, badFinal = 0, badStart = 0, allocations = 0;
+    std::string firstBad;
+    const auto noteBad = [&] (const std::string& what) { if (bad++ == 0) firstBad = what; };
+    // Recording a failure builds strings: it runs with the allocation guard paused, so the count stays the engine's.
+    struct GuardPaused
+    {
+        const bool was = anamorph::testing::guardArmed.exchange (false);
+        ~GuardPaused() { anamorph::testing::guardArmed.store (was); }
+    };
+
+    // Every non-decreasing assignment of `nEv` events to slots 0..maxSlot.
+    const auto forEachAssignment = [] (int nEv, int maxSlot, const std::function<void (const std::vector<int>&)>& f)
+    {
+        std::vector<int> slot ((size_t) nEv, 0);
+        std::function<void (int, int)> rec = [&] (int i, int lo)
+        {
+            if (i == nEv) { f (slot); return; }
+            for (int s = lo; s <= maxSlot; ++s) { slot[(size_t) i] = s; rec (i + 1, s); }
+        };
+        rec (0, 0);
+    };
+
+    // Runs one case: `events` at `slots` against `kinds.size()` blocks (0: setParametersFrom, 1: a snapshot read
+    // before a one-take setParameters), a host reset after block `resetAfter` (-1: none), then a tail. `legal` are
+    // the complete states, `want` the final one.
+    const auto runCase = [&] (const std::vector<Event>& events, const std::vector<int>& slots, const std::vector<int>& kinds,
+                              int resetAfter, const std::vector<const Params*>& legal, const Params& want, const std::string& tag)
+    {
+        ++cases;
+        bool caseBad = false;
+        const auto check = [&] (const char* where, int b)
+        {
+            const Params& x = e.getAdoptedParameters();
+            for (const Params* l : legal) if (same (x, *l)) return;
+            if (! caseBad) { GuardPaused paused; caseBad = true; noteBad (tag + ": " + where + " " + std::to_string (b) + " adopted a state no swap completed"); }
+        };
+        const auto runSlot = [&] (int s) { for (size_t i = 0; i < events.size(); ++i) if (slots[i] == s) fire (events[i]); };
+        anamorph::testing::resetCounts();
+        {
+            anamorph::testing::Armed arm;
+            const int nB = (int) kinds.size();
+            for (int b = 0; b < nB; ++b)
+            {
+                runSlot (3 * b);
+                fill();
+                if (kinds[(size_t) b] == 0)
+                    e.setParametersFrom ([&] { runSlot (3 * b + 1); const Params snap = live; runSlot (3 * b + 2); return snap; });
+                else
+                {
+                    runSlot (3 * b + 1);
+                    const Params snap = live;                  // read after the previous take, before this one
+                    runSlot (3 * b + 2);
+                    e.setParameters (snap);
+                }
+                e.process (buf);
+                check ("block", b);
+                if (b == resetAfter) { e.reset (AnamorphEngine::ResetScope::audioTailsOnly); check ("host reset after block", b); }
+            }
+            runSlot (3 * nB);
+            for (int t = 0; t < 14; ++t)
+            {
+                fill();
+                e.setParametersFrom ([&] { return live; });
+                e.process (buf);
+                check ("tail block", t);
+                if (t == 0 && e.isBulkSwapPending()) { ++badStart; if (! caseBad) { GuardPaused paused; caseBad = true; noteBad (tag + ": a published completion did not start its swap by the next block"); } }
+            }
+        }
+        allocations += anamorph::testing::newCount.load() + anamorph::testing::mallocCount.load();
+        if (! same (e.getAdoptedParameters(), want) || e.isBulkSwapPending())
+        {
+            ++badFinal;
+            if (! caseBad) { caseBad = true; noteBad (tag + ": the final state is not the last destination, or a swap is still pending"); }
+        }
+    };
+
+    // ---- (1) one swap, 4 writes, two blocks, five ways ---------------------------------------------------------
+    {
+        const long before = bad;
+        const long casesBefore = cases;
+        int variant = 0;
+        forEachAssignment (6, 6, [&] (const std::vector<int>& slots)
+        {
+            for (int way = 0; way < 5; ++way, ++variant)
+            {
+                toSource();
+                const Swap sw { w1, 4, nextSeq(), (variant & 1) == 0, 0, 1 };
+                std::vector<Event> ev;
+                for (int k = 0; k <= 5; ++k) ev.push_back ({ &sw, k });
+                const std::vector<int> kinds = way == 3 ? std::vector<int> { 1, 0 } : way == 4 ? std::vector<int> { 0, 1 } : std::vector<int> { 0, 0 };
+                const int resetAfter = way == 1 ? 0 : way == 2 ? 1 : -1;
+                std::string tag = "(1) way " + std::to_string (way) + " slots";
+                for (int s : slots) tag += " " + std::to_string (s);
+                runCase (ev, slots, kinds, resetAfter, { &S, &D1 }, D1, tag);
+            }
+        });
+        std::printf ("  (1) one swap: %ld cases, %ld with a state no swap completed\n", cases - casesBefore, bad - before);
+    }
+
+    // ---- (2) two swaps back to back, 2 writes each, two blocks -------------------------------------------------
+    {
+        const long before = bad;
+        const long casesBefore = cases;
+        int variant = 0;
+        forEachAssignment (8, 6, [&] (const std::vector<int>& slots)
+        {
+            toSource();
+            const Swap a { w1, 2, nextSeq(), (variant & 1) == 0, 0, 1 };
+            const Swap b { w2, 2, nextSeq(), (variant & 2) == 0, 1, 0 };
+            ++variant;
+            std::vector<Event> ev;
+            for (int k = 0; k <= 3; ++k) ev.push_back ({ &a, k });
+            for (int k = 0; k <= 3; ++k) ev.push_back ({ &b, k });
+            std::string tag = "(2) slots";
+            for (int s : slots) tag += " " + std::to_string (s);
+            runCase (ev, slots, { 0, 0 }, -1, { &S, &E1, &E2 }, E2, tag);
+        });
+        std::printf ("  (2) two swaps: %ld cases, %ld with a state no swap completed\n", cases - casesBefore, bad - before);
+    }
+
+    // ---- (3) the activation: prepareFrom with the prime's read inside the writes -------------------------------
+    {
+        const long before = bad;
+        int n3 = 0;
+        forEachAssignment (6, 3, [&] (const std::vector<int>& slots)
+        {
+            for (int withReset = 0; withReset < 2; ++withReset)
+            {
+                ++cases; ++n3;
+                toSource();
+                const Swap sw { w1, 4, nextSeq(), true, 0, 1 };
+                std::vector<Event> ev;
+                for (int k = 0; k <= 5; ++k) ev.push_back ({ &sw, k });
+                const auto runSlot = [&] (int s) { for (size_t i = 0; i < ev.size(); ++i) if (slots[i] == s) fire (ev[i]); };
+                std::string tag = "(3) reset " + std::to_string (withReset) + " slots";
+                for (int s : slots) tag += " " + std::to_string (s);
+                bool caseBad = false;
+                const auto check = [&] (const char* where)
+                {
+                    const Params& x = e.getAdoptedParameters();
+                    if (same (x, S) || same (x, D1)) return;
+                    if (! caseBad) { caseBad = true; noteBad (tag + ": " + where + " adopted a state no swap completed"); }
+                };
+                runSlot (0);
+                int reads = 0;
+                e.prepareFrom (sr, bs, [&]
+                {
+                    if (reads++ > 0) return live;             // the trailing adoption: a fresh read
+                    runSlot (1); const Params snap = live; runSlot (2); return snap;
+                });
+                check ("the activation");
+                if (withReset == 1) { e.reset (AnamorphEngine::ResetScope::audioTailsOnly); check ("the host reset after it"); }
+                runSlot (3);
+                for (int t = 0; t < 14; ++t) { fill(); e.setParametersFrom ([&] { return live; }); e.process (buf); check ("tail block"); }
+                if (! same (e.getAdoptedParameters(), D1) || e.isBulkSwapPending())
+                {
+                    ++badFinal;
+                    if (! caseBad) { caseBad = true; noteBad (tag + ": the final state is not the destination, or a swap is still pending"); }
+                }
+            }
+        });
+        e.prepare (sr, bs);
+        std::printf ("  (3) the activation: %d cases, %ld with a state no swap completed\n", n3, bad - before);
+    }
+
+    // ---- (4) sequences, a stale completion, a forget, the engine API ---------------------------------------------
+    bool wrapOk = true, staleIgnored = false, matchStarts = false, forgetKeepsSwap = false, legacyNow = false, legacyLands = false;
+    {
+        anamorph::testing::resetCounts();
+        {
+            anamorph::testing::Armed arm;
+            toSource();
+            const auto block = [&] { fill(); e.setParametersFrom ([&] { return live; }); e.process (buf); };
+            for (int i = 0; i < 40; ++i)                                 // 40 swaps: the sequence wraps twice
+            {
+                const int s = nextSeq();
+                e.requestAbSwitch (i & 1, (i + 1) & 1, s);
+                block();                                                 // the request taken: frozen
+                live = (i & 1) == 0 ? D1 : S;
+                block();
+                e.completeBulkApply (s);
+                for (int t = 0; t < 14; ++t) block();
+                wrapOk = wrapOk && same (e.getAdoptedParameters(), live) && ! e.isBulkSwapPending();
+            }
+            // a completion carrying another sequence is ignored; the matching one starts the swap
+            toSource();
+            const int s = nextSeq(), other = s % AnamorphEngine::kBulkSeqCount + 1;
+            e.requestDuck (s);
+            block();
+            live = D1;
+            e.completeBulkApply (other);
+            for (int t = 0; t < 14; ++t) block();
+            staleIgnored = same (e.getAdoptedParameters(), S) && e.isBulkSwapPending();
+            e.completeBulkApply (s);
+            for (int t = 0; t < 14; ++t) block();
+            matchStarts = same (e.getAdoptedParameters(), D1) && ! e.isBulkSwapPending();
+            // a forget while a swap is awaited drops its A/B switch, not the swap
+            toSource();
+            const int f = nextSeq();
+            e.requestAbSwitch (0, 1, f);
+            block();
+            e.forgetAbMatchMemory();
+            live = D1;
+            block();
+            const bool stillFrozen = same (e.getAdoptedParameters(), S) && e.isBulkSwapPending();
+            e.completeBulkApply (f);
+            for (int t = 0; t < 14; ++t) block();
+            forgetKeepsSwap = stillFrozen && same (e.getAdoptedParameters(), D1) && ! e.isBulkSwapPending();
+            // the engine API (sequence 0): the forced duck starts in the very call that takes it, as before
+            toSource();
+            e.requestDuck();
+            fill(); e.setParameters (D1); e.process (buf);
+            legacyNow = same (e.getAdoptedParameters(), S) && ! e.isBulkSwapPending();   // the old state plays the fade-out
+            for (int t = 0; t < 14; ++t) { fill(); e.setParameters (D1); e.process (buf); }
+            legacyLands = same (e.getAdoptedParameters(), D1);
+        }
+        allocations += anamorph::testing::newCount.load() + anamorph::testing::mallocCount.load();
+    }
+    std::printf ("  (4) 40 swaps across two sequence wraps land: %s | a completion of another sequence ignored: %s, the matching one "
+                 "starts it: %s | a forget while awaited keeps the swap: %s | the engine API's duck starts at once: %s, lands: %s\n",
+                 wrapOk ? "yes" : "NO", staleIgnored ? "yes" : "NO", matchStarts ? "yes" : "NO", forgetKeepsSwap ? "yes" : "NO",
+                 legacyNow ? "yes" : "NO", legacyLands ? "yes" : "NO");
+    std::printf ("  total: %ld cases | a state no swap completed %ld | final wrong or pending %ld | a completion that did not start "
+                 "its swap by the next block %ld | allocations %ld%s\n", cases, bad, badFinal, badStart, allocations,
+                 firstBad.empty() ? "" : (" | first: " + firstBad).c_str());
+    check (cases == 5 * 924 + 3003 + 168, "Test 75 non-vacuity: every interleaving of the three families ran (7,791 cases)");
+    check (bad == 0, "Test 75: no block, host reset or activation adopts a state no swap completed");
+    check (badFinal == 0, "Test 75: every case ends on its last destination with nothing pending");
+    check (badStart == 0, "Test 75: a swap whose completion is published starts by the end of the next block -- nothing waits");
+    check (wrapOk, "Test 75 (4): 40 swaps in a row, across two wraps of the 4-bit sequence, each land complete");
+    check (staleIgnored && matchStarts, "Test 75 (4): a completion of another sequence is ignored; the awaited one starts the swap");
+    check (forgetKeepsSwap, "Test 75 (4): a forget while a swap is awaited drops its A/B switch, not the swap");
+    check (legacyNow && legacyLands, "Test 75 (4): an engine-API request (sequence 0) starts its forced duck in the call that takes it, as before");
+    if (guardLive)
+        check (allocations == 0, "Test 75: the handshake allocates nothing -- every engine call armed, the message-thread ones included");
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -14374,6 +14734,7 @@ int main (int argc, char* argv[])
     testAbRestoreSurvivesAReprepareInTheFadeIn();
     testAbRecordCarriesThePostChangeEvidence();
     testANonFiniteVelvetDensityIsTheHeldDensity();
+    testABulkSwapIsAdoptedOnlyWhenComplete();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

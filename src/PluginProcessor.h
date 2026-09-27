@@ -179,6 +179,10 @@ public:
     // --- editor access ---
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     anamorph::AnamorphEngine& getEngine() noexcept          { return engine; }
+    // The engine snapshot the processor reads -- every automatable parameter's atomic and the
+    // Oversampling Setting (processBlock adds the momentary solo audition). Any thread; lock-free.
+    // A harness hands it to the engine at an interleaving it chooses (ADR-0057's tests).
+    anamorph::EngineParameters readEngineSnapshot() const   { return params.toEngine (internal.oversampleIndex()); }
     anamorph::PresetManager&  getPresets() noexcept         { return presets; }
     anamorph::InternalState&  getInternal() noexcept        { return internal; } // host-hidden Settings/view state
 
@@ -962,6 +966,39 @@ private:
     // forgets it (ER-STATE-20, forgetAbMatchMemory).
     static_assert (anamorph::AnamorphEngine::kAbSlots == anamorph::kNumAbSlots,
                    "the engine keeps one Level-Match record per A/B slot");
+
+    // ------------------------------------------------------------------------
+    //  THE BULK-SWAP HANDSHAKE (ADR-0057). ARCHITECTURE REVIEW GATE: APPROVED by the repository
+    //  owner, 2026-09-27 -- a new atomic ordering on the message -> audio request word.
+    //
+    //  An A/B switch, undo, redo and a preset load each raise the engine's forced duck and then
+    //  write the new sound one parameter at a time. `beginBulkApply` gives the swap its sequence
+    //  (1..AnamorphEngine::kBulkSeqCount) for the request; `endBulkApply` publishes its completion
+    //  (release) AFTER THE LAST STORE. The engine adopts nothing while a completion is awaited, so
+    //  the forced bottom adopts the complete destination, never a mixture. A swap begun inside
+    //  another JOINS it -- the same sequence, and only the outermost end completes -- so a
+    //  completion follows every write in flight whatever the nesting. Message-thread state: every
+    //  bulk swap is a message-thread command, and the admission gate runs them one at a time.
+    int  bulkSeq   = 0;   // the sequence of the swap in flight (or of the last one)
+    int  bulkDepth = 0;   // bulk swaps open (0: none)
+    int  beginBulkApply() noexcept;
+    void endBulkApply() noexcept;
+    // One swap, scoped: its completion is published at `complete()` -- called right after the last
+    // store -- or, on every other exit path (an exception included), when the scope ends. Once.
+    class BulkApply
+    {
+    public:
+        explicit BulkApply (AnamorphAudioProcessor& p) noexcept : proc (p), seq (p.beginBulkApply()) {}
+        ~BulkApply() { complete(); }
+        BulkApply (const BulkApply&) = delete;
+        BulkApply& operator= (const BulkApply&) = delete;
+        int sequence() const noexcept { return seq; }
+        void complete() noexcept { if (open) { open = false; proc.endBulkApply(); } }
+    private:
+        AnamorphAudioProcessor& proc;
+        const int seq;
+        bool open = true;
+    };
 
     // ------------------------------------------------------------------------
     //  D-2 (RISK-007): the program-state ownership boundary. ADR-0036.

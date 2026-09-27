@@ -71,8 +71,8 @@ configuration**. `docs/policies/COMPATIBILITY_POLICY.md` ("Numerical compatibili
 | Layout | Status | Evidence |
 |---|---|---|
 | stereo → stereo | **Verified** | src/PluginProcessor.cpp:12-13 (bus declaration), :76-86 (`isBusesLayoutSupported`); test `testTransparentDefault`; State test 124 (`testTheDocumentedIoContract`: accepted by the real negotiation) |
-| mono → stereo | **Verified** | src/PluginProcessor.cpp:207-208 (mono input accepted), :120-121 (mono duplicated to both channels); State test 124 (`testTheDocumentedIoContract`: accepted, and with widening engaged the output is bit-identical to stereo → stereo fed L = R, so whatever the host left in the output-only second channel never reaches the chain) |
-| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:204-205; State test 124 (refused, as is stereo → mono) |
+| mono → stereo | **Verified** | src/PluginProcessor.cpp:211-212 (mono input accepted), :120-121 (mono duplicated to both channels); State test 124 (`testTheDocumentedIoContract`: accepted, and with widening engaged the output is bit-identical to stereo → stereo fed L = R, so whatever the host left in the output-only second channel never reaches the chain) |
+| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:208-209; State test 124 (refused, as is stereo → mono) |
 
 ## DAW hosts
 

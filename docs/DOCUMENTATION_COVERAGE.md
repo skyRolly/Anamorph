@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented) — whose entries are the **76th** to **88th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed — whose entries are the **76th** to **89th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1462-1468` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1607-1613` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1919,7 +1919,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:237-245`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1286-1427`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1431-1572`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2124-2174` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2269-2319` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2178`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2211`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2819`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2857`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2634`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2672`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1116`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1127`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1403-1579`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1414-1590`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -10949,7 +10949,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2834` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2837` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -12295,7 +12295,7 @@ empty-directory mistake and MB1–MB6);
 
 **Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
 program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
-write-back, `src/PluginProcessor.cpp:1116` (line 960 in the pre-fix file, which is the line the
+write-back, `src/PluginProcessor.cpp:1127` (line 960 in the pre-fix file, which is the line the
 alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
 second is a false positive, and was removed rather than dismissed.
 
@@ -13002,6 +13002,64 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 89th pass — 2026-09-27, PR #156 (ADR-0057 accepted and implemented; KI-032 fixed)
+
+**Scope.** The repository owner approved ADR-0057's B2 protocol — not B2-H — and asked for it implemented, with
+the version kept at 0.9.9 and the changelog date at 2026-09-27. The Architecture Review Gate's human decision is
+that approval; ADR-0057 is **Accepted** and records it. All of it is 0.9.9, dated 2026-09-27
+(`worklogs/NONFINITE_PARAMETERS_AND_F13.md` §V).
+
+**The record.**
+- **The protocol, in production.** A bulk swap's request carries a sequence (`BulkApply`, join semantics for a
+  nested swap); its completion is a release CAS after the last parameter store (`BulkApply::complete()`;
+  PresetManager's `onSoundApplied` / `SoundAppliedGuard`); the engine takes the word with acquire before and after
+  reading the parameters, through a reader the processor hands it (`setParametersFrom`, `prepareFrom`); it adopts
+  nothing while a completion is awaited, and starts the forced duck only on a trusted snapshot. The engine API's
+  `setParameters (np)` / `primeParameters (np)` make one take with their own trust rule.
+- **Precondition 2 made checkable.** A comment at `toEngine`, and `check-realtime.py` now rejects a relaxed or
+  consume load order in `toEngine`; it also seeds `setParametersFrom` and `takeRequestWord`, which the old seed
+  set did not reach.
+- **Measured on the final code:** the enumeration of worklog §U4 0 of 1,245 (pre-fix 689); the probe 0 of 1,680
+  (pre-fix 573); the stall 0 of 120 (pre-fix 40); the threaded stress (ADR-0057, *Evidence*); eleven negative
+  controls, each failing the committed suites; a ThreadSanitizer witness; AArch64 disassembly and a qemu run.
+
+**Tests.** DSP Test 75 (new); State test 139 rewritten from a characterization into the regression; State test
+140 (new); the opt-in `--bulk-swap-probe` and `--bulk-swap-stress`.
+
+**Documents changed.**
+- **ADR-0057:** Proposed → **Accepted**; the gate record in the past tense with the owner's approval; the protocol
+  as implemented (and its five deviations from the design text); why B2-H was rejected; the preconditions and
+  where each is pinned; the final-code evidence; the implementation record. Its historical anchors are pinned to
+  `e49a90e`. `ADR_INDEX.md` row.
+- **ADR-0004** (decision 1 and an Amendment of 2026-09-27), **ADR-0007** (the handoff, the capture point, the path
+  table, "A slot adopted partly written" resolved, the gate record and names), **ADR-0036** (§24's note, §25 item
+  5 resolved).
+- **`THREAD_MODEL.md`**, **`THREADING_POLICY.md`** (the request-word row, the fourth ordering-critical pair,
+  preconditions 1–5, the pair count corrected), **`REALTIME_AUDIO_POLICY.md`** (the permitted acquire take; the
+  lint's new seeds and rule).
+- **`API_REFERENCE.md`**, **`ARCHITECTURE.md`**, **`SIGNAL_FLOW.md`**, **`REALTIME_SAFETY_AUDIT.md`**,
+  **`FUTURE_RISKS.md`** (RISK-010 narrowed for forced swaps).
+- **`KNOWN_ISSUES.md`:** KI-032 **RESOLVED** (struck-through row, banner; KI-030's cross-reference).
+- **`CHANGELOG.md` `[0.9.9]`:** the KI-032 lead removed; one *Fixed* bullet. The version and the date are unchanged.
+- **`TESTING.md`:** Test 75, State tests 139 and 140, the probes, and the ARMv8-ordering coverage gap.
+- **`CI_CD.md`:** unchanged — no job, command, flag or timeout changed (`.github/workflows/build.yml` gains only one
+  re-anchored line number in a comment). The `sanitizers` lane's time on this head is recorded in the PR #156
+  description, against the 60-minute cap kept on 2026-09-26.
+- **Re-anchored by `check-citations.py --fix`** (anchor-only, no prose change): the anchors of about thirty other
+  documents that cite the moved lines, `PRIVACY.md` and a comment in `.github/workflows/build.yml` among them;
+  `DELIBERATE_REAIMS` re-derived, and three hand re-aims declared (worklog §V4).
+- **The worklog:** §V, and forward pointers from §T9 and §U9.
+
+**Code.** `src/dsp/AnamorphEngine.{h,cpp}`, `src/PluginProcessor.{h,cpp}`, `src/PresetManager.{h,cpp}`,
+`src/PluginParameters.cpp` (comment only), `scripts/check-realtime.py`, `tests/dsp_tests.cpp`,
+`tests/state_tests.cpp`.
+
+**Drift reported, not corrected** (DOCUMENTATION_LIFECYCLE): `TESTING.md` still says "53 DSP tests" near its top;
+`KNOWN_ISSUES.md`'s "version-synced to v0.9.6" line predates KI-029..KI-032; `HANDOVER.md` counts "five Fixed
+entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013 names a KI-029 that is not today's KI-029.
+
+**This file:** this entry and the *Last updated* line.
 
 ## 88th pass — 2026-09-27, PR #156 (the O8(3) architecture decision: ADR-0057 completed, still gated)
 
@@ -14154,7 +14212,7 @@ suppression. One new file (`ADR-0056`, **Proposed**), one new opt-in instrument
 (`--risk014-probe`), and four documents corrected to the measurements.
 
 **The two call graphs, from the API rather than the names.** `setStateInformation` →
-`decodeRestore` (`src/PluginProcessor.cpp:2831-2839`) → `AudioProcessor::getXmlFromBinary` →
+`decodeRestore` (`src/PluginProcessor.cpp:2869-2877`) → `AudioProcessor::getXmlFromBinary` →
 `juce::parseXML`; and, inside the same decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) →
 `juce::parseXML (slotPayload)` on a string attribute value of the already-parsed session document —
 a second, independently framed document. `getXmlFromBinary` validates exactly two things: chunk
@@ -14269,10 +14327,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21968`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -14288,7 +14346,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19072`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19075`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -14317,7 +14375,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13705` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13708` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -14579,7 +14637,7 @@ and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-paylo
 Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
 static-analysis item. Every one was reproduced or measured before anything was changed.
 
-**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:448` today, an embedded NUL
+**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:469` today, an embedded NUL
 bypasses the boundary: CONFIRMED and
 fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
 `juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
@@ -14613,7 +14671,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13705`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13708`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at
@@ -14749,7 +14807,7 @@ occurrence only where source and context prove it describes the CURRENT reposito
   `clang::nonblocking` / `clang::nonallocating` occurrences across `modules/`. ADR-0029's rule and the
   52-warning figure stand.
 
-**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1222` records a dated act of checking
+**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1233` records a dated act of checking
 ("CORRECTED 2026-08-31 … after checking the pinned JUCE 9.0.1"); `build.yml:1210` records the
 2026-08-18 leak retest on the configuration it names; `build.yml:2682` already says "the JUCE 9.0.1
 pin this repository carried until ADR-0054"; `README.md:28` describes the 0.9.4 release;

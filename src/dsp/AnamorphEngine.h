@@ -99,7 +99,7 @@ public:
     // whole meaning is "no duck, no ramp, nothing deferred", and a pending request
     // is something deferred. It describes a swap (A/B, preset, undo) the user made
     // while nothing was audible -- which THIS call has just performed, silently and
-    // in full. Leaving it set means the post-prepare setParameters consumes it and
+    // in full (a COMPLETE swap: one still being written is not primed, below). Leaving it set means the post-prepare setParameters consumes it and
     // opens a forced duck whose swap already happened, so it masks nothing and
     // merely dry-fills over the first ~32 ms of audio (measured: the engaged
     // widener's side energy collapses to 0.003 of the settled level for 24 blocks
@@ -120,19 +120,57 @@ public:
     // first, against the state being left: the duck itself is dropped, as always, but an A/B
     // switch still records the slot it leaves and restores its destination on the first block
     // (ADR-0007, Amendment of 2026-09-25, A/B provenance).
-    void primeParameters (const EngineParameters& np) noexcept
+    //
+    // A BULK SWAP STILL BEING WRITTEN IS NOT PRIMED (ADR-0057). The prime adopts only a snapshot the
+    // handshake below trusts; while a swap's completion is awaited it keeps the state it has, and the
+    // swap starts, ducked, at the first block that reads it complete.
+    //
+    // `primeParameters` takes a snapshot read BEFORE the call (the engine API); `primeParametersFrom`
+    // reads it itself, between its two takes of the request word -- the form the processor uses.
+    void primeParameters (const EngineParameters& np) noexcept   { primeSnapshot (np, acquireForEarlierSnapshot()); }
+    template <typename ReadSnapshot>
+    void primeParametersFrom (ReadSnapshot&& read) noexcept
     {
-        primeMeasChanged = primeMeasChanged || measurementChangeFrom (np);
-        takeRequests (duckRequest.exchange (0, std::memory_order_relaxed));
-        p = np;
-        pendingP = np;
+        const bool clear = acquireBeforeSnapshot();
+        const EngineParameters np = read();
+        primeSnapshot (np, acquireAfterSnapshot (clear));
     }
 
     // Adopts a new parameter snapshot. Continuous controls update immediately
     // (they are all smoothed); a change to any DISCRETE control (algorithm,
     // routing, bypass, ...) is deferred behind a short raised-cosine duck so the
     // switch is click-free (feedback #10 / #11).
+    //
+    // Nothing is adopted -- no live edit, no duck entry, no new target -- while a bulk swap's
+    // completion is awaited, or from a snapshot that may have been read before it (ADR-0057): the
+    // state already adopted plays on, and any duck in flight lands on its own (trusted) target.
+    //
+    // `setParameters` takes a snapshot read BEFORE the call: the engine API. It must have been read
+    // after the engine's previous call returned -- a snapshot is never handed in twice (ADR-0057,
+    // precondition 5). `setParametersFrom` takes the request word with ACQUIRE, calls `read` for the
+    // snapshot, and takes the word again: the processor's per-block entry, which therefore can
+    // neither read before the first take nor re-use a snapshot. `read` runs on the calling (audio)
+    // thread and must be real-time safe; it returns an EngineParameters.
     void setParameters (const EngineParameters& params) noexcept;
+    template <typename ReadSnapshot>
+    void setParametersFrom (ReadSnapshot&& read) noexcept
+    {
+        const bool clear = acquireBeforeSnapshot();
+        const EngineParameters np = read();
+        adoptSnapshot (np, acquireAfterSnapshot (clear));
+    }
+
+    // The processor's activation, in its load-bearing order: prime from a fresh read, prepare, then
+    // adopt a SECOND fresh read. The trailing call never re-uses the prime's snapshot: the prime may
+    // have taken a bulk swap's completion after its snapshot was read, and the one-take path would
+    // then trust a snapshot the completion's writes are missing from (ADR-0057, precondition 5).
+    template <typename ReadSnapshot>
+    void prepareFrom (double sampleRate, int maxBlockSize, ReadSnapshot&& read)
+    {
+        primeParametersFrom (read);
+        prepare (sampleRate, maxBlockSize);
+        setParametersFrom (read);
+    }
 
     // Host transport state, once per block from the wrapper (audio thread).
     // A play->stop edge triggers Velvet's noise-tail kill (#4).
@@ -177,12 +215,35 @@ public:
     // only the two slot indices cross. At the bottom the value is restored, measured only if it was
     // measured when the slot was left, at the rate the engine now runs at, and the state now adopted
     // reads the same measurement inputs; otherwise not current. Message thread; lock-free. Slot
-    // indices are clamped to [0, kAbSlots).
+    // indices are clamped to [0, kAbSlots). With a `bulkSeq` the switch is a bulk swap: it is
+    // stashed until the swap's completion and starts, with its slot bookkeeping, on the complete
+    // destination (ADR-0057, below).
     static constexpr int kAbSlots = 2;   // the processor asserts it equals anamorph::kNumAbSlots
-    void requestAbSwitch (int fromSlot, int toSlot) noexcept;
+    void requestAbSwitch (int fromSlot, int toSlot, int bulkSeq = 0) noexcept;
     // A session restore replaced both slots: every remembered result belongs to the previous
     // project, so the next block forgets them (ER-STATE-20) and drops any restore still pending.
+    // It keeps a pending duck and a bulk swap's sequence and completion (ADR-0057).
     void forgetAbMatchMemory() noexcept;
+
+    // THE BULK-SWAP HANDSHAKE (ADR-0057). A forced bulk swap -- an A/B switch, undo, redo, a preset
+    // load -- raises its request, then writes the new sound one parameter at a time. The audio thread
+    // must adopt the destination only once EVERY write is visible to it, so the request carries a
+    // sequence number `bulkSeq` (1..kBulkSeqCount, from the processor) and, after the swap's LAST
+    // parameter store, the message thread publishes its completion here with RELEASE. The engine takes
+    // the word with ACQUIRE before and after reading each snapshot (setParametersFrom), awaits the
+    // newest sequence, adopts nothing while it waits, and starts the forced duck only on a snapshot read
+    // between two takes after that completion -- so the bottom adopts the complete destination, never
+    // a mixture. Sequence 0 is the engine API: complete by construction, because its caller hands the
+    // whole state to setParameters; it behaves exactly as before. Message thread; lock-free (one CAS).
+    static constexpr int kBulkSeqCount = 15;
+    void completeBulkApply (int bulkSeq) noexcept;
+
+    // READ-ONLY OBSERVERS, for tests and diagnostics. They read audio-thread state: call them on the
+    // audio thread, or where the host contract keeps process() from running concurrently.
+    const EngineParameters& getAdoptedParameters() const noexcept { return p; }
+    bool isMatchResultMeasured() const noexcept                  { return loudness.isResultMeasured(); }
+    // A bulk swap's completion is awaited, or has been taken and the swap not yet started.
+    bool isBulkSwapPending() const noexcept                      { return awaitSeq != 0 || startPending; }
 
     // Engine API: restore `db` at the next forced bottom (or, with no duck, the next block) as a
     // MEASURED result -- the caller asserts it is a measurement of the state it is adopted with.
@@ -193,9 +254,13 @@ public:
     // even if it's continuous-only (#1, 0.6.4 feedback): an A/B or preset jump can
     // move many params at once and pop, so the wrapper asks for the same masking
     // duck the engine already uses for discrete switches. Call BEFORE changing the
-    // parameters so the duck is already running when the new values arrive. It sets
-    // one bit of the request word, so it never cancels an A/B switch still pending.
-    void requestDuck() noexcept { duckRequest.fetch_or (kReqDuck, std::memory_order_relaxed); }
+    // parameters. With sequence 0 (the engine API) the duck starts at the next block, so it is
+    // already running when the new values arrive. With a `bulkSeq` (the processor's bulk swaps)
+    // the engine adopts nothing until the swap's completion, published after its last write
+    // (completeBulkApply), and the duck starts then, on the complete destination (ADR-0057). It
+    // only adds to the request word (one read-modify-write), so it never cancels an A/B switch
+    // still pending.
+    void requestDuck (int bulkSeq = 0) noexcept;
 
 private:
     void updateDerived();
@@ -371,13 +436,54 @@ private:
 
     static constexpr float kNoInject = -1000.0f;
     std::atomic<float> matchInject { kNoInject }; // pending engine-API match restore (injectMatchGainDb)
-    // The request word (message thread -> audio thread; relaxed, lock-free): a forced duck around a
-    // bulk param swap (#1, 0.6.4), an A/B switch with its two slot indices, and a forget. Taken
-    // whole by one exchange per block (setParameters) or by the prime, so the fields never tear.
+    // The request word (message thread -> audio thread; lock-free): a forced duck around a bulk param
+    // swap (#1, 0.6.4), an A/B switch with its two slot indices, a forget, and -- ADR-0057 -- the
+    // swap's sequence and its completion. EVERY modification is a read-modify-write (CAS, fetch_or,
+    // exchange), never a plain store, so every later modification continues the release sequence of a
+    // completion. Taken whole by an ACQUIRE exchange, so the fields never tear:
+    //   bits 0-2   duck, A/B switch, forget      bits 4-7 / 8-11   the switch's source / destination slot
+    //   bit  12    the completion flag           bits 13-16        the request's sequence (0: engine API)
+    //   bits 17-20 the completion's sequence
     std::atomic<int>   duckRequest { 0 };
     static constexpr int kReqDuck = 1, kReqAbSwitch = 2, kReqAbForget = 4;
     static constexpr int kReqFromShift = 4, kReqToShift = 8, kReqSlotMask = 0xF;
+    static constexpr int kReqSlotBits = (kReqSlotMask << kReqFromShift) | (kReqSlotMask << kReqToShift);
+    static constexpr int kReqDone = 1 << 12, kReqSeqShift = 13, kReqDoneShift = 17, kReqSeqMask = 0xF;
+    static constexpr int kReqSeqBits  = kReqSeqMask << kReqSeqShift;
+    static constexpr int kReqDoneBits = kReqDone | (kReqSeqMask << kReqDoneShift);
     static_assert (kAbSlots <= kReqSlotMask + 1, "an A/B slot index fits its field of the request word");
+    static_assert (kBulkSeqCount == kReqSeqMask, "a bulk swap's sequence fits its field of the request word");
+
+    // THE HANDSHAKE'S AUDIO-THREAD STATE (ADR-0057). Written and read only by the takes below, on the
+    // audio thread or the prepare path, which the host never runs concurrently with process().
+    int  awaitSeq = 0;                   // the newest bulk swap whose request was taken and completion not (0: none)
+    bool startPending = false;           // a swap's completion was taken; it starts at the first trusted snapshot
+    bool stashAb = false;                // ...with this A/B switch: the first source slot, the newest destination
+    bool stashNoRecord = false;          // ...whose request came with a forget: nothing recorded for the source
+    int  stashFrom = 0, stashTo = 0;
+    int  legacyReq = 0;                  // engine-API (sequence 0) requests, applied with the next trusted snapshot
+    // Takes the word (ACQUIRE) and processes it. Returns whether it held a new bulk-swap request.
+    bool takeRequestWord() noexcept;
+    // The first take, before the snapshot is read: true when no swap is awaited after it.
+    bool acquireBeforeSnapshot() noexcept { (void) takeRequestWord(); return awaitSeq == 0; }
+    // The second take, after the read. The snapshot is TRUSTED -- it holds every write of every swap
+    // whose request was taken, and none of a newer one's -- only if no swap was awaited after the first
+    // take (`clear`) and this take found no new request.
+    bool acquireAfterSnapshot (bool clear) noexcept      { const bool newRequest = takeRequestWord(); return clear && ! newRequest; }
+    // One take for a snapshot read before the call (and after the previous take): trusted only if no
+    // swap was awaited before it and it finds no new request.
+    bool acquireForEarlierSnapshot() noexcept
+    {
+        const bool wasAwaiting = awaitSeq != 0;
+        const bool newRequest = takeRequestWord();
+        return ! wasAwaiting && ! newRequest;
+    }
+    // Applies what the takes left for a trusted snapshot: the engine-API requests, then a completed
+    // swap's A/B bookkeeping (against the state being left, unchanged since its request). Returns
+    // whether a forced duck was asked for.
+    bool startTakenRequests() noexcept;
+    void adoptSnapshot (const EngineParameters& np, bool trusted) noexcept;   // setParameters' body
+    void primeSnapshot (const EngineParameters& np, bool trusted) noexcept;   // primeParameters' body
 
     // THE A/B LEVEL-MATCH MEMORY (feedback #23; ADR-0007, Amendment of 2026-09-25, A/B provenance).
     // One record per slot: the value the matcher published when the slot was left, whether it was
@@ -385,9 +491,9 @@ private:
     // measured for, and -- only when it was not measured -- the post-change evidence the measure had
     // gathered for that state (LoudnessMatch::Evidence; empty for a measured record). One provenance:
     // `measured` says the value is the measure's answer; `evidence` is what the measure had toward one.
-    // Written and read only by takeRequests() and restoreAbSlot(), on the audio thread or the prepare
-    // path, which JUCE never runs concurrently with process(). Never serialized; a session restore
-    // forgets it (forgetAbMatchMemory).
+    // Written and read only by the request takes (takeRequestWord, takeRequests, switchAbSlots) and
+    // restoreAbSlot(), on the audio thread or the prepare path, which JUCE never runs concurrently with
+    // process(). Never serialized; a session restore forgets it (forgetAbMatchMemory).
     struct AbMatchMemory
     {
         float gainDb = 0.0f;           // 0 dB: a slot never left (the fresh-instance value)
@@ -398,9 +504,11 @@ private:
     };
     AbMatchMemory abMemory[kAbSlots];
     int abRestoreSlot = -1;            // the slot the next forced bottom restores (-1: none)
-    // Takes one request word: forgets, records the slot a switch leaves (unless the engine never
-    // adopted it) and arms its destination's restore. Returns whether a forced duck was asked for.
+    // Applies one engine-API request word: forgets, records the slot a switch leaves (unless the engine
+    // never adopted it) and arms its destination's restore. Returns whether a forced duck was asked for.
     bool takeRequests (int req) noexcept;
+    // The switch half of it: records the slot being left (when `record`) and arms `to`'s restore.
+    void switchAbSlots (int from, int to, bool record) noexcept;
     // Restores the armed slot's remembered value; `rearm` is the F13(2) re-arm (P1b). Returns
     // whether a value was adopted.
     bool restoreAbSlot (bool rearm) noexcept;

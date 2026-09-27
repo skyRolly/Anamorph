@@ -29,9 +29,9 @@ files. Two other paths reach the same parser and were deliberately left alone, a
 `docs/FUTURE_RISKS.md` records them as **RISK-014**:
 
 1. **The host session blob.** `setStateInformation` → `decodeRestore`
-   (`src/PluginProcessor.cpp:2831-2839`) → `AudioProcessor::getXmlFromBinary` → `juce::parseXML`.
+   (`src/PluginProcessor.cpp:2869-2877`) → `AudioProcessor::getXmlFromBinary` → `juce::parseXML`.
 2. **The A/B slot payload.** Inside the same decode, `readSlot`'s `adoptIfAnamorph`
-   (`src/PluginProcessor.cpp:2946-2956`) calls `juce::parseXML (slotPayload)` on a **string
+   (`src/PluginProcessor.cpp:2984-2994`) calls `juce::parseXML (slotPayload)` on a **string
    attribute value** of the already-parsed session document — a second, independently framed XML
    document one level further in.
 

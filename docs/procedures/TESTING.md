@@ -698,6 +698,44 @@ and output bit for bit, every block; the verdict is a same-rate re-prepare, KEEP
 there: `|Inf − 0.7| ≤ 1e-5 · Inf`), (2)'s three KEEPs, all eight of (3), (4), (5a) and (5b)'s control. The
 mutants are in worklog §S8.
 
+**A forced bulk swap adopts the complete destination or nothing — every interleaving of the handshake — Test 75
+(2026-09-27; ADR-0057, Accepted; `KNOWN_ISSUES.md` KI-032, fixed; worklog §V).**
+
+*The rule.* A bulk swap (an A/B switch, undo, redo, a preset load) raises its request carrying a sequence, writes
+the new sound one parameter at a time, and publishes its completion with release after the last write. The engine
+takes the request word with acquire before and after reading each snapshot (`setParametersFrom`), adopts nothing
+while it awaits the newest sequence, and starts the forced duck only on a snapshot read between two takes after the
+completion.
+
+**Test 75** (`testABulkSwapIsAdoptedOnlyWhenComplete`) drives the engine API on one thread against a MODEL of the
+message thread whose "live" snapshot moves from a source S toward the destination one field per write (a discrete
+field among them). Each case assigns every event of the swap — the request, each write, the completion — a slot
+relative to the audio thread's blocks: before a block's first take, between that take and the read, between the
+read and the second take (the reader runs them — the engine calls it between its takes), or after the last block.
+EVERY non-decreasing assignment runs, so each interleaving the memory model allows between one block's three steps
+and the swap's events is covered exactly. After every block and host reset the adopted snapshot must equal one of
+the complete states bit for bit; after the tail it must be the final destination with nothing pending, and a swap
+whose completion was published must start by the end of the next block.
+- **(1) One swap**, 4 writes, two blocks: 924 interleavings × 5 ways — both blocks `setParametersFrom` (no reset, a
+  host reset after the first block, or after the second), or one block handing in a snapshot it read earlier
+  (`setParameters`, one take) — 4,620 cases; the swap alternately an A/B switch and a bare forced duck.
+- **(2) Two swaps back to back**, 2 writes each: 3,003 interleavings — a completion and the next request in one
+  word, a completion of an already superseded swap, a newer request inside a read.
+- **(3) The activation** (`prepareFrom`), the prime's read inside the writes: 84 interleavings, without and with a
+  host reset right after (JUCE's AU order) — 168.
+- **(4) Sequences:** 40 swaps wrap the 4-bit sequence twice; a completion of another sequence is ignored and the
+  matching one starts the swap; a forget while a swap is awaited drops its A/B switch, not the swap; a sequence-0
+  (engine-API) request starts at once and lands, as before.
+
+Families (1), (2) and (4) run with the allocation guard armed around every engine call, the message-thread ones
+included (Test 38's pattern); a failure is recorded with the guard paused, so the count is the engine's. 7,791
+cases, 0 with a state no swap completed, 0 allocations; ~0.1 s native. It drives API this change adds, so it has
+no run on the pre-fix head; the negative controls (worklog §V) are: the sequence ignored — (4)'s sequence check; the
+snapshot read before the first take — (1) 141 and (3) 12 cases; no second take — (1) 564, (2) 490, (3) 24; trust
+after a first take that left a swap awaited — 3,704 cases across (1)–(3) and two of (4)'s checks; the one-take path
+ignoring an awaited swap — (1) 391; the activation re-using the prime's snapshot — (3) 15. The release / acquire
+ordering itself is not observable on one thread: State test 139 (F2) is its ThreadSanitizer witness.
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -2439,7 +2477,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
   the preset boundary now guards. Investigation first, and the investigation changed the entry in
   both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
-  (`src/PluginProcessor.cpp:2831-2839`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  (`src/PluginProcessor.cpp:2869-2877`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
   decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
   attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
   things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not
@@ -2534,10 +2572,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21968`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -2552,7 +2590,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:19072`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19075`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -4556,11 +4594,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21968`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15549` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15552` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4599,7 +4637,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14630`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14633`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
@@ -5127,64 +5165,92 @@ control flush there ((A) −8.3086 → 0 where the twin keeps −8.3285). (E) an
 lanes leave their twins at the first switch's bottom. The three premises, (G), its sibling and every control's
 flush pass there.
 
-**An A/B switch whose forced bottom is reached inside the destination's writes adopts the partly written slot —
-State test 139 (2026-09-27; `KNOWN_ISSUES.md` KI-032; ADR-0057, Proposed; worklog §T).** This
-(`testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot`) CHARACTERIZES a recorded residual — the Devin
-finding "A/B switches can adopt incomplete slot state" — and is the regression-in-waiting for ADR-0057's handoff.
-It pins the engine as it is: the fix inverts (A), (B), (C) and (E), and its host-reset / prime rule inverts (D).
-On ADR-0057's revised prototype (worklog §U6) the State suite's only failures are 13 of this test's checks.
-They are every (A)–(E) check that describes an adoption inside the writes. That includes the two at position 8,
-whose blocks run inside the last write's notification, before the completion is published.
-- **The method.** Deterministic, the production path, no engine internals. The audio thread's progress runs ON
-  the message thread at an exact point of the switch's write sequence: the processor's seam
-  `beforeSoundReplacementWrites` (position 0: after the request and the leaving capture, before the first write)
-  or an APVTS listener right after the k-th parameter the switch changes.
-- **The twins.** A race is compared with a PARTIAL TWIN, whose destination slot holds exactly the k written
-  parameters, and a COMPLETE TWIN, both switched completely before the same blocks. With Level Match off the
-  output from a forced bottom on is a function of the state adopted there alone, so bit-identity to the partial
-  twin means the partly written slot was adopted, field for field.
-- **The twin must read what the race reads.** Every partial-twin comparison also asserts that, at its blocks, the
-  twin reads the edited parameters' raw values exactly as the race does at its blocks. A parameter JUCE never wrote
-  holds its default's unsnapped normalised round trip (`ParameterAdapter`); one written, by a slot restore for
-  example, holds the snapped value. For Chorus Rate that is 0.49999997 Hz against 0.5. The first version of (E) left
-  A's Rate at its default: the race's `setUp` restored it from A's slot, while the partial twin never wrote it. The
-  one-ulp rate drifted the two Choruses' phase apart. That was invisible on the x86-64 baseline (`-ffp-contract=off`,
-  ADR-0031), but CI's arm64 slice contracts to FMA and failed (E); a local x86-64 build with contraction on
-  reproduced it. (E) now writes A's Rate and Depth in every rig, at 5 Hz (the range end, which the range clamps to)
-  and 50 %. With the check, the first version fails on x86-64 too.
+**An A/B switch whose forced bottom would have fallen inside the destination's writes adopts the complete
+destination — State test 139 (2026-09-27, rewritten as the regression the same day; ADR-0057, Accepted;
+`KNOWN_ISSUES.md` KI-032, fixed in 0.9.9; worklog §T, §U, §V).** Until ADR-0057 was implemented this test
+(then `testAForcedBottomInsideTheSlotWritesAdoptsThePartlyWrittenSlot`) CHARACTERIZED the Devin finding "A/B
+switches can adopt incomplete slot state": it pinned that the bottom adopted the partly written slot. It now holds
+the fix (`testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination`).
+- **The method.** Deterministic, the production path. The audio thread's progress runs ON the message thread at an
+  exact point of the switch's write sequence: the processor's seam `beforeSoundReplacementWrites` (position 0:
+  after the request and the leaving capture, before the first write) or an APVTS listener right after the k-th
+  parameter the switch changes. Three blocks run there — the request taken, the fade-out, the bottom: where the
+  pre-fix engine adopted.
+- **The twins.** Each race is compared, bit for bit, with a COMPLETE-AT-COMPLETION TWIN — the same history, the
+  same blocks run BEFORE switching, then a complete switch — which is what the handshake promises: nothing adopted
+  while the swap is written, and then the swap exactly as an atomic switch made at its completion. A PARTIAL TWIN
+  (the destination slot holding only the k written parameters) shows what a partial adoption would have played, so
+  every comparison is shown able to fail. The partial twin reads the edited parameters' raw values exactly as the
+  race does (the arm64 FMA lesson of the first version: a parameter JUCE never wrote holds its default's unsnapped
+  round trip, and (E) writes A's Chorus Rate and Depth in every rig).
 - **The rigs.** One heap processor per rig, 48 kHz / 256, seed 139. A: Haas, Amount 80 %, Drive 8, Width 100 %,
   Mix 100 %, Output Gain −3. B, a Copy edited on B: Drive 12, Width 180 %, Mix 70 %, Output Balance +0.2, Haas
   Delay 20 ms, Input Balance +0.3, Mono Maker on at 200 Hz — eight writes.
-- **Why not Amount.** A forced bottom deliberately leaves the algorithm's wet glide running
-  (`AnamorphEngine::prepare`'s note), so a B visit's Amount would reach every later block and no twin could be
-  bit-identical.
 
 The legs:
-- **(A) Field by field,** Level Match off, at write positions 0, 1, 4, 7 and 8 of 8. At 4, B's Drive, Mix, Haas
-  Delay and Input Balance are written; A's Width, Output Balance and Mono Maker are not. The three blocks —
-  request taken, fade-out, bottom — are bit-identical to the partial twin. They differ from the complete twin
-  below 8 and match it at 8.
-- **(B) Level Match,** on.
-  - Premise: B is measured when left. The complete twin's same-rate `prepareToPlay` 4 blocks after the bottom's
-    block keeps −8.7907.
-  - At positions 0 and 4 the same `prepareToPlay` FLUSHES B's record (−8.3165 / −8.0785 → 0): it was judged
-    against the adopted state. At 8 it KEEPS it, bit-identical.
-  - After every race a complete return to A keeps A's record (−5.8063): the leaving capture is A's complete
-    state, measured.
-- **(C) The mixture settles.** After position 4 the parameters read B's everywhere, and the output is the
-  complete twin's again, bit for bit, from the ninth block after the bottom (asserted: within an eighth of a
-  second).
-- **(D) A host reset and a same-rate `prepareToPlay`,** one block after the request at position 4, adopt the
-  partly written slot too: bit-identical to the partial twin's same sequence, not the complete twin's.
-- **(E) The algorithm first.** Haas → Chorus (2 Hz, 80 %), position 1, six blocks inside: Chorus at A's rate and
-  depth (5 Hz, 50 %).
-- **(F) A real race, for the `tsan` lane.** A paced audio thread (`d2::Pace`) runs against six switches from the
-  message thread. The output is finite and the switches land. Nothing about the timing is asserted; under the
-  `tsan` lane the leg proves there is no data race while the engine adopts whatever it reads.
+- **(A) Field by field,** Level Match off, at write positions 0, 1, 4, 7 and 8 of 8: the three blocks inside the
+  writes and the 24 after them are bit-identical to the complete-at-completion twin; below 8 the partial twin plays
+  something else.
+- **(B) Level Match** on, positions 0, 4 and 8: B's record is restored MEASURED — judged against the complete
+  destination — and a same-rate `prepareToPlay` 4 blocks after the landing KEEPS it, bit-identical to the twin
+  (−8.7672; the pre-fix engine flushed it to 0 dB at positions 0 and 4). A complete return to A keeps A's record
+  (−5.8077): the leaving capture is A's complete state.
+- **(C) Settling.** After position 4 the parameters read B's everywhere and the output is the twin's, bit for bit,
+  for two seconds.
+- **(D) A host reset, and a same-rate `prepareToPlay`,** one block after the request at position 4: bit-identical to
+  the twin making the same call before its switch — neither completes nor primes the partly written slot.
+- **(E) The algorithm first.** Haas → Chorus (2 Hz, 80 %), six blocks inside the writes at position 1 (Algorithm
+  written, Rate and Depth not): bit-identical to the twin, never Chorus at A's rate and depth.
+- **(F1) The real race.** An audio thread — paced to real time, then free-running — against 6 + 20 switches from
+  the message thread: after EVERY block the adopted state is A's or B's complete state; the output is finite; every
+  switch lands.
+- **(F2) The ordering, for the `tsan` lane.** A plain `int` the message thread writes after a swap's writes and
+  before its completion, read by the audio thread once its own take has seen that completion (200 swaps). The
+  release / acquire pair is the only edge between the two threads there, so ThreadSanitizer reports a data race on
+  it if either side is relaxed (the relaxed-orders control, worklog §V); with the pair every read sees the value
+  written.
 
-26 checks, ~0.4 s native; they also pass built with FMA contraction on x86-64. On ADR-0057's scratch prototype
-(worklog §T5) 11 fail — every (A) position, (B)'s two flushes and its position-8 keep, (C) and (E) — and every
-other test of both suites passes.
+~1.5 s native. Every check passes on the final code and with FMA contraction. The pre-fix behaviour — the handshake
+disabled, every request sequence 0 (worklog §V, control N9) — fails 12 checks: all five (A) positions, (B)'s three landings, (C), both (D) and (E) — (F1)'s threaded race is timing-dependent and did not catch it in that run; publishing the completion before the
+writes (N1) fails 13 of them: all five (A) positions, (B)'s three landings, (C), both (D), (E) and (F1).
+
+**Every interleaving of a bulk swap's writes with the audio thread adopts only complete states, on every path that
+raises one — State test 140 (2026-09-27; ADR-0057, Accepted; KI-032; worklog §V).**
+(`testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates`) makes worklog §U4's scratch enumeration permanent,
+through the production processor: blocks, host resets, re-prepares and snapshot reads run from INSIDE the message
+thread's bulk writes, at the APVTS notification after each raw-value store, so every placement is enumerated
+exactly. After EVERY block, host reset and re-prepare the adopted snapshot must be one of the command's complete
+states, bit for bit; each command must end on its destination with nothing pending; a measured record must land
+measured; each output twin must be bit-identical. Five combinations of 2 / 2 / 3 / 4 / 8 written fields.
+- **S1** A/B at every write position × 1, 2, 3 or 8 blocks (96; Level Match ON); **S1t** the same at 1 and 3 blocks
+  against a complete-at-completion twin (48 twins). **S2** slow writes (10). **S3** repeated alternation, 8
+  switches each with blocks inside (120).
+- **S4 / S5** undo and redo of one multi-field step at every write position × 1, 2, 3 or 8 blocks (96 each).
+- **S6** two factory presets, a block or three after every write (84); **S6f** a user preset FILE through
+  `loadFile` (52).
+- **S7 / S8** a host reset / a re-prepare at every write position after 0, 1 or 3 blocks (72 each).
+- **S9a–d** a snapshot read inside the writes and handed in after the completion — to `setParameters` and a block,
+  the same and a host reset, a prime and its activation, the same and a host reset (42 each); **S9e** `prepareFrom`
+  whose first read runs the whole switch, with and without a host reset (28).
+- **S13** a snapshot read inside the writes after the engine's previous take (19); **S13b** `setParametersFrom`
+  whose read runs the whole switch (19).
+- **S10** a completion and the next request in one word (42). **S11** supersession during a completed switch's
+  fade (288; Level Match ON). **S12** Copy between switches and around one (48).
+
+1,358 cases, 0 with a failure; each scenario asserts it ran; ~4 s native. The negative controls (worklog §V): the
+completion before the writes — 1,066 cases; no sequence — S3 70, S10 42, S11 34 (123 landings not measured); the
+read before the first take — S9e 12; no second take — S9e 28, S13b 15; trust after an awaited first take — 1,075;
+the one-take path ignoring an awaited swap — S9b–d 84; the activation re-using the prime's snapshot — S9e 14; the
+pre-fix behaviour (N9) — 1,120 of the 1,358 cases, including 361 landings not measured (S1, S11).
+
+**The opt-in probes** (not part of the suite): `AnamorphStateTests --bulk-swap-probe [trials] [stall-us]` re-runs
+worklog §U1's threaded measurement — six combinations × 1×, 4×, 16×, 64×, 112×, 256× real time and free-running, an
+audio thread against `abSwitchTo` — and fails a trial if any block holds neither slot, the switch does not land on
+B measured, or a same-rate `prepareToPlay` afterwards does not keep B's level; its audio thread runs until the
+switch has returned and 48 blocks more. With a stall, it runs at 1× only, with one message-thread stall after the
+first write. `--bulk-swap-stress [trials] [stall-us]` free-runs an audio thread (1×–256×, unpaced) against A/B,
+repeated, superseding, undo, redo, preset, Copy, host-reset and re-prepare commands, each optionally stalled at a
+random write, and checks every block, reset and re-prepare. Results on the final code are in ADR-0057, *Evidence*.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
@@ -5549,6 +5615,18 @@ exactly when the raw SARIF is most worth keeping.
 Things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist. One entry — automated AU validation — is now **closed** and kept struck through
 rather than deleted, because a gap that was real and is now covered is worth being able to find.
+
+- **ADR-0057's memory ordering is reasoned, not observed, on weakly ordered hardware** (2026-09-27). The
+  bulk-swap handshake is correct only with a RELEASE completion, ACQUIRE takes and `seq_cst` (acquire or
+  stronger) parameter loads in `toEngine` (ADR-0057, Claims 1–4 and preconditions 1–5). x86-64 is TSO and
+  every read-modify-write there is a locked instruction, so no x86-64 run can show a relaxed order failing.
+  What covers it: the logic with the orders removed (Test 75, State tests 139 and 140, the negative controls);
+  State test 139 (F2) as a ThreadSanitizer witness of the release / acquire edge (the relaxed-orders control
+  is reported as a race there); `check-realtime.py` rejecting a relaxed or consume load in `toEngine`;
+  disassembly of an AArch64 cross-build (`completeBulkApply` → `CASL` / `LDXR`+`STLXR`, `takeRequestWord` →
+  `SWPA` / `LDAXR`+`STXR`, 36 `LDAR` for `toEngine`'s 36 loads); and CI's native arm64 macOS run of both
+  suites. None of these can exhibit a weak-ordering reordering on demand: the suites passing on arm64 is
+  evidence the protocol's logic holds there, not proof its ordering is exercised.
 
 - **The `FrameClock` tick has no headless test.** A **`TESTING_POLICY` rule-1 exception under
   ADR-0025**, invoked by ADR-0043 for the held-solo audition. Its four required disclosures:
