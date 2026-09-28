@@ -307,8 +307,8 @@ All four are **transparent at Amount 0 %**.
    decorrelated Side signal from the Mid using a sparse "velvet noise" filter; the Mid
    itself passes untouched, so **mono playback hears exactly the unprocessed center**.
    Density sets how dense the diffusion is. The default algorithm.
-3. **Chorus** — *classic modulated widening.* One modulated delay tap per channel with
-   opposite LFO phase, so even a mono source becomes wide, lush and slightly in motion.
+3. **Chorus** — *classic modulated widening.* One modulated delay tap per channel, the
+   left and right LFOs a quarter cycle apart, so even a mono source becomes wide, lush and slightly in motion.
    Rate and Depth are yours; audible pitch movement is part of the charm.
 4. **Dimensional** — *anti-phase dual-tap widening.* Two anti-phase-modulated taps per
    channel cancel each other's pitch wobble to first order: spaciousness and width with

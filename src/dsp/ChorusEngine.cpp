@@ -209,7 +209,7 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
         }
         else
         {
-            // Chorus: single modulated tap, L/R anti-phase for width.
+            // Chorus: single modulated tap, L/R LFOs 90 degrees apart for width.
             const float dL = baseSamps + depthSamps * sinL;
             const float dR = baseSamps + depthSamps * sinR;
             const float wetL = readFrac (bufL, writeL, dL);

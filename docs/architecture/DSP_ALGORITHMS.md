@@ -58,7 +58,7 @@ re-seeded from the iterated `phase` at every block start and advanced by the fix
 (`.cpp:166-179`, `.cpp:227-231`). Numerically class B vs the previous per-sample `std::sin`
 (sub-0.1-sample delay wobble at the depth extremes; nothing accumulates across blocks because the
 float `phase` accumulation and its wrap sequence are unchanged).
-- **Chorus**: one modulated tap/channel, anti-phase L/R, linear crossfade
+- **Chorus**: one modulated tap/channel, L/R LFOs 90° apart (the +0.25 offset above), linear crossfade
   `out = in·(1−wet) + tap·wet` (`.cpp:210-219`).
 - **Dimensional**: two anti-phase taps/channel (`d1 = base+depth·sin`, `d2 = base−depth·sin`),
   averaged `0.5·(tap1+tap2)` so Doppler pitch shifts cancel to first order (no vibrato)

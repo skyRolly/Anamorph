@@ -10,8 +10,8 @@ namespace anamorph
 //
 //  A modulated delay line. Two voicings share the implementation:
 //
-//   * Chorus      : one modulated tap per channel; L/R LFOs run in anti-phase
-//                   so a mono source becomes wide. Classic, lush, some motion.
+//   * Chorus      : one modulated tap per channel; L/R LFOs run 90 degrees
+//                   apart, so a mono source becomes wide. Classic, lush, some motion.
 //
 //   * Dimensional : the headline "no audible pitch wobble" mode. Each channel
 //                   sums TWO taps whose delays are modulated in ANTI-PHASE.
