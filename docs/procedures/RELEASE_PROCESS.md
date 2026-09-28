@@ -104,7 +104,7 @@ sequence, literally:
    that landed earlier on the branch already satisfies this and needs no re-commit.
 2. `check-docs.py` (every push) verifies that the first tag and the newest version entry each have a
    definition naming their own tag, that every tagged version compares against the most recent
-   earlier tagged one, and that no older, never-tagged version has a definition. The link is
+   earlier tagged one, and that no version older than the first tag has a definition. The link is
    unresolvable only between this commit and the tag push in step 3, which is the same interval in
    which the dated heading names a release that does not exist yet.
 3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
