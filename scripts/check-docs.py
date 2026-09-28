@@ -179,6 +179,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -1226,13 +1227,38 @@ class TagState(NamedTuple):
     source: str
 
 
+# Git's repository-location variables: `git rev-parse --local-env-vars`, plus
+# GIT_NAMESPACE, which narrows the refs a command sees. A hook or `git rebase -x`
+# EXPORTS some of them -- an absolute GIT_DIR in a linked worktree, and
+# GIT_INDEX_FILE for pre-commit -- and `-C <dir>` does not override them, so an
+# inherited set points every git command at THAT repository: the reader would
+# list its tags as this checkout's, and the self-test's scratch repositories
+# would commit and tag into it. Every git process here runs without them.
+GIT_LOCATION_VARS = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+    "GIT_SHALLOW_FILE", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+})
+
+
+def git_env() -> dict[str, str]:
+    """The environment for a git process that must act on the repository its
+    `-C` names and nothing else; git's messages in the C locale, so the reader
+    can tell "not a repository" from other refusals."""
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
+    env["LC_ALL"] = "C"
+    return env
+
+
 def read_git_tags(root: Path) -> TagState:
     """The tag names of the git checkout rooted at `root`, from its local refs.
 
     CI's checkout fetches every tag for the `docs` job (`fetch-tags: true`); a
-    clone made with `git clone` has them already. A shallow clone that did not
-    fetch them reads as a checkout with no tags, so the source says "shallow"
-    and the finding tells the reader how to fetch them.
+    clone made with `git clone` has the tags that existed then, and `git fetch
+    --tags` brings later ones. A clone without a tag reads as a checkout without
+    it, so the source says how to fetch them, and "shallow" where that applies.
     """
     git = shutil.which("git")
     if git is None:
@@ -1240,11 +1266,16 @@ def read_git_tags(root: Path) -> TagState:
 
     def run(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run([git, "-C", str(root), *args], capture_output=True,
-                              text=True, timeout=60)
+                              text=True, timeout=60, env=git_env())
     try:
         top = run("rev-parse", "--show-toplevel")
         if top.returncode != 0:
-            return TagState(frozenset(), False, f"{root} is not a git checkout")
+            # Say which refusal it was: "dubious ownership" is a checkout git will
+            # not open, not a missing one, and has its own remedy.
+            why = (top.stderr.strip().splitlines() or ["no reason given"])[0]
+            return TagState(frozenset(), False,
+                            f"{root} is not a git checkout" if "not a git repository" in why
+                            else f"git could not open {root}: {why}")
         # Inside another checkout (a copied tree under some other repository),
         # git would answer with THAT repository's tags.
         if Path(top.stdout.strip()).resolve() != root.resolve():
@@ -1261,7 +1292,8 @@ def read_git_tags(root: Path) -> TagState:
     return TagState(frozenset(refs.stdout.split()), True,
                     "the git tags of a shallow clone -- fetch them with "
                     "`git fetch --tags` if one is missing" if shallow
-                    else "the git tags of this checkout")
+                    else "the git tags of this checkout -- `git fetch --tags` "
+                    "brings one pushed since it last fetched")
 
 
 # The self-test binds this so its fixtures do not depend on which tags this
@@ -2118,8 +2150,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             # that was never cut. The version closed untagged, so it carries none.
             findings.append(
                 f"{path}:{line_no}: `[{key}]` is defined, but there is no git tag `{key}` "
-                f"(read from {tags.source}) -- the link names a tag that was never cut; "
-                f"a version that closed without a tag carries no definition "
+                f"(read from {tags.source}) -- the link names a tag this checkout does not "
+                f"have; a version that closed without a tag carries no definition "
                 f"(RELEASE_PROCESS.md §Tagging)"
             )
             continue
@@ -3789,12 +3821,36 @@ def self_test() -> int:
     # `.../compare/0.9.9...HEAD` before `0.9.9` existed. The cases walk the line's
     # states together with the skipped-tag rule, so neither can regress without the
     # other noticing.
-    real_lines = (root / "CHANGELOG.md").read_text(encoding="utf-8").split("\n")
+    # The repository's own CHANGELOG.md as it stands while 0.9.9 is the newest
+    # entry, with the section added above 0.9.9: exactly the edit that is wrong
+    # before the tag and right after it. Cut back to that state -- the preamble,
+    # then `## [0.9.9]` down, without any `[Unreleased]` section, newer entry or
+    # their definitions -- so that the file's own later edits (the section added
+    # after the tag push, the next release's entry) do not change the fixture.
+    def as_of_first_tag(lines: list[str]) -> list[str]:
+        heads = [i for i, l in enumerate(lines) if l.startswith("## [")]
+        at = next(i for i in heads if lines[i].startswith("## [0.9.9]"))
+
+        def newer(line: str) -> bool:
+            m = re.match(r"\[(unreleased|\d+\.\d+\.\d+)\]:", line, re.IGNORECASE)
+            return bool(m) and (m.group(1).lower() == "unreleased"
+                                or tuple(map(int, m.group(1).split("."))) > (0, 9, 9))
+        return [l for l in lines[:heads[0]] + lines[at:] if not newer(l)]
+    real_lines = as_of_first_tag(
+        (root / "CHANGELOG.md").read_text(encoding="utf-8").split("\n"))
     at9 = next(i for i, l in enumerate(real_lines) if l.startswith("## [0.9.9]"))
-    # The repository's own CHANGELOG.md with the section added above 0.9.9: exactly
-    # the edit that would be wrong before the tag and right after it.
     REAL_U = (real_lines[:at9] + ["## [Unreleased]", "### Added", "- u", ""]
               + real_lines[at9:] + [UR("0.9.9")])
+    # ...and the cut is proved: the same file after both of those later edits cuts
+    # back to the same lines.
+    later = (real_lines[:at9] + ["## [Unreleased]", "### Added", "- u", "",
+                                 "## [0.9.10] — 2026-10-10", "### Fixed", "- t", ""]
+             + real_lines[at9:] + [UR("0.9.10"), CP("0.9.9", "0.9.10")])
+    checked += 1
+    if as_of_first_tag(later) != real_lines:
+        failures += 1
+        print("self-test FAIL: changelog the real-file fixture does not survive the file's "
+              "later [Unreleased] section and next entry", file=sys.stderr)
     for label, expected, lines, tags in [
         # No tag yet: 0.9.7 and 0.9.8 closed untagged, nothing is a base.
         ("unreleased 1: no tags and no `[Unreleased]` passes", 0, CL([E8, E7], []), T()),
@@ -3856,6 +3912,13 @@ def self_test() -> int:
         # A definition below the first tag is refused as such and makes no base.
         ("no tags, a stray pre-first-tag `[0.9.8]` definition is no base", 2,
          U + CL([E8, E7], [UR("0.9.8"), CP("0.9.7", "0.9.8")])[1:], T()),
+        # Nor does a git TAG below the first tag: a stray or retroactive `0.9.8`
+        # exists in git, but nothing older than 0.9.9 was released with a tag, so
+        # it is no `[Unreleased]` base and no comparison base.
+        ("a git tag `0.9.8` below the first tag is no `[Unreleased]` base", 1,
+         U + CL([E8, E7], [UR("0.9.8")])[1:], T("0.9.8")),
+        ("a git tag `0.9.8` below the first tag is no base for 0.9.10", 1,
+         CL([E10, E9, E8, E7], [CP("0.9.8", "0.9.10")]), T("0.9.8")),
         # Only a well-formed entry counts: a misspelled first-tag heading is its own
         # finding, and until it is fixed the section is refused as well (fails closed).
         ("a misspelled first-tag heading: that finding, and the refusal", 2,
@@ -3871,6 +3934,13 @@ def self_test() -> int:
          U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], UNKNOWN),
         ("unreadable tags: a past release's link is refused once, not guessed", 1,
          CL([E10, E9], [CP("0.9.9", "0.9.10"), TP("0.9.9")]), UNKNOWN),
+        # ...and after the refusal, what needs no tags is still checked: a
+        # definition below the first tag, and one with no entry at all.
+        ("unreadable tags: refused, and the pre-first-tag `[0.9.8]` still found", 2,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9"), RD8])[1:], UNKNOWN),
+        ("unreadable tags: refused, and a definition with no entry still found", 2,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9"), CP("0.9.4", "0.9.5")])[1:],
+         UNKNOWN),
     ]:
         checked += 1
         failures += 0 if count_case(label, expected, lines, tags) else 1
@@ -3916,10 +3986,15 @@ def self_test() -> int:
     # The cases above hand `tag_state()` their tags. This drives `read_git_tags()`
     # and the unmodified production path against real repositories: an empty one,
     # one holding an annotated `0.9.9` (what `release.yml` requires), a lightweight
-    # and a prefixed tag listed as they are, a subdirectory (not the checkout's
-    # root -- git would answer with the enclosing repository's tags) and a plain
-    # directory (no checkout at all), both of which must read as UNKNOWN, never as
-    # "no tags". (`_tag_state_override` is this function's global: see the fixtures.)
+    # and a prefixed tag listed as they are, a depth-1 clone before and after CI's
+    # tag refspec is fetched, and the states that must read as UNKNOWN, never as
+    # "no tags": a subdirectory (not the checkout's root -- git would answer with
+    # the enclosing repository's tags), a plain directory, a checkout whose tags
+    # cannot be listed, no git, and a git that cannot run. All of it runs with
+    # GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE naming a DECOY repository, as a
+    # hook or `git rebase -x` would leave them; neither the reader nor this test's
+    # own git commands may read or write it. (`_tag_state_override` is this
+    # function's global: see the fixtures.)
     _tag_state_override = None
     git = shutil.which("git")
     checked += 1
@@ -3928,48 +4003,118 @@ def self_test() -> int:
         print("self-test FAIL: changelog tag reader: git is not installed, so the "
               "check that reads the release tags cannot be proved", file=sys.stderr)
     else:
+        steps: list[tuple[str, bool]] = []
+        saved_env = dict(os.environ)
         with tempfile.TemporaryDirectory() as tmp:
-            repo_dir = Path(tmp) / "repo"
-            repo_dir.mkdir()
-
-            def G(*args: str) -> None:
-                subprocess.run([git, "-C", str(repo_dir), "-c", "user.name=self-test",
-                                "-c", "user.email=self-test@invalid", "-c", "commit.gpgsign=false",
-                                "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null",
-                                *args], capture_output=True, text=True, check=True)
-            post = U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]
-            (repo_dir / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
-            G("init", "-q")
-            G("add", "-A")
-            G("commit", "-q", "-m", "self-test")
-            steps: list[tuple[str, bool]] = []
-            _tag_state_cache.clear()
-            st = read_git_tags(repo_dir)
-            steps.append(("an untagged checkout reads as known and empty",
-                          st.known and not st.tags))
-            steps.append(("...and the production path refuses `[Unreleased]` from 0.9.9",
-                          len(analyse(repo_dir / "CHANGELOG.md", post, repo_dir)) == 2))
-            G("tag", "-a", "0.9.9", "-m", "Anamorph 0.9.9")
-            _tag_state_cache.clear()
-            steps.append(("with the annotated `0.9.9` tag the production path accepts it",
-                          analyse(repo_dir / "CHANGELOG.md", post, repo_dir) == []))
-            G("tag", "0.9.10")
-            G("tag", "-a", f"{PFX}0.9.11", "-m", "prefixed")
-            _tag_state_cache.clear()
-            steps.append(("lightweight and prefixed tags are listed as they are",
-                          read_git_tags(repo_dir).tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}))
-            (repo_dir / "docs").mkdir()
-            steps.append(("a subdirectory of a checkout is not its root: unknown",
-                          not read_git_tags(repo_dir / "docs").known))
-            plain = Path(tmp) / "plain"
-            plain.mkdir()
-            steps.append(("a directory that is no checkout: unknown",
-                          not read_git_tags(plain).known))
-            _tag_state_cache.clear()
-            found = analyse(plain / "CHANGELOG.md", post, plain)
-            steps.append(("...and the production path there refuses once, with the reason",
-                          len(found) == 1 and "is not a git checkout" in found[0]))
-            _tag_state_cache.clear()
+            def G(where: Path, *args: str) -> str:
+                return subprocess.run(
+                    [git, "-C", str(where), "-c", "user.name=self-test",
+                     "-c", "user.email=self-test@invalid", "-c", "commit.gpgsign=false",
+                     "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],
+                    capture_output=True, text=True, check=True, env=git_env()).stdout
+            decoy = Path(tmp) / "decoy"
+            decoy.mkdir()
+            G(decoy, "init", "-q")
+            G(decoy, "commit", "-q", "--allow-empty", "-m", "decoy")
+            G(decoy, "tag", "-a", "0.9.9", "-m", "decoy")
+            decoy_was = (G(decoy, "rev-parse", "HEAD"), G(decoy, "tag", "-l"))
+            try:
+                os.environ.update(GIT_DIR=str(decoy / ".git"), GIT_WORK_TREE=str(decoy),
+                                  GIT_INDEX_FILE=str(decoy / ".git" / "index"))
+                repo_dir = Path(tmp) / "repo"
+                repo_dir.mkdir()
+                post = U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]
+                (repo_dir / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
+                G(repo_dir, "init", "-q")
+                G(repo_dir, "add", "-A")
+                G(repo_dir, "commit", "-q", "-m", "self-test")
+                _tag_state_cache.clear()
+                st = read_git_tags(repo_dir)
+                steps.append(("an untagged checkout reads as known and empty",
+                              st.known and not st.tags))
+                steps.append(("...and says how to fetch a tag pushed since",
+                              "git fetch --tags" in st.source and "shallow" not in st.source))
+                steps.append(("...and the production path refuses `[Unreleased]` from 0.9.9",
+                              len(analyse(repo_dir / "CHANGELOG.md", post, repo_dir)) == 2))
+                G(repo_dir, "tag", "-a", "0.9.9", "-m", "Anamorph 0.9.9")
+                _tag_state_cache.clear()
+                steps.append(("with the annotated `0.9.9` tag the production path accepts it",
+                              analyse(repo_dir / "CHANGELOG.md", post, repo_dir) == []))
+                G(repo_dir, "tag", "0.9.10")
+                G(repo_dir, "tag", "-a", f"{PFX}0.9.11", "-m", "prefixed")
+                steps.append(("lightweight and prefixed tags are listed as they are",
+                              read_git_tags(repo_dir).tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}))
+                # CI's checkout: one commit, no tags -- then the refspec `fetch-tags` adds.
+                shallow = Path(tmp) / "shallow"
+                G(Path(tmp), "clone", "-q", "--depth=1", "--no-tags", repo_dir.as_uri(), str(shallow))
+                st = read_git_tags(shallow)
+                steps.append(("a depth-1 clone without the tags reads as known and empty, "
+                              "and says it is shallow",
+                              st.known and not st.tags and "shallow" in st.source
+                              and "git fetch --tags" in st.source))
+                G(shallow, "fetch", "-q", "--depth=1", "origin", "+refs/tags/*:refs/tags/*")
+                st = read_git_tags(shallow)
+                steps.append(("...and with the tag refspec fetched, holds every tag",
+                              st.known and st.tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}))
+                _tag_state_cache.clear()
+                steps.append(("...where the production path accepts `[Unreleased]` from 0.9.9",
+                              analyse(shallow / "CHANGELOG.md", post, shallow) == []))
+                (repo_dir / "docs").mkdir()
+                steps.append(("a subdirectory of a checkout is not its root: unknown",
+                              not read_git_tags(repo_dir / "docs").known))
+                plain = Path(tmp) / "plain"
+                plain.mkdir()
+                steps.append(("a directory that is no checkout: unknown",
+                              not read_git_tags(plain).known))
+                _tag_state_cache.clear()
+                found = analyse(plain / "CHANGELOG.md", post, plain)
+                steps.append(("...and the production path there refuses once, with the reason",
+                              len(found) == 1 and "is not a git checkout" in found[0]))
+                # A checkout git opens but whose tag refs it cannot list.
+                broken = Path(tmp) / "broken"
+                shutil.copytree(repo_dir, broken)
+                G(broken, "pack-refs", "--all")
+                with open(broken / ".git" / "packed-refs", "a", encoding="utf-8") as f:
+                    f.write("not a ref line\n")
+                st = read_git_tags(broken)
+                steps.append(("a checkout whose tags cannot be listed: unknown, with git's reason",
+                              not st.known and st.source.startswith("git could not list the tags: ")
+                              and "packed-refs" in st.source))
+                # A checkout git refuses to open ("dubious ownership", through git's
+                # own knob for that check) is not a missing one: the reason is git's.
+                os.environ["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1"
+                st = read_git_tags(repo_dir)
+                del os.environ["GIT_TEST_ASSUME_DIFFERENT_OWNER"]
+                steps.append(("a checkout git will not open: unknown, with git's reason",
+                              not st.known and "dubious ownership" in st.source
+                              and "not a git checkout" not in st.source))
+                # No git at all, then a `git` that cannot be executed.
+                bare_path = Path(tmp) / "path"
+                bare_path.mkdir()
+                os.environ["PATH"] = str(bare_path)
+                st = read_git_tags(repo_dir)
+                steps.append(("no git on the PATH: unknown",
+                              not st.known and st.source == "git is not installed"))
+                _tag_state_cache.clear()
+                found = analyse(repo_dir / "CHANGELOG.md", post, repo_dir)
+                steps.append(("...and the production path refuses once, naming it",
+                              len(found) == 1 and "(git is not installed)" in found[0]))
+                if os.name == "posix":   # an executable bit and ENOEXEC: POSIX only
+                    fake = bare_path / "git"
+                    fake.write_bytes(b"\0 not a program\n")
+                    fake.chmod(0o755)
+                    st = read_git_tags(repo_dir)
+                    steps.append(("a git that cannot run: unknown",
+                                  not st.known and st.source.startswith("git could not run: ")))
+            except subprocess.CalledProcessError as exc:
+                steps.append((f"setting up the repositories: `{' '.join(exc.cmd[-3:])}` failed: "
+                              f"{exc.stderr.strip()}", False))
+            finally:
+                os.environ.clear()
+                os.environ.update(saved_env)
+                _tag_state_cache.clear()
+            steps.append(("the decoy named by GIT_DIR gained no commit and no tag",
+                          (G(decoy, "rev-parse", "HEAD"), G(decoy, "tag", "-l")) == decoy_was))
         for step, ok in steps:
             if not ok:
                 failures += 1
