@@ -1,4 +1,4 @@
-# Global review — v0.9.9, `main` @ `7185cad`
+# Global review — 0.9.9, `main` @ `7185cad`
 
 **Round:** investigation-only, read-only. No product file was modified.
 **Baseline:** `7185cad0d5db878546d650ebb892178e6cefbab2` (merge of PR #151). Verified equal to `origin/main`
@@ -252,7 +252,7 @@ backing the older ones have.
   (`2cdfca8`), 9.0.0 (`f8f8864`), 9.0.1 (`e18f7f5`) and 9.0.2 (`7278278`); there is exactly one
   implementation in the tree. `getXmlFromBinary` is
   `parseXML (String::fromUTF8 (data + 8, jmin (size - 8, stated)))`, so a zlib body cannot yield a
-  document. Corroborating: the committed `tests/fixtures/field_capture_v0_9_5.session` **is** plain
+  document. Corroborating: the committed `tests/fixtures/field_capture_0_9_5.session` **is** plain
   text after its header.
 - **Why it matters.** `docs/REPOSITORY_MAP.md:115` states the seeds exist "so the fuzzer starts from
   inputs that already reach the parser rather than from noise". They do not reach it. libFuzzer must
@@ -264,7 +264,7 @@ backing the older ones have.
 - **Current protection.** None; the discrepancy is invisible because "no sanitizer fired" is the pass
   condition.
 - **Refuted along the way, do not raise:** the tempting adjacent hypothesis that a JUCE bump changed
-  the container and broke session compatibility. All four pinned versions write plain text, the v0.9.5
+  the container and broke session compatibility. All four pinned versions write plain text, the 0.9.5
   fixture is plain text, and State test 116 leg F restores all four historical fixtures successfully.
 
 ### F6 — Four of six release-blocking race probes return success on a zero count with no control leg
@@ -457,7 +457,7 @@ Individually low, collectively the reason a future round will re-do this one's w
   symbol "is deleted rather than kept beside it". ADR-0008's related-code map names it too, plus
   `deferIfBusy`. So the only thing standing between the closure and a silent regression is stated
   against a symbol a reader cannot find. **[verified first-hand]**
-- **`docs/KNOWN_ISSUES.md` still declares itself "Version-synced to v0.9.6"** (line 7) at project
+- **`docs/KNOWN_ISSUES.md` still declares itself "Version-synced to 0.9.6"** (line 7) at project
   version 0.9.9, and keeps four entries it declares RESOLVED/CLOSED in contradiction of its own opening
   rule. **[verified first-hand]**
 - **Stale test counts in four documents, including a Policy that defines the release gate** —

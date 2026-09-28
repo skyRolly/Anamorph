@@ -3052,7 +3052,7 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
             // processor repeatedly) the pre-round-12 code left `abSlot[]` and
             // `abActive` holding the PREVIOUS project's values here, so the next A/B
             // switch recalled the previous project's sound underneath the restored
-            // one. Measured before the reset existed: after a v0.2 restore, switching
+            // one. Measured before the reset existed: after a 0.2 restore, switching
             // to B played the previous project's B (raw width 0.10 against a restored
             // 0.75), and with the previous project left active on B the first switch
             // read its A (0.90) and its `active` index survived too --
@@ -3064,27 +3064,27 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
             // first use, which is after the restore has finished.
         }
     }
-    else if (xml->hasTagName (apvtsStateType)) // backward-compat (v0.2)
+    else if (xml->hasTagName (apvtsStateType)) // backward-compat (0.2)
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
         d.soundParams  = legacy;                    // installed by the caller, after the announcement (§25)
         d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterRestoring (apvts, legacy);   // §22, ADR-0037
 
-        // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
+        // A 0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
         // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same resolver the AnamorphRoot
         // branch uses for that vintage -- and needed for the same reason readSlot resets the A/B
         // slots first: `internal` is a processor member a host restores into repeatedly on ONE
         // live instance, so without this the previous project's Oversampling, UI Scale,
-        // Persistence, Meters, Tooltips and Animations stay in force underneath a v0.2 sound.
+        // Persistence, Meters, Tooltips and Animations stay in force underneath a 0.2 sound.
         // resolveLegacy resolves all six unconditionally, so absent ones reset to default
         // rather than being inherited.
         d.internalResolved = anamorph::InternalState::resolveLegacy (legacy);
 
         // ...and the A/B slots need the same treatment for the same reason, which
         // fixing `internal` does NOT also fix: they are a separate pair of processor
-        // members, and a v0.2 session predates the A/B feature, so it can carry no
+        // members, and a 0.2 session predates the A/B feature, so it can carry no
         // slot data to overwrite them with. Without this the previous project's A
-        // and B sounds stayed loaded underneath a v0.2 restore and came back on the
+        // and B sounds stayed loaded underneath a 0.2 restore and came back on the
         // next slot switch. The decode's defaults ARE that reset (see the no-`AB`
         // branch above).
     }

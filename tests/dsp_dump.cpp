@@ -5,7 +5,7 @@
 //  output the gate a JUCE bump has to pass, and the 8.0.14 -> 9.0.0 and
 //  9.0.0 -> 9.0.1 migrations both passed it -- with a SCRATCHPAD tool that was
 //  never committed, "per the `xbench.cpp` precedent" (worklogs/
-//  JUCE9_MIGRATION_v0.8.13.md §3). So the gate exists, the evidence exists, and
+//  JUCE9_MIGRATION_0.8.13.md §3). So the gate exists, the evidence exists, and
 //  the instrument does not. Every future bump has had to rebuild it.
 //
 //  REBUILDING IT IS NOT FREE, and the worklog records exactly how it goes

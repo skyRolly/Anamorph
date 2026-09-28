@@ -1,4 +1,4 @@
-# JUCE 9.0.1 Upgrade (v0.9.4 cycle)
+# JUCE 9.0.1 Upgrade (0.9.4 cycle)
 
 Controlled dependency migration: JUCE **9.0.0 → 9.0.1**, the maintenance release of the line
 Anamorph already ships. No feature work, no redesign; the diff is the pin change, the version
@@ -161,7 +161,7 @@ What did change, and why it is or is not reachable:
 | VST3 loading | pluginval strictness 10 green locally (deterministic + randomise ×3) and on the CI gates for this PR |
 | Parameter IDs / names / order / automation flags | registry-snapshot fixture frozen under 8.0.14 passes unchanged under 9.0.1 (state test 2) |
 | Serialization schema + raw-exact round-trip | state tests 1/3 green under 9.0.1 (`copyXmlToBinary` framing unchanged upstream; the XmlDocument change is comment/PI skipping only) |
-| Legacy sessions (v0.2 / pre-0.6.4 / pre-0.8.4) | state tests 4-6 green under 9.0.1 |
+| Legacy sessions (0.2 / pre-0.6.4 / pre-0.8.4) | state tests 4-6 green under 9.0.1 |
 | Presets | state tests 8/10/11/12 green under 9.0.1 |
 | A/B state | state tests 3/9 green under 9.0.1 |
 | DSP output + reported latency | 32/32 twin-dump hashes + latencies identical (§3); `juce_dsp` has zero code change between the tags |

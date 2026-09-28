@@ -1,6 +1,6 @@
-# v0.8.11 Final Performance Pass & Release-Readiness Audit (worklog)
+# 0.8.11 Final Performance Pass & Release-Readiness Audit (worklog)
 
-> The last engineering pass before the v0.8.11 release. Deliberately **not** an
+> The last engineering pass before the 0.8.11 release. Deliberately **not** an
 > open-ended optimisation phase: it closes the three remaining named candidates
 > (GUI fresh-eyes sweep, W3-10 Width==1, W5-D K-weighting SIMD) with measured
 > verdicts and audits release readiness. Numbers are session-local (constraint

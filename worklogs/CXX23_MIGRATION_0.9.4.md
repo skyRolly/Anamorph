@@ -1,7 +1,7 @@
-# C++ standard migration 17 → 23 (v0.9.4 cycle)
+# C++ standard migration 17 → 23 (0.9.4 cycle)
 
 Controlled language-standard migration: `CMAKE_CXX_STANDARD` **17 → 23**, applied on top of the
-finished v0.9.4 tree (JUCE 9.0.1) **without advancing the version number**. No feature work, no
+finished 0.9.4 tree (JUCE 9.0.1) **without advancing the version number**. No feature work, no
 redesign. A C++-standard change is part of the build contract, so it is a **Build System change**
 → Architecture-Review-Gate item; recorded in **ADR-0027** (`Accepted` 2026-08-15) and flagged on
 the PR.
@@ -129,7 +129,7 @@ is the pre-existing `-Wsign-conversion` / `-Wshadow` / `-Wswitch-enum` / `-Wfloa
 
 **Scope of 27/29, against the JUCE cycle's 18/19.** The two numbers count the same thing over
 different command sets, and nothing about the build changed between them. `worklogs/
-JUCE901_UPGRADE_v0.9.4.md` §Warnings and ADR-0026 measured the **`AnamorphStateTests`** compile-
+JUCE901_UPGRADE_0.9.4.md` §Warnings and ADR-0026 measured the **`AnamorphStateTests`** compile-
 command set alone — `tests/state_tests.cpp` + the 9 `ANAMORPH_PLUGIN_SOURCES` + the 8
 `AnamorphDSP` sources = **18 compilations, 19 instances**. This cycle measured **both** self-test
 targets, adding the `AnamorphTests` set — `tests/dsp_tests.cpp` plus the same 8 `AnamorphDSP`

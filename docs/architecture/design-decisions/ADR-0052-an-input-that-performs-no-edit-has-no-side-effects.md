@@ -172,4 +172,4 @@ being that the wheel event carries `deltaY == 0` and `deltaX == 0.6`: a held wid
 and its gesture does not close at the event; a held solo press still toggles on release. Mutation:
 restoring `cancelActiveDrag()` in front of the threshold kills all three of leg D's checks and nothing
 else. State 2 840 / 0.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §48.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §48.

@@ -123,7 +123,7 @@ evidence).
 ## Evidence + confidence
 
 **Verified (measured):** baseline/post metrics, byte-identical twin engine dump
-(sha256 `6efa116a…3472` both builds), 136/136 self-tests under hardened flags on the v0.8.11
+(sha256 `6efa116a…3472` both builds), 136/136 self-tests under hardened flags on the 0.8.11
 tree (the flag-neutrality dump was measured pre-Wave-3 at that tree's 130 checks; the flag set
 is unchanged since), stripped-binary
 `dlopen` + entry-point resolution, full-RELRO flags in the ELF. **To confirm on CI:** Windows

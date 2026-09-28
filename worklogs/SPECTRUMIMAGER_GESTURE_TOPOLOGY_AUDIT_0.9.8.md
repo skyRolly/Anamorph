@@ -1,4 +1,4 @@
-# SpectrumImager gesture state vs band topology — audit, v0.9.8
+# SpectrumImager gesture state vs band topology — audit, 0.9.8
 
 **Round:** follow-up to PR #143 (three stale-topology defects fixed one consumer at a time).
 **Question put:** is local validation at each consumer the right architecture, or does gesture state

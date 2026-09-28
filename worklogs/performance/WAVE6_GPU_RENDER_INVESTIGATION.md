@@ -1,4 +1,4 @@
-# Performance Wave 6 — GPU / GUI rendering-efficiency investigation (v0.8.12)
+# Performance Wave 6 — GPU / GUI rendering-efficiency investigation (0.8.12)
 
 > Goal: reduce **unnecessary GPU/rendering** workload (idle GPU, redundant redraws, CPU→GPU
 > uploads, thermal/power) while keeping the editor **pixel-identical**, GUI behaviour identical,

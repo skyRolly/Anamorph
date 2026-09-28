@@ -263,7 +263,7 @@ public:
         // node does. This is not cosmetic: JUCE's text parser accepts "nan" and
         // "inf" as numbers, and the `(int)` conversion below of a NaN, an infinity
         // or an out-of-range double is UNDEFINED BEHAVIOUR (C++ [conv.fpint]).
-        // Measured through the real v0.2 restore before this guard existed, on
+        // Measured through the real 0.2 restore before this guard existed, on
         // x86-64: every such value became -2147483647 in the tree -- an impossible
         // ComboBox id, saved back out with the session on the next save -- and
         // "2147483647" wrapped to INT_MIN through a second UB, signed overflow in

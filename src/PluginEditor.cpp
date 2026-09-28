@@ -1196,7 +1196,7 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
 //
 // Hover here is derived GEOMETRICALLY -- getMouseXYRelative() is `getLocalPoint (nullptr,
 // Desktop::getMousePositionFloat())` (juce_Component.cpp:3233-3236), a pure coordinate transform of
-// the OS cursor with no hit test in it. That is the v0.6.1 stuck-hover fix and it is still the right
+// the OS cursor with no hit test in it. That is the 0.6.1 stuck-hover fix and it is still the right
 // design, but a coordinate transform cannot represent occlusion: a drop-down is a separate desktop
 // window stacked on top, and the controls it covers keep containing the cursor exactly as before, so
 // they light up while the pointer is provably on the menu. This is the missing term, and it is the
@@ -1204,7 +1204,7 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
 // the pop-up instead of against the control.
 //
 // Deliberately NOT Component::isMouseOver / componentUnderMouse / reallyContains: those are the
-// enter/exit machinery v0.6.1 moved away from, isMouseOver returns a frozen cached flag off the
+// enter/exit machinery 0.6.1 moved away from, isMouseOver returns a frozen cached flag off the
 // message thread, and reallyContains ends in a per-platform z-order syscall -- 44 of them per vblank
 // on the path S11/H15 exists to keep quiet. And NOT the process-global modal stack: that would make
 // this editor's hover a function of another instance's menu, or of the host's own dialogs.
@@ -1656,7 +1656,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
         matchReadout.setText (juce::String (matchDb, 1) + " dB", juce::dontSendNotification);
     }
 
-    // Release-outside safety net (v0.8.12): if a mouseUp is delivered OUTSIDE the plugin window
+    // Release-outside safety net (0.8.12): if a mouseUp is delivered OUTSIDE the plugin window
     // (released over the host / desktop) JUCE may never route it here, so a control can stay
     // logically pressed. JUCE's cached button state stays stale-"down" too, so gate on it first
     // (cheap, no syscall) and only when it says a button is held do we ask the OS for the REAL
@@ -1689,7 +1689,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
     }
 }
 
-// Vsync-stepped meter reveal: the v0.5.9 exponential ease (factor 0.55 per
+// Vsync-stepped meter reveal: the 0.5.9 exponential ease (factor 0.55 per
 // 1/24 s, time-corrected to whatever the display rate is) -- the prettier curve
 // the user preferred (#1). Stateless, so it always converges and can never stall
 // part-open (#2). Follows the UI-animation switch: off = snap instantly (#9).
@@ -1766,7 +1766,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 
     // --- S11 idle gate -------------------------------------------------------
     // The per-widget poll exists because enter/exit events were unreliable (the
-    // v0.6.1 stuck-hover fix), so it must keep evaluating whenever the mouse
+    // 0.6.1 stuck-hover fix), so it must keep evaluating whenever the mouse
     // could interact or anything can still move. It is skipped ONLY when every
     // input is provably static: cursor outside the editor (all hover targets 0),
     // no mouse button held anywhere (no press/drag state), no sweep window open,
@@ -1854,7 +1854,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     if (knobSweepTime > 0.0) knobSweepTime -= dt;
     const bool sweeping = uiAnimOn && knobSweepTime > 0.0;
 
-    // Release-outside safety net (v0.8.12): the REAL OS button state, queried lazily -- only if a
+    // Release-outside safety net (0.8.12): the REAL OS button state, queried lazily -- only if a
     // slider actually reports held below (never during hover / idle), and at most once per call.
     // A press released OUTSIDE the plugin window leaves isMouseButtonDown() / "dragging" stale-
     // true until JUCE sees another event; ANDing the glow with the real state clears it. A fresh
@@ -1941,7 +1941,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         {
             const bool buttonHeld = (s->isMouseButtonDown()
                                   || (bool) props.getWithDefault ("dragging", false))
-                                  && physicalButtonDown(); // release-outside safety net (v0.8.12)
+                                  && physicalButtonDown(); // release-outside safety net (0.8.12)
             actT = buttonHeld ? 1.0f : 0.0f;
 
             // ROTARY knobs AND LINEAR sliders ease their drawn position toward the

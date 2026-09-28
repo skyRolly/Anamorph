@@ -50,7 +50,7 @@ checklist and by the 0.9.2 changelog. Nothing generates the format any more.
    switched into and out of.
 4. **The equality the fix depends on was unmeasured** — and, once measured, turned out not to hold
    by construction: the session-shaped apply path renders the four log-mapped frequency parameters
-   through the store/report pass a *variable* number of times (`worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md`
+   through the store/report pass a *variable* number of times (`worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md`
    §3), because `replaceState` writes the parameter's rendered value back into the very tree
    `reassertParameters` then reads, and `repairSerializedValues` writes repaired text that is
    re-normalised the same way. The prediction agreed with the live signature in 86 062 of 86 062
@@ -139,7 +139,7 @@ checklist and by the 0.9.2 changelog. Nothing generates the format any more.
   (legacy decode, switch-in, repeated restore, partial and malformed payloads, the modern-shape
   control, and the one-pass equivalence sweep over the log-mapped ranges).
 
-Evidence [Verified]: `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md` §3 (86 062 restore-and-switch
+Evidence [Verified]: `worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md` §3 (86 062 restore-and-switch
 cycles through the real path: 0 signature mismatches; the pass-count histogram; the isolated
 mechanism — `replaceState` rewrites the shared tree in 316–1 189 of 2 001 values per range and
 `reassertParameters` re-normalises it) and §8 (the implementation's own measurements and the

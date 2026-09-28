@@ -45,7 +45,7 @@ public:
     // press has nothing to add a notch to -- a pending delete click holds no value and no anchor.
     bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-    // Release-outside safety net (v0.8.12): called by the editor's 24 Hz reconcile when the
+    // Release-outside safety net (0.8.12): called by the editor's 24 Hz reconcile when the
     // physical mouse button is up but a drag is still active (a mouseUp lost outside the plugin
     // window). Ends any open gesture + clears the drag flags without firing on-release actions.
     void cancelActiveDrag();
@@ -424,9 +424,9 @@ private:
     float addX        = 0.0f;
     float dragGrabDX  = 0.0f;     // cursor-to-line offset while dragging a split (#10/#11)
     float dragOrigX[3] { 0, 0, 0 }; // split x positions at drag start, for the reversible projection
-    float widthPressY   = 0.0f;   // cursor y at a Width grab, for the 3 px drag-engage threshold (v0.8.12)
-    float dragGrabDY    = 0.0f;   // cursor-to-line offset while dragging a Width -> relative, no jump (v0.8.12)
-    bool  widthHoldActive = false;// Width drag engaged past the 3 px threshold (click-vs-drag, v0.8.12)
+    float widthPressY   = 0.0f;   // cursor y at a Width grab, for the 3 px drag-engage threshold (0.8.12)
+    float dragGrabDY    = 0.0f;   // cursor-to-line offset while dragging a Width -> relative, no jump (0.8.12)
+    bool  widthHoldActive = false;// Width drag engaged past the 3 px threshold (click-vs-drag, 0.8.12)
 
     int   scrollHandle = -1;
     int   scrollBand   = -1;

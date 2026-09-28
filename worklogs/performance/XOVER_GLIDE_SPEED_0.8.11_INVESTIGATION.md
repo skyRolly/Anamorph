@@ -1,4 +1,4 @@
-# v0.8.11 Crossover-Divider Glide Speed — Investigation (worklog)
+# 0.8.11 Crossover-Divider Glide Speed — Investigation (worklog)
 
 > Request: the slowest crossover-divider movement takes ~1.3 s end-to-end; reduce
 > it toward ~0.5 s **as a minimal tuning**, without audible FM/pitch modulation,
@@ -115,7 +115,7 @@ small remaining transition time is preferable to introducing audible modulation"
 
 `R(f) = 4·max(1, f/300)` is the **final decision of ADR-0015 (Accepted)**, chosen
 after five measured iterations that rejected every faster continuous-glide option
-(§Options / §"v0.8.10 final decision"): 1.25 oct/s (too laggy), ~8 oct/s uncapped
+(§Options / §"0.8.10 final decision"): 1.25 oct/s (too laggy), ~8 oct/s uncapped
 (+31 c, audible), 15 ms one-pole fast-track (~50 c), flat 4 oct/s (pinned normal
 drags — the slow-drag regression), fref = 150 (−27 dBc spurs). Its governing trade
 is stated verbatim: *"a small amount of controlled FM is preferable to obvious

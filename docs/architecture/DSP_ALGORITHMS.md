@@ -108,7 +108,7 @@ measured at the crossing of a fast drag); a **~1.25 oct/s "inaudibility" cap + 0
 consolidation** converged in bounded time but lagged every fast drag audibly and jumped after
 release — rejected as a UX regression (interaction latency); a **flat ~4 oct/s cap** fixed the
 flick case but pinned every normal drag (the display is ~90 px/octave, so ordinary 400–2000 px/s
-gestures are 4–22 oct/s) whole octaves behind the mouse — the v0.8.10 slow-drag regression.
+gestures are 4–22 oct/s) whole octaves behind the mouse — the 0.8.10 slow-drag regression.
 Final (ADR-0015, slow-drag fix): *continuous movement* is a **slew-limited smoother** — per
 sample each cutoff moves by its ~20 ms one-pole demand toward the target, clamped to a
 **frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s**. The shift at sweep rate R is a

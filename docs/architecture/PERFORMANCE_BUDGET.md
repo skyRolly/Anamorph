@@ -149,7 +149,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   (`sameParameters` + width hoist), src/dsp/VelvetNoise.cpp (parked fast path),
   src/dsp/LevelMeters.h, src/dsp/LoudnessMatch.cpp;
   worklogs/performance/WAVE5_INVESTIGATION.md.
-- **v0.8.11 final pass: the remaining named candidates are closed as no-op, with
+- **0.8.11 final pass: the remaining named candidates are closed as no-op, with
   measurements (no code change).** The long-open **GUI fresh-eyes sweep** was
   carried in-line (the Workflow lens was lost to the org token limit a third
   time) and found the whole GUI paint + message-thread surface already
@@ -168,7 +168,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   confirmed **intentionally unconditional** (feeds the always-live match readout;
   must stay warm for automation-driven engage) — not dead work. Net: ~0.5–1 % of
   floor available behind an AVX decision, deferred. Evidence [Verified]:
-  worklogs/performance/FINAL_PASS_v0.8.11_INVESTIGATION.md.
+  worklogs/performance/FINAL_PASS_0.8.11_INVESTIGATION.md.
 - **The Velvet decorrelation window is carried forward, not rebuilt per block (A7-1, 0.9.5).** The
   H5 gather's linear history image was refilled from the ring on EVERY block by a walk of
   `decorrSamps = round(0.045 * sr)` samples — 2160 at 48 kHz, 8640 at 192 kHz — independent of
@@ -185,7 +185,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   per-sample term stayed at 1596.6 Ir, which is the signature of a change confined to the refill.
   Guarded by Test 39 (`testVelvetBlockLengthInvariance`: the same audio at 512 and at 32 samples
   must be bit-identical, at four sample rates), proven to fire on both a wrong slide and a missing
-  invalidation. Evidence [Verified]: worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md.
+  invalidation. Evidence [Verified]: worklogs/performance/PERF_AUDIT_0.9.5_IMPLEMENTATION.md.
   **SUPERSEDED BY A7-2B (next entry), which deleted the image and the slide together** — this entry
   is kept because the measurement is the reason the next one was scoped.
 - **A7-2B (Velvet gather reads the ring in place)** removed the linear history image entirely. H5

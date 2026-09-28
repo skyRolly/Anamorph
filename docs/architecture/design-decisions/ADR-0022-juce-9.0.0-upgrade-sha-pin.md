@@ -8,8 +8,8 @@ this pin — ADR-0026)
 JUCE is pinned to an exact version (ADR-0003, ADR-0012, `docs/policies/DEPENDENCY_POLICY.md`);
 any JUCE bump is a **Build System change requiring an ADR + verification**
 (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`). JUCE **9.0.0** was released upstream; the
-commissioned v0.8.13 task is a controlled migration 8.0.14 → 9.0.0. Independently, the
-post-v0.8.12 audit's supply-chain item flagged that pinning by **tag name** is mutable — an
+commissioned 0.8.13 task is a controlled migration 8.0.14 → 9.0.0. Independently, the
+post-0.8.12 audit's supply-chain item flagged that pinning by **tag name** is mutable — an
 upstream re-pointed tag would silently change our dependency.
 
 ## Problem
@@ -35,14 +35,14 @@ serialization; keep the diff minimal; and make the pin immutable/reproducible.
 - **No C++ source change.** The complete 8.0.14 → 9.0.0 breaking-change surface
   (BREAKING_CHANGES.md: Windows multi-touch default-off, `Drawable::createFromSVG(XmlElement&)`
   removal, `DrawableShape` signatures, `Drawable` no longer a `Component`, Linux EGL) has **zero
-  project exposure** — audit table in `worklogs/JUCE9_MIGRATION_v0.8.13.md` §1.1. Toolchain
+  project exposure** — audit table in `worklogs/JUCE9_MIGRATION_0.8.13.md` §1.1. Toolchain
   contract unchanged: CMake ≥ 3.22, **C++17**, macOS deployment 10.13 (upstream minimum 10.11).
 
 ## Verification (headless, this change)
 - **DSP bit-identity proven, not assumed**: a 32-scenario twin engine dump (4 algorithms × 4
   oversampling factors × M/S on/off; 120 noise + 120 silence blocks each; FNV-1a over every
   output byte) built against 8.0.14 and 9.0.0 with identical flags produced **identical hashes
-  and identical reported latencies for all 32 scenarios** (`worklogs/JUCE9_MIGRATION_v0.8.13.md`
+  and identical reported latencies for all 32 scenarios** (`worklogs/JUCE9_MIGRATION_0.8.13.md`
   §3 — includes the juce_dsp Oversampling path, the one upstream component most able to change
   wet-path numerics).
 - Suites at JUCE 9: **AnamorphTests 140 checks** and **AnamorphStateTests 774 checks** green;
@@ -73,7 +73,7 @@ Evidence:
 - Source [Verified]: CMakeLists.txt:70-72 (SHA pin; `ANAMORPH_JUCE_VERSION`).
 - Upstream [Verified]: `git ls-remote` tag `9.0.0` → `f8f8864…`; JUCE `BREAKING_CHANGES.md`
   ("Version 9.0.0" section) and `CHANGE_LIST.md` reviewed at that commit.
-- Twin dump [Verified]: `worklogs/JUCE9_MIGRATION_v0.8.13.md` §3 (32/32 hashes + latencies
+- Twin dump [Verified]: `worklogs/JUCE9_MIGRATION_0.8.13.md` §3 (32/32 hashes + latencies
   identical; scratchpad tool, methodology recorded in the worklog).
 - KI-013 re-check [Verified]: JUCE 9 `getNativeRealtimeModifiers` still refreshes keyboard
   modifiers only — the macOS caveat stands (KNOWN_ISSUES.md KI-013).

@@ -811,6 +811,16 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/ARCHITECTURE.md",
      "src/PluginProcessor.cpp:436-441",
      "src/PluginProcessor.cpp:455-462"): "setParametersFrom",
+    # 2026-09-28 (ADR-0059, bare version references): the legacy-root table's anchor into
+    # `decodeRestore`'s bare-APVTS branch covers five COMMENT lines that named the 0.2 format with
+    # the retired prefix, and rewriting them made the span an edited one, which maps to `None`.
+    # Nothing moved and no code changed; the claim (detection by `apvtsStateType`, the branch that
+    # hands the legacy tree on) was re-read and still holds. A same-numbers spelling cannot be
+    # declared (`is_declared_reaim` refuses base == current), so the anchor drops the branch's
+    # closing brace -- the span now ends at the last line of the branch body.
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:3067-3090",
+     "src/PluginProcessor.cpp:3067-3089"): "apvtsStateType",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

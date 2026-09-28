@@ -1800,7 +1800,7 @@ jobs:
           # not parse the output at all.
           "debug_artifacts=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      # v0.9.0 packaging (additive): a user-installable Inno Setup installer
+      # 0.9.0 packaging (additive): a user-installable Inno Setup installer
       # built from the SAME validated (debug-purged) staging directory the zip
       # was archived from. It therefore gates on the same `public_ok` checkpoint
       # the customer zip does: repacking a tree that failed validation would
@@ -2420,7 +2420,7 @@ jobs:
         if: ${{ !cancelled() && steps.au_install.outcome != 'skipped' }}
         run: rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
 
-      # v0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
+      # 0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
       # skeleton) built from the SAME validated staging dir the zip was
       # archived from. pkgbuild/productbuild are OS-native on the runner;
       # RH-PR-3 will later sign+notarize this same package. The deterministic

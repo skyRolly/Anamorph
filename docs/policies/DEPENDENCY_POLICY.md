@@ -19,7 +19,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 - **JUCE is pinned to an exact IMMUTABLE commit** (`7278278…` = tag 9.0.2; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
-  v0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
+  0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
   the framework for the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`),
   parameter system (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change
   DSP behaviour, latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11
@@ -92,7 +92,7 @@ repository ever grows a real package manifest.
 
 ## Compliance log
 
-- **JUCE 9.0.1 → 9.0.2** — recorded in **ADR-0054** (v0.9.8 cycle; **`Accepted`** — the human
+- **JUCE 9.0.1 → 9.0.2** — recorded in **ADR-0054** (0.9.8 cycle; **`Accepted`** — the human
   Architecture Review and the rule-2 **Level-5 manual audition** were both completed and signed off
   by the owner on **2026-09-17**, on top of the headless evidence below. No audition observation is
   recorded beyond completion, because none was reported; no regression was reported either, which is
@@ -208,7 +208,7 @@ repository ever grows a real package manifest.
   `ARCHITECTURE_REVIEW_GATE.md` (the new rule), `CI_CD.md` (§Cache lineages, §The Clang warning
   baseline, §Reproducing CI locally), `REPOSITORY_MAP.md`, this table and this log. No `src/`,
   `tests/`, `CMakeLists.txt` or packaging change; no `CHANGELOG.md` entry (rule 3 — not user-visible).
-- **C++ standard 17 → 23** — recorded in **ADR-0027** (v0.9.4 cycle, applied on top of the
+- **C++ standard 17 → 23** — recorded in **ADR-0027** (0.9.4 cycle, applied on top of the
   JUCE 9.0.1 tree with **no version bump**). Rule 1 (Build System change → gate + ADR) applied to
   the `CMAKE_CXX_STANDARD` line as a pinned dependency of this table. One C++ source change was
   required and is the whole of it: `#include <algorithm>` in `src/dsp/HaasProcessor.cpp`, because
@@ -218,7 +218,7 @@ repository ever grows a real package manifest.
   build as the macOS proxy; DSP suite (140 checks) + state suite (894 checks, incl. the
   8.0.14-frozen parameter-registry snapshot passing unchanged) green under both standard
   libraries; engine output proven **bit-identical** C++17 vs C++23 by the 32-scenario twin dump
-  incl. reported latencies (`worklogs/CXX23_MIGRATION_v0.9.4.md`); 27 project translation-unit
+  incl. reported latencies (`worklogs/CXX23_MIGRATION_0.9.4.md`); 27 project translation-unit
   **compilations** — both self-test targets' command sets — produce a **byte-identical**
   29-instance warning set at both standards (the JUCE entry below cites 18/19 because it measured
   the `AnamorphStateTests` set alone; that narrower set still yields 18/19 at C++23, so the two
@@ -228,7 +228,7 @@ repository ever grows a real package manifest.
   audition does **not** apply — it is a JUCE-bump rule, and here no framework code moved under
   the editor. Open caveat carried in ADR-0027 §Consequences: MSVC has no stable `/std:c++23`, so
   CMake requests `/std:c++latest` on Windows.
-- **JUCE 9.0.0 → 9.0.1** — recorded in **ADR-0026** (v0.9.4 cycle). Zero C++ source changes and
+- **JUCE 9.0.0 → 9.0.1** — recorded in **ADR-0026** (0.9.4 cycle). Zero C++ source changes and
   **no build-dependency change**: neither 9.0.1 breaking change has project exposure (the vendored
   zlib/jpeg/png/flac C-language switch was already in force at 9.0.0 and Anamorph links no
   external copy; the relocated WebBrowserComponent package is unreachable with
@@ -237,7 +237,7 @@ repository ever grows a real package manifest.
   verification: DSP suite (140 checks) + state suite (894 checks, incl. the 8.0.14-frozen
   parameter-registry snapshot passing unchanged) green under 9.0.1; engine output proven
   **bit-identical** 9.0.0 vs 9.0.1 by the 32-scenario twin dump incl. reported latencies
-  (`worklogs/JUCE901_UPGRADE_v0.9.4.md`); pluginval strictness 10 green locally in both modes ×3
+  (`worklogs/JUCE901_UPGRADE_0.9.4.md`); pluginval strictness 10 green locally in both modes ×3
   plus the CI gates; the 18 project translation units produce a byte-identical warning set
   against both trees. Rule-3 re-verification: latency reporting (twin-dump latencies) and session
   reload (state suite) unchanged. Rule 5: the `JUCE_*` compile flags are untouched. The
@@ -246,12 +246,12 @@ repository ever grows a real package manifest.
   The **manual audition (rule 2, Level 5) was performed** by the maintainer against this build
   (2026-08-15) and **ADR-0026 is `Accepted`**; the same audition discharges the one ADR-0022 left
   open for the 9.0 line, which is now `Accepted` too.
-- **JUCE 8.0.14 → 9.0.0 + immutable-commit pinning** — recorded in **ADR-0022** (v0.8.13 cycle).
+- **JUCE 8.0.14 → 9.0.0 + immutable-commit pinning** — recorded in **ADR-0022** (0.8.13 cycle).
   Zero C++ source changes (no project exposure to the 9.0.0 breaking surface); Linux gains
   `libegl-dev` (JUCE 9 GL-context path uses EGL). Rule-2 verification: DSP suite (140 checks) +
   state suite (774 checks, incl. the 8.0.14-frozen parameter-registry snapshot passing
   unchanged) green under 9.0.0, **and** engine output proven **bit-identical** 8.0.14 vs 9.0.0
-  by a 32-scenario twin dump incl. reported latencies (`worklogs/JUCE9_MIGRATION_v0.8.13.md`);
+  by a 32-scenario twin dump incl. reported latencies (`worklogs/JUCE9_MIGRATION_0.8.13.md`);
   pluginval both modes ×3 runs on the CI gates. The **manual audition (rule 2, Level 5) was
   performed** (2026-08-15) and **ADR-0022 is `Accepted`**; it was carried out against the
   **9.0.1** build that succeeded this pin — engine output is bit-identical across

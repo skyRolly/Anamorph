@@ -10,7 +10,7 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
    migration.
 2. **Additions must tolerate absence.** A new field must have a default applied when an older
    session lacks it, so old sessions still load.
-3. **Every legacy read path stays.** The v0.2, pre-0.6.4, and pre-0.8.4 read paths must remain
+3. **Every legacy read path stays.** The 0.2, pre-0.6.4, and pre-0.8.4 read paths must remain
    (see `SERIALIZATION_REGISTRY.md` → "Legacy root formats").
 4. **A save→load round-trip must reproduce** the sound, preset name, dirty-star, both A/B slots,
    the active slot, and — since 0.9.2 (ADR-0024 as amended) — the **preset indicator identity**,
@@ -57,7 +57,7 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 
 ## Required verification before release
 
-- `[ ] Session reload verified` (save in vN−1, load in vN — sound identical).
+- `[ ] Session reload verified` (save in version N−1, load in version N — sound identical).
 - `[ ] Presets migrated` (factory + a user `.anamorph` still load).
 
 These same checks are enforced at release time via the release compatibility checklist

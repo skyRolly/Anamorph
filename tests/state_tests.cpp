@@ -1,5 +1,5 @@
 // ============================================================================
-//  Anamorph state-compatibility self-tests (v0.8.13 harness)
+//  Anamorph state-compatibility self-tests (0.8.13 harness)
 //
 //  Headless regression net for the COMPATIBILITY policy family
 //  (SESSION_COMPATIBILITY_POLICY / PARAMETER_COMPATIBILITY_POLICY): it
@@ -18,7 +18,7 @@
 //       every parameter raw value bit-exact, InternalState / A/B / preset meta
 //       reproduced, undo history cleared.
 //    4. Legacy migration paths (fixtures, per SERIALIZATION_REGISTRY.md):
-//       v0.2 bare APVTS, pre-0.6.4 A/B slots, pre-0.8.4 view params.
+//       0.2 bare APVTS, pre-0.6.4 A/B slots, pre-0.8.4 view params.
 //    5. Corrupt / foreign state robustness (garbage blob, out-of-range A/B
 //       active, unknown root, unknown extra fields, corrupt slot XML).
 //    6. Preset save -> reload round-trip (user preset file + exclusion rules).
@@ -498,10 +498,10 @@ static void testStateRoundTripExact()
 // ---------------------------------------------------------------------------
 static void testLegacyV02BareApvts()
 {
-    std::printf ("State test 4: legacy v0.2 bare-APVTS session loads\n");
+    std::printf ("State test 4: legacy 0.2 bare-APVTS session loads\n");
     AnamorphAudioProcessor p;
     p.prepareToPlay (48000.0, 512);
-    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+    if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
         return;
 
     // Values present in the fixture apply via the value->raw fallback
@@ -519,7 +519,7 @@ static void testLegacyV02BareApvts()
     expectFromValue ("haasDelay", 20.0f, "haasDelay restores from legacy value");
     expectFromValue ("outputGain", -3.0f, "outputGain restores from legacy value");
 
-    // Parameters absent from the v0.2 tree keep their defaults.
+    // Parameters absent from the 0.2 tree keep their defaults.
     auto* chorusRate = p.getAPVTS().getParameter ("chorusRate");
     check (juce::exactlyEqual (chorusRate->getValue(), chorusRate->getDefaultValue()),
            "param absent from legacy session stays at default");
@@ -536,7 +536,7 @@ static void testLegacyV02BareApvts()
     {
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("chorusRate"));
         rp->setValueNotifyingHost (1.0f);            // the "previous project" leaves a non-default value
-        if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        if (applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
         {
             check (juce::exactlyEqual (rp->getValue(), rp->getDefaultValue()),
                    "param absent from legacy session RESETS to default on a reused live instance");
@@ -555,15 +555,15 @@ static void testLegacyV02BareApvts()
     // the parameter half above dirties chorusRate (ER-TST-05 / ER-STATE-08).
     p.getInternal().oversampleValue().setValue (3);   // "previous project" = 4x
     p.getInternal().uiScaleValue().setValue (5);      // ...and a non-default UI scale
-    if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+    if (applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
     {
         check ((int) p.getInternal().copyState()["int_oversample"] == 1,
-               "InternalState RESETS to default for a v0.2 session on a reused instance");
+               "InternalState RESETS to default for a 0.2 session on a reused instance");
         check ((int) p.getInternal().copyState()["int_uiScale"] == 3,
                "...and every host-hidden setting resets, not just the one that is read back");
     }
     checkStr (p.getPresets().currentName(), "Default", "preset name falls back to Default");
-    check (! p.getPresets().isDirty(), "restored v0.2 state adopts a clean baseline");
+    check (! p.getPresets().isDirty(), "restored 0.2 state adopts a clean baseline");
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +647,7 @@ static void testLegacyPre064AbSlots()
                1.0e-6, "switching to legacy slot A applies its width");
     // ...and the slot reads as "no preset", NOT as "a modified preset". The slot carries no
     // baseline, and an absent baseline is not evidence of an edit -- the same rule state test 4
-    // pins for a v0.2 root ("restored v0.2 state adopts a clean baseline"). A literal empty
+    // pins for a 0.2 root ("restored 0.2 state adopts a clean baseline"). A literal empty
     // baseline would compare unequal to every possible signature, so the top bar would render a
     // bare " *": a modified-marker against a preset that does not exist.
     check (! p.getPresets().isDirty(),
@@ -14283,12 +14283,12 @@ static void testHostStateIsBoundedBeforeTheParser()
     // ---- F. every retained session fixture still loads --------------------------------
     {
         // The compatibility census, asserted rather than printed. The three legacy root formats
-        // SESSION_COMPATIBILITY_POLICY rule 3 keeps alive are stored as readable XML; the v0.9.5
+        // SESSION_COMPATIBILITY_POLICY rule 3 keeps alive are stored as readable XML; the 0.9.5
         // field capture is already a framed chunk on disk and is fed through as bytes.
-        for (const char* name : { "legacy_v0_2_bare_apvts.xml",
+        for (const char* name : { "legacy_0_2_bare_apvts.xml",
                                   "legacy_pre_0_6_4_ab_slots.xml",
                                   "legacy_pre_0_8_4_view_params.xml",
-                                  "field_capture_v0_9_5.session" })
+                                  "field_capture_0_9_5.session" })
         {
             const auto file = fixtureDir().getChildFile (name);
             juce::MemoryBlock blob;
@@ -14340,7 +14340,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         // fails this leg loudly instead of quietly emptying the fuzz budget.
         const auto corpusDir = fixtureDir().getParentDirectory().getChildFile ("fuzz-corpus");
         int live = 0;
-        for (const char* name : { "legacy_v0_2_bare_apvts.bin",
+        for (const char* name : { "legacy_0_2_bare_apvts.bin",
                                   "legacy_pre_0_6_4_ab_slots.bin",
                                   "legacy_pre_0_8_4_view_params.bin" })
         {
@@ -15939,31 +15939,31 @@ static void testPhysicalButtonQueryIgnoresCachedState()
 //     binary must reproduce exactly in this one.
 //
 //     RELEASE_COMPATIBILITY_CHECKLIST §"Session reload verified" asks for a
-//     session saved by vN-1 and loaded by vN, and records that the existing
+//     session saved by version N-1 and loaded by N, and records that the existing
 //     legacy fixtures cannot discharge it because they are RECONSTRUCTIONS of old
 //     formats hand-built by the current code, not captures written by an older
-//     binary (worklogs/STATE_HARNESS_v0.8.13.md §5). That is a real distinction:
+//     binary (worklogs/STATE_HARNESS_0.8.13.md §5). That is a real distinction:
 //     a reconstruction can only contain what today's understanding says the old
 //     format held, so it cannot catch a field the old binary actually wrote
 //     differently.
 //
-//     `tests/fixtures/field_capture_v0_9_5.session` is the missing thing: 10,629
-//     bytes produced by the v0.9.5 binary itself (the tree at 2c5e760^, the commit
+//     `tests/fixtures/field_capture_0_9_5.session` is the missing thing: 10,629
+//     bytes produced by the 0.9.5 binary itself (the tree at 2c5e760^, the commit
 //     before the 0.9.6 bump), built from that source with its own JUCE pin. Beside
 //     it, `.manifest` records what THAT binary believed the state was, including
 //     the B slot it had to switch to in order to read. The assertions below
-//     compare against those numbers, so this test asks "does v0.9.6 reproduce what
-//     v0.9.5 had", not "does v0.9.6 agree with itself".
+//     compare against those numbers, so this test asks "does 0.9.6 reproduce what
+//     0.9.5 had", not "does 0.9.6 agree with itself".
 //
 //     Covers all four things the checklist item names: sound, preset name,
 //     dirty-star, and both A/B slots.
 static void testCrossVersionFieldCapture()
 {
-    std::printf ("State test 25: a v0.9.5-written session reproduces exactly (cross-version capture)\n");
+    std::printf ("State test 25: a 0.9.5-written session reproduces exactly (cross-version capture)\n");
 
-    const auto blob = fixtureDir().getChildFile ("field_capture_v0_9_5.session");
-    const auto manifestFile = fixtureDir().getChildFile ("field_capture_v0_9_5.session.manifest");
-    check (blob.existsAsFile(), "the v0.9.5 field capture is present");
+    const auto blob = fixtureDir().getChildFile ("field_capture_0_9_5.session");
+    const auto manifestFile = fixtureDir().getChildFile ("field_capture_0_9_5.session.manifest");
+    check (blob.existsAsFile(), "the 0.9.5 field capture is present");
     check (manifestFile.existsAsFile(), "...and so is its manifest");
     if (! blob.existsAsFile() || ! manifestFile.existsAsFile()) return;
 
@@ -15980,7 +15980,7 @@ static void testCrossVersionFieldCapture()
         else if (line.contains ("=")) expected.set (line.upToFirstOccurrenceOf ("=", false, false),
                                                     line.fromFirstOccurrenceOf ("=", false, false));
     }
-    check (expected["emitter"] == "v0.9.5", "the manifest was written by the v0.9.5 binary");
+    check (expected["emitter"] == "0.9.5", "the manifest was written by the 0.9.5 binary");
     check (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
     if (slotA.size() != 5 || slotB.size() != 5) return;
 
@@ -16010,24 +16010,24 @@ static void testCrossVersionFieldCapture()
     {
         const float want = valueOf (slotA, pr.key);
         const float got  = rawOf (proc, pr.id);
-        std::printf ("  slotA %-8s v0.9.5 %.6f -> v0.9.6 %.6f\n", pr.key, want, got);
+        std::printf ("  slotA %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
         checkNear ((double) got, (double) want, 1.0e-5,
-                   "the active slot's sound reproduces from the v0.9.5 capture");
+                   "the active slot's sound reproduces from the 0.9.5 capture");
     }
 
     // (2) PRESET NAME and (3) DIRTY-STAR.
-    std::printf ("  preset name: \"%s\" (v0.9.5: \"%s\"), dirty %d (v0.9.5: %s)\n",
+    std::printf ("  preset name: \"%s\" (0.9.5: \"%s\"), dirty %d (0.9.5: %s)\n",
                  proc.getPresets().currentName().toRawUTF8(),
                  expected["presetName"].toRawUTF8(),
                  (int) proc.getPresets().isDirty(), expected["dirty"].toRawUTF8());
     check (proc.getPresets().currentName() == expected["presetName"],
-           "the preset name reproduces from the v0.9.5 capture");
+           "the preset name reproduces from the 0.9.5 capture");
     check ((int) proc.getPresets().isDirty() == expected["dirty"].getIntValue(),
-           "the dirty-star reproduces from the v0.9.5 capture");
+           "the dirty-star reproduces from the 0.9.5 capture");
     check (proc.abActiveSlot() == expected["activeSlot"].getIntValue(),
-           "the active A/B slot reproduces from the v0.9.5 capture");
+           "the active A/B slot reproduces from the 0.9.5 capture");
 
-    // (4) BOTH A/B SLOTS -- switch to B and compare against what v0.9.5 had there.
+    // (4) BOTH A/B SLOTS -- switch to B and compare against what 0.9.5 had there.
     //     Non-vacuity: the two slots must actually DIFFER in the manifest, or this
     //     leg would pass on a build that ignored the B slot entirely.
     check (! juce::approximatelyEqual (valueOf (slotA, "width"), valueOf (slotB, "width")),
@@ -16037,9 +16037,9 @@ static void testCrossVersionFieldCapture()
     {
         const float want = valueOf (slotB, pr.key);
         const float got  = rawOf (proc, pr.id);
-        std::printf ("  slotB %-8s v0.9.5 %.6f -> v0.9.6 %.6f\n", pr.key, want, got);
+        std::printf ("  slotB %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
         checkNear ((double) got, (double) want, 1.0e-5,
-                   "the B slot reproduces from the v0.9.5 capture");
+                   "the B slot reproduces from the 0.9.5 capture");
     }
 }
 
@@ -16434,10 +16434,10 @@ static int runRestoreLatencyProbe()
 //  `readSlot` already enforces "absent means the default, not whatever the
 //  previous session left here", but only for a blob that HAS an `AB` node, since
 //  that is the branch it is called from. Two restore paths carry no A/B data at
-//  all -- an `AnamorphRoot` with no `AB` child, and a v0.2 bare-APVTS session,
+//  all -- an `AnamorphRoot` with no `AB` child, and a 0.2 bare-APVTS session,
 //  which predates the feature -- and both left `abSlot[]` and `abActive` holding
 //  the previous project's values on a REUSED instance. Measured before the fix:
-//  after a v0.2 restore, switching to B played the previous project's B (raw
+//  after a 0.2 restore, switching to B played the previous project's B (raw
 //  width 0.10 against a restored 0.75), and with the previous project left active
 //  on B the first switch read its A (0.90) and its active index survived too.
 //
@@ -16466,19 +16466,19 @@ static void testLegacyRestoreResetsAbSlots()
         if (stayOn == 0) p.abSwitchTo (0);
     };
 
-    // --- Leg 1: v0.2 bare APVTS, reused instance, first switch reads B.
+    // --- Leg 1: 0.2 bare APVTS, reused instance, first switch reads B.
     {
         AnamorphAudioProcessor p;
         seedPreviousProject (p, 0);
-        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
             return;
 
         const float restored = rawOf (p, "width");
         check (std::abs (kPrevA - kPrevB) > kTol,
                "the previous project's A and B are distinguishable (non-vacuity)");
         check (std::abs (restored - kPrevA) > kTol && std::abs (restored - kPrevB) > kTol,
-               "the restored v0.2 value differs from BOTH previous slots (non-vacuity)");
-        std::printf ("  previous project A %.4f / B %.4f; v0.2 restores %.4f\n",
+               "the restored 0.2 value differs from BOTH previous slots (non-vacuity)");
+        std::printf ("  previous project A %.4f / B %.4f; 0.2 restores %.4f\n",
                      kPrevA, kPrevB, restored);
 
         check (p.abActiveSlot() == 0, "a session with no AB data restores the default active slot");
@@ -16499,7 +16499,7 @@ static void testLegacyRestoreResetsAbSlots()
         AnamorphAudioProcessor p;
         seedPreviousProject (p, 1);
         check (p.abActiveSlot() == 1, "precondition: the previous project is active on B");
-        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
             return;
 
         const float restored = rawOf (p, "width");
@@ -16518,13 +16518,13 @@ static void testLegacyRestoreResetsAbSlots()
     // refuted that: pre-fix it failed with 0.5, the Default width. The constructor
     // calls abEnsureInit() EAGERLY (so B is not born as a copy of an already-edited
     // A), so by the time any restore arrives both slots are already valid, holding
-    // the open/Default state. A v0.2 restore then left slot B on Default rather than
+    // the open/Default state. A 0.2 restore then left slot B on Default rather than
     // on the restored session -- the same defect with the construction snapshot in
     // the previous project's place. Kept, and no longer described as the easy leg.
     {
         AnamorphAudioProcessor fresh;
         fresh.prepareToPlay (48000.0, 512);
-        if (! applyXmlFixture (fresh, "legacy_v0_2_bare_apvts.xml"))
+        if (! applyXmlFixture (fresh, "legacy_0_2_bare_apvts.xml"))
             return;
         const float restored = rawOf (fresh, "width");
         check (std::abs (restored - fresh.getAPVTS().getParameter ("width")->getDefaultValue()) > kTol,
@@ -16863,7 +16863,7 @@ static void testRestoreIntegrityGuards()
 //  to a VALID setting, deterministically (ER-STATE-17).
 //
 //  migrateFromLegacyApvts read each legacy PARAM value straight into an `(int)`
-//  conversion. JUCE's parser accepts "nan" and "inf" as numbers, so a v0.2
+//  conversion. JUCE's parser accepts "nan" and "inf" as numbers, so a 0.2
 //  session carrying one reached that conversion, which is undefined behaviour
 //  for NaN, infinity and out-of-range values. Measured through the real restore
 //  on x86-64 before the fix: every such value became -2147483647 in the tree,
@@ -16878,7 +16878,7 @@ static void testRestoreIntegrityGuards()
 //  same answer an absent node gets, through the same SerializedNumber predicate
 //  the session and preset paths use); finite but out of domain -> CLAMPED to the
 //  nearest valid choice; valid -> unchanged. Both legacy shapes are covered: the
-//  v0.2 bare-APVTS root, and a pre-0.8.4 AnamorphRoot with no ANAMORPH_INTERNAL
+//  0.2 bare-APVTS root, and a pre-0.8.4 AnamorphRoot with no ANAMORPH_INTERNAL
 //  child, which calls the same migration.
 // ---------------------------------------------------------------------------
 static void testMalformedLegacySettingsResolveToValid()
@@ -17121,11 +17121,11 @@ static int runLegacyAbProbe()
                  widthOf (p), 0.10f, p.abActiveSlot());
     const float prevA = 0.90f, prevB = 0.10f;
 
-    // --- Step 2: restore a v0.2 session into the SAME instance.
-    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+    // --- Step 2: restore a 0.2 session into the SAME instance.
+    if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
         return 1;
     const float restored = widthOf (p);
-    std::printf ("  after the v0.2 restore: live width raw %.4f (active %d)\n",
+    std::printf ("  after the 0.2 restore: live width raw %.4f (active %d)\n",
                  restored, p.abActiveSlot());
 
     // The fixture's width is 1.5 (denormalised); confirm it is distinguishable
@@ -17161,7 +17161,7 @@ static int runLegacyAbProbe()
         setRaw (r, "width", 0.90f);            // A
         r.abSwitchTo (1);
         setRaw (r, "width", 0.10f);            // B -- and STAY on B
-        if (! applyXmlFixture (r, "legacy_v0_2_bare_apvts.xml"))
+        if (! applyXmlFixture (r, "legacy_0_2_bare_apvts.xml"))
             return 1;
         std::printf ("\n  previous project left active on B; after restore active = %d,"
                      " live width raw %.4f\n", r.abActiveSlot(), widthOf (r));
@@ -17268,12 +17268,12 @@ static int runLegacyMatchGainProbe()
     }
 
     // --- Restore a session with NO A/B data into the SAME instance.
-    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+    if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
         return 1;
-    setRaw (p, "autoGainMatch", 1.0f);   // the v0.2 fixture predates the param; keep the gate open
+    setRaw (p, "autoGainMatch", 1.0f);   // the 0.2 fixture predates the param; keep the gate open
     runBlocks (p, 60, rng);
     const float afterRestore = p.getEngine().getMatchGainDb();
-    std::printf ("  after the v0.2 restore + settle: engine match %.3f dB\n", afterRestore);
+    std::printf ("  after the 0.2 restore + settle: engine match %.3f dB\n", afterRestore);
 
     // --- The first A/B switch after the restore. The injection is consumed INSIDE
     // processBlock (at the silent bottom of the switch duck, ~6 ms out + 28 ms in),
@@ -17310,7 +17310,7 @@ static int runLegacyMatchGainProbe()
     q.prepareToPlay (sr, bs);
     juce::Random rngQ (20260901);
     setRaw (q, "autoGainMatch", 1.0f);
-    if (! applyXmlFixture (q, "legacy_v0_2_bare_apvts.xml"))
+    if (! applyXmlFixture (q, "legacy_0_2_bare_apvts.xml"))
         return 1;
     setRaw (q, "autoGainMatch", 1.0f);
     runBlocks (q, 60, rngQ);
@@ -17348,7 +17348,7 @@ static int runLegacyMatchGainProbe()
         z.abSwitchTo (0);
         runBlocks (z, 20, r);
 
-        if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return;
+        if (! applyXmlFixture (z, "legacy_0_2_bare_apvts.xml")) return;
         setRaw (z, "autoGainMatch", 1.0f);
         runBlocks (z, 60, r);
         const float restored = z.getEngine().getMatchGainDb();
@@ -17397,7 +17397,7 @@ static int runLegacyMatchGainProbe()
         runBlocks (z, 60, r);
         z.abSwitchTo (0);
         runBlocks (z, 20, r);
-        if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return 1;
+        if (! applyXmlFixture (z, "legacy_0_2_bare_apvts.xml")) return 1;
         setRaw (z, "autoGainMatch", 1.0f);
         runBlocks (z, 80, r);
 
@@ -17449,7 +17449,7 @@ static int runLegacyMatchGainProbe()
                 z.abSwitchTo (0);
                 runBlocks (z, 20, r);
             }
-            if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return;
+            if (! applyXmlFixture (z, "legacy_0_2_bare_apvts.xml")) return;
             setRaw (z, "autoGainMatch", 1.0f);
             z.abSwitchTo (1);                       // no settle at all
             juce::AudioBuffer<float> buf (2, bs);
@@ -17549,14 +17549,14 @@ static const juce::Identifier& iid_uiScale()      { return anamorph::iid::uiScal
 static const juce::Identifier& iid_scopePersist() { return anamorph::iid::scopePersist; }
 
 // ---------------------------------------------------------------------------
-//  Opt-in probe: what does a MALFORMED host-hidden setting in a v0.2 session
+//  Opt-in probe: what does a MALFORMED host-hidden setting in a 0.2 session
 //  become after migrateFromLegacyApvts? Reproduction before disposition.
 //  Prints the migrated tree value (as text and as int/double), the clamped
 //  consumers, and what a re-save then writes back out.
 // ---------------------------------------------------------------------------
 static int runLegacySettingsProbe()
 {
-    std::printf ("malformed legacy Settings probe (v0.2 -> migrateFromLegacyApvts)\n");
+    std::printf ("malformed legacy Settings probe (0.2 -> migrateFromLegacyApvts)\n");
     std::printf ("===============================================================\n\n");
 
     auto restoreV02 = [] (AnamorphAudioProcessor& p, const char* id, const char* value)
@@ -17622,7 +17622,7 @@ static int runLegacySettingsProbe()
 //
 //  `abSlot[]`, `presets` and `internal` are all processor members a host restores
 //  into ONE live instance repeatedly. Rounds 2, 8 and 11 closed that class for the
-//  Settings on the v0.2 path, for the A/B slots, and for a root with no sound
+//  Settings on the 0.2 path, for the A/B slots, and for a root with no sound
 //  child. This is the same class on the MODERN path: InternalState::restoreState
 //  wrote only the fields `src` carried, so an absent one kept whatever the last
 //  project left. Every field in the registry's ANAMORPH_INTERNAL table is
@@ -17713,10 +17713,10 @@ static void testPartialSettingsDoNotInherit()
     {
         AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
         seedPreviousProject (p);
-        if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        if (applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
             for (const auto& f : fields)
                 checkMsg (p.getInternal().copyState()[f.id].equals (f.doc),
-                       juce::String ("v0.2 restore still resets ") + f.name + " (migrateFromLegacyApvts, unchanged)");
+                       juce::String ("0.2 restore still resets ") + f.name + " (migrateFromLegacyApvts, unchanged)");
     }
 
     // --- Leg 4: malformed-state repair is unchanged. A modern session carrying a
@@ -17800,20 +17800,20 @@ static int runPartialSettingsProbe()
     }
     std::printf ("  => %d of 6 fields inherit the previous project's value\n\n", inherited);
 
-    // The LEGACY path, for contrast: a v0.2 blob carrying NO Settings at all.
-    std::printf ("  LEGACY path (v0.2 bare APVTS -> migrateFromLegacyApvts):\n");
+    // The LEGACY path, for contrast: a 0.2 blob carrying NO Settings at all.
+    std::printf ("  LEGACY path (0.2 bare APVTS -> migrateFromLegacyApvts):\n");
     {
         AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
         juce::ValueTree a ("ANAMORPH_INTERNAL");
         for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
         p.getInternal().restoreState (a);
-        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml")) return 1;
+        if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml")) return 1;
         int legacyInherited = 0;
         for (const auto& f : fields)
         {
             const auto after = p.getInternal().copyState()[f.id];
             if (! after.equals (f.doc)) ++legacyInherited;
-            std::printf ("  %-18s | after v0.2 restore: %-10s (documented %s) %s\n", f.name,
+            std::printf ("  %-18s | after 0.2 restore: %-10s (documented %s) %s\n", f.name,
                          after.toString().toRawUTF8(), f.doc.toString().toRawUTF8(),
                          after.equals (f.doc) ? "" : "  <-- NOT the default");
         }
@@ -18114,7 +18114,7 @@ static void testRestoreResetsAbMatchGains()
     // feed-forward PREDICT is an absolute function of Drive and Mix and lowers the
     // published gain when the restored session's controls imply more boost than the
     // previous project's, so the reading drifts off 0 by however much the restore
-    // moved those two controls (measured: -3.161 dB against the v0.2 fixture, -0.052
+    // moved those two controls (measured: -3.161 dB against the 0.2 fixture, -0.052
     // dB against a modern save of the same state). The fresh control experiences the
     // identical predict, so comparing against it cancels exactly that term and leaves
     // only the injection -- which is the thing under test.
@@ -18175,10 +18175,10 @@ static void testRestoreResetsAbMatchGains()
                    "...the reused instance is indistinguishable from a fresh one (the contract)");
     };
 
-    // --- Leg 1: v0.2 bare APVTS (the legacy branch's abResetToDefaults).
-    expectNoStaleInjection ("v0.2 bare APVTS:", [] (AnamorphAudioProcessor&)
+    // --- Leg 1: 0.2 bare APVTS (the legacy branch's abResetToDefaults).
+    expectNoStaleInjection ("0.2 bare APVTS:", [] (AnamorphAudioProcessor&)
     {
-        auto file = fixtureDir().getChildFile ("legacy_v0_2_bare_apvts.xml");
+        auto file = fixtureDir().getChildFile ("legacy_0_2_bare_apvts.xml");
         auto xml  = juce::parseXML (file);
         if (xml == nullptr) return juce::MemoryBlock();
         return BlobCodec::wrap (*xml);
@@ -24754,7 +24754,7 @@ static void testARestoreIsConsumedOnlyWhenItsSoundCanGoWithIt()
 //  `setMeta` stores what it is given.
 //
 //  The derivation is only as good as the predictor's model of the apply path, and that
-//  was measured rather than assumed (worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md §3):
+//  was measured rather than assumed (worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md §3):
 //  `replaceState` flushes each parameter's RENDERED value back into the very tree
 //  `reassertParameters` then read, so the four log-mapped frequency parameters ended one
 //  to three store/report passes from the bytes in ~1.3 % of values. Leg (f) is that
@@ -24898,7 +24898,7 @@ static void testLegacySlotIsCanonicalAtTheBoundary()
         // 4 000 000-value search per range found raw values where the preset predictor (which
         // reads `value` = F(raw), one rendering pass further in) prints a different five-decimal
         // signature from the session one -- 192 of 4 000 000 on mbFreqLow, the first at
-        // r = 0.690675139 (worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md §8). A modern slot at that
+        // r = 0.690675139 (worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md §8). A modern slot at that
         // raw with no stored baseline must get the SESSION prediction, which is what the live
         // signature is; the preset prediction would mark the slot modified on the first switch.
         {
@@ -35528,12 +35528,12 @@ namespace
             proc.getStateInformation (mb);
             report ("after a round trip", mb);
             // The three legacy root formats SESSION_COMPATIBILITY_POLICY rule 3 keeps alive are
-            // stored as readable XML and framed here; the v0.9.5 field capture is already a
+            // stored as readable XML and framed here; the 0.9.5 field capture is already a
             // FRAMED CHUNK on disk (it begins `VC2!`), so it is read as bytes and not re-wrapped.
-            for (const char* f : { "legacy_v0_2_bare_apvts.xml",
+            for (const char* f : { "legacy_0_2_bare_apvts.xml",
                                    "legacy_pre_0_6_4_ab_slots.xml",
                                    "legacy_pre_0_8_4_view_params.xml",
-                                   "field_capture_v0_9_5.session" })
+                                   "field_capture_0_9_5.session" })
             {
                 const auto file = fixtureDir().getChildFile (f);
                 juce::MemoryBlock blob;

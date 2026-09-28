@@ -176,7 +176,7 @@ three ways: the engaged stretch must really decorrelate; the transport stop must
 wet (measured 15.4-25.2 % of the engaged figure with the stop, 90.6-128.9 % with the stop event
 removed, so the 50 % bound sits between two measured populations); and both defect classes were
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
-`worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
+`worklogs/performance/PERF_AUDIT_0.9.5_IMPLEMENTATION.md` §2.2.
 
 **Road-map R7's production-path coverage — Tests 59–61 (PR #155, 2026-09-22).** Three paths every host runs
 and no test had executed, found under gcov and each proven live by mutation
@@ -739,7 +739,7 @@ ignoring an awaited swap — (1) 391; the activation re-using the prime's snapsh
 ordering itself is not observable on one thread: State test 139 (F2) is its ThreadSanitizer witness.
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
-(`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
+(`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, 0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
 
 **Why it exists, and why Tests 52 and 53 could not have caught it.** The path crossfade `osBlend`
@@ -776,7 +776,7 @@ probe, `AnamorphTests --os-off-probe`, prints the H3/H1 and RMS traces for all s
 directions — out of the wrap, into it, and between two factors — and asserts nothing.
 
 Before it, the **oversampling path-swap guard**
-(`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, v0.9.7). It pins that crossing the
+(`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, 0.9.7). It pins that crossing the
 Drive threshold with a factor selected is **indistinguishable from crossing it with Oversampling
 Off** — 24 combinations of {2×, 4×, 8×} × {Haas, Velvet} × {0 → 6 dB, 6 → 0 dB} × {instantaneous
 step, 300 ms knob sweep}, each against its own Oversampling-Off control.
@@ -809,7 +809,7 @@ the level, the stereo image and the sample continuity for seven swap classes; it
 is the record behind the seamlessness investigation.
 
 Before it, the **oversampling latency-stability guard**
-(`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, v0.9.7). It pins that the latency reported
+(`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, 0.9.7). It pins that the latency reported
 to the host is a function of the **Oversampling factor alone** — the fix for a reported host-graph
 restart on an ordinary Drive or Algorithm move — and it is built so that the two wrong fixes fail it.
 
@@ -946,7 +946,7 @@ read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are
 preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests).
 
-### State-compatibility self-tests (v0.8.13 harness)
+### State-compatibility self-tests (0.8.13 harness)
 
 `tests/state_tests.cpp` additionally carries a **ThreadSanitizer probe that the suite never
 runs**: `AnamorphStateTests --state-thread-probe` drives host `setState`/`getState` calls from a
@@ -1009,7 +1009,7 @@ comment — comparing 0 with 0 (latency only moves with Drive when oversampling 
 
 `AnamorphStateTests --legacy-settings-probe` is the fifth opt-in instrument and the evidence behind
 State test 28: it feeds malformed host-hidden Settings ("nan", "inf", "1e39", "abc", "7", …) through
-the real v0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
+the real 0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
 consumers saw, and what a re-save then wrote. Pre-fix on x86-64 every non-finite value became
 −2147483647 (an impossible ComboBox id, persisted on save), "2147483647" wrapped to INT_MIN, and
 scopePersist passed NaN/±inf/out-of-range straight through. Round 13 extended State test 28 to the
@@ -1313,7 +1313,7 @@ downstream state never was, because a parser could read a file and then reject t
 
 `--risk014-probe census` is the same instrument pointed the other way and is the only shape that
 asserts nothing about corruption: it prints the size and depth of the sessions the product really
-writes, so a proposed cap can be read against them. This build 10 438 B / depth 3, the v0.9.5 field
+writes, so a proposed cap can be read against them. This build 10 438 B / depth 3, the 0.9.5 field
 capture 10 629 B / depth 3, the three legacy roots 268 / 590 / 740 B at depth 2–3, and the capture's
 two slot payloads 2 046 and 2 051 B at depth 2. Round 50 shipped **no regression test** for any of it, deliberately: a regression test
 asserts that behaviour is intended, and whether it was intended was the open question. Round 51
@@ -4730,7 +4730,7 @@ snapshot** (IDs/names/order/automation flags/step texts exact + range mappings p
 normalised points, vs `tests/fixtures/parameter_registry.snapshot`), a raw-exact
 save→load→save round-trip (byte-identical; APVTS + `raw` + InternalState + A/B slots + preset
 meta; undo cleared), the three legacy migration paths via frozen fixtures
-(`legacy_v0_2_bare_apvts.xml`, `legacy_pre_0_6_4_ab_slots.xml`,
+(`legacy_0_2_bare_apvts.xml`, `legacy_pre_0_6_4_ab_slots.xml`,
 `legacy_pre_0_8_4_view_params.xml`), corrupt/foreign-state robustness (garbage/truncated blob,
 out-of-range `AB@active` clamp end-to-end, unknown future fields, corrupt slot XML), the user
 preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypass/`advancedMode`
@@ -5675,7 +5675,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      place, so the behaviour it produces is the behaviour those two are tested for. What is not
      covered is only the TRIGGER: that a tick, rather than a mouse event, is what notices.
   3. *Where the gap is tracked.* Here, and cross-referenced from ADR-0043 and
-     `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` §12.
+     `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_0.9.8.md` §12.
   4. *Whether infrastructure could close it.* **Yes, concretely, and it is a harness change on its
      own merits.** A test seam that lets the suite step one frame — either a public
      `FrameClock::fire (double dt)` for tests or a shown editor with a driven message loop — would
@@ -5718,7 +5718,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
 
 - **Editor interaction defects have no headless test either.** A second
-  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering **all six** v0.9.3 GUI fixes.
+  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering **all six** 0.9.3 GUI fixes.
   Enumerated in full rather than leaving any to be inferred, because ADR-0025 §3 makes the four
   disclosures mandatory *per invocation* and every one of the six ships without a regression test:
 
@@ -5747,7 +5747,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:365`) and
      `Component::toFront` on a non-always-on-top component inserts behind every always-on-top sibling
      (`juce_Component.cpp:914-922`). Conditions and reasoning in
-     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform. That check was
+     `worklogs/GUI_INTERACTION_FIXES_0.9.3.md`, plus a manual check per platform. That check was
      **performed and signed off by the maintainer on 2026-08-09 for the first two fixes** (the
      add-split preview line and the pop-up dismissal behaviour), discharging this disclosure for
      those. The later three — the shield's interception-only redesign, the two menu-rendering fixes
@@ -5757,7 +5757,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      the equal-width Widen / Style-Focus row is confirmed **intentional**, the narrower Simple-mode
      Widen control is **accepted**, the current pop-up/menu width behaviour is **accepted**, and the
      remaining visual verification items are **approved** (recorded in
-     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7 and §10). That sign-off covers the **visual/UI**
+     `worklogs/GUI_INTERACTION_FIXES_0.9.3.md` §7 and §10). That sign-off covers the **visual/UI**
      items only: the behavioural per-platform checks in the same lists (a dismissing click reaching
      no control, pop-up lifetime across a hidden/closed/backgrounded window, the out-of-process host
      confirmation) and the **installer** checks in the fifth bullet below are **not** covered by it
@@ -5807,7 +5807,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      the same reason, and were verified the same way — the harness above, extended to every overlay,
      plus three mutation runs and a before/after idle-pass measurement.
   4. *Whether infrastructure could close it.* **Yes — and this fix narrows the standing claim above,
-     which is worth recording rather than repeating.** The INC-010 and v0.9.3 entries both state that
+     which is worth recording rather than repeating.** The INC-010 and 0.9.3 entries both state that
      the *behavioural* half — a driven message loop with synthetic pointer input — "remains out of
      reach". Measured 2026-08-19, on Linux it is not: `xvfb` is already installed on the CI runner
      for pluginval, and the harness above drove the editor, opened menus and positioned the pointer
@@ -5846,7 +5846,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   right tool for "did this change alter the sound" is the **twin dump** — build the engine before
   and after, run the same scenario matrix through both, compare hashes and reported latencies —
   which is what the JUCE 9 migration used across 32 scenarios
-  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness has been **committed** since the
+  (`worklogs/JUCE9_MIGRATION_0.8.13.md`). That harness has been **committed** since the
   2026-08-18 round as `tests/dsp_dump.cpp` (§"Proving a dependency bump is bit-identical" above)
   — this bullet said "session-local and not committed" for five rounds after that stopped being
   true (ER-TST-05); the method no longer needs re-creating per investigation.

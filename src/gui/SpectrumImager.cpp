@@ -2882,7 +2882,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (nearWidthLine (p, b, gestureW))
     {
         // Press only BEGINS the width ("Bandwidth") interaction -- the value is written by
-        // mouseDrag, never on the press (v0.8.12). The drag is RELATIVE and modelled on the
+        // mouseDrag, never on the press (0.8.12). The drag is RELATIVE and modelled on the
         // crossover handle: remember the press Y now, and only once the cursor has moved past a
         // 3 px threshold (widthHoldActive -- the crossover's click-vs-drag idiom) does the Width
         // start moving, anchored so it follows the mouse DELTA from the grab rather than jumping
@@ -3225,7 +3225,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     updateHover (e.position);
     repaint();
 }
-// Release-outside safety net (v0.8.12): the editor's 24 Hz reconcile calls this when the
+// Release-outside safety net (0.8.12): the editor's 24 Hz reconcile calls this when the
 // physical mouse button is up but a drag is still active -- i.e. a mouseUp was lost because
 // the button was released outside the plugin window. Close any open parameter gesture and
 // clear the press/drag flags WITHOUT firing the on-release actions (delete band / toggle solo /

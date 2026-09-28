@@ -166,7 +166,7 @@ pointer test measure drift from where the burst began. No test in this suite sep
 line is kept as the correct expression of "the row it was derived in" rather than deleted as unkilled.
 
 State 2 874 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §61.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §61.
 
 ## Applied again 2026-09-10 — the SOUND half inside the solo bracket
 
@@ -198,4 +198,4 @@ no thread; **leg D** is the control that an undisturbed solo click still writes 
 clause fails leg C.
 
 State 2 879 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §62.

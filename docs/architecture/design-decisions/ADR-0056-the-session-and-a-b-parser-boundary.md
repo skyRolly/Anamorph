@@ -131,12 +131,12 @@ This is the reason ADR-0055 deferred rather than extended, and it is answerable 
 |---|---|---|---|
 | this build, fresh instance | 10 438 B | 10 429 B | **3** |
 | this build, after a save→restore→save round trip | 10 438 B | 10 429 B | **3** |
-| `field_capture_v0_9_5.session` (a real v0.9.5 capture) | 10 629 B | 10 620 B | **3** |
-| `legacy_v0_2_bare_apvts` (rule 3) | 268 B | 259 B | **2** |
+| `field_capture_0_9_5.session` (a real 0.9.5 capture) | 10 629 B | 10 620 B | **3** |
+| `legacy_0_2_bare_apvts` (rule 3) | 268 B | 259 B | **2** |
 | `legacy_pre_0_6_4_ab_slots` (rule 3) | 590 B | 581 B | **3** |
 | `legacy_pre_0_8_4_view_params` (rule 3) | 740 B | 731 B | **3** |
 
-The A/B payloads inside the v0.9.5 capture are **2 046** and **2 051** bytes, each an independent
+The A/B payloads inside the 0.9.5 capture are **2 046** and **2 051** bytes, each an independent
 document nested **two** deep with its own `<?xml …?>` header.
 
 Two further facts bear on any proposed rule:
@@ -373,7 +373,7 @@ refusing everything.
 
 **What changed for a user: nothing that a valid session can observe.** Every fixture the repository
 retains still restores — the three legacy root formats `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps
-alive, the v0.9.5 field capture, and a live save→restore round trip — and State test 116 leg F
+alive, the 0.9.5 field capture, and a live save→restore round trip — and State test 116 leg F
 asserts each one rather than printing it.
 
 **What changed for a corrupt one:** the crash, the hang and the unbounded read are gone from both

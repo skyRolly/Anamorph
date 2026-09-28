@@ -110,4 +110,4 @@ disposition, recorded here as an accepted residual rather than implied by silenc
 | the width source proof removed | leg I only, 2 checks |
 | the split source proof removed | leg J only, 2 checks |
 
-State 2 840 / 0. `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §45.
+State 2 840 / 0. `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §45.

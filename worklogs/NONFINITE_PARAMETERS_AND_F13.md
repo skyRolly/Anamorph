@@ -3778,7 +3778,7 @@ Release, x86-64 Linux, GCC 13, 48 kHz / 256, `ulimit -s 1024`.
   threading and the vectorscope stop-state; historical documentation cleanup; the per-block Level-Match ramp
   redesign. S5, F13(1b) and the stale-engage decision are not reopened; `isResultCurrent()` is not a Case-A guard.
 - **Drift reported, not corrected:** `TESTING.md`'s "53 DSP tests"; `KNOWN_ISSUES.md`'s "version-synced to
-  v0.9.6"; `HANDOVER.md`'s "five Fixed entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013's KI-029. (All four corrected
+  0.9.6"; `HANDOVER.md`'s "five Fixed entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013's KI-029. (All four corrected
   by the pre-merge audit, §W3.)
 - **Not re-run this round:** §U8's five earlier Devin controls (the NaN guard, Apply disabled, the kept-result
   init, the live-edit report, `setDisplayedGainDb` honouring `measured`); their scratch patches no longer exist.
@@ -3889,7 +3889,7 @@ Refuted or recorded:
 **Separately, the four stale current-state statements named in §V5, fixed:**
 - `TESTING.md` says 75 DSP tests (Tests 3 and 4 run as one), plus the A/B clamp guard. Copies of the same stale
   count were corrected in `README.md`, `TESTING_POLICY.md` and `HANDOVER.md`.
-- `KNOWN_ISSUES.md` is synced to v0.9.9. The header also records the unrecorded 0.9.7 and 0.9.8 syncs, reconstructed
+- `KNOWN_ISSUES.md` is synced to 0.9.9. The header also records the unrecorded 0.9.7 and 0.9.8 syncs, reconstructed
   from the history:
   - 0.9.7 filed and removed a KI-029 and amended KI-027;
   - 0.9.8 closed KI-010.
@@ -3898,7 +3898,7 @@ Refuted or recorded:
   kept, with a note.
 
 Drift found and **reported, not corrected**:
-- `HANDOVER.md`'s Release Status ("the release in preparation is now v0.9.7") and Known Blockers (the v0.9.6 tag);
+- `HANDOVER.md`'s Release Status ("the release in preparation is now 0.9.7") and Known Blockers (the 0.9.6 tag);
 - ADR-0036's "Apply writes one parameter" (two since round 24);
 - `RELEASE_HARDENING_PLAN.md`'s dated baseline row;
 - the dated frame figures in `build.yml`'s stack-guard comment.

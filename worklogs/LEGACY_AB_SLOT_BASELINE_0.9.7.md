@@ -1,4 +1,4 @@
-# Legacy pre-0.6.4 A/B slot path — architecture review and migration decision (v0.9.7 cycle)
+# Legacy pre-0.6.4 A/B slot path — architecture review and migration decision (0.9.7 cycle)
 
 Work record for the follow-up task that ADR-0036 §22 and the D-2 round-15 worklog left open:
 the one surviving **live-read baseline** in the program-state model, reached only by a
@@ -30,7 +30,7 @@ modern trio (`slotAParams` / `slotAName` / `slotABase`, introduced 0.6.4, "#6") 
 *"Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them."* The
 frozen fixture `tests/fixtures/legacy_pre_0_6_4_ab_slots.xml` is that shape: each slot holds a
 single `width` PARAM, `value` only, no `raw`. It is a **reconstruction** from the read path, not
-a field capture (`worklogs/STATE_HARNESS_v0.8.13.md` §5) — no session written by a real
+a field capture (`worklogs/STATE_HARNESS_0.8.13.md` §5) — no session written by a real
 pre-0.6.4 binary exists in the repository.
 
 ### 1.2 The read path (the only legacy-specific code)
@@ -112,13 +112,13 @@ worklogs. No other legacy branch, version check or compatibility switch exists f
 
 | Question | Answer | Evidence |
 |---|---|---|
-| Does the product intentionally support loading pre-0.6.4 state? | **Yes, by policy.** | `SESSION_COMPATIBILITY_POLICY.md` rule 3: *"Every legacy read path stays. The v0.2, pre-0.6.4, and pre-0.8.4 read paths must remain."* |
+| Does the product intentionally support loading pre-0.6.4 state? | **Yes, by policy.** | `SESSION_COMPATIBILITY_POLICY.md` rule 3: *"Every legacy read path stays. The 0.2, pre-0.6.4, and pre-0.8.4 read paths must remain."* |
 | Is it documented? | Yes, in four places that must agree. | `SERIALIZATION_REGISTRY.md` ◊ + §Legacy root formats; `STATE_SERIALIZATION.md` §Backward-compatibility paths *"(all must be preserved)"*; `RELEASE_COMPATIBILITY_CHECKLIST.md` item 8 (the legacy-fixture tests are the automated half of *Session reload verified*); `CHANGELOG.md` [0.9.2] |
 | Required by tests? | Yes. | State test 5 (`legacy_pre_0_6_4_ab_slots.xml`): live width, active slot, Settings migration, re-save under modern keys, empty name/baseline, repeated restore, switch-into reads clean. State test 27's key-removal variants remove `slotA` too. |
 | Required by a release / import workflow? | The release checklist cites the fixture tests; no import tool exists. | `RELEASE_COMPATIBILITY_CHECKLIST.md:74-78` |
 | Internal tooling? | None consumes the format. | grep |
 | Still generated anywhere? | **No.** Every writer emits `slotAParams`/`slotAName`/`slotABase` (+ identity) — `writeState`, `:1394-1431`. Re-saving a legacy session modernises it (State test 5). | code |
-| Has the product shipped? | **No annotated tag exists** (`git tag` empty; `HANDOVER.md`: v0.9.7 is the first tag in preparation). Builds reach testers as per-push CI artifacts for internal/beta testing (`COMMERCIAL_STATUS.md` §2). | repo |
+| Has the product shipped? | **No annotated tag exists** (`git tag` empty; `HANDOVER.md`: 0.9.7 is the first tag in preparation). Builds reach testers as per-push CI artifacts for internal/beta testing (`COMMERCIAL_STATUS.md` §2). | repo |
 | Could a pre-0.6.4 session exist outside the repository? | Unknowable from the repository: the format predates its visible history (first commit `86b4273`, 2026-07-24; `CHANGELOG.md` records 0.6.x as *"2026-06 (reconstructed)"*). No such session is checked in. | git |
 | Can support be dropped? | Only through the `COMPATIBILITY_POLICY.md` exception: ADR + migration plan + release checklist + Architecture Review. A read-path removal is a *Serialization Registry change* (gate item) and an AI-agent hard stop. | policies |
 

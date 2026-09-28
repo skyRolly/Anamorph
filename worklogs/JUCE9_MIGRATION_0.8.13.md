@@ -1,4 +1,4 @@
-# JUCE 9.0.0 Migration & Dependency Hardening (v0.8.13 cycle)
+# JUCE 9.0.0 Migration & Dependency Hardening (0.8.13 cycle)
 
 Controlled dependency migration: JUCE **8.0.14 → 9.0.0**, plus the audit-roadmap
 supply-chain-hardening item "pin JUCE by commit SHA". No feature work, no redesign; the diff is
@@ -113,7 +113,7 @@ recorded in ADR-0022 and flagged on the PR.
 | VST3 loading | CI pluginval strictness 10 (deterministic + randomise ×3, 3 OSes, blocking) on this PR |
 | Parameter IDs / names / order / automation flags | registry-snapshot fixture frozen under 8.0.14 passes unchanged under 9.0.0 (state test 2) |
 | Serialization schema + raw-exact round-trip | state tests 1/3 green under 9.0.0 (`copyXmlToBinary` framing unchanged upstream) |
-| Legacy sessions (v0.2 / pre-0.6.4 / pre-0.8.4) | state tests 4-6 green under 9.0.0 |
+| Legacy sessions (0.2 / pre-0.6.4 / pre-0.8.4) | state tests 4-6 green under 9.0.0 |
 | Presets | state test 8 green under 9.0.0 |
 | A/B state | state tests 3/9 green under 9.0.0 |
 | DSP output + reported latency | 32/32 twin-dump hashes + latencies identical (§3) |
@@ -122,7 +122,7 @@ recorded in ADR-0022 and flagged on the PR.
 ## 4b. Pre-commit verification (carried inline)
 
 The usual 3-lens adversarial Workflow was launched but all three subagents were lost to the
-org's monthly spend limit mid-run (the same failure mode previously recorded for the v0.8.11
+org's monthly spend limit mid-run (the same failure mode previously recorded for the 0.8.11
 GUI sweep), so the verification was carried **inline** against the same checklist: tag→SHA
 identity re-confirmed from two independent paths (ls-remote + checkout log); every
 `CMakeLists.txt:NN` cite changed in this diff opened and anchor-matched; the §1.1 table checked
@@ -135,7 +135,7 @@ DEPENDENCY_POLICY Upgrade rules walked item-by-item (rule 1 ADR+gate ✓, rule 2
 / audition OPEN, rule 3 latency+session-reload re-verified via twin-dump latencies + the state
 suite, rule 4 unchanged, rule 5 flags unchanged at `:188-193`); and the CHANGELOG precedent
 verified — the 8.0.14 bump's entry lives inside the `[0.8.8]` release section (CHANGELOG:684),
-so recording this bump in the v0.8.13 release entry at release-prep matches precedent. A
+so recording this bump in the 0.8.13 release entry at release-prep matches precedent. A
 compliance-log entry was appended to DEPENDENCY_POLICY (audition marked OPEN).
 
 ## 5. Remaining migration risks

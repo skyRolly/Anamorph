@@ -1254,7 +1254,7 @@ bool PresetManager::writeUserPreset (const juce::String& name)
     // `if (saveUser(...))` leaves the Save dialog open with the text intact -- the save fails
     // VISIBLY, which is what a sanitisation guard here would have produced anyway. Verified against
     // the pinned juce_core for `~foo`, `~/foo`, `~` and `~root`. Do not "fix" this; see
-    // worklogs/PRESET_MENU_AND_IDENTITY_v0.9.2.md §7. (The ENCODE side of the same character was a
+    // worklogs/PRESET_MENU_AND_IDENTITY_0.9.2.md §7. (The ENCODE side of the same character was a
     // real defect and is fixed in encodeSelection -- a `~`-named file a user copies into the folder
     // by hand. Different function, different question: §9.)
     auto file = dir.getChildFile (name + kPresetExt);

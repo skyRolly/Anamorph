@@ -169,7 +169,7 @@ implied. Removing either leaves all 2 879 checks green. A probe was built for th
 it counted benign ticks (38/1200 before a fix that could not have changed them, 34/1200 after, with
 the counted iterations ending at the ordinary two-tick value). Shipping it would have been a gate
 that cannot fail. The attempt and its diagnosis are recorded in
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62 rather than deleted.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §62 rather than deleted.
 
 Both guards are kept as defence in depth on the same footing as `mouseUp`'s
 `gestureBands == pressBands` and `removeBand`'s delete-x call site: correct by this ADR's own rule,

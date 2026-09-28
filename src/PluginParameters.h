@@ -160,7 +160,7 @@ inline float normalisedAsRendered (const juce::AudioProcessorParameter& p) noexc
 //  re-derivation is one extra store/report pass, which for the four log-mapped frequency
 //  ranges is not the identity in float (see normalisedAsRendered above); measured before this
 //  existed, a session-shaped apply left those parameters one to three passes from the bytes
-//  in about 1.3 % of values (worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md §3).
+//  in about 1.3 % of values (worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md §3).
 // ---------------------------------------------------------------------------
 namespace anamorph
 {

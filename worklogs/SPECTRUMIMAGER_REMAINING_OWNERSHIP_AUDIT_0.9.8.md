@@ -1,4 +1,4 @@
-# SpectrumImager — remaining ownership and stale-gesture audit (v0.9.8)
+# SpectrumImager — remaining ownership and stale-gesture audit (0.9.8)
 
 **Head at the start of the round:** `ae86963`. **Preceding rounds:** ADR-0038 (a gesture is void once
 its topology moves), ADR-0039 (a gesture owns the world it was latched in), ADR-0040 (a gesture

@@ -130,7 +130,7 @@ private:
     //    a FLAT 4 oct/s cap fixed the violent-flick case but pinned every
     //    NORMAL drag: the display spans ~10 octaves in ~900 px, so ordinary
     //    400..2000 px/s gestures are 4..22 oct/s and trailed by whole octaves,
-    //    draining at 0.25 s/oct after release -- the v0.8.10 slow-drag
+    //    draining at 0.25 s/oct after release -- the 0.8.10 slow-drag
     //    regression). The bound that matters perceptually is the SHIFT, and
     //    the shift at sweep rate R is a constant 0.312*R Hz regardless of
     //    where the crossing sits -- a cap flat in oct/s spends its whole

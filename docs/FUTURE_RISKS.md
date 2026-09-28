@@ -3,14 +3,14 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-**Version-synced to v0.9.9 (2026-09-28).** Since the v0.9.7 sync below, 0.9.8 and 0.9.9 recorded RISK-011 (resolved 2026-09-15), RISK-012 and RISK-013 (2026-09-13; their entries carry their own status), and RISK-014 to RISK-016 (RISK-014 resolved 2026-09-19, RISK-016 resolved 2026-09-21, RISK-015 open). RISK-003 is now planned to close with the first tag, `v0.9.9` (ADR-0058). Prior: **Version-synced to v0.9.7 (2026-09-06): the pluginval crash-classification fix.** No new entry and
+**Version-synced to 0.9.9 (2026-09-28).** Since the 0.9.7 sync below, 0.9.8 and 0.9.9 recorded RISK-011 (resolved 2026-09-15), RISK-012 and RISK-013 (2026-09-13; their entries carry their own status), and RISK-014 to RISK-016 (RISK-014 resolved 2026-09-19, RISK-016 resolved 2026-09-21, RISK-015 open). RISK-003 is now planned to close with the first tag, `0.9.9` (ADR-0058). Prior: **Version-synced to 0.9.7 (2026-09-06): the pluginval crash-classification fix.** No new entry and
 none closed. RISK-004 is **re-scoped in kind rather than in likelihood**: its title term
 "signal-only" is retired, because a crash does not always arrive as a signal exit. On macOS
 pluginval traps SIGABRT and friends itself and exits **9**, which `run-pluginval.sh` read as a real
 validation failure until this change — so on that platform the risk of a masked crash was never the
 retry at all, but the classifier, and it was a *mislabelled* rather than a retried-away crash. The
 retry cap and its Linux scoping are unchanged. Prior:
-**Version-synced to v0.9.7 (2026-09-03): the ADR-0034 latency change.** No new entry and none
+**Version-synced to 0.9.7 (2026-09-03): the ADR-0034 latency change.** No new entry and none
 closed. RISK-008 (the reported latency can reach a Linux host late, or not until the editor opens,
 in a wrapper configuration that hands over its run loop only through `IPlugFrame`) **narrows
 sharply without closing**: the reported number is now a function of the Oversampling Setting alone,
@@ -30,23 +30,23 @@ No production change; D-1 untouched. Prior:
 verification (a JUCE Linux VST3 wrapper behaviour, host prevalence unknown) — and RISK-007 gains a
 round-15 note recording that the same thread class reached `prepareToPlay`, is closed there, and
 that its pluginval argument is a VST3-only statement. Prior:
-Version-synced to **v0.9.7** (D-2 / ADR-0036, 2026-09-03 — **RISK-007 RESOLVED**: the off-message-thread
+Version-synced to **0.9.7** (D-2 / ADR-0036, 2026-09-03 — **RISK-007 RESOLVED**: the off-message-thread
 state-call exposure is closed by making every piece of program metadata message-thread-owned and giving a
 host thread two lock-free exchange cells to reach it through; the entry is kept in full below, with its
 measurements, as the record of what was closed and how it was measured. **No new entry.** RISK-008 is
 unchanged: the D-2 handoff waits with the rest of the message queue in that host, and the entry's
 "no crash and no undefined behaviour" holds for it too — the sound and the oversampling atomic are live,
 and host saves are served from the host side's own view.)
-Prior sync: **v0.9.6** (the round-1 engineering-review fixes — **one new entry, RISK-007**:
+Prior sync: **0.9.6** (the round-1 engineering-review fixes — **one new entry, RISK-007**:
 the off-main-thread state-call exposure, found by the review's thread-safety lens and recorded
 here because the guard that would close it is itself an Architecture-Review-Gate item. The same
 sync corrects two pieces of drift per `DOCUMENTATION_LIFECYCLE_POLICY` C6: this header **was
-never synced for v0.9.5** — the A7 performance round changed no risk, which is exactly what a
+never synced for 0.9.5** — the A7 performance round changed no risk, which is exactly what a
 sync note should have said, and this note now says it — and RISK-003/RISK-004 below are updated:
 RISK-003's planned first tag is renumbered to the current release in preparation, and RISK-004's
 Windows analog is **fixed**, `run-pluginval.ps1` no longer retrying real crashes, so that risk
 is Linux-scoped again as its 2026-08-18 note intended).
-Prior sync: **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
+Prior sync: **0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
 risk**: RISK-001 is the risk this change is an instance of, and its mitigation was executed in
 full (twin-dump bit-identity, both suites, pluginval strictness 10 in both modes, identical
 warning set); no source, no build dependency, no serialized state, parameter or DSP behaviour
@@ -62,34 +62,34 @@ jobs already use, its toolchain-drift exposure is the same shape as ADR-0027's M
 surfaced are **fixed** — an explicit `(float)` cast per site, with the three translation units
 verified to compile to byte-identical machine code, so no risk attaches to them either.
 RISK-003's mitigation now names the release in preparation as the first
-tag — v0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
+tag — 0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition
 — **no new risk**: editor-only, with no serialized state, parameter or DSP behaviour changed. The three
 new limitations — KI-018, KI-019 and KI-020 — are known *issues* and live in `KNOWN_ISSUES.md`, not
 here.
-RISK-003's mitigation now names **v0.9.3** as the first tag). Prior sync: **v0.9.2**
+RISK-003's mitigation now names **0.9.3** as the first tag). Prior sync: **0.9.2**
 (preset drop-down lifetime/crash fix, factory-preset identity, the `UI Scale` label and the installer
 component titles — no new risk; the one new limitation is an OS text-input behaviour filed as
-KI-017). Prior: **v0.9.1**
+KI-017). Prior: **0.9.1**
 (manufacturer-code change, ADR-0023 — no new risk: RISK-003's
-mitigation then named v0.9.1 as the first tag, and the one-time session break is a documented
-known issue (KI-016), not a forward-looking risk). Prior sync: **v0.9.0** (release-prep,
+mitigation then named 0.9.1 as the first tag, and the one-time session break is a documented
+known issue (KI-016), not a forward-looking risk). Prior sync: **0.9.0** (release-prep,
 2026-07-24, PR #87 — packaging/installers + user
 docs + version bump — and PR #89, the installer/packaging rework: component selection, system-wide
 installs, flat ZIP-only artifacts; no DSP/GUI code change in either, no new risk; the unsigned
 installers inherit the existing signing/notarization gap already tracked as RH-PR-3/5). Previously verified against
-repository HEAD `64e87c4` (post-v0.8.12 content re-audit), synced to the
-**v0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
-fixes — pixel-identical / message-thread-only, no new risk; the **v0.8.11 release** of 2026-07-20
+repository HEAD `64e87c4` (post-0.8.12 content re-audit), synced to the
+**0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
+fixes — pixel-identical / message-thread-only, no new risk; the **0.8.11 release** of 2026-07-20
 likewise introduced none: PRs #60/#61 — the ADR-0015 crossover-follower fixes, behaviour-changing
 by design with the trade tracked as KI-012; PRs #62/#76 — Class-A performance Waves 3–5,
-twin-dump validated; PR #63 — RH-PR-2 build hardening, byte-exact). Prior sync: the **v0.8.10 release**
+twin-dump validated; PR #63 — RH-PR-2 build hardening, byte-exact). Prior sync: the **0.8.10 release**
 (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill, multiband
 flat recombination, adaptive `FrameClock` GUI refresh — introduces no new risk: the engine fixes
 are behaviour-preserving (single swaps byte-identical) or a documented magnitude correction
 (multiband), `FrameClock` is a message-thread GUI change, and the multiband allpass adds a known
-CPU cost tracked in PERFORMANCE_BUDGET, not an open risk). Prior: the v0.8.9 release (finalized
+CPU cost tracked in PERFORMANCE_BUDGET, not an open risk). Prior: the 0.8.9 release (finalized
 2026-07-12, PR #58 — Wave-2 performance work introduces no new risk: H6 replaces the crossover
 filter with a bit-exact local clone, H15 adds two generation counters following the existing
 sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); before that PR #56
@@ -107,7 +107,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closed the two doors whose dispatch the PLUG-IN starts, and round 28's admission (§31) closes every remaining door by construction — no state-replacing command WAITS for `soundReplacement`, whoever started the dispatch. The risk stays OPEN on what is left, which contains no Anamorph lock: JUCE's own APVTS 10 Hz timer blocking on `valueTreeChanging`, and the two-parameter nesting above |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
-| RISK-011 | **RESOLVED 2026-09-15 (rounds 24 and 25, ADR-0008)** — a gesture count that returned to zero mid-transaction let a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | — | — |
+| RISK-011 | **RESOLVED 2026-09-15 (rounds 24 and 25, ADR-0008)** — a gesture count that returned to zero mid-transaction let a poll record an undo step for a layout the user never had (the 0.9.8 rounds' residuals U1-U3) | — | — |
 | RISK-014 | **RESOLVED 2026-09-19 (round 51, ADR-0056), COMPLETED 2026-09-21 (round 53)** — both host-state XML parser surfaces (the session chunk and each A/B slot payload) are bounded at 256 KB / depth 8 / no `DOCTYPE` before `juce::parseXML`, each on its own. Round 51's closure claim was overstated: the boundary admitted an opening tag whose quote never closes, and a 12 KB chunk still SIGSEGV'd until round 53 refused it. Valid and legacy sessions are unchanged in both rounds | — | — |
 | RISK-015 | Host state still accepts five shapes a `.anamorph` file now refuses — two documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its length | Low — a corrupt session is half-applied or silently truncated rather than refused; no crash, hang or unbounded read | **Certain** as a mechanism: it is the acceptance ADR-0056 deliberately left alone, measured and pinned by State test 116 leg E |
 | RISK-016 | **RESOLVED 2026-09-21 (round 53)** — the three `fuzz` corpus seeds were stored in a container no pinned JUCE writes, so they decoded to nothing and the release-blocking fuzz budget started from inputs that reached no parser | Medium (were it reached) | — |
@@ -123,7 +123,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Impact:** Audible DSP/latency drift, session/automation incompatibility, or a returning editor
   crash — none of which the headless gate fully catches.
 - **Likelihood (evidence-based):** Medium — dependencies eventually need security/feature updates;
-  the pin defers but does not eliminate this. The SHA pin (v0.8.13 cycle) additionally removes the
+  the pin defers but does not eliminate this. The SHA pin (0.8.13 cycle) additionally removes the
   re-pointed-tag variant of the risk.
 - **Evidence [Verified]:** CMakeLists.txt:70-72 (exact commit); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
@@ -221,7 +221,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   `.aupreset` through AU `ClassInfo`. `SERIALIZATION_REGISTRY.md` now records the classification.
 - **Compatibility, measured** (`--risk014-probe census`, asserted by State test 116 leg F): every
   session this product has written is nested at most **3** deep and at most **10 629** bytes — this
-  build 10 438 B, the v0.9.5 field capture 10 629 B, and the three legacy roots
+  build 10 438 B, the 0.9.5 field capture 10 629 B, and the three legacy roots
   `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2–3. A slot payload
   is at most **2 051** bytes at depth **2**. None carries a `DOCTYPE`:
   `XmlElement::TextFormat::dtd` defaults empty (`juce_XmlElement.h:207`).
@@ -319,7 +319,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   in its own §4.5 rather than claiming otherwise.
 - **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:2267 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
-  `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
+  `worklogs/performance/PERF_AUDIT_0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
   procedure now exist and were exercised end to end by the A7 audit; what is missing is a named,
   held-still machine to run them on, which is that audit's roadmap item 01). The SoloMonitor
@@ -334,10 +334,10 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   reproduce a specific shipped build.
 - **Likelihood (evidence-based):** High — already the case (`git tag` is empty).
 - **Evidence [Verified]:** `git tag` empty; `docs/policies/CHANGELOG_POLICY.md`; `docs/procedures/RELEASE_PROCESS.md`.
-- **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
-  convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
+- **Mitigation:** **Infrastructure shipped (RH-PR-8, 0.8.13 cycle):** annotated tag
+  convention (the bare version `x.y.z` since ADR-0059) + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.9**, ADR-0058 — 0.9.0 through 0.9.8 were each written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **0.9.9**, ADR-0058 — 0.9.0 through 0.9.8 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval crash-only retry masking a real crash
@@ -759,7 +759,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   **structural** as a mechanism: nothing in the current code prevents it.
 - **Evidence [Verified]:** `src/PluginProcessor.cpp:1414-1590` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
-  bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
+  bursts). Carried through the 0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
   decision that gets lost.
 - **~~Mitigation until then:~~ SUPERSEDED — the entry is RESOLVED, in two halves, by rounds 24 and

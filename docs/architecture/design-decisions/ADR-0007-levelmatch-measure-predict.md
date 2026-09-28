@@ -190,7 +190,7 @@ and the published Level-Match gain survive it; a re-prepare still resets all of 
 
 ## Note, 2026-09-24 — F13 measured: what a forced swap carries, and Apply with no measurement
 
-F13 of the v0.9.9 global review said Level Match state survives transitions that should invalidate
+F13 of the 0.9.9 global review said Level Match state survives transitions that should invalidate
 it. Measured through the processor and the engine (worklog `NONFINITE_PARAMETERS_AND_F13.md` §E),
 against a fresh instance at the destination state:
 

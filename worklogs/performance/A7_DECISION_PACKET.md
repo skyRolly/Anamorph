@@ -174,7 +174,7 @@ the cross-block state A7-2B deleted, for 1 % in one corner.
 | item | status | needs |
 |---|---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **BLOCKED.** This container is a masked-CPU shared machine; the wall-clock instability noted at the top is the standing evidence. RISK-002 open, rows unpopulated. | a named benchmark machine |
-| **A7-1** — Velvet history slide | **DONE** (v0.9.5), **superseded by A7-2B** | — |
+| **A7-1** — Velvet history slide | **DONE** (0.9.5), **superseded by A7-2B** | — |
 | **A7-2T** — path-equivalence oracle (Test 40) | **DONE** (PR #129). Spent as designed: A7-2B landed against it, and it is now the standing guard that the gather equals the per-sample loop. | — |
 | **A7-2B** — residual per-block term | **DONE** (PR #130). Class A on both committed instruments; −12.2 % at 48 kHz/32, −37.2 % at 192 kHz/32; rate dependence removed. **Corner accepted 2026-08-22.** | — |
 | **A7-5E** — cross-slice experiment | **CLOSED.** Confirmed by execution on the shipping toolchain (Apple Silicon, Apple Clang, Apple libm): **32/32 differ at shipped flags; 24 differ with contraction off, the 8 oversampling-×1 scenarios agreeing.** Identical to the Linux result in counts, split and scenario names. `macos-crossslice` in CI, reporting-only. | — |

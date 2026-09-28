@@ -34,7 +34,7 @@ signature lives inside each Mach-O and in `Contents/_CodeSignature`, both ordina
 so it survives the artifact round-trip. The packages contain only what a user needs to
 install — attribution/support files are release-page assets instead (see below).
 
-## Installers (v0.9.0)
+## Installers (0.9.0)
 
 Every platform offers an **installer route** and a **manual (zip) route**, both landing in
 the standard locations: **system-wide** on Windows and macOS, while the Linux installer
