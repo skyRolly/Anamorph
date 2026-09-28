@@ -13051,7 +13051,7 @@ changes only fixture names, printed labels and one manifest label.
   is guarded procedurally.
 - **Tests.** Cases A–E, as specified, plus:
   - the first tag without a definition below a newer entry;
-  - three `[Unreleased]` cases;
+  - five `[Unreleased]` cases;
   - a text assertion on the skipped-base finding.
 
   The self-test runs 492 cases.
