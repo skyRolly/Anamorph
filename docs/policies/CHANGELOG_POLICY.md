@@ -52,21 +52,28 @@ does, on what is notable enough to record). Where the two agree, the spec's word
      `0.9.7` until 0.9.7 and 0.9.8 were closed untagged), which has no predecessor to compare against;
    - `/compare/<previous tag>...<x.y.z>` for every tagged version after it, where the previous tag is
      the **most recent earlier tagged version**. In a newest-first file that is the nearest entry
-     **below** it that carries a definition — the entry directly below only when that one was tagged.
+     **below** it whose tag exists — the entry directly below only when that one was tagged.
 
-   Versions older than `0.9.9` were never tagged and must have no definition — there is no page to
-   link. After the first tag a version may still close without one: its entry stays, it carries **no**
-   definition (as 0.9.7 and 0.9.8 do), and it is never a comparison base. The newest version entry is
-   the release in preparation and must carry its definition. An `[Unreleased]` section's definition is
-   `/compare/<last tag>...HEAD`, from the newest tagged version. While no version in the file is tagged
-   there is no base, so the section itself is refused, whatever its definition names, and unreleased
-   work goes in the dated entry it will ship in (§Entry template). The first tag's entry counts as
-   tagged as soon as it is in the file — for 0.9.9, throughout the cycle that prepared it — so until
-   the tag is pushed it is the sequence, not the checker, that keeps `## [Unreleased]` out. The definition is written **in the
+   **Whether a version was tagged is what the repository's git tags say, not what this file
+   declares.** `check-docs.py` reads the tag refs of the checkout it runs in (no network; CI's `docs`
+   job fetches every tag), and a version counts as tagged when its bare tag exists and it is not older
+   than the first tag. The definitions must agree with the tags. Versions older than `0.9.9` were never
+   tagged and must have no definition — there is no page to link. After the first tag a version may
+   still close without one: git has no tag for it, its entry stays, it carries **no** definition (as
+   0.9.7 and 0.9.8 do), and it is never a comparison base; a version whose tag exists carries its
+   definition. The one exception is the newest version entry while it is the **release in
+   preparation** (no `## [Unreleased]` above it): it must carry its definition whether or not its tag
+   has been pushed yet. An `[Unreleased]` section's definition is `/compare/<last tag>...HEAD`, from the
+   newest version whose tag exists. Until a tag exists there is no base, so the section itself is
+   refused, whatever its definition names — including before the `0.9.9` tag is pushed, although the
+   0.9.9 entry is in the file — and unreleased work goes in the dated entry it will ship in (§Entry
+   template). Where the tags cannot be read (not a git checkout), the check refuses, with the reason,
+   whatever depends on them, and checks the rest. The definition is written **in the
    release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
    refusing any tag other than the bare CMake version. `check-docs.py` requires exactly the form the
-   version calls for, in both directions.
+   version calls for, in both directions. It verifies that a tag exists, not that it is annotated;
+   `release.yml` refuses a lightweight tag.
 
 ## The structural grammar
 
@@ -333,7 +340,7 @@ The link definition has one exception, and it is the first tag: `0.9.9` is the l
 tag (ADR-0058), so it has no predecessor to compare against and its definition is
 `[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9`. Every tagged version after it uses
 the comparison form shown above, against the most recent earlier **tagged** version — the nearest
-entry below it that carries a definition. A version that closes without a tag keeps its entry, loses
+entry below it whose git tag exists. A version that closes without a tag keeps its entry, loses
 its definition, and is skipped as a comparison base. `check-docs.py` requires exactly the form the
 version calls for, and rejects the other one.
 
@@ -343,7 +350,8 @@ renames the heading to `## [<x.y.z>] — <YYYY-MM-DD>` and re-points the definit
 That definition needs a tag to compare against, so an `## [Unreleased]` section is available from
 the `0.9.9` tag onward — until then unreleased work simply sits in the dated entry it will ship in,
 which is how every entry in this file was written. `check-docs.py` refuses an `## [Unreleased]`
-section while no version in the file is tagged, with or without a definition.
+section while no version in the file has a git tag, with or without a definition — before the
+`0.9.9` tag is pushed as well as after 0.9.9's entry is written.
 
 ## Source of truth for history
 

@@ -5,7 +5,8 @@ release-cleanup round and asked for the one that best keeps the public release h
 that choice, and the owner confirmed it on 2026-09-28: 0.9.9 is the first formal tagged release, and 0.9.7 and
 0.9.8 are not tagged retroactively. It changes `CHANGELOG_POLICY.md` rules 2, 7 and 8 (a Policy change, so an ADR:
 `ADR_POLICY.md` rule 5) and the rule `check-docs.py` enforces them with. Tags are written as the bare version
-(ADR-0059).
+(ADR-0059). Amended the same day: whether a version was tagged is read from the repository's git tags, not
+from the changelog (§Decision).
 
 ## Context
 `CHANGELOG_POLICY.md` rule 8, `RELEASE_PROCESS.md` §Tagging and `check-docs.py`'s `FIRST_TAGGED_VERSION` all
@@ -53,23 +54,40 @@ without a tag, rather than only for this one.
   - `[0.9.9]` is a **tag page**, `https://github.com/skyRolly/Anamorph/releases/tag/0.9.9`.
   - `[0.9.8]` and `[0.9.7]` have **no definition**, like every version before them. Their headings and
     entries stay exactly as written.
-- **After the first tag, the changelog records which versions were tagged.** A version above the first tag
-  is tagged exactly when its entry carries a link definition. One that closes without a tag keeps its entry
-  and has none, as 0.9.7 and 0.9.8 do.
+- **Which versions were tagged is what the repository's git tags say** (amended 2026-09-28, below). A
+  version is tagged when its bare tag (ADR-0059) exists in the tag refs of the checkout `check-docs.py`
+  runs in and it is not older than the first tag. The changelog's definitions must agree with the tags:
+  a version whose tag exists carries a definition; one that closed without a tag keeps its entry and has
+  none, as 0.9.7 and 0.9.8 do.
   - **The comparison base is the most recent earlier TAGGED version** (`previous_of` in `check-docs.py`),
     not the entry directly below. So after `0.9.9` tagged, `0.9.10` and `0.9.11` untagged, `0.9.12` compares
-    against `0.9.9`.
-  - The newest version entry, while it is the release in preparation (no `## [Unreleased]` section above it),
-    must carry its definition; so must the first tag, which stays a comparison base by fact.
-  - `[Unreleased]` compares from the newest tagged version, so it exists only once a version is tagged:
-    while no version in the file is tagged it is refused, whatever its definition names. This was added
-    on 2026-09-28 from a second review finding: the first spelling checked only the URL's shape there,
-    so `.../compare/0.9.8...HEAD` passed above versions that were never tagged. Only a well-formed entry
-    counts, and the first tag's entry counts as tagged as soon as it is in the file -- for 0.9.9,
-    throughout the cycle that prepared it -- so until the tag is pushed the procedure, not the checker,
-    keeps the section out (`RELEASE_PROCESS.md` §Tagging).
-  - This rule was added on 2026-09-28 from a review finding: the first spelling fixed 0.9.9 alone and still
-    took the entry below as the base, so a later skipped tag would have needed manual reconciliation.
+    against `0.9.9`. This rule was added on 2026-09-28 from a review finding: the first spelling fixed 0.9.9
+    alone and still took the entry below as the base, so a later skipped tag would have needed manual
+    reconciliation.
+  - The newest version entry, while it is the **release in preparation** (no `## [Unreleased]` section
+    above it), must carry its definition whether or not its tag exists yet: the release commit writes it,
+    and the tag is pushed onto that commit.
+  - `[Unreleased]` compares from the newest version whose tag exists, so it exists only once a tag does:
+    until then it is refused, whatever its definition names -- including throughout the cycle that
+    prepares 0.9.9, when the 0.9.9 entry is in the file but the `0.9.9` tag is not. This was added on
+    2026-09-28 from a second review finding: the first spelling checked only the URL's shape there, so
+    `.../compare/0.9.8...HEAD` passed above versions that were never tagged.
+  - **Amended 2026-09-28, from a third review finding: "tagged" is read from git, not from the changelog.**
+    The second spelling read "tagged" from the file: after the first tag, a version with a definition; and
+    the first tag's entry "by fact", as soon as it was in the file. So `[Unreleased]:
+    .../compare/0.9.9...HEAD` above the 0.9.9 entry passed while no `0.9.9` tag existed, and the record
+    left the window to the procedure. Three things are distinct: a changelog entry DECLARES a release;
+    `FIRST_TAGGED_VERSION` names the version that may be the first tag; only the tag refs say a tag
+    EXISTS. The checker reads them locally (`git for-each-ref refs/tags`, no network), after checking
+    that the directory it checks is the root of a git checkout.
+  - **Where the tags cannot be read** (not a git checkout, a subdirectory of one, no git), the state is
+    unknown, never "no tags" and never the declarations: the checker refuses, with one finding that says
+    why, whatever depends on the tags -- an `[Unreleased]` section and any version at or above the first
+    tag other than the release in preparation -- and checks the rest. A file whose only such version is
+    the release in preparation (today's) needs no tags.
+  - **CI fetches the tags.** The `docs` job's checkout sets `fetch-tags: true`; the default single-commit
+    checkout fetches none, which would read as "nothing was ever tagged". `release.yml` reaches the same
+    job through `workflow_call` on the tag push.
 - **The self-test keeps its fixtures.** They describe a synthetic line whose first tag is 0.9.7, so it binds
   `FIXTURE_FIRST_TAGGED_VERSION` for that loop only. Cases of its own pin the real value and the rule:
   - 0.9.9 as a tag page with 0.9.8 undefined passes;
@@ -80,19 +98,32 @@ without a tag, rather than only for this one.
     one version's tagging changed, where the base follows it;
   - the first tag without a definition below a newer entry; the `[Unreleased]` base past an untagged newest
     version; and the text of the skipped-base finding;
-  - `[Unreleased]` in each of the line's three states:
-    - nothing tagged: refused with no definition, or with one from 0.9.7, 0.9.8, 0.9.9 or no version
-      at all, once, at its heading, with text that describes the definition truly; a pre-first-tag
-      definition does not make its version a base;
-    - a misspelled first-tag heading: its own finding and the refusal, since nothing counts as
-      tagged until it is fixed (the check fails closed);
+  - every case names the git tags it runs against, handed to the same `tag_state()` the tree run uses,
+    so the decision logic under test is the production logic;
+  - the same file under two tag states, where only the tags change the verdict; a definition left on a
+    version whose tag does not exist, and one deleted from a version whose tag does, each refused; a
+    prefixed tag, which is not the version's tag;
+  - `[Unreleased]` in each of the line's states:
+    - no tag: refused with no definition, or with one from 0.9.7, 0.9.8, 0.9.9 or no version at all,
+      once, at its heading, with text that describes the definition truly; a pre-first-tag definition
+      does not make its version a base;
+    - **0.9.9 declared, its tag absent**: refused, and the 0.9.9 link with it; the repository's own
+      `CHANGELOG.md` with the section added above 0.9.9 is refused before the tag and accepted after it;
+    - a misspelled first-tag heading: its own finding and the refusal (the check fails closed);
     - the first tag: from 0.9.9, never from the untagged 0.9.8;
-    - later tags: from the newest one, never from an untagged version between two tagged ones.
+    - later tags: from the newest one, never from an untagged version between two tagged ones, with one
+      and with two skipped;
+  - tags that cannot be read: `[Unreleased]` or a past release's link refused once, with the reason; the
+    release in preparation alone checked in full;
+  - the reader itself, against real temporary git repositories: an untagged one is known and empty, and
+    the production path refuses `[Unreleased]` there; with an annotated `0.9.9` it accepts it; lightweight
+    and prefixed tags are listed as they are; a subdirectory and a plain directory read as unknown, and
+    the production path in the plain one refuses once, naming the reason.
 - **The documents follow:**
   - `CHANGELOG_POLICY.md` rules 2 and 8, and its template, name 0.9.9 and state the base rule, and rule 7
     sends unreleased work to `[Unreleased]` only once a version is tagged;
-  - `RELEASE_PROCESS.md` §Tagging names `0.9.9` as the next and first tag, with its commands, and says what
-    to do when a version closes without a tag;
+  - `RELEASE_PROCESS.md` §Tagging names `0.9.9` as the next and first tag, with its commands, says what
+    to do when a version closes without a tag, and says the `[Unreleased]` section follows the tag push;
   - the `CHANGELOG.md` preamble and link definitions;
   - `FUTURE_RISKS.md` RISK-003, `RELEASE_HARDENING_PLAN.md`, `HANDOVER.md`, `COMMERCIAL_STATUS.md`.
 - **Nothing is tagged by this change.** The tag is cut by the owner once the release preconditions hold.
@@ -103,19 +134,29 @@ without a tag, rather than only for this one.
 - The 0.9.9 release notes link only to the 0.9.9 tag page, and every later release compares against the
   tag before it.
 - RISK-003 closes when 0.9.9 is tagged, not 0.9.7. From that tag on, a changelog entry may cite the tag.
-- If a future version is again closed without a tag, the commit that adds the next version's entry deletes
-  the closed one's definition, and the checker then skips it as a comparison base. The rule this record
-  applies: **a version is tagged only when it is released**; the first-tag constant names the first one that
-  was, and the definitions record every one after it.
-- The checker cannot see a tag the changelog does not record. A definition deleted from a version that WAS
-  tagged reads as "closed without a tag", and it surfaces when the next tagged version's comparison names a
-  base the checker refuses. The converse, a definition left on a version that closed untagged, reads as a tag;
-  the guard is procedural (`RELEASE_PROCESS.md` §Tagging: the commit adding the next entry deletes it).
+- If a future version is again closed without a tag, git has no tag for it: the checker skips it as a
+  comparison base, and the commit that adds the next version's entry deletes the closed one's definition,
+  which the checker then requires. The rule this record applies: **a version is tagged only when it is
+  released**; the first-tag constant names the first one that may be, the tags say which were, and the
+  definitions link to them.
+- The checker reads the tags; it does not guess them. A definition deleted from a version that WAS tagged,
+  and one left on a version that closed untagged, are both refused, as is `[Unreleased]` before the first
+  tag is pushed. The second spelling's two documented blind spots and its procedural window are closed.
+- The check is as good as the checkout's tag refs, and it reads no network. A clone that has not fetched a
+  new tag reads as if it did not exist (the finding says "shallow" where that applies, and how to fetch
+  them), and a local tag that was never pushed reads as existing. CI's `docs` job fetches every tag from
+  the repository, so CI sees the pushed ones.
+- It verifies that a tag EXISTS, not that it is annotated: a lightweight `0.9.9` would count. A release tag
+  is annotated because `release.yml` refuses anything else and drafts no Release for it.
+- `check-docs.py --self-test` needs `git` to prove the reader; without it that case fails rather than
+  passing unproved.
 
 ## Related code
 - `scripts/check-docs.py` — `FIRST_TAGGED_VERSION`, `FIXTURE_FIRST_TAGGED_VERSION`, `first_tagged()`,
-  `check_changelog_links` (`tagged`, `previous_of`), and the self-test's "repository's own first tag" and
-  "comparison base" cases.
+  `TagState`, `read_git_tags()`, `tag_state()`, `check_changelog_links` (`tagged`, `in_prep`,
+  `verifiable`, `previous_of`, `newest_tagged`), and the self-test's "repository's own first tag",
+  "comparison base", "`[Unreleased]` exists only once a tag does" and "tag reader" cases.
+- `.github/workflows/build.yml` — the `docs` job's checkout, `fetch-tags: true`.
 - `CHANGELOG.md` — the preamble and the `[0.9.9]` definition.
 - `.github/workflows/release.yml` — validates tag ⇄ CMake version ⇄ dated heading and never reads link
   definitions; its tag format is ADR-0059's.
@@ -128,21 +169,20 @@ without a tag, rather than only for this one.
   read 0.9.7 and 0.9.8.
 - **[Verified]** No release audition for 0.9.7 or 0.9.8: `docs/procedures/LEVEL5_AUDITION.md` §Recorded
   auditions.
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 511 cases. Nineteen mutants
-  of the rule each fail it (re-measured 2026-09-28 with the `[Unreleased]` cases):
-  - `previous_of` set back to "the entry directly below": 11 fail, including the tagged-base cases of B, C
-    and E; with the old every-version definition rule as well: 12;
-  - the constant set back to (0, 9, 7): 37;
-  - a prefixed tag: 65;
-  - the first tag no longer required, or no longer a base by fact: 2 each;
-  - the skipped-base message inverted: 1;
-  - the newest entry required even under `[Unreleased]`: 2;
-  - `[Unreleased]` from the newest entry whether tagged or not: 9; from the newest DEFINED entry: 2;
-    from the newest entry both tagged and defined: 1;
-  - the refusal with nothing tagged removed, restoring the shape-only check: 12; removed at the heading
-    alone: 12; made to need a definition: 1 (the wording check on the section with none, where the count
-    alone cannot tell the two findings apart);
-  - the refusal reported at the definition line: 3, or at the first version heading: 4;
-  - its definition clause always appended: 1, naming the line instead of the URL: 2, or claiming an
-    untagged version for a URL that names none: 1.
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 532 cases. Seventeen mutants
+  of the rule each fail it (re-measured 2026-09-28 with the git-tag source of truth):
+  - the no-tag `[Unreleased]` refusal removed, restoring the shape-only check: 18;
+  - a changelog definition taken as proof of a tag: 6;
+  - the tags ignored, restoring the file-only rule: 8;
+  - the first tag counted as tagged by fact, the second spelling: 5, including the repository's own
+    `CHANGELOG.md` with the section before the tag;
+  - `previous_of` set back to "the entry directly below": 17;
+  - a prefixed tag counted as the version's tag: 2; a prefixed tag in the URL: 78;
+  - a definition on an untagged past version accepted: 6; a tagged version without one accepted: 3;
+  - the release in preparation required to be tagged already: 14;
+  - unreadable tags read as no tags: 4; or as the declarations: 4;
+  - the reader answering a subdirectory with the enclosing checkout's tags: 1; not counting lightweight
+    tags: 1; reading a directory that is no checkout as one with no tags: 2;
+  - the constant set back to (0, 9, 7): 43;
+  - `[Unreleased]` from the newest entry whether tagged or not: 15.
   - `check-docs.py` over the tree is clean.

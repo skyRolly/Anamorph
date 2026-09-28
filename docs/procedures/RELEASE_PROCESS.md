@@ -102,19 +102,24 @@ sequence, literally:
    specification's own example uses. "The release commit" means the commit the tag will point at:
    what is binding is that the tagged tree carries the dated heading and the definition, so work
    that landed earlier on the branch already satisfies this and needs no re-commit.
-2. `check-docs.py` (every push) verifies that the first tag and the newest version entry each have a
-   definition naming their own tag, that every tagged version compares against the most recent
-   earlier tagged one, and that no version older than the first tag has a definition. The link is
-   unresolvable only between this commit and the tag push in step 3, which is the same interval in
-   which the dated heading names a release that does not exist yet.
+2. `check-docs.py` (every push) checks the definitions against the repository's **git tags**, not
+   against what `CHANGELOG.md` declares: every version whose tag exists has a definition naming its
+   own tag, compared against the most recent earlier version whose tag exists (the first tag points
+   at its own tag page); no other past version has one; no version older than the first tag has
+   one. The newest version entry is the release in preparation and must carry its definition before
+   its tag exists, because this commit writes it. That link is unresolvable only between this commit
+   and the tag push in step 3, which is the same interval in which the dated heading names a release
+   that does not exist yet.
 3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
    resolves the moment GitHub sees the tag; nothing is moved, amended or rewritten afterwards.
 
 **A version that closes without a tag** (written up, then superseded by the next version before
 it is tagged, as 0.9.7 and 0.9.8 were) keeps its entry and loses its definition: the commit that
-adds the newer version's entry also deletes the older one's `[x.y.z]:` line. `check-docs.py` then
-treats it as never tagged, so the next tagged version compares against the last version that *was*
-tagged (`CHANGELOG_POLICY.md` rule 8). Never tag such a version retroactively.
+adds the newer version's entry also deletes the older one's `[x.y.z]:` line. Git has no tag for it,
+so `check-docs.py` skips it as a comparison base, and the next tagged version compares against the
+last version whose tag exists (`CHANGELOG_POLICY.md` rule 8). The checker enforces both directions:
+a definition left on it names a tag that was never cut, and a tagged version without a definition is
+missing its link. Never tag such a version retroactively.
 
 (Steps 1–3 immediately above are this section's own. Everywhere else — including the
 "pre-release step *n*" references `release.yml` prints in its error messages — a bare step number
@@ -123,11 +128,14 @@ means the **Pre-release checklist** at the top of this file.)
 If an `## [Unreleased]` section is kept between releases, its definition is
 `[Unreleased]: https://github.com/skyRolly/Anamorph/compare/<last tag>...HEAD`, and the release
 commit renames the section to the version heading and re-points it. The section needs a tag to
-compare from, so it exists only after the first tag, `0.9.9`. `check-docs.py` refuses it, whatever
-its definition names, while no version in the file is tagged. It counts the `0.9.9` entry as tagged
-as soon as the entry is in the file, which is throughout the cycle that prepares it, so do not add
-the section until the `0.9.9` tag has been pushed: until then the sequence, not the checker, keeps
-it out.
+compare from, so it exists only after the first tag, `0.9.9`, has been pushed. `check-docs.py`
+refuses it, whatever its definition names, while no version in the file has a git tag — including
+throughout the cycle that prepares 0.9.9, when the 0.9.9 entry is in the file but its tag is not.
+Add the section in a commit after the tag push, and fetch the tags first (`git fetch --tags`): the
+checker reads the tag refs of the checkout it runs in, with no network access, so a clone that has
+not fetched the new tag refuses the section. CI's `docs` job fetches every tag. Where the tags
+cannot be read at all (a directory that is not the root of a git checkout), the checker refuses the
+links that depend on them and says why.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**
