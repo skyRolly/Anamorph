@@ -1909,7 +1909,9 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
     the first tag is tagged exactly when its entry carries a definition: a
     version that closes without a tag keeps its entry and has none, as 0.9.7 and
     0.9.8 did. An `[Unreleased]` heading needs a `...HEAD` comparison from the
-    newest TAGGED version.
+    newest TAGGED version, so it is refused while nothing in the file is tagged:
+    before the first tag there is no base, and a definition naming an untagged
+    version cannot supply one.
 
     The definition is written in the RELEASE COMMIT, naming the tag that commit
     is about to carry -- `x.y.z`, the bare version, fixed by `release.yml`'s rule
@@ -1981,6 +1983,9 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
         for m in [SEMVER_ANYWHERE.search(e.text)] if m
     }
     has_unreleased = any(e.kind == "unreleased" for e in entries)
+    # The base an `[Unreleased]` comparison runs from: the newest TAGGED version.
+    # None when nothing in the file was tagged -- and then there is no base at all.
+    newest_tagged = next((k for k in ordered if tagged(k)), None)
 
     for key, (line_no, url) in defined.items():
         if key == "unreleased":
@@ -1989,21 +1994,15 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                     f"{path}:{line_no}: `[Unreleased]` is defined but there is no "
                     f"`## [Unreleased]` entry"
                 )
-            else:
-                newest = next((k for k in ordered if tagged(k)), None)
-                if newest is None:
-                    # No tagged version below it: nothing to compare from, so the
-                    # shape is all that can be asked for.
-                    want = url if re.fullmatch(
-                        rf"{re.escape(REPO_URL)}/compare/\S+\.\.\.HEAD", url) else (
-                        f"{REPO_URL}/compare/<last tag>...HEAD")
-                else:
-                    want = f"{REPO_URL}/compare/{newest}...HEAD"
+            elif newest_tagged is not None:
+                want = f"{REPO_URL}/compare/{newest_tagged}...HEAD"
                 if url != want:
                     findings.append(
                         f"{path}:{line_no}: the `[Unreleased]` definition must be `{want}` -- "
                         f"the comparison runs from the newest tagged version to HEAD"
                     )
+            # With nothing tagged, the SECTION is the defect, reported once at its
+            # heading below: no definition can repair it, whatever it compares from.
             continue
         e = versions.get(key)
         if e is None:
@@ -2074,7 +2073,27 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                 f"`[{key}]: <url>` at the foot of the file in the release commit "
                 f"(CHANGELOG_POLICY.md rule 8, RELEASE_PROCESS.md §Tagging)"
             )
-    if has_unreleased and "unreleased" not in defined:
+    if has_unreleased and newest_tagged is None:
+        # `[Unreleased]` compares the newest tag with HEAD, so it exists only once a
+        # version has been tagged. Before the first tag there is no base -- not the
+        # entry below, not any version that closed untagged -- and checking only the
+        # URL's shape let `.../compare/0.9.8...HEAD` pass, a comparison from a tag
+        # that was never cut. Until the first tag, unreleased work goes in the dated
+        # entry it will ship in (CHANGELOG_POLICY.md rule 8).
+        e = next(e for e in entries if e.kind == "unreleased")
+        also = ""
+        if "unreleased" in defined:
+            url = defined["unreleased"][1]
+            m = re.fullmatch(rf"{re.escape(REPO_URL)}/compare/(\d+\.\d+\.\d+)\.\.\.HEAD", url)
+            also = (f"; its definition `{url}` compares from {m.group(1)}, a version that "
+                    f"was never tagged" if m else f"; its definition `{url}` names no tagged base")
+        findings.append(
+            f"{path}:{e.line_no}: `## [Unreleased]` needs a tagged release to compare "
+            f"against, and no version in this file was tagged -- this line's first tag "
+            f"is {'.'.join(map(str, first))}; until it is cut, unreleased work goes in "
+            f"the dated entry it will ship in (CHANGELOG_POLICY.md rule 8){also}"
+        )
+    elif has_unreleased and "unreleased" not in defined:
         e = next(e for e in entries if e.kind == "unreleased")
         findings.append(
             f"{path}:{e.line_no}: `## [Unreleased]` has no link definition -- add "
@@ -2269,7 +2288,9 @@ def self_test() -> int:
     # must not react to: a category, a release heading, a setext release pair,
     # and a second category.
     SAMPLE = ["### Fixed", "## [0.9.7] — 2026-09-05", "[0.9.7]", "-------", "### Added"]
-    UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.5.0...HEAD"
+    # `[Unreleased]` compares from the newest TAGGED version, so every fixture that
+    # holds one has a tagged release below it: 0.9.7, these fixtures' first tag.
+    UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.9.7...HEAD"
     # These fixtures' first tag is 0.9.7 (FIXTURE_FIRST_TAGGED_VERSION), bound for this
     # loop only; the repository's own first tag is pinned by the cases after it.
     global _first_tagged_override
@@ -2364,19 +2385,24 @@ def self_test() -> int:
         ("a preamble level-two section with level-three sub-headings is not an entry", 0,
          ["# Changelog", "## How to read this file", "### Conventions", "- a", "### Evidence",
           "- b", V5, "### Fixed", "- x"]),
-        ("`## [Unreleased]` above the first release, with its definition", 0,
-         ["# Changelog", "## [Unreleased]", "### Added", "- x", V5, "### Fixed", "- y",
-          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.5.0...HEAD"]),
-        ("`## [Unreleased]` alone, with its definition", 0,
+        ("`## [Unreleased]` above a tagged release, with its definition", 0,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V7, "### Fixed", "- y",
+          UDEF, D7]),
+        # Nothing tagged: there is no base, so the section itself is refused -- a
+        # definition that names an untagged version cannot supply one.
+        ("`## [Unreleased]` alone has no tagged release to compare from", 1,
          ["# Changelog", "## [Unreleased]",
           "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.4.0...HEAD"]),
+        ("`## [Unreleased]` above only untagged releases is refused", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V5, "### Fixed", "- y",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.5.0...HEAD"]),
         ("`## [Unreleased]` without a definition is a finding", 1,
-         ["# Changelog", "## [Unreleased]", "### Added", "- x"]),
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V7, "### Fixed", "- y", D7]),
         # The FORM, not merely the `...HEAD` suffix: a definition pointing at
         # another repository, or at no tag at all, satisfied the suffix test.
         ("an `[Unreleased]` definition on another host is a finding", 1,
-         ["# Changelog", "## [Unreleased]", "### Added", "- x",
-          "[Unreleased]: https://example.com/x/compare/0.5.0...HEAD"]),
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V7, "### Fixed", "- y",
+          "[Unreleased]: https://example.com/x/compare/0.9.7...HEAD", D7]),
         ("an `[Unreleased]` definition that names no tag is a finding", 1,
          ["# Changelog", "## [Unreleased]", "### Added", "- x", V7, "### Fixed", "- y",
           "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/main...HEAD", D7]),
@@ -2392,8 +2418,8 @@ def self_test() -> int:
           V7, "### Fixed", "- z",
           "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.9.8...HEAD", D8, D7]),
         ("`## [Unreleased]` below a release is a finding", 1,
-         ["# Changelog", V5, "### Fixed", "- x", "## [Unreleased]", "### Added", "- y",
-          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.5.0...HEAD"]),
+         ["# Changelog", V7, "### Fixed", "- x", "## [Unreleased]", "### Added", "- y",
+          UDEF, D7]),
         ("several releases in order pass", 0,
          ["# Changelog", "## [0.6.0] — 2026-01-03", "### Added", "- a", V5, "### Fixed", "- b",
           V4, "### Changed", "- c"]),
@@ -2941,19 +2967,19 @@ def self_test() -> int:
         # the author to move it to the top, which makes the file worse.
         ("a second `## [Unreleased]` is reported as a duplicate", 1,
          ["# Changelog", "## [Unreleased]", "### Added", "- a", "## [Unreleased]",
-          "### Fixed", "- b", V5, "### Added", "- c", UDEF]),
+          "### Fixed", "- b", V7, "### Added", "- c", UDEF, D7]),
         # ...and the MESSAGE is the point: the old rule reported the same COUNT
         # while naming the wrong invariant, so only the text can tell them apart.
         ("...and the message names duplication, not placement", 0,
          ["# Changelog", "## [Unreleased]", "### Added", "- a", "## [Unreleased]",
-          "### Fixed", "- b", V5, "### Added", "- c", UDEF,
+          "### Fixed", "- b", V7, "### Added", "- c", UDEF, D7,
           "@@says:a second `## [Unreleased]` entry@@"]),
         ("one `## [Unreleased]` below a release is a placement finding", 1,
-         ["# Changelog", V5, "### Added", "- a", "## [Unreleased]", "### Fixed", "- b",
-          UDEF]),
+         ["# Changelog", V7, "### Added", "- a", "## [Unreleased]", "### Fixed", "- b",
+          UDEF, D7]),
         ("one `## [Unreleased]` first is fine", 0,
-         ["# Changelog", "## [Unreleased]", "### Added", "- a", V5, "### Fixed", "- b",
-          UDEF]),
+         ["# Changelog", "## [Unreleased]", "### Added", "- a", V7, "### Fixed", "- b",
+          UDEF, D7]),
         ("no `## [Unreleased]` at all is fine", 0,
          ["# Changelog", V5, "### Added", "- a"]),
 
@@ -3565,11 +3591,6 @@ def self_test() -> int:
         ("under `[Unreleased]`, comparing from the untagged newest version is refused", 1,
          ["# Changelog", "## [Unreleased]", "### Added", "- u"]
          + CL([E10, E9], [f"[Unreleased]: {REPO_URL}/compare/0.9.10...HEAD", TP("0.9.9")])[1:]),
-        # Nothing tagged at all below `[Unreleased]`: there is no base to name, so the
-        # shape is all that is asked -- never a comparison from an untagged version.
-        ("`[Unreleased]` above only never-tagged versions is held to the shape", 0,
-         ["# Changelog", "## [Unreleased]", "### Added", "- u"]
-         + CL([E8], [f"[Unreleased]: {REPO_URL}/compare/0.9.7...HEAD"])[1:]),
     ]:
         got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1
@@ -3577,6 +3598,97 @@ def self_test() -> int:
             failures += 1
             print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
                   file=sys.stderr)
+
+    # --- `[Unreleased]` EXISTS ONLY AFTER THE FIRST TAG ------------------------
+    # `[Unreleased]` compares the newest TAGGED version with HEAD. Before the first
+    # tag there is no such version, so the section is refused outright -- with or
+    # without a definition, and whatever the definition compares from. Checking
+    # only the URL's shape once let `.../compare/0.9.8...HEAD` pass above versions
+    # that were never tagged. Real first tag (0.9.9); `U` is the section, `UR` its
+    # definition. The cases are the release line's three states, together with the
+    # skipped-tag rule, so neither can regress without the other noticing.
+    U = ["# Changelog", "## [Unreleased]", "### Added", "- u"]
+
+    def UR(base: str) -> str:
+        return f"[Unreleased]: {REPO_URL}/compare/{base}...HEAD"
+
+    for label, expected, lines in [
+        # No tag yet: 0.9.7 and 0.9.8 closed untagged, nothing is a base.
+        ("unreleased case A: nothing tagged and no `[Unreleased]` passes", 0,
+         CL([E8, E7], [])),
+        ("unreleased case B: nothing tagged, `## [Unreleased]` is refused", 1,
+         U + CL([E8, E7], [])[1:]),
+        ("unreleased case C: nothing tagged, `[Unreleased]` from 0.9.7 is refused", 1,
+         U + CL([E8, E7], [UR("0.9.7")])[1:]),
+        ("unreleased case D: nothing tagged, `[Unreleased]` from 0.9.8 is refused", 1,
+         U + CL([E8, E7], [UR("0.9.8")])[1:]),
+        # Naming the first tag's version before its entry exists does not make it one.
+        ("nothing tagged, `[Unreleased]` from the first tag's number is still refused", 1,
+         U + CL([E8, E7], [UR("0.9.9")])[1:]),
+        ("nothing in the file at all, `## [Unreleased]` is refused", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- u", UR("0.9.8")]),
+        # "Tagged", not "defined": a definition below the first tag is refused as
+        # such and does not make 0.9.8 a base, so the section is refused as well...
+        ("nothing tagged, a stray pre-first-tag `[0.9.8]` definition is no base", 2,
+         U + CL([E8, E7], [UR("0.9.8"), CP("0.9.7", "0.9.8")])[1:]),
+        # ...and the first tag is a base by fact: its missing definition is the one
+        # finding, never "nothing is tagged" on top of it.
+        ("0.9.9 undefined, `[Unreleased]` from 0.9.9: only the missing `[0.9.9]`", 1,
+         U + CL([E9, E8, E7], [UR("0.9.9")])[1:]),
+        # Only a well-formed entry counts as tagged. A misspelled first-tag heading is
+        # its own finding, and until it is fixed nothing in the file is tagged, so the
+        # section is refused as well: the check fails closed rather than guessing.
+        ("a misspelled first-tag heading: that finding, and the refusal", 2,
+         U + ["## [0.9.9] — <YYYY-MM-DD>", "### Fixed", "- 9"]
+         + CL([E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]),
+        # The first tag: 0.9.9 has no predecessor, and `[Unreleased]` compares from it.
+        ("unreleased case E: 0.9.9 tagged, `[Unreleased]` from 0.9.9 passes", 0,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]),
+        ("0.9.9 tagged, `[Unreleased]` from the untagged 0.9.8 is refused", 1,
+         U + CL([E9, E8, E7], [UR("0.9.8"), TP("0.9.9")])[1:]),
+        # A later tag: `[Unreleased]` moves up to it.
+        ("unreleased case F: 0.9.9 and 0.9.10 tagged, `[Unreleased]` from 0.9.10 passes", 0,
+         U + CL([E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:]),
+        ("0.9.9 and 0.9.10 tagged, `[Unreleased]` from 0.9.9 is refused", 1,
+         U + CL([E10, E9], [UR("0.9.9"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:]),
+        # A skipped tag between two tagged versions: 0.9.11 compares against 0.9.9,
+        # and `[Unreleased]` compares from 0.9.11 -- never from the untagged 0.9.10.
+        ("unreleased case G: `[Unreleased]` from the untagged 0.9.10 is refused", 1,
+         U + CL([E11, E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:]),
+        ("unreleased case G: `[Unreleased]` from 0.9.11 past the skipped 0.9.10 passes", 0,
+         U + CL([E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:]),
+    ]:
+        got = len(analyse(root / "CHANGELOG.md", lines, root))
+        checked += 1
+        if got != expected:
+            failures += 1
+            print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
+                  file=sys.stderr)
+    # The count cannot tell the refusal from the ordinary missing-definition finding
+    # (case B yielded one finding before this rule too, telling the author to add a
+    # definition no base could satisfy). The finding must name the missing tag,
+    # once, at the section's heading (line 2), and describe the definition truly:
+    # absent for B, the untagged version it names for C and D, and no version at all
+    # for one that names none.
+    for label, lines, says, never in [
+        ("case B", U + CL([E8, E7], [])[1:], [], "its definition"),
+        ("case C", U + CL([E8, E7], [UR("0.9.7")])[1:],
+         [UR("0.9.7").split(": ", 1)[1], "compares from 0.9.7, a version that was never tagged"],
+         "names no tagged base"),
+        ("case D", U + CL([E8, E7], [UR("0.9.8")])[1:],
+         [UR("0.9.8").split(": ", 1)[1], "compares from 0.9.8, a version that was never tagged"],
+         "names no tagged base"),
+        ("a definition naming no version", U + CL([E8, E7], [UR("main")])[1:],
+         [UR("main").split(": ", 1)[1] + "` names no tagged base"], "a version that was never tagged"),
+    ]:
+        found = analyse(root / "CHANGELOG.md", lines, root)
+        checked += 1
+        wanted = [f"{root / 'CHANGELOG.md'}:2: ", "needs a tagged release to compare against",
+                  "first tag is 0.9.9"] + says
+        if not (len(found) == 1 and all(w in found[0] for w in wanted) and never not in found[0]):
+            failures += 1
+            print(f"self-test FAIL: changelog the {label} refusal names the missing tag: "
+                  f"got {found}", file=sys.stderr)
     # The count cases cannot see WHY a comparison was refused. When the refused base
     # is an untagged entry directly below, the finding must say so, and name the
     # tagged base to use instead -- that is the reconciliation the author has to do.
