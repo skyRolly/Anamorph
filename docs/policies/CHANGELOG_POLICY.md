@@ -35,9 +35,10 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 7. **Latest version first; every version heading carries an ISO `YYYY-MM-DD` release date.** The
    heading grammar is `## [x.y.z] — YYYY-MM-DD` (a plain `-` for the dash is accepted, being the
    specification's own spelling; ` [YANKED]` may follow), at column 0, versions strictly decreasing
-   down the file, the date a real calendar date. Work that is not yet released goes under
-   `## [Unreleased]`, which sits above the first version and nowhere else — a version heading that
-   reads `— Unreleased` or has no date is not a release and is rejected. A heading that only
+   down the file, the date a real calendar date. Once a version is tagged, work that is not yet
+   released goes under `## [Unreleased]` (rule 8), which sits above the first version and nowhere
+   else — a version heading that reads `— Unreleased` or has no date is not a release and is
+   rejected. A heading that only
    **reads** as a release — one that lost a bracket, or names a version at another heading level —
    is held to the same grammar rather than passing as prose (§The structural grammar,
    restriction 3). `check-docs.py` enforces all of this on every push; `release.yml` re-checks the tagged version's heading and date at tag
@@ -57,7 +58,11 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    link. After the first tag a version may still close without one: its entry stays, it carries **no**
    definition (as 0.9.7 and 0.9.8 do), and it is never a comparison base. The newest version entry is
    the release in preparation and must carry its definition. An `[Unreleased]` section's definition is
-   `/compare/<last tag>...HEAD`, from the newest tagged version. The definition is written **in the
+   `/compare/<last tag>...HEAD`, from the newest tagged version. While no version in the file is tagged
+   there is no base, so the section itself is refused, whatever its definition names, and unreleased
+   work goes in the dated entry it will ship in (§Entry template). The first tag's entry counts as
+   tagged as soon as it is in the file — for 0.9.9, throughout the cycle that prepared it — so until
+   the tag is pushed it is the sequence, not the checker, that keeps `## [Unreleased]` out. The definition is written **in the
    release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
    refusing any tag other than the bare CMake version. `check-docs.py` requires exactly the form the
@@ -337,7 +342,8 @@ Work not yet released goes under `## [Unreleased]` in the same shape, with
 renames the heading to `## [<x.y.z>] — <YYYY-MM-DD>` and re-points the definition (rules 7 and 8).
 That definition needs a tag to compare against, so an `## [Unreleased]` section is available from
 the `0.9.9` tag onward — until then unreleased work simply sits in the dated entry it will ship in,
-which is how every entry in this file was written.
+which is how every entry in this file was written. `check-docs.py` refuses an `## [Unreleased]`
+section while no version in the file is tagged, with or without a definition.
 
 ## Source of truth for history
 

@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13004,6 +13004,162 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
+
+## 95th pass — 2026-09-28, `[Unreleased]` refused before the first tag (PR #159)
+
+**Scope.** One review finding (Devin) against `check_changelog_links`, the owner's correction of the PR #159
+description, a brief look at the RISK-012/013 index rows, and what an adversarial review of this pass found. No
+production code, no C++ test suite and no release record changed.
+
+**The finding, reproduced first.** With no tagged version in the file, the checker asked only that the
+`[Unreleased]` URL have the `/compare/<x>...HEAD` shape. Run against `b0db3db`:
+- `[Unreleased]: .../compare/0.9.8...HEAD` above the untagged 0.9.8 and 0.9.7 gave **0 findings**, and so did a
+  base of 0.9.7;
+- with no definition, the one finding told the author to add `.../compare/<last tag>...HEAD`, which no base
+  could satisfy.
+
+The self-test pinned the defect as intended behaviour: *"`[Unreleased]` above only never-tagged versions is held
+to the shape"*, expecting 0.
+
+**Drift reported.** `CHANGELOG_POLICY.md`'s template paragraph already said an `## [Unreleased]` section "is
+available from the `0.9.9` tag onward". The checker did not enforce it. Rule 7 sent unreleased work to
+`[Unreleased]` unconditionally, and neither `RELEASE_PROCESS.md` §Tagging nor ADR-0058 stated the restriction.
+
+**The fix.**
+- `newest_tagged` is computed once.
+- With a tagged version, the definition must be `/compare/<newest tagged>...HEAD`, as before.
+- With none, the section itself is refused, once, at its heading, with or without a definition. The finding
+  names the first tag. It describes the definition truly: "compares from 0.9.8, a version that was never
+  tagged" when it names a version, and "names no tagged base" when it names none (`main`, `HEAD`, another
+  repository).
+- Only a well-formed entry counts as tagged. A misspelled first-tag heading is its own finding, and until it
+  is fixed the section above it is refused as well: the check fails closed. A guard that skipped the refusal
+  there was tried and withdrawn, because the second review showed it over-suppressing and incomplete.
+- There is no special case for 0.9.9: the rule reads `FIRST_TAGGED_VERSION` and the definitions, as `previous_of`
+  does.
+
+**Tests.** The self-test runs 511 cases.
+- **Cases A–G:**
+  - A: nothing tagged and no `[Unreleased]` passes;
+  - B: nothing tagged, the section is refused;
+  - C and D: nothing tagged, a definition from 0.9.7 or from 0.9.8 is refused;
+  - E: 0.9.9 tagged, the section compares from 0.9.9;
+  - F: 0.9.9 and 0.9.10 tagged, it compares from 0.9.10;
+  - G: from the untagged 0.9.10 between tagged 0.9.9 and 0.9.11 is refused, and from 0.9.11 passes.
+- **Also:**
+  - a definition naming 0.9.9 before its entry exists;
+  - a file with no version at all;
+  - the untagged 0.9.8 under a tagged 0.9.9, and the older 0.9.9 under a tagged 0.9.10;
+  - a stray pre-first-tag `[0.9.8]` definition, which does not make 0.9.8 a base;
+  - 0.9.9 undefined with `[Unreleased]` from 0.9.9, where the missing `[0.9.9]` is the one finding;
+  - a misspelled first-tag heading: its own finding and the refusal;
+  - four wording checks: B, C, D and a definition naming no version. Each asserts one finding, at the heading's
+    line, naming the first tag, and a definition clause that is present, and true, exactly when it should be.
+- **Synthetic fixtures (first tag 0.9.7).** Nine fixtures held `[Unreleased]` with no tagged version in the
+  file.
+  - Eight now have the tagged 0.9.7 below them, so each still tests what its label says: the with-definition
+    pass case (relabelled "above a tagged release"), missing definition, another host, placement ×2, duplicate
+    ×2 and first-is-fine.
+  - The "alone" fixture became a refusal, and the old untagged "above the first release" content was kept as a
+    new refusal case.
+
+**Mutation**, nineteen mutants each failing the self-test:
+
+| Mutant | Cases failed |
+|---|---|
+| The pre-fix shape-only acceptance restored | 12 |
+| The refusal removed at the heading only | 12 |
+| The refusal made to need a definition | 1 (the case B wording check; the count alone cannot see it) |
+| The refusal reported at the definition line | 3 |
+| The refusal reported at the first version heading | 4 |
+| `[Unreleased]` from the newest entry, tagged or not | 9 |
+| …from the newest DEFINED entry | 2 |
+| …from the newest entry both tagged and defined | 1 |
+| The definition clause always appended | 1 |
+| …naming the line instead of the URL | 2 |
+| …claiming an untagged version for a URL that names none | 1 |
+| `previous_of` set back to the entry below | 11 |
+| …with every version needing a definition | 12 |
+| A prefixed tag | 65 |
+| (0, 9, 7) | 37 |
+| The newest entry required under `[Unreleased]` | 2 |
+| The first tag not required | 2 |
+| The first tag not a base | 2 |
+| The skipped-base message inverted | 1 |
+
+**The three concepts together.** The checker was asked what it requires in each state of the line:
+- no tags: nothing has a base, and `[Unreleased]` is refused;
+- 0.9.9 tagged: 0.9.9 is a tag page, and `[Unreleased]` compares from 0.9.9;
+- 0.9.9 tagged, 0.9.10 untagged, 0.9.11 tagged: 0.9.11 compares against 0.9.9, and `[Unreleased]` compares
+  from 0.9.11;
+- all three tagged, as a control: each compares against the one below, and `[Unreleased]` from 0.9.11.
+
+**Blind spot, stated.** "Tagged" is what the changelog records, not what git holds. The 0.9.9 entry counts as
+tagged as soon as it is in the file, which is throughout the cycle that prepared it, not only from its release
+commit. So an `## [Unreleased]` section added above it before the tag is pushed is not refused. The review
+reproduced this on the current head, with no tag cut: the real `CHANGELOG.md` plus a section from 0.9.9 gives 0
+findings. Owner case E needs exactly that file to pass, so the checker stays as it is. `RELEASE_PROCESS.md`
+§Tagging, rule 8 and ADR-0058 now say the sequence keeps the section out until the tag is pushed, and they no
+longer say "while no version is tagged" without "in the file".
+
+**Documents synced:**
+- `CHANGELOG_POLICY.md` rule 7 (unreleased work goes under `[Unreleased]` once a version is tagged), rule 8
+  (the refusal, the dated-entry advice the finding cites, and the window) and the template paragraph;
+- `RELEASE_PROCESS.md` §Tagging;
+- ADR-0058 (the decision, the tests, the evidence, and rules 2, 7 and 8 as the policy it changes) and ADR-0059's
+  evidence counts;
+- `ADR_INDEX.md` row 0058. Row 0059 carries no counts and is unchanged.
+
+**PR #159 description.** It is rewritten to the current state:
+- the Level-5 audition is complete on the owner's sign-off;
+- checklist items 5 and 7 PASS on the owner's attestation;
+- the checker and policy changes are part of the PR;
+- 0.9.9 is the first formal tag.
+
+Owner attestation, automated evidence and repository evidence are kept apart. Nothing the owner did not
+supply is filled in.
+
+**Review**, in two rounds, each reviewer paired with one skeptic per finding.
+
+**First round.** Five read-only reviewers (checker correctness, tests and mutation, docs, release state, scope
+and hard stops) confirmed 12 findings and refuted 2. All 14 were addressed:
+- the window wording above;
+- the definition clause's truth;
+- the rule the finding cites, and rule 7;
+- the fixture count and the `ADR_INDEX` claim in an earlier draft of this entry;
+- three test gaps, each shown by a surviving mutant: the base being "defined" instead of "tagged", the clause's
+  wording, and the refusal's line;
+- two stale current-state lines outside this change:
+  - `HANDOVER.md`'s Roadmap row cited the 0.9.6 checklist of 2026-09-01 for the remaining 0.9.9 steps. It now
+    gives the 0.9.9 record.
+  - `RELEASE_HARDENING_PLAN.md`'s QA-gate row carried a stray ", ;" from the 94th pass.
+- **The two refuted findings** were the line of the refusal, which is now pinned anyway, and a misspelled
+  first-tag heading drawing the refusal as well. For the second, a guard was added.
+
+**Second round.** Two reviewers, on the fixes above, confirmed 4 findings and refuted 4:
+- the guard was both over-suppressing and incomplete, so it was withdrawn and the fail-closed behaviour pinned
+  instead;
+- the window starts when the first tag's entry enters the file, not at its release commit;
+- ADR-0058 changes rule 7 too.
+
+Neither round found a hard-stop conflict. ADR-0058 is new in this unmerged PR and is tightened, not reversed,
+and no `CHANGELOG.md` entry is due for a CI lint (rule 3).
+
+**RISK-012/013, looked at and left as post-release cleanup.**
+- **RISK-012** carries contradictory status statements, so a one-line index row would mean choosing between
+  them:
+  - "RESOLVED" 2026-09-13, at the head of the entry;
+  - "STILL OPEN" after rounds 20 and 21;
+  - "OPEN, and narrowed" after round 22;
+  - "stays OPEN … with no shipped-format exposure", at its foot.
+
+  This file records it both as "disposed, not narrowed" and as "narrowed, still OPEN".
+- **RISK-013** is stated plainly as a "formally accepted residual".
+- Neither entry states the Severity and Likelihood the index columns ask for, so a row for either would be an
+  invented judgement.
+
+**This file:** this entry and the *Last updated* line. The 94th pass keeps the counts it recorded (492 cases),
+which were true of its head.
 
 ## 94th pass — 2026-09-28, bare versions, skipped tags, and the 0.9.9 release records (PR #159)
 

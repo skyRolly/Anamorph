@@ -3,7 +3,7 @@
 **Status:** **Accepted** (2026-09-28). The owner delegated the choice between the two strategies below to the
 release-cleanup round and asked for the one that best keeps the public release history true. This record is
 that choice, and the owner confirmed it on 2026-09-28: 0.9.9 is the first formal tagged release, and 0.9.7 and
-0.9.8 are not tagged retroactively. It changes `CHANGELOG_POLICY.md` rules 2 and 8 (a Policy change, so an ADR:
+0.9.8 are not tagged retroactively. It changes `CHANGELOG_POLICY.md` rules 2, 7 and 8 (a Policy change, so an ADR:
 `ADR_POLICY.md` rule 5) and the rule `check-docs.py` enforces them with. Tags are written as the bare version
 (ADR-0059).
 
@@ -61,7 +61,13 @@ without a tag, rather than only for this one.
     against `0.9.9`.
   - The newest version entry, while it is the release in preparation (no `## [Unreleased]` section above it),
     must carry its definition; so must the first tag, which stays a comparison base by fact.
-  - `[Unreleased]` compares from the newest tagged version.
+  - `[Unreleased]` compares from the newest tagged version, so it exists only once a version is tagged:
+    while no version in the file is tagged it is refused, whatever its definition names. This was added
+    on 2026-09-28 from a second review finding: the first spelling checked only the URL's shape there,
+    so `.../compare/0.9.8...HEAD` passed above versions that were never tagged. Only a well-formed entry
+    counts, and the first tag's entry counts as tagged as soon as it is in the file -- for 0.9.9,
+    throughout the cycle that prepared it -- so until the tag is pushed the procedure, not the checker,
+    keeps the section out (`RELEASE_PROCESS.md` §Tagging).
   - This rule was added on 2026-09-28 from a review finding: the first spelling fixed 0.9.9 alone and still
     took the entry below as the base, so a later skipped tag would have needed manual reconciliation.
 - **The self-test keeps its fixtures.** They describe a synthetic line whose first tag is 0.9.7, so it binds
@@ -73,9 +79,18 @@ without a tag, rather than only for this one.
   - cases A–E: the first tag; one and two skipped versions; consecutive tags; and the same entries with only
     one version's tagging changed, where the base follows it;
   - the first tag without a definition below a newer entry; the `[Unreleased]` base past an untagged newest
-    version, and with nothing tagged at all; and the text of the skipped-base finding.
+    version; and the text of the skipped-base finding;
+  - `[Unreleased]` in each of the line's three states:
+    - nothing tagged: refused with no definition, or with one from 0.9.7, 0.9.8, 0.9.9 or no version
+      at all, once, at its heading, with text that describes the definition truly; a pre-first-tag
+      definition does not make its version a base;
+    - a misspelled first-tag heading: its own finding and the refusal, since nothing counts as
+      tagged until it is fixed (the check fails closed);
+    - the first tag: from 0.9.9, never from the untagged 0.9.8;
+    - later tags: from the newest one, never from an untagged version between two tagged ones.
 - **The documents follow:**
-  - `CHANGELOG_POLICY.md` rules 2 and 8, and its template, name 0.9.9 and state the base rule;
+  - `CHANGELOG_POLICY.md` rules 2 and 8, and its template, name 0.9.9 and state the base rule, and rule 7
+    sends unreleased work to `[Unreleased]` only once a version is tagged;
   - `RELEASE_PROCESS.md` §Tagging names `0.9.9` as the next and first tag, with its commands, and says what
     to do when a version closes without a tag;
   - the `CHANGELOG.md` preamble and link definitions;
@@ -113,14 +128,21 @@ without a tag, rather than only for this one.
   read 0.9.7 and 0.9.8.
 - **[Verified]** No release audition for 0.9.7 or 0.9.8: `docs/procedures/LEVEL5_AUDITION.md` §Recorded
   auditions.
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 492 cases. Nine mutants of
-  the rule each fail it:
-  - `previous_of` set back to "the entry directly below": 9 fail, including the tagged-base cases of B, C
-    and E; with the old every-version definition rule as well: 10;
-  - the constant set back to (0, 9, 7): 20;
-  - a prefixed tag: 51;
-  - `[Unreleased]` from the newest entry whether tagged or not: 3;
-  - the first tag no longer required, or no longer a base by fact: 1 each;
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 511 cases. Nineteen mutants
+  of the rule each fail it (re-measured 2026-09-28 with the `[Unreleased]` cases):
+  - `previous_of` set back to "the entry directly below": 11 fail, including the tagged-base cases of B, C
+    and E; with the old every-version definition rule as well: 12;
+  - the constant set back to (0, 9, 7): 37;
+  - a prefixed tag: 65;
+  - the first tag no longer required, or no longer a base by fact: 2 each;
   - the skipped-base message inverted: 1;
-  - the newest entry required even under `[Unreleased]`: 2.
+  - the newest entry required even under `[Unreleased]`: 2;
+  - `[Unreleased]` from the newest entry whether tagged or not: 9; from the newest DEFINED entry: 2;
+    from the newest entry both tagged and defined: 1;
+  - the refusal with nothing tagged removed, restoring the shape-only check: 12; removed at the heading
+    alone: 12; made to need a definition: 1 (the wording check on the section with none, where the count
+    alone cannot tell the two findings apart);
+  - the refusal reported at the definition line: 3, or at the first version heading: 4;
+  - its definition clause always appended: 1, naming the line instead of the URL: 2, or claiming an
+    untagged version for a URL that names none: 1.
   - `check-docs.py` over the tree is clean.

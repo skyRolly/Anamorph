@@ -122,7 +122,12 @@ means the **Pre-release checklist** at the top of this file.)
 
 If an `## [Unreleased]` section is kept between releases, its definition is
 `[Unreleased]: https://github.com/skyRolly/Anamorph/compare/<last tag>...HEAD`, and the release
-commit renames the section to the version heading and re-points it.
+commit renames the section to the version heading and re-points it. The section needs a tag to
+compare from, so it exists only after the first tag, `0.9.9`. `check-docs.py` refuses it, whatever
+its definition names, while no version in the file is tagged. It counts the `0.9.9` entry as tagged
+as soon as the entry is in the file, which is throughout the cycle that prepares it, so do not add
+the section until the `0.9.9` tag has been pushed: until then the sequence, not the checker, keeps
+it out.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**
