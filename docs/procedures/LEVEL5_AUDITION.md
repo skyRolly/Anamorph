@@ -12,11 +12,14 @@ structurally cannot supply — a green build plus a pluginval pass means *"ready
 ## When a previous audition stops counting
 
 An audition is **per-build**, not per-feature. It is invalidated by anything that changes the
-machine code or the audible behaviour of the thing being shipped. The rule has now been applied
-twice, and the second application is the one that governs the release in preparation.
+machine code or the audible behaviour of the thing being shipped. The rule was applied twice
+before 0.9.9, and it now governs **v0.9.9**, the release in preparation: no audition is recorded
+here since the v0.9.6 PASS (ADR-0054's 2026-09-17 dependency audition predates 0.9.9's changes),
+and 0.9.7, 0.9.8 and 0.9.9 each change audible behaviour, so a v0.9.9 audition needs its own scope,
+derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries.
 
 **The v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7** — the release this rule
-currently blocks. **ADR-0034** changed what the plug-in reports to the host and added a delay
+blocked when it was applied the second time (2026-09-03). **ADR-0034** changed what the plug-in reports to the host and added a delay
 element to the chain, and it changed one audible behaviour beyond latency: a forced A/B, preset or
 undo swap that crosses the Drive engagement threshold with a factor selected is now
 latency-neutral, so it dry-fills instead of dipping to silence. Neither is a thing an automated
