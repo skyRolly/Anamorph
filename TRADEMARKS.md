@@ -26,7 +26,7 @@ The repository's recorded position is that no terms are declared and all rights 
 default ([`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) §1), so no right to use the
 product or company name is granted with a copy of the software. Nothing in this repository
 restricts referring to Anamorph by name in a review, a tutorial, a compatibility list or a bug
-report, and no brand-usage policy exists (§4 item 4). Using the name or any Anamorph branding
+report, and no brand-usage policy exists (§4 item 3). Using the name or any Anamorph branding
 **as your own**, on your own product, or in a way that suggests endorsement or origin, does not
 follow from possessing a copy.
 

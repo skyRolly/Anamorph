@@ -13008,8 +13008,7 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 
 **Scope.** An owner naming decision, implemented: the fourth widening algorithm is named **Dimensional**. Its two
 display strings, its tooltip, the internal identifiers that carried its former name, and every repository reference
-to that name — including the wording that tied the algorithm to a specific hardware product — were renamed or
-rewritten (commit `1f0bc7c`). On owner instruction the 0.9.9 release date moved to 2026-09-29. Naming and
+to that name were renamed or rewritten (commit `1f0bc7c`; review corrections in the commit after it). On owner instruction the 0.9.9 release date moved to 2026-09-29. Naming and
 documentation only; the engine's code is unchanged.
 
 **Identity and behaviour, verified rather than assumed.**
@@ -13036,7 +13035,7 @@ documentation only; the engine's code is unchanged.
 - **Product surface:** `src/PluginParameters.cpp` (the choice label, `Dimensional Style`), `src/PluginEditor.cpp`
   (the tooltip), the registry snapshot.
 - **Identifiers and comments:** `src/dsp/{EngineParameters.h, ChorusEngine.h, ChorusEngine.cpp, AnamorphEngine.h,
-  AnamorphEngine.cpp}`. `ChorusEngine.h`'s banner no longer calls the voice an emulation.
+  AnamorphEngine.cpp}`. `ChorusEngine.h`'s banner and `setDimMode`'s comment now describe the voice itself.
 - **Tests and tools:** `tests/{dsp_tests.cpp, state_tests.cpp, bench.cpp, dsp_dump.cpp}` (identifiers and printed
   labels only; the dump's scenario name is now `dimensional`, noted in `TESTING.md`) and
   `scripts/check-state-coverage.py` (the guard text it matches).
@@ -13058,13 +13057,27 @@ copy, which only the owner specifies (`AI_AGENT_POLICY.md` C8). Reported for the
 
 **Drift reported (C6):**
 - `TRADEMARKS.md` §4 cited `docs/user/USER_MANUAL.md:287` for text at `:313`. It went with the item.
-- `ChorusEngine.h` called the voice an emulation while `USER_MANUAL.md` said "-style" and the keynote script said no
-  imitation was implied. All three now describe the algorithm itself.
+- `ChorusEngine.h`, `USER_MANUAL.md` and the v0.9.0 keynote script described the voice inconsistently with one
+  another. All three now describe the algorithm itself.
+- `USER_MANUAL.md` called the four voicings progressively "slower"; `ChorusEngine::setDimMode` raises the rate from
+  0.40 to 0.75 Hz across them. Corrected to "wider and deeper" (`src/dsp/ChorusEngine.cpp:38-41`).
+- `DSP_ALGORITHMS.md` cited `.cpp:129-141` for the dual-tap branch, which sits at `.cpp:196-209`. Re-aimed.
 - The snapshot writer's header (`tests/state_tests.cpp`) says a regeneration needs an ADR, while
   PARAMETER_COMPATIBILITY_POLICY rule 2 and ADR-0002 allow a display-name change without one. Not changed.
 
 **The record:** `CHANGELOG.md` `[0.9.9]` — one Changed entry citing `1f0bc7c`, and the heading dated 2026-09-29;
 `HANDOVER.md`'s Current Version row.
+
+**Drift reported, not corrected** (outside this algorithm):
+- `DSP_ALGORITHMS.md`'s Chorus bullet cites `.cpp:144-151` for a branch at `.cpp:210-219`, and calls its linear
+  `in·(1−wet) + tap·wet` blend "equal-power".
+- `COMMERCIAL_STATUS.md`'s header still says the release in preparation is v0.9.7.
+
+**Review.** A workflow (four diff reviewers, three repository-wide sweeps, one skeptic per finding) confirmed nine
+findings, all corrected in the commit after `1f0bc7c`: the `setDimMode` comment's "classic mode buttons"; the
+`TRADEMARKS.md` §1 cross-reference to the renumbered §4; `COMMERCIAL_STATUS.md`'s "substance unchanged since";
+a tense in the 0.8.8 changelog entry; this entry's wording, three times; and the keynote script's word counts.
+Ten were refuted.
 
 **This file:** this entry, the *Last updated* line, and the legal-set entry's description of the former review item.
 

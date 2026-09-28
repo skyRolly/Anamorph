@@ -2702,8 +2702,8 @@ including in entries written before 0.9.9 gave it that name.
   warning). Evidence: `.github/workflows/build.yml`, `scripts/run-pluginval.sh`,
   `scripts/run-pluginval.ps1`.
 - **Parameter display-name renames** (parameter **IDs unchanged**, so automation/state survive):
-  "Algorithm" → **"Widen Algorithm"**, and `dimMode`'s display name changed to match the GUI (it is
-  **"Dimensional Style"** since 0.9.9).
+  "Algorithm" → **"Widen Algorithm"**, and `dimMode`'s display name changed to match the GUI (it has
+  been **"Dimensional Style"** since 0.9.9).
   `Multiband Bands` and `Multiband Solo` are now **exposed and automatable** in the host automation
   list (the previous `withAutomatable(false)` was removed). Conversely, **`Advanced Mode` is now
   non-automatable** (`isAutomatable()` = false): it is a UI-layout toggle, not a sound parameter.

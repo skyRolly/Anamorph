@@ -72,7 +72,7 @@ Demo sources: one mono synth line (§1, recurring), doubled rhythm guitars (§3 
 pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dimensional), a full mix
 (§5).
 
-Narration ≈ 904 words total; runtime ≈ 7:25. Pacing assumes ~145–155 wpm spoken, with
+Narration ≈ 901 words total; runtime ≈ 7:25. Pacing assumes ~145–155 wpm spoken, with
 listening gaps where marked. Section word counts (actual, recounted) noted for the editor.
 
 ---
@@ -129,7 +129,7 @@ it. Here they are."
 
 ---
 
-### §3 · 1:50–4:00 — The four methods *(centerpiece; 255 words + four ~6 s demos, narration may resume over each demo's tail)*
+### §3 · 1:50–4:00 — The four methods *(centerpiece; 252 words + four ~6 s demos, narration may resume over each demo's tail)*
 
 **ON SCREEN:** One section per method. The selector changes; the method's own controls slide
 in (Delay + Focus for Haas; Density for Velvet Noise; Rate + Depth for Chorus; Style for

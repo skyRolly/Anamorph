@@ -7,7 +7,9 @@ owner/legal decisions are still open. It **indexes** the authoritative records r
 restating them; where this file and the record it cites disagree, the cited record wins
 (`SOURCE_OF_TRUTH.md`).
 
-Last reviewed: **2026-07-26** (substance unchanged since). The release then in preparation was
+Last reviewed: **2026-07-26**. One change of substance since: on 2026-09-27 decision 6 (§4) was narrowed to
+the trademark status of the product and company names, when the fourth widening algorithm was renamed
+**Dimensional**. The release then in preparation was
 v0.9.0; none of v0.9.0 through v0.9.5 was tagged, and the release in preparation is now
 **v0.9.7** (the ADR-0034 latency change on top of the 0.9.6 engineering-review fixes). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the

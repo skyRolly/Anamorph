@@ -253,8 +253,8 @@ One knob slot changes with the algorithm:
   the sparse noise taps are active.
 - **Chorus** → **Rate** (0.05 … 5 Hz) and **Depth** (0 … 100 %); host parameters *Chorus
   Rate* / *Chorus Depth*.
-- **Dimensional** → **STYLE** selector (Subtle / Classic / Wide / Lush — progressively wider,
-  deeper, slower voicings).
+- **Dimensional** → **STYLE** selector (Subtle / Classic / Wide / Lush — progressively wider
+  and deeper voicings).
 
 ### 3.4 INPUT panel (Advanced only)
 

@@ -32,7 +32,7 @@ void ChorusEngine::reset()
 
 void ChorusEngine::setDimMode (int mode) noexcept
 {
-    // Four classic "mode buttons": progressively wider/deeper, all slow.
+    // Four voicings: progressively wider/deeper, all slow.
     switch (mode)
     {
         case 1: dimBaseMs = 10.0f; dimDepthMs = 1.0f; dimRateHz = 0.40f; break;
