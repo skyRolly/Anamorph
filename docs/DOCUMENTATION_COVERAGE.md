@@ -13086,7 +13086,9 @@ scope and held none, so §Scope for v0.9.9 (A–F) is now written from the `[0.9
 exist, and each carries a status corrected more than once. Summarising RISK-012's status into one row is a judgement
 this pass does not make.
 
-**This file:** this entry and the *Last updated* line.
+**This file:** this entry, the *Last updated* line, and one correction to the 92nd pass: its CI paragraph said Rosetta
+was unavailable on the `macos` image, but that job's log runs the x86_64 slice under `arch -x86_64` (DSP 940 / 0, State
+5,558 / 0), on `b755cfb` and again on this pass's head.
 
 ## 92nd pass — 2026-09-28, the 0.9.9 release cleanup on merged main (`b755cfb`)
 
@@ -13109,7 +13111,8 @@ corrections, a current-state consistency audit, and a release-policy audit. No p
   file** to the pre-merge `49eebb9` artifact (181 `C6262`, 8 `C26495`, 4 `C26498`); Build & Validate passed (13 jobs;
   `merge-check` runs on pull requests only; `sanitizers` in 52 minutes against its 60-minute cap), the native arm64
   `macos` job included (DSP 940 / 0 with Test 75's 7,791 cases, State 5,558 / 0 with State tests
-  139–141; Rosetta is unavailable on that image, so the x86_64 slice is built there and executed by `macos-intel`).
+  139–141; the same job also ran the x86_64 slice under Rosetta, DSP 940 / 0 and State 5,558 / 0 — this line first said
+  Rosetta was unavailable there, which the job log contradicts, and was corrected in the 93rd pass).
 
 **The three named corrections.**
 - `DSP_ALGORITHMS.md` ChorusEngine section: the anchors re-aimed (`.cpp:166-179`, `.cpp:227-231`, `.cpp:210-219`),
