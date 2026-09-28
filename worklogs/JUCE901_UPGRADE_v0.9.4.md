@@ -117,7 +117,7 @@ What did change, and why it is or is not reachable:
 * **DSP bit-identity (twin dump)** — the ADR-0022 harness re-run against the new pair: the 8
   `AnamorphDSP` sources plus a deterministic scenario driver compiled against **both** JUCE
   checkouts with identical flags (Release, `juce_recommended_config_flags` + the shipped
-  `AnamorphHardening` flags), 32 scenarios (Haas/Velvet/Chorus/Dim-D × OS Off/2x/4x/8x × M/S
+  `AnamorphHardening` flags), 32 scenarios (Haas/Velvet/Chorus/Dimensional × OS Off/2x/4x/8x × M/S
   on/off; drive 8 dB, amount 0.7, width 1.6, mix 0.8, multiband + mono-maker + level-match on;
   120 noise + 120 silence blocks each at 48 kHz/512), FNV-1a over every output byte.
   **All 32 hashes, all 32 reported latencies and all 32 predicted latencies are identical.**

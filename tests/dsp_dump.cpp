@@ -143,8 +143,8 @@ namespace
     std::vector<Scenario> scenarios()
     {
         const Algorithm algos[] { Algorithm::Haas, Algorithm::Velvet,
-                                  Algorithm::Chorus, Algorithm::DimensionD };
-        const char* algoNames[] { "haas", "velvet", "chorus", "dimd" };
+                                  Algorithm::Chorus, Algorithm::Dimensional };
+        const char* algoNames[] { "haas", "velvet", "chorus", "dimensional" };
         const OversampleFactor os[] { OversampleFactor::Off, OversampleFactor::x2,
                                       OversampleFactor::x4, OversampleFactor::x8 };
         const char* osNames[] { "os1", "os2", "os4", "os8" };

@@ -565,9 +565,9 @@ reproduce, and the routes that do are different ones.
 
 ### What the two lists actually said
 
-R4 gave `discreteDiffers` a Dimension-D relevance guard on `dimMode` (§ADR-0004's Correction):
+R4 gave `discreteDiffers` a Dimensional relevance guard on `dimMode` (§ADR-0004's Correction):
 `chorus.setDimMode (p.dimMode)` is the field's only reader and it sits inside
-`else if (p.algorithm == Algorithm::DimensionD)`, so under any other algorithm the value reaches no
+`else if (p.algorithm == Algorithm::Dimensional)`, so under any other algorithm the value reaches no
 module. `processingDiffers` — the narrower question, *did the signal path change* — still compared
 it unconditionally. Its one consumer is the silent duck bottom:
 
@@ -579,7 +579,7 @@ if (procChanged) loudness.softReset();
 
 ### The reported scenario does not reproduce, and that had to be measured
 
-A plain Dim-D Style move under Haas opens **no duck at all** after R4, so `processingDiffers` is
+A plain Dimensional Style move under Haas opens **no duck at all** after R4, so `processingDiffers` is
 never consulted. Measured; it is leg 1 of the test, asserted rather than assumed, so a future
 widening of `discreteDiffers` cannot make the test pass for the wrong reason.
 
@@ -587,12 +587,12 @@ widening of `discreteDiffers` cannot make the test pass for the wrong reason.
 
 | route | before | after |
 |---|---|---|
-| a plain Dim-D Style move under Haas *(the reported scenario)* | preserved | preserved |
+| a plain Dimensional Style move under Haas *(the reported scenario)* | preserved | preserved |
 | a **forced duck** — A/B, preset recall, undo, all via `requestDuck()` — whose only processing delta is `dimMode` | **thrown away** | preserved |
 | `dimMode` in the same snapshot as a **Level Match toggle** | **thrown away** | preserved |
 | `dimMode` riding a real discrete change | thrown away | thrown away |
-| `dimMode` **while Dimension D is live** | thrown away | thrown away |
-| switching **to** Dimension D; `haasSide` | thrown away | thrown away |
+| `dimMode` **while Dimensional is live** | thrown away | thrown away |
+| switching **to** Dimensional; `haasSide` | thrown away | thrown away |
 
 The second route is the pointed one: `autoGainMatch` is the **one** field `discreteDiffers` lists
 and `processingDiffers` does not, so toggling Level Match opens a duck of its own — and an inert
@@ -615,7 +615,7 @@ the snapshot. Without those two controls the legs would only show that *a* duck 
 ### The fix, and what pins it
 
 The same guard `discreteDiffers` already carries, symmetric and conservative: if either side is
-DimensionD it still fires, and when only one side is, `algorithm` already differs a line above.
+Dimensional it still fires, and when only one side is, `algorithm` already differs a line above.
 **Test 58** (10 checks) carries all six rows plus the two attribution controls; **two fail** against
 the pre-fix tree, and they are exactly the two reachable routes. Four of its legs must still
 RE-ARM — those are what pin the guard rather than a deletion of the term.
@@ -642,7 +642,7 @@ while the two lists disagreed, because "the field is named" was satisfied either
 **The case against, recorded because it is real.** The rule governs exactly one field today, and
 Test 58 already pins the behaviour by measurement with ten legs, four of them specifically on the
 guard. A test that measures output is strictly stronger than a lint that compares text: rewriting
-`Algorithm::DimensionD` to the wrong enumerator keeps both lists in agreement and leaves this check
+`Algorithm::Dimensional` to the wrong enumerator keeps both lists in agreement and leaves this check
 silent. That limit is now written into the lint's own docstring rather than left for a reader to
 discover — the lint's third claim is stated as consistency, never correctness.
 
@@ -1069,7 +1069,7 @@ it is a tracked file cited from elsewhere.
 ### The final reset-semantics pass — no inconsistency, no code change
 
 > **Correction (§U).** This pass read the meter and Level-Match halves of the contract, not the
-> modules' sound state: a host reset restarted the Chorus / Dimension-D wet and depth from zero.
+> modules' sound state: a host reset restarted the Chorus / Dimensional wet and depth from zero.
 
 Read from the code, not from §Q: `AnamorphEngine::reset` has exactly two callers, `prepare()`
 (`everything`) and `PluginProcessor::reset()` (`audioTailsOnly`).
@@ -1120,10 +1120,10 @@ was treated as a hypothesis. The code was left alone until the mechanism had bee
 
 Stated as the finding implies it: `ResetScope::audioTailsOnly` runs `chorus.reset()`, which zeroes
 the chorus's wet blend and modulation depth along with its delay line. Nothing on the host path
-re-seeds them, so after every host reset a Chorus or Dimension-D session fades in from dry.
+re-seeds them, so after every host reset a Chorus or Dimensional session fades in from dry.
 
 This round asked four questions:
-1. Does a host reset restart the Chorus wet, the Dimension-D wet, the modulation depth, or any
+1. Does a host reset restart the Chorus wet, the Dimensional wet, the modulation depth, or any
    other user-visible sound state from zero?
 2. How does that compare with `prepare()`, which already calls `snapToTargets()`?
 3. What is the intended contract?
@@ -1137,7 +1137,7 @@ This round asked four questions:
   reset*). The merge base has no override, so the host path exists only in this unreleased PR.
 - **`ChorusEngine::reset()`** clears the buffers and write indices. It also sets `phase`,
   `currentWet` and `currentDepth` to 0 (`src/dsp/ChorusEngine.cpp:28-30`). One engine serves both
-  Chorus and Dimension-D, so both voices share this state.
+  Chorus and Dimensional, so both voices share this state.
 - **`prepare()`** follows its `reset (everything)` with `chorus.snapToTargets()`
   (`src/dsp/AnamorphEngine.cpp:179`, ER-DSP-09). That sets `currentWet = amount` and arms
   `snapDepthPending`. The depth snap is consumed at the next `processBlock`, after `setWorkingRate`
@@ -1178,7 +1178,7 @@ This round asked four questions:
 
 - **0-5 ms.** The prepared twin is exact silence: 100 % wet, empty delay line. The reset instance
   leaks the dry signal.
-- **Dimension-D** (mode 3) has the same shape; its persistent residual is −53 dB.
+- **Dimensional** (mode 3) has the same shape; its persistent residual is −53 dB.
 - **The persistent term is the depth stall.** Across the oversampling factors it measured −49, −42,
   −36 and −30 dB at Off, 2x, 4x and 8x.
 
@@ -1199,9 +1199,9 @@ At Amount 0.7 the effective wet was 0.068 at 1 ms and 0.277 at 5 ms, against the
 
 **Other paths measured.**
 - **AU order**, through the processor: `prepareToPlay` then `reset()` differed from `prepareToPlay`
-  alone by −5.2 dB (Chorus) and −2.7 dB (Dimension-D) over the first 43 ms.
+  alone by −5.2 dB (Chorus) and −2.7 dB (Dimensional) over the first 43 ms.
 - **Census of 240 random configurations** (OS 2x/4x/8x, Drive with OS, Multiband, Mix, Bypass).
-  115 of 115 Chorus / Dimension-D configurations differed from a fresh prepare; 0 of the 125 others
+  115 of 115 Chorus / Dimensional configurations differed from a fresh prepare; 0 of the 125 others
   did.
 - **Existing coverage: none.** At HEAD the DSP suite (492 / 0) and the state suite (4760 / 0) pass
   with and without the fix, and State tests 118-123 print identical output either way.
@@ -1211,7 +1211,7 @@ At Amount 0.7 the effective wet was 0.068 at 1 ms and 0.277 at 5 ms, against the
 | state | host reset at HEAD | `prepare()` |
 |---|---|---|
 | Chorus wet (`currentWet`) | **restarts at 0, glides back** | snapped to the Amount |
-| Dimension-D wet (the same `currentWet`) | **restarts at 0, glides back** | snapped |
+| Dimensional wet (the same `currentWet`) | **restarts at 0, glides back** | snapped |
 | modulation depth (`currentDepth`) | **restarts at 0, stalls 239 ULP short** | snapped (deferred one block) |
 | LFO phase | restarts at 0 | restarts at 0: identical |
 | Haas amount / delay, Velvet wet, Mono Maker, Multiband widths, solo, Drive + OS, Width / Mix / Output | unchanged: bit-identical to the fresh twin | — |
@@ -1247,7 +1247,7 @@ exceptions: the Level-Match published gain and the meter latches.
 > wrong; §V fixes it.
 
 **The wet blend and the depth are the user's sound, not audio.** At HEAD the code broke the contract
-for Chorus and Dimension-D and nowhere else. The code is wrong and the documents are right. No ADR
+for Chorus and Dimensional and nowhere else. The code is wrong and the documents are right. No ADR
 changes.
 
 ### The final decision, and why it is correct
@@ -1282,7 +1282,7 @@ Each of the four conditions is pinned by a mutant (the table below):
   it. Dropping this condition passes every check but changes existing DSP output through the direct
   `engine.reset()` callers in the suite: Test 55's dimMode control moves from −24.66 to −33.71 dB.
   The fix may change nothing but the defect.
-- **Chorus / Dimension-D only.** In any other algorithm the chorus is idle. At HEAD a host reset
+- **Chorus / Dimensional only.** In any other algorithm the chorus is idle. At HEAD a host reset
   leaves it exactly as it was: it was already reset at the duck bottom that left the modulation
   voice. Without this condition the reset arms `snapDepthPending`, and a later Haas → Chorus switch
   differs from the same session with no reset, from 222 ms on.
@@ -1291,7 +1291,7 @@ Each of the four conditions is pinned by a mutant (the table below):
     one-shot depth snap: a Haas session that ever ran Chorus already differs from one prepared in
     Haas, with no host reset involved.
   - The guarded form matches the continuation with no reset, which is the contract. It is identical
-    to the unguarded form in every finite Chorus / Dimension-D case.
+    to the unguarded form in every finite Chorus / Dimensional case.
 - **Finite Amount only.** Seeding a NaN target defeats R7's reseed rule (ADR-0009, Implementation
   note 2026-09-22), where a non-finite target parks at the 0 that `reset()` gave it. Measured
   without the guard, the first finite block after a host reset taken during a NaN Amount is zeroed
@@ -1331,7 +1331,7 @@ is longer than the 5.3 ms State test 126 A asserts. A fresh `prepare()` does exa
 - **Test 62** (`testHostResetChorusSeedIsScoped`, `tests/dsp_tests.cpp`, engine level, 4 checks)
   pins where the seed sits and when it must not run:
   - **C1:** a forced swap Chorus 0.3 → 0.9 in flight at the reset.
-  - **C2:** an ordinary duck Haas → Dimension-D in flight at the reset.
+  - **C2:** an ordinary duck Haas → Dimensional in flight at the reset.
   - **G:** a NaN Amount pending at the reset.
   - **H:** a Haas session host-reset and then switched to Chorus.
   - C1 and C2 are bit-identical to a fresh engine at the new settings; H is bit-identical to the
@@ -1339,14 +1339,14 @@ is longer than the 5.3 ms State test 126 A asserts. A fresh `prepare()` does exa
   - **Pre-fix: 2 failures (C1, C2). Post-fix: 0.**
 - **State test 126** (`testAHostResetKeepsTheConfiguredChorusSound`, `tests/state_tests.cpp`,
   16 checks) is driven through `AnamorphAudioProcessor::reset()`, the call the wrappers make, for
-  Chorus and Dimension-D:
+  Chorus and Dimensional:
   - **A:** Amount 1.0 and 0.7: the configured wet is there from the first sample. On the first
     block the worst |out − x(1 − Amount)| is below 1e-6; measured 0 and 2.98e-8. Pre-fix: 0.499
     and 0.349.
   - **B:** OS Off / 2x × Amount 1.0 / 0.7: bit-identical to a fresh processor for 0.5 s. Pre-fix,
     47 608-47 616 of 47 616 samples differ.
   - **C:** audio tails are still cleared: silence after loud material is exactly 0 after the reset.
-    A control without the reset peaks at 0.495 (Chorus) and 0.479 (Dimension-D).
+    A control without the reset peaks at 0.495 (Chorus) and 0.479 (Dimensional).
   - **D:** `prepare()` is unchanged: a fresh prepare opens at the configured wet, and a re-prepare
     at OS 2x equals a fresh processor bit-exactly.
   - **E:** the AU order, `prepareToPlay()` then `reset()`, is bit-identical to `prepareToPlay()`
@@ -1509,7 +1509,7 @@ The bottom — the first `process()` after the fade reaches 0 — does, in order
 | Haas delay | 0.21–0.43 | never lands |
 | multiband crossover / band width / Band Solo split | 0.19 / 0.004 / 0.15 | 377 ms / never / 382 ms |
 | Oversampling Off → 2× + Drive (latency-changing) | 0.63 | 24 ms |
-| Chorus / Dimension-D Amount, Bypass, Multiband Enable, 2× → 4× | identical | — |
+| Chorus / Dimensional Amount, Bypass, Multiband Enable, 2× → 4× | identical | — |
 
 **Through the processor**, all five routes reproduce: A/B both directions, preset load, undo, redo.
 - Mix 0.10–0.14, Width 0.17–0.21, Output 0.30–0.38.
@@ -1566,7 +1566,7 @@ Snapping the module glides, or snapping on every reset, WOULD be new behaviour d
 - This fix completes a transition in flight, on the reset that lands inside one.
 
 **Where they compose.**
-- The re-seed stays LAST, after the flush — which is now at the top — so a forced swap into Chorus or Dimension-D starts at the NEW Amount (Test 62 C1) with the smoothers landed too (Test 63 L5).
+- The re-seed stays LAST, after the flush — which is now at the top — so a forced swap into Chorus or Dimensional starts at the NEW Amount (Test 62 C1) with the smoothers landed too (Test 63 L5).
 - Only the forced-swap state needed settling. Nothing else a host reset touches changed.
 
 ### The fix
@@ -1604,7 +1604,7 @@ if (switchState != SwitchState::Normal)
 | variant | result |
 |---|---|
 | snap only, flush left in place | Test 63 fails 6 (Haas delay ×2, crossovers, the three entry paths); State test 127 fails 10 |
-| reorder only, no snap | Test 63 fails 12 (smoothers ×6, Chorus / Dimension-D ×2, latency-changing, entry paths ×3); State test 127 fails 10 |
+| reorder only, no snap | Test 63 fails 12 (smoothers ×6, Chorus / Dimensional ×2, latency-changing, entry paths ×3); State test 127 fails 10 |
 | snap on any duck flush | Test 63 A5 fails (an ordinary duck's riders snapped); it also moves the printed numbers of DSP Tests 10, 15, 16, 21 and 55 |
 | snap on every host reset | Test 63 A4 and A5 fail (live glides snapped); the same printed numbers move |
 | snap the Haas / Velvet / Mono Maker glides on every host reset | Test 63's two module-glide A4 legs fail; both suites otherwise pass (found by the final review, and the reason those legs exist) |
@@ -1639,7 +1639,7 @@ Measured, muted blocks while the target is NaN / after it is finite again (48 kH
   - L2: the Haas delay, both directions.
   - L3: crossover, band width and Band Solo.
   - L4: Oversampling Off → 2× with Drive.
-  - L5: into Chorus and into Dimension-D.
+  - L5: into Chorus and into Dimensional.
   - L6: the three other entry paths.
 - **Adversarial legs**, which pass on both engines:
   - A2: a swap completed first.
@@ -1667,7 +1667,7 @@ Measured, muted blocks while the target is NaN / after it is finite again (48 kH
 | fresh prepare | Test 49, State test 126 D and E; skeptic, 40 of 40 |
 | a reset followed at once by processing | every leg |
 | a reset followed by no processing | routes lens: an idle gap is bit-identical (the engine has no clock); the meter publication at the reset is State test 122 |
-| Chorus / Dimension-D reset | Test 62, State test 126, Test 63 L5 |
+| Chorus / Dimensional reset | Test 62, State test 126, Test 63 L5 |
 | Level-Match reset | State tests 118, 120, 121 unchanged; `softReset()` untouched |
 
 ### The comment, corrected
@@ -1692,7 +1692,7 @@ It is replaced, at the top of `reset()`, by what the code now guarantees:
 
 ### Recorded, not fixed
 
-1. **The natural forced swap's own module glides.** The bottom leaves the Haas / Velvet amount, Velvet density and Mono Maker cutoff gliding: vs a fresh engine, 0.055–0.068 (Haas amount) and 0.11–0.15 (Mono Maker) for ~130–170 ms. It zeroes the Chorus / Dimension-D wet and depth with no re-seed: 0.54 / 0.43 vs fresh after a Chorus 0.3 → 0.9 swap. Snapping them is a behaviour decision; the obvious variant fails State test 35.
+1. **The natural forced swap's own module glides.** The bottom leaves the Haas / Velvet amount, Velvet density and Mono Maker cutoff gliding: vs a fresh engine, 0.055–0.068 (Haas amount) and 0.11–0.15 (Mono Maker) for ~130–170 ms. It zeroes the Chorus / Dimensional wet and depth with no re-seed: 0.54 / 0.43 vs fresh after a Chorus 0.3 → 0.9 swap. Snapping them is a behaviour decision; the obvious variant fails State test 35.
 2. **A NaN Mono Maker cutoff present at `prepare()` latches the output silent for good.** Measured independently on the pre-fix and fixed engines, identically:
    - 20 of 20 blocks muted;
    - then 200 of 200 after a finite 200 Hz arrives;

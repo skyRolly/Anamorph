@@ -26,7 +26,7 @@ The repository's recorded position is that no terms are declared and all rights 
 default ([`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) §1), so no right to use the
 product or company name is granted with a copy of the software. Nothing in this repository
 restricts referring to Anamorph by name in a review, a tutorial, a compatibility list or a bug
-report, and no brand-usage policy exists (§4 item 4). Using the name or any Anamorph branding
+report, and no brand-usage policy exists (§4 item 3). Using the name or any Anamorph branding
 **as your own**, on your own product, or in a way that suggests endorsement or origin, does not
 follow from possessing a copy.
 
@@ -84,11 +84,10 @@ reproduced in [`NOTICE`](NOTICE) and inventoried in
 | # | Item | Why it is here | Tracked as |
 |---|---|---|---|
 | 1 | **Steinberg VST 3** — the SDK *code* bundled with JUCE 9.0.2 is MIT, but the **VST name and logo**, and the terms for developing and distributing VST 3 plug-ins, are governed separately (the SDK ships `VST3_Usage_Guidelines.pdf`; its README refers to a *Steinberg VST 3 Plug-In SDK Licensing Agreement*). **Commercial VST3 distribution requires reviewing Steinberg's requirements separately.** No determination is made in this repository. | blocks commercial sale | `RH-R10` / `RH-F2` |
-| 2 | **"Dim-D" / "Dimension-D"** — the fourth widening algorithm is presented to the user as **`Dim-D`** (`src/PluginParameters.cpp:212`), and the user manual describes it as *"Roland Dimension-D-style widening"* (`docs/user/USER_MANUAL.md:287`), referencing a hardware product associated with Roland Corporation. Describing an emulation by reference to the hardware it emulates is common practice in this industry, but whether the wording is acceptable for a **commercial** release is a naming question this repository cannot answer. Flagged, not decided. | review before commercial release | *this document* |
-| 3 | **Anamorph / RollyTech registration status** — unknown; see §1. | needed before any ™/® use | `RH-F1` |
-| 4 | **Brand-usage policy for third parties** — does not exist; not needed for internal testing. | post-release | — |
+| 2 | **Anamorph / RollyTech registration status** — unknown; see §1. | needed before any ™/® use | `RH-F1` |
+| 3 | **Brand-usage policy for third parties** — does not exist; not needed for internal testing. | post-release | — |
 
-Items 1 and 3 are the same owner/legal work stream as the missing `LICENSE`/EULA and the
+Items 1 and 2 are the same owner/legal work stream as the missing `LICENSE`/EULA and the
 commercial JUCE licence — see [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) for the
 consolidated list.
 

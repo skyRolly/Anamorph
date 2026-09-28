@@ -17,7 +17,7 @@ report**. The first three are load-bearing. The fourth was an accident of the fi
 ## Problem
 
 With a factor selected, moving **Drive** across 0.01 dB — or changing **Algorithm** into or out of
-Chorus / Dimension-D — flipped the reported PDC between 0 and the factor's latency. Hosts answer a
+Chorus / Dimensional — flipped the reported PDC between 0 and the factor's latency. Hosts answer a
 latency change by restarting or re-priming the processing graph, so an ordinary knob move produced
 an audible dropout. Reported by the maintainer, 2026-09-03:
 

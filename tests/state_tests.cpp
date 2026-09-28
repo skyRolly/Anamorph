@@ -14931,7 +14931,7 @@ static void testFirstActivationUsesRestoredState()
     //     tens of ms, which is a real and correct startup transient of the
     //     effect and would mask the defect being measured. What is restored
     //     instead is one DISCRETE field the engine's defaults disagree with
-    //     (algorithm: Dim-D, not Velvet -- so the switch machine would duck)
+    //     (algorithm: Dimensional, not Velvet -- so the switch machine would duck)
     //     and one CONTINUOUS field with an unmistakable level signature
     //     (Output Gain -12 dB -- so an un-primed smoother would open ~4x too
     //     loud and ramp down). One scenario, both halves of the defect.
@@ -14946,7 +14946,7 @@ static void testFirstActivationUsesRestoredState()
             // this scenario would assert nothing.
             setRaw (authoring, pid::advancedMode, 1.0f);
             setRaw (authoring, pid::mbEnable,     0.0f);  // off; APVTS default is on
-            setRaw (authoring, pid::algorithm,    1.0f);  // Dim-D, not the default Velvet
+            setRaw (authoring, pid::algorithm,    1.0f);  // Dimensional, not the default Velvet
             setRaw (authoring, pid::outputGain,   0.25f); // -12 dB of the -24..+24 range
             authoring.getStateInformation (project);
         }
@@ -19426,7 +19426,7 @@ static int runRisk008Probe()
 //  So the ratio RISES when the fix lands but does not reach 1.0, and a ratio
 //  below 1.0 here is not by itself evidence of a defect. Measured block1/block12,
 //  before -> after the four engine snapToTargets() calls: Haas 0.17 -> 0.72,
-//  Velvet 0.09 -> 0.18, Chorus 0.29 -> 0.68, Dimension-D 0.39 -> 0.90, Mono Maker
+//  Velvet 0.09 -> 0.18, Chorus 0.29 -> 0.68, Dimensional 0.39 -> 0.90, Mono Maker
 //  0.35 -> 0.58. (Velvet moves least because its presence follower and sparse-tap
 //  history dominate its own first block; that settling is (b), and is unchanged.)
 //  The DISCRIMINATING instrument is DSP Test 49, which compares each module
@@ -19447,7 +19447,7 @@ static int runRestoreFadeProbe()
         { "Haas",        0, pid::haasDelay,     28.0f, false },
         { "Velvet",      1, pid::velvetDensity,  0.9f, false },
         { "Chorus",      2, pid::chorusDepth,    0.9f, false },
-        { "Dimension-D", 3, pid::chorusDepth,    0.9f, false },
+        { "Dimensional", 3, pid::chorusDepth,    0.9f, false },
         // Downward, and only one octave: the crossover glides at 8 octaves/second,
         // so 120 -> 60 completes in ~125 ms (about 12 blocks) and is visible here.
         // A 90 Hz tone sits BELOW the default 120 (mono'd, little side energy) and
@@ -36837,14 +36837,14 @@ static void testAHostResetClearsTheLiveMeters()
 //  global review's root cause 5: one module-reset list serving two recovery paths.
 //  MEASURED through this wrapper, amount 0.7, one NaN point, then 0.7 again:
 //      Haas, Velvet     -180.00 dB 1 s and 2 s later -- silent until a re-prepare
-//      Chorus, Dim-D    recovered (they carry no such glide)
+//      Chorus, Dimensional    recovered (they carry no such glide)
 //  "The plugin self-heals instead of needing a Multiband off/on" is ADR-0009's own
 //  consequence; here only a re-prepare helped -- a stop and play, or a host reset, did not.
 //
 //  WHAT THIS ASSERTS, per algorithm, through the processor exactly as a host drives it:
 //  the host never receives a non-finite sample, and one second after the host sends a
 //  finite value again the output is back within 6 dB of where it was before (Chorus and
-//  Dim-D restart their LFO phase in the self-heal, measured up to ~2.7 dB). A control
+//  Dimensional restart their LFO phase in the self-heal, measured up to ~2.7 dB). A control
 //  checks that the NaN really reaches the raw parameter -- if JUCE ever starts rejecting
 //  it, this test must say its premise has gone rather than pass for the wrong reason.
 static void testAHostNanParameterDoesNotLatchTheChain()
@@ -36852,7 +36852,7 @@ static void testAHostNanParameterDoesNotLatchTheChain()
     std::printf ("State test 123: a non-finite parameter value from the host does not latch the chain (F14)\n");
 
     const double sr = 48000.0; const int block = 256;
-    const char* names[] = { "Haas", "Velvet", "Chorus", "Dim-D" };
+    const char* names[] = { "Haas", "Velvet", "Chorus", "Dimensional" };
 
     auto rmsDb = [] (const juce::AudioBuffer<float>& b)
     {
@@ -37149,7 +37149,7 @@ static void testTheTransportMachineWithoutASampleClock()
 }
 
 // ---------------------------------------------------------------------------
-//  State test 126 -- A HOST RESET KEEPS THE CONFIGURED CHORUS AND DIMENSION-D SOUND
+//  State test 126 -- A HOST RESET KEEPS THE CONFIGURED CHORUS AND DIMENSIONAL SOUND
 //  (Devin review of PR #155: "Chorus fades in after host reset")
 //
 //  `ChorusEngine::reset()` zeroes its wet and depth glides. That is right where it was
@@ -37159,9 +37159,9 @@ static void testTheTransportMachineWithoutASampleClock()
 //  re-seed, so after every VST3 `setProcessing (false)` / AU `Reset()` the configured sound
 //  restarted from dry and glided back. MEASURED at 48 kHz, Oversampling Off: the effective
 //  wet at the first sample after the reset was 0.2 % of the configured Amount and 39.5 % of
-//  it 5 ms later, for Chorus and Dimension-D alike; at Amount 1.0 the listener heard the dry
+//  it 5 ms later, for Chorus and Dimensional alike; at Amount 1.0 the listener heard the dry
 //  signal where the configured sound is silence until the delayed tap arrives; and the
-//  output still differed from a clean start by -47 dB (Chorus) / -53 dB (Dim-D) two seconds
+//  output still differed from a clean start by -47 dB (Chorus) / -53 dB (Dimensional) two seconds
 //  later, where the depth glide had stalled short of its target. On AU the same happened at
 //  every session start: JUCE's `Reset()` runs prepareToPlay() and then reset(). In a settled
 //  session every other module was already a clean start after a host reset (worklog
@@ -37183,12 +37183,12 @@ static void testTheTransportMachineWithoutASampleClock()
 //  twin does not begin inside an algorithm-change duck.
 static void testAHostResetKeepsTheConfiguredChorusSound()
 {
-    std::printf ("State test 126: a host reset keeps the configured Chorus and Dimension-D sound\n");
+    std::printf ("State test 126: a host reset keeps the configured Chorus and Dimensional sound\n");
 
     const double sr = 48000.0; const int block = 256;       // one block = 5.3 ms, inside every base delay
-    const char* voiceName[] = { "Chorus", "Dim-D" };
+    const char* voiceName[] = { "Chorus", "Dimensional" };
 
-    // A processor holding one configuration: algorithm (2 Chorus, 3 Dimension-D), Amount,
+    // A processor holding one configuration: algorithm (2 Chorus, 3 Dimensional), Amount,
     // Oversampling combo id (1 Off, 2 2x). Heap: State test 59's note.
     auto make = [&] (int algorithm, float amount, int osCombo)
     {
@@ -38466,7 +38466,7 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //             own fade-out). The carried analysis describes the SOURCE slot and used to drag the
 //             restored value away for seconds. Slots that differ only after the tap (Output Gain,
 //             Output Balance, Band Solo, Bypass, Level Match itself) or in an inert guarded field
-//             (Dim-D Style under Haas), and identical slots, are not re-armed by this rule.
+//             (Dimensional Style under Haas), and identical slots, are not re-armed by this rule.
 //    Q5 (P4)  A re-prepare at the SAME sample rate, any block size, whose primed snapshot changes no
 //             measurement input keeps the published result bit-exact and re-arms the analysis (the
 //             host-reset treatment); with Level Match on, prepare() starts the applied gain on it (State
@@ -38500,7 +38500,7 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //       over 3 s max|D| <= 0.3 dB and max|g| <= 0.3 dB, and the probe holds. max|D|: Drive 8 -> 2
 //       0.081 / 1.599, 2 -> 8 0.096 / 1.384, 10 -> 0 0.020 / 4.923, 0 -> 10 0.147 / 3.546 dB (max|g|
 //       within 0.02 dB of these); probe 0 / 2.3-6.0 dB.
-//   (b) A/B between slots that differ only in Output Gain, in Level Match (off -> on) or in Dim-D
+//   (b) A/B between slots that differ only in Output Gain, in Level Match (off -> on) or in Dimensional
 //       Style under Haas, the destination slot's memory deliberately stale (left 10 blocks after its
 //       first visit, while still gliding from the 0 dB a never-visited slot injects): the bottom
 //       block publishes the injected value, the probe MOVES >= 0.5 dB (the carried analysis, right
@@ -38538,7 +38538,7 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
 //  AGAINST THE PRE-CHANGE ENGINE 21 of the 97 checks fail: (a)'s D, g and probe on all four events,
 //  (b)'s CONTROL, (e)'s seven keep / re-arm / Apply checks and (g)'s Apply. Engine variants built from
 //  this tree, each run through this test: no Q1 re-arm (14 fail: (a), (b) CONTROL, (g)); re-arm at
-//  EVERY injection (4: (b)'s twin, Output Gain, Level Match and Dim-D probes); re-arm at every forced
+//  EVERY injection (4: (b)'s twin, Output Gain, Level Match and Dimensional probes); re-arm at every forced
 //  bottom whose measurement inputs differ (8: (c)'s tracking and probes); no Q5 keep (7: (e)); Q5
 //  without its rate test (1: 44.1 kHz) or without its primed-snapshot test (1: the Drive restore);
 //  Q5 keeping the result without re-arming (3: (e)'s probes); Q5 without "prepared before" (1: (h));
@@ -38889,10 +38889,10 @@ static void testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept()
             bool reArms = false;
             int run = 0, probe = 0, cmp = 0;
         };
-        Case cases[4] = { { "Output Gain -9 / -3",        "outputGain",    -9.0f,  -3.0f,   false, 0, 0, 0 },
-                          { "Level Match off / on",       "autoGainMatch",  0.0f,   1.0f,   false, 0, 0, 0 },
-                          { "Dim-D Style under Haas",     "dimMode",        3.0f,   1.0f,   false, 0, 0, 0 },
-                          { "CONTROL: Width 1.301 / 1.3", "width",          1.301f, 1.3f,   true,  0, 0, 0 } };
+        Case cases[4] = { { "Output Gain -9 / -3",          "outputGain",    -9.0f,  -3.0f,   false, 0, 0, 0 },
+                          { "Level Match off / on",         "autoGainMatch",  0.0f,   1.0f,   false, 0, 0, 0 },
+                          { "Dimensional Style under Haas", "dimMode",        3.0f,   1.0f,   false, 0, 0, 0 },
+                          { "CONTROL: Width 1.301 / 1.3",   "width",          1.301f, 1.3f,   true,  0, 0, 0 } };
         const int twin = addLane (r, kv), twinProbe = addLane (r, kv);
         for (auto& c : cases) { c.run = addLane (r, kv); c.probe = addLane (r, kv); c.cmp = addCmp (r, c.run, twin); }
         auto all = [&] (auto&& fn) { for (size_t k = 0; k < r.lane.size(); ++k) fn (r.lane[k]); };

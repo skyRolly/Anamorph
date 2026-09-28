@@ -14,7 +14,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2358 (`process`).
 | 0b | Bypass dry capture | raw input | Bypass crossfade (7) | No | Must capture RAW input before conditioning so Bypass nulls exactly. :777-812 |
 | 1 | Input conditioning | raw input | effect engine, dry, Level-Match ref | No | Defines the conditioned signal everything downstream uses. :849 |
 | 1b | M/S Solo | conditioned input | effect engine | No | Must isolate Mid/Side *before* the widener (else widening fights solo). :854-857 |
-| 2a | Drive + Chorus/Dim-D (in OS) | conditioned input | linear algorithm | Partial | Drive must precede the linear algorithm; OS wrap must enclose only nonlinear/mod. :868-883 |
+| 2a | Drive + Chorus/Dimensional (in OS) | conditioned input | linear algorithm | Partial | Drive must precede the linear algorithm; OS wrap must enclose only nonlinear/mod. :868-883 |
 | 2b | Haas / Velvet (linear) | post-Drive | global Width | Partial | One algorithm active at a time; runs at base rate, outside OS. :885-887 |
 | 2c | Global Width (MS) | post-algorithm | Multiband | No | Width is MS side-gain on the full band before band-splitting. :889-903 |
 | 2d | Multiband Width | post-Width + dry (for A(dry)) | Mix | No | Produces wet + phase-matched A(dry); solo-agnostic. A(dry) is gated off while Mix sits at exactly 1 with Match off and no crossfade in flight (Wave 2 / H4); the dry delay rings stay warm so a Mix dip re-engages phase-matched. :905-994 |
@@ -36,7 +36,7 @@ factor) but the stage's position in the chain is fixed.
   `018dcdd` "rebuild the signal flow as a strict serial chain".)
 - **Band Solo must stay post-everything and monitoring-only.** Weaving solo into the
   Multiband DSP caused the same bug class. (Partially Verified: CHANGELOG.md [0.8.0]; commit `018dcdd`.)
-- **Oversampling must wrap only Drive + Chorus/Dim-D.** Wrapping linear stages adds needless CPU
+- **Oversampling must wrap only Drive + Chorus/Dimensional.** Wrapping linear stages adds needless CPU
   and changes their sound. (Verified: src/dsp/AnamorphEngine.cpp, `osActiveFor`.) It no longer
   changes the reported PDC either way: since ADR-0034 that number follows the selected FACTOR, and
   where the wrap is skipped a 2-channel integer ring (`osCompDelayBuffer`) occupies the wrap's own

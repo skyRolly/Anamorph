@@ -6,14 +6,14 @@ namespace anamorph
 {
 
 // ============================================================================
-//  ChorusEngine  (Chorus  +  Roland Dimension-D emulation)
+//  ChorusEngine  (Chorus  +  Dimensional anti-phase widening)
 //
 //  A modulated delay line. Two voicings share the implementation:
 //
 //   * Chorus      : one modulated tap per channel; L/R LFOs run in anti-phase
 //                   so a mono source becomes wide. Classic, lush, some motion.
 //
-//   * Dimension-D : the headline "no audible pitch wobble" mode. Each channel
+//   * Dimensional : the headline "no audible pitch wobble" mode. Each channel
 //                   sums TWO taps whose delays are modulated in ANTI-PHASE.
 //                   When one tap's delay rises (pitch falls) the other falls
 //                   (pitch rises), so the Doppler pitch-shifts CANCEL to first
@@ -27,7 +27,7 @@ namespace anamorph
 class ChorusEngine
 {
 public:
-    enum class Voice { Chorus, DimensionD };
+    enum class Voice { Chorus, Dimensional };
 
     void prepare (double maxWorkingRate);
     void reset();
@@ -46,7 +46,7 @@ public:
     void setRate (float hz) noexcept          { rateHz = hz; }
     void setDepth (float d01) noexcept        { depth = d01; }
     void setAmount (float a01) noexcept       { amount = a01; }
-    void setDimMode (int mode) noexcept;       // 1..4 classic voicings
+    void setDimMode (int mode) noexcept;       // 1..4 voicings
 
     void processBlock (float* left, float* right, int numSamples) noexcept;
 
@@ -61,7 +61,7 @@ private:
     float  depth  = 0.5f;
     float  amount = 0.5f;
 
-    // Dimension-D mode voicing presets (base delay ms, depth ms, rate Hz).
+    // Dimensional mode voicing presets (base delay ms, depth ms, rate Hz).
     float  dimBaseMs = 12.0f, dimDepthMs = 1.6f, dimRateHz = 0.5f;
 
     std::vector<float> bufL, bufR;

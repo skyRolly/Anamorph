@@ -3,7 +3,7 @@
 **Status:** Accepted — **latency clause amended by [ADR-0034](ADR-0034-latency-follows-the-oversampling-factor.md)** (2026-09-03)
 
 ## Context
-Only nonlinear/modulation stages (Drive's tanh, Chorus, Dimension-D) generate aliasing that
+Only nonlinear/modulation stages (Drive's tanh, Chorus, Dimensional) generate aliasing that
 oversampling mitigates. Oversampling adds latency and CPU.
 
 ## Problem
@@ -12,7 +12,7 @@ nonlinear is active. The anti-aliasing filter choice also affects transient/phas
 
 ## Options
 - **A. Oversample the entire chain.** Simple; wasteful; always-on latency.
-- **B. Oversample only Drive + Chorus/Dim-D; linear stages stay at base rate.** Chosen.
+- **B. Oversample only Drive + Chorus/Dimensional; linear stages stay at base rate.** Chosen.
 - **Filter: linear-phase FIR vs minimum-phase IIR.** IIR chosen.
 
 ## Decision

@@ -26,7 +26,7 @@ automation cannot change it either.
 
 ```cpp
 osActiveFor(e) = e.oversample != Off && (e.driveDb > 0.01f || isModAlgorithm(e.algorithm));
-isModAlgorithm(a) = (a == Chorus || a == DimensionD);
+isModAlgorithm(a) = (a == Chorus || a == Dimensional);
 ```
 
 That predicate is the CPU saving — the resampling round trip is the largest single cost in the

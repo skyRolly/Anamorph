@@ -38,7 +38,7 @@ serialization; keep the diff minimal; keep the pin immutable.
 ## Verification (headless, this change)
 - **DSP bit-identity proven, not assumed**: the ADR-0022 twin-dump harness re-run — the 8
   `AnamorphDSP` sources plus a deterministic scenario driver compiled against **both** JUCE
-  checkouts with identical flags, 32 scenarios (Haas/Velvet/Chorus/Dim-D × OS Off/2x/4x/8x ×
+  checkouts with identical flags, 32 scenarios (Haas/Velvet/Chorus/Dimensional × OS Off/2x/4x/8x ×
   M/S on/off; 120 noise + 120 silence blocks each at 48 kHz/512), FNV-1a over every output byte —
   produced **identical hashes and identical reported and predicted latencies for all 32
   scenarios**. The 32 hashes are mutually distinct, so the matrix discriminates.

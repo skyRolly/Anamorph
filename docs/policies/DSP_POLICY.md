@@ -29,7 +29,7 @@ architecture docs, and the ADRs. These must hold across releases.
 4. **The effect engine is solo-agnostic** — the Multiband always sums every active band.
    Evidence: MultibandWidth.h:29-32.
 
-5. **Oversampling wraps only the nonlinear/modulation stages** (Drive, Chorus, Dimension-D);
+5. **Oversampling wraps only the nonlinear/modulation stages** (Drive, Chorus, Dimensional);
    linear stages stay outside; OS off ⇒ 0 latency. **Reported latency is a function of the
    SELECTED FACTOR alone** — with a factor selected but the wrap skipped for want of nonlinear
    work, `osCompDelayBuffer` supplies the wrap's group delay, so no parameter can move the number

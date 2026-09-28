@@ -104,11 +104,11 @@ loudness.softReset()`, where `procChanged` is `processingDiffers (pendingP, p)`.
 whether a converged reading survives a switch.
 
 `processingDiffers` compared `dimMode` **unconditionally**, while ADR-0004's Correction of
-2026-09-21 had already given `discreteDiffers` a Dimension-D relevance guard for it: the field's
-only reader is `chorus.setDimMode`, inside `else if (p.algorithm == Algorithm::DimensionD)`, so
+2026-09-21 had already given `discreteDiffers` a Dimensional relevance guard for it: the field's
+only reader is `chorus.setDimMode`, inside `else if (p.algorithm == Algorithm::Dimensional)`, so
 under any other algorithm the value reaches no module and the path did not change.
 
-**The reported scenario did not reproduce**, and that is worth recording. A plain Dim-D Style move
+**The reported scenario did not reproduce**, and that is worth recording. A plain Dimensional Style move
 under Haas opens no duck at all after ADR-0004's correction, so this function is never consulted.
 Two other routes did reach it, both measured on the engine (Haas, Level Match engaged, converged
 then silent — the analysis survives as ~0.030 dB of ordinary drift and is thrown away as a frozen
@@ -116,10 +116,10 @@ then silent — the analysis survives as ~0.030 dB of ordinary drift and is thro
 
 | route | before | after |
 |---|---|---|
-| a plain Dim-D Style move | preserved | preserved |
+| a plain Dimensional Style move | preserved | preserved |
 | a **forced duck** — A/B, preset recall, undo (`requestDuck`) whose only processing delta is `dimMode` | **thrown away** | preserved |
 | `dimMode` in the same snapshot as a **Level Match toggle** (`autoGainMatch` is the one field `discreteDiffers` lists and `processingDiffers` does not, so it opens a duck of its own) | **thrown away** | preserved |
-| `dimMode` while Dimension D is live, or any real path change | thrown away | thrown away |
+| `dimMode` while Dimensional is live, or any real path change | thrown away | thrown away |
 
 The second route defeats the rule written at the call site itself — *"Toggling Level Match / Bypass
 must NOT re-measure, or enabling Match with a big boost slams loud for a moment"*. Each of the two
@@ -304,7 +304,7 @@ condition that its module's **output** reaches the tap:
 |---|---|
 | always, exact | `channelMode`, `monoSum`, `swapLR`, `polarityL/R`, `msMode`, `solo` (M/S solo is input conditioning, before the tap), `algorithm`, `mbEnable`, `monoMakerEnable`, `oversample`; **`driveDb`, `mix`** — the predict's inputs, whose rise test fires on any rise, one ulp included (measured: +1 ulp of Drive moved the published value 1.08 dB) |
 | always, tolerant | `inputBalance`, `algoAmount`, `width` |
-| guarded | `haasDelayMs`, `haasSide` (Haas on either side); `velvetDensity` (Velvet); `chorusRate`, `chorusDepth` (Chorus); `dimMode` (Dimension D); `mbBands`, `mbWidthLow` (Multiband on either side), `mbFreqLow`/`mbWidthMid`, `mbFreqMid`/`mbWidthHiMid`, `mbFreqHigh`/`mbWidthHigh` (and at least 2 / 3 / 4 bands); `monoMakerFreq` (Mono Maker on either side) |
+| guarded | `haasDelayMs`, `haasSide` (Haas on either side); `velvetDensity` (Velvet); `chorusRate`, `chorusDepth` (Chorus); `dimMode` (Dimensional); `mbBands`, `mbWidthLow` (Multiband on either side), `mbFreqLow`/`mbWidthMid`, `mbFreqMid`/`mbWidthHiMid`, `mbFreqHigh`/`mbWidthHigh` (and at least 2 / 3 / 4 bands); `monoMakerFreq` (Mono Maker on either side) |
 | not compared | `outputGainDb`, `outputBalance`, `bypass`, `mbSolo` (after the tap), `autoGainMatch` (the switch itself) |
 
 "Tolerant" is a relative 1e-5: six times the largest representation drift a preset round trip
@@ -1242,7 +1242,7 @@ into another context?
 **The options, measured.**
 
 The engine set is 75 non-current landings:
-- Haas, Velvet, Chorus, Dimension D, Multiband and Mono Maker;
+- Haas, Velvet, Chorus, Dimensional, Multiband and Mono Maker;
 - Width, Drive, Mix, Haas Delay, Multiband band-width and Mono Maker frequency edits;
 - forced engages and Undo of Apply.
 

@@ -32,7 +32,7 @@ void ChorusEngine::reset()
 
 void ChorusEngine::setDimMode (int mode) noexcept
 {
-    // Four classic "mode buttons": progressively wider/deeper, all slow.
+    // Four voicings: progressively wider/deeper, all slow.
     switch (mode)
     {
         case 1: dimBaseMs = 10.0f; dimDepthMs = 1.0f; dimRateHz = 0.40f; break;
@@ -54,7 +54,7 @@ float ChorusEngine::readFrac (const std::vector<float>& line, int writeIdx, floa
 
 void ChorusEngine::processBlock (float* left, float* right, int numSamples) noexcept
 {
-    const bool isDim = (voice == Voice::DimensionD);
+    const bool isDim = (voice == Voice::Dimensional);
 
     const float baseMs   = isDim ? dimBaseMs  : 14.0f;
     const float depthMs  = isDim ? dimDepthMs : (1.0f + depth * 5.0f);
@@ -133,7 +133,7 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
     // off its current value, both voices contribute nothing this block -- out is
     // exactly in * 1 + wet * 0 when wet is 0, and nothing the output can hold
     // when wet is the stalled ~1e-35 -- so the LFO sins and the 2 (chorus) / 4
-    // (Dimension-D) interpolated reads are pure waste. The reduced loop keeps
+    // (Dimensional) interpolated reads are pure waste. The reduced loop keeps
     // every piece of state bit-identical for a later re-engage: the delay-line
     // writes and write indices, the per-sample iterated phase accumulation (NOT
     // closed-form, so the wrap sequence matches exactly) and the depth glide all

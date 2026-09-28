@@ -60,9 +60,9 @@ re-seeded from the iterated `phase` at every block start and advanced by the fix
 float `phase` accumulation and its wrap sequence are unchanged).
 - **Chorus**: one modulated tap/channel, anti-phase L/R, equal-power crossfade
   `out = in·(1−wet) + tap·wet` (`.cpp:144-151`).
-- **Dimension-D**: two anti-phase taps/channel (`d1 = base+depth·sin`, `d2 = base−depth·sin`),
+- **Dimensional**: two anti-phase taps/channel (`d1 = base+depth·sin`, `d2 = base−depth·sin`),
   averaged `0.5·(tap1+tap2)` so Doppler pitch shifts cancel to first order (no vibrato)
-  (`.cpp:129-141`). 4 voicings via `setDimMode`.
+  (`.cpp:196-209`). 4 voicings via `setDimMode`.
 
 `currentWet`/`currentDepth` one-pole smoothed (~10 ms). Buffers sized for the **max** OS rate
 so an OS-factor change never reallocates. Modulation stage → runs **inside** oversampling.

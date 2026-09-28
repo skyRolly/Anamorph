@@ -17,8 +17,17 @@ and two in `[0.9.0]` — name the source file they changed instead, which rule 2
 not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
+including in entries written before 0.9.9 gave it that name.
 
-## [0.9.9] — 2026-09-27
+## [0.9.9] — 2026-09-29
+
+### Changed
+- **The fourth widening algorithm is now called Dimensional.** The Widen Algorithm menu and your host's
+  automation list show it as **Dimensional**, its voicing control is **Dimensional Style**, and that control's
+  tooltip reads *Voicing of the Dimensional widener*. Only the names changed: the parameter IDs (`algorithm`,
+  `dimMode`), the order of the choices, the four voicings and the sound are all the same, so saved sessions,
+  presets, A/B slots and automation recall exactly as before. Evidence: commit `1f0bc7c`. [Verified]
 
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
@@ -84,13 +93,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **Level Match no longer re-measures when nothing about the sound changed.** Level Match watches
   the difference your processing makes and holds that reading steady so A/B-ing does not lurch. It
   re-measures whenever the signal path really moves — a different algorithm, a routing change — and
-  that is right. It was also re-measuring for a change to **Dim-D Style** when Dimension D is not
+  that is right. It was also re-measuring for a change to **Dimensional Style** when Dimensional is not
   the selected algorithm, where that control reaches nothing at all. On its own the stray reading
   was already harmless, but two ordinary actions carried it in: switching **A/B** or recalling a
   **preset** whose only difference is that control, and toggling **Level Match itself** with that
-  control also different — both threw away a converged reading and started again. Dim-D Style now
-  only counts as a change to the sound when Dimension D is actually in use, matching how the same
-  control already behaves elsewhere. Changing it *while* Dimension D is selected still re-measures,
+  control also different — both threw away a converged reading and started again. Dimensional Style now
+  only counts as a change to the sound when Dimensional is actually in use, matching how the same
+  control already behaves elsewhere. Changing it *while* Dimensional is selected still re-measures,
   because then it really is audible. Regression coverage: Test 58. Evidence: PR #155. [Verified]
 - **Anamorph now tells your host how long its sound really takes to decay.** The reported tail length
   was a fixed 0.1 s, and the chain can ring for considerably longer than that — measured at up to
@@ -99,18 +108,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a track could clip the last of a decay. The reported value is now 0.5 s, chosen to cover the longest
   decay measured with room to spare. Nothing about the sound itself changes, and this is not the
   latency figure. Regression coverage: State test 119. Evidence: PR #155. [Verified]
-- **Automating Dim-D Style no longer ducks the sound when Dimension D is not the selected
-  algorithm.** Dim-D Style is read only by the Dimension D algorithm, but moving it counted as a
+- **Automating Dimensional Style no longer ducks the sound when Dimensional is not the selected
+  algorithm.** Dimensional Style is read only by the Dimensional algorithm, but moving it counted as a
   structural change whatever algorithm was selected — so an automation lane crossing one of its four
   steps opened the full transition fade every time, on a control that could not change the sound at
   all. Under a lane crossing a step every few milliseconds that held the output well below where it
   belonged: 42 dB down at one crossing every 2.7 ms, 30 dB at 5.3 ms, 19 dB at 10.7 ms, and audible
   at any crossing closer together than about 130 ms. It was never permanent — the level came back
   about 25 ms after the automation stopped — but for as long as the lane kept moving, it stayed
-  down. Moving Dim-D Style while another algorithm is selected is now completely silent: the output
+  down. Moving Dimensional Style while another algorithm is selected is now completely silent: the output
   is sample-for-sample identical to leaving the control alone, at every sample rate and buffer size.
-  The value is still adopted, so switching to Dimension D afterwards gives you the voicing you
-  chose; and moving it **while** Dimension D is selected still transitions exactly as before, as do
+  The value is still adopted, so switching to Dimensional afterwards gives you the voicing you
+  chose; and moving it **while** Dimensional is selected still transitions exactly as before, as do
   band count, algorithm, oversampling factor and Band Solo. Decision: ADR-0004 (Correction,
   2026-09-21). Regression coverage: Test 55. Evidence: PR #155. [Verified]
 - **Turning the Multiband on or off at a partial Mix no longer clicks.** With Mix anywhere between
@@ -126,7 +135,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **Switching algorithm immediately after another control no longer carries the old algorithm's
   sound into the new one.** When a change to another structural control — the band count, say — was
   followed within a few milliseconds by an algorithm change, the transition adopted the new
-  algorithm without clearing the previous one's delay lines. Between Chorus and Dimension D, which
+  algorithm without clearing the previous one's delay lines. Between Chorus and Dimensional, which
   share the same modulation engine, the incoming voice started on a line still full of the outgoing
   one's audio, and the artefact was as loud as the signal itself. Changing algorithm the moment
   after another control now sounds exactly the same as changing both together. Decision: ADR-0004
@@ -142,7 +151,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   project was reopened. Measured through the plug-in: silence (**−180 dB**) one second after the
   host's values were valid again, on material that had been coming out at **−11.7 dB**. The reset
   now clears that state too: the output drops out for one buffer at most and the effect glides back
-  in as soon as the host sends a valid value. Chorus and Dimension D were never affected, and nothing
+  in as soon as the host sends a valid value. Chorus and Dimensional were never affected, and nothing
   changes for ordinary automation. Decision: ADR-0009 (Implementation note, 2026-09-22). Regression
   coverage: State test 123 and Test 59. Evidence: PR #155. [Verified]
 - **An invalid Velvet Density value no longer freezes the Density control until the plug-in is
@@ -941,7 +950,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
   on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
   actually running, and it only runs when it has something to do — so with Oversampling set to 2×,
-  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimension-D) switched it on and changed
+  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimensional) switched it on and changed
   the reported latency mid-move. DAWs answer a latency change by restarting their audio graph, which
   you hear as a dropout in the middle of an ordinary knob move. The reported latency now depends on
   the **Oversampling setting and nothing else**, so it changes when you change that setting and at
@@ -1050,7 +1059,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   algorithms out of the sound.** The crossfade that hands the sound between the oversampled path and
   the normal one was left running across the Oversampling switch itself — and with Oversampling set
   to Off there is no oversampled path for it to fade from, so for about 12 ms after the switch the
-  output was the plain, unprocessed input: no Drive, and no Chorus or Dimension-D. It arrived just as
+  output was the plain, unprocessed input: no Drive, and no Chorus or Dimensional. It arrived just as
   the switch's short dip was lifting, and it went into Haas's and Velvet Noise's delay lines at full
   level, so it came back out again a moment later. Measured with a 1 kHz tone and Drive at 18 dB, as
   the strength of the distortion the Drive stage produces: it fell to about a third of its settled
@@ -1200,13 +1209,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   existing recovery from genuinely invalid audio is unchanged. Regression coverage: DSP test 50.
   Evidence: PR #134. [Verified]
 - **A project no longer fades into its own effects when it opens.** Haas, Velvet Noise, Chorus /
-  Dimension-D and the Mono Maker crossover each glide their settings rather than jumping, so that
+  Dimensional and the Mono Maker crossover each glide their settings rather than jumping, so that
   moving a control while the music plays never clicks. On a project *opening*, that glide was
   starting from the wrong place: the effects were told the project's settings only after they had
   already been set up, so the first fraction of a second played the previous settings sliding into
   the saved ones instead of the saved ones outright. Measured over the first block against the
   settled sound, the effects opened at 0.17 (Haas), 0.09 (Velvet Noise), 0.29 (Chorus), 0.39
-  (Dimension-D) and 0.35 (Mono Maker crossover) of where the project said they should be, arriving
+  (Dimensional) and 0.35 (Mono Maker crossover) of where the project said they should be, arriving
   over roughly the next 10–100 ms. Each of them now opens already at the saved setting. Moving a
   control while playing still glides exactly as before — only the moment a project opens changed.
   Regression coverage: DSP test 49, which includes a control proving live moves still glide.
@@ -1515,14 +1524,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ### Fixed
 - **Turning Widen down to zero now actually gives the CPU back.** Velvet Noise, Haas and the
-  Chorus / Dimension-D engine each have a cheap path for when their Amount is zero, and each was
+  Chorus / Dimensional engine each have a cheap path for when their Amount is zero, and each was
   entering it only on a freshly loaded plug-in — never after you turned the control down yourself.
   The reason is that the smooth fade to zero never quite arrives: it approaches zero by a fixed
   fraction each sample, and the step eventually becomes too small for the processor to represent, so
   the level freezes a hair above zero and stays there. The test was "is it zero"; it is now "can it
   still move", which is the question the shortcut actually depends on. In a session where you have
   ever turned an algorithm's Amount down, that gives back the work the module was stuck doing —
-  most with the Chorus / Dimension-D engine, least with Velvet Noise, whose share the Velvet Noise
+  most with the Chorus / Dimensional engine, least with Velvet Noise, whose share the Velvet Noise
   change above had already absorbed nearly all of. **What changes in the audio:**
   only in the **silence region** — digital silence, and signals more than roughly 550 dB below full
   scale — the frozen remainder used to leak an inaudible trace of the delay
@@ -2438,7 +2447,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   publications). Only the already-approved low-risk fold; the larger tap-order restructure (H5)
   is not part of this change. Expected effect (existing Round-2 measurements): −2-3 µs on the
   velvet-1.0 row. Evidence: PR #58. [Verified]
-- **Chorus/Dimension-D LFO generation is a quadrature recurrence (Wave 2 / H11)**: the two
+- **Chorus/Dimensional LFO generation is a quadrature recurrence (Wave 2 / H11)**: the two
   per-sample `std::sin` calls are one double-precision `(sin, cos)` pair advanced by a fixed
   per-sample rotation and re-seeded from the LFO phase at every block start (the right channel's
   90° offset is exactly the `cos` component). Modulation rate, depth, stereo phase offset and
@@ -2447,7 +2456,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   bit-identical. Audible output is numerically class B: differences are confined to
   chorus-active blocks and bounded by a sub-0.1-sample delay wobble (measured ≤8.2e-4 peak
   sample delta across the 25-scenario full-engine dump; all other scenarios byte-identical).
-  Expected effect (from the existing Round-2 measurements, no new profiling): chorus/Dim-D rows
+  Expected effect (from the existing Round-2 measurements, no new profiling): chorus/Dimensional rows
   −~5 µs; everything-on-os4 −15-20 µs. Evidence: PR #58. [Verified]
 - **Final Wave-1 DSP micro-optimisations (H9 + H10 + H12, one bundle)**: (H9) two per-block
   buffer copies that were byte-identical dead weight are gone — the silence-edge scan now reads
@@ -2458,15 +2467,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   returns before its per-sample loop when the routing is at the default identity and the
   balance/polarity smoothers are fully settled at exactly 0 / +1 — every sample would compute
   `x·1·1`, and a settled smoother tick is mutation-free, so the skip is state-identical. (H12)
-  Chorus and Dimension-D skip their LFO sines and 2/4 interpolated delay reads per sample while
+  Chorus and Dimensional skip their LFO sines and 2/4 interpolated delay reads per sample while
   the wet glide sits at exactly 0 (it flushes to true zero under the block's FTZ) — the delay
   writes, write indices, iterated phase accumulation and depth glide all still advance, so a
   re-engage is bit-identical (the VelvetNoise S5 pattern). Output proven byte-identical on a
-  114 MB, 25-scenario full-engine dump including chorus/Dim-D idle→engage→idle cycles at base
+  114 MB, 25-scenario full-engine dump including chorus/Dimensional idle→engage→idle cycles at base
   and 4× oversampled rates, all eight conditioning routings, and bypass toggles under OS
   latency; reported latency unchanged. Expected effect (from the Wave-1.4 measurements):
   ~−7-10 % of the transparent floor (conditioning ~5 %, dead copies ~3-5 %) and the parked
-  chorus/Dim-D rows drop ~8-14 µs/block to just above the floor. Evidence: PR #55. [Verified]
+  chorus/Dimensional rows drop ~8-14 µs/block to just above the floor. Evidence: PR #55. [Verified]
 - **Branchless level-meter envelopes (H8)**: the per-sample rise-or-fall coefficient picks and
   the peak attack-or-decay picks in `StereoLevel::process` (and the NaN/Inf input clamp) now go
   through a branchless bit-select instead of data-dependent ternaries. Those branches flipped
@@ -2693,7 +2702,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   warning). Evidence: `.github/workflows/build.yml`, `scripts/run-pluginval.sh`,
   `scripts/run-pluginval.ps1`.
 - **Parameter display-name renames** (parameter **IDs unchanged**, so automation/state survive):
-  "Algorithm" → **"Widen Algorithm"** and "Dimension Mode" → **"Dim-D Style"**, matching the GUI.
+  "Algorithm" → **"Widen Algorithm"**, and `dimMode`'s display name changed to match the GUI (it has
+  been **"Dimensional Style"** since 0.9.9).
   `Multiband Bands` and `Multiband Solo` are now **exposed and automatable** in the host automation
   list (the previous `withAutomatable(false)` was removed). Conversely, **`Advanced Mode` is now
   non-automatable** (`isAutomatable()` = false): it is a UI-layout toggle, not a sound parameter.

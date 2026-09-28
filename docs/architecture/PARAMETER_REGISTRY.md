@@ -36,14 +36,14 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `polarityR` | Phase Invert R/S | B | false | — | yes | yes | yes |
 | `msMode` | M/S Mode | B | false | — | yes | yes | yes |
 | `drive` | Drive | F | 0.0 | 0..24 dB | yes | yes | yes |
-| `algorithm` | Widen Algorithm | C | Velvet Noise (1) | Haas/Velvet Noise/Chorus/Dim-D | yes | yes | yes |
+| `algorithm` | Widen Algorithm | C | Velvet Noise (1) | Haas/Velvet Noise/Chorus/Dimensional § | yes | yes | yes |
 | `amount` | Amount | F | 0.0 | 0..1 | yes | yes | yes |
 | `haasDelay` | Haas Delay | F | 12.0 | 1..35 ms | yes | yes | yes |
 | `haasSide` | Haas Focus ‖ | C | Left (0) | Left/Right | yes | yes | yes |
 | `velvetDensity` | Velvet Density | F | 0.5 | 0..1 | yes | yes | yes |
 | `chorusRate` | Chorus Rate | F | 0.5 | 0.05..5 Hz (skew 0.4) | yes | yes | yes |
 | `chorusDepth` | Chorus Depth | F | 0.5 | 0..1 | yes | yes | yes |
-| `dimMode` | Dim-D Style | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
+| `dimMode` | Dimensional Style § | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
 | `width` | Width | F | 1.0 | 0..2 | yes | yes | yes |
 | `mbEnable` | Multiband Enable | B | **true** ¶ | — | yes | yes | yes |
 | `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes ‡ | yes |
@@ -87,6 +87,14 @@ Footnotes:
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
   src/PluginParameters.cpp:135-136.
+- **§** Display names changed in 0.9.9 with the **IDs unchanged**: the fourth `algorithm` choice
+  reads `Dimensional`, and `dimMode` is shown as `Dimensional Style`. Choice order, ranges,
+  defaults and every stored value are unchanged, so sessions, presets, A/B slots and automation
+  recall exactly as before (policy rule 2). The one text-keyed path is a host typing a choice's
+  label (`RawChoice::getValueForText`), which matches the current labels; nothing Anamorph
+  persists stores parameter text. Evidence [Verified]: src/PluginParameters.cpp:211-212;
+  src/PluginParameters.cpp:224-225; `tests/fixtures/parameter_registry.snapshot` (re-frozen for
+  these two strings only); CHANGELOG.md [0.9.9].
 - **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
   `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:72): when Advanced
   Mode is off, `toEngine` skips the multiband section, so the engine sees the neutral POD default

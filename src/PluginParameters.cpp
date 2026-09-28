@@ -209,7 +209,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Effect engine ---
     floatParam (pid::drive, "Drive", { 0.0f, 24.0f, 0.01f }, 0.0f, db);
     layout.add (std::make_unique<RawChoice> (ParameterID { pid::algorithm, kVersion },
-        "Widen Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
+        "Widen Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dimensional" }, 1));
     // Unified widening intensity. Default 0 == transparent on load (#3).
     floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct, pctFrom);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
@@ -220,9 +220,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.5f,
                 [] (float v, int) { return juce::String (v, 2) + " Hz"; }, hzFrom);
     floatParam (pid::chorusDepth, "Chorus Depth", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
-    // Friendly Dimension-D voicing names (#14); long descriptions live in tooltips.
+    // Friendly Dimensional voicing names (#14); long descriptions live in tooltips.
     layout.add (std::make_unique<RawChoice> (ParameterID { pid::dimMode, kVersion },
-        "Dim-D Style", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
+        "Dimensional Style", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
