@@ -13,36 +13,39 @@ structurally cannot supply — a green build plus a pluginval pass means *"ready
 
 An audition is **per-build**, not per-feature. It is invalidated by anything that changes the
 machine code or the audible behaviour of the thing being shipped. The rule was applied twice
-before 0.9.9, and it now governs **v0.9.9**, the release in preparation: no audition is recorded
-here since the v0.9.6 PASS (ADR-0054's 2026-09-17 dependency audition predates 0.9.9's changes),
-and 0.9.7, 0.9.8 and 0.9.9 each change audible behaviour, so a v0.9.9 audition needs its own scope,
-derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries (§Scope for v0.9.9).
+before 0.9.9, and it governed **0.9.9** in turn. Between the 0.9.6 PASS and 0.9.9 no release audition
+was recorded (ADR-0054's 2026-09-17 dependency audition predates 0.9.9's changes), and 0.9.7, 0.9.8
+and 0.9.9 each change audible behaviour. So the 0.9.9 audition needed its own scope, derived from the
+`[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries (§Scope for 0.9.9). The owner has performed it
+(§Recorded auditions, 0.9.9).
 
-**The v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7** — the release this rule
+**The 0.9.6 audition of 2026-09-01 does not carry over to 0.9.7** — the release this rule
 blocked when it was applied the second time (2026-09-03). **ADR-0034** changed what the plug-in reports to the host and added a delay
 element to the chain, and it changed one audible behaviour beyond latency: a forced A/B, preset or
 undo swap that crosses the Drive engagement threshold with a factor selected is now
 latency-neutral, so it dry-fills instead of dipping to silence. Neither is a thing an automated
-gate can audition. The v0.9.6 verdict below is not withdrawn; it simply does not cover this build.
+gate can audition. The 0.9.6 verdict below is not withdrawn; it simply does not cover this build.
 
-**The v0.9.4 audition of 2026-08-15 was invalid for v0.9.6** on both counts, which is the worked
+**The 0.9.4 audition of 2026-08-15 was invalid for 0.9.6** on both counts, which is the worked
 example the rule was first written from:
 
 - **ADR-0031 / ADR-0032** changed the x86-64 machine code everywhere (`-march=haswell`,
   `-ffp-contract=off`, and the MSVC AVX2 adoption). CI's twin-dump gate proves the two builds are
   bit-identical to each other; it cannot tell you the result sounds right on real hardware.
-- **v0.9.6 changed audible behaviour in exactly the windows that were previously defective** — the
+- **0.9.6 changed audible behaviour in exactly the windows that were previously defective** — the
   activation duck, the first-block level of a restored session, and the A/B / preset switch.
 
-## Scope for v0.9.9
+## Scope for 0.9.9
 
-**OPEN (2026-09-28): not performed.** The environment that prepared this release has no DAW, no audio
-device and no listener, and nothing but a human's account may create a record here. The scope below
-is derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries, because the last recorded
-audition is v0.9.6's.
+**Performed by the owner; completion reported 2026-09-28** (§Recorded auditions, 0.9.9). This scope was
+written first, and the environment that wrote it has no DAW, no audio device and no listener. It is
+derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries, because the last recorded
+audition before it was 0.9.6's. Which of A–F the owner exercised was not supplied, and the record
+does not infer it.
 
-Audition the final v0.9.9 build in at least one DAW. That build is the CI artifact of the commit to
-be tagged `v0.9.9`. Record the result per §Recording the result, naming which of A–F were exercised.
+The instruction the scope was written with: audition the final 0.9.9 build in at least one DAW. That
+build is the CI artifact of the commit to be tagged `0.9.9`. Record the result per §Recording the
+result, naming which of A–F were exercised.
 
 ### A. Oversampling, Drive and latency (0.9.7, ADR-0034/0035)
 - With Oversampling at 2×, 4× or 8×, sweep Drive through zero and change algorithm while playing.
@@ -74,7 +77,7 @@ be tagged `v0.9.9`. Record the result per §Recording the result, naming which o
 - Reopen a project saved in 0.9.8 that uses the fourth algorithm. It shows **Dimensional** and
   **Dimensional Style** with the same voicing.
   - Headless evidence already establishes that the plug-in renders that session bit-identically
-    (`RELEASE_COMPATIBILITY_CHECKLIST.md` §v0.9.9, item 8).
+    (`RELEASE_COMPATIBILITY_CHECKLIST.md` §0.9.9, item 8).
   - The audition's part is hearing it in a host.
 
 ### E. Transport, metering and tail (0.9.9)
@@ -87,14 +90,14 @@ be tagged `v0.9.9`. Record the result per §Recording the result, naming which o
 - Bounce with the tail included. The full decay of Haas, Chorus and Dimensional is kept.
 
 ### F. Host matrix and automation playback
-Checklist items 5 and 7 are separate attestations for v0.9.9 (`RELEASE_COMPATIBILITY_CHECKLIST.md`).
+Checklist items 5 and 7 are separate attestations for 0.9.9 (`RELEASE_COMPATIBILITY_CHECKLIST.md`).
 They may be performed in the same sitting, but they are recorded there, each on its own. This audition
 record does not tick them.
 
-## Scope for v0.9.6
+## Scope for 0.9.6
 
-**This scope is the v0.9.6 record and is kept as written.** The audition it describes was performed
-and passed (see §Recorded auditions). A v0.9.7 audition needs its own scope, derived the same way
+**This scope is the 0.9.6 record and is kept as written.** The audition it describes was performed
+and passed (see §Recorded auditions). A 0.9.7 audition needs its own scope, derived the same way
 from the `[0.9.7]` CHANGELOG entries; the ADR-0034 latency and Drive-crossing changes named above
 are what it has to cover, and group C below is the closest existing analogue.
 
@@ -169,17 +172,56 @@ covered. Partial is a legitimate and useful record; a partial audition described
 
 Newest first. A row here is a human's account of listening to a build; nothing else may create one.
 
-### v0.9.6 — **PASS**
+### 0.9.9 — **COMPLETED, signed off by the owner**
+
+**Recorded 2026-09-28** from the repository owner's report that the 0.9.9 Level-5 audition has been
+completed. The owner performed it. The report is the owner's attestation, and it is the Level-5
+evidence: precondition 7 asks for a person's sign-off, not for an artifact a machine can check.
+
+The owner reported the audition complete and directed the release to proceed to its tag. No defect
+was reported. The report did not use the word "pass" or give per-item results, so the verdict row
+records what was said rather than a stronger word.
+
+| Field | Value |
+|---|---|
+| Verdict | **Completed — signed off by the owner, no defect reported** |
+| Build | The 0.9.9 build (as stated by the owner) |
+| Performed by | The repository owner |
+| Reported | 2026-09-28 |
+| Audition date | **NOT RECORDED** |
+| DAW + version | **NOT RECORDED** |
+| OS + CPU architecture | **NOT RECORDED** |
+| Plugin format (VST3 / AU / Standalone) | **NOT RECORDED** |
+| Session used | **NOT RECORDED** |
+| Per-item outcome (§Scope for 0.9.9, groups A–F) | **NOT RECORDED** |
+| Exact artifact / commit identity | **NOT RECORDED** |
+
+**Three kinds of evidence, kept apart.**
+- **Owner-attested:** the audition was completed, by the owner, on the 0.9.9 build. That is all this
+  record asserts.
+- **Automated:** the headless evidence is recorded where it was produced, not here. It includes the
+  0.9.8→0.9.9 cross-version render in `RELEASE_COMPATIBILITY_CHECKLIST.md` item 8 and the CI gates on
+  the release head. None of it is a substitute for this sign-off.
+- **Not supplied, and not inferred:** every row marked NOT RECORDED. The A–F scope says what *should*
+  be exercised; nothing here claims which parts *were*.
+
+As with 0.9.6, the correspondence between the build auditioned and the build tagged rests on the
+owner's statement, which is what precondition 7 is by definition.
+
+Evidence [Verified]: docs/policies/RELEASE_POLICY.md (precondition 7); docs/policies/TESTING_POLICY.md
+(Level 5); docs/procedures/RELEASE_PROCESS.md §7; §Scope for 0.9.9 above.
+
+### 0.9.6 — **PASS**
 
 **Recorded 2026-09-01** from the maintainer's report that the audition was completed and passed
-against the final v0.9.6 build. The maintainer is the human who performed it, and that attestation
+against the final 0.9.6 build. The maintainer is the human who performed it, and that attestation
 is the Level-5 evidence — precondition 7 asks for a person's judgement, not for a machine-checkable
 artifact.
 
 | Field | Value |
 |---|---|
 | Verdict | **PASS** |
-| Build | The final v0.9.6 build (as stated by the maintainer) |
+| Build | The final 0.9.6 build (as stated by the maintainer) |
 | Performed by | The maintainer |
 | Audition date | **NOT RECORDED** |
 | DAW + version | **NOT RECORDED** |
@@ -196,7 +238,7 @@ infer a DAW, an OS, a format or a per-item result from the protocol above; the p
 *should* be exercised, not what *was*.
 
 **Consequence for correspondence-to-build.** Because no artifact or commit identity was supplied,
-the correspondence between what was auditioned and the final v0.9.6 build rests on the maintainer's
+the correspondence between what was auditioned and the final 0.9.6 build rests on the maintainer's
 statement rather than on anything checkable in this repository. That is sufficient for precondition
 7, which is a human sign-off by definition. It is recorded here so the basis of the claim is
 visible.
