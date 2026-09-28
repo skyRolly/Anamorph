@@ -185,6 +185,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import unquote
 
 # GFM's delimiter row: leading pipe guaranteed here because TABLE_ROW required
@@ -1187,7 +1188,10 @@ RECONSTRUCTED_HEADINGS = (
 # it from that tag. From here on a version may still close without a tag; its
 # entry then carries no link definition, and the next tagged version compares
 # against the most recent TAGGED one, not the entry directly below it
-# (`check_changelog_links`). This read (0, 9, 7) before ADR-0058.
+# (`check_changelog_links`). Whether a version WAS tagged is read from the
+# repository's git tags (`tag_state`), never from the changelog: this constant
+# says which version may be the first tag, not that it has been cut. This read
+# (0, 9, 7) before ADR-0058.
 FIRST_TAGGED_VERSION = (0, 9, 9)
 # The self-test's changelog fixtures describe a SYNTHETIC line whose first tag is
 # 0.9.7, so they pin the mechanism rather than this repository's history; the
@@ -1199,6 +1203,80 @@ _first_tagged_override: tuple[int, int, int] | None = None
 
 def first_tagged() -> tuple[int, int, int]:
     return _first_tagged_override or FIRST_TAGGED_VERSION
+
+
+class TagState(NamedTuple):
+    """Which release tags exist: the source of truth for "was this version tagged".
+
+    A changelog DECLARES releases; only the repository says which were tagged. A
+    link definition written from the changelog alone could name a tag that was
+    never cut -- `[Unreleased]: .../compare/0.9.9...HEAD` in the weeks before the
+    `0.9.9` tag exists, or a definition left on a version that closed untagged --
+    and resolve to nothing. So the check reads the tag refs of the repository
+    this file belongs to: local metadata, no network.
+
+    `known` is False when those refs cannot be read (not a git checkout, the path
+    is not the checkout's root, git is missing or fails). That is NOT "no tags":
+    the link check then refuses what it cannot verify, and says why, instead of
+    guessing either way. `source` names where the state came from, or why there
+    is none; findings that turn on a missing tag quote it.
+    """
+    tags: frozenset[str]
+    known: bool
+    source: str
+
+
+def read_git_tags(root: Path) -> TagState:
+    """The tag names of the git checkout rooted at `root`, from its local refs.
+
+    CI's checkout fetches every tag for the `docs` job (`fetch-tags: true`); a
+    clone made with `git clone` has them already. A shallow clone that did not
+    fetch them reads as a checkout with no tags, so the source says "shallow"
+    and the finding tells the reader how to fetch them.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return TagState(frozenset(), False, "git is not installed")
+
+    def run(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([git, "-C", str(root), *args], capture_output=True,
+                              text=True, timeout=60)
+    try:
+        top = run("rev-parse", "--show-toplevel")
+        if top.returncode != 0:
+            return TagState(frozenset(), False, f"{root} is not a git checkout")
+        # Inside another checkout (a copied tree under some other repository),
+        # git would answer with THAT repository's tags.
+        if Path(top.stdout.strip()).resolve() != root.resolve():
+            return TagState(frozenset(), False,
+                            f"{root} is not the root of the git checkout it is in "
+                            f"({top.stdout.strip()})")
+        refs = run("for-each-ref", "--format=%(refname:strip=2)", "refs/tags")
+        if refs.returncode != 0:
+            return TagState(frozenset(), False,
+                            f"git could not list the tags: {refs.stderr.strip()}")
+        shallow = run("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return TagState(frozenset(), False, f"git could not run: {exc}")
+    return TagState(frozenset(refs.stdout.split()), True,
+                    "the git tags of a shallow clone -- fetch them with "
+                    "`git fetch --tags` if one is missing" if shallow
+                    else "the git tags of this checkout")
+
+
+# The self-test binds this so its fixtures do not depend on which tags this
+# checkout happens to have; `None` everywhere else, and the real tags apply.
+_tag_state_override: TagState | None = None
+_tag_state_cache: dict[Path, TagState] = {}
+
+
+def tag_state(root: Path) -> TagState:
+    if _tag_state_override is not None:
+        return _tag_state_override
+    key = root.resolve()
+    if key not in _tag_state_cache:
+        _tag_state_cache[key] = read_git_tags(key)
+    return _tag_state_cache[key]
 # The one repository a version link may point into. Checked because a definition
 # is a citation: `https://example.com/x/compare/0.9.7...0.9.8` satisfied every
 # earlier spelling of the rule and resolves to nothing.
@@ -1900,76 +1978,92 @@ def check_changelog_categories(path: Path, lines: list[str], skip: list[bool]) -
     return findings
 
 
-def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> list[str]:
+def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
+                          root: Path) -> list[str]:
     """Every `[x.y.z]` heading is a link reference, and its definition, where it
-    has one, names that version's own tag. Below `FIRST_TAGGED_VERSION` no
-    version may have one (there is no tag to point at). The first tagged version
-    must, and so must the NEWEST version entry while it is the release in
-    preparation (no `## [Unreleased]` section above it). Any other version above
-    the first tag is tagged exactly when its entry carries a definition: a
-    version that closes without a tag keeps its entry and has none, as 0.9.7 and
-    0.9.8 did. An `[Unreleased]` heading needs a `...HEAD` comparison from the
-    newest TAGGED version, so it is refused while nothing in the file is tagged:
-    before the first tag there is no base, and a definition naming an untagged
-    version cannot supply one.
+    has one, names that version's own tag: `/releases/tag/x.y.z` for the first
+    tag, `/compare/a.b.c...x.y.z` after it, where `a.b.c` is the most recent
+    earlier TAGGED version (`previous_of`). Tags are the bare version (ADR-0059).
 
-    The definition is written in the RELEASE COMMIT, naming the tag that commit
-    is about to carry -- `x.y.z`, the bare version, fixed by `release.yml`'s rule
-    that the tag equals the CMake project version (ADR-0059) -- and the tag is
-    pushed straight after. That is the sequence the specification's own example
-    implies (its link definitions exist in the tagged tree), and the only one that
-    is satisfiable: a tag points at an existing commit, so the definition cannot
-    wait for it. What this check therefore asserts is not that the URL resolves
-    today but that it is the deterministic one: the right version, the right form
-    (`/releases/tag/x.y.z` for the first tag, `/compare/a.b.c...x.y.z` after it,
-    where `a.b.c` is the most recent earlier TAGGED version -- `previous_of`), and
-    no definition for a version below `FIRST_TAGGED_VERSION`, none of which was
-    tagged.
+    WHETHER A VERSION WAS TAGGED IS READ FROM GIT (`tag_state`), not from the
+    changelog. A version is tagged when its bare tag exists in the repository's
+    tag refs and it is not older than `FIRST_TAGGED_VERSION`, below which nothing
+    was tagged and nothing may be defined. The changelog's definitions must agree
+    with the tags: a version whose tag exists carries a definition, and one whose
+    tag does not exist carries none -- a definition would link to a tag that was
+    never cut. The one exception is the RELEASE IN PREPARATION, the newest entry
+    while no `## [Unreleased]` section sits above it: its definition is written in
+    the release commit, naming the tag that commit is about to carry, and the tag
+    is pushed straight after (the sequence the specification's own example
+    implies, and the only satisfiable one: a tag points at an existing commit).
+    So its definition is required whether or not its tag exists yet.
 
-    What it cannot see is a tag the changelog does not record, in either
-    direction. A definition deleted from a version that WAS tagged reads as
-    "closed without a tag"; the next tagged version's comparison then names a
-    base this check refuses, which is where that surfaces. The converse is
-    invisible: a definition LEFT on a version that closed without a tag reads as
-    a tag, and the check then requires the next version to compare against it.
-    The guard for that is procedural -- the commit that adds the newer entry
-    deletes the closed version's definition (RELEASE_PROCESS.md §Tagging).
+    `## [Unreleased]` compares the newest tagged version with HEAD, so it exists
+    only once a version HAS a tag. Reading tags from the changelog instead let
+    `[Unreleased]: .../compare/0.9.9...HEAD` pass while no `0.9.9` tag existed,
+    because the 0.9.9 entry counted as the first tag "by fact"; and it read a
+    definition left on a version that closed untagged as a tag, and a definition
+    deleted from a tagged version as "closed untagged" -- all three are links to,
+    or from, a tag state the repository does not have.
+
+    When the tags cannot be read (not a git checkout, not its root, no git), the
+    check refuses, with one finding that says why, whatever depends on them --
+    an `[Unreleased]` section, and any version at or above the first tag other
+    than the release in preparation. A file whose only such version is the
+    release in preparation (the state before the first tag) needs no tags and is
+    checked in full.
     """
     if path.name != "CHANGELOG.md":
         return []
     first = first_tagged()
+    tags = tag_state(root)
     entries, definitions, _ = parse_changelog(lines, skip)
     findings: list[str] = []
     defined: dict[str, tuple[int, str]] = {}
-    versions_early = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
-    ordered = list(versions_early)
+    versions = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
+    ordered = list(versions)
     for line_no, label, url in definitions:
         if re.fullmatch(r"\d+\.\d+\.\d+", label) or label.lower() == "unreleased":
             key = label.lower() if label.lower() == "unreleased" else label
             if key in defined:
                 findings.append(f"{path}:{line_no}: `[{label}]` is defined twice")
             defined[key] = (line_no, url)
-    versions = versions_early
+    has_unreleased = any(e.kind == "unreleased" for e in entries)
+    # The release in preparation: the newest entry, while no `## [Unreleased]`
+    # section sits above it. With one, every version entry is a past release.
+    in_prep = ordered[0] if ordered and not has_unreleased else None
 
     def tagged(key: str) -> bool:
-        # The first tag is a fact; after it, a version was tagged exactly when its
-        # entry carries a link definition (a version closed without a tag has none).
+        # The tag exists. Below the first tag nothing counts, whatever git holds.
         v = versions[key].version
-        return v is not None and (v == first or (v > first and key in defined))
+        return tags.known and v is not None and v >= first and key in tags.tags
+
+    # Without the tags, only a file that needs none can be checked: one whose
+    # only version at or above the first tag is the release in preparation.
+    past = [k for k in ordered
+            if k != in_prep and versions[k].version is not None
+            and versions[k].version >= first]
+    verifiable = tags.known or not (has_unreleased or "unreleased" in defined or past)
+    if not verifiable:
+        where = next((x.line_no for x in entries if x.kind == "unreleased"), None)
+        if where is None:
+            where = (versions[past[0]].line_no if past else defined["unreleased"][0])
+        findings.append(
+            f"{path}:{where}: the release links in this file need the repository's git "
+            f"tags, and this run cannot read them ({tags.source}) -- run check-docs.py "
+            f"from the git checkout itself; CI's `docs` job fetches the tags "
+            f"(CHANGELOG_POLICY.md rule 8)"
+        )
 
     # `previous_of[k]` is the most recent TAGGED version released before `k`: the
-    # nearest entry BELOW it in this newest-first file that was tagged. An entry in
-    # between that closed without a tag is skipped -- it has no tag to compare
-    # from, however high its version number. Absent when nothing below was tagged.
+    # nearest entry BELOW it in this newest-first file whose tag exists. An entry in
+    # between without a tag is skipped -- it has no tag to compare from, however
+    # high its version number. Absent when nothing below was tagged.
     previous_of: dict[str, str] = {}
     for n, k in enumerate(ordered):
         base = next((o for o in ordered[n + 1:] if tagged(o)), None)
         if base is not None:
             previous_of[k] = base
-    # A label whose heading EXISTS but is malformed (`## [0.9.8] — <YYYY-MM-DD>`)
-    # is not an orphaned definition: the entry is there, its heading text is
-    # wrong, and `check_changelog_headings` already says so. Reporting the
-    # definition too pointed the author at the wrong line.
     # Every version a MALFORMED entry names, however it is spelled. A malformed
     # heading's own definition is not an orphan -- the entry is there, its text is
     # wrong, and `check_changelog_headings` already says so. Reading only the
@@ -1982,9 +2076,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
         for e in entries if e.kind == "malformed"
         for m in [SEMVER_ANYWHERE.search(e.text)] if m
     }
-    has_unreleased = any(e.kind == "unreleased" for e in entries)
     # The base an `[Unreleased]` comparison runs from: the newest TAGGED version.
-    # None when nothing in the file was tagged -- and then there is no base at all.
+    # None when no version in the file has a tag -- and then there is no base.
     newest_tagged = next((k for k in ordered if tagged(k)), None)
 
     for key, (line_no, url) in defined.items():
@@ -1994,7 +2087,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                     f"{path}:{line_no}: `[Unreleased]` is defined but there is no "
                     f"`## [Unreleased]` entry"
                 )
-            elif newest_tagged is not None:
+            elif verifiable and newest_tagged is not None:
                 want = f"{REPO_URL}/compare/{newest_tagged}...HEAD"
                 if url != want:
                     findings.append(
@@ -2018,6 +2111,18 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                 f"there is no release page to link, so it must not be defined"
             )
             continue
+        if not verifiable:
+            continue
+        if key != in_prep and not tagged(key):
+            # A past release whose tag does not exist: the definition links to a tag
+            # that was never cut. The version closed untagged, so it carries none.
+            findings.append(
+                f"{path}:{line_no}: `[{key}]` is defined, but there is no git tag `{key}` "
+                f"(read from {tags.source}) -- the link names a tag that was never cut; "
+                f"a version that closed without a tag carries no definition "
+                f"(RELEASE_PROCESS.md §Tagging)"
+            )
+            continue
         tag = key   # the tag is the bare version (ADR-0059)
         # WHICH form, not merely "one of the two". The first version this line
         # tags has no predecessor to compare against, so it points at its own tag
@@ -2039,8 +2144,9 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
             # than printing a placeholder into the URL the author is told to write.
             findings.append(
                 f"{path}:{line_no}: `[{key}]` must compare against the most recent tagged "
-                f"version released before it, but no tagged entry appears below "
-                f"`## [{key}]` -- this line's first tag is {'.'.join(map(str, first))}"
+                f"version released before it, but no entry below `## [{key}]` has a git "
+                f"tag (read from {tags.source}) -- this line's first tag is "
+                f"{'.'.join(map(str, first))}"
             )
             continue
         if url != want:
@@ -2051,47 +2157,60 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                 why = ("a comparison against the most recent earlier tagged version, "
                        f"{previous_of[key]}")
                 if below != previous_of[key]:
-                    why += (f"; `## [{below}]` below it carries no link definition, "
-                            f"so it closed without a tag and is not a comparison base")
+                    why += (f"; `## [{below}]` below it has no git tag, so it closed "
+                            f"without one and is not a comparison base")
             findings.append(
                 f"{path}:{line_no}: the `[{key}]` definition must be `{want}` ({why}); "
                 f"got `{url}`"
             )
 
-    # Which versions MUST carry a definition: the first tag, and the newest entry
-    # when it is the release in preparation, whose release commit writes it. With
-    # an `## [Unreleased]` section above it, the release in preparation is that
-    # section, and the newest version is a past one like every other. Any version
-    # after the first tag without one closed untagged, which is allowed.
-    newest_entry = ordered[0] if ordered and not has_unreleased else None
+    if not verifiable:
+        return findings
+    # Which versions MUST carry a definition: every version whose tag exists, and
+    # the release in preparation, whose release commit writes it before the tag
+    # is pushed. A past version without a tag closed untagged and carries none.
     for key, e in versions.items():
         if e.version is None or e.version < first or key in defined:
             continue
-        if e.version == first or key == newest_entry:
+        if key == in_prep:
             findings.append(
                 f"{path}:{e.line_no}: `## [{key}]` has no link definition -- add "
                 f"`[{key}]: <url>` at the foot of the file in the release commit "
                 f"(CHANGELOG_POLICY.md rule 8, RELEASE_PROCESS.md §Tagging)"
             )
+        elif tagged(key):
+            findings.append(
+                f"{path}:{e.line_no}: `## [{key}]` has a git tag but no link definition "
+                f"-- a tagged release is linked; add `[{key}]: <url>` at the foot of the "
+                f"file (CHANGELOG_POLICY.md rule 8)"
+            )
     if has_unreleased and newest_tagged is None:
         # `[Unreleased]` compares the newest tag with HEAD, so it exists only once a
         # version has been tagged. Before the first tag there is no base -- not the
-        # entry below, not any version that closed untagged -- and checking only the
-        # URL's shape let `.../compare/0.9.8...HEAD` pass, a comparison from a tag
-        # that was never cut. Until the first tag, unreleased work goes in the dated
-        # entry it will ship in (CHANGELOG_POLICY.md rule 8).
+        # entry below, not any version that closed untagged, and not the first tag's
+        # own entry while its tag has not been pushed. Checking only the URL's shape
+        # let `.../compare/0.9.8...HEAD` pass, and counting the first tag's entry as
+        # tagged let `.../compare/0.9.9...HEAD` pass before `0.9.9` existed. Until
+        # the first tag, unreleased work goes in the dated entry it will ship in
+        # (CHANGELOG_POLICY.md rule 8).
         e = next(e for e in entries if e.kind == "unreleased")
+        declared = [k for k in ordered if versions[k].version is not None
+                    and versions[k].version >= first]
+        pending = (f" (`## [{declared[0]}]` is in the file, but git has no tag "
+                   f"`{declared[0]}`: add this section once that tag is pushed)"
+                   if declared else "")
         also = ""
         if "unreleased" in defined:
             url = defined["unreleased"][1]
             m = re.fullmatch(rf"{re.escape(REPO_URL)}/compare/(\d+\.\d+\.\d+)\.\.\.HEAD", url)
-            also = (f"; its definition `{url}` compares from {m.group(1)}, a version that "
-                    f"was never tagged" if m else f"; its definition `{url}` names no tagged base")
+            also = (f"; its definition `{url}` compares from {m.group(1)}, a version "
+                    f"with no git tag" if m else f"; its definition `{url}` names no tagged base")
         findings.append(
             f"{path}:{e.line_no}: `## [Unreleased]` needs a tagged release to compare "
-            f"against, and no version in this file was tagged -- this line's first tag "
-            f"is {'.'.join(map(str, first))}; until it is cut, unreleased work goes in "
-            f"the dated entry it will ship in (CHANGELOG_POLICY.md rule 8){also}"
+            f"against, and no version in this file has a git tag (read from "
+            f"{tags.source}){pending} -- this line's first tag is "
+            f"{'.'.join(map(str, first))}; until it is cut, unreleased work goes in the "
+            f"dated entry it will ship in (CHANGELOG_POLICY.md rule 8){also}"
         )
     elif has_unreleased and "unreleased" not in defined:
         e = next(e for e in entries if e.kind == "unreleased")
@@ -2128,7 +2247,7 @@ def analyse(path: Path, lines: list[str], root: Path) -> list[str]:
     findings += check_changelog_notes_boundary(path, lines, skip)
     findings += check_changelog_headings(path, lines, skip)
     findings += check_changelog_categories(path, lines, skip)
-    findings += check_changelog_links(path, lines, skip)
+    findings += check_changelog_links(path, lines, skip, root)
     return findings
 
 
@@ -2292,9 +2411,14 @@ def self_test() -> int:
     # holds one has a tagged release below it: 0.9.7, these fixtures' first tag.
     UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.9.7...HEAD"
     # These fixtures' first tag is 0.9.7 (FIXTURE_FIRST_TAGGED_VERSION), bound for this
-    # loop only; the repository's own first tag is pinned by the cases after it.
-    global _first_tagged_override
+    # loop only; the repository's own first tag is pinned by the cases after it. The
+    # synthetic line tagged 0.9.7 and 0.9.8, and those are its git tags here: every
+    # changelog case in this self-test states its tags, so none depends on which
+    # tags this checkout happens to hold.
+    global _first_tagged_override, _tag_state_override
     _first_tagged_override = FIXTURE_FIRST_TAGGED_VERSION
+    _tag_state_override = TagState(frozenset({"0.9.7", "0.9.8"}), True,
+                                   "the self-test's tags")
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
         ("entry sub-sections at ### are fine", 0,
@@ -3485,37 +3609,65 @@ def self_test() -> int:
                   file=sys.stderr)
     _first_tagged_override = None
 
+    # Every case from here on states the git tags it runs against. `T(...)` is a
+    # checkout holding exactly those tags; `UNKNOWN` is one whose tags cannot be
+    # read. They reach the same `tag_state()` the tree run uses, so the decision
+    # logic under test is the production logic; the reader itself -- the one part
+    # these cases replace -- is driven against real git repositories further down.
+    def T(*names: str) -> TagState:
+        return TagState(frozenset(names), True, "the self-test's tags")
+    UNKNOWN = TagState(frozenset(), False, "the self-test's unreadable checkout")
+
+    def count_case(label: str, expected: int, lines: list[str], tags: TagState) -> bool:
+        global _tag_state_override
+        _tag_state_override = tags
+        got = len(analyse(root / "CHANGELOG.md", lines, root))
+        if got != expected:
+            print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
+                  file=sys.stderr)
+        return got == expected
+
+    def found_for(lines: list[str], tags: TagState) -> list[str]:
+        global _tag_state_override
+        _tag_state_override = tags
+        return analyse(root / "CHANGELOG.md", lines, root)
+
     # --- THE REPOSITORY'S OWN FIRST TAG (ADR-0058) -----------------------------
     # 0.9.9 is the first tag, so its definition is a tag page; 0.9.8 and 0.9.7 were
     # written up and closed without a tag, so a definition for either is refused and
     # 0.9.9 may not compare against them. Run with the real FIRST_TAGGED_VERSION.
+    # While 0.9.9 is the release in preparation its definition is right before AND
+    # after the tag is pushed: the release commit writes it, then the tag is cut.
     RV9, RV8 = "## [0.9.9] — 2026-09-29", "## [0.9.8] — 2026-09-18"
     RD9 = "[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9"
+    RD8 = "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/0.9.7...0.9.8"
     REAL = ["# Changelog", RV9, "### Changed", "- x", RV8, "### Fixed", "- y"]
-    for label, expected, lines in [
-        ("real first tag: 0.9.9 a tag page, the untagged 0.9.8 undefined", 0, REAL + [RD9]),
+    for label, expected, lines, tags in [
+        ("real first tag: 0.9.9 a tag page before its tag is pushed", 0, REAL + [RD9], T()),
+        ("real first tag: the same release commit once the `0.9.9` tag exists", 0,
+         REAL + [RD9], T("0.9.9")),
         ("real first tag: a definition for the untagged 0.9.8 is refused", 1,
-         REAL + [RD9, "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/0.9.7...0.9.8"]),
+         REAL + [RD9, RD8], T()),
+        ("real first tag: a retroactive `0.9.8` tag does not make 0.9.8 linkable", 1,
+         REAL + [RD9, RD8], T("0.9.8", "0.9.9")),
         ("real first tag: 0.9.9 comparing against the untagged 0.9.8 is refused", 1,
-         REAL + ["[0.9.9]: https://github.com/skyRolly/Anamorph/compare/0.9.8...0.9.9"]),
-        ("real first tag: 0.9.9 with no definition is refused", 1, REAL),
+         REAL + ["[0.9.9]: https://github.com/skyRolly/Anamorph/compare/0.9.8...0.9.9"], T()),
+        ("real first tag: 0.9.9 with no definition is refused", 1, REAL, T()),
         ("real first tag: a `v`-prefixed 0.9.9 tag page is refused (ADR-0059)", 1,
-         REAL + [f"[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/{PFX}0.9.9"]),
+         REAL + [f"[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/{PFX}0.9.9"], T()),
     ]:
-        got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1
-        if got != expected:
-            failures += 1
-            print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
-                  file=sys.stderr)
+        failures += 0 if count_case(label, expected, lines, tags) else 1
 
     # --- THE COMPARISON BASE IS THE MOST RECENT TAGGED VERSION -----------------
-    # A version after the first tag may close without one, and its entry then has
-    # no link definition. The next tagged version compares against the most recent
-    # earlier TAGGED version, never merely the entry below it: an untagged version
-    # has no tag to compare from, however high its number. Real first tag (0.9.9);
-    # the later versions are hypothetical. `CL` builds a newest-first file from
-    # (version, date) pairs plus definitions; `TP` is a tag page, `CP` a comparison.
+    # A version after the first tag may close without one: git has no tag for it,
+    # and its entry has no link definition. The next tagged version compares against
+    # the most recent earlier TAGGED version, never merely the entry below it: an
+    # untagged version has no tag to compare from, however high its number. Which
+    # versions are tagged is what git says -- the definitions must agree with it.
+    # Real first tag (0.9.9); the later versions are hypothetical. `CL` builds a
+    # newest-first file from (version, date) pairs plus definitions; `TP` is a tag
+    # page, `CP` a comparison, `U` an `[Unreleased]` section, `UR` its definition.
     def CL(entries: list[tuple[str, str]], defs: list[str]) -> list[str]:
         out = ["# Changelog"]
         for ver, date in entries:
@@ -3528,160 +3680,223 @@ def self_test() -> int:
     def CP(base: str, ver: str) -> str:
         return f"[{ver}]: {REPO_URL}/compare/{base}...{ver}"
 
-    E7, E8, E9 = ("0.9.7", "2026-09-05"), ("0.9.8", "2026-09-18"), ("0.9.9", "2026-09-29")
-    E10, E11, E12 = ("0.9.10", "2026-10-10"), ("0.9.11", "2026-10-20"), ("0.9.12", "2026-10-30")
-    for label, expected, lines in [
-        # Case A -- the first formal tag: 0.9.7 and 0.9.8 untagged, 0.9.9 tagged.
-        # 0.9.9 has no earlier tagged release, so a tag page and nothing else.
-        ("case A: the first tag 0.9.9 is a tag page", 0, CL([E9, E8, E7], [TP("0.9.9")])),
-        ("case A: 0.9.9 comparing against the untagged 0.9.8 is refused", 1,
-         CL([E9, E8, E7], [CP("0.9.8", "0.9.9")])),
-        ("case A: 0.9.9 comparing against the untagged 0.9.7 is refused", 1,
-         CL([E9, E8, E7], [CP("0.9.7", "0.9.9")])),
-        # Case B -- one skipped version: 0.9.9 tagged, 0.9.10 untagged, 0.9.11 tagged.
-        ("case B: 0.9.11 compares against 0.9.9 past the untagged 0.9.10", 0,
-         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")])),
-        ("case B: 0.9.11 comparing against the untagged 0.9.10 is refused", 1,
-         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")])),
-        # Case C -- several skipped: 0.9.10 and 0.9.11 untagged, 0.9.12 tagged.
-        ("case C: 0.9.12 compares against 0.9.9 past two untagged versions", 0,
-         CL([E12, E11, E10, E9], [CP("0.9.9", "0.9.12"), TP("0.9.9")])),
-        ("case C: 0.9.12 comparing against the untagged 0.9.11 is refused", 1,
-         CL([E12, E11, E10, E9], [CP("0.9.11", "0.9.12"), TP("0.9.9")])),
-        ("case C: 0.9.12 comparing against the untagged 0.9.10 is refused", 1,
-         CL([E12, E11, E10, E9], [CP("0.9.10", "0.9.12"), TP("0.9.9")])),
-        # Case D -- consecutive tags: each compares against the one directly below.
-        ("case D: consecutive tagged releases each compare against the one below", 0,
-         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")])),
-        ("case D: skipping over a TAGGED 0.9.10 is refused", 1,
-         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")])),
-        # Case E -- the same three entries, only 0.9.10's tagging changes, and the
-        # base follows it. Tagged (defined), 0.9.10 is the base; untagged, it is
-        # not, although its number is higher than the last tagged version's.
-        ("case E: 0.9.10 tagged -> comparing 0.9.11 against 0.9.9 is refused", 1,
-         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")])),
-        ("case E: 0.9.10 untagged -> comparing 0.9.11 against 0.9.10 is refused", 1,
-         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")])),
-        ("case E: 0.9.10 untagged -> 0.9.11 against 0.9.9 passes", 0,
-         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")])),
-        # The release in preparation (the newest entry) must carry its definition;
-        # only a version with a newer entry above it can have closed untagged.
-        ("the newest entry without a definition is refused after the first tag too", 1,
-         CL([E10, E9], [TP("0.9.9")])),
-        # The first tag must carry its definition even when it is NOT the newest
-        # entry, and it stays a comparison base by fact: 0.9.10 against 0.9.9 is
-        # accepted, and the one finding is the missing `[0.9.9]`.
-        ("the first tag without a definition is refused below a newer entry", 1,
-         CL([E10, E9], [CP("0.9.9", "0.9.10")])),
-        # `[Unreleased]` compares from the newest TAGGED version.
-        ("`[Unreleased]` compares from the newest tagged version", 0,
-         ["# Changelog", "## [Unreleased]", "### Added", "- u"]
-         + CL([E11, E10, E9], [f"[Unreleased]: {REPO_URL}/compare/0.9.11...HEAD",
-                               CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:]),
-        ("`[Unreleased]` comparing from a base other than the newest tagged version is refused", 1,
-         ["# Changelog", "## [Unreleased]", "### Added", "- u"]
-         + CL([E11, E10, E9], [f"[Unreleased]: {REPO_URL}/compare/0.9.10...HEAD",
-                               CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:]),
-        # Under `[Unreleased]` the newest version is a past one, so it may have closed
-        # untagged (no definition), and `[Unreleased]` then compares from the last
-        # version that WAS tagged, past it.
-        ("under `[Unreleased]`, an untagged newest version is skipped as the base", 0,
-         ["# Changelog", "## [Unreleased]", "### Added", "- u"]
-         + CL([E10, E9], [f"[Unreleased]: {REPO_URL}/compare/0.9.9...HEAD", TP("0.9.9")])[1:]),
-        ("under `[Unreleased]`, comparing from the untagged newest version is refused", 1,
-         ["# Changelog", "## [Unreleased]", "### Added", "- u"]
-         + CL([E10, E9], [f"[Unreleased]: {REPO_URL}/compare/0.9.10...HEAD", TP("0.9.9")])[1:]),
-    ]:
-        got = len(analyse(root / "CHANGELOG.md", lines, root))
-        checked += 1
-        if got != expected:
-            failures += 1
-            print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
-                  file=sys.stderr)
-
-    # --- `[Unreleased]` EXISTS ONLY AFTER THE FIRST TAG ------------------------
-    # `[Unreleased]` compares the newest TAGGED version with HEAD. Before the first
-    # tag there is no such version, so the section is refused outright -- with or
-    # without a definition, and whatever the definition compares from. Checking
-    # only the URL's shape once let `.../compare/0.9.8...HEAD` pass above versions
-    # that were never tagged. Real first tag (0.9.9); `U` is the section, `UR` its
-    # definition. The cases are the release line's three states, together with the
-    # skipped-tag rule, so neither can regress without the other noticing.
     U = ["# Changelog", "## [Unreleased]", "### Added", "- u"]
 
     def UR(base: str) -> str:
         return f"[Unreleased]: {REPO_URL}/compare/{base}...HEAD"
 
-    for label, expected, lines in [
+    E7, E8, E9 = ("0.9.7", "2026-09-05"), ("0.9.8", "2026-09-18"), ("0.9.9", "2026-09-29")
+    E10, E11, E12 = ("0.9.10", "2026-10-10"), ("0.9.11", "2026-10-20"), ("0.9.12", "2026-10-30")
+    for label, expected, lines, tags in [
+        # Case A -- the first formal tag: 0.9.7 and 0.9.8 untagged, 0.9.9 the release
+        # in preparation. It has no earlier tagged release, so a tag page and nothing else.
+        ("case A: the first tag 0.9.9 is a tag page", 0, CL([E9, E8, E7], [TP("0.9.9")]), T()),
+        ("case A: 0.9.9 comparing against the untagged 0.9.8 is refused", 1,
+         CL([E9, E8, E7], [CP("0.9.8", "0.9.9")]), T()),
+        ("case A: 0.9.9 comparing against the untagged 0.9.7 is refused", 1,
+         CL([E9, E8, E7], [CP("0.9.7", "0.9.9")]), T()),
+        # Case B -- one skipped version: 0.9.9 tagged, 0.9.10 untagged, 0.9.11 in preparation.
+        ("case B: 0.9.11 compares against 0.9.9 past the untagged 0.9.10", 0,
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")]), T("0.9.9")),
+        ("case B: 0.9.11 comparing against the untagged 0.9.10 is refused", 1,
+         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")]), T("0.9.9")),
+        # Case C -- several skipped: 0.9.10 and 0.9.11 untagged, 0.9.12 in preparation.
+        ("case C: 0.9.12 compares against 0.9.9 past two untagged versions", 0,
+         CL([E12, E11, E10, E9], [CP("0.9.9", "0.9.12"), TP("0.9.9")]), T("0.9.9")),
+        ("case C: 0.9.12 comparing against the untagged 0.9.11 is refused", 1,
+         CL([E12, E11, E10, E9], [CP("0.9.11", "0.9.12"), TP("0.9.9")]), T("0.9.9")),
+        ("case C: 0.9.12 comparing against the untagged 0.9.10 is refused", 1,
+         CL([E12, E11, E10, E9], [CP("0.9.10", "0.9.12"), TP("0.9.9")]), T("0.9.9")),
+        # Case D -- consecutive tags: each compares against the one directly below.
+        ("case D: consecutive tagged releases each compare against the one below", 0,
+         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")]),
+         T("0.9.9", "0.9.10")),
+        ("case D: skipping over a TAGGED 0.9.10 is refused", 1,
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")]),
+         T("0.9.9", "0.9.10")),
+        # Case E -- the same entries, only 0.9.10's tagging changes, and the base
+        # follows it. Tagged, 0.9.10 is the base; untagged, it is not, although its
+        # number is higher than the last tagged version's.
+        ("case E: 0.9.10 tagged -> comparing 0.9.11 against 0.9.9 is refused", 1,
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")]),
+         T("0.9.9", "0.9.10")),
+        ("case E: 0.9.10 untagged -> comparing 0.9.11 against 0.9.10 is refused", 1,
+         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")]), T("0.9.9")),
+        ("case E: 0.9.10 untagged -> 0.9.11 against 0.9.9 passes", 0,
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")]), T("0.9.9")),
+        # ...and the SAME file under the other tag state: git, not the file, decides.
+        ("case E: the file that is right with 0.9.10 tagged is refused without its tag", 2,
+         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")]),
+         T("0.9.9")),
+        # A definition LEFT on a version that closed untagged names a tag that does
+        # not exist -- and the comparison from it too. The changelog alone read it
+        # as a tag.
+        ("a definition left on the untagged 0.9.10 is refused, and so is the base", 2,
+         CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")]),
+         T("0.9.9", "0.9.11")),
+        # A definition DELETED from a version that was tagged: the tag is still there.
+        # The changelog alone read that as "closed untagged".
+        ("a definition deleted from the tagged 0.9.10 is refused, and so is the base", 2,
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")]),
+         T("0.9.9", "0.9.10", "0.9.11")),
+        # Only the bare tag names the version (ADR-0059): a prefixed tag is not it.
+        ("a `v`-prefixed 0.9.10 tag does not make 0.9.10 a base", 0,
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")]), T("0.9.9", f"{PFX}0.9.10")),
+        # The release in preparation (the newest entry) must carry its definition;
+        # only a version with a newer entry above it can have closed untagged.
+        ("the newest entry without a definition is refused after the first tag too", 1,
+         CL([E10, E9], [TP("0.9.9")]), T("0.9.9")),
+        # A tagged version carries its definition even when it is NOT the newest
+        # entry, and it stays a comparison base: 0.9.10 against 0.9.9 is accepted,
+        # and the one finding is the missing `[0.9.9]`.
+        ("the tagged 0.9.9 without a definition is refused below a newer entry", 1,
+         CL([E10, E9], [CP("0.9.9", "0.9.10")]), T("0.9.9")),
+        # `[Unreleased]` compares from the newest TAGGED version.
+        ("`[Unreleased]` compares from the newest tagged version", 0,
+         U + CL([E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.11")),
+        ("`[Unreleased]` comparing from a base other than the newest tagged version is refused", 1,
+         U + CL([E11, E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.11")),
+        # Under `[Unreleased]` the newest version is a past one, so it may have closed
+        # untagged (no definition), and `[Unreleased]` then compares from the last
+        # version that WAS tagged, past it.
+        ("under `[Unreleased]`, an untagged newest version is skipped as the base", 0,
+         U + CL([E10, E9], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9")),
+        ("under `[Unreleased]`, comparing from the untagged newest version is refused", 1,
+         U + CL([E10, E9], [UR("0.9.10"), TP("0.9.9")])[1:], T("0.9.9")),
+    ]:
+        checked += 1
+        failures += 0 if count_case(label, expected, lines, tags) else 1
+    # The count cases cannot see WHY a comparison was refused. When the refused base
+    # is an untagged entry directly below, the finding must say so, and name the
+    # tagged base to use instead -- that is the reconciliation the author has to do.
+    found = found_for(CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")]), T("0.9.9"))
+    checked += 1
+    if not (len(found) == 1 and "compare/0.9.9...0.9.11" in found[0]
+            and "has no git tag, so it closed without one" in found[0]):
+        failures += 1
+        print(f"self-test FAIL: changelog the skipped-base finding names the tagged base "
+              f"and why: got {found}", file=sys.stderr)
+
+    # --- `[Unreleased]` EXISTS ONLY ONCE A TAG DOES ----------------------------
+    # `[Unreleased]` compares the newest TAGGED version with HEAD. Before the first
+    # tag is pushed there is no such version, so the section is refused outright --
+    # with or without a definition, whatever the definition compares from, and even
+    # though the first tag's entry is already in the file. Two earlier spellings let
+    # it through: checking only the URL's shape passed `.../compare/0.9.8...HEAD`,
+    # and counting the first tag's entry as tagged "by fact" passed
+    # `.../compare/0.9.9...HEAD` before `0.9.9` existed. The cases walk the line's
+    # states together with the skipped-tag rule, so neither can regress without the
+    # other noticing.
+    real_lines = (root / "CHANGELOG.md").read_text(encoding="utf-8").split("\n")
+    at9 = next(i for i, l in enumerate(real_lines) if l.startswith("## [0.9.9]"))
+    # The repository's own CHANGELOG.md with the section added above 0.9.9: exactly
+    # the edit that would be wrong before the tag and right after it.
+    REAL_U = (real_lines[:at9] + ["## [Unreleased]", "### Added", "- u", ""]
+              + real_lines[at9:] + [UR("0.9.9")])
+    for label, expected, lines, tags in [
         # No tag yet: 0.9.7 and 0.9.8 closed untagged, nothing is a base.
-        ("unreleased case A: nothing tagged and no `[Unreleased]` passes", 0,
-         CL([E8, E7], [])),
-        ("unreleased case B: nothing tagged, `## [Unreleased]` is refused", 1,
-         U + CL([E8, E7], [])[1:]),
-        ("unreleased case C: nothing tagged, `[Unreleased]` from 0.9.7 is refused", 1,
-         U + CL([E8, E7], [UR("0.9.7")])[1:]),
-        ("unreleased case D: nothing tagged, `[Unreleased]` from 0.9.8 is refused", 1,
-         U + CL([E8, E7], [UR("0.9.8")])[1:]),
-        # Naming the first tag's version before its entry exists does not make it one.
-        ("nothing tagged, `[Unreleased]` from the first tag's number is still refused", 1,
-         U + CL([E8, E7], [UR("0.9.9")])[1:]),
+        ("unreleased 1: no tags and no `[Unreleased]` passes", 0, CL([E8, E7], []), T()),
+        ("unreleased 2: no tags, `## [Unreleased]` is refused", 1, U + CL([E8, E7], [])[1:], T()),
+        ("unreleased 3: no tags, `[Unreleased]` from 0.9.7 is refused", 1,
+         U + CL([E8, E7], [UR("0.9.7")])[1:], T()),
+        ("unreleased 4: no tags, `[Unreleased]` from 0.9.8 is refused", 1,
+         U + CL([E8, E7], [UR("0.9.8")])[1:], T()),
+        ("no tags, `[Unreleased]` from the first tag's number before its entry exists", 1,
+         U + CL([E8, E7], [UR("0.9.9")])[1:], T()),
         ("nothing in the file at all, `## [Unreleased]` is refused", 1,
-         ["# Changelog", "## [Unreleased]", "### Added", "- u", UR("0.9.8")]),
-        # "Tagged", not "defined": a definition below the first tag is refused as
-        # such and does not make 0.9.8 a base, so the section is refused as well...
-        ("nothing tagged, a stray pre-first-tag `[0.9.8]` definition is no base", 2,
-         U + CL([E8, E7], [UR("0.9.8"), CP("0.9.7", "0.9.8")])[1:]),
-        # ...and the first tag is a base by fact: its missing definition is the one
-        # finding, never "nothing is tagged" on top of it.
-        ("0.9.9 undefined, `[Unreleased]` from 0.9.9: only the missing `[0.9.9]`", 1,
-         U + CL([E9, E8, E7], [UR("0.9.9")])[1:]),
-        # Only a well-formed entry counts as tagged. A misspelled first-tag heading is
-        # its own finding, and until it is fixed nothing in the file is tagged, so the
-        # section is refused as well: the check fails closed rather than guessing.
+         ["# Changelog", "## [Unreleased]", "### Added", "- u", UR("0.9.8")], T()),
+        # THE FIRST-TAG EDGE: the changelog declares 0.9.9 -- its entry, its tag page --
+        # but the tag has not been pushed. The section is refused, and 0.9.9, now a
+        # past release under it, may not carry a link to a tag that does not exist.
+        ("unreleased 5: 0.9.9 declared but its tag absent, `[Unreleased]` from 0.9.9", 2,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T()),
+        ("...the same without the `[0.9.9]` definition", 1,
+         U + CL([E9, E8, E7], [UR("0.9.9")])[1:], T()),
+        ("...the repository's own CHANGELOG.md with the section, before the tag", 2,
+         REAL_U, T()),
+        # The tag exists: 0.9.9 is the base.
+        ("unreleased 6: the `0.9.9` tag exists, `[Unreleased]` from 0.9.9 passes", 0,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9")),
+        ("...the repository's own CHANGELOG.md with the section, after the tag", 0,
+         REAL_U, T("0.9.9")),
+        ("the `0.9.9` tag exists, `[Unreleased]` from the untagged 0.9.8 is refused", 1,
+         U + CL([E9, E8, E7], [UR("0.9.8"), TP("0.9.9")])[1:], T("0.9.9")),
+        # A later tag: `[Unreleased]` moves up to it.
+        ("0.9.9 and 0.9.10 tagged, `[Unreleased]` from 0.9.10 passes", 0,
+         U + CL([E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.10")),
+        ("0.9.9 and 0.9.10 tagged, `[Unreleased]` from 0.9.9 is refused", 1,
+         U + CL([E10, E9], [UR("0.9.9"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.10")),
+        # One skipped tag: 0.9.11 compares against 0.9.9, `[Unreleased]` from 0.9.11.
+        ("unreleased 7: 0.9.10 untagged, `[Unreleased]` from 0.9.11 passes", 0,
+         U + CL([E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.11")),
+        ("unreleased 7: `[Unreleased]` from the untagged 0.9.10 is refused", 1,
+         U + CL([E11, E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.11")),
+        # Two skipped: 0.9.12 compares against 0.9.9, `[Unreleased]` from 0.9.12.
+        ("unreleased 8: 0.9.10 and 0.9.11 untagged, `[Unreleased]` from 0.9.12 passes", 0,
+         U + CL([E12, E11, E10, E9], [UR("0.9.12"), CP("0.9.9", "0.9.12"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.12")),
+        ("unreleased 8: `[Unreleased]` from the untagged 0.9.11 is refused", 1,
+         U + CL([E12, E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.12"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.12")),
+        ("unreleased 8: 0.9.12 comparing against the untagged 0.9.11 is refused", 1,
+         U + CL([E12, E11, E10, E9], [UR("0.9.12"), CP("0.9.11", "0.9.12"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.12")),
+        # The tag exists, the definition does not: the tagged release is linked.
+        ("unreleased 9: the `0.9.9` tag exists but `[0.9.9]` is missing", 1,
+         U + CL([E9, E8, E7], [UR("0.9.9")])[1:], T("0.9.9")),
+        # Only the bare tag names the version (ADR-0059).
+        ("unreleased 10: a `v`-prefixed 0.9.9 tag is not the `0.9.9` tag", 2,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T(f"{PFX}0.9.9")),
+        # A definition below the first tag is refused as such and makes no base.
+        ("no tags, a stray pre-first-tag `[0.9.8]` definition is no base", 2,
+         U + CL([E8, E7], [UR("0.9.8"), CP("0.9.7", "0.9.8")])[1:], T()),
+        # Only a well-formed entry counts: a misspelled first-tag heading is its own
+        # finding, and until it is fixed the section is refused as well (fails closed).
         ("a misspelled first-tag heading: that finding, and the refusal", 2,
          U + ["## [0.9.9] — <YYYY-MM-DD>", "### Fixed", "- 9"]
-         + CL([E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]),
-        # The first tag: 0.9.9 has no predecessor, and `[Unreleased]` compares from it.
-        ("unreleased case E: 0.9.9 tagged, `[Unreleased]` from 0.9.9 passes", 0,
-         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]),
-        ("0.9.9 tagged, `[Unreleased]` from the untagged 0.9.8 is refused", 1,
-         U + CL([E9, E8, E7], [UR("0.9.8"), TP("0.9.9")])[1:]),
-        # A later tag: `[Unreleased]` moves up to it.
-        ("unreleased case F: 0.9.9 and 0.9.10 tagged, `[Unreleased]` from 0.9.10 passes", 0,
-         U + CL([E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:]),
-        ("0.9.9 and 0.9.10 tagged, `[Unreleased]` from 0.9.9 is refused", 1,
-         U + CL([E10, E9], [UR("0.9.9"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:]),
-        # A skipped tag between two tagged versions: 0.9.11 compares against 0.9.9,
-        # and `[Unreleased]` compares from 0.9.11 -- never from the untagged 0.9.10.
-        ("unreleased case G: `[Unreleased]` from the untagged 0.9.10 is refused", 1,
-         U + CL([E11, E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:]),
-        ("unreleased case G: `[Unreleased]` from 0.9.11 past the skipped 0.9.10 passes", 0,
-         U + CL([E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:]),
+         + CL([E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9")),
+        # THE TAGS CANNOT BE READ. Nothing is guessed: what needs them is refused
+        # once, with the reason; what does not is checked in full.
+        ("unreadable tags: the release in preparation alone needs none", 0,
+         REAL + [RD9], UNKNOWN),
+        ("unreadable tags: a definition below the first tag is still refused", 1,
+         REAL + [RD9, RD8], UNKNOWN),
+        ("unreadable tags: `[Unreleased]` is refused once, not guessed", 1,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], UNKNOWN),
+        ("unreadable tags: a past release's link is refused once, not guessed", 1,
+         CL([E10, E9], [CP("0.9.9", "0.9.10"), TP("0.9.9")]), UNKNOWN),
     ]:
-        got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1
-        if got != expected:
-            failures += 1
-            print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
-                  file=sys.stderr)
+        failures += 0 if count_case(label, expected, lines, tags) else 1
     # The count cannot tell the refusal from the ordinary missing-definition finding
-    # (case B yielded one finding before this rule too, telling the author to add a
+    # (case 2 yielded one finding before this rule too, telling the author to add a
     # definition no base could satisfy). The finding must name the missing tag,
     # once, at the section's heading (line 2), and describe the definition truly:
-    # absent for B, the untagged version it names for C and D, and no version at all
-    # for one that names none.
-    for label, lines, says, never in [
-        ("case B", U + CL([E8, E7], [])[1:], [], "its definition"),
-        ("case C", U + CL([E8, E7], [UR("0.9.7")])[1:],
-         [UR("0.9.7").split(": ", 1)[1], "compares from 0.9.7, a version that was never tagged"],
+    # absent for case 2, the untagged version it names for 3, 4 and the first-tag
+    # edge, and no version at all for one that names none; for the unreadable
+    # tags, the reason and nothing else.
+    for label, lines, tags, says, never in [
+        ("case 2", U + CL([E8, E7], [])[1:], T(), [], "its definition"),
+        ("case 3", U + CL([E8, E7], [UR("0.9.7")])[1:], T(),
+         [UR("0.9.7").split(": ", 1)[1], "compares from 0.9.7, a version with no git tag"],
          "names no tagged base"),
-        ("case D", U + CL([E8, E7], [UR("0.9.8")])[1:],
-         [UR("0.9.8").split(": ", 1)[1], "compares from 0.9.8, a version that was never tagged"],
+        ("case 4", U + CL([E8, E7], [UR("0.9.8")])[1:], T(),
+         [UR("0.9.8").split(": ", 1)[1], "compares from 0.9.8, a version with no git tag"],
          "names no tagged base"),
-        ("a definition naming no version", U + CL([E8, E7], [UR("main")])[1:],
-         [UR("main").split(": ", 1)[1] + "` names no tagged base"], "a version that was never tagged"),
+        ("a definition naming no version", U + CL([E8, E7], [UR("main")])[1:], T(),
+         [UR("main").split(": ", 1)[1] + "` names no tagged base"],
+         "a version with no git tag"),
+        ("first-tag edge", U + CL([E9, E8, E7], [UR("0.9.9")])[1:], T(),
+         ["`## [0.9.9]` is in the file, but git has no tag `0.9.9`",
+          "compares from 0.9.9, a version with no git tag"], "names no tagged base"),
     ]:
-        found = analyse(root / "CHANGELOG.md", lines, root)
+        found = found_for(lines, tags)
         checked += 1
         wanted = [f"{root / 'CHANGELOG.md'}:2: ", "needs a tagged release to compare against",
                   "first tag is 0.9.9"] + says
@@ -3689,17 +3904,77 @@ def self_test() -> int:
             failures += 1
             print(f"self-test FAIL: changelog the {label} refusal names the missing tag: "
                   f"got {found}", file=sys.stderr)
-    # The count cases cannot see WHY a comparison was refused. When the refused base
-    # is an untagged entry directly below, the finding must say so, and name the
-    # tagged base to use instead -- that is the reconciliation the author has to do.
-    found = analyse(root / "CHANGELOG.md",
-                    CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")]), root)
+    found = found_for(U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], UNKNOWN)
     checked += 1
-    if not (len(found) == 1 and "compare/0.9.9...0.9.11" in found[0]
-            and "carries no link definition, so it closed without a tag" in found[0]):
+    if not (len(found) == 1 and f"{root / 'CHANGELOG.md'}:2: " in found[0]
+            and "cannot read them (the self-test's unreadable checkout)" in found[0]):
         failures += 1
-        print(f"self-test FAIL: changelog the skipped-base finding names the tagged base "
-              f"and why: got {found}", file=sys.stderr)
+        print(f"self-test FAIL: changelog unreadable tags are reported once, with the reason: "
+              f"got {found}", file=sys.stderr)
+
+    # --- THE TAG READER ITSELF ---------------------------------------------------
+    # The cases above hand `tag_state()` their tags. This drives `read_git_tags()`
+    # and the unmodified production path against real repositories: an empty one,
+    # one holding an annotated `0.9.9` (what `release.yml` requires), a lightweight
+    # and a prefixed tag listed as they are, a subdirectory (not the checkout's
+    # root -- git would answer with the enclosing repository's tags) and a plain
+    # directory (no checkout at all), both of which must read as UNKNOWN, never as
+    # "no tags". (`_tag_state_override` is this function's global: see the fixtures.)
+    _tag_state_override = None
+    git = shutil.which("git")
+    checked += 1
+    if git is None:
+        failures += 1
+        print("self-test FAIL: changelog tag reader: git is not installed, so the "
+              "check that reads the release tags cannot be proved", file=sys.stderr)
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            repo_dir.mkdir()
+
+            def G(*args: str) -> None:
+                subprocess.run([git, "-C", str(repo_dir), "-c", "user.name=self-test",
+                                "-c", "user.email=self-test@invalid", "-c", "commit.gpgsign=false",
+                                "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                                *args], capture_output=True, text=True, check=True)
+            post = U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]
+            (repo_dir / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
+            G("init", "-q")
+            G("add", "-A")
+            G("commit", "-q", "-m", "self-test")
+            steps: list[tuple[str, bool]] = []
+            _tag_state_cache.clear()
+            st = read_git_tags(repo_dir)
+            steps.append(("an untagged checkout reads as known and empty",
+                          st.known and not st.tags))
+            steps.append(("...and the production path refuses `[Unreleased]` from 0.9.9",
+                          len(analyse(repo_dir / "CHANGELOG.md", post, repo_dir)) == 2))
+            G("tag", "-a", "0.9.9", "-m", "Anamorph 0.9.9")
+            _tag_state_cache.clear()
+            steps.append(("with the annotated `0.9.9` tag the production path accepts it",
+                          analyse(repo_dir / "CHANGELOG.md", post, repo_dir) == []))
+            G("tag", "0.9.10")
+            G("tag", "-a", f"{PFX}0.9.11", "-m", "prefixed")
+            _tag_state_cache.clear()
+            steps.append(("lightweight and prefixed tags are listed as they are",
+                          read_git_tags(repo_dir).tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}))
+            (repo_dir / "docs").mkdir()
+            steps.append(("a subdirectory of a checkout is not its root: unknown",
+                          not read_git_tags(repo_dir / "docs").known))
+            plain = Path(tmp) / "plain"
+            plain.mkdir()
+            steps.append(("a directory that is no checkout: unknown",
+                          not read_git_tags(plain).known))
+            _tag_state_cache.clear()
+            found = analyse(plain / "CHANGELOG.md", post, plain)
+            steps.append(("...and the production path there refuses once, with the reason",
+                          len(found) == 1 and "is not a git checkout" in found[0]))
+            _tag_state_cache.clear()
+        for step, ok in steps:
+            if not ok:
+                failures += 1
+                print(f"self-test FAIL: changelog tag reader: {step}", file=sys.stderr)
+    _tag_state_override = None
 
     # --- THE CONTAINER CHAIN ITSELF ------------------------------------------
     # The invariant `container_chains` exists to keep, asserted directly rather
