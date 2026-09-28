@@ -4021,6 +4021,12 @@ def self_test() -> int:
             try:
                 os.environ.update(GIT_DIR=str(decoy / ".git"), GIT_WORK_TREE=str(decoy),
                                   GIT_INDEX_FILE=str(decoy / ".git" / "index"))
+                # ...and no system or user git configuration: a runner's or a
+                # developer's `safe.directory = *` (GitHub's runners carry one) would
+                # otherwise waive the ownership check this block drives below.
+                no_config = Path(tmp) / "empty.gitconfig"
+                no_config.write_text("", encoding="utf-8")
+                os.environ.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=str(no_config))
                 repo_dir = Path(tmp) / "repo"
                 repo_dir.mkdir()
                 post = U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]

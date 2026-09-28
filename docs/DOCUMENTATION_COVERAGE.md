@@ -13146,6 +13146,15 @@ Three refuted findings were diagnostics, and they were improved anyway:
 - the untagged-definition finding says "a tag this checkout does not have" instead of "a tag that was never
   cut".
 
+**CI caught one more.** On `e1b4a98` the `docs` job failed 1 of 537 cases: "a checkout git will not open". GitHub's
+runner (git 2.55.0) carries `safe.directory = *`, which waives the ownership check that
+`GIT_TEST_ASSUME_DIFFERENT_OWNER` drives.
+- Reproduced locally with that setting in a global config: 1 of 537 failed.
+- Fix: the reader tests now run with no system or user git configuration (`GIT_CONFIG_NOSYSTEM`, an empty
+  `GIT_CONFIG_GLOBAL`).
+- The self-test now passes with `safe.directory = *` in either config, and without it. The 28 mutants fail as
+  before.
+
 The other three were refuted as documented behaviour:
 - a local unpushed tag counts locally, and CI sees only pushed tags;
 - the unknown state skips the release in preparation's form, which depends on the tags; the policy wording now
