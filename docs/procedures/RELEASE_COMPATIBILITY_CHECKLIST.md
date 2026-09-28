@@ -125,8 +125,8 @@ v0.9.6.
 
 1. **Parameter IDs unchanged — PASS.** State test 2 (the registry snapshot) passes. Against `661a90b`, the
    snapshot differs in three places:
-   - `stepText3` (`Dim-D` → `Dimensional`);
-   - `dimMode`'s `name` (`Dim-D Style` → `Dimensional Style`);
+   - `stepText3` (the pre-0.9.9 label → `Dimensional`);
+   - `dimMode`'s `name` (the pre-0.9.9 label → `Dimensional Style`);
    - the two header comment lines.
 
    `paramCount=36`. Every ID, the choice order, the ranges and the automation flags are unchanged. A display-name
@@ -172,15 +172,15 @@ v0.9.6.
      pin. That binary wrote a session and a manifest of what it believed the state was. A reader harness linked
      against this tree loaded the capture. Both harnesses are scratch; neither is committed.
    - **The session.** Slot A is active and holds factory preset *Synth Dimension* (`algorithm` 3), then
-     `Dim-D Style` → *Lush* (`dimMode` 3) and Amount 0.72, so it is dirty. Slot B holds *Tape Chorus* with
+     the voicing → *Lush* (`dimMode` 3) and Amount 0.72, so it is dirty. Slot B holds *Tape Chorus* with
      Width and Chorus Depth edited, so the two slots differ.
    - **Result: 28 checks, 0 failures.**
      - Every parameter of both slots reproduces to nine digits (36 of 36 each).
      - The preset name *Synth Dimension*, the modified-star and the active slot reproduce.
      - `algorithm` is still raw 3 and reaches the engine as `Algorithm::Dimensional`. `dimMode` is still raw 3 and
        reaches it as mode 4.
-     - The names v0.9.8 showed were `Dim-D` and `Dim-D Style`. v0.9.9 shows `Dimensional` and `Dimensional
-       Style` for the same values, with the voicing still *Lush*.
+     - v0.9.8 showed the pre-0.9.9 labels for the algorithm and its voicing control. v0.9.9 shows `Dimensional`
+       and `Dimensional Style` for the same values, with the voicing still *Lush*.
      - 400 blocks of the same input through the restored session render **bit-identically** in the two builds.
    - **Controls.** A manifest with one slot-B value moved by 1e-4 fails the slot-B check. A reference render
      with one sample moved by 1e-7 fails the render check.
