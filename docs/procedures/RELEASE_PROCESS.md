@@ -32,8 +32,9 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    audition," not final. **Scope, per-item checks and the record format are in
    `LEVEL5_AUDITION.md`**, which also states when a previous audition stops counting (a machine-code
    or audible-behaviour change invalidates it — the **v0.9.6 audition of 2026-09-01**, the most
-   recent PASS on record, does not carry over to v0.9.7, because ADR-0034 changed the reported
-   latency and the Drive-crossing swap behaviour). It requires a human; no CI job and no automated
+   recent PASS on record, did not carry over to v0.9.7, because ADR-0034 changed the reported
+   latency and the Drive-crossing swap behaviour, and none has been recorded since, so v0.9.9 needs
+   its own: `LEVEL5_AUDITION.md` §Scope for v0.9.9). It requires a human; no CI job and no automated
    agent can supply it.
 
 ## Build the release artifacts
@@ -69,12 +70,12 @@ compile definitions).
 **Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` on the release commit on `main`,
 created AFTER pre-release steps 1–7 above are complete. The tag must equal the `CMakeLists.txt`
 `project VERSION` exactly — `release.yml` fails closed on any mismatch. **The next tag is
-`v0.9.7`** (none of 0.9.0 through 0.9.6 was tagged; each was written up and superseded
-before a tag was cut):
+`v0.9.9`, and it is the line's FIRST** (ADR-0058: none of 0.9.0 through 0.9.8 was tagged; each
+was written up and closed before a tag was cut, and none is tagged retroactively):
 
 ```bash
-git tag -a v0.9.7 -m "Anamorph 0.9.7"
-git push origin v0.9.7
+git tag -a v0.9.9 -m "Anamorph 0.9.9"
+git push origin v0.9.9
 ```
 
 **The release commit carries the version's link definition; the tag follows it.** Keep a
@@ -89,15 +90,16 @@ sequence, literally:
    CMake version bump, and one line among the definitions at the foot of `CHANGELOG.md` —
 
    ```markdown
-   [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
+   [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9
    ```
 
-   for the line's first tag; from the second tag onward a comparison against the previous one,
-   `[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8` — the form the
+   for the line's first tag (already in `CHANGELOG.md`); from the second tag onward a comparison
+   against the previous one, `[0.9.10]: https://github.com/skyRolly/Anamorph/compare/v0.9.9...v0.9.10`
+   for a hypothetical next version — the form the
    specification's own example uses. "The release commit" means the commit the tag will point at:
    what is binding is that the tagged tree carries the dated heading and the definition, so work
    that landed earlier on the branch already satisfies this and needs no re-commit.
-2. `check-docs.py` (every push) verifies that every `## [x.y.z]` from `0.9.7` onward has a
+2. `check-docs.py` (every push) verifies that every `## [x.y.z]` from `0.9.9` onward has a
    definition naming its own tag, and that no older, never-tagged version has one. The link is
    unresolvable only between this commit and the tag push in step 3, which is the same interval in
    which the dated heading names a release that does not exist yet.
@@ -164,7 +166,7 @@ ship unsigned, with the user-facing consequences documented in `docs/user/INSTAL
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the **v0.9.7** release (none of 0.9.0 through 0.9.6 was tagged). Historical
+No release tag exists yet — the first will be cut at the **v0.9.9** release (ADR-0058; none of 0.9.0 through 0.9.8 was tagged). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).

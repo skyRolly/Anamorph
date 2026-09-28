@@ -3,7 +3,7 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-**Version-synced to v0.9.7 (2026-09-06): the pluginval crash-classification fix.** No new entry and
+**Version-synced to v0.9.9 (2026-09-28).** Since the v0.9.7 sync below, 0.9.8 and 0.9.9 recorded RISK-011 (resolved 2026-09-15), RISK-012 and RISK-013 (2026-09-13; their entries carry their own status), and RISK-014 to RISK-016 (RISK-014 resolved 2026-09-19, RISK-016 resolved 2026-09-21, RISK-015 open). RISK-003 is now planned to close with the first tag, `v0.9.9` (ADR-0058). Prior: **Version-synced to v0.9.7 (2026-09-06): the pluginval crash-classification fix.** No new entry and
 none closed. RISK-004 is **re-scoped in kind rather than in likelihood**: its title term
 "signal-only" is retired, because a crash does not always arrive as a signal exit. On macOS
 pluginval traps SIGABRT and friends itself and exits **9**, which `run-pluginval.sh` read as a real
@@ -107,7 +107,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closed the two doors whose dispatch the PLUG-IN starts, and round 28's admission (§31) closes every remaining door by construction — no state-replacing command WAITS for `soundReplacement`, whoever started the dispatch. The risk stays OPEN on what is left, which contains no Anamorph lock: JUCE's own APVTS 10 Hz timer blocking on `valueTreeChanging`, and the two-parameter nesting above |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
-| RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
+| RISK-011 | **RESOLVED 2026-09-15 (rounds 24 and 25, ADR-0008)** — a gesture count that returned to zero mid-transaction let a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | — | — |
 | RISK-014 | **RESOLVED 2026-09-19 (round 51, ADR-0056), COMPLETED 2026-09-21 (round 53)** — both host-state XML parser surfaces (the session chunk and each A/B slot payload) are bounded at 256 KB / depth 8 / no `DOCTYPE` before `juce::parseXML`, each on its own. Round 51's closure claim was overstated: the boundary admitted an opening tag whose quote never closes, and a 12 KB chunk still SIGSEGV'd until round 53 refused it. Valid and legacy sessions are unchanged in both rounds | — | — |
 | RISK-015 | Host state still accepts five shapes a `.anamorph` file now refuses — two documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its length | Low — a corrupt session is half-applied or silently truncated rather than refused; no crash, hang or unbounded read | **Certain** as a mechanism: it is the acceptance ADR-0056 deliberately left alone, measured and pinned by State test 116 leg E |
 | RISK-016 | **RESOLVED 2026-09-21 (round 53)** — the three `fuzz` corpus seeds were stored in a container no pinned JUCE writes, so they decoded to nothing and the release-blocking fuzz budget started from inputs that reached no parser | Medium (were it reached) | — |
@@ -337,7 +337,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.7** — 0.9.0 through 0.9.6 were each written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.9**, ADR-0058 — 0.9.0 through 0.9.8 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval crash-only retry masking a real crash

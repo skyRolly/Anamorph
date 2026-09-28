@@ -7,10 +7,10 @@ including `[0.8.12]` predate git tags, so a release tag was never available as e
 (`docs/policies/CHANGELOG_POLICY.md` rule 2).
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
-written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.7** (0.9.0 through 0.9.6 were each written up and superseded
-before tagging),
-and from that tag onward the tag is also a citable Evidence
+written as a release entry and then superseded before it was tagged, and so in turn was every
+version through `[0.9.8]`, so the first annotated `vX.Y.Z` tag will be **v0.9.9** (ADR-0058:
+0.9.0 through 0.9.8 were each written up and closed before tagging, and their headings carry no
+link), and from that tag onward the tag is also a citable Evidence
 Source. Until then an entry cites a PR or a commit SHA — with one historical
 exception, recorded rather than rewritten: eighteen citations — sixteen in `[0.8.8]`
 and two in `[0.9.0]` — name the source file they changed instead, which rule 2 does
@@ -2915,8 +2915,6 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
-[0.9.9]: https://github.com/skyRolly/Anamorph/compare/v0.9.8...v0.9.9
-[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8
-[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
+[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/

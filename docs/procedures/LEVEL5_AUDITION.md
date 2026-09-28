@@ -16,7 +16,7 @@ machine code or the audible behaviour of the thing being shipped. The rule was a
 before 0.9.9, and it now governs **v0.9.9**, the release in preparation: no audition is recorded
 here since the v0.9.6 PASS (ADR-0054's 2026-09-17 dependency audition predates 0.9.9's changes),
 and 0.9.7, 0.9.8 and 0.9.9 each change audible behaviour, so a v0.9.9 audition needs its own scope,
-derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries.
+derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries (§Scope for v0.9.9).
 
 **The v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7** — the release this rule
 blocked when it was applied the second time (2026-09-03). **ADR-0034** changed what the plug-in reports to the host and added a delay
@@ -33,6 +33,63 @@ example the rule was first written from:
   bit-identical to each other; it cannot tell you the result sounds right on real hardware.
 - **v0.9.6 changed audible behaviour in exactly the windows that were previously defective** — the
   activation duck, the first-block level of a restored session, and the A/B / preset switch.
+
+## Scope for v0.9.9
+
+**OPEN (2026-09-28): not performed.** The environment that prepared this release has no DAW, no audio
+device and no listener, and nothing but a human's account may create a record here. The scope below
+is derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries, because the last recorded
+audition is v0.9.6's.
+
+Audition the final v0.9.9 build in at least one DAW. That build is the CI artifact of the commit to
+be tagged `v0.9.9`. Record the result per §Recording the result, naming which of A–F were exercised.
+
+### A. Oversampling, Drive and latency (0.9.7, ADR-0034/0035)
+- With Oversampling at 2×, 4× or 8×, sweep Drive through zero and change algorithm while playing.
+  Expect no interruption, no click and no dip. Repeat the Drive sweep once with the plug-in bypassed.
+- Switch Oversampling from a factor to Off while playing. Drive and the modulation algorithms stay in the sound.
+- The host's delay compensation stays aligned while Drive moves. The reported latency now depends on the
+  Oversampling setting alone.
+
+### B. Scrolling, dragging and Undo (0.9.8)
+- Scroll while dragging a knob, a value box, and a Multiband band or split. Each notch adds to the drag,
+  the drag carries on, and the whole gesture is one Undo step.
+- With a button held, a notch moves only the held control. With an Alt-reset or a readout
+  double-click held, it moves nothing.
+- Add a band, remove a band, and reset the splits; undo each. Each is one step, and the splits come back.
+
+### C. Host automation and Undo (0.9.8, 0.9.9)
+- Edit a control while the DAW writes automation to it. Your edit undoes, and Undo/Redo never restores
+  a value the automation wrote.
+- Press a control without moving it while its lane plays back. The lane is not handed to Undo.
+- Automate Dimensional Style while another algorithm is selected. The sound does not duck.
+
+### D. A/B, presets and Level Match (0.9.7–0.9.9)
+- With Level Match on, A/B between slots that differ in Drive, Mix or Width.
+  - Each slot keeps its own match level.
+  - Turning Level Match on does not jump louder.
+  - Apply Gain never silences the plug-in.
+- Load factory and user presets and step with ‹ ›. The name and the modified-star follow. A damaged
+  preset file is refused with a message, and ‹ › still work.
+- Reopen a project saved in 0.9.8 that uses the fourth algorithm. It shows **Dimensional** and
+  **Dimensional Style** with the same voicing.
+  - Headless evidence already establishes that the plug-in renders that session bit-identically
+    (`RELEASE_COMPATIBILITY_CHECKLIST.md` §v0.9.9, item 8).
+  - The audition's part is hearing it in a host.
+
+### E. Transport, metering and tail (0.9.9)
+- Stop the transport and start it again.
+  - The delay lines clear on stop.
+  - The peak numbers stay on stop and clear on play.
+  - The meters do not freeze.
+  - The Level Match readout does not creep while stopped.
+- Turn the Multiband on and off at a partial Mix. No click.
+- Bounce with the tail included. The full decay of Haas, Chorus and Dimensional is kept.
+
+### F. Host matrix and automation playback
+Checklist items 5 and 7 are separate attestations for v0.9.9 (`RELEASE_COMPATIBILITY_CHECKLIST.md`).
+They may be performed in the same sitting, but they are recorded there, each on its own. This audition
+record does not tick them.
 
 ## Scope for v0.9.6
 

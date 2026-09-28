@@ -1181,10 +1181,22 @@ RECONSTRUCTED_HEADINGS = (
 # The first version this line ever tagged. Versions from here on are released
 # by `release.yml` from an annotated `v<x.y.z>` tag, so every one of them has a
 # tag page or a comparison to point its `[x.y.z]` heading at; nothing older does
-# (0.9.0 through 0.9.6 were each written up and superseded before a tag was
-# cut), so a definition for one of those would be a link to a page that will
-# never exist. A constant, because the fact is: it never changes.
-FIRST_TAGGED_VERSION = (0, 9, 7)
+# (0.9.0 through 0.9.8 were each written up and closed before a tag was cut), so
+# a definition for one of those would be a link to a page that will never exist.
+# It read (0, 9, 7) until ADR-0058: 0.9.7 and 0.9.8 were closed untagged in their
+# turn, and the first tag the line actually cuts is v0.9.9. Once that tag exists
+# the fact never changes again.
+FIRST_TAGGED_VERSION = (0, 9, 9)
+# The self-test's changelog fixtures describe a SYNTHETIC line whose first tag is
+# 0.9.7, so they pin the mechanism rather than this repository's history; the
+# self-test binds this for their loop and pins the real value in cases of its
+# own. `None` everywhere else: the real value applies.
+FIXTURE_FIRST_TAGGED_VERSION = (0, 9, 7)
+_first_tagged_override: tuple[int, int, int] | None = None
+
+
+def first_tagged() -> tuple[int, int, int]:
+    return _first_tagged_override or FIRST_TAGGED_VERSION
 # The one repository a version link may point into. Checked because a definition
 # is a citation: `https://example.com/x/compare/v0.9.7...v0.9.8` satisfied every
 # earlier spelling of the rule and resolves to nothing.
@@ -1905,6 +1917,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
     """
     if path.name != "CHANGELOG.md":
         return []
+    first = first_tagged()
     entries, definitions, _ = parse_changelog(lines, skip)
     findings: list[str] = []
     defined: dict[str, tuple[int, str]] = {}
@@ -1966,10 +1979,10 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                     f"{path}:{line_no}: `[{key}]` is defined but there is no `## [{key}]` entry"
                 )
             continue
-        if e.version is not None and e.version < FIRST_TAGGED_VERSION:
+        if e.version is not None and e.version < first:
             findings.append(
                 f"{path}:{line_no}: `[{key}]` predates this line's first tag "
-                f"(v{'.'.join(map(str, FIRST_TAGGED_VERSION))}) and was never tagged -- "
+                f"(v{'.'.join(map(str, first))}) and was never tagged -- "
                 f"there is no release page to link, so it must not be defined"
             )
             continue
@@ -1982,7 +1995,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
         # check -- let `[0.9.7]: .../compare/v0.9.6...v0.9.7` pass, a comparison
         # against a tag that was never cut, which is a dead link in the one place
         # the specification asks to be linkable.
-        if e.version == FIRST_TAGGED_VERSION:
+        if e.version == first:
             want = f"{REPO_URL}/releases/tag/{tag}"
         elif key in previous_of:
             want = f"{REPO_URL}/compare/v{previous_of[key]}...{tag}"
@@ -1999,7 +2012,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
             continue
         if url != want:
             why = ("the line's first tag has no predecessor to compare against"
-                   if e.version == FIRST_TAGGED_VERSION
+                   if e.version == first
                    else "a comparison against the next-older entry, the one directly BELOW it")
             findings.append(
                 f"{path}:{line_no}: the `[{key}]` definition must be `{want}` ({why}); "
@@ -2007,7 +2020,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
             )
 
     for key, e in versions.items():
-        if e.version is not None and e.version >= FIRST_TAGGED_VERSION and key not in defined:
+        if e.version is not None and e.version >= first and key not in defined:
             findings.append(
                 f"{path}:{e.line_no}: `## [{key}]` has no link definition -- add "
                 f"`[{key}]: <url>` at the foot of the file in the release commit "
@@ -2206,6 +2219,10 @@ def self_test() -> int:
     # and a second category.
     SAMPLE = ["### Fixed", "## [0.9.7] — 2026-09-05", "[0.9.7]", "-------", "### Added"]
     UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"
+    # These fixtures' first tag is 0.9.7 (FIXTURE_FIRST_TAGGED_VERSION), bound for this
+    # loop only; the repository's own first tag is pinned by the cases after it.
+    global _first_tagged_override
+    _first_tagged_override = FIXTURE_FIRST_TAGGED_VERSION
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
         ("entry sub-sections at ### are fine", 0,
@@ -3377,6 +3394,29 @@ def self_test() -> int:
                 print(f"self-test FAIL: changelog {label}: a finding printed the `v?` "
                       f"placeholder: {found}", file=sys.stderr)
             continue
+        got = len(analyse(root / "CHANGELOG.md", lines, root))
+        checked += 1
+        if got != expected:
+            failures += 1
+            print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
+                  file=sys.stderr)
+    _first_tagged_override = None
+
+    # --- THE REPOSITORY'S OWN FIRST TAG (ADR-0058) -----------------------------
+    # 0.9.9 is the first tag, so its definition is a tag page; 0.9.8 and 0.9.7 were
+    # written up and closed without a tag, so a definition for either is refused and
+    # 0.9.9 may not compare against them. Run with the real FIRST_TAGGED_VERSION.
+    RV9, RV8 = "## [0.9.9] — 2026-09-29", "## [0.9.8] — 2026-09-18"
+    RD9 = "[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9"
+    REAL = ["# Changelog", RV9, "### Changed", "- x", RV8, "### Fixed", "- y"]
+    for label, expected, lines in [
+        ("real first tag: 0.9.9 a tag page, the untagged 0.9.8 undefined", 0, REAL + [RD9]),
+        ("real first tag: a definition for the untagged 0.9.8 is refused", 1,
+         REAL + [RD9, "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8"]),
+        ("real first tag: 0.9.9 comparing against the untagged 0.9.8 is refused", 1,
+         REAL + ["[0.9.9]: https://github.com/skyRolly/Anamorph/compare/v0.9.8...v0.9.9"]),
+        ("real first tag: 0.9.9 with no definition is refused", 1, REAL),
+    ]:
         got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1
         if got != expected:

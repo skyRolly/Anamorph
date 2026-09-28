@@ -114,10 +114,13 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — **as of 2026-09-28, for v0.9.9: the Level-5 audition, the compatibility-checklist re-run
-where 0.9.8–0.9.9 touched an item, and an owner decision on which tag is cut first** (`docs/HANDOVER.md` Release Status;
-no v0.9.9 audition is recorded, and the `CHANGELOG.md` link definitions assume `v0.9.7` and `v0.9.8` tags that were never
-cut). The rest of this paragraph is the record as of 2026-09-03, when the one item was **the Level-5 audition, reopened for v0.9.7.**
+**Engineering / process** — **as of 2026-09-28, for v0.9.9: the Level-5 audition and the maintainer's attestation
+of checklist items 5 and 7** (`docs/HANDOVER.md` Release Status; no v0.9.9 audition is recorded). Which tag is cut first
+is decided: **v0.9.9** (ADR-0058). **Scope of §4 against the tag:** `RELEASE_POLICY.md` preconditions 1–7 do not
+include §4, and a tag push only drafts a GitHub Release; §4 items 1–4 block **commercial** distribution and sale.
+Publishing the draft makes the binaries publicly downloadable, and whether that distribution itself needs item 1 or 2
+settled first is an owner/legal question this repository does not answer (`KI-015`). The rest of this paragraph is the
+record as of 2026-09-03, when the one item was **the Level-5 audition, reopened for v0.9.7.**
 `RELEASE_POLICY.md` precondition 2, the
 compatibility gate, is satisfied: `RELEASE_COMPATIBILITY_CHECKLIST.md` stands at **eight of eight boxes** —
 six with measured evidence (that file's §Completion record and §Evidence name what was run for each; box 6,
