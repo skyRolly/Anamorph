@@ -13074,7 +13074,7 @@ copy, which only the owner specifies (`AI_AGENT_POLICY.md` C8). Reported for the
 - `COMMERCIAL_STATUS.md`'s header still says the release in preparation is v0.9.7.
 
 **Review.** A workflow (four diff reviewers, three repository-wide sweeps, one skeptic per finding) confirmed nine
-findings, all corrected in the commit after `1f0bc7c`: the `setDimMode` comment's "classic mode buttons"; the
+findings, all corrected in the commit after `1f0bc7c`: the `setDimMode` comment's description of the voicings; the
 `TRADEMARKS.md` §1 cross-reference to the renumbered §4; `COMMERCIAL_STATUS.md`'s "substance unchanged since";
 a tense in the 0.8.8 changelog entry; this entry's wording, three times; and the keynote script's word counts.
 Ten were refuted.
