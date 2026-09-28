@@ -18,7 +18,7 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 2. **No invented history.** Never infer that a past version contained a feature by reasoning
    backward from current code. Each entry cites an **Evidence Source** — a commit SHA, commit
    range, or PR (entries up to `[0.8.12]` predate git tags, so a release tag alone was never
-   available as evidence for them; from the first annotated release tag — **`v0.9.9`** (0.9.0 through 0.9.8 were each written up but never tagged; ADR-0058) — onward the
+   available as evidence for them; from the first annotated release tag — **`0.9.9`** (0.9.0 through 0.9.8 were each written up but never tagged; ADR-0058) — onward the
    tag is also citable). An entry that cannot be tied to such evidence is marked
    `[Unverified Historical Reconstruction]`.
 3. **User-visible changes only.** Refactors, cleanups, formatting, and renames are **not**
@@ -44,19 +44,24 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    time. Two reconstructed headings at the foot predate this policy and are accepted by
    their exact text — `## [0.7.5] – [0.7.0] — 2026-06-21…22` and
    `## [0.6.x] and earlier — 2026-06 (reconstructed)`; no new heading may take either form.
-8. **Version headings are linkable.** The bracketed version is a link reference, and from `0.9.9` —
-   the first version this line tags (ADR-0058; this rule named `0.9.7` until 0.9.7 and 0.9.8 were
-   closed untagged) — every one has a definition at the foot of the file, into this
-   repository (`https://github.com/skyRolly/Anamorph`), naming its own tag:
-   `/releases/tag/v0.9.9` for that first tag, which has no predecessor to compare against, and
-   `/compare/v<the previous release>...v<x.y.z>` for every version after it — the previous release
-   being the next-older entry, which in a newest-first file is the one directly **below** it. An `[Unreleased]`
-   section's definition is `/compare/v<last tag>...HEAD`. The definition is written **in the release
-   commit**, before the tag exists, because a tag can only point at a commit that already does
+8. **Version headings are linkable.** The bracketed version is a link reference. A tagged version has
+   a definition at the foot of the file, into this repository (`https://github.com/skyRolly/Anamorph`),
+   naming its own tag, which is the bare version `x.y.z` (ADR-0059):
+   - `/releases/tag/0.9.9` for **0.9.9**, the first version this line tags (ADR-0058; this rule named
+     `0.9.7` until 0.9.7 and 0.9.8 were closed untagged), which has no predecessor to compare against;
+   - `/compare/<previous tag>...<x.y.z>` for every tagged version after it, where the previous tag is
+     the **most recent earlier tagged version**. In a newest-first file that is the nearest entry
+     **below** it that carries a definition — the entry directly below only when that one was tagged.
+
+   Versions older than `0.9.9` were never tagged and must have no definition — there is no page to
+   link. After the first tag a version may still close without one: its entry stays, it carries **no**
+   definition (as 0.9.7 and 0.9.8 do), and it is never a comparison base. The newest version entry is
+   the release in preparation and must carry its definition. An `[Unreleased]` section's definition is
+   `/compare/<last tag>...HEAD`, from the newest tagged version. The definition is written **in the
+   release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
-   refusing any tag other than `v` + the CMake version. Versions older than `0.9.9` were never tagged
-   and must have no definition — there is no page to link. `check-docs.py` requires exactly the form
-   the version calls for, in both directions.
+   refusing any tag other than the bare CMake version. `check-docs.py` requires exactly the form the
+   version calls for, in both directions.
 
 ## The structural grammar
 
@@ -313,25 +318,26 @@ link form, immediately below.
 - **<What went wrong, in the user's terms, and no longer does>.** <Cause in one sentence, if it helps.>
   Evidence: <PR #NN|commit sha>. [Verified]
 
-[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/v<previous version>...v<x.y.z>
+[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/<previous tag>...<x.y.z>
 ```
 
 The definition line belongs with the others at the **foot of the file**, not under the entry — it is
-shown here so the template is complete.
+shown here so the template is complete. Tags are the bare version, with no prefix (ADR-0059).
 
-The link definition has one exception, and it is the first tag: `v0.9.9` is the line's **first**
+The link definition has one exception, and it is the first tag: `0.9.9` is the line's **first**
 tag (ADR-0058), so it has no predecessor to compare against and its definition is
-`[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9`. Every version after it uses the
-comparison form shown above, against the release before it — the entry directly **below** it in this
-newest-first file. `check-docs.py` requires exactly the form the version calls for, and rejects the
-other one.
+`[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9`. Every tagged version after it uses
+the comparison form shown above, against the most recent earlier **tagged** version — the nearest
+entry below it that carries a definition. A version that closes without a tag keeps its entry, loses
+its definition, and is skipped as a comparison base. `check-docs.py` requires exactly the form the
+version calls for, and rejects the other one.
 
 Work not yet released goes under `## [Unreleased]` in the same shape, with
-`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`; the release commit
+`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/<last tag>...HEAD`; the release commit
 renames the heading to `## [<x.y.z>] — <YYYY-MM-DD>` and re-points the definition (rules 7 and 8).
 That definition needs a tag to compare against, so an `## [Unreleased]` section is available from
-`v0.9.9` onward — until then unreleased work simply sits in the dated entry it will ship in, which
-is how every entry in this file was written.
+the `0.9.9` tag onward — until then unreleased work simply sits in the dated entry it will ship in,
+which is how every entry in this file was written.
 
 ## Source of truth for history
 

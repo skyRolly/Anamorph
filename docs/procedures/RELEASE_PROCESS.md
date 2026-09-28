@@ -31,10 +31,11 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 7. **Manual audition** — Level 5 (audio/visual) signed off in a DAW; a green build is "ready to
    audition," not final. **Scope, per-item checks and the record format are in
    `LEVEL5_AUDITION.md`**, which also states when a previous audition stops counting (a machine-code
-   or audible-behaviour change invalidates it — the **v0.9.6 audition of 2026-09-01**, the most
-   recent PASS on record, did not carry over to v0.9.7, because ADR-0034 changed the reported
-   latency and the Drive-crossing swap behaviour, and none has been recorded since, so v0.9.9 needs
-   its own: `LEVEL5_AUDITION.md` §Scope for v0.9.9). It requires a human; no CI job and no automated
+   or audible-behaviour change invalidates it — the **0.9.6 audition of 2026-09-01**, the most
+   recent PASS on record, did not carry over to 0.9.7, because ADR-0034 changed the reported
+   latency and the Drive-crossing swap behaviour, so 0.9.9 needed its own (`LEVEL5_AUDITION.md`
+   §Scope for 0.9.9); the owner reported that audition completed on 2026-09-28 (§Recorded auditions,
+   0.9.9 — per-item results, DAW, OS and format NOT RECORDED)). It requires a human; no CI job and no automated
    agent can supply it.
 
 ## Build the release artifacts
@@ -67,15 +68,17 @@ compile definitions).
 
 ## Tagging + release pipeline (RH-PR-8)
 
-**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` on the release commit on `main`,
-created AFTER pre-release steps 1–7 above are complete. The tag must equal the `CMakeLists.txt`
-`project VERSION` exactly — `release.yml` fails closed on any mismatch. **The next tag is
-`v0.9.9`, and it is the line's FIRST** (ADR-0058: none of 0.9.0 through 0.9.8 was tagged; each
-was written up and closed before a tag was cut, and none is tagged retroactively):
+**Tag convention:** an **annotated** tag on the release commit on `main`, named with the **bare
+version** `MAJOR.MINOR.PATCH` — no prefix (ADR-0059) — created AFTER pre-release steps 1–7 above
+are complete. The tag must equal the `CMakeLists.txt` `project VERSION` exactly — `release.yml`
+triggers only on a bare `x.y.z` tag and fails closed on any mismatch; a prefixed tag starts no
+release at all. **The next tag is `0.9.9`, and it is the line's FIRST** (ADR-0058: none of 0.9.0
+through 0.9.8 was tagged; each was written up and closed before a tag was cut, and none is tagged
+retroactively):
 
 ```bash
-git tag -a v0.9.9 -m "Anamorph 0.9.9"
-git push origin v0.9.9
+git tag -a 0.9.9 -m "Anamorph 0.9.9"
+git push origin 0.9.9
 ```
 
 **The release commit carries the version's link definition; the tag follows it.** Keep a
@@ -83,35 +86,42 @@ Changelog 1.1.0 asks for linkable versions, and `CHANGELOG.md` writes every head
 a link reference. A tag can only point at a commit that already exists, so the definition cannot
 wait for the tag — it is written **in the release commit**, naming the tag that commit is about to
 carry, and the tag is pushed straight after. The name is not a guess: `release.yml` refuses any tag
-that is not `v` + the CMake `project VERSION`, so `v<x.y.z>` is fixed before the tag exists. The
+that is not exactly the CMake `project VERSION`, so the tag `x.y.z` is fixed before it exists. The
 sequence, literally:
 
 1. In the release commit (the one **pre-release step 2** dates): the `## [x.y.z] — YYYY-MM-DD` heading, the
    CMake version bump, and one line among the definitions at the foot of `CHANGELOG.md` —
 
    ```markdown
-   [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9
+   [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9
    ```
 
    for the line's first tag (already in `CHANGELOG.md`); from the second tag onward a comparison
-   against the previous one, `[0.9.10]: https://github.com/skyRolly/Anamorph/compare/v0.9.9...v0.9.10`
+   against the most recent earlier **tagged** version, `[0.9.10]: https://github.com/skyRolly/Anamorph/compare/0.9.9...0.9.10`
    for a hypothetical next version — the form the
    specification's own example uses. "The release commit" means the commit the tag will point at:
    what is binding is that the tagged tree carries the dated heading and the definition, so work
    that landed earlier on the branch already satisfies this and needs no re-commit.
-2. `check-docs.py` (every push) verifies that every `## [x.y.z]` from `0.9.9` onward has a
-   definition naming its own tag, and that no older, never-tagged version has one. The link is
+2. `check-docs.py` (every push) verifies that the first tag and the newest version entry each have a
+   definition naming their own tag, that every tagged version compares against the most recent
+   earlier tagged one, and that no older, never-tagged version has a definition. The link is
    unresolvable only between this commit and the tag push in step 3, which is the same interval in
    which the dated heading names a release that does not exist yet.
 3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
    resolves the moment GitHub sees the tag; nothing is moved, amended or rewritten afterwards.
+
+**A version that closes without a tag** (written up, then superseded by the next version before
+it is tagged, as 0.9.7 and 0.9.8 were) keeps its entry and loses its definition: the commit that
+adds the newer version's entry also deletes the older one's `[x.y.z]:` line. `check-docs.py` then
+treats it as never tagged, so the next tagged version compares against the last version that *was*
+tagged (`CHANGELOG_POLICY.md` rule 8). Never tag such a version retroactively.
 
 (Steps 1–3 immediately above are this section's own. Everywhere else — including the
 "pre-release step *n*" references `release.yml` prints in its error messages — a bare step number
 means the **Pre-release checklist** at the top of this file.)
 
 If an `## [Unreleased]` section is kept between releases, its definition is
-`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`, and the release
+`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/<last tag>...HEAD`, and the release
 commit renames the section to the version heading and re-points it.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
@@ -161,12 +171,15 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
    internal (ADR-0021).
 
 **Publishing the draft is a manual maintainer action** — after the Level-5 audition
-(RELEASE_POLICY precondition 7). No signing/notarization yet (RH-PR-3/5); the installers
-ship unsigned, with the user-facing consequences documented in `docs/user/INSTALLATION.md`.
+(RELEASE_POLICY precondition 7). Publishing makes the binaries publicly downloadable. The open
+owner/legal decisions (`docs/COMMERCIAL_STATUS.md` §4; KI-015, the licence) are not a tag
+precondition, but they are the owner's to settle before public or commercial distribution. No
+signing/notarization yet (RH-PR-3/5); the installers ship unsigned, with the user-facing
+consequences documented in `docs/user/INSTALLATION.md`.
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the **v0.9.9** release (ADR-0058; none of 0.9.0 through 0.9.8 was tagged). Historical
+No release tag exists yet — the first will be cut at the **0.9.9** release (ADR-0058; none of 0.9.0 through 0.9.8 was tagged). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).

@@ -8,9 +8,9 @@ including `[0.8.12]` predate git tags, so a release tag was never available as e
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, and so in turn was every
-version through `[0.9.8]`, so the first annotated `vX.Y.Z` tag will be **v0.9.9** (ADR-0058:
+version through `[0.9.8]`, so the first annotated tag will be **0.9.9** (ADR-0058:
 0.9.0 through 0.9.8 were each written up and closed before tagging, and their headings carry no
-link), and from that tag onward the tag is also a citable Evidence
+link). A tag is the bare version, `x.y.z` (ADR-0059). From that tag onward the tag is also a citable Evidence
 Source. Until then an entry cites a PR or a commit SHA — with one historical
 exception, recorded rather than rewritten: eighteen citations — sixteen in `[0.8.8]`
 and two in `[0.9.0]` — name the source file they changed instead, which rule 2 does
@@ -994,7 +994,7 @@ including in entries written before 0.9.9 gave it that name.
   audible, and below the modified-marker's own resolution) away from the stored value depending on
   the value being replaced, which in rare cases could show a modified-marker on a freshly reopened
   project that had been saved while sitting on an unnamed A/B slot. Evidence: PR #141 (ADR-0037,
-  `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md`). [Verified]
+  `worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md`). [Verified]
 - **A project reopened from your DAW's own thread can no longer come up playing the sound of the
   session it replaced, and an autosave can no longer capture a preset half-loaded.** Two closely
   related fixes to how a session restore arriving from your DAW's own thread — Logic's autosave path,
@@ -1076,7 +1076,7 @@ including in entries written before 0.9.9 gave it that name.
   has been edited, the two A/B slots and which is live, the undo history, the Settings) was written by
   that background restore at the same moment the open window was reading it: a data race, with a
   crash or a mislabelled preset as the possible outcome, measured under ThreadSanitizer and tracked
-  since v0.9.6 as RISK-007. That bookkeeping now belongs to the window's own thread alone. A restore
+  since 0.9.6 as RISK-007. That bookkeeping now belongs to the window's own thread alone. A restore
   from any other thread still applies the sound immediately, exactly as before — including the
   Oversampling setting the engine reads, so a project comes up at its restored sound from the first
   sample as it always has — and hands the bookkeeping over as one complete package that the plug-in
@@ -1321,7 +1321,7 @@ including in entries written before 0.9.9 gave it that name.
   instead of the session being opened. On an instance the host had reused across projects that was
   the *previous project's* A and B sounds; on a freshly inserted instance it was the plug-in's
   opening Default. Either way the session's own sound loaded correctly and then pressing A or B
-  recalled something else. Affected sessions saved by v0.2 (which predates the A/B feature) and any
+  recalled something else. Affected sessions saved by 0.2 (which predates the A/B feature) and any
   session whose A/B block is absent. Both slots and the active-slot marker now come back from the
   session that was actually loaded; a session that does carry A/B data is unaffected and still
   restores both slots as saved. Regression coverage: State test 26.
@@ -1617,7 +1617,7 @@ including in entries written before 0.9.9 gave it that name.
   A C++20 fallback was evaluated and not taken; the one Windows caveat (MSVC has no stable
   `/std:c++23`, so CMake requests `/std:c++latest`) is recorded in the ADR.
   Cross-link: `docs/architecture/design-decisions/ADR-0027-cxx23-language-standard.md`,
-  `worklogs/CXX23_MIGRATION_v0.9.4.md`. Evidence: PR #105 / commit `e974cb0`. [Verified]
+  `worklogs/CXX23_MIGRATION_0.9.4.md`. Evidence: PR #105 / commit `e974cb0`. [Verified]
 - **JUCE framework 9.0.0 → 9.0.1**, pinned by the release tag's immutable commit SHA
   `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` — the same SHA-pin mechanism the 9.0.0 bump
   introduced, so the dependency still cannot move under a re-pointed tag (ADR-0026).
@@ -1644,7 +1644,7 @@ including in entries written before 0.9.9 gave it that name.
   fractional display scaling. On **macOS**: guards in the Metal layer renderer and in the message
   manager during shutdown, plus a new CoreAudio path in the Standalone's device layer.
   Cross-link: `docs/architecture/design-decisions/ADR-0026-juce-9.0.1-upgrade.md`,
-  `worklogs/JUCE901_UPGRADE_v0.9.4.md`. Evidence: PR #104 / commit `3ebdf69`. [Verified]
+  `worklogs/JUCE901_UPGRADE_0.9.4.md`. Evidence: PR #104 / commit `3ebdf69`. [Verified]
 
 ### Fixed
 - **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
@@ -1681,7 +1681,7 @@ including in entries written before 0.9.9 gave it that name.
   racetrack. The pointer was on the menu, so the highlight was claiming something untrue, and the
   control it pointed at could not be clicked anyway (a click there just dismisses the menu). The
   cause is that hover here is worked out from the pointer's **position** rather than from mouse
-  enter/exit events — deliberately, since v0.6.1, because those events were unreliable and left
+  enter/exit events — deliberately, since 0.6.1, because those events were unreliable and left
   highlights stuck on. A position, though, cannot tell that something has been drawn on top of it,
   so a covered control kept containing the pointer exactly as before. It is now also tested against
   the open menu, and a control the menu covers stays dark. **Nothing else changes**: the box you
@@ -1876,7 +1876,7 @@ including in entries written before 0.9.9 gave it that name.
 - **No parameter, preset, session or DSP behaviour changes in this release.** Sessions and
   presets saved with any 0.8.x build load unchanged (and this is now regression-tested —
   see Build / Release below). The engine's output and reported latency are bit-identical
-  to v0.8.12 across the JUCE 9 bump. Evidence: PR #82/#83 validation records. [Verified]
+  to 0.8.12 across the JUCE 9 bump. Evidence: PR #82/#83 validation records. [Verified]
 
 ### Added
 - **User-installable packages for every platform**, published alongside the flat ZIP
@@ -1898,7 +1898,7 @@ including in entries written before 0.9.9 gave it that name.
   notarized — right-click → Open once — RH-PR-3. All installers are built in CI from the
   same validated staging directories as the zips; the installers are then moved into the
   release unmodified, and the release zips are archived from those same validated trees.
-  Evidence: PR #87 (v0.9.0 release prep); PR #89 (installer/packaging rework:
+  Evidence: PR #87 (0.9.0 release prep); PR #89 (installer/packaging rework:
   component selection, dual-path destination, system-wide installs, ZIP-only
   artifacts). [Verified]
 - **An internal testing guide**: `SUPPORT.md` states what a tester may do with a build
@@ -1910,7 +1910,7 @@ including in entries written before 0.9.9 gave it that name.
   whether the Standalone reproduces it. `SUPPORT.md` is attached to every GitHub release as
   `Anamorph-<version>-SUPPORT.md`. It states
   plainly that Anamorph writes **no log file**, so nobody goes looking for one.
-  Evidence: PR #91 (v0.9.0 release-hardening audit); PR #92 (lean packages — support/attribution
+  Evidence: PR #91 (0.9.0 release-hardening audit); PR #92 (lean packages — support/attribution
   as release-page assets); the internal-testing documentation pass. [Verified]
 - **Product documents for a closed-source commercial plug-in**: `EULA.md` (an **unapproved
   draft** — not in force, presented by no installer, with every open owner/legal decision
@@ -1935,16 +1935,16 @@ including in entries written before 0.9.9 gave it that name.
   Steinberg VST 3 SDK licence on record: the SDK bundled with JUCE 9.0.0 is **MIT**, not the
   GPLv3/proprietary dual licence earlier documentation described — the VST trademark and
   plug-in distribution terms remain governed separately by Steinberg.
-  Evidence: PR #91 (v0.9.0 release-hardening audit);
-  `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`. [Verified]
+  Evidence: PR #91 (0.9.0 release-hardening audit);
+  `worklogs/RELEASE_HARDENING_AUDIT_0.9.0.md`. [Verified]
 - **User documentation**: a full user manual (`docs/user/USER_MANUAL.md`, also attached to
   GitHub releases) covering every panel, control and parameter, signal flow, the four
   widening algorithms, presets/A-B, workflow examples and troubleshooting; plus a
   per-platform installation guide (`docs/user/INSTALLATION.md`). `INSTALL.txt` is now
   included in the Linux and Windows zips (the macOS zip already shipped one).
-  Evidence: PR #87 (v0.9.0 release prep). [Verified]
+  Evidence: PR #87 (0.9.0 release prep). [Verified]
 - **Tag-triggered release pipeline** (`.github/workflows/release.yml`): pushing an annotated
-  `vX.Y.Z` tag validates fail-closed (annotated tag ⇄ CMake `project VERSION` ⇄ CHANGELOG
+  release tag validates fail-closed (annotated tag ⇄ CMake `project VERSION` ⇄ CHANGELOG
   section), runs the full existing 3-OS build/validation matrix exactly once via
   `workflow_call`, and creates a **draft** GitHub Release with versioned assets,
   `SHA256SUMS.txt` and `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number /
@@ -1956,13 +1956,13 @@ including in entries written before 0.9.9 gave it that name.
   parameter registry against a committed snapshot and regression-tests state round-trips,
   the three legacy session-format migration paths, corrupt/foreign state handling, preset
   round-trips and A/B preservation. Validation infrastructure only.
-  Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_v0.8.13.md`. [Verified]
+  Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_0.8.13.md`. [Verified]
 - **New CI packaging artifacts** `Anamorph-Windows-installer` and `Anamorph-macOS-installer`
   carry the installers above; the Linux payload now additionally carries
   `install.sh`/`uninstall.sh`. Each platform uploads exactly one customer artifact
   (`Anamorph-<OS>`) plus its `-debug` symbols; the release job archives the release zip
   from that same tree and moves the installers in unmodified, both fail-closed.
-  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework); PR #92 (flat
+  Evidence: PR #87 (0.9.0 release prep); PR #89 (packaging rework); PR #92 (flat
   artifacts); the artifact-cleanup pass. [Verified]
 
 ### Changed
@@ -1974,8 +1974,8 @@ including in entries written before 0.9.9 gave it that name.
   parameter-registry snapshot frozen under 8.0.14 passes byte-for-byte under 9.0.0.
   Source builds on Linux need one new package: `libegl-dev` (JUCE 9 creates GL contexts
   via EGL). Cross-link: `docs/architecture/design-decisions/ADR-0022-juce-9.0.0-upgrade-sha-pin.md`,
-  `worklogs/JUCE9_MIGRATION_v0.8.13.md`. Evidence: PR #83 / commit `edcba14`. [Verified]
-- Post-v0.8.12 repository audit: drift corrections across ~20 developer documents, KI-013
+  `worklogs/JUCE9_MIGRATION_0.8.13.md`. Evidence: PR #83 / commit `edcba14`. [Verified]
+- Post-0.8.12 repository audit: drift corrections across ~20 developer documents, KI-013
   recorded (macOS release-outside stuck-press reconcile is inert), and the product-readiness
   roadmap that scheduled this release's packaging/user-docs work (including the newly
   identified RH-R10 third-party licence-compliance item).
@@ -2027,15 +2027,15 @@ including in entries written before 0.9.9 gave it that name.
   `yToWidth` drag mapping). A click that never drags begins and ends an empty gesture — no value
   change, no automation/undo step. Drag feel, parameter mapping, snapping and every other Multiband
   interaction are unchanged. Single-line correction in `SpectrumImager::mouseDown`; full record:
-  `worklogs/BANDWIDTH_DRAG_FIX_v0.8.12.md`.
-  Evidence: PR #80 / commit `c0cbd05` (v0.8.12 GUI interaction fix). [Verified]
+  `worklogs/BANDWIDTH_DRAG_FIX_0.8.12.md`.
+  Evidence: PR #80 / commit `c0cbd05` (0.8.12 GUI interaction fix). [Verified]
 - **The Multiband Width drag is now RELATIVE, with a click-vs-drag threshold.** Grabbing a band's
   Width line and dragging now moves the value by the mouse **delta** from the grab (the line stays
   attached to the grabbed point) instead of snapping to the absolute cursor, and the value only starts
   moving once the cursor has crossed a 3 px threshold — so a click, or tiny hand jitter, never nudges
   Width. This matches the vertical crossover-handle drag contract (grab-offset + 3 px gate). Parameter
   mapping, smoothing and every other Multiband interaction are unchanged.
-  Evidence: PR #80 (v0.8.12 GUI interaction refinement). [Verified]
+  Evidence: PR #80 (0.8.12 GUI interaction refinement). [Verified]
 - **Controls no longer stay stuck "pressed" when the mouse button is released outside the plugin
   window.** If a host delivers the mouse-up over the host/desktop (so JUCE never routes it to the
   editor and its cached button state stays stale-down), knobs, sliders and the Multiband drag could
@@ -2045,8 +2045,8 @@ including in entries written before 0.9.9 gave it that name.
   Multiband gesture. Effective on **Windows and Linux** (JUCE's macOS realtime query returns the cached
   button state, so macOS behaviour is unchanged — where AppKit's mouse capture makes lost releases rare
   to begin with). Normal drag, press-feedback onset and automation are unchanged. Full record:
-  `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`.
-  Evidence: PR #80 (v0.8.12 GUI interaction fix). [Verified]
+  `worklogs/MOUSE_RELEASE_STATE_FIX_0.8.12.md`.
+  Evidence: PR #80 (0.8.12 GUI interaction fix). [Verified]
 
 ## [0.8.11] — 2026-07-20
 
@@ -2135,7 +2135,7 @@ including in entries written before 0.9.9 gave it that name.
   unchanged-behavior guard. Evidence: PR #61 (commit `c72d3c3`, merge `bc5f852`). [Verified]
 - **Crossover follower slow-drag regression: normal-speed split drags no longer trail the mouse
   by whole octaves and crawl on for seconds after release (ADR-0015 "Crossover Follower
-  Slow-Drag Regression").** The v0.8.10 final follower capped cutoff movement at a flat
+  Slow-Drag Regression").** The 0.8.10 final follower capped cutoff movement at a flat
   ~4 oct/s, calibrated at a 150 Hz crossing — but the Multiband display maps ~10 octaves onto
   ~900 px, so ordinary 400–2000 px/s gestures are 4–22 oct/s: every normal drag was pinned at
   the cap (a 600 px/s drag released ~2.4 octaves behind and crawled for another 0.6 s, trailing
@@ -2243,7 +2243,7 @@ including in entries written before 0.9.9 gave it that name.
   fast drag); and a **~1.25 oct/s "inaudibility" cap with 0.25 s release consolidation**
   (measurably clean, but rejected in interactive testing as a UX regression: the audio lagged
   the GUI on ordinary fast drags and jumped after release — interaction latency is the worse
-  artifact). Shipped design (ADR-0015 "v0.8.10 final decision") in `MultibandWidth` and
+  artifact). Shipped design (ADR-0015 "0.8.10 final decision") in `MultibandWidth` and
   `SoloMonitor`: **continuous movement tracks each cutoff per sample under a hard ~4 oct/s rate
   cap** — every drag up to 4 oct/s tracks *exactly* (zero GUI/DSP gap), faster movement bounds
   the shift at ~1.25 Hz (measured: worst 100 ms chunk ~15 cents at a 150 Hz crossing, ~2 cents
@@ -2267,7 +2267,7 @@ including in entries written before 0.9.9 gave it that name.
   1.25 oct/s follower measures full lag there and fails), discrete 4-octave jumps must land
   < 200 ms, all click-free. Evidence: this PR. [Verified]
 - **The intermediate "bounded convergence" follower was evaluated and simplified away
-  (ADR-0015 "v0.8.10 final decision").** The 1.25 oct/s cap + release-consolidation follower
+  (ADR-0015 "0.8.10 final decision").** The 1.25 oct/s cap + release-consolidation follower
   solved the earlier unbounded-catch-up and "stuck follower" defects, but interactive testing
   rejected its interaction latency: a 500 Hz → 2 kHz / 0.5 s drag released with 1.37 oct of
   audible lag and glided on for another second, and the 0.25 s quiet-timeout consolidation — a
@@ -2915,6 +2915,6 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
-[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9
+[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/

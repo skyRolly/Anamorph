@@ -56,7 +56,9 @@ the strictness a past bump was actually verified at — a fact about a run, not 
 correct to leave frozen.
 Evidence [Verified]: `.github/workflows/build.yml` (`env:` block).
 
-`release.yml`: `push` of an annotated `v[0-9]+.[0-9]+.[0-9]+` tag, plus `workflow_dispatch`
+`release.yml`: `push` of an annotated bare-version `[0-9]+.[0-9]+.[0-9]+` tag (e.g. `0.9.9`, no prefix —
+  ADR-0059; a prefixed tag matches no trigger and starts no release, and `validate` asserts the shape and
+  tag == CMake `project VERSION`), plus `workflow_dispatch`
 as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
 validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check, and —
 since the section is published verbatim as the release **notes body**, heading included — a check
@@ -810,7 +812,7 @@ at 60 minutes, and nothing in the lane was weakened or skipped to fit it.
    not skipped": both create their debug directory at the top of the step, so an abort part-way
    through would otherwise fire the upload against a directory that exists and may be empty, failing
    a *second* time on `if-no-files-found` and burying the real error under a cascade.
-8. **Installers (v0.9.0)** — the Linux zip itself carries `install.sh`/`uninstall.sh`
+8. **Installers (0.9.0)** — the Linux zip itself carries `install.sh`/`uninstall.sh`
    (per-user install by default, system-wide on request, since 0.9.3; `release.yml`
    restores and then fail-closed-verifies their executable bits when it archives the
    release zip). After the Windows/macOS staging steps, a separate packaging step builds the
@@ -1215,7 +1217,7 @@ file -- go through one shared `anchor_still_right()`, because when they each car
 only one of them had the substitution, and a version bump landing beside an added citation was
 reported as drift. Added for the
 0.9.5 release, which was the first version bump after `CMakeLists.txt` came under the gate
-and which the gate blocked; `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §4a.
+and which the gate blocked; `worklogs/performance/PERF_AUDIT_0.9.5_IMPLEMENTATION.md` §4a.
 
 Declare the pair in `DELIBERATE_REAIMS` in the **same change set** as the re-anchor, never in a
 follow-up. The list is expected to return to empty: an entry stops matching once the
@@ -1231,7 +1233,7 @@ every one of those anchors is `UNMAPPABLE` against the merge base — the text t
 no line number satisfies the same-text test and `--fix` cannot repair it. Against the branch's
 previous push the same anchors look clean, because that base already carries the rewrite, so the
 gate is green on the branch and red on the first default-branch build after the merge. Declare them
-in the same change set. The v0.9.4 round's six entries are that case, and the block in
+in the same change set. The 0.9.4 round's six entries are that case, and the block in
 `scripts/check-citations.py` records which region each one names.
 
 ## Artifacts
