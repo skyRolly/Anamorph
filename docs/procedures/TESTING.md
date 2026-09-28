@@ -5275,8 +5275,8 @@ else in the suite: `~BulkApply` without its completion — 4 checks, (E1) and th
 later one); `~SoundAppliedGuard` without its `fire()` — 2, (E2); the request raised before `loadAdopted`'s refusals —
 11, every refusal and then everything after it. No committed test failed any of the three before this one.
 
-**Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
-required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
+**Changing the parameter surface intentionally** (`PARAMETER_REGISTRY.md` updated, plus an ADR where
+`PARAMETER_COMPATIBILITY_POLICY.md` requires one — a display-name change needs none, rule 2): re-freeze the snapshot with
 `AnamorphStateTests --write-snapshot` and let the snapshot diff be reviewed in the PR. An
 **unintentional** change fails the suite on all three CI platforms — that is the point.
 The registry comparison is numerically tolerant (1e-4 relative) only for the numeric fields —
@@ -5631,7 +5631,7 @@ exactly when the raw SARIF is most worth keeping.
 | Symptom | Likely cause | Where to look |
 |---|---|---|
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
-| A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
+| A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (registry update, an ADR where that policy requires one, `--write-snapshot`) |
 | pluginval: `FAILED … real validation failure` | a genuine validation defect | the pluginval log line; do **not** retry — and note a *timeout* also lands here (exit 1, log line `*** FAILED: Timeout after`) |
 | pluginval: `CRASHED …` / `crashed …` | a signal death (exit ≥ 128), or one pluginval trapped itself (macOS: exit 9 + `pluginval received …, exiting immediately`) | on Linux the known X11 host flake, retried 3× and then a failure; elsewhere it fails at once (`scripts/run-pluginval.sh:140-228`, `run_one_pass`, `classify_pass_exit`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |

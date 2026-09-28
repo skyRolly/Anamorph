@@ -90,11 +90,15 @@ Footnotes:
 - **§** Display names changed in 0.9.9 with the **IDs unchanged**: the fourth `algorithm` choice
   reads `Dimensional`, and `dimMode` is shown as `Dimensional Style`. Choice order, ranges,
   defaults and every stored value are unchanged, so sessions, presets, A/B slots and automation
-  recall exactly as before (policy rule 2). The one text-keyed path is a host typing a choice's
-  label (`RawChoice::getValueForText`), which matches the current labels; nothing Anamorph
-  persists stores parameter text. Evidence [Verified]: src/PluginParameters.cpp:211-212;
-  src/PluginParameters.cpp:224-225; `tests/fixtures/parameter_registry.snapshot` (re-frozen for
-  these two strings only); CHANGELOG.md [0.9.9].
+  recall exactly as before (policy rule 2). The one text-keyed path is a host setting a choice
+  from typed text (`RawChoice::getValueForText`). It matches the current labels only, so the fourth
+  choice's pre-0.9.9 label no longer resolves: it takes the fallback any unknown text takes, the
+  first choice (Haas). Nothing Anamorph persists stores parameter text, so sessions, presets, A/B
+  slots and automation are unaffected. **Owner decision, 2026-09-28: not fixed** — no alias for the
+  former label is added. Evidence [Verified]: src/PluginParameters.cpp:35 (`getValueForText`);
+  src/PluginParameters.cpp:211-212;
+  src/PluginParameters.cpp:224-225; `tests/fixtures/parameter_registry.snapshot` (the rename
+  re-froze these two strings only); CHANGELOG.md [0.9.9].
 - **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
   `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:72): when Advanced
   Mode is off, `toEngine` skips the multiband section, so the engine sees the neutral POD default

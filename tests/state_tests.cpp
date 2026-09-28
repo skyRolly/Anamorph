@@ -32,8 +32,8 @@
 //       processBlock's own ScopedNoDenormals and gives the sanitizer/valgrind
 //       runs of this suite a wrapper audio path to instrument.
 //
-//  Fixture workflow: an INTENTIONAL parameter/schema change (which requires an
-//  ADR + registry update per the compatibility policies) is recorded by
+//  Fixture workflow: an INTENTIONAL parameter/schema change (the registry updated,
+//  plus an ADR where the compatibility policies require one) is recorded by
 //  regenerating the snapshot:  AnamorphStateTests --write-snapshot
 //  An unintentional change fails the comparison — that is the point.
 //
@@ -236,8 +236,8 @@ namespace registry
         auto params = rangedParams (p);
 
         s << "# Anamorph parameter registry snapshot -- compatibility fixture.\n"
-          << "# Regenerate ONLY for an intentional parameter change (ADR + PARAMETER_REGISTRY.md\n"
-          << "# update required):  AnamorphStateTests --write-snapshot\n"
+          << "# Regenerate ONLY for an intentional parameter change: update PARAMETER_REGISTRY.md (and add\n"
+          << "# an ADR where PARAMETER_COMPATIBILITY_POLICY.md requires one), then:  AnamorphStateTests --write-snapshot\n"
           << "paramCount=" << (int) params.size() << "\n";
 
         if (auto* bypass = dynamic_cast<juce::AudioProcessorParameterWithID*> (p.getBypassParameter()))
@@ -320,8 +320,8 @@ namespace registry
         if (reported > 12)
             std::printf ("  (%d further differing lines suppressed)\n", reported - 12);
         if (failures > 0 && reported > 0)
-            std::printf ("  NOTE: if this parameter change is INTENTIONAL, it needs an ADR + a\n"
-                         "  PARAMETER_REGISTRY.md update, then: AnamorphStateTests --write-snapshot\n");
+            std::printf ("  NOTE: if this parameter change is INTENTIONAL, update PARAMETER_REGISTRY.md (and add an ADR\n"
+                         "  where PARAMETER_COMPATIBILITY_POLICY.md requires one), then: AnamorphStateTests --write-snapshot\n");
     }
 }
 
