@@ -79,12 +79,17 @@ without a tag, rather than only for this one.
     left the window to the procedure. Three things are distinct: a changelog entry DECLARES a release;
     `FIRST_TAGGED_VERSION` names the version that may be the first tag; only the tag refs say a tag
     EXISTS. The checker reads them locally (`git for-each-ref refs/tags`, no network), after checking
-    that the directory it checks is the root of a git checkout.
-  - **Where the tags cannot be read** (not a git checkout, a subdirectory of one, no git), the state is
-    unknown, never "no tags" and never the declarations: the checker refuses, with one finding that says
-    why, whatever depends on the tags -- an `[Unreleased]` section and any version at or above the first
-    tag other than the release in preparation -- and checks the rest. A file whose only such version is
-    the release in preparation (today's) needs no tags.
+    that the directory it checks is the root of a git checkout. Its git processes run without git's
+    repository-location variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the rest of
+    `git rev-parse --local-env-vars`), which a hook or `git rebase -x` exports and which would otherwise
+    point them at another repository.
+  - **Where the tags cannot be read** (not a git checkout, a subdirectory of one, a checkout git will not
+    open, tags git cannot list, no git), the state is unknown, never "no tags" and never the declarations.
+    If the file holds an `[Unreleased]` section or a version at or above the first tag other than the
+    release in preparation, the checker refuses its release links with one finding that gives the reason,
+    and still checks what needs no tags (a definition older than the first tag, a definition with no
+    entry). A file whose only such version is the release in preparation (today's) needs no tags and is
+    checked in full.
   - **CI fetches the tags.** The `docs` job's checkout sets `fetch-tags: true`; the default single-commit
     checkout fetches none, which would read as "nothing was ever tagged". `release.yml` reaches the same
     job through `workflow_call` on the tag push.
@@ -113,12 +118,22 @@ without a tag, rather than only for this one.
     - the first tag: from 0.9.9, never from the untagged 0.9.8;
     - later tags: from the newest one, never from an untagged version between two tagged ones, with one
       and with two skipped;
-  - tags that cannot be read: `[Unreleased]` or a past release's link refused once, with the reason; the
-    release in preparation alone checked in full;
-  - the reader itself, against real temporary git repositories: an untagged one is known and empty, and
-    the production path refuses `[Unreleased]` there; with an annotated `0.9.9` it accepts it; lightweight
-    and prefixed tags are listed as they are; a subdirectory and a plain directory read as unknown, and
-    the production path in the plain one refuses once, naming the reason.
+  - a git tag below the first tag (a stray `0.9.8`): no `[Unreleased]` base and no comparison base;
+  - tags that cannot be read: `[Unreleased]` or a past release's link refused once, with the reason, and
+    a pre-first-tag or entry-less definition still found; the release in preparation alone checked in full;
+  - the fixture built from the repository's own `CHANGELOG.md` is cut back to the file as it stands while
+    0.9.9 is the newest entry, and a case proves the cut survives the file's later `[Unreleased]` section
+    and next entry, so the self-test does not break at the next changelog edit;
+  - the reader itself, against real temporary git repositories, all run with `GIT_DIR`, `GIT_WORK_TREE`
+    and `GIT_INDEX_FILE` naming a decoy repository, which must gain no commit and no tag:
+    - an untagged one is known and empty, and the production path refuses `[Unreleased]` there;
+    - with an annotated `0.9.9` it accepts it;
+    - lightweight and prefixed tags are listed as they are;
+    - a depth-1 clone without the tags reads as known, empty and "shallow", and with CI's tag refspec
+      fetched it holds every tag and the production path accepts `[Unreleased]`;
+    - a subdirectory, a plain directory, a checkout git will not open ("dubious ownership"), a checkout
+      whose tags cannot be listed, no `git`, and a `git` that cannot run all read as unknown, with the
+      reason; in the plain directory and with no `git`, the production path refuses once, naming it.
 - **The documents follow:**
   - `CHANGELOG_POLICY.md` rules 2 and 8, and its template, name 0.9.9 and state the base rule, and rule 7
     sends unreleased work to `[Unreleased]` only once a version is tagged;
@@ -143,9 +158,9 @@ without a tag, rather than only for this one.
   and one left on a version that closed untagged, are both refused, as is `[Unreleased]` before the first
   tag is pushed. The second spelling's two documented blind spots and its procedural window are closed.
 - The check is as good as the checkout's tag refs, and it reads no network. A clone that has not fetched a
-  new tag reads as if it did not exist (the finding says "shallow" where that applies, and how to fetch
-  them), and a local tag that was never pushed reads as existing. CI's `docs` job fetches every tag from
-  the repository, so CI sees the pushed ones.
+  new tag reads as if it did not exist (the finding says how to fetch them, and "shallow" where that
+  applies), and a local tag that was never pushed reads as existing. CI's `docs` job fetches every tag
+  from the repository, so CI sees the pushed ones.
 - It verifies that a tag EXISTS, not that it is annotated: a lightweight `0.9.9` would count. A release tag
   is annotated because `release.yml` refuses anything else and drafts no Release for it.
 - `check-docs.py --self-test` needs `git` to prove the reader; without it that case fails rather than
@@ -153,7 +168,7 @@ without a tag, rather than only for this one.
 
 ## Related code
 - `scripts/check-docs.py` — `FIRST_TAGGED_VERSION`, `FIXTURE_FIRST_TAGGED_VERSION`, `first_tagged()`,
-  `TagState`, `read_git_tags()`, `tag_state()`, `check_changelog_links` (`tagged`, `in_prep`,
+  `TagState`, `GIT_LOCATION_VARS`, `git_env()`, `read_git_tags()`, `tag_state()`, `check_changelog_links` (`tagged`, `in_prep`,
   `verifiable`, `previous_of`, `newest_tagged`), and the self-test's "repository's own first tag",
   "comparison base", "`[Unreleased]` exists only once a tag does" and "tag reader" cases.
 - `.github/workflows/build.yml` — the `docs` job's checkout, `fetch-tags: true`.
@@ -169,20 +184,27 @@ without a tag, rather than only for this one.
   read 0.9.7 and 0.9.8.
 - **[Verified]** No release audition for 0.9.7 or 0.9.8: `docs/procedures/LEVEL5_AUDITION.md` §Recorded
   auditions.
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 532 cases. Seventeen mutants
-  of the rule each fail it (re-measured 2026-09-28 with the git-tag source of truth):
-  - the no-tag `[Unreleased]` refusal removed, restoring the shape-only check: 18;
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 537 cases. Twenty-eight
+  mutants of the rule each fail it (re-measured 2026-09-28 with the git-tag source of truth and the review's
+  additions):
+  - the no-tag `[Unreleased]` refusal removed, restoring the shape-only check: 19;
   - a changelog definition taken as proof of a tag: 6;
-  - the tags ignored, restoring the file-only rule: 8;
-  - the first tag counted as tagged by fact, the second spelling: 5, including the repository's own
+  - the tags ignored, restoring the file-only rule: 9;
+  - the first tag counted as tagged by fact, the second spelling: 6, including the repository's own
     `CHANGELOG.md` with the section before the tag;
   - `previous_of` set back to "the entry directly below": 17;
-  - a prefixed tag counted as the version's tag: 2; a prefixed tag in the URL: 78;
+  - a prefixed tag counted as the version's tag: 2; a prefixed tag in the URL: 79;
   - a definition on an untagged past version accepted: 6; a tagged version without one accepted: 3;
   - the release in preparation required to be tagged already: 14;
-  - unreadable tags read as no tags: 4; or as the declarations: 4;
+  - `tagged()` without its not-older-than-the-first-tag clause: 2;
+  - unreadable tags read as no tags: 7; or as the declarations: 7; nothing checked after the refusal: 2;
   - the reader answering a subdirectory with the enclosing checkout's tags: 1; not counting lightweight
-    tags: 1; reading a directory that is no checkout as one with no tags: 2;
-  - the constant set back to (0, 9, 7): 43;
-  - `[Unreleased]` from the newest entry whether tagged or not: 15.
+    tags: 2; reading as a checkout with no tags a directory that is none: 3, no git: 2, an unlistable
+    checkout: 1, a git that cannot run: 1; every refusal of `rev-parse` called "not a git checkout": 1;
+  - a shallow clone read as unknown: 3; the shallow hint dropped: 1;
+  - the inherited `GIT_DIR` not cleared in the reader: 11; nor in any git process: 1 (the self-test's
+    own setup fails against the decoy);
+  - the real-file fixture following the live file: 1;
+  - the constant set back to (0, 9, 7): 45;
+  - `[Unreleased]` from the newest entry whether tagged or not: 16.
   - `check-docs.py` over the tree is clean.

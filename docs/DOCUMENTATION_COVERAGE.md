@@ -13041,7 +13041,7 @@ what the finding is about.
   account.
 - `build.yml`'s `docs` job checks out with `fetch-tags: true`.
 
-**Tests.** The self-test runs 532 cases.
+**Tests.** The self-test runs 537 cases.
 - Every changelog case names the git tags it runs against. They are handed to the same `tag_state()` the tree
   run uses, so the decision logic is the production logic.
 - The synthetic fixture loop runs with 0.9.7 and 0.9.8 tagged.
@@ -13053,35 +13053,59 @@ what the finding is about.
   - a tag without a definition;
   - a prefixed tag;
   - lightweight tags listed by the reader.
-- Also: the repository's own `CHANGELOG.md` with the section, before and after the tag; the same file under
-  two tag states; I and J; a retroactive `0.9.8` tag; four unknown-state cases; and wording checks.
-- The reader is driven against real temporary git repositories: untagged, an annotated `0.9.9`, lightweight
-  and prefixed tags, a subdirectory, and a plain directory. The production path runs in each.
+- Also:
+  - the repository's own `CHANGELOG.md` with the section, before and after the tag;
+  - the same file under two tag states; I and J; a retroactive `0.9.8` tag;
+  - a stray git tag `0.9.8` below the first tag, which is no base;
+  - the unknown state: refused once, with what needs no tags still checked;
+  - wording checks.
+- The reader is driven against real temporary git repositories, with `GIT_DIR`, `GIT_WORK_TREE` and
+  `GIT_INDEX_FILE` naming a decoy that must gain no commit and no tag. The repositories cover:
+  - an untagged repository, then the same with an annotated `0.9.9`;
+  - lightweight and prefixed tags;
+  - a depth-1 clone without the tags, then with CI's tag refspec fetched;
+  - a subdirectory, a plain directory, a checkout git will not open, and one whose tags git cannot list;
+  - no `git`, and a `git` that cannot run.
 
-**Mutation.** Seventeen mutants each fail the self-test:
+  The production path runs where the verdict matters.
+
+**Mutation.** Twenty-eight mutants each fail the self-test (`git_env` keeping the location variables fails it
+through the setup step against the decoy):
 
 | Mutant | Cases failed |
 |---|---|
-| The no-tag `[Unreleased]` refusal reverted to the shape-only check | 18 |
+| The no-tag `[Unreleased]` refusal reverted to the shape-only check | 19 |
 | A changelog definition taken as proof of a tag | 6 |
-| Actual tags ignored (the file-only rule) | 8 |
-| The first tag counted as tagged by fact (the 95th pass's rule) | 5 |
+| Actual tags ignored (the file-only rule) | 9 |
+| The first tag counted as tagged by fact (the 95th pass's rule) | 6 |
 | `previous_of` = the entry directly below | 17 |
 | A prefixed tag counted as the version's tag | 2 |
 | A definition on an untagged past version accepted | 6 |
 | A tagged version without a definition accepted | 3 |
 | The release in preparation must already be tagged | 14 |
-| Unreadable tags read as no tags | 4 |
-| Unreadable tags read as the declarations | 4 |
+| Unreadable tags read as no tags | 7 |
+| Unreadable tags read as the declarations | 7 |
 | Reader: a subdirectory answers with the enclosing checkout's tags | 1 |
-| Reader: lightweight tags not counted | 1 |
-| Reader: no checkout read as a checkout with no tags | 2 |
-| A prefixed tag URL | 78 |
-| First tag (0, 9, 7) | 43 |
-| `[Unreleased]` base = the newest entry, tagged or not | 15 |
+| Reader: lightweight tags not counted | 2 |
+| Reader: no checkout read as a checkout with no tags | 3 |
+| A prefixed tag URL | 79 |
+| First tag (0, 9, 7) | 45 |
+| `[Unreleased]` base = the newest entry, tagged or not | 16 |
+| `tagged()` without its not-older-than-the-first-tag clause | 2 |
+| Unreadable tags: nothing checked after the refusal | 2 |
+| Reader: no git read as a checkout with no tags | 2 |
+| Reader: an unlistable checkout read as no tags | 1 |
+| Reader: a git that cannot run read as no tags | 1 |
+| Reader: a shallow clone read as unknown | 3 |
+| Reader: the shallow hint dropped | 1 |
+| Reader: the inherited `GIT_DIR` not cleared | 11 |
+| `git_env()`: the location variables kept | 1 |
+| The real-file fixture follows the live file | 1 |
+| Reader: every `rev-parse` refusal called "not a git checkout" | 1 |
 
 **The release sequence, run in a sandbox** (a local bare origin; nothing was pushed to the repository and no tag
-was created in it). Each step used a CI-like depth-1 checkout, with the tag refspec that `fetch-tags` adds:
+was created in it). Each step used a CI-like depth-1 checkout, with the tag refspec that `fetch-tags` adds, and
+ran the `docs` job's two commands: `--self-test` (537 cases, passing at every step), then the tree lint.
 - merged `main`, no tag: clean;
 - the same with `[Unreleased]` from 0.9.9: refused;
 - `release.yml`'s validate step, extracted from the workflow, on an annotated `0.9.9`: accepted;
@@ -13092,7 +13116,41 @@ was created in it). Each step used a CI-like depth-1 checkout, with the tag refs
   - clean in a local clone after `git fetch --tags`;
   - refused, with the reason, in a copy that is no checkout;
 - a prefixed tag: not admitted by the trigger pattern, and refused by the validate step;
-- a lightweight `0.9.9`: refused by the validate step ("is commit, not an annotated tag").
+- a lightweight `0.9.9`: refused by the validate step ("is commit, not an annotated tag");
+- the next cycle: `[Unreleased]` renamed to the 0.9.10 release commit with the CMake version bumped. The `docs`
+  job was clean before the `0.9.10` tag, the validate step accepted the annotated tag, and the `docs` job was
+  clean on it.
+
+**Review.** Four read-only reviewers (checker logic, tests and mutation, CI and release, docs), each followed by a
+skeptic, confirmed eight findings (five distinct defects) and refuted six. All five are fixed:
+- **An inherited `GIT_DIR` redirected git.**
+  - What happened: a hook or `git rebase -x` in a linked worktree exports an absolute `GIT_DIR` (and
+    `GIT_INDEX_FILE` for pre-commit), and `-C` does not override it. So the self-test's scratch `init`,
+    `commit` and `tag -a 0.9.9` landed in the user's own repository, and the reader could list another
+    repository's tags.
+  - Fix: every git process now runs without git's repository-location variables (`GIT_LOCATION_VARS`,
+    `git_env()`). The reader tests run under a decoy.
+- **The self-test depended on the live `CHANGELOG.md`.** The fixture inserted `[Unreleased]` above 0.9.9 in the
+  file as it is, so the documented next edits (the section after the tag push, the next release's entry) would
+  have failed `--self-test`, the `docs` job and, through `workflow_call`, the next release. The fixture is now
+  cut back to the file as it stands while 0.9.9 is the newest entry, and a case proves it.
+- **`v >= first` in `tagged()` was unpinned.** A stray git tag `0.9.8` would have made `[Unreleased]` pass
+  before the first real tag. Two cases now pin it.
+- **Unknown state, "checks the rest", was untested.** Two cases now pin it.
+- **The reader's shallow, no-git, unlistable and cannot-run branches were untested.** Tests were added.
+
+Three refuted findings were diagnostics, and they were improved anyway:
+- a `rev-parse` refusal other than "not a repository" (dubious ownership) now carries git's reason instead of
+  "not a git checkout";
+- a full clone's source says how to fetch a tag pushed since;
+- the untagged-definition finding says "a tag this checkout does not have" instead of "a tag that was never
+  cut".
+
+The other three were refuted as documented behaviour:
+- a local unpushed tag counts locally, and CI sees only pushed tags;
+- the unknown state skips the release in preparation's form, which depends on the tags; the policy wording now
+  says what is checked;
+- the shallow hint was untested (now tested anyway).
 
 **Documents synced:**
 - `CHANGELOG_POLICY.md` rule 8 and its template paragraph;

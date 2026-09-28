@@ -96,10 +96,10 @@ changelog heading, its link and the prose all agree without translation.
 - `scripts/check-citations.py` — one `DELIBERATE_REAIMS` entry.
 
 ## Evidence + confidence
-- **[Verified]** `python3 scripts/check-docs.py --self-test`: 532 cases pass. They include a prefixed tag
+- **[Verified]** `python3 scripts/check-docs.py --self-test`: 537 cases pass. They include a prefixed tag
   page, a prefixed comparison and a prefixed 0.9.9 tag page, each refused, and a prefixed git tag, which
   is not the version's tag (so it makes no comparison base and no `[Unreleased]` base). With the prefix
-  restored in `check_changelog_links`, 78 cases fail, and the real `CHANGELOG.md` is refused; with a
+  restored in `check_changelog_links`, 79 cases fail, and the real `CHANGELOG.md` is refused; with a
   prefixed git tag counted as the version's, 2 fail. (Re-measured 2026-09-28 after the checker began
   reading the git tags; first recorded as 492 and 51, then 511 and 65.)
 - **[Verified]** The tag-shape test from `release.yml`, run in bash: `0.9.9` matches; the prefixed form and

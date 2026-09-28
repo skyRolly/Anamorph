@@ -67,8 +67,9 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    newest version whose tag exists. Until a tag exists there is no base, so the section itself is
    refused, whatever its definition names — including before the `0.9.9` tag is pushed, although the
    0.9.9 entry is in the file — and unreleased work goes in the dated entry it will ship in (§Entry
-   template). Where the tags cannot be read (not a git checkout), the check refuses, with the reason,
-   whatever depends on them, and checks the rest. The definition is written **in the
+   template). Where the tags cannot be read (not the root of a git checkout, no `git`), the check refuses
+   the file's release links with one finding that gives the reason, and still checks what needs no tags;
+   a file whose only version at or above the first tag is the release in preparation needs none. The definition is written **in the
    release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
    refusing any tag other than the bare CMake version. `check-docs.py` requires exactly the form the
