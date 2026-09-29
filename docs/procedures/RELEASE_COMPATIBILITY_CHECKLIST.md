@@ -15,7 +15,9 @@ operating systems, plug-in formats and automation lanes were not supplied and ar
 - 0.9.9 renamed two host-visible names (Dimensional), bounded the preset and host-state parsers
   (ADR-0055/0056), and changed the adoption of bulk swaps (ADR-0057).
 
-Box 6 set the precedent: a touched box is re-run, not carried. The 0.9.6 record below stays as written.
+Box 6 set the precedent: a touched box is re-run, not carried. The 0.9.6 record below stays as written,
+except that its note on scope now describes the first-tag plan it recorded as a plan, which was not carried
+out (ADR-0058).
 
 | # | Item | 0.9.9 |
 |---|---|---|
@@ -253,6 +255,8 @@ Recorded 2026-09-01 against the working tree at the head of
    built by current code, which can only contain what today's understanding says an old format held.
    This one was written by the old binary.
 
-**Note on scope.** 0.9.6 will be the first tagged release; none of 0.9.0–0.9.5 was ever tagged,
-so "the previous version" means the previous *source* version, reachable to anyone who built or
-took a CI artifact. That is the transition item 8 now covers.
+**Note on scope.** When this record was written, 0.9.6 was planned to be the first tagged release.
+That plan was not carried out: 0.9.6, 0.9.7 and 0.9.8 each closed without a tag, and the first formal
+tag is 0.9.9 (ADR-0058). None of 0.9.0–0.9.5 was ever tagged either, so "the previous version" means
+the previous *source* version, reachable to anyone who built or took a CI artifact. That is the
+transition item 8 covered.

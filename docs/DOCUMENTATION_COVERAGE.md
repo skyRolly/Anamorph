@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13005,6 +13005,99 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
 
+## 97th pass — 2026-09-29, the 0.9.5 capture restored; the 0.9.6 first-tag plan is history (PR #159)
+
+**Scope.** Two review findings (Devin) on PR #159, and a narrow search for the same kinds of defect. No
+production code, parameter, serialization, DSP, threading or latency change.
+
+**Finding 1: the 0.9.5 capture was rewritten.**
+- **Lineage, from git.**
+  - `72fe2e0` (2026-09-01) committed `tests/fixtures/field_capture_v0_9_5.session` (10,629 bytes) and its
+    `.manifest`, both WRITTEN by the 0.9.5 binary. That binary was rebuilt from the tree at `2c5e760^`
+    (`CMakeLists.txt` there reads 0.9.5) with an `--emit-session` hook in its state suite; the hook is
+    scratch and was never committed, only its output was. The manifest's first line was `emitter=v0.9.5`,
+    with CRLF line endings, and State test 25 asserted `expected["emitter"] == "v0.9.5"`.
+  - `bfa9c73` (2026-09-28, the ADR-0059 sweep) renamed both files, rewrote that line to the bare form and
+    changed the assertion to match. The session blob stayed byte-identical (it holds no version string).
+- **Why it matters.** The manifest is the old binary's own record: State test 25 reads it as "what 0.9.5
+  had". Rewriting it, and the assertion with it, left the test checking a record the old binary never
+  wrote, and nothing could notice.
+- **The distinction.** ADR-0059's bare notation governs *current* version references. Output captured from
+  an older binary is evidence, and keeps its exact bytes whatever notation it uses. The file *names* follow
+  the convention: they are repository metadata.
+- **The fix.**
+  - The manifest is restored byte for byte from `72fe2e0` (`cmp` against the git object: identical).
+  - State test 25 pins both capture files by FNV-1a-64 over their raw bytes (`63512badf96b42a2`, 10,629
+    bytes; `87a04bb89d88f423`, 228 bytes) and asserts the label exactly as written.
+  - `.gitattributes`, new, marks both files `-text`, so no checkout converts the manifest's CRLF line
+    endings. That was checked with `core.autocrlf=true` and with a renormalize under `input`.
+  - ADR-0059 is amended: a second preserved category, "output captured from an older binary", and its
+    record of the sweep corrected. `ADR_INDEX.md` row 0059 and `REPOSITORY_MAP.md`'s fixtures row follow.
+- **Suites on this pass's final source:** State 5,596 checks, 0 failures; DSP 944 checks, 0 failures. State
+  test 25 has three more checks than before: the manifest loads, and the two hashes; the label check is
+  replaced. That is 5,593 + 3, so `HANDOVER.md`'s Test Status row and `RELEASE_HARDENING_PLAN.md`'s QA-gate
+  row now say 5,596 (the review found both still at 5,593).
+- **Controls**, each run through the whole State suite (5,596 checks):
+  - the label rewritten to the bare form: 2 failures (the manifest hash, the label);
+  - the assertion relaxed to the bare form with the fixture rewritten to match, which is exactly what the
+    sweep did: 1 failure (the manifest hash; before this pass the test passed in that state, green in CI
+    on `dedae6a`);
+  - the assertion relaxed, with the historical fixture: 1 failure (the label);
+  - a slot-B value nudged inside the 1e-5 tolerance the value checks use: 1 failure (the hash);
+  - one blob byte changed where the restore does not read it: 1 failure (the hash);
+  - the manifest converted to LF line endings: 1 failure (the hash).
+
+  The fixtures were restored and re-compared with `72fe2e0` after the controls.
+- **The same class of defect elsewhere: none found.** A read-only audit went over every normalization commit
+  in this PR. Three auditors covered tests and sources, `docs/`, and `worklogs/`, each followed by a skeptic.
+  They looked for fixture bytes, assertions against output that is not the current build's, verbatim program
+  output, external identifiers (branches, tags, artifacts, URLs) and quoted commit messages.
+  - The manifest was the only rewritten output of an older binary.
+  - Of 19 other candidates, 16 were refuted as prose the convention covers. Among them is the 0.2 legacy
+    fixture's header comment: that fixture is hand-modelled (`worklogs/STATE_HARNESS_0.8.13.md` §2.3), and
+    `juce::parseXML` drops the comment before any test reads the fixture.
+  - One candidate received no verdict, and two were confirmed by their skeptic. All three are of one kind:
+    lines in this file's historical passes quoting the repository's own `CHANGELOG.md` link definitions as
+    they were then written. The two confirmed ones are in "Changelog system round 2": the tag page for 0.9.7,
+    and the comparison the first link check accepted.
+  - They are quotations of the repository's own text, not an older binary's output, and ADR-0059 normalized
+    this file by design, so they stay as they are. The substance of each record, which link form was
+    accepted, does not depend on the spelling. Restoring them verbatim is the owner's option.
+
+**Finding 2: the 0.9.6 record predicted a first tag that never happened.**
+`RELEASE_COMPATIBILITY_CHECKLIST.md`'s retained 0.9.6 record said "0.9.6 will be the first tagged release".
+Its note on scope now says 0.9.6 *was planned* to be the first tagged release, that the plan was not carried
+out (0.9.6, 0.9.7 and 0.9.8 each closed without a tag), and that the first formal tag is 0.9.9 (ADR-0058). The
+0.9.6 evidence is unchanged. The 0.9.9 record's sentence "The 0.9.6 record below stays as written" now names
+this one exception.
+
+**Narrow search** for the same contradiction ("will be", "planned", "first tag", "first tagged release",
+"first formal tag", with 0.9.6 and other pre-0.9.9 versions) in the release and compatibility documents and
+`HANDOVER.md`: every other match is already historical ("was then … planned as the first annotated tag",
+"Prior sync: … named 0.9.3 as the first tag") or states the current rule. Nothing else changed.
+
+**First-tag policy, re-confirmed on this pass's tree:**
+- `check-docs.py --self-test` passes 537 cases, and the tree is clean;
+- the twelve reproduction cases A–J behave as required;
+- `FIRST_TAGGED_VERSION` is `(0, 9, 9)`;
+- no tag exists locally or on GitHub.
+
+**Citations.** Seven `tests/state_tests.cpp` anchors shifted with the longer State test 25 and were re-anchored
+with `check-citations.py --fix`, in `TESTING.md`, `CI_CD.md`, this file and one `build.yml` comment.
+
+**Review.** Three read-only reviewers (test and evidence integrity, documentation facts, scope and remaining
+contradictions), each followed by a skeptic, confirmed three findings and refuted four. All three are fixed:
+- ADR-0059's search evidence did not name `REPOSITORY_MAP.md`, which quotes the label, or the capture's
+  pre-rename git-object path;
+- `HANDOVER.md` and `RELEASE_HARDENING_PLAN.md` still gave the State suite as 5,593 checks (found by two
+  reviewers).
+
+One refuted finding, two dates for the amendment, was aligned anyway: ADR-0059, `ADR_INDEX.md` and State test 25
+now all say 2026-09-29, the date of this pass. No hard-stop change was found, and no current version is written
+with a prefix.
+
+**This file:** this entry and the *Last updated* line.
+
 ## 96th pass — 2026-09-28, "tagged" read from git, not from the changelog (PR #159)
 
 **Scope.** One review finding (Devin) against `check_changelog_links`: `[Unreleased]` still validated before the
@@ -15038,7 +15131,7 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22009`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
 1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and over its 20 largest
@@ -15057,7 +15150,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19075`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19113`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
