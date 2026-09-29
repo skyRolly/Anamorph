@@ -1357,7 +1357,7 @@ def read_git_tags(root: Path) -> TagState:
     `fetch-tags: true`); a clone made with `git clone` has the tags that existed
     then, and `git fetch --tags` brings later ones. A clone without a tag reads as
     a checkout without it, so the source says how to fetch them (the tags and the
-    line's `main`, which a single-branch clone's refspec leaves behind). A SHALLOW clone
+    line's `main`, which a refspec that does not cover it leaves behind). A SHALLOW clone
     is unknown, whatever tags it holds: it cuts HEAD's history short, so a tag it
     lists may be in the full history although HEAD does not reach it here, and
     `git clone --depth` does not even fetch a tag whose commit lies beyond the
@@ -1563,8 +1563,9 @@ def read_git_tags(root: Path) -> TagState:
     names = tuple(r.split("/", 2)[2] for r, _ in
                   sorted(line, key=lambda rc: -holds.get(rc[0], 0)))
     # The fetch that brings a release pushed since: the tags AND the line's
-    # `main`, by an explicit refspec, since a single-branch clone's configured one
-    # does not update it and a tag `main` does not yet hold is no release. None
+    # `main`, by an explicit refspec, since a configured one that does not cover
+    # it (a single-branch clone of another branch) never updates it, and a tag
+    # `main` does not yet hold is no release. None
     # for the local `main`, a line with no remote, whose tags are all here.
     fetch_from = [n.rsplit("/", 1)[0] for n in names if n != RELEASE_BRANCH]
     return TagState(releases, True,
@@ -5237,13 +5238,22 @@ def self_test() -> int:
                               and "https://proxy.example/skyRolly/Anamorph" in st.source
                               and "ken@" not in st.source and add is not None
                               and add.group(2) == ssh_form))
-                if add:
-                    G(oc, "remote", "add", add.group(1), add.group(2))
-                    G(oc, "update-ref", f"refs/remotes/{add.group(1)}/{RELEASE_BRANCH}",
-                      "0.9.9^{commit}")
+                # Run whole, as printed: only the network is stood in for, by a rule on
+                # the command line that sends the added URL to the scratch repository --
+                # with the other remote a fork, so a fetch from the wrong one shows.
+                G(oc, "remote", "set-url", "mirror", forked.as_uri())
+                fix = re.search(r"fetch it with `([^`]+)`", st.source)
+                for part in (fix.group(1).split(" && ") if fix and add else []):
+                    G(oc, "-c", f"url.{canon.as_uri()}.insteadOf={ssh_form}",
+                      *shlex.split(part)[1:])
                 st = read_git_tags(oc)
-                steps.append(("...which, run as written, reads the release line",
-                              st.known and st.tags == {"0.9.9"}))
+                steps.append(("...which, run as written, fetches the repository's `main` into "
+                              "the remote it adds and reads the line from it",
+                              add is not None and st.known
+                              and st.line == (f"{add.group(1)}/{RELEASE_BRANCH}",)
+                              and G(oc, "rev-parse", f"refs/remotes/{add.group(1)}/"
+                                    f"{RELEASE_BRANCH}") == G(canon, "rev-parse", RELEASE_BRANCH)))
+                G(oc, "remote", "set-url", "mirror", canon.as_uri())
                 if add:
                     G(oc, "remote", "remove", add.group(1))
                 # Where every form GitHub serves is rewritten, no remote can be added:
