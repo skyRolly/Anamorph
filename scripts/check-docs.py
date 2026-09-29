@@ -179,6 +179,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import io
+import itertools
 import os
 import re
 import shutil
@@ -1352,7 +1353,8 @@ def read_git_tags(root: Path) -> TagState:
     CI's `docs` job checks out the full history with every tag (`fetch-depth: 0`,
     `fetch-tags: true`); a clone made with `git clone` has the tags that existed
     then, and `git fetch --tags` brings later ones. A clone without a tag reads as
-    a checkout without it, so the source says how to fetch them. A SHALLOW clone
+    a checkout without it, so the source says how to fetch them (the tags and the
+    line's `main`, which a single-branch clone's refspec leaves behind). A SHALLOW clone
     is unknown, whatever tags it holds: it cuts HEAD's history short, so a tag it
     lists may be in the full history although HEAD does not reach it here, and
     `git clone --depth` does not even fetch a tag whose commit lies beyond the
@@ -1442,26 +1444,50 @@ def read_git_tags(root: Path) -> TagState:
                 why = ((f"the remote `{name}` is this repository" if canonical else
                         f"`origin` is the only remote") + f", but this checkout has no "
                        f"`{name}/{RELEASE_BRANCH}`")
-                fix = f"git fetch {name} {RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}"
+                fix = f"git fetch {name} +{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}"
             else:
                 why = (f"none of this checkout's remotes ({', '.join(remotes)}) is {REPO_URL} "
                        f"by its URL, and which one is this repository cannot be guessed"
                        if remotes else f"this checkout has no remote and no local "
                        f"`{RELEASE_BRANCH}`")
-                # A name no remote has yet, so the command it gives can run as written.
-                name = next(n for n in ("upstream", "anamorph", "release-line")
-                            + tuple(f"release-line-{i}" for i in range(2, 100))
-                            if n not in remotes)
-                fix = (f"git remote add {name} {REPO_URL} && git fetch {name} "
-                       f"{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}")
-                # An `insteadOf` rule that rewrites the repository's URL itself leaves no
-                # remote recognisable as it, whatever is added: say so, not only the fix.
-                rewritten = run("ls-remote", "--get-url", REPO_URL).stdout.strip()
-                if rewritten and not REPOSITORY_REMOTE.search(rewritten):
+                # A name nothing holds -- a configured remote, a legacy one in
+                # `$GIT_DIR/remotes` or `branches` (which `git remote` does not list but
+                # `git remote add` refuses), or a removed one's leftover tracking refs --
+                # so the command it gives runs as written; the refspec is forced, so a
+                # stale ref under that name could not outlive it anyway.
+                held = run("for-each-ref", "--format=%(refname)", "refs/remotes").stdout.split()
+                name = next(n for n in itertools.chain(
+                                ("upstream", "anamorph", "release-line"),
+                                (f"release-line-{i}" for i in itertools.count(2)))
+                            if n not in remotes
+                            and not any(r.startswith(f"refs/remotes/{n}/") for r in held)
+                            and run("remote", "get-url", n).returncode != 0)
+                # The URL added must be one git leaves recognisable: an `insteadOf`
+                # rule can rewrite `REPO_URL` to a form that is not this repository's,
+                # and a remote added under it would read as unknown again, every run.
+                # So the first form GitHub serves that no rule rewrites away; if every
+                # one is, the rule itself is the fix. (Any credentials in the rewritten
+                # URL are not repeated.)
+                forms = (REPO_URL, f"git@{_REPO_HOST}:{_REPO_PATH}.git",
+                         f"ssh://git@{_REPO_HOST}/{_REPO_PATH}.git")
+                resolved = [(f, run("ls-remote", "--get-url", f).stdout.strip() or f)
+                            for f in forms]
+                url = next((f for f, got in resolved if REPOSITORY_REMOTE.search(got)), None)
+                fix = (f"git remote add {name} {url} && git fetch {name} "
+                       f"+{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}")
+                if url != REPO_URL:
+                    shown = re.sub(r"(?<=://)[^/@]*@", "", resolved[0][1])
                     why += (f" -- and a `url.<base>.insteadOf` rule in this checkout's git "
-                            f"configuration rewrites {REPO_URL} to {rewritten}, so no remote "
-                            f"here can be recognised as this repository until that rule is "
-                            f"lifted for it")
+                            f"configuration rewrites {REPO_URL} to {shown}, so a remote "
+                            f"under that URL is not recognisable as this repository while "
+                            f"the rule applies"
+                            + (f"; {url} is a form the rule leaves alone" if url else
+                               "; nor is any other form GitHub serves it at, so lift that "
+                               "rule for this repository first"))
+                    if url is None:
+                        fix = (f"git remote add {name} {REPO_URL} && git fetch {name} "
+                               f"+{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}, once "
+                               f"no `insteadOf` rule rewrites it")
             return TagState(frozenset(), False,
                             f"{why}, so git cannot tell a release tagged on this repository's "
                             f"`{RELEASE_BRANCH}` from another branch's or a fork's tag -- fetch it "
@@ -1524,14 +1550,18 @@ def read_git_tags(root: Path) -> TagState:
     # repository, the one fetched last is the one a finding should name.
     names = tuple(r.split("/", 2)[2] for r, _ in
                   sorted(line, key=lambda rc: -holds.get(rc[0], 0)))
+    # The fetch that brings a release pushed since: the tags AND the line's
+    # `main`, by an explicit refspec, since a single-branch clone's configured one
+    # does not update it and a tag `main` does not yet hold is no release. None
+    # for the local `main`, a line with no remote, whose tags are all here.
     fetch_from = [n.rsplit("/", 1)[0] for n in names if n != RELEASE_BRANCH]
     return TagState(releases, True,
                     f"the git tags in `{RELEASE_BRANCH}`'s history ({', '.join(names)})"
                     + (", which this branch is headed for" if unmerged
                        else ", except those tagged after this commit" if cut else "")
-                    + (f" -- `git fetch --tags {fetch_from[0]}` brings one pushed since it last "
-                       f"fetched" if fetch_from else
-                       " -- `git fetch --tags` brings one pushed since it last fetched"),
+                    + (f" -- `git fetch --tags {fetch_from[0]} +{RELEASE_BRANCH}:refs/remotes/"
+                       f"{fetch_from[0]}/{RELEASE_BRANCH}` brings one pushed since it last "
+                       f"fetched" if fetch_from else ""),
                     elsewhere, ahead, headed, unmerged, reached - releases, names)
 
 
@@ -2514,7 +2544,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             findings.append(
                 f"{path}:{line_no}: `[{key}]` must compare against the most recent release "
                 f"before it, but no release tag older than `{key}` is in this checkout's "
-                f"history" + (f" or `{RELEASE_BRANCH}`'s" if tags.headed else "")
+                f"history" + (f" or `{line_ref}`'s" if tags.headed else "")
                 + f" (read from {tags.source})"
                 + (f" -- {not_here(older[-1])}: {merge_hint(older[-1])}" if older else "")
                 + f" -- this line's first tag is {'.'.join(map(str, first))}"
@@ -4721,8 +4751,9 @@ def self_test() -> int:
                 st = read_git_tags(repo_dir)
                 steps.append(("an untagged checkout reads as known and empty",
                               st.known and not st.tags))
-                steps.append(("...and says how to fetch a tag pushed since",
-                              "git fetch --tags" in st.source and "shallow" not in st.source))
+                # With no remote, every tag is here already: no fetch to name.
+                steps.append(("...and, with no remote, names no fetch, which could bring nothing",
+                              "git fetch" not in st.source and "shallow" not in st.source))
                 steps.append(("...and the production path refuses `[Unreleased]` from 0.9.9",
                               len(analyse(repo_dir / "CHANGELOG.md", post, repo_dir)) == 2))
                 G(repo_dir, "tag", "-a", "0.9.9", "-m", "Anamorph 0.9.9")
@@ -4899,19 +4930,33 @@ def self_test() -> int:
                 steps.append(("R2196: a clone without `main` cannot place the release line: "
                               "unknown, with the remedy",
                               not st.known and "has no `origin/main`" in st.source
-                              and "git fetch origin main:refs/remotes/origin/main" in st.source))
+                              and "git fetch origin +main:refs/remotes/origin/main" in st.source))
                 _tag_state_cache.clear()
                 found = analyse(lone / "CHANGELOG.md", merged, lone)
                 steps.append(("R2196: ...and the production path there refuses once",
                               len(found) == 1 and "has no `origin/main`" in found[0]))
                 # ...and the remedy it names is one that works: a single-branch clone's
                 # refspec fetches no `origin/main` for a bare `git fetch origin main`.
-                G(lone, "fetch", "-q", "origin", "main:refs/remotes/origin/main")
+                G(lone, "fetch", "-q", "origin", "+main:refs/remotes/origin/main")
                 st = read_git_tags(lone)
                 steps.append(("R2196: ...after the remedy it names, the release line is read",
-                              len(found) == 1 and "git fetch origin main:refs/remotes/origin/main"
+                              len(found) == 1 and "git fetch origin +main:refs/remotes/origin/main"
                               in found[0] and st.known and st.headed
                               and st.tags == {"0.9.9", "0.9.10"}))
+                # ...and the fetch its source names brings a release pushed since: the
+                # tag AND `origin/main`, which this clone's single-branch refspec never
+                # updates -- `git fetch --tags origin` alone brings the tag, which
+                # `main` then does not hold, and the missing entry goes unreported.
+                G(rl, "checkout", "-q", RELEASE_BRANCH)
+                G(rl, "commit", "-q", "--allow-empty", "-m", "0.9.12")
+                G(rl, "tag", "-a", "0.9.12", "-m", "Anamorph 0.9.12")
+                hint = re.search(r"`git (fetch --tags [^`]+)`", st.source)
+                if hint:
+                    G(lone, *hint.group(1).split())
+                st = read_git_tags(lone)
+                steps.append(("R2196: ...and the fetch its source names brings a release pushed "
+                              "since, with the `main` that holds it",
+                              hint is not None and st.known and "0.9.12" in st.tags))
                 # A LOCAL `main` that has left `origin/main` (unpushed commits) is no
                 # release line: `origin/main` is, and its newer release binds HEAD
                 # whatever the branch is called.
@@ -5037,7 +5082,8 @@ def self_test() -> int:
                               and any("git tag `0.9.10` is a release on `upstream/main`" in f
                                       and "merge `upstream/main` into this branch" in f
                                       for f in found)
-                              and "`git fetch --tags upstream`" in st.source))
+                              and "`git fetch --tags upstream +main:refs/remotes/upstream/main`"
+                              in st.source))
                 # Two remotes that are both the repository, one fetched before 0.9.10: the
                 # line is both, and a finding names the one that holds the release.
                 G(fdev, "remote", "add", "canon2", "git@github.com:skyRolly/Anamorph.git")
@@ -5140,7 +5186,7 @@ def self_test() -> int:
                 steps.append(("...with the repository's remote but not its `main`, the line is "
                               "unknown, with the remedy -- not the fork's `main`",
                               not st.known and "`upstream`" in st.source
-                              and f"git fetch upstream {RELEASE_BRANCH}:refs/remotes/upstream/"
+                              and f"git fetch upstream +{RELEASE_BRANCH}:refs/remotes/upstream/"
                               f"{RELEASE_BRANCH}" in st.source))
                 G(fk, "update-ref", f"refs/remotes/upstream/{RELEASE_BRANCH}", upstream_main)
                 # NO REMOTE THAT IS THE REPOSITORY: an ordinary clone's `origin/main`
@@ -5162,13 +5208,60 @@ def self_test() -> int:
                               and "git fetch origin" not in st.source))
                 # An `insteadOf` rule that rewrites the repository's own URL leaves no remote
                 # recognisable as it: the unknown line says so, not only "add a remote".
-                G(oc, "config", "url.https://proxy.example/.insteadOf", "https://github.com/")
+                # The remedy then adds it under a form the rule leaves alone, and does not
+                # repeat credentials the rewritten URL carries; run as written (the fetch
+                # stood in for by the ref it writes), it reads the line.
+                G(oc, "config", "url.https://bot:t0ken@proxy.example/.insteadOf",
+                  "https://github.com/")
                 st = read_git_tags(oc)
+                ssh_form = f"git@github.com:{_REPO_PATH}.git"
+                add = re.search(r"`git remote add (\S+) (\S+) && ", st.source)
                 steps.append(("...and where an `insteadOf` rule rewrites the repository's URL, "
-                              "the reason names the rule",
+                              "the reason names the rule, without its credentials, and the "
+                              "remedy a form the rule leaves alone",
                               not st.known and "insteadOf" in st.source
-                              and "https://proxy.example/skyRolly/Anamorph" in st.source))
-                G(oc, "config", "--unset", "url.https://proxy.example/.insteadOf")
+                              and "https://proxy.example/skyRolly/Anamorph" in st.source
+                              and "t0ken" not in st.source and add is not None
+                              and add.group(2) == ssh_form))
+                if add:
+                    G(oc, "remote", "add", add.group(1), add.group(2))
+                    G(oc, "update-ref", f"refs/remotes/{add.group(1)}/{RELEASE_BRANCH}",
+                      "0.9.9^{commit}")
+                st = read_git_tags(oc)
+                steps.append(("...which, run as written, reads the release line",
+                              st.known and st.tags == {"0.9.9"}))
+                if add:
+                    G(oc, "remote", "remove", add.group(1))
+                # Where every form GitHub serves is rewritten, no remote can be added:
+                # the rule itself is the fix, and no `git remote add` is offered bare.
+                for form in ("git@github.com:", "ssh://git@github.com/"):
+                    G(oc, "config", "--add", "url.https://bot:t0ken@proxy.example/.insteadOf",
+                      form)
+                st = read_git_tags(oc)
+                steps.append(("...and where every form is rewritten, the remedy is to lift "
+                              "the rule first",
+                              not st.known and "lift that rule" in st.source
+                              and "once no `insteadOf` rule rewrites it" in st.source))
+                G(oc, "config", "--unset-all", "url.https://bot:t0ken@proxy.example/.insteadOf")
+                # The remote the remedy adds is under a name nothing holds: not a
+                # configured remote, nor the leftover tracking refs of a removed one --
+                # and there is always one, however many are taken.
+                G(oc, "update-ref", f"refs/remotes/upstream/{RELEASE_BRANCH}", "0.9.9^{commit}")
+                (oc / ".git" / "remotes").mkdir(exist_ok=True)
+                (oc / ".git" / "remotes" / "anamorph").write_text(f"URL: {canon.as_uri()}\n",
+                                                                  encoding="utf-8")
+                with open(oc / ".git" / "config", "a", encoding="utf-8") as cfg:
+                    for n in ["release-line"] + [f"release-line-{i}" for i in range(2, 120)]:
+                        cfg.write(f'[remote "{n}"]\n\turl = {canon.as_uri()}-{n}\n')
+                st = read_git_tags(oc)
+                steps.append(("...and the remote it adds is under a name nothing holds, a "
+                              "removed remote's leftover refs and a legacy remote file "
+                              "included, however many are taken",
+                              not st.known and f"git remote add release-line-120 " in st.source))
+                (oc / ".git" / "remotes" / "anamorph").unlink()
+                for n in ["release-line"] + [f"release-line-{i}" for i in range(2, 120)]:
+                    G(oc, "remote", "remove", n)
+                G(oc, "update-ref", "-d", f"refs/remotes/upstream/{RELEASE_BRANCH}")
                 # A ref is read by its full name: with the repository's `upstream/main`
                 # gone, a tag spelled `refs/remotes/upstream/main` (on the fork's
                 # `main`) does not stand in for it.
@@ -5904,14 +5997,15 @@ def self_test() -> int:
                     hit = hit or bool(glob_regex(g).fullmatch(tag))
             return hit
 
-        def validate(tag: str, annotated: bool = True) -> tuple[bool, str]:
+        def validate(tag: str, annotated: bool = True) -> tuple[bool, str, str]:
             # The validate step, run as the tag push runs it -- in a checkout made
             # the way `actions/checkout` makes one for a tag, whose local tag is the
             # PEELED commit, so the step's re-fetch of the tag object is what lets
             # it see an annotated tag at all: whether it passes, and what it said.
             # It passes only by exiting 0 AND writing to `GITHUB_OUTPUT` the two
             # outputs the release jobs read, `is-release=true` and `version=<tag>`
-            # (echoed to the log instead, they reach no job). The CMake version is the tag wherever the step's own
+            # (echoed to the log instead, they reach no job). Returns that, what it
+            # said, and which outcome it was, for the failure message. The CMake version is the tag wherever the step's own
             # parse can read it (a leading-zero version too, so only the tag
             # grammar can refuse it), else a valid one, so the grammar test is
             # what the tag meets first.
@@ -5955,8 +6049,9 @@ def self_test() -> int:
                                         f"refs/tags/{tag}"], capture_output=True, text=True,
                                        env=env).stdout.strip()
                 if local != "commit":
-                    return False, (f"the sandbox's local tag `{tag}` is a {local or 'missing'} "
-                                   f"object, not the peeled commit actions/checkout leaves")
+                    why = (f"the sandbox's local tag `{tag}` is a {local or 'missing'} "
+                           f"object, not the peeled commit actions/checkout leaves")
+                    return False, why, f"could not be run on it: {why}"
                 (box_dir / "out").write_text("", encoding="utf-8")
                 done = subprocess.run(
                     [tools["bash"], "-e", "-c", script], cwd=work, capture_output=True, text=True,
@@ -5964,8 +6059,11 @@ def self_test() -> int:
                              RUNNER_TEMP=str(box_dir), GITHUB_OUTPUT=str(box_dir / "out")))
                 outputs = (box_dir / "out").read_text(encoding="utf-8").splitlines()
                 said = done.stdout + done.stderr + "\n".join(outputs)
-                return (done.returncode == 0 and "is-release=true" in outputs
-                        and f"version={tag}" in outputs), said
+                wrote = "is-release=true" in outputs and f"version={tag}" in outputs
+                return (done.returncode == 0 and wrote, said,
+                        "refuses it" if done.returncode != 0 else "passes it" if wrote else
+                        f"passes it but writes no `is-release=true` and `version={tag}` to "
+                        f"GITHUB_OUTPUT")
 
         checked += 1
         if not (globs and script and extractor.is_file()):
@@ -5978,7 +6076,7 @@ def self_test() -> int:
                         "0.9", "0.9.10.1", "0.9.10-rc1", "0.9.1\uff10"):
                 release = bool(RELEASE_TAG.fullmatch(tag))
                 checked += 1
-                ran, said = validate(tag)
+                ran, said, outcome = validate(tag)
                 # A refusal must be the step's own grammar test speaking, not some
                 # other failure -- nor no run at all.
                 refused_for_shape = f"release tag {tag} is not a bare MAJOR.MINOR.PATCH" in said
@@ -5987,17 +6085,17 @@ def self_test() -> int:
                     failures += 1
                     print(f"self-test FAIL [release tag grammar]: `{tag}` -- RELEASE_TAG "
                           f"{'accepts' if release else 'refuses'} it, release.yml's validate "
-                          f"step {'passes' if ran else 'refuses'} it"
+                          f"step {outcome}"
                           + ("" if release or refused_for_shape else " but not for its shape")
                           + (", and its trigger does not start" if release and not triggers(tag)
                              else ""), file=sys.stderr)
             checked += 1
-            ran, said = validate("0.9.10", annotated=False)
+            ran, said, outcome = validate("0.9.10", annotated=False)
             if ran or "not an annotated tag" not in said:
                 failures += 1
                 print("self-test FAIL [release tag grammar]: a lightweight `0.9.10` is not "
-                      "refused by release.yml's validate step as a lightweight tag",
-                      file=sys.stderr)
+                      f"refused by release.yml's validate step as a lightweight tag (the step "
+                      f"{outcome})", file=sys.stderr)
 
     # Counted as they run, never hand-maintained: the previous literal
     # (`len(cases) + 2 + 5 + 3`) drifted the moment a case was added, and the
