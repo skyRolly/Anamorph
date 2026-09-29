@@ -489,7 +489,7 @@ without a tag, rather than only for this one.
 - **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 689 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
   is the number of failing cases and steps alike). A hundred and one mutants each fail it, none by
-  crashing, with the number of failing cases (measured on a clean clone of `46b82f5`; ninety-two of the
+  crashing, with the number of failing cases (measured on a clean clone of `c729463`; ninety-two of the
   checker, nine of `release.yml` run against the unmutated checker):
   - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
     preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's

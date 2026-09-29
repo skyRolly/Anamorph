@@ -13131,7 +13131,8 @@ The negative controls fail:
 - the sandbox fetching the tag object, as `git clone` does: 14 cases (0 before the second review round).
 
 **Mutation.** A hundred and one mutants each fail the self-test, none by crashing, on a clean clone of
-`46b82f5`: ninety-two of the checker, and nine of `release.yml` run against the unmutated checker. The full counts are
+`c729463`: ninety-two of the checker, and nine of `release.yml` run against the unmutated checker (the same
+counts as on `46b82f5`, whose checker differs only in one message's wording). The full counts are
 in ADR-0058's evidence. Among them:
 
 | Mutant | Failing cases |
@@ -13344,6 +13345,18 @@ printed command that fails as written, or an untrue statement. Each finding repr
   for the no-`main` fetch; "every fetch the reader prints" is scoped to the fetches of `<remote>/main` (the
   shallow remedy is `git fetch --unshallow --tags`); and ADR-0058's "`git fetch origin main` writes only
   `FETCH_HEAD`" is scoped to a single-branch clone of another branch.
+
+**Final verification** (on `46b82f5`). One reviewer ran the two final-round fixes, each finding again
+reproduced by a skeptic. Every printed fetch (the no-`main` remedy, the unknown-line remedy, the hint) ran
+as written in ten checkout shapes (an ordinary clone, single-branch clones of a feature branch and of
+`main`, fork clones, the CI merge and tag-push shapes, a linked and a `--mirror` worktree, shallow chains)
+under six prune settings (`fetch.prune`, `remote.<r>.prune`, `fetch.pruneTags`, alone and together): all
+succeeded and left the line known and current; the old `+main:` form deleted `origin/main` under
+`fetch.prune`. The repository's own `CHANGELOG.md` stays clean in every normal unknown state (a shallow or
+single-branch clone, an export, a subdirectory, the checkout at the 0.9.9 tag), and is refused, naming
+0.9.10, only where a checkout holds a newer tag it cannot place. One wording finding: the refusal said the
+file must record the newer tag "if it is a release", which a release cut after the commit does not need; it
+now says "a release this commit comes after" (`c729463`).
 
 **Limitations, stated.**
 - A fork clone whose only remote is the fork reads the fork's `origin/main`, the only line it has; add the
