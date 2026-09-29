@@ -150,7 +150,7 @@ branch other than `main` is no release, not even on that branch, until `main` ho
 the full history, every branch and every tag. Where the tags cannot be read at all (a directory that is
 not the root of a git checkout), the checkout is a shallow clone, which cannot tell which tags are in
 `HEAD`'s history (run `git fetch --unshallow --tags`), or it has no `main` of this repository (run
-`git fetch origin +main:refs/remotes/origin/main`, or for the remote that is this repository, the name
+`git fetch --refmap= origin +main:refs/remotes/origin/main`, or for the remote that is this repository, the name
 it gives), the checker refuses the links that depend on them and says why.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`

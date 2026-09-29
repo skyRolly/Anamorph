@@ -162,22 +162,26 @@ without a tag, rather than only for this one.
         the repository this checkout was cloned from, as a mirror or proxy is; failing any remote at all,
         the local `main`, since a repository nothing was cloned from is its own line. Everything else is
         **unknown**, never a guess at a fork's or a local `main`: a remote that is this repository but
-        whose `main` was never fetched (remedy `git fetch <remote> +main:refs/remotes/<remote>/main`,
-        forced so a stale ref is replaced; a single-branch clone's `git fetch origin main` writes only
-        `FETCH_HEAD`), and several remotes none
+        whose `main` was never fetched (remedy `git fetch --refmap= <remote>
+        +main:refs/remotes/<remote>/main`: forced, so a stale ref is replaced; `--refmap=`, so the remote's
+        configured refspec cannot also try to write a checked-out branch, as a `--mirror` clone's would;
+        the name shell-quoted; a single-branch clone's `git fetch origin main` writes only `FETCH_HEAD`),
+        and several remotes none
         of which is recognisably this repository -- the final review found a canonical remote under an SSH
         host alias (`git@github-work:...`) or a proxy `insteadOf` unrecognised, so the fork's `origin/main`
         became the line (remedy `git remote add upstream https://github.com/skyRolly/Anamorph`, under
         the first of `upstream`, `anamorph`, `release-line`, `release-line-2`, ... that neither a remote
-        nor a removed remote's leftover refs hold. Where an `insteadOf` rule rewrites that URL to one no
-        longer recognisable, a remote added under it would read as unknown again on every run, so the
-        remedy uses the first form GitHub serves that no rule rewrites away, and says to lift the rule
-        where every form is; it names the rule's result without any credentials in it). A local
+        (a legacy `$GIT_DIR/remotes` file included) nor a removed remote's leftover refs hold, nor a ref
+        named `refs/remotes/<name>` itself. Where an `insteadOf` rule rewrites that URL to one no longer
+        recognisable, a remote added under it would read as unknown again on every run, so the remedy
+        uses the first form GitHub serves that no rule rewrites away (https, scp, `ssh://`, then
+        `ssh.github.com:443`), and where every form is rewritten says to lift the rule before running
+        it; it names the rule's result without any credentials in it). A local
         `main` can hold unpushed commits no release line has, and treating HEAD as its past hid
         `origin/main`'s newer release. Each line ref is read by its full name (`git show-ref --verify`)
         and used by its commit: as a revision, a missing `refs/remotes/upstream/main` was resolved from a
         tag spelled like it. The source names the fetch that brings a release pushed since, `git fetch
-        --tags <remote> +main:refs/remotes/<remote>/main`: the tag alone is no release until the `main`
+        --tags --refmap= <remote> +main:refs/remotes/<remote>/main`: the tag alone is no release until the `main`
         read holds it, and a single-branch clone's refspec never updates that `main` (a review finding,
         2026-09-29: `git fetch --tags origin` brought 0.9.10 and the missing entry went unreported); a
         line that is the local `main`, with no remote, names no fetch;
@@ -352,8 +356,8 @@ without a tag, rather than only for this one.
       a fork's own `main` tags 0.9.10; in a fork clone (`origin` the fork at a fork URL, `upstream` the
       repository) a branch from `upstream/main` holds `{0.9.9}`, names `upstream/main` alone as its line,
       and accepts `[Unreleased]` from 0.9.9; on the fork's own `main` the fork's 0.9.10 is branch-only and
-      the same file passes; with `upstream/main` removed the line is unknown with `git fetch upstream
-      +main:refs/remotes/upstream/main`, not the fork's `main`; an ordinary clone (no remote that is the
+      the same file passes; with `upstream/main` removed the line is unknown with `git fetch --refmap=
+      upstream +main:refs/remotes/upstream/main`, not the fork's `main`; an ordinary clone (no remote that is the
       repository) reads `origin/main`; with its only remote renamed away from `origin` it is unknown
       rather than reading the local `main`, with a remedy that names no missing remote; a tag spelled
       `refs/remotes/upstream/main` does not stand in for the missing `upstream/main`; a skipped version on the line (0.9.9, 0.9.10 untagged,
@@ -363,8 +367,10 @@ without a tag, rather than only for this one.
       it; under a credential-bearing `insteadOf` rule that rewrites the repository's https URL, the
       unknown line names the rule without the credentials and the remedy uses the scp form the rule
       leaves alone, which, run as written, reads the line; with every form rewritten, the remedy is to
-      lift the rule; and the remote it adds is under a name nothing holds (a removed remote's leftover
-      refs, a legacy `$GIT_DIR/remotes` file, 120 configured remotes);
+      lift the rule; the remote it adds is under a name nothing holds (a removed remote's leftover
+      refs, a legacy `$GIT_DIR/remotes` file, 120 configured remotes, a ref named `refs/remotes/<name>`);
+      a remote name with a shell metacharacter is quoted in the fetch the source names; and a
+      single-branch clone's remedy is run exactly as printed;
     - `release.yml`'s validate step, run verbatim in scratch repositories for `0.9.9`, `0.9.10`, `0.10.0`,
       `1.0.0`, `10.20.30` (accepted) and `0.09.10`, `00.9.10`, `0.09.010`, `0.9.010`, a prefixed tag,
       `0.9`, `0.9.10.1`, `0.9.10-rc1`, `0.9.1０` (refused), exactly as `RELEASE_TAG` decides, with the

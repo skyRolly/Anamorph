@@ -1669,7 +1669,7 @@ python3 scripts/check-linux-abi.py --self-test                   # gate needs li
 only those this repository's `main` holds (but those cut after `HEAD`; a branch's own tag and a fork's
 are no releases), so run it
 from the root of a full clone that has them and `main` (`git fetch --tags`; in a shallow clone,
-`git fetch --unshallow --tags`; without `main`, `git fetch origin +main:refs/remotes/origin/main`); a
+`git fetch --unshallow --tags`; without `main`, `git fetch --refmap= origin +main:refs/remotes/origin/main`); a
 copy that is not a git checkout, a shallow clone, or one without `main` cannot say which versions were
 released, and the `CHANGELOG.md` links that depend on it are refused with that reason. `main` is read
 from every remote whose URL is this repository (`origin` in CI, a fork clone's `upstream`) and then not

@@ -182,10 +182,12 @@ import io
 import itertools
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import unquote
@@ -1294,8 +1296,8 @@ class TagState(NamedTuple):
     maintenance branch's own tag demand an entry and become the base. A fork's
     `main` is not read beside this repository's, so its own tags are no releases
     either (a fork clone whose only remote is the fork has only the fork's
-    `origin/main`, and it is read; beside any other remote the line is
-    unknown). `line` names the refs read, the one holding the most tags first. Every
+    `origin/main`, and it is read; beside another remote, none of which is this
+    repository, the line is unknown). `line` names the refs read, the one holding the most tags first. Every
     tag that is not this line's -- those two, one on another branch, one
     `main` gained after this commit -- is kept apart in `elsewhere`, so a
     finding can say where it is.
@@ -1439,13 +1441,23 @@ def read_git_tags(root: Path) -> TagState:
         else:
             names = []
         line = [(r, c) for r in names for c in [commit_of(r)] if c is not None]
+
+        def fetch_main(remote: str, *opts: str) -> str:
+            # The fetch that writes `<remote>/main`, as a command that runs as written:
+            # the name shell-quoted, the refspec forced (a stale ref is replaced), and
+            # `--refmap=` so the remote's configured refspec cannot also try to write
+            # a checked-out branch (a `--mirror` clone's worktree).
+            return " ".join(["git", "fetch", *opts, "--refmap=", shlex.quote(remote),
+                             shlex.quote(f"+{RELEASE_BRANCH}:refs/remotes/{remote}/"
+                                         f"{RELEASE_BRANCH}")])
         if not line:
+            lead = "fetch it with"
             if canonical or remotes == ["origin"]:
                 name = canonical[0] if canonical else "origin"
                 why = ((f"the remote `{name}` is this repository" if canonical else
                         f"`origin` is the only remote") + f", but this checkout has no "
                        f"`{name}/{RELEASE_BRANCH}`")
-                fix = f"git fetch {name} +{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}"
+                fix = fetch_main(name)
             else:
                 why = (f"none of this checkout's remotes ({', '.join(remotes)}) is {REPO_URL} "
                        f"by its URL, and which one is this repository cannot be guessed"
@@ -1461,7 +1473,8 @@ def read_git_tags(root: Path) -> TagState:
                                 ("upstream", "anamorph", "release-line"),
                                 (f"release-line-{i}" for i in itertools.count(2)))
                             if n not in remotes
-                            and not any(r.startswith(f"refs/remotes/{n}/") for r in held)
+                            and not any(r == f"refs/remotes/{n}"
+                                        or r.startswith(f"refs/remotes/{n}/") for r in held)
                             and run("remote", "get-url", n).returncode != 0)
                 # The URL added must be one git leaves recognisable: an `insteadOf`
                 # rule can rewrite `REPO_URL` to a form that is not this repository's,
@@ -1470,29 +1483,27 @@ def read_git_tags(root: Path) -> TagState:
                 # one is, the rule itself is the fix. (Any credentials in the rewritten
                 # URL are not repeated.)
                 forms = (REPO_URL, f"git@{_REPO_HOST}:{_REPO_PATH}.git",
-                         f"ssh://git@{_REPO_HOST}/{_REPO_PATH}.git")
+                         f"ssh://git@{_REPO_HOST}/{_REPO_PATH}.git",
+                         f"ssh://git@ssh.{_REPO_HOST}:443/{_REPO_PATH}.git")
                 resolved = [(f, run("ls-remote", "--get-url", f).stdout.strip() or f)
                             for f in forms]
                 url = next((f for f, got in resolved if REPOSITORY_REMOTE.search(got)), None)
-                fix = (f"git remote add {name} {url} && git fetch {name} "
-                       f"+{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}")
+                fix = (f"git remote add {shlex.quote(name)} {url or REPO_URL} && "
+                       f"{fetch_main(name)}")
                 if url != REPO_URL:
-                    shown = re.sub(r"(?<=://)[^/@]*@", "", resolved[0][1])
+                    shown = re.sub(r"(?<=://)[^/]*@", "", resolved[0][1])
                     why += (f" -- and a `url.<base>.insteadOf` rule in this checkout's git "
                             f"configuration rewrites {REPO_URL} to {shown}, so a remote "
                             f"under that URL is not recognisable as this repository while "
                             f"the rule applies"
                             + (f"; {url} is a form the rule leaves alone" if url else
-                               "; nor is any other form GitHub serves it at, so lift that "
-                               "rule for this repository first"))
+                               f"; nor is any of the other forms tried ({', '.join(forms[1:])})"))
                     if url is None:
-                        fix = (f"git remote add {name} {REPO_URL} && git fetch {name} "
-                               f"+{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}, once "
-                               f"no `insteadOf` rule rewrites it")
+                        lead = "lift that rule for this repository, then fetch it with"
             return TagState(frozenset(), False,
                             f"{why}, so git cannot tell a release tagged on this repository's "
-                            f"`{RELEASE_BRANCH}` from another branch's or a fork's tag -- fetch it "
-                            f"with `{fix}`")
+                            f"`{RELEASE_BRANCH}` from another branch's or a fork's tag -- {lead} "
+                            f"`{fix}`")
 
         def listed(what: str, *args: str) -> set[str] | str:
             got = run("for-each-ref", *args, "--format=%(refname:strip=2)", "refs/tags")
@@ -1560,9 +1571,8 @@ def read_git_tags(root: Path) -> TagState:
                     f"the git tags in `{RELEASE_BRANCH}`'s history ({', '.join(names)})"
                     + (", which this branch is headed for" if unmerged
                        else ", except those tagged after this commit" if cut else "")
-                    + (f" -- `git fetch --tags {fetch_from[0]} +{RELEASE_BRANCH}:refs/remotes/"
-                       f"{fetch_from[0]}/{RELEASE_BRANCH}` brings one pushed since it last "
-                       f"fetched" if fetch_from else ""),
+                    + (f" -- `{fetch_main(fetch_from[0], '--tags')}` brings one pushed since it "
+                       f"last fetched" if fetch_from else ""),
                     elsewhere, ahead, headed, unmerged, reached - releases, names)
 
 
@@ -4931,17 +4941,20 @@ def self_test() -> int:
                 steps.append(("R2196: a clone without `main` cannot place the release line: "
                               "unknown, with the remedy",
                               not st.known and "has no `origin/main`" in st.source
-                              and "git fetch origin +main:refs/remotes/origin/main" in st.source))
+                              and "git fetch --refmap= origin +main:refs/remotes/origin/main" in st.source))
                 _tag_state_cache.clear()
                 found = analyse(lone / "CHANGELOG.md", merged, lone)
                 steps.append(("R2196: ...and the production path there refuses once",
                               len(found) == 1 and "has no `origin/main`" in found[0]))
-                # ...and the remedy it names is one that works: a single-branch clone's
-                # refspec fetches no `origin/main` for a bare `git fetch origin main`.
-                G(lone, "fetch", "-q", "origin", "+main:refs/remotes/origin/main")
+                # ...and the remedy it names is one that works, run as written: a
+                # single-branch clone's refspec fetches no `origin/main` for a bare
+                # `git fetch origin main`.
+                remedy = re.search(r"fetch it with `git ([^`]+)`", found[0] if found else "")
+                if remedy:
+                    G(lone, *shlex.split(remedy.group(1)))
                 st = read_git_tags(lone)
                 steps.append(("R2196: ...after the remedy it names, the release line is read",
-                              len(found) == 1 and "git fetch origin +main:refs/remotes/origin/main"
+                              len(found) == 1 and "git fetch --refmap= origin +main:refs/remotes/origin/main"
                               in found[0] and st.known and st.headed
                               and st.tags == {"0.9.9", "0.9.10"}))
                 # ...and the fetch its source names brings a release pushed since: the
@@ -4953,7 +4966,7 @@ def self_test() -> int:
                 G(rl, "tag", "-a", "0.9.12", "-m", "Anamorph 0.9.12")
                 hint = re.search(r"`git (fetch --tags [^`]+)`", st.source)
                 if hint:
-                    G(lone, *hint.group(1).split())
+                    G(lone, *shlex.split(hint.group(1)))
                 st = read_git_tags(lone)
                 steps.append(("R2196: ...and the fetch its source names brings a release pushed "
                               "since, with the `main` that holds it",
@@ -5083,8 +5096,8 @@ def self_test() -> int:
                               and any("git tag `0.9.10` is a release on `upstream/main`" in f
                                       and "merge `upstream/main` into this branch" in f
                                       for f in found)
-                              and "`git fetch --tags upstream +main:refs/remotes/upstream/main`"
-                              in st.source))
+                              and "`git fetch --tags --refmap= upstream "
+                              "+main:refs/remotes/upstream/main`" in st.source))
                 # Two remotes that are both the repository, one fetched before 0.9.10: the
                 # line is both, and a finding names the one that holds the release.
                 G(fdev, "remote", "add", "canon2", "git@github.com:skyRolly/Anamorph.git")
@@ -5187,7 +5200,7 @@ def self_test() -> int:
                 steps.append(("...with the repository's remote but not its `main`, the line is "
                               "unknown, with the remedy -- not the fork's `main`",
                               not st.known and "`upstream`" in st.source
-                              and f"git fetch upstream +{RELEASE_BRANCH}:refs/remotes/upstream/"
+                              and f"git fetch --refmap= upstream +{RELEASE_BRANCH}:refs/remotes/upstream/"
                               f"{RELEASE_BRANCH}" in st.source))
                 G(fk, "update-ref", f"refs/remotes/upstream/{RELEASE_BRANCH}", upstream_main)
                 # NO REMOTE THAT IS THE REPOSITORY: an ordinary clone's `origin/main`
@@ -5212,7 +5225,7 @@ def self_test() -> int:
                 # The remedy then adds it under a form the rule leaves alone, and does not
                 # repeat credentials the rewritten URL carries; run as written (the fetch
                 # stood in for by the ref it writes), it reads the line.
-                G(oc, "config", "url.https://bot:t0ken@proxy.example/.insteadOf",
+                G(oc, "config", "url.https://bot:t0@ken@proxy.example/.insteadOf",
                   "https://github.com/")
                 st = read_git_tags(oc)
                 ssh_form = f"git@github.com:{_REPO_PATH}.git"
@@ -5222,7 +5235,7 @@ def self_test() -> int:
                               "remedy a form the rule leaves alone",
                               not st.known and "insteadOf" in st.source
                               and "https://proxy.example/skyRolly/Anamorph" in st.source
-                              and "t0ken" not in st.source and add is not None
+                              and "ken@" not in st.source and add is not None
                               and add.group(2) == ssh_form))
                 if add:
                     G(oc, "remote", "add", add.group(1), add.group(2))
@@ -5235,15 +5248,15 @@ def self_test() -> int:
                     G(oc, "remote", "remove", add.group(1))
                 # Where every form GitHub serves is rewritten, no remote can be added:
                 # the rule itself is the fix, and no `git remote add` is offered bare.
-                for form in ("git@github.com:", "ssh://git@github.com/"):
-                    G(oc, "config", "--add", "url.https://bot:t0ken@proxy.example/.insteadOf",
+                for form in ("git@github.com:", "ssh://git@github.com/", "ssh://git@ssh.github.com:443/"):
+                    G(oc, "config", "--add", "url.https://bot:t0@ken@proxy.example/.insteadOf",
                       form)
                 st = read_git_tags(oc)
                 steps.append(("...and where every form is rewritten, the remedy is to lift "
                               "the rule first",
-                              not st.known and "lift that rule" in st.source
-                              and "once no `insteadOf` rule rewrites it" in st.source))
-                G(oc, "config", "--unset-all", "url.https://bot:t0ken@proxy.example/.insteadOf")
+                              not st.known and "lift that rule for this repository, then fetch it "
+                              "with `git remote add" in st.source))
+                G(oc, "config", "--unset-all", "url.https://bot:t0@ken@proxy.example/.insteadOf")
                 # The remote the remedy adds is under a name nothing holds: not a
                 # configured remote, nor the leftover tracking refs of a removed one --
                 # and there is always one, however many are taken.
@@ -5262,6 +5275,28 @@ def self_test() -> int:
                 (oc / ".git" / "remotes" / "anamorph").unlink()
                 for n in ["release-line"] + [f"release-line-{i}" for i in range(2, 120)]:
                     G(oc, "remote", "remove", n)
+                # A ref named `refs/remotes/<n>` itself blocks `refs/remotes/<n>/main`
+                # (a directory/file conflict), so that name is taken too.
+                G(oc, "update-ref", "refs/remotes/anamorph", "0.9.9^{commit}")
+                st = read_git_tags(oc)
+                steps.append(("...a ref named `refs/remotes/<name>` itself included",
+                              not st.known and "git remote add release-line " in st.source))
+                G(oc, "update-ref", "-d", "refs/remotes/anamorph")
+                # A remote name is shell-quoted in the commands the reader prints, so
+                # one with a shell metacharacter still runs as written.
+                G(oc, "remote", "add", "gh;canon", f"{REPO_URL}.git")
+                G(oc, "update-ref", f"refs/remotes/gh;canon/{RELEASE_BRANCH}", "0.9.9^{commit}")
+                st = read_git_tags(oc)
+                hint = re.search(r"`(git fetch --tags [^`]+)`", st.source)
+                words = shlex.shlex(hint.group(1) if hint else "", posix=True,
+                                    punctuation_chars=True)
+                words.whitespace_split = True   # as a POSIX shell splits it, `;` included
+                steps.append(("a remote name with a shell metacharacter is quoted in the fetch "
+                              "the source names",
+                              st.known and hint is not None and list(words) == [
+                                  "git", "fetch", "--tags", "--refmap=", "gh;canon",
+                                  f"+{RELEASE_BRANCH}:refs/remotes/gh;canon/{RELEASE_BRANCH}"]))
+                G(oc, "remote", "remove", "gh;canon")
                 G(oc, "update-ref", "-d", f"refs/remotes/upstream/{RELEASE_BRANCH}")
                 # A ref is read by its full name: with the repository's `upstream/main`
                 # gone, a tag spelled `refs/remotes/upstream/main` (on the fork's
@@ -5355,8 +5390,10 @@ def self_test() -> int:
             except subprocess.CalledProcessError as exc:
                 steps.append((f"setting up the repositories: `{' '.join(exc.cmd[-3:])}` failed: "
                               f"{exc.stderr.strip()}", False))
-            except Exception as exc:  # noqa: BLE001 -- a reader that raises fails a case, not the run
-                steps.append((f"the tag reader raised {type(exc).__name__}: {exc}", False))
+            except Exception as exc:  # noqa: BLE001 -- what raises fails a case, not the run
+                where = traceback.extract_tb(exc.__traceback__)[-1]
+                steps.append((f"the tag-reader case raised {type(exc).__name__}: {exc} (in "
+                              f"`{where.name}`, line {where.lineno})", False))
             finally:
                 os.environ.clear()
                 os.environ.update(saved_env)
