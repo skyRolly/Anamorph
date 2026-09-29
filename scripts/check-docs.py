@@ -1116,16 +1116,21 @@ def atx_heading(line: str) -> tuple[int, str] | None:
 # to 0.8.0 -- so every message quoted a version the heading does not carry, and
 # the link rule demanded a definition for a tag `release.yml` can never cut (it
 # takes the tag from the CMake `project VERSION`, which is written the SemVer way).
+# ASCII digits only (`re.ASCII`): Python's `\d` also matches `０` or `٠`, and
+# `int()` reads `1０` as 10, so `## [0.9.1０]` counted as the 0.9.10 entry -- a
+# release "recorded" by a heading no reader, and no `release.yml` extraction,
+# finds under `## [0.9.10]`.
 VERSION_HEADING_TEXT = re.compile(
     r"^\[(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\] (?:—|-) "
-    r"(\d{4}-\d{2}-\d{2})( \[YANKED\])?$"
+    r"(\d{4}-\d{2}-\d{2})( \[YANKED\])?$", re.ASCII
 )
 UNRELEASED_HEADING_TEXT = "[Unreleased]"
 # A RELEASE TAG names a version the way a heading does, `0|[1-9]\d*` per
 # component: `0.09.10` is no version -- the heading grammar refuses
 # `## [0.09.10]`, and `release.yml` cuts only the CMake version -- so a tag of
-# that shape is no release to record and no comparison base.
-RELEASE_TAG = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
+# that shape is no release to record and no comparison base. ASCII digits
+# only, as in the heading: a tag `0.9.1０` is no version either.
+RELEASE_TAG = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", re.ASCII)
 # WHICH HEADINGS MUST SATISFY THAT GRAMMAR. The bracket alone used to decide it,
 # which meant a heading that LOST one was not an entry attempt at all: it fell
 # through to the preamble path, its `### ` sections were charged to the release
@@ -1212,8 +1217,9 @@ def first_tagged() -> tuple[int, int, int]:
 
 
 # THE RELEASE LINE. Releases are tagged on this branch (RELEASE_PROCESS.md
-# §Tagging), so a release tag its history holds binds every branch headed for
-# it, before the branch merges it, and a commit merged into it when the tag came
+# §Tagging), so a release tag its history holds binds every commit except those
+# it was cut after (whose descendant it tags): every branch headed for it,
+# before the branch merges it, and a commit merged into it when the tag came
 # before that merge (`read_git_tags`). The reader takes it from the
 # remote-tracking `main` of `origin` (what CI's full-history checkout fetches)
 # and of any remote that IS this repository -- in a fork clone `origin` is the
@@ -1242,25 +1248,26 @@ class TagState(NamedTuple):
 
     `tags` holds THIS LINE'S tags. Releases are tagged on `main`
     (RELEASE_PROCESS.md §Tagging), so the line is `main`'s history, and a
-    checkout's line is:
-    - for a checkout on `main`'s FIRST-PARENT line (`main` itself, an older
-      `main` commit, a release tag): the tags in HEAD's history. A tag `main`
-      gained later is this commit's future, not a release it omits;
-    - for a pull request's commit MERGED into `main` off that line: the tags in
-      HEAD's history and in `main`'s as it stood just before the merge that
-      landed it (later ones are its future);
-    - for a BRANCH -- HEAD not in `main`'s history, so headed for `main` -- the
-      tags in HEAD's history AND in `main`'s. A release tagged on `main` after
-      the branch forked is a release the branch will land on top of; reading
-      HEAD's history alone let the branch record none of it and compare past it
-      -- `[Unreleased]` from 0.9.9 passing on the branch's tip while `main`
-      holds 0.9.10 -- and CI checks a same-repo PR at its tip. Those tags, and
-      a merged commit's, are also kept in `ahead`, so a finding can say to merge
-      `main`.
-    A tag none of these holds -- on another branch never merged into `main`, or,
-    for a commit on or merged into `main`, one `main` gained later -- is kept
-    apart in `elsewhere`, so a finding can say where it is; it is no release of
-    this checkout's line.
+    checkout's line is the tags in HEAD's history and every tag in `main`'s
+    history except those on HEAD's own descendants -- its future. So:
+    - for `main` itself, an older `main` commit or a release tag, the tags in
+      HEAD's history: a tag `main` gained later descends from it, and is this
+      commit's future, not a release it omits;
+    - for a pull request's commit MERGED into `main`, `main`'s tags from before
+      the merge that landed it: the merge descends from the commit, so every
+      release from then on is its future;
+    - for a BRANCH -- HEAD not in `main`'s history, so headed for `main` -- all
+      of `main`'s tags. A release tagged on `main` after the branch forked is a
+      release the branch will land on top of; reading HEAD's history alone let
+      the branch record none of it and compare past it -- `[Unreleased]` from
+      0.9.9 passing on the branch's tip while `main` holds 0.9.10 -- and CI
+      checks a same-repo PR at its tip.
+    Ancestry decides, not `main`'s first-parent order, which a fast-forward
+    rewrites. The tags this binds beyond HEAD's history are also kept in
+    `ahead`, so a finding can say to merge `main`. A tag none of this holds --
+    on another branch never merged into `main`, or one `main` gained after this
+    commit -- is kept apart in `elsewhere`, so a finding can say where it is; it
+    is no release of this checkout's line.
 
     `known` is False when those refs cannot be read (not a git checkout, the path
     is not the checkout's root, git is missing or fails) or cannot be placed (a
@@ -1276,8 +1283,8 @@ class TagState(NamedTuple):
     source: str
     elsewhere: frozenset[str] = frozenset()
     ahead: frozenset[str] = frozenset()
-    headed: bool = False   # HEAD is off `main`'s first-parent line (a branch, or a merged PR's commit)
-    unmerged: bool = False  # ...and not in `main`'s history at all: a branch headed for it
+    headed: bool = False    # `main`'s tags beyond HEAD's history bind it (or it is unmerged)
+    unmerged: bool = False  # HEAD is not in `main`'s history at all: a branch headed for it
 
 
 # Git's repository-location variables: `git rev-parse --local-env-vars`, plus
@@ -1307,8 +1314,9 @@ def git_env() -> dict[str, str]:
 
 def read_git_tags(root: Path) -> TagState:
     """The tags of the git checkout rooted at `root`, from its local refs, split
-    into this line's (`tags`: HEAD's history, and `main`'s for a branch headed
-    there, those HEAD lacks also in `ahead`) and the rest (`elsewhere`).
+    into this line's (`tags`: HEAD's history, and `main`'s except those tagged
+    on HEAD's descendants, those HEAD lacks also in `ahead`) and the rest
+    (`elsewhere`).
 
     CI's `docs` job checks out the full history with every tag (`fetch-depth: 0`,
     `fetch-tags: true`); a clone made with `git clone` has the tags that existed
@@ -1379,77 +1387,57 @@ def read_git_tags(root: Path) -> TagState:
                             f"tell a release tagged on it from another branch's tag -- fetch "
                             f"it with `git fetch origin "
                             f"{RELEASE_BRANCH}:refs/remotes/origin/{RELEASE_BRANCH}`")
-        head = run("rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
 
-        def listed(rev: str) -> set[str] | str:
-            got = run("for-each-ref", f"--merged={rev}", "--format=%(refname:strip=2)",
-                      "refs/tags")
+        def listed(what: str, *args: str) -> set[str] | str:
+            got = run("for-each-ref", *args, "--format=%(refname:strip=2)", "refs/tags")
             return (set(got.stdout.split()) if got.returncode == 0
-                    else f"git could not tell which tags are in `{RELEASE_BRANCH}`'s "
-                         f"history: {got.stderr.strip()}")
-        # WHERE HEAD STANDS ON EACH LINE, and which of the line's tags bind it:
-        # - ON the line's first-parent chain (`main`, an older `main` commit, a
-        #   release tag): the line's past. Its later tags are this commit's
-        #   future, not releases it omits: HEAD's history alone.
-        # - MERGED into the line off its first-parent chain (a pull request's
-        #   commit after the merge, the tip or any earlier one): it landed with the
-        #   oldest first-parent commit that holds it, on the line as it stood just
-        #   before that merge, so the tags there bind it; later ones are its future.
-        # - NOT in the line's history (a branch headed for `main`): the whole
-        #   line binds it -- a release `main` gained after the branch forked is
-        #   one the branch will land on.
-        def place(commit: str, r: str, chain: list[str]) -> tuple[set[str] | str, str]:
-            # (the tags of line `r` that bind `commit`, where it stands: "chain",
-            # "merged", "headed", or "error" with the reason in place of the tags)
-            anc = run("merge-base", "--is-ancestor", commit, r)
-            if anc.returncode not in (0, 1):
-                return (f"git could not tell whether HEAD is in `{RELEASE_BRANCH}`'s history: "
-                        f"{anc.stderr.strip()}", "error")
-            if anc.returncode == 1:
-                return (set(), "headed")
-            if commit in chain:
-                return (set(), "chain")
-            # The first-parent commits that hold it, newest first: every descendant
-            # of it on the line (`--ancestry-path`, NOT limited to first parents,
-            # which would mark a merge only when the commit is its own second
-            # parent). The oldest is the merge that landed it.
-            holds = set(run("rev-list", "--ancestry-path", f"{commit}..{r}").stdout.split())
-            landed = [c for c in chain if c in holds]
-            return (listed(f"{landed[-1]}^1") if landed else set(), "merged")
-
+                    else f"git could not tell which tags {what}: {got.stderr.strip()}")
+        # WHICH OF THE LINE'S TAGS BIND HEAD: every tag in `main`'s history except
+        # those on HEAD's own descendants -- its future, cut after it. That is:
+        # - for `main` itself, an older `main` commit or a release tag, HEAD's
+        #   history (a later release is its future, not one it omits);
+        # - for a pull request's commit merged into `main`, the tip or any
+        #   earlier one, `main`'s releases from before the merge that landed it
+        #   (the merge descends from it, so every release from then on follows it);
+        # - for a branch headed for `main` (HEAD not in its history, so nothing
+        #   on it descends from HEAD), the whole line: a release `main` gained
+        #   after the branch forked is one the branch will land on.
+        # Ancestry decides, not `main`'s first-parent order: a branch that merged
+        # `main` and was then fast-forwarded onto it puts its own commits on that
+        # order AFTER a release they never held, and reading them as `main`'s past
+        # hid it. A commit `main` never holds whose parents are all on it -- a
+        # fork pull request's test merge (`refs/pull/N/merge`) re-run after the
+        # merge, but equally a branch tip merging two `main` commits with edits of
+        # its own -- is a branch: git cannot tell the two apart, so both are bound
+        # by `main`'s later releases, and a branch never hides one.
+        after = listed("follow HEAD", "--contains=HEAD")
+        if isinstance(after, str):
+            return TagState(frozenset(), False, after)
         on_line: set[str] = set()
-        headed = False    # off `main`'s first-parent line
-        unmerged = False  # ...and not in its history at all: headed for it
+        unmerged = False  # HEAD not in `main`'s history: a branch headed for it
         for r in line:
-            chain = run("rev-list", "--first-parent", r).stdout.split()
-            bound, where = place(head, r, chain)
-            if where == "headed":
-                # Not in `main`'s history: a branch headed for it, bound by the
-                # whole line. That includes a merge `main` never holds whose
-                # parents are all on it -- a fork pull request's test merge
-                # (`refs/pull/N/merge`) re-run after the pull request merged, but
-                # equally a branch tip merging two `main` commits with edits of
-                # its own. Git cannot tell them apart by ancestry, so both are
-                # bound by `main`'s later releases: a re-run on a closed pull
-                # request may fail; a branch never hides one.
-                bound = listed(r)
-                headed = unmerged = True
-            elif where == "merged":
-                headed = True
-            if where == "error" or isinstance(bound, str):
-                return TagState(frozenset(), False, str(bound))
-            on_line |= bound
+            anc = run("merge-base", "--is-ancestor", "HEAD", r)
+            if anc.returncode not in (0, 1):
+                return TagState(frozenset(), False,
+                                f"git could not tell whether HEAD is in `{RELEASE_BRANCH}`'s "
+                                f"history: {anc.stderr.strip()}")
+            bound = listed(f"are in `{RELEASE_BRANCH}`'s history", f"--merged={r}")
+            if isinstance(bound, str):
+                return TagState(frozenset(), False, bound)
+            on_line |= bound - after
+            unmerged = unmerged or anc.returncode == 1
     except (OSError, subprocess.SubprocessError) as exc:
         return TagState(frozenset(), False, f"git could not run: {exc}")
     reached = frozenset(mine.stdout.split())
     ahead = frozenset(on_line) - reached
     mine_all = reached | ahead
     elsewhere = frozenset(refs.stdout.split()) - mine_all
+    headed = unmerged or bool(ahead)
     return TagState(mine_all, True,
                     f"the git tags in this checkout's history"
                     + (f" and in `{RELEASE_BRANCH}`'s ({', '.join(r.split('/', 2)[2] for r in line)}), "
                        + ("which this branch is headed for" if unmerged
-                          else "as it stood when this commit was merged into it")
+                          else "except those tagged after this commit")
                        if headed else "")
                     + " -- `git fetch --tags` brings one pushed since it last fetched",
                     elsewhere, ahead, headed, unmerged)
@@ -2217,7 +2205,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
     versions = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
     ordered = list(versions)
     for line_no, label, url in definitions:
-        if re.fullmatch(r"\d+\.\d+\.\d+", label) or label.lower() == "unreleased":
+        if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", label) or label.lower() == "unreleased":
             key = label.lower() if label.lower() == "unreleased" else label
             if key in defined:
                 findings.append(f"{path}:{line_no}: `[{label}]` is defined twice")
@@ -4319,9 +4307,25 @@ def self_test() -> int:
         ("R2196 J: ...and `[Unreleased]` from it", 0,
          U + CL([E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
          T("0.9.9", "0.9.10")),
+        # ASCII digits only: `０` (U+FF10) is a digit to Python's `\d`, and `int()`
+        # reads `1０` as 10. A tag spelled so is no release, not even 0.9.10's.
+        ("R2196 K: a tag `0.9.1０` (a fullwidth zero) is no release", 0, R99,
+         T("0.9.9", "0.9.1\uff10")),
     ]:
         checked += 1
         failures += 0 if count_case(label, expected, lines, tags) else 1
+    # ...and a heading spelled so is no entry: the 0.9.10 tag stays unrecorded,
+    # whichever non-ASCII digit stands in for the ASCII one.
+    for digit in ("\uff10", "\u0660"):
+        found = found_for(U + CL([(f"0.9.1{digit}", "2026-10-10"), E9],
+                                 [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+                          T("0.9.9", "0.9.10"))
+        checked += 1
+        if not any("git tag `0.9.10` is a release" in f and "no `## [0.9.10]` entry" in f
+                   for f in found):
+            failures += 1
+            print(f"self-test FAIL: changelog R2196 K: `## [0.9.1{digit}]` is not the 0.9.10 "
+                  f"entry: got {found}", file=sys.stderr)
     # G, whatever `[Unreleased]` says, and I: every form names the missing 0.9.10,
     # and none is accepted from 0.9.9.
     for label, ur in [("from 0.9.9", [UR("0.9.9")]), ("from 0.9.10", [UR("0.9.10")]),
@@ -4790,7 +4794,8 @@ def self_test() -> int:
                 G(up, "commit", "-q", "--allow-empty", "-m", "0.9.11 release")
                 G(up, "tag", "-a", "0.9.11", "-m", "Anamorph 0.9.11")
                 # The tip is the merge's own second parent; the earlier commit is
-                # not, and a first-parent-only ancestry walk never reaches it.
+                # not (an earlier spelling, which found the landing merge by a
+                # first-parent-only ancestry walk, never reached it).
                 for which, commit in (("tip", pr_tip), ("earlier commit", pr_first)):
                     G(up, "checkout", "-q", commit)
                     st = read_git_tags(up)
@@ -4799,7 +4804,7 @@ def self_test() -> int:
                     steps.append((f"R2196: a merged pull request's {which} is bound by the "
                                   f"release `main` had when it landed, not by a later one",
                                   st.known and st.ahead == {"0.9.10"} and "0.9.11" in st.elsewhere
-                                  and "as it stood when this commit was merged" in st.source
+                                  and "except those tagged after this commit" in st.source
                                   and len(found) == 2
                                   and not any("0.9.11" in f for f in found)))
                 # A merge `main` never holds whose parents are both on it -- here a
@@ -4818,6 +4823,37 @@ def self_test() -> int:
                               st.known and st.unmerged and "0.9.11" in st.ahead
                               and any("git tag `0.9.11` is a release on `main`" in f
                                       for f in found)))
+                # A branch that merged `main` and was then fast-forwarded onto it puts
+                # its commits on `main`'s first-parent order AFTER a release they never
+                # held -- its own, and one it merged in from another branch. Ancestry,
+                # not that order, decides: the release tagged before they landed
+                # binds both.
+                G(up, "checkout", "-q", "-b", "fox", RELEASE_BRANCH)
+                G(up, "commit", "-q", "--allow-empty", "-m", "fox: work")
+                fox_work = G(up, "rev-parse", "HEAD").strip()
+                G(up, "checkout", "-q", "-b", "fox_side", RELEASE_BRANCH)
+                G(up, "commit", "-q", "--allow-empty", "-m", "fox_side: work")
+                side_work = G(up, "rev-parse", "HEAD").strip()
+                G(up, "checkout", "-q", RELEASE_BRANCH)
+                G(up, "commit", "-q", "--allow-empty", "-m", "0.9.12 release")
+                G(up, "tag", "-a", "0.9.12", "-m", "Anamorph 0.9.12")
+                G(up, "checkout", "-q", "fox")
+                G(up, "merge", "-q", "--no-ff", "-m", "fox merges fox_side", "fox_side")
+                G(up, "merge", "-q", "--no-ff", "-m", "fox merges main", RELEASE_BRANCH)
+                G(up, "checkout", "-q", RELEASE_BRANCH)
+                G(up, "merge", "-q", "--ff-only", "fox")
+                for which, commit in (("on `main`'s first-parent order", fox_work),
+                                      ("merged in through it", side_work)):
+                    G(up, "checkout", "-q", commit)
+                    st = read_git_tags(up)
+                    _tag_state_cache.clear()
+                    found = analyse(up / "CHANGELOG.md", post, up)
+                    steps.append((f"R2196: a fast-forwarded branch's commit {which} is bound by "
+                                  f"the release `main` tagged before it landed",
+                                  st.known and not st.unmerged and "0.9.12" in st.ahead
+                                  and "except those tagged after this commit" in st.source
+                                  and any("git tag `0.9.12` is a release on `main`" in f
+                                          for f in found)))
                 G(up, "checkout", "-q", RELEASE_BRANCH)
                 # A fork clone: `origin` is the fork, whose `main` is stale; the
                 # repository itself is `upstream`, and its release binds the branch.
