@@ -1675,7 +1675,8 @@ released, and the `CHANGELOG.md` links that depend on it are refused with that r
 from every remote whose URL is this repository (`origin` in CI, a fork clone's `upstream`) and then not
 also from a fork's `origin`; failing any such remote, from `origin/main` when `origin` is the only remote;
 and from the local branch only in a checkout with no remote at all. Any other checkout is unknown, with a
-remedy that adds the repository as a remote (`git remote add upstream https://github.com/skyRolly/Anamorph`). A remote under another URL -- a fork, another repository, or a
+remedy that adds the repository as a remote (`git remote add upstream https://github.com/skyRolly/Anamorph`,
+under a name no remote has yet, and naming any `insteadOf` rule that rewrites that URL). A remote under another URL -- a fork, another repository, or a
 local mirror or proxy whose path ends in this one -- is not this repository, so in a fork clone add and
 fetch the repository as a remote; a remote that is this repository but whose `main` was never fetched
 leaves the line unknown, with the remedy.

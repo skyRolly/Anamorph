@@ -1448,8 +1448,20 @@ def read_git_tags(root: Path) -> TagState:
                        f"by its URL, and which one is this repository cannot be guessed"
                        if remotes else f"this checkout has no remote and no local "
                        f"`{RELEASE_BRANCH}`")
-                fix = (f"git remote add upstream {REPO_URL} && git fetch upstream "
-                       f"{RELEASE_BRANCH}:refs/remotes/upstream/{RELEASE_BRANCH}")
+                # A name no remote has yet, so the command it gives can run as written.
+                name = next(n for n in ("upstream", "anamorph", "release-line")
+                            + tuple(f"release-line-{i}" for i in range(2, 100))
+                            if n not in remotes)
+                fix = (f"git remote add {name} {REPO_URL} && git fetch {name} "
+                       f"{RELEASE_BRANCH}:refs/remotes/{name}/{RELEASE_BRANCH}")
+                # An `insteadOf` rule that rewrites the repository's URL itself leaves no
+                # remote recognisable as it, whatever is added: say so, not only the fix.
+                rewritten = run("ls-remote", "--get-url", REPO_URL).stdout.strip()
+                if rewritten and not REPOSITORY_REMOTE.search(rewritten):
+                    why += (f" -- and a `url.<base>.insteadOf` rule in this checkout's git "
+                            f"configuration rewrites {REPO_URL} to {rewritten}, so no remote "
+                            f"here can be recognised as this repository until that rule is "
+                            f"lifted for it")
             return TagState(frozenset(), False,
                             f"{why}, so git cannot tell a release tagged on this repository's "
                             f"`{RELEASE_BRANCH}` from another branch's or a fork's tag -- fetch it "
@@ -1486,6 +1498,7 @@ def read_git_tags(root: Path) -> TagState:
         on_line: set[str] = set()
         every_line_tag: set[str] = set()
         in_main = False   # HEAD is in `main`'s history (else a branch headed for it)
+        holds: dict[str, int] = {}
         for r, tip in line:
             anc = run("merge-base", "--is-ancestor", "HEAD", tip)
             if anc.returncode not in (0, 1):
@@ -1497,6 +1510,7 @@ def read_git_tags(root: Path) -> TagState:
                 return TagState(frozenset(), False, bound)
             on_line |= bound - future
             every_line_tag |= bound
+            holds[r] = len(bound)
             in_main = in_main or anc.returncode == 0
     except (OSError, subprocess.SubprocessError) as exc:
         return TagState(frozenset(), False, f"git could not run: {exc}")
@@ -1506,12 +1520,18 @@ def read_git_tags(root: Path) -> TagState:
     elsewhere = frozenset(refs.stdout.split()) - releases
     unmerged = not in_main
     headed = unmerged or bool(ahead)
-    names = tuple(r.split("/", 2)[2] for r, _ in line)
+    # The ref that holds the most tags first: with two remotes that are both this
+    # repository, the one fetched last is the one a finding should name.
+    names = tuple(r.split("/", 2)[2] for r, _ in
+                  sorted(line, key=lambda rc: -holds.get(rc[0], 0)))
+    fetch_from = [n.rsplit("/", 1)[0] for n in names if n != RELEASE_BRANCH]
     return TagState(releases, True,
                     f"the git tags in `{RELEASE_BRANCH}`'s history ({', '.join(names)})"
                     + (", which this branch is headed for" if unmerged
-                       else ", except those tagged after this commit" if ahead or cut else "")
-                    + " -- `git fetch --tags` brings one pushed since it last fetched",
+                       else ", except those tagged after this commit" if cut else "")
+                    + (f" -- `git fetch --tags {fetch_from[0]}` brings one pushed since it last "
+                       f"fetched" if fetch_from else
+                       " -- `git fetch --tags` brings one pushed since it last fetched"),
                     elsewhere, ahead, headed, unmerged, reached - releases, names)
 
 
@@ -2319,7 +2339,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             return (f"the git tag `{t}` is in this checkout's history but not in "
                     f"`{line_ref}`'s")
         return (f"the git tag `{t}` exists but is not in this checkout's history"
-                + (f" nor in `{RELEASE_BRANCH}`'s" if tags.unmerged else ""))
+                + (f" nor in `{line_ref}`'s" if tags.unmerged else ""))
 
     # Merging another history in never makes a tag a release: only `main` holding
     # its commit does. So for a tag in this checkout's own history, and for a
@@ -2409,7 +2429,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         if t not in versions and t not in claimed:
             findings.append(
                 f"{path}:{top}: git tag `{t}` is a release "
-                + (f"on `{RELEASE_BRANCH}` that this branch's history does not hold"
+                + (f"on `{line_ref}` that this branch's history does not hold"
                    if t in tags.ahead else "in this checkout's history")
                 + f" (read from {tags.source}), but this file has no `## [{t}]` entry -- "
                 f"every release tag needs its entry before anything can compare against "
@@ -2574,7 +2594,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                          f"{no_release(x)}"
                     if not could_be_release(x) and (x in tags.tags or x in tags.elsewhere)
                     else f"; its definition `{url}` compares from {x}, whose git tag is "
-                         + (f"in this checkout's history but not in `{RELEASE_BRANCH}`'s"
+                         + (f"in this checkout's history but not in `{line_ref}`'s"
                             if x in tags.branch_only else "not in this checkout's history")
                          + ("" if said and x == declared[0] else f" -- {merge_hint(x)}")
                     if x in tags.elsewhere
@@ -4989,7 +5009,7 @@ def self_test() -> int:
                     steps.append((f"R2196: a fast-forwarded branch's commit {which} is bound by "
                                   f"the release `main` tagged before it landed",
                                   st.known and not st.unmerged and "0.9.12" in st.ahead
-                                  and "except those tagged after this commit" in st.source
+                                  and "except those tagged after this commit" not in st.source
                                   and any("git tag `0.9.12` is a release on `main`" in f
                                           for f in found)))
                 G(up, "checkout", "-q", RELEASE_BRANCH)
@@ -5014,9 +5034,23 @@ def self_test() -> int:
                 steps.append(("R2196: in a fork clone, the repository's own `main` (`upstream`) "
                               "binds the branch, and the remedy names it, not the fork's `main`",
                               st.known and "0.9.10" in st.ahead and len(found) >= 2
-                              and any("git tag `0.9.10` is a release on `main`" in f
+                              and any("git tag `0.9.10` is a release on `upstream/main`" in f
                                       and "merge `upstream/main` into this branch" in f
+                                      for f in found)
+                              and "`git fetch --tags upstream`" in st.source))
+                # Two remotes that are both the repository, one fetched before 0.9.10: the
+                # line is both, and a finding names the one that holds the release.
+                G(fdev, "remote", "add", "canon2", "git@github.com:skyRolly/Anamorph.git")
+                G(fdev, "update-ref", f"refs/remotes/canon2/{RELEASE_BRANCH}", "0.9.9^{commit}")
+                st = read_git_tags(fdev)
+                _tag_state_cache.clear()
+                found = analyse(fdev / "CHANGELOG.md", post, fdev)
+                steps.append(("R2196: with two remotes that are the repository, the one holding "
+                              "the release is the one named",
+                              st.known and st.line[:1] == (f"upstream/{RELEASE_BRANCH}",)
+                              and any("merge `upstream/main` into this branch" in f
                                       for f in found)))
+                G(fdev, "remote", "remove", "canon2")
                 # ...under every URL GitHub serves it at, as git resolves it.
                 G(fdev, "config", "url.https://github.com/.insteadOf", "gh:")
                 for url in ("ssh://git@ssh.github.com:443/skyRolly/Anamorph.git",
@@ -5042,7 +5076,7 @@ def self_test() -> int:
                     st = read_git_tags(fdev)
                     steps.append((f"R2196: ...but `upstream` at {url} is not read: unknown",
                                   not st.known and "none of this checkout's remotes" in st.source
-                                  and f"git remote add upstream {REPO_URL}" in st.source))
+                                  and f"git remote add anamorph {REPO_URL}" in st.source))
                 # FORK-ONLY TAGS (Devin): the repository's `main` has 0.9.9; a fork's
                 # `main` adds and tags 0.9.10, which the repository never released. In
                 # a fork clone (`origin` the fork, `upstream` the repository) the line
@@ -5126,6 +5160,15 @@ def self_test() -> int:
                               "guessed at: unknown, with a remedy that names no missing remote",
                               not st.known and f"git remote add upstream {REPO_URL}" in st.source
                               and "git fetch origin" not in st.source))
+                # An `insteadOf` rule that rewrites the repository's own URL leaves no remote
+                # recognisable as it: the unknown line says so, not only "add a remote".
+                G(oc, "config", "url.https://proxy.example/.insteadOf", "https://github.com/")
+                st = read_git_tags(oc)
+                steps.append(("...and where an `insteadOf` rule rewrites the repository's URL, "
+                              "the reason names the rule",
+                              not st.known and "insteadOf" in st.source
+                              and "https://proxy.example/skyRolly/Anamorph" in st.source))
+                G(oc, "config", "--unset", "url.https://proxy.example/.insteadOf")
                 # A ref is read by its full name: with the repository's `upstream/main`
                 # gone, a tag spelled `refs/remotes/upstream/main` (on the fork's
                 # `main`) does not stand in for it.

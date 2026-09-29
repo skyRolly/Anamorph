@@ -126,10 +126,10 @@ changelog heading, its link and the prose all agree without translation.
 - **[Verified]** `python3 scripts/check-docs.py --self-test`: 677 cases pass. They include a prefixed tag
   page, a prefixed comparison and a prefixed 0.9.9 tag page, each refused, and a prefixed git tag, which
   is not the version's tag (so it makes no comparison base and no `[Unreleased]` base, and a prefixed
-  higher tag needs no changelog entry). With the prefix restored in `check_changelog_links`, 134 cases
+  higher tag needs no changelog entry). With the prefix restored in `check_changelog_links`, 137 cases
   fail, and the real `CHANGELOG.md` is refused; with a prefixed git tag counted as a release, 5 fail.
   (Re-measured 2026-09-29 after the checker began requiring an entry for every release tag on the
-  release line, ADR-0058; first recorded as 492 and 51, then 511 and 65, then 537, 79 and 2, then 638 and 125, then 643 and 126.)
+  release line, ADR-0058; first recorded as 492 and 51, then 511 and 65, then 537, 79 and 2, then 638 and 125, then 643 and 126, then 672 and 134.)
 - **[Verified]** The tag-shape test from `release.yml`, run in bash: `0.9.9` matches; the prefixed form and
   `0.9.9x` are refused. Since 2026-09-29 the whole validate step runs in the self-test (sandbox
   repositories, the real extractor): `0.9.9`, `0.9.10`, `0.10.0`, `1.0.0` and `10.20.30` pass; `0.09.10`,

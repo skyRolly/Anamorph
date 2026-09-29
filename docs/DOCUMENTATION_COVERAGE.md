@@ -13110,33 +13110,39 @@ The negative controls fail:
 - the step's tag re-fetch without `--force`, removed, or aimed at the wrong ref: 5 cases each (once the sandbox
   checks out as `actions/checkout` does).
 
-**Mutation.** Seventy-one mutants each fail the self-test, none by crashing, on a clean clone of `13bab38`:
-sixty-seven of the checker, and four of `release.yml` run against the unmutated checker. The full counts are
+**Mutation.** Seventy-nine mutants each fail the self-test, none by crashing, on a clean clone of `9c0e961`:
+seventy-two of the checker, and seven of `release.yml` run against the unmutated checker. The full counts are
 in ADR-0058's evidence. Among them:
 
 | Mutant | Failing cases |
 |---|---|
-| the repository's `main` united with a fork's `origin/main` | 4 |
-| `origin/main` preferred over the repository's remote | 9 |
-| the repository's remote not recognised by URL | 9 |
-| the repository's remote without its `main` falling back to `origin/main` | 1 |
-| the local `main` read although the checkout has remotes | 1 |
-| branch-only tags in `HEAD`'s history counted | 4 |
+| the repository's `main` united with a fork's `origin/main` | 7 |
+| `origin/main` preferred over the repository's remote | 16 |
+| the repository's remote not recognised by URL | 11 |
+| the repository's remote without its `main` falling back to `origin/main` | 2 |
+| `origin/main` read beside other unrecognised remotes | 5 |
+| the local `main` read although the checkout has remotes | 6 |
+| a line ref resolved by shorthand | 1 |
+| branch-only tags in `HEAD`'s history counted | 5 |
 | a tag on `HEAD`'s own commit read as its future | 10 |
-| a branch-only tag offered the merge remedy / called "not in this checkout's history" | 3 / 3 |
+| a branch-only tag offered the merge remedy / called "not in this checkout's history" | 2 / 4 |
+| a headed branch offered a merge for a tag `main` does not hold | 1 |
 | `RELEASE_TAG` admitting leading zeros | 6 |
 | the tag-grammar case trusting the grammar instead of running the step | 9 |
 | `release.yml`: validator back to `[0-9]+` / last component unguarded / trigger narrowed / annotated check removed | 4 / 1 / 4 / 1 |
-| the intersection; `newest_tagged` before reconciliation | 20; 20 |
-| a missing entry ignored | 39 |
-| `[Unreleased]` from the newest entry | 44 |
+| `release.yml`: the tag re-fetch without `--force` / removed / of the wrong ref | 5 / 5 / 5 |
+| the intersection; `newest_tagged` before reconciliation | 21; 21 |
+| a missing entry ignored | 40 |
+| `[Unreleased]` from the newest entry | 45 |
 | the first-tag guard removed | 22 |
 | the skipped-tag fix reverted | 29 |
 
-A first run on `9089fab` left one survivor: the tag-grammar case taking `RELEASE_TAG`'s verdict without running
-the step. Nothing proved the step had spoken. The case now requires the step's own refusal message for every
-refused tag, `is-release=true` for every accepted one, and the annotated-tag message for the lightweight tag
-(`13bab38`).
+Two survivors were closed along the way:
+- **A first run on `9089fab` left one survivor.** The tag-grammar case took `RELEASE_TAG`'s verdict without
+  running the step. The case now requires the step's own refusal message for every refused tag, and
+  `is-release=true` for every accepted one (`13bab38`).
+- **The review's three re-fetch mutants survived until the sandbox checked out as `actions/checkout` does**
+  (`9c0e961`).
 
 **Review.** Four reviewers each took one lens (topology, tag grammar, regressions, wording). Each ran real
 temporary repositories, and a skeptic reproduced every finding before it counted. They confirmed 12 findings,

@@ -61,11 +61,11 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    when it is the bare `x.y.z` form (ASCII digits, no leading zero), not older than the first tag, and
    its commit is on the **release line**: releases are tagged on this repository's `main`, so a tag is a
    release only when `main`'s history holds its commit — **every release tag in `main`'s history except
-   those cut after `HEAD`** (on a commit descending from it, `git for-each-ref --merged` and
-   `--contains`). A tag `main` does not hold is no release, whatever else holds it: one cut on a branch
+   those cut after `HEAD`** (on a commit strictly descending from it -- a tag on `HEAD` itself counts;
+   `git for-each-ref --merged` and `--contains`). A tag `main` does not hold is no release, whatever else holds it: one cut on a branch
    never merged into `main` — even the checked-out branch, whose own history holds it — and one on a
-   fork's `main`. For `main` itself, an older `main` commit or a
-   release tag that is `main`'s tags in `HEAD`'s history, and a later release is its future; for a branch headed for
+   fork's `main`. For `main` itself, or an older `main` commit, that is
+   `main`'s tags in `HEAD`'s history, and a later release is its future; for a branch headed for
    `main` it is all of `main`'s — a release `main` gained after the branch forked is one the branch will
    land on, so it counts before the branch merges it; and for a commit already merged into `main` it is,
    with releases tagged on `main` itself, `main`'s releases from before the merge that landed it.
