@@ -1320,6 +1320,7 @@ class TagState(NamedTuple):
     unmerged: bool = False  # HEAD is not in `main`'s history at all: a branch headed for it
     branch_only: frozenset[str] = frozenset()  # in HEAD's history, not in `main`'s
     line: tuple[str, ...] = ()                   # the `main` refs read, e.g. `upstream/main`
+    present: frozenset[str] = frozenset()        # every tag ref in the checkout, placed or not
 
 
 # Git's repository-location variables: `git rev-parse --local-env-vars`, plus
@@ -1395,22 +1396,25 @@ def read_git_tags(root: Path) -> TagState:
         if refs.returncode != 0:
             return TagState(frozenset(), False,
                             f"git could not list the tags: {refs.stderr.strip()}")
+        present = frozenset(refs.stdout.split())
+
+        def unknown(why: str) -> TagState:
+            # Unplaced, but the tags the checkout holds are still named: a newer one
+            # means a file cannot be taken as needing none (see `verifiable`).
+            return TagState(frozenset(), False, why, present=present)
         mine = run("for-each-ref", "--merged=HEAD", "--format=%(refname:strip=2)",
                    "refs/tags")
         if mine.returncode != 0:
-            return TagState(frozenset(), False,
-                            f"git could not tell which tags are in HEAD's history: "
-                            f"{mine.stderr.strip()}")
+            return unknown(f"git could not tell which tags are in HEAD's history: "
+                           f"{mine.stderr.strip()}")
         shallow = run("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
         if shallow:
-            return TagState(frozenset(), False,
-                            "this is a shallow clone, so git cannot tell which release tags "
-                            "are in HEAD's history, nor list one beyond the fetched part -- "
-                            "fetch the full history with `git fetch --unshallow --tags`")
+            return unknown("this is a shallow clone, so git cannot tell which release tags "
+                           "are in HEAD's history, nor list one beyond the fetched part -- "
+                           "fetch the full history with `git fetch --unshallow --tags`")
         listing = run("remote")
         if listing.returncode != 0:
-            return TagState(frozenset(), False,
-                            f"git could not list the remotes: {listing.stderr.strip()}")
+            return unknown(f"git could not list the remotes: {listing.stderr.strip()}")
         remotes = sorted(listing.stdout.split())
 
         def commit_of(ref: str) -> str | None:
@@ -1444,11 +1448,13 @@ def read_git_tags(root: Path) -> TagState:
 
         def fetch_main(remote: str, *opts: str) -> str:
             # The fetch that writes `<remote>/main`, as a command that runs as written:
-            # the name shell-quoted, the refspec forced (a stale ref is replaced), and
-            # `--refmap=` so the remote's configured refspec cannot also try to write
-            # a checked-out branch (a `--mirror` clone's worktree).
+            # the name shell-quoted; the refspec forced (a stale ref is replaced) and
+            # its source fully qualified -- under `fetch.prune`, a bare `main` source
+            # pruned `<remote>/main` and then failed to write it; and `--refmap=`, so
+            # the remote's configured refspec cannot also try to write a checked-out
+            # branch (a `--mirror` clone's worktree).
             return " ".join(["git", "fetch", *opts, "--refmap=", shlex.quote(remote),
-                             shlex.quote(f"+{RELEASE_BRANCH}:refs/remotes/{remote}/"
+                             shlex.quote(f"+refs/heads/{RELEASE_BRANCH}:refs/remotes/{remote}/"
                                          f"{RELEASE_BRANCH}")])
         if not line:
             lead = "fetch it with"
@@ -1500,10 +1506,9 @@ def read_git_tags(root: Path) -> TagState:
                                f"; nor is any of the other forms tried ({', '.join(forms[1:])})"))
                     if url is None:
                         lead = "lift that rule for this repository, then fetch it with"
-            return TagState(frozenset(), False,
-                            f"{why}, so git cannot tell a release tagged on this repository's "
-                            f"`{RELEASE_BRANCH}` from another branch's or a fork's tag -- {lead} "
-                            f"`{fix}`")
+            return unknown(f"{why}, so git cannot tell a release tagged on this repository's "
+                           f"`{RELEASE_BRANCH}` from another branch's or a fork's tag -- {lead} "
+                           f"`{fix}`")
 
         def listed(what: str, *args: str) -> set[str] | str:
             got = run("for-each-ref", *args, "--format=%(refname:strip=2)", "refs/tags")
@@ -1531,7 +1536,7 @@ def read_git_tags(root: Path) -> TagState:
         reached = frozenset(mine.stdout.split())
         after = listed("follow HEAD", "--contains=HEAD")
         if isinstance(after, str):
-            return TagState(frozenset(), False, after)
+            return unknown(after)
         future = after - reached
         on_line: set[str] = set()
         every_line_tag: set[str] = set()
@@ -1540,12 +1545,11 @@ def read_git_tags(root: Path) -> TagState:
         for r, tip in line:
             anc = run("merge-base", "--is-ancestor", "HEAD", tip)
             if anc.returncode not in (0, 1):
-                return TagState(frozenset(), False,
-                                f"git could not tell whether HEAD is in `{RELEASE_BRANCH}`'s "
-                                f"history: {anc.stderr.strip()}")
+                return unknown(f"git could not tell whether HEAD is in `{RELEASE_BRANCH}`'s "
+                               f"history: {anc.stderr.strip()}")
             bound = listed(f"are in `{RELEASE_BRANCH}`'s history", f"--merged={tip}")
             if isinstance(bound, str):
-                return TagState(frozenset(), False, bound)
+                return unknown(bound)
             on_line |= bound - future
             every_line_tag |= bound
             holds[r] = len(bound)
@@ -1574,7 +1578,7 @@ def read_git_tags(root: Path) -> TagState:
                        else ", except those tagged after this commit" if cut else "")
                     + (f" -- `{fetch_main(fetch_from[0], '--tags')}` brings one pushed since it "
                        f"last fetched" if fetch_from else ""),
-                    elsewhere, ahead, headed, unmerged, reached - releases, names)
+                    elsewhere, ahead, headed, unmerged, reached - releases, names, present)
 
 
 # The self-test binds this so its fixtures do not depend on which tags this
@@ -2323,7 +2327,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
     an `[Unreleased]` section, and any version at or above the first tag other
     than the release in preparation. A file whose only such version is the
     release in preparation (the state before the first tag) needs no tags and is
-    checked in full.
+    checked in full -- unless the checkout holds a release-shaped tag newer than
+    it (`TagState.present`), which it cannot place: then it is refused too.
     """
     if path.name != "CHANGELOG.md":
         return []
@@ -2417,20 +2422,34 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                 and could_be_release(b) else "")
 
     # Without the tags, only a file that needs none can be checked: one whose
-    # only version at or above the first tag is the release in preparation.
+    # only version at or above the first tag is the release in preparation --
+    # and only while the checkout holds no release-shaped tag newer than that,
+    # which may be a release this file must record: where the line cannot be
+    # read, whether it is one cannot be told, so the file is refused, not passed.
     past = [k for k in ordered
             if k != in_prep and versions[k].version is not None
             and versions[k].version >= first]
-    verifiable = tags.known or not (has_unreleased or "unreleased" in defined or past)
+    floor = versions[in_prep].version if in_prep is not None else None
+    newer_here = sorted((t for t in tags.present if RELEASE_TAG.fullmatch(t)
+                         and vtuple(t) >= first and (floor is None or vtuple(t) > floor)),
+                        key=vtuple)
+    verifiable = tags.known or not (has_unreleased or "unreleased" in defined or past
+                                    or newer_here)
     if not verifiable:
         where = next((x.line_no for x in entries if x.kind == "unreleased"), None)
         if where is None:
-            where = (versions[past[0]].line_no if past else defined["unreleased"][0])
+            where = (versions[past[0]].line_no if past else defined["unreleased"][0]
+                     if "unreleased" in defined else versions[in_prep].line_no
+                     if in_prep is not None else next((x.line_no for x in entries), 1))
         findings.append(
             f"{path}:{where}: the release links in this file need the repository's git "
             f"tags, and this run cannot read them ({tags.source}) -- the reason says what "
             f"to fetch or where to run it from; CI's `docs` job checks out the full "
             f"history, every branch and every tag (CHANGELOG_POLICY.md rule 8)"
+            + (f"; this checkout holds the tag `{newer_here[-1]}`, newer than any version "
+               f"this file records, which it must record if it is a release"
+               if newer_here and not (has_unreleased or "unreleased" in defined or past)
+               else "")
         )
 
     # `previous_of[k]` is the most recent RELEASE before `k`: the newest of this
@@ -4343,6 +4362,15 @@ def self_test() -> int:
         # once, with the reason; what does not is checked in full.
         ("unreadable tags: the release in preparation alone needs none", 0,
          REAL + [RD9], UNKNOWN),
+        # ...unless the checkout holds a release-shaped tag newer than it: whether that
+        # is a release the file must record cannot be told without the line, so the
+        # file is refused, not passed (a shallow clone holding 0.9.10, for one).
+        ("unreadable tags, but a newer release-shaped tag present: refused", 1,
+         REAL + [RD9], UNKNOWN._replace(present=frozenset({"0.9.9", "0.9.10"}))),
+        ("...while the release in preparation's own tag, or tags that name no release, "
+         "leave it needing none", 0,
+         REAL + [RD9], UNKNOWN._replace(present=frozenset({"0.9.9", "0.9.8", "v0.9.10",
+                                                           "0.09.10", "0.9.10-rc1"}))),
         ("unreadable tags: a definition below the first tag is still refused", 1,
          REAL + [RD9, RD8], UNKNOWN),
         ("unreadable tags: `[Unreleased]` is refused once, not guessed", 1,
@@ -4593,6 +4621,15 @@ def self_test() -> int:
         failures += 1
         print(f"self-test FAIL: changelog unreadable tags are reported once, with the reason: "
               f"got {found}", file=sys.stderr)
+    # Where the line cannot be read, a newer release-shaped tag the checkout holds is
+    # named in the refusal: it is what the file may have to record.
+    found = found_for(REAL + [RD9], UNKNOWN._replace(present=frozenset({"0.9.9", "0.9.10"})))
+    checked += 1
+    if not (len(found) == 1 and "cannot read them (the self-test's unreadable checkout)"
+            in found[0] and "holds the tag `0.9.10`" in found[0]):
+        failures += 1
+        print(f"self-test FAIL: changelog an unreadable line's refusal names the newer tag "
+              f"present: got {found}", file=sys.stderr)
     # The count cannot say WHICH release is missing, or that the base moved to it.
     # Devin's case: the finding names 0.9.10 at the top of the entries (line 2, the
     # `## [Unreleased]` heading), and the `[Unreleased]` base is 0.9.10, not 0.9.9.
@@ -4799,6 +4836,14 @@ def self_test() -> int:
                 found = analyse(shallow / "CHANGELOG.md", post, shallow)
                 steps.append(("...where the production path refuses once, with the reason",
                               len(found) == 1 and "shallow clone" in found[0]))
+                # A file whose only entry is 0.9.9 in preparation needs no tags -- but not
+                # while this clone holds 0.9.10, which it cannot place: refused, naming it.
+                _tag_state_cache.clear()
+                found = analyse(shallow / "CHANGELOG.md", CL([E9, E8, E7], [TP("0.9.9")]), shallow)
+                steps.append(("...and a file with 0.9.9 in preparation alone is refused there too, "
+                              "naming the 0.9.10 the clone holds",
+                              len(found) == 1 and "shallow clone" in found[0]
+                              and "holds the tag `0.9.10`" in found[0]))
                 G(shallow, "fetch", "-q", "--unshallow", "--tags")
                 st = read_git_tags(shallow)
                 _tag_state_cache.clear()
@@ -4942,7 +4987,7 @@ def self_test() -> int:
                 steps.append(("R2196: a clone without `main` cannot place the release line: "
                               "unknown, with the remedy",
                               not st.known and "has no `origin/main`" in st.source
-                              and "git fetch --refmap= origin +main:refs/remotes/origin/main" in st.source))
+                              and "git fetch --refmap= origin +refs/heads/main:refs/remotes/origin/main" in st.source))
                 _tag_state_cache.clear()
                 found = analyse(lone / "CHANGELOG.md", merged, lone)
                 steps.append(("R2196: ...and the production path there refuses once",
@@ -4950,12 +4995,15 @@ def self_test() -> int:
                 # ...and the remedy it names is one that works, run as written: a
                 # single-branch clone's refspec fetches no `origin/main` for a bare
                 # `git fetch origin main`.
+                # ...under `fetch.prune`, which many set, too: it must not prune the ref
+                # it writes.
+                G(lone, "config", "fetch.prune", "true")
                 remedy = re.search(r"fetch it with `git ([^`]+)`", found[0] if found else "")
                 if remedy:
                     G(lone, *shlex.split(remedy.group(1)))
                 st = read_git_tags(lone)
                 steps.append(("R2196: ...after the remedy it names, the release line is read",
-                              len(found) == 1 and "git fetch --refmap= origin +main:refs/remotes/origin/main"
+                              len(found) == 1 and "git fetch --refmap= origin +refs/heads/main:refs/remotes/origin/main"
                               in found[0] and st.known and st.headed
                               and st.tags == {"0.9.9", "0.9.10"}))
                 # ...and the fetch its source names brings a release pushed since: the
@@ -5098,7 +5146,7 @@ def self_test() -> int:
                                       and "merge `upstream/main` into this branch" in f
                                       for f in found)
                               and "`git fetch --tags --refmap= upstream "
-                              "+main:refs/remotes/upstream/main`" in st.source))
+                              "+refs/heads/main:refs/remotes/upstream/main`" in st.source))
                 # Two remotes that are both the repository, one fetched before 0.9.10: the
                 # line is both, and a finding names the one that holds the release.
                 G(fdev, "remote", "add", "canon2", "git@github.com:skyRolly/Anamorph.git")
@@ -5201,7 +5249,7 @@ def self_test() -> int:
                 steps.append(("...with the repository's remote but not its `main`, the line is "
                               "unknown, with the remedy -- not the fork's `main`",
                               not st.known and "`upstream`" in st.source
-                              and f"git fetch --refmap= upstream +{RELEASE_BRANCH}:refs/remotes/upstream/"
+                              and f"git fetch --refmap= upstream +refs/heads/{RELEASE_BRANCH}:refs/remotes/upstream/"
                               f"{RELEASE_BRANCH}" in st.source))
                 G(fk, "update-ref", f"refs/remotes/upstream/{RELEASE_BRANCH}", upstream_main)
                 # NO REMOTE THAT IS THE REPOSITORY: an ordinary clone's `origin/main`
@@ -5305,7 +5353,8 @@ def self_test() -> int:
                               "the source names",
                               st.known and hint is not None and list(words) == [
                                   "git", "fetch", "--tags", "--refmap=", "gh;canon",
-                                  f"+{RELEASE_BRANCH}:refs/remotes/gh;canon/{RELEASE_BRANCH}"]))
+                                  f"+refs/heads/{RELEASE_BRANCH}:refs/remotes/gh;canon/"
+                                  f"{RELEASE_BRANCH}"]))
                 G(oc, "remote", "remove", "gh;canon")
                 G(oc, "update-ref", "-d", f"refs/remotes/upstream/{RELEASE_BRANCH}")
                 # A ref is read by its full name: with the repository's `upstream/main`
