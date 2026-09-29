@@ -2166,8 +2166,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
 
     WHETHER A VERSION WAS TAGGED IS READ FROM GIT (`tag_state`), not from the
     changelog. A version is tagged when its bare tag is one of this line's
-    RELEASE TAGS: a tag on this checkout's line (HEAD's history, and `main`'s for
-    a branch headed there), not older than `FIRST_TAGGED_VERSION` (below which
+    RELEASE TAGS: a tag on this checkout's line (HEAD's history, and `main`'s but
+    those cut after HEAD), not older than `FIRST_TAGGED_VERSION` (below which
     nothing was tagged and nothing may be defined). A tag only on another branch
     is another line's. Every release tag needs its entry, and the
     comparison bases are the release tags, not the entries that happen to have
@@ -2219,7 +2219,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         return tuple(int(x) for x in name.split("."))
 
     # THIS LINE'S RELEASES, oldest first: the bare `x.y.z` tags on this line
-    # (HEAD's history, and `main`'s for a branch headed there: `tag_state`)
+    # (HEAD's history, and `main`'s but those cut after HEAD: `tag_state`)
     # at or above the first tag. A prefixed tag names no version
     # (ADR-0059); below the first tag nothing was released, whatever git holds; a
     # tag on another branch is another line's. These -- not the tags that happen to

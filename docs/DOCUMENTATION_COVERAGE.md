@@ -13075,7 +13075,7 @@ The ordering the review asked for already held and still holds:
 **Self-test.** 564 → 643 cases.
 - 18 count cases: the review's acceptance cases A–J, including D with 0.9.10 on `main` unmerged, and F's
   invalid form (0.9.11 tagged and not recorded, 0.9.10 untagged: the base is 0.9.11, never 0.9.10).
-- 8 wording checks: every form of `[Unreleased]` over a missing 0.9.10 names it; a release on `main` is named
+- 9 wording checks: every form of `[Unreleased]` over a missing 0.9.10 names it; a release on `main` is named
   as such; the skipped version is not the base.
 - A real release-line repository in the reader test:
   - the branch tip fails (2), and fails once when it compares from 0.9.10 with no entry;
@@ -13188,13 +13188,18 @@ the `3086e38`/`f3e4c95` revert and its documents correct. All three are fixed in
   fast-forwarded onto it puts its own commits on `main`'s first-parent chain after a release they never held, and
   a commit merged in through it lands under a merge whose first parent is not `main`'s old tip. A re-check of
   either passed with that release unrecorded. A commit is now placed by ancestry: every release in `main`'s history
-  binds it unless the release was cut after it. For every shape above the result is unchanged; the two
-  fast-forward shapes are new self-test steps.
+  binds it unless the release was cut after it. With releases tagged on `main` itself, every shape above gives
+  the result it gave; the two fast-forward shapes are new self-test steps. A release tagged on a side commit and
+  merged into `main` later now also binds a re-check of a `main` commit from before that merge (fail closed; the
+  maintenance-line case in ADR-0058's Consequences). A second review of `4126e95` in real repositories found no
+  material finding: no false negative, crash or fail-open path, and no false positive in the normal flows
+  (merge-button, squash and rebase merges, the tag-push checkout, a re-check after the tag).
 - **`\d` is Unicode.** `## [0.9.1０]` (a fullwidth zero) matched the heading grammar and `int()` read it as 0.9.10,
   so the 0.9.10 tag counted as recorded under a heading no extraction finds; a tag `0.9.1０` counted as a release.
   The heading grammar, `RELEASE_TAG` and the definition label are ASCII-only.
 - **Two `rev-list` calls ignored their status.** A worktree file named `refs/remotes/origin/main` made one
-  ambiguous and placement fail open. Both calls are gone; every git call left checks its status.
+  ambiguous and placement fail open. Both calls are gone; the placement's own calls (`merge-base`,
+  `for-each-ref --merged` and `--contains`) check theirs.
 
 A commit `main` never holds is read as a branch still headed there: a commit that reached `main` only through a
 squash or rebase, and a fork pull request's test merge re-run after the pull request merged. Git cannot tell them
