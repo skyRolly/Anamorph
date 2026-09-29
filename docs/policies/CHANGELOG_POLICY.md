@@ -59,12 +59,14 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    declares.** `check-docs.py` reads the tag refs of the checkout it runs in (no network; CI's `docs`
    job fetches the full history, every branch and every tag). A tag is a **release tag of this line**
    when it is the bare `x.y.z` form, not older than the first tag, and its commit is on this
-   checkout's **release line**: releases are tagged on `main`, so for a checkout on `main`'s
-   first-parent line (`main`, an older `main` commit, a release tag) that is `HEAD`'s history; for a
-   branch headed for `main` it is `HEAD`'s history **and `main`'s** — a release `main` gained after the
-   branch forked is one the branch will land on, so it counts before the branch merges it; and for a
-   pull request's commit already merged into `main`, it is `HEAD`'s history and `main`'s as it stood
-   just before that merge (`git for-each-ref --merged`). `main` is the remote-tracking `main` of
+   checkout's **release line**: releases are tagged on `main`, so it is `HEAD`'s history **and every
+   release tag in `main`'s history except those cut after `HEAD`** (on a commit descending from it,
+   `git for-each-ref --merged` and `--contains`). For `main` itself, an older `main` commit or a
+   release tag that is `HEAD`'s history, and a later release is its future; for a branch headed for
+   `main` it is all of `main`'s — a release `main` gained after the branch forked is one the branch will
+   land on, so it counts before the branch merges it; and for a commit already merged into `main` it is
+   `main`'s releases from before the merge that landed it. Ancestry decides, not `main`'s first-parent
+   order, which a fast-forward can rewrite. `main` is the remote-tracking `main` of
    `origin`, or of any remote that is this repository under any URL GitHub serves it at (a fork clone's
    `upstream`); a local `main` is
    used only where none exists, since it can hold commits no release line has. A version counts as

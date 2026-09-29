@@ -105,9 +105,9 @@ sequence, literally:
 2. `check-docs.py` (every push) checks the definitions against the repository's **git tags**, not
    against what `CHANGELOG.md` declares. It counts a tag as a release of this line when it is a bare
    `x.y.z` not older than the first tag and its commit is on the release line: `HEAD`'s history, and
-   for a branch headed for `main` also `main`'s, so a release tagged on `main` after the branch forked
-   binds the branch before it merges `main`. A tag on neither history is another branch's and is
-   ignored here. Every such release tag has its
+   every release in `main`'s but those cut after `HEAD`, so a release tagged on `main` after a branch
+   forked binds the branch before it merges `main`. A tag on neither history is another branch's and
+   is ignored here. Every such release tag has its
    `## [x.y.z]` entry — one without is reported, so no link can compare past a release the file
    omits — and a definition naming its own tag, compared against the most recent earlier release tag
    (the first tag points at its own tag page); no other past version has one; no version older than
