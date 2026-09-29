@@ -423,14 +423,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # THE CHANGELOG LINK CHECK READS THE RELEASE TAGS IN HEAD'S HISTORY. Whether
-          # a version was released -- the base of every comparison link and of
-          # `[Unreleased]` -- is what the tags whose commits HEAD reaches say, not
-          # what CHANGELOG.md declares (CHANGELOG_POLICY.md rule 8). The default
-          # single-commit checkout is shallow and fetches no tags; a shallow clone
-          # cannot tell which tags HEAD reaches, so the checker reads it as unknown
-          # and refuses every link that needs a tag. So: the full history and
-          # every tag ref.
+          # THE CHANGELOG LINK CHECK READS THE RELEASE LINE'S TAGS: HEAD's history,
+          # and for a branch `origin/main`'s, since a same-repo PR is checked only
+          # at its tip (CHANGELOG_POLICY.md rule 8). The default single-commit
+          # checkout is shallow, fetches no tags and no `main`; the checker reads
+          # a shallow clone, or one without `main`, as unknown and refuses every
+          # link that needs a tag. `fetch-depth: 0` brings the full history and
+          # every branch (`+refs/heads/*:refs/remotes/origin/*`), so `origin/main`,
+          # and `fetch-tags` every tag ref.
           fetch-depth: 0
           fetch-tags: true
       - name: Lint documentation structure
