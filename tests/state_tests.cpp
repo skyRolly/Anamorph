@@ -45,6 +45,7 @@
 #include "gui/PhysicalMouseButtons.h"   // TooltipSource, and the editor lifetime test at the end
 
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <atomic>
@@ -65,6 +66,7 @@
 #include <string>
 #include <type_traits>
 #include <limits>
+#include <utility>
 
 namespace
 {
@@ -80,14 +82,49 @@ namespace
     bool opFailed (anamorph::PresetManager::OpResult r)
     { return r == anamorph::PresetManager::OpResult::failed; }
 
+    // A test that checks the BEHAVIOUR of other checks (which run, which fail, what they say)
+    // runs them under a capture: while `capturing` is set, each result and note is recorded
+    // there instead of being counted or printed, so a deliberate failure is that test's
+    // evidence, not a failure of the suite. The capturing test asserts on it with ordinary
+    // checks once the capture is lifted.
+    struct CapturedChecks
+    {
+        std::vector<std::pair<bool, std::string>> results;   // (passed, what)
+        std::vector<std::string> notes;
+        int failed() const
+        {
+            int n = 0;
+            for (const auto& r : results) n += r.first ? 0 : 1;
+            return n;
+        }
+    };
+    CapturedChecks* capturing = nullptr;
+
     void check (bool cond, const char* what)
     {
+        if (capturing != nullptr) { capturing->results.emplace_back (cond, what); return; }
         ++checks;
         if (! cond) { ++failures; std::printf ("  [FAIL] %s\n", what); }
     }
 
+    // Progress output that a capture records instead of printing.
+   #if defined (__GNUC__) || defined (__clang__)
+    __attribute__ ((format (printf, 1, 2)))
+   #endif
+    void note (const char* format, ...)
+    {
+        char text[1024];
+        va_list args;
+        va_start (args, format);
+        std::vsnprintf (text, sizeof (text), format, args);
+        va_end (args);
+        if (capturing != nullptr) capturing->notes.emplace_back (text);
+        else std::fputs (text, stdout);
+    }
+
     void checkStr (const juce::String& got, const juce::String& expected, const char* what)
     {
+        if (capturing != nullptr) { capturing->results.emplace_back (got == expected, what); return; }
         ++checks;
         if (got != expected)
         {
@@ -99,6 +136,11 @@ namespace
 
     void checkNear (double got, double expected, double tol, const char* what)
     {
+        if (capturing != nullptr)
+        {
+            capturing->results.emplace_back (std::abs (got - expected) <= tol, what);
+            return;
+        }
         ++checks;
         if (! (std::abs (got - expected) <= tol))
         {
@@ -15968,41 +16010,62 @@ static void testPhysicalButtonQueryIgnoresCachedState()
 //     bare convention governs current version references, not captured output,
 //     and it exempts this file by name. A sweep once rewrote the label to the bare
 //     form, and this assertion with it (bfa9c73, restored 2026-09-29).
-static void testCrossVersionFieldCapture()
+// FNV-1a-64 over raw bytes: the content hash that pins both capture files.
+static juce::uint64 fieldCaptureHash (const juce::MemoryBlock& bytes)
 {
-    std::printf ("State test 25: a 0.9.5-written session reproduces exactly (cross-version capture)\n");
-
-    const auto blob = fixtureDir().getChildFile ("field_capture_0_9_5.session");
-    const auto manifestFile = fixtureDir().getChildFile ("field_capture_0_9_5.session.manifest");
-    check (blob.existsAsFile(), "the 0.9.5 field capture is present");
-    check (manifestFile.existsAsFile(), "...and so is its manifest");
-    if (! blob.existsAsFile() || ! manifestFile.existsAsFile()) return;
-
-    // The two files as the 0.9.5 binary wrote them: FNV-1a-64 over their raw bytes
-    // (the manifest keeps the CRLF line endings it was written with; `.gitattributes`
-    // marks both files -text, so no checkout converts them). Reproduce with any
-    // FNV-1a-64, e.g. over `git show 72fe2e0:tests/fixtures/field_capture_v0_9_5.session.manifest`.
-    auto fnv1a64 = [] (const juce::MemoryBlock& bytes) -> juce::uint64
+    juce::uint64 h = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < bytes.getSize(); ++i)
     {
-        juce::uint64 h = 0xcbf29ce484222325ull;
-        for (size_t i = 0; i < bytes.getSize(); ++i)
-        {
-            h ^= (juce::uint64) (juce::uint8) bytes[i];
-            h *= 0x100000001b3ull;
-        }
-        return h;
-    };
-    auto blobData = juce::MemoryBlock();
-    auto manifestData = juce::MemoryBlock();
-    check (blob.loadFileAsData (blobData), "the capture loads from disk");
-    check (manifestFile.loadFileAsData (manifestData), "...and so does its manifest");
-    std::printf ("  capture fnv1a-64 %016llx (%d bytes), manifest %016llx (%d bytes)\n",
-                 (unsigned long long) fnv1a64 (blobData), (int) blobData.getSize(),
-                 (unsigned long long) fnv1a64 (manifestData), (int) manifestData.getSize());
-    check (fnv1a64 (blobData) == 0x63512badf96b42a2ull,
-           "the session blob is the 0.9.5 binary's capture, byte for byte");
-    check (fnv1a64 (manifestData) == 0x87a04bb89d88f423ull,
-           "the manifest is the 0.9.5 binary's record, byte for byte");
+        h ^= (juce::uint64) (juce::uint8) bytes[i];
+        h *= 0x100000001b3ull;
+    }
+    return h;
+}
+
+// The two files as the 0.9.5 binary wrote them: FNV-1a-64 over their raw bytes (the
+// manifest keeps the CRLF line endings it was written with; `.gitattributes` marks both
+// files -text, so no checkout converts them). Reproduce with any FNV-1a-64, e.g. over
+// `git show 72fe2e0:tests/fixtures/field_capture_v0_9_5.session.manifest`.
+static constexpr juce::uint64 fieldCaptureBlobHash     = 0x63512badf96b42a2ull;
+static constexpr juce::uint64 fieldCaptureManifestHash = 0x87a04bb89d88f423ull;
+
+// Every check runFieldCaptureChecks makes on the intact capture: the two hashes, the label,
+// both slots present, the blob's size, 5 slot-A values, the preset name, the dirty-star, the
+// active slot, the slots differing, 5 slot-B values. Gate leg (a) pins it, so a check that
+// stops running is a failure, not a smaller pass.
+static constexpr size_t fieldCaptureCheckCount = 19;
+
+// State test 25's checks over the capture's bytes, against the hashes that pin them.
+// Returns false only when a hash does not match, and then nothing was parsed, restored or
+// compared; true once the integrity gate has passed and the checks after it ran (a manifest
+// missing a slot's values stops at the check that says so, which fails).
+//
+// INTEGRITY FIRST, AND ONLY. A file whose hash does not match is no longer what the
+// 0.9.5 binary wrote, so nothing read from it is evidence: every check below would be
+// reading the edit, and a mismatch there -- "the active slot's sound reproduces"
+// failing -- would read as a compatibility regression in the build when it is the
+// fixture that changed (a Devin finding, 2026-09-29: an edited manifest reported its
+// hash AND a false restore failure). So a mismatch is reported, named as the root
+// cause, and nothing is parsed, restored or compared.
+static bool runFieldCaptureChecks (const juce::MemoryBlock& blobData, const juce::MemoryBlock& manifestData,
+                                   juce::uint64 blobHash, juce::uint64 manifestHash)
+{
+    note ("  capture fnv1a-64 %016llx (%d bytes), manifest %016llx (%d bytes)\n",
+          (unsigned long long) fieldCaptureHash (blobData), (int) blobData.getSize(),
+          (unsigned long long) fieldCaptureHash (manifestData), (int) manifestData.getSize());
+    const bool blobIntact     = fieldCaptureHash (blobData) == blobHash;
+    const bool manifestIntact = fieldCaptureHash (manifestData) == manifestHash;
+    check (blobIntact, "the session blob is the 0.9.5 binary's capture, byte for byte");
+    check (manifestIntact, "the manifest is the 0.9.5 binary's record, byte for byte");
+    if (! blobIntact || ! manifestIntact)
+    {
+        note ("  FIXTURE INTEGRITY FAILED: %s no longer the 0.9.5 binary's output (hash above), so "
+              "nothing is parsed, restored or compared from it -- restore %s from git; no check that "
+              "depends on the capture ran\n",
+              blobIntact ? "the manifest is" : manifestIntact ? "the session blob is" : "both files are",
+              blobIntact != manifestIntact ? "the file" : "both files");
+        return false;
+    }
 
     // Parse the emitter's own record. Anything missing is a broken fixture, not a
     // pass -- the check() calls below would otherwise compare against 0.0.
@@ -16022,7 +16085,7 @@ static void testCrossVersionFieldCapture()
     check (expected["emitter"] == "v0.9.5",
            "the manifest carries the label the 0.9.5 binary wrote, unrewritten");
     check (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
-    if (slotA.size() != 5 || slotB.size() != 5) return;
+    if (slotA.size() != 5 || slotB.size() != 5) return true;
 
     auto valueOf = [] (const juce::StringArray& fields, const juce::String& key) -> float
     {
@@ -16048,16 +16111,16 @@ static void testCrossVersionFieldCapture()
     {
         const float want = valueOf (slotA, pr.key);
         const float got  = rawOf (proc, pr.id);
-        std::printf ("  slotA %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
+        note ("  slotA %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
         checkNear ((double) got, (double) want, 1.0e-5,
                    "the active slot's sound reproduces from the 0.9.5 capture");
     }
 
     // (2) PRESET NAME and (3) DIRTY-STAR.
-    std::printf ("  preset name: \"%s\" (0.9.5: \"%s\"), dirty %d (0.9.5: %s)\n",
-                 proc.getPresets().currentName().toRawUTF8(),
-                 expected["presetName"].toRawUTF8(),
-                 (int) proc.getPresets().isDirty(), expected["dirty"].toRawUTF8());
+    note ("  preset name: \"%s\" (0.9.5: \"%s\"), dirty %d (0.9.5: %s)\n",
+          proc.getPresets().currentName().toRawUTF8(),
+          expected["presetName"].toRawUTF8(),
+          (int) proc.getPresets().isDirty(), expected["dirty"].toRawUTF8());
     check (proc.getPresets().currentName() == expected["presetName"],
            "the preset name reproduces from the 0.9.5 capture");
     check ((int) proc.getPresets().isDirty() == expected["dirty"].getIntValue(),
@@ -16075,10 +16138,121 @@ static void testCrossVersionFieldCapture()
     {
         const float want = valueOf (slotB, pr.key);
         const float got  = rawOf (proc, pr.id);
-        std::printf ("  slotB %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
+        note ("  slotB %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
         checkNear ((double) got, (double) want, 1.0e-5,
                    "the B slot reproduces from the 0.9.5 capture");
     }
+    return true;
+}
+
+static void testCrossVersionFieldCapture()
+{
+    std::printf ("State test 25: a 0.9.5-written session reproduces exactly (cross-version capture)\n");
+
+    const auto blob = fixtureDir().getChildFile ("field_capture_0_9_5.session");
+    const auto manifestFile = fixtureDir().getChildFile ("field_capture_0_9_5.session.manifest");
+    check (blob.existsAsFile(), "the 0.9.5 field capture is present");
+    check (manifestFile.existsAsFile(), "...and so is its manifest");
+    if (! blob.existsAsFile() || ! manifestFile.existsAsFile()) return;
+
+    auto blobData = juce::MemoryBlock();
+    auto manifestData = juce::MemoryBlock();
+    check (blob.loadFileAsData (blobData), "the capture loads from disk");
+    check (manifestFile.loadFileAsData (manifestData), "...and so does its manifest");
+    const int failuresBefore = failures;
+    if (! runFieldCaptureChecks (blobData, manifestData, fieldCaptureBlobHash, fieldCaptureManifestHash))
+        return;   // the integrity failure is the finding; the gate legs below read these same bytes
+    if (failures != failuresBefore)
+    {
+        // The legs below edit the capture AS COMMITTED and expect it to pass intact; on bytes
+        // that already fail above they would only repeat that failure under other names.
+        std::printf ("  gate legs not run: the capture failed above, and they start from it intact\n");
+        return;
+    }
+
+    // THE GATE ITSELF, run on in-memory copies of the capture's bytes under a capture:
+    // nothing in it is counted or printed but the verdicts below. The files are not written.
+    auto runCaptured = [] (const juce::MemoryBlock& b, const juce::MemoryBlock& m,
+                           juce::uint64 bh, juce::uint64 mh, CapturedChecks& into)
+    {
+        capturing = &into;
+        const bool ran = runFieldCaptureChecks (b, m, bh, mh);
+        capturing = nullptr;
+        return ran;
+    };
+    // The bytes with one same-length span replaced; the result is checked below, so a
+    // span that is not there makes the leg fail rather than pass on unchanged bytes.
+    auto edited = [] (const juce::MemoryBlock& bytes, const std::string& from, const std::string& to)
+    {
+        std::string raw (static_cast<const char*> (bytes.getData()), bytes.getSize());   // binary-safe
+        if (const auto at = raw.find (from); at != std::string::npos)
+            raw.replace (at, from.size(), to);
+        return juce::MemoryBlock (raw.data(), raw.size());
+    };
+    auto says = [] (const CapturedChecks& c, const char* fragment)
+    {
+        for (const auto& n : c.notes)
+            if (n.find (fragment) != std::string::npos) return true;
+        return false;
+    };
+    auto onlyFailure = [] (const CapturedChecks& c, const char* what)
+    {
+        for (const auto& r : c.results)
+            if (! r.first && r.second != what) return false;
+        return c.failed() == 1;
+    };
+
+    // (a) The capture as it is: both hashes pass, the label check and every check that
+    //     depends on the fixture run, and none fails. Its check count is the yardstick.
+    CapturedChecks intact;
+    const bool intactRan = runCaptured (blobData, manifestData, fieldCaptureBlobHash, fieldCaptureManifestHash, intact);
+    std::printf ("  gate (a) intact: %d checks, %d failed, dependent checks %s\n",
+                 (int) intact.results.size(), intact.failed(), intactRan ? "ran" : "did NOT run");
+    check (intactRan && intact.failed() == 0 && intact.results.size() == fieldCaptureCheckCount,
+           "State test 25 gate (a): the intact capture passes its hashes, and every dependent check runs and passes");
+
+    // (b) The manifest edited (slot A's width 0.812500 -> 0.812600) under the pinned hash:
+    //     the manifest's hash fails and NOTHING else is checked -- no label, no restore, no
+    //     "the active slot's sound reproduces" failure to point at the build.
+    const auto manifestEdited = edited (manifestData, "slotA width=0.812500", "slotA width=0.812600");
+    CapturedChecks manifestEdit;
+    const bool manifestEditRan = runCaptured (blobData, manifestEdited, fieldCaptureBlobHash,
+                                              fieldCaptureManifestHash, manifestEdit);
+    std::printf ("  gate (b) manifest edited: %d checks, %d failed, dependent checks %s\n",
+                 (int) manifestEdit.results.size(), manifestEdit.failed(), manifestEditRan ? "ran" : "did not run");
+    check (manifestEdited.getSize() == manifestData.getSize() && manifestEdited != manifestData
+           && ! manifestEditRan && manifestEdit.results.size() == 2
+           && onlyFailure (manifestEdit, "the manifest is the 0.9.5 binary's record, byte for byte")
+           && says (manifestEdit, "FIXTURE INTEGRITY FAILED: the manifest is no longer"),
+           "State test 25 gate (b): an edited manifest fails at its hash alone, named as the root cause");
+
+    // (c) The session blob edited (a stored width 1.625 -> 1.425, still a well-formed
+    //     session) under the pinned hash: the blob's hash fails and nothing else is checked.
+    const auto blobEdited = edited (blobData, "value=\"1.62500011920929\"", "value=\"1.42500011920929\"");
+    CapturedChecks blobEdit;
+    const bool blobEditRan = runCaptured (blobEdited, manifestData, fieldCaptureBlobHash,
+                                          fieldCaptureManifestHash, blobEdit);
+    std::printf ("  gate (c) blob edited: %d checks, %d failed, dependent checks %s\n",
+                 (int) blobEdit.results.size(), blobEdit.failed(), blobEditRan ? "ran" : "did not run");
+    check (blobEdited.getSize() == blobData.getSize() && blobEdited != blobData
+           && ! blobEditRan && blobEdit.results.size() == 2
+           && onlyFailure (blobEdit, "the session blob is the 0.9.5 binary's capture, byte for byte")
+           && says (blobEdit, "FIXTURE INTEGRITY FAILED: the session blob is no longer"),
+           "State test 25 gate (c): an edited session blob fails at its hash alone, named as the root cause");
+
+    // (d) The label rewritten to the bare spelling (what a notation sweep once did), with the
+    //     manifest's hash taken over the EDITED bytes -- a pin updated along with it: the
+    //     hashes pass, the label check fails, and the dependent checks still run as they
+    //     always have (they do not read the label), each passing.
+    const auto relabelled = edited (manifestData, "emitter=v0.9.5", "emitter=0.9.5 ");
+    CapturedChecks relabel;
+    const bool relabelRan = runCaptured (blobData, relabelled, fieldCaptureBlobHash,
+                                         fieldCaptureHash (relabelled), relabel);
+    std::printf ("  gate (d) label rewritten, hash re-pinned: %d checks, %d failed, dependent checks %s\n",
+                 (int) relabel.results.size(), relabel.failed(), relabelRan ? "ran" : "did not run");
+    check (relabelled != manifestData && relabelRan && relabel.results.size() == intact.results.size()
+           && onlyFailure (relabel, "the manifest carries the label the 0.9.5 binary wrote, unrewritten"),
+           "State test 25 gate (d): with its hash re-pinned, a rewritten label fails the label check and nothing else");
 }
 
 // ---------------------------------------------------------------------------

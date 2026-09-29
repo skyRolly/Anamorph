@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **the release line is this repository's `main` alone, and one release-tag grammar** (2026-09-29; three review findings: a fork's `origin/main` was united with the repository's `main`, a branch's own tag counted as a release, and `release.yml` accepted a leading-zero tag the checker refuses), whose entry is the **100th pass**; before it **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **only a tag push drafts a release, and a corrupted capture fails at its hash alone** (2026-09-29; two review findings: a `workflow_dispatch` rehearsal started from a tag took `release.yml`'s release path and drafted a release, and State test 25 ran its restore checks on a capture whose hash had already failed), whose entry is the **101st pass**; before it **the release line is this repository's `main` alone, and one release-tag grammar** (2026-09-29; three review findings: a fork's `origin/main` was united with the repository's `main`, a branch's own tag counted as a release, and `release.yml` accepted a leading-zero tag the checker refuses), whose entry is the **100th pass**; before it **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -10951,7 +10951,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2837` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2879` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -13005,6 +13005,144 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
 
+## 101st pass — 2026-09-29, only a tag push drafts a release; a corrupted capture fails at its hash alone (PR #159)
+
+**Scope.** Two review findings (Devin), treated as open until the final revision no longer met their failure
+conditions:
+- "Tag-selected rehearsals create draft releases" (`044016f:.github/workflows/release.yml:67`);
+- "Capture mismatch produces misleading follow-on checks" (`044016f:tests/state_tests.cpp:15997`).
+
+The informational note on `build.yml` (release links depend on the called `docs` gate) was checked again and
+needs no change: under `workflow_call` the `docs` job runs for the tag push and for a dispatch (only a same-repo
+`pull_request` skips it), checks out the full history and every tag (`fetch-depth: 0`, `fetch-tags: true`), and
+runs `check-docs.py --self-test` and `check-docs.py`; `draft-release` needs `build`, whose result includes it.
+
+This pass changes:
+- `release.yml`'s validate step (the release-or-rehearsal gate, a rehearsal notice) and its comments;
+- State test 25 (`tests/state_tests.cpp`) and the suite's capture helpers (`CapturedChecks`, `note`);
+- the `check-docs.py` self-test; `check-citations.py`'s gloss of `release.yml`'s gate lines, whose line
+  numbers moved;
+- the documents below, and 17 citations re-anchored by `check-citations.py --fix` (one of them a `build.yml`
+  comment: a line number, nothing else in that file changed).
+
+No production code, parameter, serialization, state-schema, DSP, threading or latency change. The capture
+files are byte-identical (`git diff --quiet -- tests/fixtures`; the manifest still opens `emitter=v0.9.5`,
+CRLF). No tag or release was created; every tag in this pass's tests lives in a temporary repository.
+
+**Review state.** Nothing from Devin is on the pull request (no review, review thread or check run). The findings
+were taken as reported, against `044016f`.
+
+**Reproduced first, on `044016f`:**
+
+| Case | At `044016f` | Expected |
+|---|---|---|
+| `release.yml` validate, `workflow_dispatch` at an annotated, dated `0.9.9` (CMake 0.9.9) | `is-release=true`; `draft-release`'s `if:` true | `is-release=false`; `draft-release` skipped |
+| The State suite with the capture's manifest edited (slot A's width `0.812500` → `0.812600`) | 2 failures: the manifest hash, and "the active slot's sound reproduces from the 0.9.5 capture" | 1 failure, the hash, named as the fixture's |
+
+The other workflow cases were already right on `044016f` and stay right: a push of the tag (`is-release=true`,
+`draft-release` runs), a dispatch from `main` (`is-release=false`), and a prefixed, a leading-zero (`0.09.9`) or a
+lightweight tag, or a CMake mismatch, each refused.
+
+**Root causes.**
+- *Rehearsal:* the step chose the release path on `GITHUB_REF` alone. A dispatch started from a tag carries the
+  same `refs/tags/<tag>` as the push, so it ran every release check, passed, and wrote `is-release=true`.
+- *Capture:* State test 25 checked both hashes and carried on. On an edited file every later check read the
+  edit, and a mismatch there read as a restore regression in the build.
+
+**The rule.**
+- **A release is a tag push.** The validate step takes the release path when `GITHUB_EVENT_NAME` is `push` and
+  `GITHUB_REF` is a tag ref. The event is read as an allowlist: under the workflow's two triggers that is
+  exactly "not `workflow_dispatch`", and a trigger added later is a rehearsal until it is made a release,
+  except `workflow_call`, which carries the caller's event and ref and so needs the gate reviewed. A
+  rehearsal from a tag prints a notice that a release is cut only by pushing the tag. The trigger, the tag
+  grammar, the annotated check, the CMake and changelog checks and `draft-release`'s condition are unchanged.
+- **A capture that fails its hash is the whole finding.** State test 25 reports the mismatch, says the fixture's
+  integrity failed and to restore the file from git, and parses, restores and compares nothing from it. The hash
+  check, the exact label assertion and the fixture are unchanged. With a correct hash and a wrong label, the
+  label fails and the dependent checks run as before (they do not read the label).
+
+**Tests.**
+- *`check-docs.py --self-test`, 689 → 700 cases:* `0.09.9` and a prefixed `0.9.9` in the grammar loop; a
+  lightweight `0.9.9`; a `0.9.9` tag on a CMake 0.9.10 tree, refused for the mismatch; the `draft-release`
+  wiring (its `if:` and the validate job's `is-release` output, read from the workflow with each value whole,
+  as GitHub reads it, any other form failing closed), and two cases that it is read so: the same `if:`
+  continued on a second line with `|| github.event_name == 'workflow_dispatch'`, and written as a `>-` block,
+  are each not taken for it; and four trigger cases, each running the step for the same annotated, dated
+  `0.9.9` and evaluating the job's condition on what it wrote: a push (`is-release=true`, runs); a dispatch from the tag, a dispatch
+  from `main`, another event at the tag (`is-release=false`, skipped).
+- *State test 25, 5,596 → 5,600 checks:* four gate legs run under `CapturedChecks` on in-memory copies (intact,
+  its 19 checks pinned; manifest edited; blob edited; label rewritten with the hash re-pinned) and skipped when
+  the capture has already failed (`TESTING.md` has the legs). The suites: State 5,600 checks, 0 failures; DSP
+  all passed.
+- *Controls, each through the whole State suite on an edited copy of the fixtures* (the binary compiled against
+  that copy; the repository's fixtures never written): a manifest slot value edited outside or inside the 1e-5
+  tolerance, the label rewritten, CRLF → LF, a blob width edited, a blob byte the restore does not read: 1
+  failure each, the hash, with the integrity note; the label rewritten with its hash re-pinned: 1, the label,
+  the dependent checks run and pass, the gate legs skipped; the label assertion relaxed to the bare form with
+  the historical fixture: 1, the label.
+
+**Mutation.**
+- *`release.yml`'s gate, against the unmutated checker:* twelve mutants (below) each fail the self-test.
+- *State test 25:* six mutants each fail the suite: the early return removed (2), the integrity condition
+  `&&` (2), the label check made to pass always (1), the label compared without its prefix (1), a return
+  before the slot-B checks (1, gate a's pinned count), `check` ignoring the capture (7).
+- *The checker's 92 and `release.yml`'s nine earlier mutants,* re-run against this revision: each still fails
+  (ADR-0058's evidence has the counts).
+
+| `release.yml` mutant (against the unmutated checker) | Failing cases |
+|---|---|
+| the gate on the ref alone (the finding's own shape) | 2 |
+| a denylist of `workflow_dispatch` instead of the `push` allowlist | 1 |
+| event and ref OR-ed | 2 |
+| the wrong event variable (no push is a release) | 20 |
+| the rehearsal writing `is-release=true` / no `is-release` | 3 / 3 |
+| `draft-release` run `always()` / gated `!= 'false'` / without `needs: validate` / on a hard-wired job output | 1 / 1 / 1 / 1 |
+| `draft-release`'s `if:` continued on a second line with `\|\| github.event_name == 'workflow_dispatch'` | 1 |
+| a decoy job before `validate` holding the fixed step; `validate`'s own gate back on the ref alone | 2 |
+
+Ten earlier counts moved, each because the new cases exercise the same code: `RELEASE_TAG` admitting leading
+zeros 7 → 8, the grammar case trusting the grammar 9 → 11, the clone-style sandbox 14 → 21, and of
+`release.yml`'s: the old validator 4 → 5, the annotated check removed 1 → 2, the three re-fetch mutants 5 → 7,
+the two output mutants 5 → 6. Every other count is `c729463`'s. 113 mutants in all, none surviving, none by
+crashing.
+
+**Review.** Three reviewers (the release gate, State test 25, the documents), each finding reproduced by a
+skeptic before it counted; 13 reported, all addressed:
+- **The self-test could be walked past (2, one rated blocking).** Its reader dropped a YAML value's continuation
+  lines, so `draft-release`'s `if:` extended on a second line with `|| github.event_name == 'workflow_dispatch'`
+  still read as the gated form while GitHub would draft on a dispatch; and it ran the first `id: meta` step in
+  the file, so a decoy job holding the fixed step let `validate`'s own gate go back on the ref alone. Neither
+  is reachable from the workflow as it stands. The reader now keeps every value whole and takes the step from
+  `validate`; two cases and two mutants (above) pin both.
+- **`GITHUB_OUTPUT` read as `name=value` lines only** (minor): a `name<<DELIMITER` block written after it would
+  go unseen. It is now parsed as the runner parses it. A `${{ }}` expression in the step, which the sandbox
+  cannot substitute, now fails the case (the finding itself was refuted: the step holds none).
+- **State test 25** (2): gate (a) asserted only `> 10` checks, so a return before the slot-B checks passed; the
+  count is now pinned at 19. The return value's comment said "whether the checks that depend on the fixture
+  ran", untrue at the slot-count exit; reworded.
+- **Wording** (8): a later `workflow_call` trigger carries the caller's event, so the allowlist sentence now
+  names it; the self-test count (698, before the reader's two cases); the re-anchored-citation count; an
+  unqualified citation of the finding's line, which the citation gate would have moved; "19 dependent checks"
+  (2 hashes and 17); where the gate legs are skipped; an `ADR_INDEX.md` provenance clause.
+
+**Limitations, stated.**
+- `draft-release`'s condition is evaluated for the one form the workflow uses, its value read whole; any other
+  form fails the wiring case until the self-test is taught it.
+- A trigger added later is a rehearsal under the allowlist, except `workflow_call`, whose event and ref are the
+  caller's; adding it needs the gate reviewed against every caller.
+- The gate legs start from the capture as committed, so on a capture that already fails they are skipped, and
+  the real run's failure is the report.
+
+**Documents:**
+- ADR-0059 (status line, Decision, the capture bullet, Evidence), with its `ADR_INDEX.md` row;
+- ADR-0058 (the self-test list, Related code, Evidence), with its `ADR_INDEX.md` row;
+- `RELEASE_PROCESS.md` (the rehearsal paragraph); `CI_CD.md` (the `release.yml` paragraph);
+- `TESTING.md` (State test 25's gate, the `docs` self-test's workflow cases);
+- `REPOSITORY_MAP.md` (the `release.yml` and fixtures rows); `HANDOVER.md` and `RELEASE_HARDENING_PLAN.md`
+  (the State count).
+
+**This file:** this entry and the *Last updated* line.
+
 ## 100th pass — 2026-09-29, the release line is this repository's `main` alone; one release-tag grammar (PR #159)
 
 **Scope.** Three review findings (Devin), treated as open until the final revision no longer met their
@@ -13734,7 +13872,7 @@ checks in ADR-0058, which is complete.
    update required)" to "update PARAMETER_REGISTRY.md (and add an ADR where PARAMETER_COMPATIBILITY_POLICY.md
    requires one), then:". Commit `0fd0eb6` (2026-09-28, the 92nd pass).
 2. *The generator changed identically in the same commit.* The header is written by `registry::` in
-   `tests/state_tests.cpp:238-240`; the fixture-workflow comment and the failure note changed with it. The
+   `tests/state_tests.cpp:280-282`; the fixture-workflow comment and the failure note changed with it. The
    header is therefore what `--write-snapshot` emits today, so a regeneration reproduces it byte for byte.
 3. *Why:* the 91st pass reported the old header as drift. It said every regeneration needs an ADR, while
    `PARAMETER_COMPATIBILITY_POLICY.md` rule 2 (and ADR-0002) let a display name change without one. That is
@@ -13744,7 +13882,7 @@ checks in ADR-0058, which is complete.
    parameter ID, name, range, default, choice list, count, order, or the bypass line changed.
 5. *No version or notation content:* the two lines name no version; the ADR-0059 sweep did not touch them.
 6. *No effect on validation:* `registry::compare` skips a line when both sides start with `#`
-   (`tests/state_tests.cpp:299`), so the header cannot make the comparison pass or fail. The State suite passes on
+   (`tests/state_tests.cpp:341`), so the header cannot make the comparison pass or fail. The State suite passes on
    this pass's source.
 7. *Not part of the version-format sweep:* it came in the 92nd pass's documentation corrections, ten commits
    before the ADR-0059 sweep (`bfa9c73`), which does not touch the file.
@@ -15904,10 +16042,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22009`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22183`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15594` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -15923,7 +16061,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19113`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19287`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -15952,7 +16090,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13708` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13750` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -16248,7 +16386,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13708`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13750`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at

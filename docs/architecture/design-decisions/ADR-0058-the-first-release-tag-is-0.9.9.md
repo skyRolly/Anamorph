@@ -378,11 +378,14 @@ without a tag, rather than only for this one.
       a remote name with a shell metacharacter is quoted in the fetch the source names; and a
       single-branch clone's remedy is run exactly as printed;
     - `release.yml`'s validate step, run verbatim in scratch repositories for `0.9.9`, `0.9.10`, `0.10.0`,
-      `1.0.0`, `10.20.30` (accepted) and `0.09.10`, `00.9.10`, `0.09.010`, `0.9.010`, a prefixed tag,
-      `0.9`, `0.9.10.1`, `0.9.10-rc1`, `0.9.1０` (refused), exactly as `RELEASE_TAG` decides, with the
-      trigger admitting every accepted one, each accepted one writing `is-release=true` and
-      `version=<tag>` to `GITHUB_OUTPUT`, in a sandbox whose local tag is asserted peeled; a lightweight
-      `0.9.10` is refused;
+      `1.0.0`, `10.20.30` (accepted) and `0.09.9`, `0.09.10`, `00.9.10`, `0.09.010`, `0.9.010`, a
+      prefixed `0.9.9` and `0.9.10`, `0.9`, `0.9.10.1`, `0.9.10-rc1`, `0.9.1０` (refused), exactly as
+      `RELEASE_TAG` decides, with the trigger admitting every accepted one, each accepted one writing
+      `is-release=true` and `version=<tag>` to `GITHUB_OUTPUT`, in a sandbox whose local tag is asserted
+      peeled; a lightweight `0.9.9` and `0.9.10` are refused, and so is a `0.9.9` tag whose CMake version
+      is 0.9.10; and, with `draft-release`'s `if:` evaluated on what the step wrote, only a push of the tag
+      reaches the draft release -- a `workflow_dispatch` from the tag or from `main`, or another event at
+      the tag, is a rehearsal (ADR-0059);
     - non-ASCII digits: a tag `0.9.1０` is no release (0 findings); a heading `## [0.9.1０]` or
       `## [0.9.1٠]` is no entry, so the 0.9.10 tag is reported unrecorded;
     - a subdirectory, a plain directory, a checkout git will not open ("dubious ownership"), a checkout
@@ -462,7 +465,7 @@ without a tag, rather than only for this one.
 - `CHANGELOG.md` — the preamble and the `[0.9.9]` definition.
 - `.github/workflows/release.yml` — validates tag ⇄ CMake version ⇄ dated heading and never reads link
   definitions; its tag format is ADR-0059's, and its validate step's grammar is `RELEASE_TAG`'s (no
-  leading zero; the trigger glob stays coarse).
+  leading zero; the trigger glob stays coarse). Only a tag push takes the release path (ADR-0059).
 - `scripts/check-citations.py` — its gloss of `release.yml`'s gate lines (`VERSIONED_LINES`).
 
 ## Evidence + confidence
@@ -486,11 +489,13 @@ without a tag, rather than only for this one.
   revision all three files pass, the three tags are refused, and the earlier acceptance cases hold (a
   missing 0.9.10 on the line fails, naming it; both recorded passes only from 0.9.10; the first tag;
   skipped versions; the branch tip, merged commits, fast-forward and two-parent shapes).
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 689 cases (537 before the
-  2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
-  is the number of failing cases and steps alike). A hundred and one mutants each fail it, none by
-  crashing, with the number of failing cases (measured on a clean clone of `c729463`; ninety-two of the
-  checker, nine of `release.yml` run against the unmutated checker):
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 700 cases (537 before the
+  2026-09-29 amendments, 689 before the release-trigger cases; each step of the tag-reader case counts as a
+  case of its own, so a mutant's count is the number of failing cases and steps alike). A hundred and
+  thirteen mutants each fail it, none by crashing, with the number of failing cases (ninety-two of the
+  checker and nine of `release.yml` first measured on a clean clone of `c729463`, re-measured with twelve
+  more of `release.yml` -- each run against the unmutated checker -- on the revision that added the
+  release-trigger cases; the counts that moved are the ones those cases also exercise):
   - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
     preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's
     `origin/main` read instead): 14; the repository's remote without its `main` falling back to
@@ -511,12 +516,19 @@ without a tag, rather than only for this one.
     `fetch.prune`): 3; the line refs in name order, a stale remote named first: 1; where the line cannot
     be read, a newer tag present ignored (the in-preparation file's silent pass): 3, the in-preparation
     release's own tag counted as newer: 1, or a leading-zero tag counted: 1;
-    `RELEASE_TAG` admitting leading zeros: 7; the tag-grammar case trusting the grammar instead of running
-    the step: 9; `release.yml`'s validator back to `[0-9]+`: 4, without the leading-zero rule in the
-    last component: 1; its trigger narrowed: 4; its annotated-tag check removed: 1; its re-fetch of the
-    tag object without `--force`, removed, or of the wrong ref: 5 each; its `is-release=true` echoed to the
-    log instead of `GITHUB_OUTPUT`: 5; its `version` output dropped: 5; the grammar case's sandbox
-    fetching the tag object, as `git clone` does: 14;
+    `RELEASE_TAG` admitting leading zeros: 8 (7 on `c729463`); the tag-grammar case trusting the grammar
+    instead of running the step: 11 (9); `release.yml`'s validator back to `[0-9]+`: 5 (4), without the
+    leading-zero rule in the last component: 1; its trigger narrowed: 4; its annotated-tag check removed:
+    2 (1); its re-fetch of the tag object without `--force`, removed, or of the wrong ref: 7 each (5); its
+    `is-release=true` echoed to the log instead of `GITHUB_OUTPUT`: 6 (5); its `version` output dropped:
+    6 (5); the grammar case's sandbox fetching the tag object, as `git clone` does: 21 (14);
+  - the release gate (ADR-0059's third amendment), each a mutant of `release.yml`: the step deciding on the
+    ref alone, the finding's own shape: 2; a denylist of `workflow_dispatch` for the `push` allowlist: 1;
+    event and ref OR-ed: 2; the wrong event variable: 20; the rehearsal writing `is-release=true`: 3, or no
+    `is-release`: 3; `draft-release` run `always()`, gated `!= 'false'`, without `needs: validate`, or on a
+    hard-wired `is-release` job output: 1 each; `draft-release`'s `if:` continued on a second line with
+    `|| github.event_name == 'workflow_dispatch'`: 1; a decoy job before `validate` holding the fixed
+    step, with `validate`'s own gate back on the ref alone: 2;
   - the bases from the tags that have an entry (the intersection, the finding's own repro): 21; the
     missing-entry finding removed: 41; the base taken from the newest entry with a tag-looking link: 33;
     `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 21;

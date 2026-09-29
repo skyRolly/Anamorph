@@ -991,6 +991,32 @@ of the switch duck and is superseded by the live loudness measurement before the
 Keep the probe with the finding it refuted: it is what a later round re-measures instead of
 re-deriving.
 
+State test 25, the cross-version field capture, **checks its fixture's integrity first, and nothing
+else when that fails.** Both capture files are pinned by an FNV-1a-64 content hash: they are what the
+rebuilt 0.9.5 binary wrote, the manifest's label in that binary's spelling included (ADR-0059). A file whose
+hash does not match is no longer that binary's output, so the test reports the hash failure, prints
+`FIXTURE INTEGRITY FAILED: ... restore the file from git`, and parses, restores and compares nothing
+from it. Until 2026-09-29 an edited manifest also failed "the active slot's sound reproduces from the
+0.9.5 capture", which points at the build (a review finding). The test then checks that gate itself,
+on in-memory copies of the bytes, under a capture (`CapturedChecks`: while it is set, `check`,
+`checkStr`, `checkNear` and `note` record instead of counting or printing):
+- (a) intact: 19 checks, the two hashes and the 17 that depend on the capture, and none fails (the
+  count is pinned, so a check that stops running fails the leg);
+- (b) slot A's width edited in the manifest, and (c) a stored width edited in the blob: that file's
+  hash fails, alone, with the integrity note, and nothing else runs;
+- (d) the label rewritten to the bare spelling, with the manifest's pinned hash re-pinned to the edit:
+  the label check fails, alone, and every dependent check still runs.
+
+The legs start from the capture as committed, so they run only when it passed intact: on a hash
+mismatch the test ends at the integrity note, and on any other failure a `gate legs not run` line says
+so. Controls, each through the whole suite on an edited copy of the
+fixtures: a manifest with a slot value edited (outside or inside the 1e-5 tolerance), its label
+rewritten, or its CRLF converted to LF, or a blob byte edited, fails 1 check, the hash, with the
+integrity note; the label rewritten with its hash re-pinned fails 1, the label. The gate's mutants
+each fail it: the early return removed (gate legs b and c, 2 failures), the integrity condition
+`&&` for `||` (2), the label check made to pass always (d, 1), the label compared without its prefix
+(d, 1), a return before the slot-B checks (a, 1), and `check` ignoring the capture (7).
+
 State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
 It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
 `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
@@ -2574,10 +2600,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22009`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22183`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15594` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -2592,7 +2618,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:19113`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19287`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -4596,11 +4622,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22009`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22183`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15552` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15594` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4639,7 +4665,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14633`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14675`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
@@ -5541,6 +5567,15 @@ event — where it is the only job that runs at all.)
 | `tsan` | `cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DANAMORPH_BUILD_STANDALONE=OFF`, build `AnamorphStateTests`, then with `TSAN_OPTIONS=halt_on_error=1:exitcode=66` run `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe` and `--d2-stress-probe` (five times each in CI) and the suite once; the canary first (`clang++ -fsanitize=thread tests/tsan_canary.cpp` must FAIL with a data-race report). Add `:suppressions=<checkout>/tests/tsan-suppressions.txt:print_suppressions=1` — ONE `deadlock:` entry naming a harness re-entrancy double, for the lock-order inversion State test 75 legs D and G form between two parameters' JUCE `listenerLock`s on the MAIN thread; data races are not suppressed and the canary proves it (RISK-009, and the file itself carries the reasoning). The DSP suite is NOT built under TSan: `tests/AllocationGuard.h`'s global `operator new`/`delete` collide with `libclang_rt.tsan_cxx`, and it has no cross-thread path of its own. Needs `libclang-rt-<major>-dev`; on a kernel with 32-bit ASLR entropy, `sysctl vm.mmap_rnd_bits=28` A follow-on step then asserts that the number of ENTRIES THAT MATCHED equals the number of entries in `tests/tsan-suppressions.txt`: an entry that stops matching because its helper was renamed is already loud (the report returns and `halt_on_error=1` exits 66 -- measured), but an entry that matches NOTHING because the legs that produced the report were restructured is silent (measured: `exit=0` with one breakdown line while the file carried 2), and that is the mode the file's own header calls dangerous. **It counts the per-entry breakdown lines, NOT the summary number, and the first version got that wrong for a day.** `ThreadSanitizer: Matched N suppressions` is the SUM OF HIT COUNTS -- measured on a purpose-built two-inversion binary: one entry absorbing two reports prints `Matched 2` with ONE breakdown line (so the summary FAILS a correct file), and a dead entry beside one hit twice also prints `Matched 2` (so the summary PASSES the exact file the step exists to reject). Two further measurements from the same session, both recorded in the suppression file: a suppression is REPORT-scoped, so an inversion pairing a production edge with a harness edge is absorbed while one whose stacks are ALL production is still reported (exit 66, verified); and two entries that both match the same report are credited as ONE, which is why the file's old note that `WriteFromInsideAStore` "matched nothing" was wrong -- it was redundant, not dead |
 | `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 | `fuzz` | the `AnamorphFuzzState` recipe under §"Opt-in targets" above, verbatim — the CI step adds only `-seed=20260818 -rss_limit_mb=4096 -print_final_stats=1` and an `-artifact_prefix` for the reproducer it uploads on a finding |
+
+**The `docs` job's self-test runs `release.yml`'s validate step.** `check-docs.py --self-test` runs the
+step verbatim in scratch repositories, as each trigger runs it (`GITHUB_EVENT_NAME`, `GITHUB_REF`), and
+evaluates the `draft-release` job's `if:` on what the step writes to `GITHUB_OUTPUT`, reading the workflow
+and that file as GitHub and the runner read them (the `validate` job's own step, each value whole, the
+`name<<DELIMITER` form). Only a push of an
+annotated, dated tag that names the CMake version reaches the draft release. A `workflow_dispatch` from
+that tag or from `main`, or another event at the tag, is a rehearsal. A prefixed, leading-zero,
+malformed or lightweight tag, or one that disagrees with the CMake version, is refused (ADR-0059).
 
 **`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and nothing else.** The DSP suite treats a denormal in
 the engine output as a failure, which holds because the audio path runs under

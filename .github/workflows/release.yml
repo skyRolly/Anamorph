@@ -18,8 +18,10 @@
 #              action, after the Level-5 audition per RELEASE_POLICY).
 #
 #  workflow_dispatch = pipeline REHEARSAL: runs validate (report-only where a
-#  real tag is required) + the full build, but never creates a release. This
-#  lets the pipeline be exercised without cutting a tag.
+#  real tag is required) + the full build, but never creates a release -- from
+#  ANY ref, a tag ref included: the validate step decides by the EVENT (a tag
+#  push) as well as the ref. This lets the pipeline be exercised without
+#  cutting a tag.
 #
 #  Deliberately NOT here (later RH-PRs, per RELEASE_HARDENING_PLAN §6/§8):
 #  code signing (RH-PR-5), notarization (RH-PR-3), update checks (RH-PR-7).
@@ -64,13 +66,22 @@ jobs:
           [ -n "$CMAKE_VERSION" ] || { echo "::error::could not parse project VERSION from CMakeLists.txt"; exit 1; }
           echo "CMake project version: $CMAKE_VERSION"
 
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          # RELEASE OR REHEARSAL: a release is a TAG PUSH, and nothing else. The ref
+          # alone cannot tell -- "Run workflow" can be started from a tag, and then
+          # GITHUB_REF is refs/tags/<tag> exactly as it is for the push -- so a
+          # rehearsal dispatched from an existing tag used to take this branch, write
+          # is-release=true and reach draft-release (a Devin finding, 2026-09-29).
+          # The event is read as an ALLOWLIST: under this workflow's two triggers that
+          # is exactly "not workflow_dispatch", and a trigger added later is a
+          # rehearsal until someone makes it a release on purpose -- except
+          # `workflow_call`, whose event and ref are the CALLER's, so adding that
+          # trigger needs this gate reviewed against every caller.
+          if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
             # The tag IS the version: bare MAJOR.MINOR.PATCH, no prefix, no leading
             # zero (ADR-0059) -- the grammar `check-docs.py`'s RELEASE_TAG reads the
             # tags with. THIS test is the authority: the trigger glob cannot refuse a
-            # leading zero (`0.09.10` matches it), and a workflow_dispatch run from
-            # some other tag ref reaches here too. `check-docs.py --self-test` runs
+            # leading zero (`0.09.10` matches it). `check-docs.py --self-test` runs
             # this step to prove the two grammars agree.
             if ! [[ "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
               echo "::error::release tag ${TAG} is not a bare MAJOR.MINOR.PATCH version with no leading zero -- the release tag is exactly the CMake project VERSION, e.g. 0.9.9 (ADR-0059)"
@@ -139,8 +150,12 @@ jobs:
             echo "is-release=true"  >> "$GITHUB_OUTPUT"
             echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           else
-            # Rehearsal (workflow_dispatch): no tag to cross-check; report the
-            # state that a real tag would be validated against.
+            # Rehearsal (workflow_dispatch, from whatever ref it was started on): no
+            # tag to cross-check; report the state that a real tag would be
+            # validated against.
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+              echo "::notice::rehearsal (${GITHUB_EVENT_NAME:-no event}) started from tag ${GITHUB_REF#refs/tags/}: a rehearsal validates and builds but never drafts a release -- a release is cut only by PUSHING the annotated tag"
+            fi
             awk -v ver="${CMAKE_VERSION}" -f scripts/changelog-section.awk CHANGELOG.md > "$RUNNER_TEMP/section.md"
             if [ -s "$RUNNER_TEMP/section.md" ]; then
               echo "rehearsal: CHANGELOG already has a [${CMAKE_VERSION}] section"

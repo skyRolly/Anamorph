@@ -209,7 +209,10 @@ precondition, but they are the owner's to settle before public or commercial dis
 signing/notarization yet (RH-PR-3/5); the installers ship unsigned, with the user-facing
 consequences documented in `docs/user/INSTALLATION.md`.
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
-(validate + full build; no release is created).
+(validate + full build; no release is created). That holds from any ref, a tag included: `validate`
+takes the release path only for a tag **push**, so a rehearsal started from an existing tag writes
+`is-release=false` and `draft-release` does not run (ADR-0059). A release is cut only by pushing the
+annotated tag.
 
 No release tag exists yet — the first will be cut at the **0.9.9** release (ADR-0058; none of 0.9.0 through 0.9.8 was tagged). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the

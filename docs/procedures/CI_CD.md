@@ -60,7 +60,10 @@ Evidence [Verified]: `.github/workflows/build.yml` (`env:` block).
   ADR-0059; a prefixed tag matches no trigger and starts no release; the glob cannot refuse a leading zero,
   so `validate` is the authority: it asserts `check-docs.py`'s `RELEASE_TAG` grammar — no leading zero,
   which `check-docs.py --self-test` proves by running the step — and tag == CMake `project VERSION`), plus `workflow_dispatch`
-as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
+as a no-release **rehearsal** (validate + full build only) from any ref, a tag included: `validate` takes the
+release path only when `GITHUB_EVENT_NAME` is `push` *and* `GITHUB_REF` is a tag ref, so a rehearsal started
+from a tag writes `is-release=false` and `draft-release` does not run (ADR-0059; the self-test runs the step with
+each trigger's event and ref and evaluates `draft-release`'s `if:` on its outputs). Jobs: fail-closed metadata
 validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check, and —
 since the section is published verbatim as the release **notes body**, heading included — a check
 that the heading carries an ISO release date, which rejects a bare undated heading as well as
@@ -1433,7 +1436,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22009`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22183`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1445,7 +1448,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15552` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15594` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when

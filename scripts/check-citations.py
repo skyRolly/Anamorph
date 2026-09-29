@@ -981,12 +981,12 @@ def restated_ok(line_text, value):
 
 VERSIONED_LINES = {
     # The project version's value is guarded by the RELEASE GATE, not by a gloss:
-    # `release.yml:63-64` parses `project(Anamorph VERSION x.y.z ...)` out of this
-    # exact line, `:104-107` refuses a tag that disagrees with it, and `:108-111`
+    # `release.yml:65-66` parses `project(Anamorph VERSION x.y.z ...)` out of this
+    # exact line, `:115-118` refuses a tag that disagrees with it, and `:119-122`
     # refuses a tag whose version has no `## [x.y.z]` CHANGELOG section. A stale
     # version claim about line 14 therefore cannot reach a release.
     ("CMakeLists.txt", 14): ("project(Anamorph VERSION",
-                             "release.yml:63-64, 104-111 (tag == project VERSION == CHANGELOG entry)",
+                             "release.yml:65-66, 115-122 (tag == project VERSION == CHANGELOG entry)",
                              None),
     # The JUCE pin, added 2026-09-17 by the 9.0.1 -> 9.0.2 bump (ADR-0054), for
     # exactly the reason line 14 is here: these two lines CARRY a version, so

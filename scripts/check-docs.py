@@ -6038,6 +6038,14 @@ def self_test() -> int:
     # tag, a CMake version naming it, a dated entry, the real extractor), and
     # must accept exactly the tags `RELEASE_TAG` accepts, annotated; the trigger
     # must admit every one of them, or a real release would never start.
+    #
+    # AND ONLY A TAG PUSH REACHES THE DRAFT RELEASE (Devin, 2026-09-29). A
+    # `workflow_dispatch` started from a tag has GITHUB_REF = refs/tags/<tag>
+    # exactly as the push does, and the step used to decide on the ref alone: a
+    # rehearsal from `0.9.9` wrote is-release=true and drafted a release. So the
+    # step is also run with the event and ref each trigger gives it, and the
+    # draft-release job's `if:` -- read from the workflow, with the validate job's
+    # output wiring -- is evaluated on what it wrote: true for the push only.
     # Skipped WITH A NOTE where `bash`, `git` or `awk` is missing (Windows
     # developer machines); the `docs` job and `preflight.sh` have all three.
     workflow = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
@@ -6062,8 +6070,19 @@ def self_test() -> int:
         tag_at = next((n for n in range(push or 0, len(wf)) if wf[n].strip() == "tags:"), None)
         globs = [m.group(1) for l in (block_after(tag_at) if tag_at is not None else [])
                  for m in [re.fullmatch(r"\s*-\s*[\"']?(.*?)[\"']?\s*", l)] if m and m.group(1)]
-        meta = next((n for n, l in enumerate(wf) if l.strip() == "id: meta"), None)
-        run_at = next((n for n in range(meta or 0, len(wf)) if wf[n].strip() == "run: |"), None)
+
+        def job_at(lines: list[str], name: str) -> int | None:
+            # The line of job `name`, two-space indented under `jobs:`.
+            return next((n for n, l in enumerate(lines)
+                         if re.fullmatch(rf"  {re.escape(name)}:\s*", l)), None)
+        # The `validate` job's own step: step ids are unique per job only, so a step
+        # with the same id in another job is not the one whose outputs the release
+        # jobs read.
+        validate_at = job_at(wf, "validate")
+        validate_end = validate_at + 1 + len(block_after(validate_at)) if validate_at is not None else 0
+        meta = next((n for n in range(validate_at or 0, validate_end) if wf[n].strip() == "id: meta"),
+                    None)
+        run_at = next((n for n in range(meta or 0, validate_end) if wf[n].strip() == "run: |"), None)
         body = block_after(run_at) if meta is not None and run_at is not None else []
         indent = min((len(l) - len(l.lstrip()) for l in body if l.strip()), default=0)
         script = "\n".join(l[indent:] for l in body)
@@ -6097,18 +6116,19 @@ def self_test() -> int:
                     hit = hit or bool(glob_regex(g).fullmatch(tag))
             return hit
 
-        def validate(tag: str, annotated: bool = True) -> tuple[bool, str, str]:
-            # The validate step, run as the tag push runs it -- in a checkout made
-            # the way `actions/checkout` makes one for a tag, whose local tag is the
+        def run_step(tag: str, annotated: bool = True, event: str = "push",
+                     ref: str | None = None,
+                     cmake: str | None = None) -> tuple[int | None, list[str], str]:
+            # The validate step, run as a trigger runs it -- in a checkout made the
+            # way `actions/checkout` makes one for a tag, whose local tag is the
             # PEELED commit, so the step's re-fetch of the tag object is what lets
-            # it see an annotated tag at all: whether it passes, and what it said.
-            # It passes only by exiting 0 AND writing to `GITHUB_OUTPUT` the two
-            # outputs the release jobs read, `is-release=true` and `version=<tag>`
-            # (echoed to the log instead, they reach no job). Returns that, what it
-            # said, and which outcome it was, for the failure message. The CMake version is the tag wherever the step's own
-            # parse can read it (a leading-zero version too, so only the tag
-            # grammar can refuse it), else a valid one, so the grammar test is
-            # what the tag meets first.
+            # it see an annotated tag at all -- with GITHUB_EVENT_NAME `event` and
+            # GITHUB_REF `ref` (default: the tag's). Returns its exit status (None
+            # when the sandbox is not that checkout), the lines it wrote to
+            # `GITHUB_OUTPUT`, and what it said. The CMake version is `cmake`, else
+            # the tag wherever the step's own parse can read it (a leading-zero
+            # version too, so only the tag grammar can refuse it), else a valid
+            # one, so the grammar test is what the tag meets first.
             with tempfile.TemporaryDirectory() as box:
                 box_dir = Path(box)
                 origin_dir, work = box_dir / "origin", box_dir / "work"
@@ -6122,7 +6142,8 @@ def self_test() -> int:
                                     "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
                                     *args], capture_output=True, check=True, env=env)
                 git_in(origin_dir, "init", "-q", "-b", RELEASE_BRANCH)
-                cmake = tag if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tag) else "0.9.10"
+                if cmake is None:
+                    cmake = tag if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tag) else "0.9.10"
                 (origin_dir / "CMakeLists.txt").write_text(
                     f"project(Anamorph VERSION {cmake} LANGUAGES C CXX)\n", encoding="utf-8")
                 (origin_dir / "CHANGELOG.md").write_text(
@@ -6149,21 +6170,100 @@ def self_test() -> int:
                                         f"refs/tags/{tag}"], capture_output=True, text=True,
                                        env=env).stdout.strip()
                 if local != "commit":
-                    why = (f"the sandbox's local tag `{tag}` is a {local or 'missing'} "
-                           f"object, not the peeled commit actions/checkout leaves")
-                    return False, why, f"could not be run on it: {why}"
+                    return None, [], (f"the sandbox's local tag `{tag}` is a {local or 'missing'} "
+                                       f"object, not the peeled commit actions/checkout leaves")
                 (box_dir / "out").write_text("", encoding="utf-8")
                 done = subprocess.run(
                     [tools["bash"], "-e", "-c", script], cwd=work, capture_output=True, text=True,
-                    env=dict(env, GITHUB_REF=f"refs/tags/{tag}", GITHUB_SHA=sha,
-                             RUNNER_TEMP=str(box_dir), GITHUB_OUTPUT=str(box_dir / "out")))
+                    env=dict(env, GITHUB_EVENT_NAME=event, GITHUB_REF=ref or f"refs/tags/{tag}",
+                             GITHUB_SHA=sha, RUNNER_TEMP=str(box_dir),
+                             GITHUB_OUTPUT=str(box_dir / "out")))
                 outputs = (box_dir / "out").read_text(encoding="utf-8").splitlines()
-                said = done.stdout + done.stderr + "\n".join(outputs)
-                wrote = "is-release=true" in outputs and f"version={tag}" in outputs
-                return (done.returncode == 0 and wrote, said,
-                        "refuses it" if done.returncode != 0 else "passes it" if wrote else
-                        f"passes it but writes no `is-release=true` and `version={tag}` to "
-                        f"GITHUB_OUTPUT")
+                return done.returncode, outputs, done.stdout + done.stderr + "\n".join(outputs)
+
+        def validate(tag: str, annotated: bool = True) -> tuple[bool, str, str]:
+            # The step as the tag PUSH runs it. It passes only by exiting 0 AND
+            # writing to `GITHUB_OUTPUT` the two outputs the release jobs read,
+            # `is-release=true` and `version=<tag>` (echoed to the log instead, they
+            # reach no job). Returns that, what it said, and which outcome it was,
+            # for the failure message.
+            status, outputs, said = run_step(tag, annotated)
+            if status is None:
+                return False, said, f"could not be run on it: {said}"
+            wrote = output(outputs, "is-release") == "true" and output(outputs, "version") == tag
+            return (status == 0 and wrote, said,
+                    "refuses it" if status != 0 else "passes it" if wrote else
+                    f"passes it but writes no `is-release=true` and `version={tag}` to "
+                    f"GITHUB_OUTPUT")
+
+        def output(outputs: list[str], key: str) -> str | None:
+            # A `GITHUB_OUTPUT` value as the job sees it, read as the runner reads the
+            # file: `name=value`, or `name<<DELIMITER` then the value's lines up to the
+            # delimiter line; the last value written for a name wins.
+            found, n = None, 0
+            while n < len(outputs):
+                line = outputs[n]
+                eq, heredoc = line.find("="), line.find("<<")
+                if heredoc != -1 and (eq == -1 or heredoc < eq):
+                    name, delimiter = line[:heredoc], line[heredoc + 2:]
+                    end = next((m for m in range(n + 1, len(outputs))
+                                if outputs[m] == delimiter), len(outputs))
+                    value, n = "\n".join(outputs[n + 1:end]), end + 1
+                else:
+                    name, value, n = line[:eq] if eq != -1 else line, line[eq + 1:], n + 1
+                if name == key:
+                    found = value
+            return found
+
+        def job_level(lines: list[str], name: str) -> dict[str, str]:
+            # The keys directly under job `name`, each with its whole value; the
+            # `outputs:` mapping is flattened in as `outputs.<key>`. Empty when there
+            # is no such job. A value continued on deeper lines -- a plain scalar
+            # spread over lines, or a `>`/`|` block -- is kept whole, as GitHub reads
+            # it, so a condition extended on its second line is not mistaken for the
+            # one form evaluated below.
+            at = job_at(lines, name)
+            if at is None:
+                return {}
+            body = []
+            for line in lines[at + 1:]:
+                if line.strip() and len(line) - len(line.lstrip()) <= 2:
+                    break
+                if line.strip() and not line.lstrip().startswith("#"):
+                    body.append(line)
+            depth = min((len(l) - len(l.lstrip()) for l in body), default=0)
+            keys: dict[str, str] = {}
+            section = last = ""
+            for l in body:
+                key, _, value = l.strip().partition(":")
+                if len(l) - len(l.lstrip()) == depth:
+                    keys[key] = value.strip()
+                    section = last = key
+                elif section == "outputs" and len(l) - len(l.lstrip()) == depth + 2:
+                    last = f"outputs.{key}"
+                    keys[last] = value.strip()
+                elif keys.get(last):
+                    keys[last] += " " + l.strip()
+            return keys
+
+        def wiring(lines: list[str]) -> bool:
+            # THE ONE WIRING THIS EVALUATES, and anything else fails closed: the job
+            # output `is-release` is the `meta` step's, and draft-release runs on it
+            # being 'true' (GitHub compares strings case-insensitively). A rewritten
+            # condition is a changed release gate, and needs this test to follow it.
+            validate_job, draft_job = job_level(lines, "validate"), job_level(lines, "draft-release")
+            draft_if = re.sub(r"^\$\{\{\s*(.*?)\s*\}\}$", r"\1", draft_job.get("if", ""))
+            draft_needs = [n.strip() for n in draft_job.get("needs", "").strip("[]").split(",")]
+            return (validate_job.get("outputs.is-release", "").replace(" ", "")
+                    == "${{steps.meta.outputs.is-release}}"
+                    and re.fullmatch(r"needs\.validate\.outputs\.is-release\s*==\s*'true'",
+                                     draft_if) is not None
+                    and "validate" in draft_needs)
+        wired = wiring(wf)
+
+        def drafts(outputs: list[str]) -> bool:
+            # Whether draft-release's `if:` holds on what the step wrote.
+            return (output(outputs, "is-release") or "").lower() == "true"
 
         checked += 1
         if not (globs and script and extractor.is_file()):
@@ -6172,7 +6272,8 @@ def self_test() -> int:
                   "`id: meta` validate step could not be found", file=sys.stderr)
         else:
             for tag in ("0.9.9", "0.9.10", "0.10.0", "1.0.0", "10.20.30",
-                        "0.09.10", "00.9.10", "0.09.010", "0.9.010", f"{PFX}0.9.10",
+                        "0.09.9", "0.09.10", "00.9.10", "0.09.010", "0.9.010", f"{PFX}0.9.9",
+                        f"{PFX}0.9.10",
                         "0.9", "0.9.10.1", "0.9.10-rc1", "0.9.1\uff10"):
                 release = bool(RELEASE_TAG.fullmatch(tag))
                 checked += 1
@@ -6196,6 +6297,82 @@ def self_test() -> int:
                 print("self-test FAIL [release tag grammar]: a lightweight `0.9.10` is not "
                       f"refused by release.yml's validate step as a lightweight tag (the step "
                       f"{outcome})", file=sys.stderr)
+            checked += 1
+            ran, said, outcome = validate("0.9.9", annotated=False)
+            if ran or "not an annotated tag" not in said:
+                failures += 1
+                print("self-test FAIL [release tag grammar]: a lightweight `0.9.9` is not "
+                      f"refused by release.yml's validate step as a lightweight tag (the step "
+                      f"{outcome})", file=sys.stderr)
+            checked += 1
+            status, outputs, said = run_step("0.9.9", cmake="0.9.10")
+            mismatch = "does not match CMakeLists.txt project VERSION 0.9.10"
+            if status in (0, None) or mismatch not in said or drafts(outputs):
+                failures += 1
+                print("self-test FAIL [release tag grammar]: a `0.9.9` tag on a tree whose CMake "
+                      "project VERSION is 0.9.10 is not refused by release.yml's validate step "
+                      f"for the mismatch (exit {status})", file=sys.stderr)
+
+        # WHICH TRIGGER REACHES THE DRAFT RELEASE: the same annotated, dated `0.9.9`
+        # on a tree whose CMake version is 0.9.9, so everything but the event and
+        # the ref would pass as a release.
+        if globs and script and extractor.is_file():   # else reported above
+            checked += 1
+            if "${{" in script:
+                # GitHub substitutes an expression into the step's text before bash
+                # sees it; the sandbox cannot, so such a step is not the one it runs.
+                failures += 1
+                print("self-test FAIL [release trigger]: release.yml's validate step contains a "
+                      "`${{ }}` expression, which the sandbox cannot evaluate as GitHub would",
+                      file=sys.stderr)
+            elif not wired:
+                failures += 1
+                print("self-test FAIL [release trigger]: release.yml's draft-release job is not "
+                      "gated `if: needs.validate.outputs.is-release == 'true'` on a validate job "
+                      "output `is-release: ${{ steps.meta.outputs.is-release }}` -- the one wiring "
+                      "this test evaluates; a changed release gate needs this test to follow it",
+                      file=sys.stderr)
+            else:
+                # The wiring is read as GitHub reads it: the same condition continued
+                # on a second line with an `||`, or written as a block scalar, is not
+                # the form evaluated here, and must not pass for it.
+                draft_at = job_at(wf, "draft-release") or 0
+                if_at = next(n for n in range(draft_at, len(wf)) if wf[n].strip().startswith("if:"))
+                pad = wf[if_at][:len(wf[if_at]) - len(wf[if_at].lstrip())]
+                cond = wf[if_at].strip()[len("if:"):].strip()
+                for what, lines in (
+                        ("continued on a second line, `|| github.event_name == "
+                         "'workflow_dispatch'`",
+                         wf[:if_at + 1] + [pad + "  || github.event_name == 'workflow_dispatch'"]
+                         + wf[if_at + 1:]),
+                        ("written as a `>-` block scalar",
+                         wf[:if_at] + [pad + "if: >-", pad + "  " + cond] + wf[if_at + 1:])):
+                    checked += 1
+                    if wiring(lines):
+                        failures += 1
+                        print(f"self-test FAIL [release trigger]: draft-release's `if:` {what}, "
+                              "is read as the one wiring this test evaluates", file=sys.stderr)
+                for what, event, ref, release in (
+                        ("a push of the tag", "push", None, True),
+                        ("a workflow_dispatch started from the tag", "workflow_dispatch", None,
+                         False),
+                        ("a workflow_dispatch started from " + RELEASE_BRANCH, "workflow_dispatch",
+                         f"refs/heads/{RELEASE_BRANCH}", False),
+                        ("any other event at the tag (`schedule`)", "schedule", None, False)):
+                    checked += 1
+                    status, outputs, said = run_step("0.9.9", event=event, ref=ref)
+                    want = "true" if release else "false"
+                    if (status != 0 or output(outputs, "is-release") != want
+                            or output(outputs, "version") != "0.9.9" or drafts(outputs) != release):
+                        failures += 1
+                        print(f"self-test FAIL [release trigger]: {what} (GITHUB_EVENT_NAME="
+                              f"{event}, GITHUB_REF={ref or 'refs/tags/0.9.9'}) must "
+                              + ("reach draft-release" if release else
+                                 "be a rehearsal that never reaches draft-release")
+                              + f" -- the validate step exited {status}, wrote is-release="
+                              f"{output(outputs, 'is-release')} and version="
+                              f"{output(outputs, 'version')}, so draft-release "
+                              f"{'runs' if drafts(outputs) else 'does not run'}", file=sys.stderr)
 
     # Counted as they run, never hand-maintained: the previous literal
     # (`len(cases) + 2 + 5 + 3`) drifted the moment a case was added, and the
