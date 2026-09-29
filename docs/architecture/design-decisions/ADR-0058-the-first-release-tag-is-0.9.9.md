@@ -457,9 +457,9 @@ without a tag, rather than only for this one.
   skipped versions; the branch tip, merged commits, fast-forward and two-parent shapes).
 - **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 679 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
-  is the number of failing cases and steps alike). Eighty-four mutants each fail it, none by crashing,
-  with the number of failing cases (measured on a clean clone of `2c5d6e5`; seventy-seven of the checker,
-  seven of `release.yml` run against the unmutated checker):
+  is the number of failing cases and steps alike). Eighty-seven mutants each fail it, none by crashing,
+  with the number of failing cases (measured on a clean clone of `4d32b10`; seventy-eight of the checker,
+  nine of `release.yml` run against the unmutated checker):
   - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
     preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's
     `origin/main` read instead): 12; the repository's remote without its `main` falling back to
@@ -476,7 +476,9 @@ without a tag, rather than only for this one.
     `RELEASE_TAG` admitting leading zeros: 6; the tag-grammar case trusting the grammar instead of running
     the step: 9; `release.yml`'s validator back to `[0-9]+`: 4, without the leading-zero rule in the
     last component: 1; its trigger narrowed: 4; its annotated-tag check removed: 1; its re-fetch of the
-    tag object without `--force`, removed, or of the wrong ref: 5 each;
+    tag object without `--force`, removed, or of the wrong ref: 5 each; its `is-release=true` echoed to the
+    log instead of `GITHUB_OUTPUT`: 5; its `version` output dropped: 5; the grammar case's sandbox
+    fetching the tag object, as `git clone` does: 14;
   - the bases from the tags that have an entry (the intersection, the finding's own repro): 21; the
     missing-entry finding removed: 41; the base taken from the newest entry with a tag-looking link: 33;
     `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 21;
