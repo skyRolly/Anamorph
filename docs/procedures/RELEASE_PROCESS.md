@@ -104,8 +104,10 @@ sequence, literally:
    that landed earlier on the branch already satisfies this and needs no re-commit.
 2. `check-docs.py` (every push) checks the definitions against the repository's **git tags**, not
    against what `CHANGELOG.md` declares. It counts a tag as a release of this line when it is a bare
-   `x.y.z` not older than the first tag and its commit is in `HEAD`'s history; a tag reachable only
-   from another branch is that branch's and is ignored here. Every such release tag has its
+   `x.y.z` not older than the first tag and its commit is on the release line: `HEAD`'s history, and
+   for a branch headed for `main` also `main`'s, so a release tagged on `main` after the branch forked
+   binds the branch before it merges `main`. A tag on neither history is another branch's and is
+   ignored here. Every such release tag has its
    `## [x.y.z]` entry — one without is reported, so no link can compare past a release the file
    omits — and a definition naming its own tag, compared against the most recent earlier release tag
    (the first tag points at its own tag page); no other past version has one; no version older than
@@ -136,15 +138,17 @@ refuses it, whatever its definition names, while this line has no release tag �
 throughout the cycle that prepares 0.9.9, when the 0.9.9 entry is in the file but its tag is not.
 Add the section in a commit after the tag push, and fetch the tags first (`git fetch --tags`): the
 checker reads the tag refs of the checkout it runs in, with no network access, so a clone that has
-not fetched the new tag refuses the section. It compares from the newest release tag in `HEAD`'s
-history, so tag the release commit on `main` itself: every later `main` commit, and every branch made
-from one, then has the tag in its history. A branch made before the tag, or not merged with `main`
-since, does not — the checker names the tag as one outside its history — so merge `main` into it before adding
-the section; and a tag cut on a branch other than `main` is `main`'s release only once that branch is
-merged. CI's `docs` job fetches the full history and every tag. Where the tags cannot be read at all (a
-directory that is not the root of a git checkout), or the checkout is a shallow clone, which cannot tell
-which tags are in `HEAD`'s history (run `git fetch --unshallow --tags`), the checker refuses the links
-that depend on them and says why.
+not fetched the new tag refuses the section. It compares from the newest release tag on the line, so
+tag the release commit on `main` itself: every later `main` commit, and every branch made from one,
+then has the tag in its history. A branch made before the tag, or not merged with `main` since, is
+bound by the release all the same — CI checks a same-repo pull request at its tip, so the checker reads
+`main`'s tags for any branch headed there, and reports the release's missing entry as one on `main`
+the branch has not merged — so merge `main` into it before adding the section; and a tag cut on a
+branch other than `main` is `main`'s release only once that branch is merged. CI's `docs` job fetches
+the full history, every branch and every tag. Where the tags cannot be read at all (a directory that is
+not the root of a git checkout), the checkout is a shallow clone, which cannot tell which tags are in
+`HEAD`'s history (run `git fetch --unshallow --tags`), or it has no `main` (run `git fetch origin
+main`), the checker refuses the links that depend on them and says why.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**

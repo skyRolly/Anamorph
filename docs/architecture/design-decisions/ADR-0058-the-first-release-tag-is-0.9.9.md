@@ -6,8 +6,9 @@ that choice, and the owner confirmed it on 2026-09-28: 0.9.9 is the first formal
 0.9.8 are not tagged retroactively. It changes `CHANGELOG_POLICY.md` rules 2, 7 and 8 (a Policy change, so an ADR:
 `ADR_POLICY.md` rule 5) and the rule `check-docs.py` enforces them with. Tags are written as the bare version
 (ADR-0059). Amended the same day: whether a version was tagged is read from the repository's git tags, not
-from the changelog (§Decision). Amended 2026-09-29: only a release tag in `HEAD`'s history counts, and every
-one needs its changelog entry (§Decision).
+from the changelog (§Decision). Amended 2026-09-29: only a release tag on this line counts, and every
+one needs its changelog entry; the same day, the line was defined as `main`'s history for a branch headed
+there, after the finding was shown still to apply at a pull request's tip (§Decision).
 
 ## Context
 `CHANGELOG_POLICY.md` rule 8, `RELEASE_PROCESS.md` §Tagging and `check-docs.py`'s `FIRST_TAGGED_VERSION` all
@@ -104,15 +105,36 @@ without a tag, rather than only for this one.
     entries too. The invariant is now: **every applicable release tag has its `## [x.y.z]` entry before it
     can be the newest comparison base.** Four rules implement it:
     - An **applicable release tag** is a tag ref of the bare form `x.y.z` (ADR-0059), not older than
-      `FIRST_TAGGED_VERSION`, whose commit is in `HEAD`'s history (`git for-each-ref --merged=HEAD
-      refs/tags`). Annotated and lightweight tags count alike (`release.yml` still refuses a lightweight
-      one). A prefixed tag, an older one, and one reachable only from another branch are not this line's
-      releases: they need no entry and are no base. `TagState` keeps the unreached ones apart
-      (`elsewhere`) so the findings that turn on one can say it exists outside this history. Releases are tagged
-      on `main` (`RELEASE_PROCESS.md` §Tagging), so a later `main` commit reaches every earlier one; a tag
-      cut on another branch becomes `main`'s release only when that branch is merged into `main`, and a
-      branch made before a release, or not merged with `main` since, does not see it until it merges
-      `main`. A version counts as tagged exactly when its tag is applicable.
+      `FIRST_TAGGED_VERSION`, whose commit is on this checkout's **release line** (`git for-each-ref
+      --merged`). Annotated and lightweight tags count alike (`release.yml` still refuses a lightweight
+      one). A prefixed tag, an older one, and one off the line are not this line's releases: they need no
+      entry and are no base. `TagState` keeps the ones off the line apart (`elsewhere`) so the findings
+      that turn on one can say it exists outside this history. A version counts as tagged exactly when
+      its tag is applicable.
+    - **The release line** (the first spelling of this amendment took `HEAD`'s history alone; see the
+      next bullet). Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging, `RELEASE_BRANCH`):
+      - a checkout **in `main`'s history** (`main`, an older `main` commit, a release tag, found with
+        `git merge-base --is-ancestor HEAD main`) has `HEAD`'s history as its line. A tag `main` gained
+        later is that commit's future, not a release it omits;
+      - a **branch headed for `main`** (`HEAD` not in its history) has `HEAD`'s history **and `main`'s**.
+        A release `main` gained after the branch forked is one the branch will land on, so it binds the
+        branch before the branch merges it; those tags are also kept in `ahead`, and the missing-entry
+        finding names them as releases on `main` the branch has not merged, with "merge `main`" as the
+        remedy;
+      - `main` is read as `origin/main` and as the local branch, whichever exist; CI's full-history
+        checkout fetches `origin/main`. A checkout with neither is **unknown**, with `git fetch origin
+        main` as the remedy: without the line, a release on it could not be told from another branch's
+        tag;
+      - a tag cut on a branch other than `main` is `main`'s release only once that branch is merged into
+        `main`; one on a branch never merged is another line's.
+    - **Amended again 2026-09-29: the finding still applied at a pull request's tip.** The review
+      finding stayed open on `482a2b0`, anchored at `newest_tagged = releases[-1]`. Reproduced in a real
+      repository: `main` tags 0.9.9; a PR branch forks; `main` writes and tags 0.9.10; the branch adds
+      `[Unreleased]` from 0.9.9. On the branch's tip, `--merged=HEAD` held 0.9.9 alone, so `newest_tagged`
+      was 0.9.9 and the file passed with 0 findings. CI checks a same-repo pull request only there: its
+      `docs` job runs on the branch push, and `merge-check`, which builds the merge commit, runs no
+      `check-docs.py`. After the merge `main` failed with 2 findings. The literal state (both tags in
+      `HEAD`'s history) was already refused; the release line closes the remaining path.
     - **Each applicable tag without an entry is a finding**, newest first, at the file's first entry.
       Nothing is inferred for it: the file must record the release before anything can compare against it.
     - **The bases come from the tags, not the entries.** `newest_tagged` is the newest applicable tag, and
@@ -170,6 +192,14 @@ without a tag, rather than only for this one.
     - later tags: from the newest one, never from an untagged version between two tagged ones, with one
       and with two skipped;
   - a git tag below the first tag (a stray `0.9.8`): no `[Unreleased]` base and no comparison base;
+  - the review's acceptance cases A–J (2026-09-29, `R2196` in the self-test): no tag with `[Unreleased]`
+    (1); 0.9.9 declared without its tag (2); the real 0.9.9 (0); 0.9.10 tagged and not recorded (2), also
+    with 0.9.10 on `main` not yet merged (2, named as `main`'s with the merge remedy); 0.9.10 and 0.9.11
+    missing (3); 0.9.10 recorded untagged below a tagged 0.9.11 (0), and with 0.9.11 not recorded,
+    `[Unreleased]` from 0.9.10 or 0.9.9 (2 each, the base 0.9.11, never the untagged 0.9.10); every form of
+    `[Unreleased]` over a missing 0.9.10 -- from 0.9.9, 0.9.10, 0.9.8, no version, no definition, no
+    section -- refused and naming 0.9.10; an unrelated branch's higher tag (0); 0.9.10 tagged and
+    recorded, with and without `[Unreleased]` from it (0);
   - every release tag needs its entry (2026-09-29): with `0.9.9` and `0.9.10` tagged and both recorded,
     `[Unreleased]` from 0.9.10 passes; with 0.9.10 tagged but not recorded, `[Unreleased]` from 0.9.9 fails
     twice (the missing entry, named at the first entry's line, and the base, which is 0.9.10) and from
@@ -207,7 +237,14 @@ without a tag, rather than only for this one.
       the reader holds `{0.9.9}` with 0.9.10 elsewhere and the production path accepts `[Unreleased]` from
       0.9.9; checked out on `maint` it refuses the file for the missing 0.9.10; a shallow clone of `main`
       cut below both tags reads as unknown with the `git fetch --unshallow --tags` remedy and refuses once;
-      after that fetch it reads `{0.9.9}` and accepts;
+      after that fetch it reads `{0.9.9}` and accepts. The test repositories are created on `main`;
+    - the release line (2026-09-29, the finding's remaining path): `main` tags 0.9.9, a `feature` branch
+      forks, `main` writes and tags 0.9.10, an unrelated `side` branch tags 0.9.11. On `feature`, the
+      reader holds `{0.9.9, 0.9.10}` with 0.9.10 in `ahead` and 0.9.11 elsewhere, and the branch's
+      `[Unreleased]` from 0.9.9 fails twice (0.9.10 missing, named as a release on `main`, and the base);
+      from 0.9.10 with no entry it fails once; with `main` merged and 0.9.10 recorded it passes; `main`
+      itself passes; the 0.9.9 tag commit, in `main`'s past, passes with 0.9.10 as its future; a
+      single-branch clone of `feature`, which has no `main`, is unknown and refuses once;
     - a subdirectory, a plain directory, a checkout git will not open ("dubious ownership"), a checkout
       whose tags cannot be listed, no `git`, and a `git` that cannot run all read as unknown, with the
       reason; in the plain directory and with no `git`, the production path refuses once, naming it.
@@ -240,9 +277,13 @@ without a tag, rather than only for this one.
   the pushed ones and which of them `HEAD` reaches.
 - A release cannot hide behind the file (2026-09-29). A pushed release tag in `HEAD`'s history without its
   entry fails every later check until the entry is written, and `[Unreleased]` and the next version compare
-  against that release, not an older one. A tag cut on another branch after this line's branch point is not
-  this line's release and raises nothing here; a maintenance line that merges back into `main` brings its
-  tags into `main`'s history and so needs their entries, which is the history the merge asserts.
+  against that release, not an older one. That holds on a branch too: a release `main` gained after the
+  branch forked binds the branch at its tip, before it merges `main`, so a pull request cannot pass CI with
+  a changelog that `main` would refuse once merged; the remedy is to merge `main`. The cost is that every
+  open branch whose file lacks a new release's entry fails until it merges `main`. A tag on a branch never
+  merged into `main` is another line's release and raises nothing here; a maintenance line that merges back
+  into `main` brings its tags into `main`'s history and so needs their entries, which is the history the
+  merge asserts. A checkout without `main` cannot tell, and refuses what needs the tags.
 - It verifies that a tag EXISTS, not that it is annotated: a lightweight `0.9.9` would count. A release tag
   is annotated because `release.yml` refuses anything else and drafts no Release for it.
 - `check-docs.py --self-test` needs `git` to prove the reader; without it that case fails rather than
@@ -250,13 +291,15 @@ without a tag, rather than only for this one.
 
 ## Related code
 - `scripts/check-docs.py` — `FIRST_TAGGED_VERSION`, `FIXTURE_FIRST_TAGGED_VERSION`, `first_tagged()`,
-  `TagState` (`tags` in `HEAD`'s history, `elsewhere`), `GIT_LOCATION_VARS`, `git_env()`, `read_git_tags()`
-  (`for-each-ref --merged=HEAD`, a shallow clone unknown), `RELEASE_TAG`, `tag_state()`, `check_changelog_links` (`releases`,
+  `RELEASE_BRANCH`, `RELEASE_BRANCH_REFS`, `TagState` (`tags` on this line, `elsewhere`, `ahead`,
+  `headed`), `GIT_LOCATION_VARS`, `git_env()`, `read_git_tags()` (`for-each-ref --merged`, `merge-base
+  --is-ancestor`, a shallow clone or a checkout without `main` unknown), `RELEASE_TAG`, `tag_state()`, `check_changelog_links` (`releases`,
   `tagged`, `in_prep`, `verifiable`, `previous_of`, `newest_tagged`, the missing-entry finding), and the
   self-test's "repository's own first tag", "comparison base", "`[Unreleased]` exists only once a tag
   does", "every release tag needs its entry" and "tag reader" cases, with `fixture_tags()` giving each
   synthetic fixture the tags of the versions it records.
-- `.github/workflows/build.yml` — the `docs` job's checkout, `fetch-depth: 0` and `fetch-tags: true`.
+- `.github/workflows/build.yml` — the `docs` job's checkout, `fetch-depth: 0` (every branch, so
+  `origin/main`) and `fetch-tags: true`.
 - `CHANGELOG.md` — the preamble and the `[0.9.9]` definition.
 - `.github/workflows/release.yml` — validates tag ⇄ CMake version ⇄ dated heading and never reads link
   definitions; its tag format is ADR-0059's.
@@ -269,24 +312,33 @@ without a tag, rather than only for this one.
   read 0.9.7 and 0.9.8.
 - **[Verified]** No release audition for 0.9.7 or 0.9.8: `docs/procedures/LEVEL5_AUDITION.md` §Recorded
   auditions.
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 564 cases (537 before the
-  2026-09-29 amendment). Thirty-eight mutants of the 2026-09-29 rule each fail it, with the number of
+- **[Verified]** The finding's remaining path, reproduced in real repositories with the production
+  `read_git_tags` and `check_changelog_links`: on `482a2b0`, 0.9.9 and 0.9.10 both in `HEAD`'s history with
+  no 0.9.10 entry failed (2), but 0.9.10 tagged on `main` after the branch forked passed at the branch's
+  tip (0 findings) and failed on `main` after the merge (2). With the release line, the branch's tip fails
+  (2), naming 0.9.10 as a release on `main` the branch has not merged.
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 590 cases (537 before the
+  2026-09-29 amendments). Forty-four mutants of the 2026-09-29 rule each fail it, with the number of
   failing cases (measured on a clean clone of the final checker):
-  - the bases from the tags that have an entry (the intersection, the finding's own repro): 8; the
-    missing-entry finding removed: 10; the base taken from the newest entry with a tag-looking link: 19;
-  - tags on another branch counted as this line's: 3; the no-tag `[Unreleased]` refusal removed,
-    restoring the shape-only check: 21; a prefixed tag counted as a release: 4; a leading-zero tag
+  - the bases from the tags that have an entry (the intersection, the finding's own repro): 18; the
+    missing-entry finding removed: 31; the base taken from the newest entry with a tag-looking link: 30;
+    `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 18;
+  - `main`'s tags ignored for a branch headed there (the first spelling of this amendment): 3; `main`'s
+    later tags counted on `main`'s own past: 1; a checkout without `main` read as known: 2; a release on
+    `main` the branch lacks called "in this checkout's history": 2; every tag counted as `main`'s: 4;
+  - tags on another branch counted as this line's: 9; the no-tag `[Unreleased]` refusal removed,
+    restoring the shape-only check: 22; a prefixed tag counted as a release: 4; a leading-zero tag
     counted as a release: 2;
-  - `previous_of` set back to "the entry directly below": 25; drawn from the tagged entries only: 3;
-  - a changelog definition taken as proof of a tag: 8; the tags ignored: 12; the first tag counted by
-    fact: 7; `releases` without the not-older-than-the-first-tag clause: 4;
+  - `previous_of` set back to "the entry directly below": 26; drawn from the tagged entries only: 3;
+  - a changelog definition taken as proof of a tag: 9; the tags ignored: 14; the first tag counted by
+    fact: 9; `releases` without the not-older-than-the-first-tag clause: 4;
   - a malformed heading also reported as a missing release: 1;
   - a shallow clone read as known: 5; read as known when it reaches every release-shaped tag it lists
-    (the first spelling): 3;
-  - a definition on an untagged past version accepted: 8; a tagged version without one accepted: 3;
-    the release in preparation required to be tagged already: 18; unreadable tags read as no tags: 9;
-  - the inherited `GIT_DIR` kept in the reader: 1; the constant set back to (0, 9, 7): 68; a prefixed
-    tag in the URL: 101; `[Unreleased]` from the newest entry whether tagged or not: 31;
+    (an earlier spelling): 3;
+  - a definition on an untagged past version accepted: 9; a tagged version without one accepted: 3;
+    the release in preparation required to be tagged already: 18; unreadable tags read as no tags: 10;
+  - the inherited `GIT_DIR` kept in the reader: 1; the constant set back to (0, 9, 7): 89; a prefixed
+    tag in the URL: 122; `[Unreleased]` from the newest entry whether tagged or not: 42;
   - missing releases reported oldest first: 1; comparing past a missing release explained as "the entry
     below closed without a tag": 1;
   - a tag outside `HEAD`'s history not named as such: in a definition, 1; in the `[Unreleased]` refusal
