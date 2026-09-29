@@ -2118,9 +2118,25 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         # The version is one of this line's releases: its tag is in HEAD's history.
         return key in released
 
-    # A tag that exists but only on another branch is not missing, and the remedy
-    # is not to push it: the branch this runs on lacks the commit it tags.
-    merge_hint = "merge the commit it tags (on `main`) into this branch"
+    # A tag that exists but is not in HEAD's history is not missing, and the remedy
+    # is not to push it: this branch lacks the commit it tags -- a branch made
+    # before the release, or one that has not merged the line that carries it.
+    # Where that commit sits is not known here (on `main` for a release tagged
+    # there, on another branch, or on none), so the finding does not guess.
+    def not_here(t: str) -> str:
+        return f"the git tag `{t}` exists but is not in this checkout's history"
+    merge_hint = ("if it is this line's release, merge the history that carries it into "
+                  "this branch (`main`, for a release tagged there)")
+
+    def base_note(url: str, named: set[str | None]) -> str:
+        # The base a comparison URL names, when its tag exists but not in HEAD's
+        # history and the finding has not named it already: say so, rather than
+        # only naming the right base.
+        m = re.fullmatch(rf"{re.escape(REPO_URL)}/compare/([^./]+\.[^./]+\.[^./]+)\.\.\..+", url)
+        b = m.group(1) if m else None
+        return (f"; `{b}`, which it compares from, is not a base here: {not_here(b)} -- "
+                f"{merge_hint}" if b is not None and b not in named and b in tags.elsewhere
+                else "")
 
     # Without the tags, only a file that needs none can be checked: one whose
     # only version at or above the first tag is the release in preparation.
@@ -2195,6 +2211,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                     findings.append(
                         f"{path}:{line_no}: the `[Unreleased]` definition must be `{want}` -- "
                         f"the comparison runs from the newest tagged release to HEAD"
+                        f"{base_note(url, {newest_tagged})}"
                     )
             # With nothing tagged, the SECTION is the defect, reported once at its
             # heading below: no definition can repair it, whatever it compares from.
@@ -2221,13 +2238,12 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             # A tag of that name on ANOTHER branch is another line's release, and
             # the finding says so rather than calling it missing.
             findings.append(
-                f"{path}:{line_no}: `[{key}]` is defined, but "
-                + (f"the git tag `{key}` is not in this checkout's history (it is on "
-                   f"another branch), so it is no release of this line here -- if it is "
-                   f"this line's release, {merge_hint}; if it is another line's, this file "
-                   f"carries no definition for it"
+                f"{path}:{line_no}: `[{key}]` is defined, "
+                + (f"and {not_here(key)}, so it is no release of this line here -- "
+                   f"{merge_hint}; if it is another line's, this file carries no "
+                   f"definition for it"
                    if key in tags.elsewhere else
-                   f"there is no git tag `{key}` (read from {tags.source}) -- the link "
+                   f"but there is no git tag `{key}` (read from {tags.source}) -- the link "
                    f"names a tag this checkout does not have; a version that closed "
                    f"without a tag carries no definition (RELEASE_PROCESS.md §Tagging)")
             )
@@ -2251,7 +2267,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             # A version after the first tag with no release tag older than it in
             # HEAD's history. The comparison has no left operand to name, so say that
             # rather than printing a placeholder into the URL the author is told to
-            # write -- and, where an older release tag exists on another branch, that
+            # write -- and, where an older release tag exists outside this history, that
             # this branch lacks it.
             older = sorted((t for t in tags.elsewhere if RELEASE_TAG.fullmatch(t)
                             and first <= vtuple(t) < e.version), key=vtuple)
@@ -2259,12 +2275,12 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                 f"{path}:{line_no}: `[{key}]` must compare against the most recent release "
                 f"before it, but no release tag older than `{key}` is in this checkout's "
                 f"history (read from {tags.source})"
-                + (f" -- the git tag `{older[-1]}` is on another branch: if it is this "
-                   f"line's release, {merge_hint}" if older else "")
+                + (f" -- {not_here(older[-1])}: {merge_hint}" if older else "")
                 + f" -- this line's first tag is {'.'.join(map(str, first))}"
             )
             continue
         if url != want:
+            named: set[str | None] = {previous_of.get(key)}
             if e.version == first:
                 why = "the line's first tag has no predecessor to compare against"
             else:
@@ -2276,20 +2292,20 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                 if prev not in versions:
                     why += f"; the git tag `{prev}` has no `## [{prev}]` entry in this file"
                 elif below is not None and below != prev and below in tags.elsewhere:
-                    why += (f"; `## [{below}]` below it is tagged only on another branch, "
-                            f"not in this checkout's history, so it is no comparison base "
-                            f"here -- if it is this line's release, {merge_hint}")
+                    why += (f"; `## [{below}]` below it is no comparison base here: "
+                            f"{not_here(below)} -- {merge_hint}")
+                    named.add(below)
                 elif below is not None and below != prev:
                     why += (f"; `## [{below}]` below it has no git tag, so it closed "
                             f"without one and is not a comparison base")
             findings.append(
                 f"{path}:{line_no}: the `[{key}]` definition must be `{want}` ({why}); "
-                f"got `{url}`"
+                f"got `{url}`{base_note(url, named)}"
             )
 
     if not verifiable:
         return findings
-    # Which versions MUST carry a definition: every version whose tag exists, and
+    # Which versions MUST carry a definition: every tagged version, and
     # the release in preparation, whose release commit writes it before the tag
     # is pushed. A past version without a tag closed untagged and carries none.
     for key, e in versions.items():
@@ -2321,9 +2337,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                     and versions[k].version >= first]
         pending = ""
         if declared and declared[0] in tags.elsewhere:
-            pending = (f" (`## [{declared[0]}]` is in the file, and the git tag "
-                       f"`{declared[0]}` exists but is not in this checkout's history -- it "
-                       f"is on another branch: {merge_hint})")
+            pending = (f" (`## [{declared[0]}]` is in the file, and {not_here(declared[0])}: "
+                       f"{merge_hint})")
         elif declared:
             pending = (f" (`## [{declared[0]}]` is in the file, but git has no tag "
                        f"`{declared[0]}`: add this section once that tag is pushed)")
@@ -2331,10 +2346,15 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         if "unreleased" in defined:
             url = defined["unreleased"][1]
             m = re.fullmatch(rf"{re.escape(REPO_URL)}/compare/(\d+\.\d+\.\d+)\.\.\.HEAD", url)
+            said = bool(declared) and declared[0] in tags.elsewhere
             also = (f"; its definition `{url}` names no tagged base" if not m
                     else f"; its definition `{url}` compares from {m.group(1)}, whose git "
-                         f"tag is on another branch, not in this checkout's history"
+                         f"tag is not in this checkout's history"
+                         + ("" if said and m.group(1) == declared[0] else f" -- {merge_hint}")
                     if m.group(1) in tags.elsewhere
+                    else f"; its definition `{url}` compares from {m.group(1)}, whose git "
+                         f"tag predates this line's first tag and is no release"
+                    if m.group(1) in tags.tags
                     else f"; its definition `{url}` compares from {m.group(1)}, a version "
                          f"with no git tag")
         findings.append(
@@ -4172,39 +4192,64 @@ def self_test() -> int:
                       TagState(frozenset({"0.9.9"}), True, "the self-test's tags",
                                frozenset({"0.9.10"})))
     checked += 1
-    if not (len(found) == 1 and "is not in this checkout's history (it is on another branch)"
-            in found[0]):
+    if not (len(found) == 1 and "the git tag `0.9.10` exists but is not in this checkout's "
+            "history" in found[0]):
         failures += 1
         print(f"self-test FAIL: changelog another line's tag is named as such: got {found}",
               file=sys.stderr)
-    # A tag that EXISTS on another branch is never reported as missing, and the
-    # remedy is to merge the commit it tags, not to push it: the branch this runs on
-    # was made before the release, or never took `main` in after it.
+    # A tag that EXISTS outside HEAD's history is never reported as missing, and the
+    # remedy is to merge the history that carries it, not to push it: the branch
+    # this runs on was made before the release, or never took `main` in after it.
     elsewhere_99 = TagState(frozenset(), True, "the self-test's tags", frozenset({"0.9.9"}))
     for label, lines, tags, says, never in [
         ("the `[Unreleased]` refusal",
          U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], elsewhere_99,
          ["`## [Unreleased]` needs a tagged release", "the git tag `0.9.9` exists",
-          "compares from 0.9.9, whose git tag is on another branch", "merge the commit"],
-         ["git has no tag `0.9.9`", "a version with no git tag"]),
+          "compares from 0.9.9, whose git tag is not in this checkout's history",
+          "merge the history that carries it"],
+         ["git has no tag `0.9.9`", "a version with no git tag", "(on `main`)"]),
         ("a release in preparation with no base in this history",
          CL([E10, E9], [CP("0.9.9", "0.9.10"), TP("0.9.9")]), elsewhere_99,
          ["no release tag older than `0.9.10` is in this checkout's history",
-          "the git tag `0.9.9` is on another branch", "merge the commit"],
-         ["has a git tag (read"]),
+          "the git tag `0.9.9` exists but is not in this checkout's history",
+          "merge the history that carries it"],
+         ["has a git tag (read", "(on `main`)"]),
         ("a comparison from an entry tagged on another branch",
          CL([E11, E10, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")]),
          TagState(frozenset({"0.9.9", "0.9.11"}), True, "the self-test's tags",
                   frozenset({"0.9.10"})),
-         ["compare/0.9.9...0.9.11", "`## [0.9.10]` below it is tagged only on another branch"],
-         ["closed without one"]),
+         ["compare/0.9.9...0.9.11", "`## [0.9.10]` below it is no comparison base here: the "
+          "git tag `0.9.10` exists but is not in this checkout's history"],
+         ["closed without one", "which it compares from"]),
+        # ...and once a release IS in this history, an `[Unreleased]` definition that
+        # compares from a tag outside it: the finding names that tag, not only the
+        # base -- after merging `main`, the definition as written is the right one.
+        ("an `[Unreleased]` definition from a tag outside this history",
+         U + CL([E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+         TagState(frozenset({"0.9.9"}), True, "the self-test's tags", frozenset({"0.9.10"})),
+         ["must be `https://github.com/skyRolly/Anamorph/compare/0.9.9...HEAD`",
+          "`0.9.10`, which it compares from, is not a base here",
+          "merge the history that carries it"], ["(on `main`)"]),
+        # A version definition that compares from such a tag, when the finding's own
+        # explanation names another entry: the URL's base is named too.
+        ("a version definition from a tag outside this history",
+         CL([E12, E11, E10, E9], [CP("0.9.10", "0.9.12"), TP("0.9.9")]),
+         TagState(frozenset({"0.9.9"}), True, "the self-test's tags", frozenset({"0.9.10"})),
+         ["compare/0.9.9...0.9.12", "`## [0.9.11]` below it has no git tag",
+          "`0.9.10`, which it compares from, is not a base here"], ["(on `main`)"]),
+        # A tag IN this history but below the first tag exists: it is no release, and
+        # the refusal says that, not that git has no such tag.
+        ("an `[Unreleased]` definition from a tag below the first tag",
+         U + CL([E9, E8, E7], [UR("0.9.8")])[1:], T("0.9.8"),
+         ["compares from 0.9.8, whose git tag predates this line's first tag"],
+         ["a version with no git tag"]),
     ]:
         found = found_for(lines, tags)
         checked += 1
         if not (any(all(w in f for w in says) for f in found)
                 and not any(n in f for f in found for n in never)):
             failures += 1
-            print(f"self-test FAIL: changelog {label} names another branch's tag as such: "
+            print(f"self-test FAIL: changelog {label} names the tag outside this history as such: "
                   f"got {found}", file=sys.stderr)
 
     # --- THE TAG READER ITSELF ---------------------------------------------------

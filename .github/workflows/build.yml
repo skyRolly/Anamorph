@@ -427,9 +427,9 @@ jobs:
           # a version was released -- the base of every comparison link and of
           # `[Unreleased]` -- is what the tags whose commits HEAD reaches say, not
           # what CHANGELOG.md declares (CHANGELOG_POLICY.md rule 8). The default
-          # single-commit checkout fetches no tags, which would read as "nothing was
-          # ever tagged"; a depth-1 checkout with tags cannot tell which of them HEAD
-          # reaches, which the checker reports as unknown. So: the full history and
+          # single-commit checkout is shallow and fetches no tags; a shallow clone
+          # cannot tell which tags HEAD reaches, so the checker reads it as unknown
+          # and refuses every link that needs a tag. So: the full history and
           # every tag ref.
           fetch-depth: 0
           fetch-tags: true
