@@ -1216,15 +1216,25 @@ class TagState(NamedTuple):
     and resolve to nothing. So the check reads the tag refs of the repository
     this file belongs to: local metadata, no network.
 
+    `tags` holds only the tags in HEAD's HISTORY -- whose commit HEAD reaches --
+    because those are this line's releases: releases are tagged on `main`
+    (RELEASE_PROCESS.md §Tagging), so each one is in the history of `main` and of
+    every branch made after it. A tag whose commit HEAD does not reach belongs to
+    another line (a branch that forked earlier, or one never merged); it is kept
+    apart in `elsewhere`, so a finding can say where it is, and it is no release
+    of this checkout's line.
+
     `known` is False when those refs cannot be read (not a git checkout, the path
-    is not the checkout's root, git is missing or fails). That is NOT "no tags":
-    the link check then refuses what it cannot verify, and says why, instead of
-    guessing either way. `source` names where the state came from, or why there
-    is none; findings that turn on a missing tag quote it.
+    is not the checkout's root, git is missing or fails, or a shallow clone cannot
+    tell whether a release-shaped tag is in HEAD's history). That is NOT "no
+    tags": the link check then refuses what it cannot verify, and says why,
+    instead of guessing either way. `source` names where the state came from, or
+    why there is none; findings that turn on a missing tag quote it.
     """
     tags: frozenset[str]
     known: bool
     source: str
+    elsewhere: frozenset[str] = frozenset()
 
 
 # Git's repository-location variables: `git rev-parse --local-env-vars`, plus
@@ -1253,12 +1263,17 @@ def git_env() -> dict[str, str]:
 
 
 def read_git_tags(root: Path) -> TagState:
-    """The tag names of the git checkout rooted at `root`, from its local refs.
+    """The tags of the git checkout rooted at `root`, from its local refs, split
+    into those in HEAD's history (`tags`) and the rest (`elsewhere`).
 
-    CI's checkout fetches every tag for the `docs` job (`fetch-tags: true`); a
-    clone made with `git clone` has the tags that existed then, and `git fetch
-    --tags` brings later ones. A clone without a tag reads as a checkout without
-    it, so the source says how to fetch them, and "shallow" where that applies.
+    CI's `docs` job checks out the full history with every tag (`fetch-depth: 0`,
+    `fetch-tags: true`); a clone made with `git clone` has the tags that existed
+    then, and `git fetch --tags` brings later ones. A clone without a tag reads as
+    a checkout without it, so the source says how to fetch them. A SHALLOW clone
+    cuts HEAD's history short, so a release tag outside it may still be in the
+    full history: when any release-shaped tag is not reached, the state is
+    unknown and the reason says to unshallow, rather than calling it another
+    line's.
     """
     git = shutil.which("git")
     if git is None:
@@ -1286,14 +1301,30 @@ def read_git_tags(root: Path) -> TagState:
         if refs.returncode != 0:
             return TagState(frozenset(), False,
                             f"git could not list the tags: {refs.stderr.strip()}")
+        mine = run("for-each-ref", "--merged=HEAD", "--format=%(refname:strip=2)",
+                   "refs/tags")
+        if mine.returncode != 0:
+            return TagState(frozenset(), False,
+                            f"git could not tell which tags are in HEAD's history: "
+                            f"{mine.stderr.strip()}")
         shallow = run("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
     except (OSError, subprocess.SubprocessError) as exc:
         return TagState(frozenset(), False, f"git could not run: {exc}")
-    return TagState(frozenset(refs.stdout.split()), True,
-                    "the git tags of a shallow clone -- fetch them with "
+    reached = frozenset(mine.stdout.split())
+    elsewhere = frozenset(refs.stdout.split()) - reached
+    if shallow:
+        cut = sorted(t for t in elsewhere if re.fullmatch(r"\d+\.\d+\.\d+", t))
+        if cut:
+            return TagState(frozenset(), False,
+                            f"this is a shallow clone, so git cannot tell whether "
+                            f"{', '.join(f'`{t}`' for t in cut)} "
+                            f"{'is' if len(cut) == 1 else 'are'} in HEAD's history -- "
+                            f"fetch the full history with `git fetch --unshallow --tags`")
+    return TagState(reached, True,
+                    "the git tags in this shallow clone's history -- fetch them with "
                     "`git fetch --tags` if one is missing" if shallow
-                    else "the git tags of this checkout -- `git fetch --tags` "
-                    "brings one pushed since it last fetched")
+                    else "the git tags in this checkout's history -- `git fetch --tags` "
+                    "brings one pushed since it last fetched", elsewhere)
 
 
 # The self-test binds this so its fixtures do not depend on which tags this
@@ -2065,10 +2096,23 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
     # section sits above it. With one, every version entry is a past release.
     in_prep = ordered[0] if ordered and not has_unreleased else None
 
+    def vtuple(name: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in name.split("."))
+
+    # THIS LINE'S RELEASES, oldest first: the bare `x.y.z` tags in HEAD's history
+    # (`tag_state`) at or above the first tag. A prefixed tag names no version
+    # (ADR-0059); below the first tag nothing was released, whatever git holds; a
+    # tag on another branch is another line's. These -- not the tags that happen to
+    # have an entry in this file -- decide every comparison base below, so a
+    # release whose entry is missing cannot be skipped over.
+    releases = sorted((t for t in tags.tags
+                       if re.fullmatch(r"\d+\.\d+\.\d+", t) and vtuple(t) >= first),
+                      key=vtuple) if tags.known else []
+    released = set(releases)
+
     def tagged(key: str) -> bool:
-        # The tag exists. Below the first tag nothing counts, whatever git holds.
-        v = versions[key].version
-        return tags.known and v is not None and v >= first and key in tags.tags
+        # The version is one of this line's releases: its tag is in HEAD's history.
+        return key in released
 
     # Without the tags, only a file that needs none can be checked: one whose
     # only version at or above the first tag is the release in preparation.
@@ -2087,13 +2131,15 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             f"(CHANGELOG_POLICY.md rule 8)"
         )
 
-    # `previous_of[k]` is the most recent TAGGED version released before `k`: the
-    # nearest entry BELOW it in this newest-first file whose tag exists. An entry in
-    # between without a tag is skipped -- it has no tag to compare from, however
-    # high its version number. Absent when nothing below was tagged.
+    # `previous_of[k]` is the most recent RELEASE before `k`: the newest of this
+    # line's release tags older than it. An entry in between without a tag is
+    # skipped -- it has no tag to compare from, however high its version number --
+    # and a release tag with no entry is NOT skipped: it is the true base, and its
+    # missing entry is a finding of its own. Absent when nothing older was tagged.
     previous_of: dict[str, str] = {}
-    for n, k in enumerate(ordered):
-        base = next((o for o in ordered[n + 1:] if tagged(o)), None)
+    for k in ordered:
+        v = versions[k].version
+        base = next((t for t in reversed(releases) if v is not None and vtuple(t) < v), None)
         if base is not None:
             previous_of[k] = base
     # Every version a MALFORMED entry names, however it is spelled. A malformed
@@ -2108,9 +2154,25 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         for e in entries if e.kind == "malformed"
         for m in [SEMVER_ANYWHERE.search(e.text)] if m
     }
-    # The base an `[Unreleased]` comparison runs from: the newest TAGGED version.
-    # None when no version in the file has a tag -- and then there is no base.
-    newest_tagged = next((k for k in ordered if tagged(k)), None)
+    # The base an `[Unreleased]` comparison runs from: this line's newest release.
+    # None while no release is tagged -- and then there is no base. Taken from the
+    # tags, not from the entries that have one: the entries' newest tagged version
+    # let `.../compare/0.9.9...HEAD` pass while the `0.9.10` tag, with no entry,
+    # was the real base.
+    newest_tagged = releases[-1] if releases else None
+    # EVERY RELEASE HAS ITS ENTRY. A release tag in HEAD's history whose version
+    # has no `## [x.y.z]` heading is a release this file does not record, and the
+    # comparisons after it would run past it. Reported newest first, at the top of
+    # the entries; a malformed heading naming it is its own finding already.
+    top = next((x.line_no for x in entries), 1)
+    for t in reversed(releases):
+        if t not in versions and t not in claimed:
+            findings.append(
+                f"{path}:{top}: git tag `{t}` is a release in this checkout's history "
+                f"(read from {tags.source}), but this file has no `## [{t}]` entry -- "
+                f"every release tag needs its entry before anything can compare against "
+                f"it (CHANGELOG_POLICY.md rule 8)"
+            )
 
     for key, (line_no, url) in defined.items():
         if key == "unreleased":
@@ -2124,7 +2186,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                 if url != want:
                     findings.append(
                         f"{path}:{line_no}: the `[Unreleased]` definition must be `{want}` -- "
-                        f"the comparison runs from the newest tagged version to HEAD"
+                        f"the comparison runs from the newest tagged release to HEAD"
                     )
             # With nothing tagged, the SECTION is the defect, reported once at its
             # heading below: no definition can repair it, whatever it compares from.
@@ -2148,11 +2210,17 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         if key != in_prep and not tagged(key):
             # A past release whose tag does not exist: the definition links to a tag
             # that was never cut. The version closed untagged, so it carries none.
+            # A tag of that name on ANOTHER branch is another line's release, and
+            # the finding says so rather than calling it missing.
             findings.append(
-                f"{path}:{line_no}: `[{key}]` is defined, but there is no git tag `{key}` "
-                f"(read from {tags.source}) -- the link names a tag this checkout does not "
-                f"have; a version that closed without a tag carries no definition "
-                f"(RELEASE_PROCESS.md §Tagging)"
+                f"{path}:{line_no}: `[{key}]` is defined, but "
+                + (f"the git tag `{key}` is not in this checkout's history (it is on "
+                   f"another branch), so it is no release of this line"
+                   if key in tags.elsewhere else
+                   f"there is no git tag `{key}` (read from {tags.source}) -- the link "
+                   f"names a tag this checkout does not have")
+                + "; a version that closed without a tag carries no definition "
+                  "(RELEASE_PROCESS.md §Tagging)"
             )
             continue
         tag = key   # the tag is the bare version (ADR-0059)
@@ -2176,7 +2244,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             # than printing a placeholder into the URL the author is told to write.
             findings.append(
                 f"{path}:{line_no}: `[{key}]` must compare against the most recent tagged "
-                f"version released before it, but no entry below `## [{key}]` has a git "
+                f"version released before it, but no version older than `{key}` has a git "
                 f"tag (read from {tags.source}) -- this line's first tag is "
                 f"{'.'.join(map(str, first))}"
             )
@@ -2185,10 +2253,14 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             if e.version == first:
                 why = "the line's first tag has no predecessor to compare against"
             else:
-                below = ordered[ordered.index(key) + 1]
+                prev = previous_of[key]
+                at = ordered.index(key) + 1
+                below = ordered[at] if at < len(ordered) else None
                 why = ("a comparison against the most recent earlier tagged version, "
-                       f"{previous_of[key]}")
-                if below != previous_of[key]:
+                       f"{prev}")
+                if prev not in versions:
+                    why += f"; the git tag `{prev}` has no `## [{prev}]` entry in this file"
+                elif below is not None and below != prev:
                     why += (f"; `## [{below}]` below it has no git tag, so it closed "
                             f"without one and is not a comparison base")
             findings.append(
@@ -2239,7 +2311,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                     f"with no git tag" if m else f"; its definition `{url}` names no tagged base")
         findings.append(
             f"{path}:{e.line_no}: `## [Unreleased]` needs a tagged release to compare "
-            f"against, and no version in this file has a git tag (read from "
+            f"against, and this line has no release tag yet (read from "
             f"{tags.source}){pending} -- this line's first tag is "
             f"{'.'.join(map(str, first))}; until it is cut, unreleased work goes in the "
             f"dated entry it will ship in (CHANGELOG_POLICY.md rule 8){also}"
@@ -2444,13 +2516,21 @@ def self_test() -> int:
     UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.9.7...HEAD"
     # These fixtures' first tag is 0.9.7 (FIXTURE_FIRST_TAGGED_VERSION), bound for this
     # loop only; the repository's own first tag is pinned by the cases after it. The
-    # synthetic line tagged 0.9.7 and 0.9.8, and those are its git tags here: every
-    # changelog case in this self-test states its tags, so none depends on which
-    # tags this checkout happens to hold.
+    # synthetic line tagged 0.9.7 and 0.9.8, and each fixture's git tags are the ones
+    # of those two that it records as entries: a release tag with no entry is a
+    # defect of its own (pinned by the "every release has its entry" cases), and
+    # these fixtures test other rules. Every changelog case in this self-test states
+    # its tags, so none depends on which tags this checkout happens to hold.
     global _first_tagged_override, _tag_state_override
     _first_tagged_override = FIXTURE_FIRST_TAGGED_VERSION
-    _tag_state_override = TagState(frozenset({"0.9.7", "0.9.8"}), True,
-                                   "the self-test's tags")
+
+    def fixture_tags(lines: list[str]) -> TagState:
+        fenced, _ = fence_mask(lines)
+        skip = [f or c for f, c in zip(fenced, indented_code_mask(lines, fenced))]
+        recorded = {".".join(map(str, e.version))
+                    for e in parse_changelog(lines, skip)[0] if e.kind == "version"}
+        return TagState(frozenset({"0.9.7", "0.9.8"} & recorded), True,
+                        "the self-test's tags")
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
         ("entry sub-sections at ### are fine", 0,
@@ -3606,6 +3686,7 @@ def self_test() -> int:
         ("a bare carriage return inside a line is a finding", 1,
          ["# Changelog", V5, "### Added", "- a. Evidence: PR #2.\r### Fixed", "- b"]),
     ]:
+        _tag_state_override = fixture_tags(lines)
         # A fixture carrying the `@@no-placeholder@@` marker asserts the TEXT of
         # the findings instead of their count: the defect it pins is a sentinel
         # (`v?`) leaking into the URL a finding tells the author to write, which
@@ -3919,9 +4000,10 @@ def self_test() -> int:
          U + CL([E8, E7], [UR("0.9.8")])[1:], T("0.9.8")),
         ("a git tag `0.9.8` below the first tag is no base for 0.9.10", 1,
          CL([E10, E9, E8, E7], [CP("0.9.8", "0.9.10")]), T("0.9.8")),
-        # Only a well-formed entry counts: a misspelled first-tag heading is its own
-        # finding, and until it is fixed the section is refused as well (fails closed).
-        ("a misspelled first-tag heading: that finding, and the refusal", 2,
+        # A misspelled first-tag heading is its own finding. The base is the TAG, so
+        # `[Unreleased]` from 0.9.9 stands, and the misspelled heading is not also
+        # reported as a missing entry (the heading's finding covers it).
+        ("a misspelled first-tag heading: that finding alone", 1,
          U + ["## [0.9.9] — <YYYY-MM-DD>", "### Fixed", "- 9"]
          + CL([E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9")),
         # THE TAGS CANNOT BE READ. Nothing is guessed: what needs them is refused
@@ -3941,6 +4023,48 @@ def self_test() -> int:
         ("unreadable tags: refused, and a definition with no entry still found", 2,
          U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9"), CP("0.9.4", "0.9.5")])[1:],
          UNKNOWN),
+        # EVERY RELEASE HAS ITS ENTRY. The comparison bases come from this line's
+        # release tags, not from the tags that happen to have an entry: when git
+        # holds 0.9.10 and the file does not record it, `[Unreleased]` from 0.9.9 is
+        # not accepted -- the missing 0.9.10 entry is reported, and the base is
+        # 0.9.10. Taking the newest tagged ENTRY let the file hide the release.
+        ("release 1: 0.9.9 and 0.9.10 tagged and recorded, `[Unreleased]` from 0.9.10", 0,
+         U + CL([E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.10")),
+        ("release 2: 0.9.10 tagged but not recorded, `[Unreleased]` from 0.9.9", 2,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9", "0.9.10")),
+        ("...and from 0.9.10: the missing entry is still refused", 1,
+         U + CL([E9, E8, E7], [UR("0.9.10"), TP("0.9.9")])[1:], T("0.9.9", "0.9.10")),
+        ("release 3: 0.9.10 and 0.9.11 tagged, neither recorded", 3,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.10", "0.9.11")),
+        ("release 4: 0.9.10 recorded untagged between tagged 0.9.9 and 0.9.11", 0,
+         U + CL([E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.11"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.11")),
+        ("release 4b: 0.9.10 and 0.9.11 recorded untagged below the tagged 0.9.12", 0,
+         U + CL([E12, E11, E10, E9], [UR("0.9.12"), CP("0.9.9", "0.9.12"), TP("0.9.9")])[1:],
+         T("0.9.9", "0.9.12")),
+        ("release 4c: 0.9.10 and 0.9.11 recorded untagged, 0.9.9 the only tag", 0,
+         U + CL([E11, E10, E9], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9")),
+        # A tag on ANOTHER branch -- one whose commit HEAD does not reach -- is
+        # another line's release, not a missing one of this line.
+        ("release 5: a higher tag on another branch is no release of this line", 0,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:],
+         TagState(frozenset({"0.9.9"}), True, "the self-test's tags", frozenset({"0.9.10"}))),
+        ("...and a link to it from this line is refused as another line's", 1,
+         U + CL([E10, E9], [UR("0.9.9"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+         TagState(frozenset({"0.9.9"}), True, "the self-test's tags", frozenset({"0.9.10"}))),
+        # The release in preparation compares from the true base, the missing
+        # release, and comparing past it is refused as well.
+        ("a release in preparation over a missing release, compared from it", 1,
+         CL([E11, E9], [CP("0.9.10", "0.9.11"), TP("0.9.9")]), T("0.9.9", "0.9.10")),
+        ("...compared past it: the missing entry, and the base", 2,
+         CL([E11, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")]), T("0.9.9", "0.9.10")),
+        # A tag below the first tag, or a prefixed one, is no release to record.
+        ("a tag below the first tag needs no entry", 0,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.5", "0.9.9")),
+        ("a prefixed higher tag needs no entry", 0,
+         U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9", f"{PFX}0.9.10")),
     ]:
         checked += 1
         failures += 0 if count_case(label, expected, lines, tags) else 1
@@ -3981,6 +4105,46 @@ def self_test() -> int:
         failures += 1
         print(f"self-test FAIL: changelog unreadable tags are reported once, with the reason: "
               f"got {found}", file=sys.stderr)
+    # The count cannot say WHICH release is missing, or that the base moved to it.
+    # Devin's case: the finding names 0.9.10 at the top of the entries (line 2, the
+    # `## [Unreleased]` heading), and the `[Unreleased]` base is 0.9.10, not 0.9.9.
+    found = found_for(U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:], T("0.9.9", "0.9.10"))
+    checked += 1
+    if not (len(found) == 2
+            and any(f.startswith(f"{root / 'CHANGELOG.md'}:2: git tag `0.9.10` is a release")
+                    and "no `## [0.9.10]` entry" in f for f in found)
+            and any(UR("0.9.10").split(": ", 1)[1] in f for f in found)):
+        failures += 1
+        print(f"self-test FAIL: changelog a missing release is named, and becomes the base: "
+              f"got {found}", file=sys.stderr)
+    # Several missing: every one is reported, newest first.
+    found = found_for(U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:],
+                      T("0.9.9", "0.9.10", "0.9.11"))
+    missing = [f for f in found if "is a release in this checkout's history" in f]
+    checked += 1
+    if not (len(missing) == 2 and "`0.9.11`" in missing[0] and "`0.9.10`" in missing[1]):
+        failures += 1
+        print(f"self-test FAIL: changelog every missing release is reported, newest first: "
+              f"got {found}", file=sys.stderr)
+    # Comparing past a missing release says which one, and does not call the entry
+    # below untagged.
+    found = found_for(CL([E11, E9], [CP("0.9.9", "0.9.11"), TP("0.9.9")]), T("0.9.9", "0.9.10"))
+    checked += 1
+    if not (any("the git tag `0.9.10` has no `## [0.9.10]` entry" in f for f in found)
+            and not any("closed without one" in f for f in found)):
+        failures += 1
+        print(f"self-test FAIL: changelog comparing past a missing release names it: "
+              f"got {found}", file=sys.stderr)
+    # A link to another line's release says where the tag is.
+    found = found_for(U + CL([E10, E9], [UR("0.9.9"), CP("0.9.9", "0.9.10"), TP("0.9.9")])[1:],
+                      TagState(frozenset({"0.9.9"}), True, "the self-test's tags",
+                               frozenset({"0.9.10"})))
+    checked += 1
+    if not (len(found) == 1 and "is not in this checkout's history (it is on another branch)"
+            in found[0]):
+        failures += 1
+        print(f"self-test FAIL: changelog another line's tag is named as such: got {found}",
+              file=sys.stderr)
 
     # --- THE TAG READER ITSELF ---------------------------------------------------
     # The cases above hand `tag_state()` their tags. This drives `read_git_tags()`
@@ -4047,6 +4211,12 @@ def self_test() -> int:
                 steps.append(("with the annotated `0.9.9` tag the production path accepts it",
                               analyse(repo_dir / "CHANGELOG.md", post, repo_dir) == []))
                 G(repo_dir, "tag", "0.9.10")
+                _tag_state_cache.clear()
+                found = analyse(repo_dir / "CHANGELOG.md", post, repo_dir)
+                steps.append(("with `0.9.10` tagged too and not recorded, the same file is "
+                              "refused, naming 0.9.10 (Devin's case, in a real repository)",
+                              len(found) == 2 and any("git tag `0.9.10` is a release" in f
+                                                      for f in found)))
                 G(repo_dir, "tag", "-a", f"{PFX}0.9.11", "-m", "prefixed")
                 steps.append(("lightweight and prefixed tags are listed as they are",
                               read_git_tags(repo_dir).tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}))
@@ -4063,8 +4233,57 @@ def self_test() -> int:
                 steps.append(("...and with the tag refspec fetched, holds every tag",
                               st.known and st.tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}))
                 _tag_state_cache.clear()
-                steps.append(("...where the production path accepts `[Unreleased]` from 0.9.9",
-                              analyse(shallow / "CHANGELOG.md", post, shallow) == []))
+                steps.append(("...where the production path refuses the missing 0.9.10 "
+                              "as the full clone does",
+                              len(analyse(shallow / "CHANGELOG.md", post, shallow)) == 2))
+                # BRANCHES: 0.9.9 tagged on the main line; a `maint` branch forked there
+                # tags 0.9.10; the main line moves on. From the main line, 0.9.10 is
+                # another line's release; from `maint`, it is this line's and needs
+                # its entry. A shallow clone that cannot place the tags is unknown.
+                lines_dir = Path(tmp) / "lines"
+                lines_dir.mkdir()
+                (lines_dir / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
+                G(lines_dir, "init", "-q")
+                G(lines_dir, "add", "-A")
+                G(lines_dir, "commit", "-q", "-m", "0.9.9")
+                G(lines_dir, "tag", "-a", "0.9.9", "-m", "Anamorph 0.9.9")
+                G(lines_dir, "checkout", "-q", "-b", "maint")
+                G(lines_dir, "commit", "-q", "--allow-empty", "-m", "maint")
+                G(lines_dir, "tag", "-a", "0.9.10", "-m", "Anamorph 0.9.10")
+                G(lines_dir, "checkout", "-q", "-")
+                G(lines_dir, "commit", "-q", "--allow-empty", "-m", "main moves on")
+                st = read_git_tags(lines_dir)
+                steps.append(("a tag on another branch is kept apart from this line's",
+                              st.known and st.tags == {"0.9.9"} and st.elsewhere == {"0.9.10"}))
+                _tag_state_cache.clear()
+                steps.append(("...and the production path accepts the main line's file",
+                              analyse(lines_dir / "CHANGELOG.md", post, lines_dir) == []))
+                G(lines_dir, "checkout", "-q", "maint")
+                _tag_state_cache.clear()
+                found = analyse(lines_dir / "CHANGELOG.md", post, lines_dir)
+                steps.append(("on the branch that holds 0.9.10, the same file is refused",
+                              len(found) == 2 and any("git tag `0.9.10` is a release" in f
+                                                      for f in found)))
+                G(lines_dir, "checkout", "-q", "-")
+                cut = Path(tmp) / "cut"
+                G(Path(tmp), "clone", "-q", "--depth=1", "--no-tags", lines_dir.as_uri(), str(cut))
+                G(cut, "fetch", "-q", "--depth=1", "origin", "+refs/tags/*:refs/tags/*")
+                st = read_git_tags(cut)
+                steps.append(("a shallow clone whose release tags lie outside its history "
+                              "reads as unknown, with the remedy",
+                              not st.known and "shallow" in st.source
+                              and "git fetch --unshallow --tags" in st.source))
+                _tag_state_cache.clear()
+                found = analyse(cut / "CHANGELOG.md", post, cut)
+                steps.append(("...and the production path there refuses once, with the reason",
+                              len(found) == 1 and "shallow clone" in found[0]))
+                G(cut, "fetch", "-q", "--unshallow", "--tags")
+                st = read_git_tags(cut)
+                _tag_state_cache.clear()
+                steps.append(("...unshallowed, it reads the main line's release alone and "
+                              "accepts the file",
+                              st.known and st.tags == {"0.9.9"}
+                              and analyse(cut / "CHANGELOG.md", post, cut) == []))
                 (repo_dir / "docs").mkdir()
                 steps.append(("a subdirectory of a checkout is not its root: unknown",
                               not read_git_tags(repo_dir / "docs").known))
