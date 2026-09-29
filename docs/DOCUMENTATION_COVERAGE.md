@@ -13082,7 +13082,7 @@ The reconciliation order is unchanged:
 2. report each without an entry, newest first;
 3. only then take `newest_tagged` and `previous_of` from those tags.
 
-**Self-test.** 643 → 685 cases:
+**Self-test.** 643 → 689 cases:
 - **2 more `maint` steps.** On the never-merged branch, 0.9.10 is branch-only; the file is accepted; and
   `[Unreleased]` from 0.9.10 is refused with the reason and no merge remedy.
 - **8 topology steps:**
@@ -13116,6 +13116,10 @@ The reconciliation order is unchanged:
 - **2 more from the fourth review round:** a ref named `refs/remotes/<name>` itself takes that name; and a
   remote name with a shell metacharacter is quoted in the fetch the source names. The single-branch clone's
   remedy and the `insteadOf` remedy are now run exactly as printed, the latter beside a fork remote.
+- **4 more from the final review round:** where the line cannot be read, a newer release-shaped tag in the
+  checkout makes a file with only the release in preparation refused, naming the tag (synthetic, and in a
+  real shallow clone holding 0.9.10), while the in-preparation release's own tag, or tags that name no
+  release, leave it exempt. The single-branch clone's remedy and hint now run under `fetch.prune=true`.
 
 The negative controls fail:
 - `release.yml` with its old expression: 4 cases;
@@ -13126,8 +13130,8 @@ The negative controls fail:
   each (0 before the second review round);
 - the sandbox fetching the tag object, as `git clone` does: 14 cases (0 before the second review round).
 
-**Mutation.** Ninety-seven mutants each fail the self-test, none by crashing, on a clean clone of `2cc3a40`:
-eighty-eight of the checker, and nine of `release.yml` run against the unmutated checker. The full counts are
+**Mutation.** A hundred and one mutants each fail the self-test, none by crashing, on a clean clone of
+`46b82f5`: ninety-two of the checker, and nine of `release.yml` run against the unmutated checker. The full counts are
 in ADR-0058's evidence. Among them:
 
 | Mutant | Failing cases |
@@ -13143,14 +13147,15 @@ in ADR-0058's evidence. Among them:
 | a tag on `HEAD`'s own commit read as its future | 10 |
 | a branch-only tag offered the merge remedy / called "not in this checkout's history" | 2 / 4 |
 | a headed branch offered a merge for a tag `main` does not hold | 1 |
-| `RELEASE_TAG` admitting leading zeros | 6 |
+| `RELEASE_TAG` admitting leading zeros | 7 |
 | the tag-grammar case trusting the grammar instead of running the step | 9 |
 | the tag-grammar sandbox fetching the tag object (as `git clone` does) | 14 |
 | the unknown-line remedy always adding `upstream` / under a URL a rule rewrites away | 7 / 2 |
 | its name ignoring leftover refs / a legacy remote file / a `refs/remotes/<name>` ref; the names bounded | 2 / 1 / 1; 1 |
 | its fetch from another remote (the fork) into the one it adds | 1 |
 | the rewritten URL shown with credentials | 1 |
-| every printed fetch unforced / without `--refmap=` / with the remote name unquoted | 5 / 5 / 1 |
+| every printed fetch unforced / without `--refmap=` / with the remote name unquoted / with a bare `main` source | 5 / 5 / 1 / 3 |
+| an unreadable line: a newer tag present ignored / the in-preparation tag counted / a leading-zero tag counted | 3 / 1 / 1 |
 | the fetch hint naming no remote / without the line's `main`; the line refs in name order | 3 / 3; 1 |
 | the remedy naming plain `main` / the future-tag clause missing / said where nothing was cut | 3 / 3 / 2 |
 | `release.yml`: validator back to `[0-9]+` / last component unguarded / trigger narrowed / annotated check removed | 4 / 1 / 4 / 1 |
@@ -13175,6 +13180,8 @@ Survivors were closed along the way:
   (`d49b1b1`).
 - **The fourth round's documents lens showed one more**: a remedy fetching from the wrong remote into the one
   it adds passed, since the step ran only `git remote add`. It now runs the whole command (`2cc3a40`).
+- One mutant of the final round was first spelled so that a `v`-prefixed tag reached `vtuple()` and crashed
+  the synthetic cases; it was re-spelled (a leading-zero tag counted) and fails 1 case on the same clone.
 
 **Review.** Four reviewers each took one lens (topology, tag grammar, regressions, wording). Each ran real
 temporary repositories, and a skeptic reproduced every finding before it counted. They confirmed 12 findings,
@@ -13267,7 +13274,7 @@ skeptic.
 - **The checker: 9 confirmed** (5 minor, 4 wording), none reachable in CI. Fixed in `aa71585`:
   - in a single-branch clone of a feature branch, `git fetch --tags origin`, as the source advised,
     brought a new release tag but not `origin/main`, so the tag was no release and its missing entry went
-    unreported (minor). The source now names `git fetch --tags <remote> +main:refs/remotes/<remote>/main`
+    unreported (minor). The source now names `git fetch --tags <remote> +refs/heads/main:refs/remotes/<remote>/main`
     (with `--refmap=` since the fourth round);
   - under an `insteadOf` rule that rewrites the repository's URL, the remedy could never work, and following
     it added another remote on every run (minor). It now uses the first form GitHub serves that no rule
@@ -13297,8 +13304,8 @@ clone with `upstream`. Fixed in `46096d9` and `2cc3a40`:
     it", so it was no command, and the `ssh.github.com:443` form was not tried. The condition now precedes
     the span, and that form is tried.
   - In a worktree of a `--mirror` clone with `main` checked out, the printed fetches were refused (the
-    remote's configured refspec also tried to write `main`) and repeated unchanged. Every fetch the reader
-    prints now carries `--refmap=`.
+    remote's configured refspec also tried to write `main`) and repeated unchanged. Every fetch of
+    `<remote>/main` the reader prints now carries `--refmap=`.
   - A ref named `refs/remotes/<name>` itself blocked the remedy's fetch (a directory/file conflict). Such a
     name is now taken.
   - A remote name with a shell metacharacter made a printed fetch run something else. Names are now
@@ -13315,6 +13322,28 @@ clone with `upstream`. Fixed in `46096d9` and `2cc3a40`:
     single-branch clone of `main`), and "the hundred candidate names" (there were 101). The refuted one
     held that the reason given for forcing the no-`main` remedy never applies where it is shown; the
     sentence now gives the reason that plainly holds (every printed fetch is forced, so it can be re-run).
+
+**Final review round** (on `d3b0a24`, the head the fourth round's fixes produced). Two lenses: an independent
+check that no Devin failure condition applies on that exact head, and the fourth round's delta, limited to
+what a CI run, a tag push, an ordinary clone or a fork clone with `upstream` can reach, a regression, a
+printed command that fails as written, or an untrue statement. Each finding reproduced by a skeptic. Fixed in
+`46b82f5`:
+- **Devin closure.** On the known path none of the three findings, nor an equivalent, applies: 66 cases of
+  its own (ten `upstream` URL forms, fork `main` behind, diverged and ahead, three remotes, a branch-only tag
+  on `HEAD` or detached at it, case E, skipped versions, the first tag) and the helper suites, 0 mismatches.
+  One local equivalent was confirmed (minor): where the line cannot be read (a shallow, single-branch or
+  unrecognised-remote checkout), a file whose only entry is the release in preparation was exempt from the
+  tags, so a newer release tag the checkout already held went unreported. The exemption now holds only while
+  the checkout's tag refs hold no release-shaped tag newer than that entry (`TagState.present`); otherwise
+  the file is refused with the reason, naming the tag.
+- **The delta.** Under `fetch.prune=true`, which many developers set, every printed fetch of `<remote>/main`
+  (`+main:refs/remotes/<remote>/main`) pruned the ref it was to write and then failed, leaving the line
+  unknown (reported as blocking for a developer's clone; not reachable in CI, whose checkout the reader
+  never asks to fetch). The source is now fully qualified, `+refs/heads/main:...`, and the self-test runs
+  the remedy and the hint under `fetch.prune=true`. Three wording findings: `CI_CD.md` hard-coded `origin`
+  for the no-`main` fetch; "every fetch the reader prints" is scoped to the fetches of `<remote>/main` (the
+  shallow remedy is `git fetch --unshallow --tags`); and ADR-0058's "`git fetch origin main` writes only
+  `FETCH_HEAD`" is scoped to a single-branch clone of another branch.
 
 **Limitations, stated.**
 - A fork clone whose only remote is the fork reads the fork's `origin/main`, the only line it has; add the

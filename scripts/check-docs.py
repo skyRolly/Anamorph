@@ -2447,7 +2447,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             f"to fetch or where to run it from; CI's `docs` job checks out the full "
             f"history, every branch and every tag (CHANGELOG_POLICY.md rule 8)"
             + (f"; this checkout holds the tag `{newer_here[-1]}`, newer than any version "
-               f"this file records, which it must record if it is a release"
+               f"this file records, which it must record if it is a release this commit "
+               f"comes after -- which cannot be told here"
                if newer_here and not (has_unreleased or "unreleased" in defined or past)
                else "")
         )

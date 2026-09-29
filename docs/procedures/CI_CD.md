@@ -1669,9 +1669,9 @@ python3 scripts/check-linux-abi.py --self-test                   # gate needs li
 only those this repository's `main` holds (but those cut after `HEAD`; a branch's own tag and a fork's
 are no releases), so run it
 from the root of a full clone that has them and `main` (the fetch the checker names, `git fetch --tags
---refmap= <remote> +main:refs/remotes/<remote>/main` from the remote that is this repository -- a fork
-clone's `upstream`, not its `origin`; in a shallow clone,
-`git fetch --unshallow --tags`; without `main`, `git fetch --refmap= origin +main:refs/remotes/origin/main`); a
+--refmap= <remote> +refs/heads/main:refs/remotes/<remote>/main` from the remote that is this repository
+-- a fork clone's `upstream`, not its `origin`; in a shallow clone, `git fetch --unshallow --tags`;
+without `main`, the same fetch without `--tags`, as the checker prints it); a
 copy that is not a git checkout, a shallow clone, or one without `main` cannot say which versions were
 released, and the `CHANGELOG.md` links that depend on it are refused with that reason. `main` is read
 from every remote whose URL is this repository (`origin` in CI, a fork clone's `upstream`) and then not

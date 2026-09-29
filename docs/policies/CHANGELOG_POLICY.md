@@ -98,7 +98,10 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    a shallow clone, which cannot tell which tags are in `HEAD`'s history, or a checkout without this
    repository's `main`, whose release line cannot be told from another branch or a fork), the check refuses
    the file's release links with one finding that gives the reason, and still checks what needs no tags;
-   a file whose only version at or above the first tag is the release in preparation needs none. The definition is written **in the
+   a file whose only version at or above the first tag is the release in preparation needs none, unless
+   the checkout's tag refs hold a release-shaped tag newer than it, which the file must record if it is a
+   release this commit comes after, and which the check then cannot place: the file is refused, and the
+   tag named. The definition is written **in the
    release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
    refusing any tag other than the bare CMake version, with the same grammar (no leading zero). `check-docs.py` requires exactly the form the

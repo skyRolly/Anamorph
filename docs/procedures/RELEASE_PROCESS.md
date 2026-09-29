@@ -140,7 +140,7 @@ refuses it, whatever its definition names, while this line has no release tag â€
 throughout the cycle that prepares 0.9.9, when the 0.9.9 entry is in the file but its tag is not.
 Add the section in a commit after the tag push, and first fetch the tags and `main` from this
 repository's remote, as the checker names it (`git fetch --tags --refmap= origin
-+main:refs/remotes/origin/main` in an ordinary clone; in a fork clone the remote that is this repository,
++refs/heads/main:refs/remotes/origin/main` in an ordinary clone; in a fork clone the remote that is this repository,
 not the fork): the checker reads the tag refs of the checkout it runs in, with no network access, so a
 clone that has not fetched the new tag refuses the section. It compares from the newest release tag on the line, so
 tag the release commit on `main` itself: every later `main` commit, and every branch made from one,
@@ -152,7 +152,7 @@ branch other than `main` is no release, not even on that branch, until `main` ho
 the full history, every branch and every tag. Where the tags cannot be read at all (a directory that is
 not the root of a git checkout), the checkout is a shallow clone, which cannot tell which tags are in
 `HEAD`'s history (run `git fetch --unshallow --tags`), or it has no `main` of this repository (run the
-command the checker prints: `git fetch --refmap= origin +main:refs/remotes/origin/main` in an ordinary
+command the checker prints: `git fetch --refmap= origin +refs/heads/main:refs/remotes/origin/main` in an ordinary
 clone, or, where no remote is recognisably this repository, adding it as one), the checker refuses the
 links that depend on them and says why.
 

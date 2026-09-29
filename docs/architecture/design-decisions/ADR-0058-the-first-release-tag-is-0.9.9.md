@@ -94,7 +94,10 @@ without a tag, rather than only for this one.
     release in preparation, the checker refuses its release links with one finding that gives the reason,
     and still checks what needs no tags (a definition older than the first tag, a definition with no
     entry). A file whose only such version is the release in preparation (today's) needs no tags and is
-    checked in full.
+    checked in full -- unless the checkout's own tag refs hold a release-shaped tag newer than it (a
+    shallow clone holding 0.9.10, say): that may be a release the file must record, and it cannot be
+    placed, so the file is refused with the reason and the tag named (the final review, 2026-09-29, found
+    such a file passing silently in a shallow, single-branch or unrecognised-remote checkout).
   - **CI fetches the tags and the history.** The `docs` job's checkout sets `fetch-tags: true` and, since
     the 2026-09-29 amendment, `fetch-depth: 0`. The default single-commit checkout is shallow and fetches
     no tags: until 2026-09-29 that read as "nothing was ever tagged", and since then any shallow clone
@@ -163,11 +166,12 @@ without a tag, rather than only for this one.
         the local `main`, since a repository nothing was cloned from is its own line. Everything else is
         **unknown**, never a guess at a fork's or a local `main`: a remote that is this repository but
         whose `main` was never fetched (remedy `git fetch --refmap= <remote>
-        +main:refs/remotes/<remote>/main`: forced, as every fetch the reader prints is, so it can be run
-        again once the ref exists; `--refmap=`, so the remote's
-        configured refspec cannot also try to write a checked-out branch, as a `--mirror` clone's would;
-        the name shell-quoted; a single-branch clone's `git fetch origin main` writes only `FETCH_HEAD`),
-        and several remotes none
+        +refs/heads/main:refs/remotes/<remote>/main`, spelled as every fetch of `<remote>/main` the reader
+        prints: forced, so it can be run again once the ref exists; the source fully qualified, since
+        under `fetch.prune` a bare `main` pruned `<remote>/main` and then failed to write it (the final
+        review); `--refmap=`, so the remote's configured refspec cannot also try to write a checked-out
+        branch, as a `--mirror` clone's would; the name shell-quoted. In a single-branch clone of another
+        branch, `git fetch origin main` writes only `FETCH_HEAD`), and several remotes none
         of which is recognisably this repository -- the final review found a canonical remote under an SSH
         host alias (`git@github-work:...`) or a proxy `insteadOf` unrecognised, so the fork's `origin/main`
         became the line (remedy `git remote add upstream https://github.com/skyRolly/Anamorph`, under
@@ -182,7 +186,7 @@ without a tag, rather than only for this one.
         `origin/main`'s newer release. Each line ref is read by its full name (`git show-ref --verify`)
         and used by its commit: as a revision, a missing `refs/remotes/upstream/main` was resolved from a
         tag spelled like it. The source names the fetch that brings a release pushed since, `git fetch
-        --tags --refmap= <remote> +main:refs/remotes/<remote>/main`: the tag alone is no release until the `main`
+        --tags --refmap= <remote> +refs/heads/main:refs/remotes/<remote>/main`: the tag alone is no release until the `main`
         read holds it, and a configured refspec that does not cover that `main` -- a single-branch clone
         of another branch -- never updates it (a review finding,
         2026-09-29: `git fetch --tags origin` brought 0.9.10 and the missing entry went unreported); a
@@ -359,7 +363,7 @@ without a tag, rather than only for this one.
       repository) a branch from `upstream/main` holds `{0.9.9}`, names `upstream/main` alone as its line,
       and accepts `[Unreleased]` from 0.9.9; on the fork's own `main` the fork's 0.9.10 is branch-only and
       the same file passes; with `upstream/main` removed the line is unknown with `git fetch --refmap=
-      upstream +main:refs/remotes/upstream/main`, not the fork's `main`; an ordinary clone (no remote that is the
+      upstream +refs/heads/main:refs/remotes/upstream/main`, not the fork's `main`; an ordinary clone (no remote that is the
       repository) reads `origin/main`; with its only remote renamed away from `origin` it is unknown
       rather than reading the local `main`, with a remedy that names no missing remote; a tag spelled
       `refs/remotes/upstream/main` does not stand in for the missing `upstream/main`; a skipped version on the line (0.9.9, 0.9.10 untagged,
@@ -482,11 +486,11 @@ without a tag, rather than only for this one.
   revision all three files pass, the three tags are refused, and the earlier acceptance cases hold (a
   missing 0.9.10 on the line fails, naming it; both recorded passes only from 0.9.10; the first tag;
   skipped versions; the branch tip, merged commits, fast-forward and two-parent shapes).
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 685 cases (537 before the
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 689 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
-  is the number of failing cases and steps alike). Ninety-seven mutants each fail it, none by crashing,
-  with the number of failing cases (measured on a clean clone of `2cc3a40`; eighty-eight of the checker,
-  nine of `release.yml` run against the unmutated checker):
+  is the number of failing cases and steps alike). A hundred and one mutants each fail it, none by
+  crashing, with the number of failing cases (measured on a clean clone of `46b82f5`; ninety-two of the
+  checker, nine of `release.yml` run against the unmutated checker):
   - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
     preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's
     `origin/main` read instead): 14; the repository's remote without its `main` falling back to
@@ -503,8 +507,11 @@ without a tag, rather than only for this one.
     `refs/remotes/<name>`: 1; its names bounded (every one taken): 1; its URL one an `insteadOf` rule
     rewrites away: 2; its fetch from another remote (the fork) into the one it adds: 1; the rewritten URL
     shown with its credentials: 1; every printed fetch's refspec unforced: 5, without `--refmap=`: 5, or
-    with the remote name unquoted: 1; the line refs in name order, a stale remote named first: 1;
-    `RELEASE_TAG` admitting leading zeros: 6; the tag-grammar case trusting the grammar instead of running
+    with the remote name unquoted: 1, or with the bare source `main` again (pruned under
+    `fetch.prune`): 3; the line refs in name order, a stale remote named first: 1; where the line cannot
+    be read, a newer tag present ignored (the in-preparation file's silent pass): 3, the in-preparation
+    release's own tag counted as newer: 1, or a leading-zero tag counted: 1;
+    `RELEASE_TAG` admitting leading zeros: 7; the tag-grammar case trusting the grammar instead of running
     the step: 9; `release.yml`'s validator back to `[0-9]+`: 4, without the leading-zero rule in the
     last component: 1; its trigger narrowed: 4; its annotated-tag check removed: 1; its re-fetch of the
     tag object without `--force`, removed, or of the wrong ref: 5 each; its `is-release=true` echoed to the
@@ -532,12 +539,12 @@ without a tag, rather than only for this one.
   - a changelog definition taken as proof of a tag: 10; the tags ignored: 15; the first tag counted by
     fact: 9; `releases` without the not-older-than-the-first-tag clause: 4;
   - a malformed heading also reported as a missing release: 1;
-  - a shallow clone read as known: 5; read as known when it reaches every release-shaped tag it lists
-    (an earlier spelling): 3;
+  - a shallow clone read as known: 6; read as known when it reaches every release-shaped tag it lists
+    (an earlier spelling): 4;
   - a definition on an untagged past version accepted: 10; a tagged version without one accepted: 3;
-    the release in preparation required to be tagged already: 19; unreadable tags read as no tags: 11;
-  - the inherited `GIT_DIR` kept in the reader: 1; the constant set back to (0, 9, 7): 104; a prefixed
-    tag in the URL: 137; `[Unreleased]` from the newest entry whether tagged or not: 45;
+    the release in preparation required to be tagged already: 22; unreadable tags read as no tags: 14;
+  - the inherited `GIT_DIR` kept in the reader: 1; the constant set back to (0, 9, 7): 107; a prefixed
+    tag in the URL: 138; `[Unreleased]` from the newest entry whether tagged or not: 45;
   - missing releases reported oldest first: 1; comparing past a missing release explained as "the entry
     below closed without a tag": 1;
   - a tag outside `HEAD`'s history not named as such: in a definition, 2; in the `[Unreleased]` refusal
