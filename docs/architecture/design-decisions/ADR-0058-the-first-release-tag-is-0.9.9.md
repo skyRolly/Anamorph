@@ -127,7 +127,8 @@ without a tag, rather than only for this one.
         commit of `main` descends from `HEAD`, so it is all of `main`'s. A release `main` gained after the
         branch forked is one the branch will land on, so it binds the branch before the branch merges it;
         those tags are also kept in `ahead`, and the missing-entry finding names them as releases on
-        `main` that the branch's history does not hold, with "merge `main`" as the remedy;
+        `main` -- by the ref read, `origin/main` or a fork clone's `upstream/main` -- that the branch's
+        history does not hold, with "merge `<that ref>` into this branch" as the remedy;
       - for a pull request's commit **merged into `main`** -- the tip, or any earlier commit of the pull
         request -- the merge that landed it descends from it, so it is `main`'s releases from before that
         merge; later ones are its future. Reading it as `main`'s past let a re-run on a merged commit pass
@@ -161,17 +162,25 @@ without a tag, rather than only for this one.
         the repository this checkout was cloned from, as a mirror or proxy is; failing any remote at all,
         the local `main`, since a repository nothing was cloned from is its own line. Everything else is
         **unknown**, never a guess at a fork's or a local `main`: a remote that is this repository but
-        whose `main` was never fetched (remedy `git fetch <remote> main:refs/remotes/<remote>/main`; a
-        single-branch clone's `git fetch origin main` writes only `FETCH_HEAD`), and several remotes none
+        whose `main` was never fetched (remedy `git fetch <remote> +main:refs/remotes/<remote>/main`,
+        forced so a stale ref is replaced; a single-branch clone's `git fetch origin main` writes only
+        `FETCH_HEAD`), and several remotes none
         of which is recognisably this repository -- the final review found a canonical remote under an SSH
         host alias (`git@github-work:...`) or a proxy `insteadOf` unrecognised, so the fork's `origin/main`
         became the line (remedy `git remote add upstream https://github.com/skyRolly/Anamorph`, under
-        the first of `upstream`, `anamorph`, `release-line` no remote has yet, and naming any `insteadOf`
-        rule that rewrites that URL, since then no added remote is recognisable either). A local
+        the first of `upstream`, `anamorph`, `release-line`, `release-line-2`, ... that neither a remote
+        nor a removed remote's leftover refs hold. Where an `insteadOf` rule rewrites that URL to one no
+        longer recognisable, a remote added under it would read as unknown again on every run, so the
+        remedy uses the first form GitHub serves that no rule rewrites away, and says to lift the rule
+        where every form is; it names the rule's result without any credentials in it). A local
         `main` can hold unpushed commits no release line has, and treating HEAD as its past hid
         `origin/main`'s newer release. Each line ref is read by its full name (`git show-ref --verify`)
         and used by its commit: as a revision, a missing `refs/remotes/upstream/main` was resolved from a
-        tag spelled like it;
+        tag spelled like it. The source names the fetch that brings a release pushed since, `git fetch
+        --tags <remote> +main:refs/remotes/<remote>/main`: the tag alone is no release until the `main`
+        read holds it, and a single-branch clone's refspec never updates that `main` (a review finding,
+        2026-09-29: `git fetch --tags origin` brought 0.9.10 and the missing entry went unreported); a
+        line that is the local `main`, with no remote, names no fetch;
       - **a tag `main` does not hold is no release**, wherever it sits: one cut on a branch never merged
         into `main` -- including the checked-out branch, whose own history holds it -- needs no entry and
         is no base (`TagState.branch_only`), and becomes a release once `main` holds its commit. The first
@@ -333,7 +342,8 @@ without a tag, rather than only for this one.
       `main` under `upstream` binds the branch, with `upstream` at an https, `ssh.github.com:443`, ssh
       port, scp-style and `insteadOf`-alias URL; under another repository's URL, a local mirror path, a
       proxy, a `#@` URL or an SSH host alias it is not recognised, and beside the fork's `origin` the
-      line is then unknown, with the `git remote add upstream` remedy; a branch tip merging two `main` commits (0.9.9 and the one
+      line is then unknown, with a remedy adding the repository under a name nothing holds (`anamorph`
+      where `upstream` is taken); a branch tip merging two `main` commits (0.9.9 and the one
       before the pull request's merge) is headed for `main` and names the 0.9.11 tagged after them; a
       branch that merged `main` and was fast-forwarded onto it, with 0.9.12 tagged on `main` meanwhile:
       its own commit, now on `main`'s first-parent order, and a commit merged in through it are each
@@ -343,15 +353,24 @@ without a tag, rather than only for this one.
       repository) a branch from `upstream/main` holds `{0.9.9}`, names `upstream/main` alone as its line,
       and accepts `[Unreleased]` from 0.9.9; on the fork's own `main` the fork's 0.9.10 is branch-only and
       the same file passes; with `upstream/main` removed the line is unknown with `git fetch upstream
-      main:refs/remotes/upstream/main`, not the fork's `main`; an ordinary clone (no remote that is the
+      +main:refs/remotes/upstream/main`, not the fork's `main`; an ordinary clone (no remote that is the
       repository) reads `origin/main`; with its only remote renamed away from `origin` it is unknown
       rather than reading the local `main`, with a remedy that names no missing remote; a tag spelled
       `refs/remotes/upstream/main` does not stand in for the missing `upstream/main`; a skipped version on the line (0.9.9, 0.9.10 untagged,
-      0.9.11) accepts `[Unreleased]` from 0.9.11 and refuses it from 0.9.10;
+      0.9.11) accepts `[Unreleased]` from 0.9.11 and refuses it from 0.9.10; with two remotes that are
+      the repository, one stale, the one holding the release is named; in a single-branch clone the
+      fetch the source names, run as written, brings a release pushed since with the `main` that holds
+      it; under a credential-bearing `insteadOf` rule that rewrites the repository's https URL, the
+      unknown line names the rule without the credentials and the remedy uses the scp form the rule
+      leaves alone, which, run as written, reads the line; with every form rewritten, the remedy is to
+      lift the rule; and the remote it adds is under a name nothing holds (a removed remote's leftover
+      refs, a legacy `$GIT_DIR/remotes` file, 120 configured remotes);
     - `release.yml`'s validate step, run verbatim in scratch repositories for `0.9.9`, `0.9.10`, `0.10.0`,
       `1.0.0`, `10.20.30` (accepted) and `0.09.10`, `00.9.10`, `0.09.010`, `0.9.010`, a prefixed tag,
       `0.9`, `0.9.10.1`, `0.9.10-rc1`, `0.9.1０` (refused), exactly as `RELEASE_TAG` decides, with the
-      trigger admitting every accepted one; a lightweight `0.9.10` is refused;
+      trigger admitting every accepted one, each accepted one writing `is-release=true` and
+      `version=<tag>` to `GITHUB_OUTPUT`, in a sandbox whose local tag is asserted peeled; a lightweight
+      `0.9.10` is refused;
     - non-ASCII digits: a tag `0.9.1０` is no release (0 findings); a heading `## [0.9.1０]` or
       `## [0.9.1٠]` is no entry, so the 0.9.10 tag is reported unrecorded;
     - a subdirectory, a plain directory, a checkout git will not open ("dubious ownership"), a checkout
@@ -455,24 +474,27 @@ without a tag, rather than only for this one.
   revision all three files pass, the three tags are refused, and the earlier acceptance cases hold (a
   missing 0.9.10 on the line fails, naming it; both recorded passes only from 0.9.10; the first tag;
   skipped versions; the branch tip, merged commits, fast-forward and two-parent shapes).
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 679 cases (537 before the
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 683 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
-  is the number of failing cases and steps alike). Eighty-seven mutants each fail it, none by crashing,
-  with the number of failing cases (measured on a clean clone of `4d32b10`; seventy-eight of the checker,
+  is the number of failing cases and steps alike). Ninety-three mutants each fail it, none by crashing,
+  with the number of failing cases (measured on a clean clone of `d49b1b1`; eighty-four of the checker,
   nine of `release.yml` run against the unmutated checker):
   - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
     preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's
-    `origin/main` read instead): 12; the repository's remote without its `main` falling back to
+    `origin/main` read instead): 13; the repository's remote without its `main` falling back to
     `origin/main`: 2; `origin/main` read whenever an `origin` exists, beside other unrecognised remotes:
-    5; the local `main` read although the checkout has remotes: 7; a local `main` united with the remote
-    line: 14; a line ref resolved by shorthand (a tag spelled `refs/remotes/<n>/main` standing in for it):
+    5; the local `main` read although the checkout has remotes: 9; a local `main` united with the remote
+    line: 16; a line ref resolved by shorthand (a tag spelled `refs/remotes/<n>/main` standing in for it):
     1; branch-only tags in `HEAD`'s history counted as releases: 5; a tag on `HEAD`'s own commit read as
-    its future: 10; a branch-only tag offered the merge remedy: 2, or called "not in this checkout's
+    its future: 11; a branch-only tag offered the merge remedy: 2, or called "not in this checkout's
     history": 4; a branch headed for `main` offered a merge for a tag `main` does not hold: 1; the
     remedy naming plain `main`, not the ref read: 3; the source text without the future-tag exclusion: 3,
-    or with it where nothing was cut: 2; the fetch hint naming no remote: 1; the unknown-line remedy
-    always adding `upstream`, which may exist: 5; an `insteadOf` rule rewriting the repository's URL left
-    unnamed: 1; the line refs in configuration order, a stale remote named first: 1;
+    or with it where nothing was cut: 2; the fetch hint naming no remote: 2, or bringing the tags
+    without the line's `main`: 2; the unknown-line remedy always adding `upstream`, which may exist: 6;
+    its name ignoring a removed remote's leftover refs: 1, or a legacy remote file: 1; its names bounded
+    (every one taken): 1; its URL one an `insteadOf` rule rewrites away: 3; the rewritten URL shown with
+    its credentials: 1; the no-`main` remedy's refspec unforced: 3; the line refs in name order, a stale
+    remote named first: 1;
     `RELEASE_TAG` admitting leading zeros: 6; the tag-grammar case trusting the grammar instead of running
     the step: 9; `release.yml`'s validator back to `[0-9]+`: 4, without the leading-zero rule in the
     last component: 1; its trigger narrowed: 4; its annotated-tag check removed: 1; its re-fetch of the
@@ -482,10 +504,10 @@ without a tag, rather than only for this one.
   - the bases from the tags that have an entry (the intersection, the finding's own repro): 21; the
     missing-entry finding removed: 41; the base taken from the newest entry with a tag-looking link: 33;
     `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 21;
-  - `main`'s tags ignored for a branch headed there (the finding's remaining path): 15; a commit in
+  - `main`'s tags ignored for a branch headed there (the finding's remaining path): 16; a commit in
     `main`'s history bound by `main`'s later tags too (its future not subtracted): 3; every commit in
     `main`'s history read as `main`'s past: 4; `main`'s first-parent order deciding a commit on it (the
-    fast-forward shape): 1; a checkout without `main` read as known: 12; a release on `main` the branch
+    fast-forward shape): 1; a checkout without `main` read as known: 15; a release on `main` the branch
     lacks called "in this checkout's history": 6; every tag counted as `main`'s: 10; a merge `main` never
     holds whose parents are all on it bound as its parents are (`af4ac33`'s rule, which hid the later
     release at a branch tip merging two `main` commits): 1; the raw configured URL matched (an
