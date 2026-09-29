@@ -3,7 +3,8 @@
 #
 #  Trigger: pushing an ANNOTATED release tag  MAJOR.MINOR.PATCH  (e.g. 0.9.9)
 #  on the release commit. The tag is the bare version, exactly the CMake project
-#  VERSION -- no prefix (ADR-0059); a prefixed tag matches no trigger here. Tag pushes do not trigger build.yml (its `branches`
+#  VERSION -- no prefix, no leading zero (ADR-0059); the validate step's grammar
+#  is the authority, the trigger only a coarse filter. Tag pushes do not trigger build.yml (its `branches`
 #  filter excludes tag events), so a release runs the full build+validation
 #  matrix exactly ONCE — by CALLING build.yml (workflow_call): same three OS
 #  jobs, same blocking DSP+state suites, same pluginval strictness-10 gates,
@@ -65,12 +66,14 @@ jobs:
 
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-            # The tag IS the version: bare MAJOR.MINOR.PATCH, no prefix (ADR-0059).
-            # The trigger filter already admits only that shape; a workflow_dispatch
-            # run started from some other tag ref reaches here too, so the shape is
-            # asserted rather than assumed.
-            if ! [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::release tag ${TAG} is not a bare MAJOR.MINOR.PATCH version -- the release tag is exactly the CMake project VERSION, e.g. 0.9.9 (ADR-0059)"
+            # The tag IS the version: bare MAJOR.MINOR.PATCH, no prefix, no leading
+            # zero (ADR-0059) -- the grammar `check-docs.py`'s RELEASE_TAG reads the
+            # tags with. THIS test is the authority: the trigger glob cannot refuse a
+            # leading zero (`0.09.10` matches it), and a workflow_dispatch run from
+            # some other tag ref reaches here too. `check-docs.py --self-test` runs
+            # this step to prove the two grammars agree.
+            if ! [[ "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::release tag ${TAG} is not a bare MAJOR.MINOR.PATCH version with no leading zero -- the release tag is exactly the CMake project VERSION, e.g. 0.9.9 (ADR-0059)"
               exit 1
             fi
             TAG_VERSION="$TAG"

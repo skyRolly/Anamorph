@@ -1216,24 +1216,37 @@ def first_tagged() -> tuple[int, int, int]:
     return _first_tagged_override or FIRST_TAGGED_VERSION
 
 
-# THE RELEASE LINE. Releases are tagged on this branch (RELEASE_PROCESS.md
-# §Tagging), so a release tag its history holds binds every commit except those
-# it was cut after (whose descendant it tags): every branch headed for it,
-# before the branch merges it, and a commit merged into it when the tag came
-# before that merge (`read_git_tags`). The reader takes it from the
-# remote-tracking `main` of `origin` (what CI's full-history checkout fetches)
-# and of any remote that IS this repository -- in a fork clone `origin` is the
-# fork and the repository is `upstream` -- and from the local branch only where
-# no such remote-tracking branch exists: a local `main` can hold unpushed commits
-# that no release line ever had.
+# The one repository a version link may point into. Checked because a definition
+# is a citation: `https://example.com/x/compare/0.9.7...0.9.8` satisfied every
+# earlier spelling of the rule and resolves to nothing. It is also the
+# repository whose `main` is the release line (`REPOSITORY_REMOTE`).
+REPO_URL = "https://github.com/skyRolly/Anamorph"
+# THE RELEASE LINE is this repository's `main`: releases are tagged there
+# (RELEASE_PROCESS.md §Tagging), so a tag is a release only when that history
+# holds its commit, and it then binds every commit except those it was cut after
+# (whose descendant it tags): every branch headed for `main`, before the branch
+# merges it, and a commit merged into it when the tag came before that merge
+# (`read_git_tags`). A tag `main` does not hold is no release, whatever else
+# holds it: one on a branch never merged into `main` (even the checked-out
+# branch), and one on a fork's `main`. The reader takes `main` from:
+# - the remote-tracking `main` of every remote whose URL IS this repository --
+#   `origin` in CI's full-history checkout, `upstream` in a fork clone -- and of
+#   no other remote: a fork's `main` holds the fork's own tags;
+# - failing any such remote, `origin/main`: the `main` of the repository this
+#   checkout was cloned from (a mirror, a proxy);
+# - failing any remote at all, the local branch: a repository nothing was cloned
+#   from is its own line;
+# and otherwise nothing: the line is unknown, never guessed.
 RELEASE_BRANCH = "main"
-# Any URL GitHub serves this repository at: https, scp-style and ssh:// (with a
-# port, or through `ssh.github.com:443`), matched on the URL git resolves
-# (`git remote get-url`, which applies `insteadOf`). The host is anchored: a
-# local path or another host ending in `/github.com/skyRolly/Anamorph` is a
-# mirror whose `main` can hold commits no release line has.
-REPOSITORY_REMOTE = re.compile(r"^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/#?]+@)?(?:ssh\.)?github\.com"
-                               r"(?::\d+)?[:/]skyRolly/Anamorph(?:\.git)?/?$", re.IGNORECASE)
+# Any URL GitHub serves `REPO_URL`'s repository at: https, scp-style and ssh://
+# (with a port, or through `ssh.github.com:443`), with or without `.git`,
+# matched on the URL git resolves (`git remote get-url`, which applies
+# `insteadOf`). The host is anchored: a local path or another host ending in
+# `/github.com/skyRolly/Anamorph` is a mirror whose `main` can hold commits no
+# release line has, and another owner's repository is a fork.
+_REPO_HOST, _REPO_PATH = REPO_URL.split("://", 1)[1].split("/", 1)
+REPOSITORY_REMOTE = re.compile(rf"^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/#?]+@)?(?:ssh\.)?{re.escape(_REPO_HOST)}"
+                               rf"(?::\d+)?[:/]{re.escape(_REPO_PATH)}(?:\.git)?/?$", re.IGNORECASE)
 
 
 class TagState(NamedTuple):
@@ -1246,12 +1259,13 @@ class TagState(NamedTuple):
     and resolve to nothing. So the check reads the tag refs of the repository
     this file belongs to: local metadata, no network.
 
-    `tags` holds THIS LINE'S tags. Releases are tagged on `main`
-    (RELEASE_PROCESS.md §Tagging), so the line is `main`'s history, and a
-    checkout's line is the tags in HEAD's history and every tag in `main`'s
-    history except those on HEAD's own descendants -- its future. So:
-    - for `main` itself, an older `main` commit or a release tag, the tags in
-      HEAD's history: a tag `main` gained later descends from it, and is this
+    `tags` holds THIS LINE'S tags: the tags in this repository's `main`
+    history (`RELEASE_BRANCH`, `REPOSITORY_REMOTE`) except those on HEAD's own
+    descendants -- its future. Releases are tagged on `main`
+    (RELEASE_PROCESS.md §Tagging), so a tag `main` does not hold is no release,
+    whatever else holds it. So:
+    - for `main` itself, an older `main` commit or a release tag, `main`'s tags
+      in HEAD's history: a tag `main` gained later descends from it, and is this
       commit's future, not a release it omits;
     - for a pull request's commit MERGED into `main`, `main`'s tags from before
       the merge that landed it: the merge descends from the commit, so every
@@ -1264,10 +1278,14 @@ class TagState(NamedTuple):
       checks a same-repo PR at its tip.
     Ancestry decides, not `main`'s first-parent order, which a fast-forward
     rewrites. The tags this binds beyond HEAD's history are also kept in
-    `ahead`, so a finding can say to merge `main`. A tag none of this holds --
-    on another branch never merged into `main`, or one `main` gained after this
-    commit -- is kept apart in `elsewhere`, so a finding can say where it is; it
-    is no release of this checkout's line.
+    `ahead`, so a finding can say to merge `main`. A tag in HEAD's history that
+    `main` does not hold -- cut on a branch never merged into `main`, the
+    checked-out branch included -- is kept in `branch_only`: counting it let a
+    maintenance branch's own tag demand an entry and become the base. A fork's
+    `main` is not read at all, so its own tags are no releases either. Every
+    tag that is not this line's -- those two, one on another branch, one
+    `main` gained after this commit -- is kept apart in `elsewhere`, so a
+    finding can say where it is.
 
     `known` is False when those refs cannot be read (not a git checkout, the path
     is not the checkout's root, git is missing or fails) or cannot be placed (a
@@ -1285,6 +1303,7 @@ class TagState(NamedTuple):
     ahead: frozenset[str] = frozenset()
     headed: bool = False    # `main`'s tags beyond HEAD's history bind it (or it is unmerged)
     unmerged: bool = False  # HEAD is not in `main`'s history at all: a branch headed for it
+    branch_only: frozenset[str] = frozenset()  # in HEAD's history, not in `main`'s
 
 
 # Git's repository-location variables: `git rev-parse --local-env-vars`, plus
@@ -1314,9 +1333,9 @@ def git_env() -> dict[str, str]:
 
 def read_git_tags(root: Path) -> TagState:
     """The tags of the git checkout rooted at `root`, from its local refs, split
-    into this line's (`tags`: HEAD's history, and `main`'s except those tagged
-    on HEAD's descendants, those HEAD lacks also in `ahead`) and the rest
-    (`elsewhere`).
+    into this line's (`tags`: `main`'s except those tagged on HEAD's
+    descendants, those HEAD lacks also in `ahead`) and the rest (`elsewhere`,
+    those in HEAD's history also in `branch_only`).
 
     CI's `docs` job checks out the full history with every tag (`fetch-depth: 0`,
     `fetch-tags: true`); a clone made with `git clone` has the tags that existed
@@ -1326,10 +1345,10 @@ def read_git_tags(root: Path) -> TagState:
     lists may be in the full history although HEAD does not reach it here, and
     `git clone --depth` does not even fetch a tag whose commit lies beyond the
     cut. Reading one as known put a pushed release down as missing, or as
-    another line's; the reason says to unshallow instead. A checkout with no
-    `main` (neither the branch nor `origin/main`) is unknown too: without the
-    release line, a release tagged on it after this branch forked could not be
-    told from another branch's tag.
+    another line's; the reason says to unshallow instead. A checkout without
+    this repository's `main` (`RELEASE_BRANCH` above says where it is looked
+    for) is unknown too: without the release line, a release tagged on it could
+    not be told from another branch's or a fork's tag.
     """
     git = shutil.which("git")
     if git is None:
@@ -1371,22 +1390,40 @@ def read_git_tags(root: Path) -> TagState:
                             "this is a shallow clone, so git cannot tell which release tags "
                             "are in HEAD's history, nor list one beyond the fetched part -- "
                             "fetch the full history with `git fetch --unshallow --tags`")
-        remotes = sorted(n for n in run("remote").stdout.split()
-                         if n == "origin"
-                         or REPOSITORY_REMOTE.search(run("remote", "get-url", n).stdout.strip()))
+        listing = run("remote")
+        if listing.returncode != 0:
+            return TagState(frozenset(), False,
+                            f"git could not list the remotes: {listing.stderr.strip()}")
+        remotes = sorted(listing.stdout.split())
 
         def exists(ref: str) -> bool:
             return run("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
-        line = [r for r in (f"refs/remotes/{n}/{RELEASE_BRANCH}" for n in remotes) if exists(r)]
-        if not line and exists(f"refs/heads/{RELEASE_BRANCH}"):
-            line = [f"refs/heads/{RELEASE_BRANCH}"]
+        # THIS REPOSITORY'S `main` (see `RELEASE_BRANCH`): the remotes that are
+        # this repository, by URL -- never also a fork's `origin/main`, whose own
+        # tags are no releases here; else `origin/main`; else, with no remote at
+        # all, the local branch. A remote that is this repository but whose `main`
+        # was never fetched leaves the line unknown rather than falling back to a
+        # fork's.
+        canonical = [n for n in remotes
+                     if REPOSITORY_REMOTE.search(run("remote", "get-url", n).stdout.strip())]
+        if canonical:
+            line = [r for r in (f"refs/remotes/{n}/{RELEASE_BRANCH}" for n in canonical)
+                    if exists(r)]
+        elif "origin" in remotes:
+            line = [r for r in [f"refs/remotes/origin/{RELEASE_BRANCH}"] if exists(r)]
+        else:
+            line = [r for r in [f"refs/heads/{RELEASE_BRANCH}"] if exists(r) and not remotes]
         if not line:
+            fetch = canonical[0] if canonical else "origin"
             return TagState(frozenset(), False,
-                            f"this checkout has no `{RELEASE_BRANCH}` (neither "
-                            f"`origin/{RELEASE_BRANCH}` nor the local branch), so git cannot "
-                            f"tell a release tagged on it from another branch's tag -- fetch "
-                            f"it with `git fetch origin "
-                            f"{RELEASE_BRANCH}:refs/remotes/origin/{RELEASE_BRANCH}`")
+                            (f"the remote `{fetch}` is this repository, but this checkout has no "
+                             f"`{fetch}/{RELEASE_BRANCH}`" if canonical else
+                             f"this checkout has no `{RELEASE_BRANCH}` of this repository (no "
+                             f"remote whose URL is {REPO_URL}, no `origin/{RELEASE_BRANCH}`, "
+                             f"and, with a remote, no reading of the local branch)")
+                            + f", so git cannot tell a release tagged on it from another "
+                            f"branch's or a fork's tag -- fetch it with `git fetch {fetch} "
+                            f"{RELEASE_BRANCH}:refs/remotes/{fetch}/{RELEASE_BRANCH}`")
 
         def listed(what: str, *args: str) -> set[str] | str:
             got = run("for-each-ref", *args, "--format=%(refname:strip=2)", "refs/tags")
@@ -1410,11 +1447,14 @@ def read_git_tags(root: Path) -> TagState:
         # merge, but equally a branch tip merging two `main` commits with edits of
         # its own -- is a branch: git cannot tell the two apart, so both are bound
         # by `main`'s later releases, and a branch never hides one.
+        # A tag on HEAD's own commit is in its history, not its future.
+        reached = frozenset(mine.stdout.split())
         after = listed("follow HEAD", "--contains=HEAD")
         if isinstance(after, str):
             return TagState(frozenset(), False, after)
+        future = after - reached
         on_line: set[str] = set()
-        unmerged = False  # HEAD not in `main`'s history: a branch headed for it
+        in_main = False   # HEAD is in `main`'s history (else a branch headed for it)
         for r in line:
             anc = run("merge-base", "--is-ancestor", "HEAD", r)
             if anc.returncode not in (0, 1):
@@ -1424,23 +1464,22 @@ def read_git_tags(root: Path) -> TagState:
             bound = listed(f"are in `{RELEASE_BRANCH}`'s history", f"--merged={r}")
             if isinstance(bound, str):
                 return TagState(frozenset(), False, bound)
-            on_line |= bound - after
-            unmerged = unmerged or anc.returncode == 1
+            on_line |= bound - future
+            in_main = in_main or anc.returncode == 0
     except (OSError, subprocess.SubprocessError) as exc:
         return TagState(frozenset(), False, f"git could not run: {exc}")
-    reached = frozenset(mine.stdout.split())
-    ahead = frozenset(on_line) - reached
-    mine_all = reached | ahead
-    elsewhere = frozenset(refs.stdout.split()) - mine_all
+    releases = frozenset(on_line)
+    ahead = releases - reached
+    elsewhere = frozenset(refs.stdout.split()) - releases
+    unmerged = not in_main
     headed = unmerged or bool(ahead)
-    return TagState(mine_all, True,
-                    f"the git tags in this checkout's history"
-                    + (f" and in `{RELEASE_BRANCH}`'s ({', '.join(r.split('/', 2)[2] for r in line)}), "
-                       + ("which this branch is headed for" if unmerged
-                          else "except those tagged after this commit")
-                       if headed else "")
+    return TagState(releases, True,
+                    f"the git tags in `{RELEASE_BRANCH}`'s history "
+                    f"({', '.join(r.split('/', 2)[2] for r in line)})"
+                    + ((", which this branch is headed for" if unmerged
+                        else ", except those tagged after this commit") if headed else "")
                     + " -- `git fetch --tags` brings one pushed since it last fetched",
-                    elsewhere, ahead, headed, unmerged)
+                    elsewhere, ahead, headed, unmerged, reached - releases)
 
 
 # The self-test binds this so its fixtures do not depend on which tags this
@@ -1456,10 +1495,6 @@ def tag_state(root: Path) -> TagState:
     if key not in _tag_state_cache:
         _tag_state_cache[key] = read_git_tags(key)
     return _tag_state_cache[key]
-# The one repository a version link may point into. Checked because a definition
-# is a citation: `https://example.com/x/compare/0.9.7...0.9.8` satisfied every
-# earlier spelling of the rule and resolves to nothing.
-REPO_URL = "https://github.com/skyRolly/Anamorph"
 # A CommonMark link reference definition (§4.7): up to three columns of
 # indentation, the label, a destination that may be angle-bracketed, and an
 # optional title. The first spelling of this required column 0 and a bare
@@ -2235,20 +2270,31 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         return key in released
 
     # A tag that exists but is off this line (`elsewhere`) is not missing, and
-    # the remedy is not to push it. For a branch headed for `main` (`unmerged`),
-    # `main`'s tags are this line's already (`ahead`), so one off the line sits on
-    # some other history; for a commit on or merged into `main` it may be a
-    # release `main` gained later. Where its commit sits is not known here (another branch, or
-    # none), so the finding does not guess.
+    # the remedy is not to push it. One in this checkout's own history
+    # (`branch_only`) was cut on a branch `main` does not hold: it is no release
+    # until `main` holds it. Otherwise, for a branch headed for `main`
+    # (`unmerged`), `main`'s tags are this line's already (`ahead`), so one off
+    # the line sits on some other history; for a commit on or merged into `main`
+    # it may be a release `main` gained later. Where its commit sits is not known
+    # here (another branch, or none), so the finding does not guess.
     def not_here(t: str) -> str:
+        if t in tags.branch_only:
+            return (f"the git tag `{t}` is in this checkout's history but not in "
+                    f"`{RELEASE_BRANCH}`'s")
         return (f"the git tag `{t}` exists but is not in this checkout's history"
                 + (f" nor in `{RELEASE_BRANCH}`'s" if tags.unmerged else ""))
-    # For a branch headed for `main`, `main`'s tags are this line's already, so
-    # one outside the line is on some other history; for a checkout in `main`'s
-    # history, it may be a release `main` gained later.
-    merge_hint = ("if it is this line's release, merge the history that carries it into "
-                  "this branch" + ("" if tags.unmerged
-                                   else f" (`{RELEASE_BRANCH}`, for a release tagged there)"))
+
+    # For a tag in this checkout's own history, merging changes nothing: it
+    # counts once `main` holds it. For a branch headed for `main`, `main`'s tags
+    # are this line's already, so one outside the line is on some other history;
+    # for a checkout in `main`'s history, it may be a release `main` gained later.
+    def merge_hint(t: str) -> str:
+        if t in tags.branch_only:
+            return (f"a tag is a release only once `{RELEASE_BRANCH}` holds its commit -- "
+                    f"releases are tagged on `{RELEASE_BRANCH}` (RELEASE_PROCESS.md §Tagging)")
+        return ("if it is this line's release, merge the history that carries it into "
+                "this branch" + ("" if tags.unmerged
+                                 else f" (`{RELEASE_BRANCH}`, for a release tagged there)"))
 
     def could_be_release(t: str) -> bool:
         # Only a bare version at or above the first tag can be a release, wherever
@@ -2267,7 +2313,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         m = re.fullmatch(rf"{re.escape(REPO_URL)}/compare/([^./]+\.[^./]+\.[^./]+)\.\.\..+", url)
         b = m.group(1) if m else None
         return (f"; `{b}`, which it compares from, is not a base here: {not_here(b)} -- "
-                f"{merge_hint}" if b is not None and b not in named and b in tags.elsewhere
+                f"{merge_hint(b)}" if b is not None and b not in named and b in tags.elsewhere
                 and could_be_release(b) else "")
 
     # Without the tags, only a file that needs none can be checked: one whose
@@ -2376,7 +2422,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             findings.append(
                 f"{path}:{line_no}: `[{key}]` is defined, "
                 + (f"and {not_here(key)}, so it is no release of this line here -- "
-                   f"{merge_hint}; if it is another line's, this file carries no "
+                   f"{merge_hint(key)}; if it is another line's, this file carries no "
                    f"definition for it"
                    if key in tags.elsewhere else
                    f"but there is no git tag `{key}` (read from {tags.source}) -- the link "
@@ -2412,7 +2458,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                 f"before it, but no release tag older than `{key}` is in this checkout's "
                 f"history" + (f" or `{RELEASE_BRANCH}`'s" if tags.headed else "")
                 + f" (read from {tags.source})"
-                + (f" -- {not_here(older[-1])}: {merge_hint}" if older else "")
+                + (f" -- {not_here(older[-1])}: {merge_hint(older[-1])}" if older else "")
                 + f" -- this line's first tag is {'.'.join(map(str, first))}"
             )
             continue
@@ -2430,7 +2476,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                     why += f"; the git tag `{prev}` has no `## [{prev}]` entry in this file"
                 elif below is not None and below != prev and below in tags.elsewhere:
                     why += (f"; `## [{below}]` below it is no comparison base here: "
-                            f"{not_here(below)} -- {merge_hint}")
+                            f"{not_here(below)} -- {merge_hint(below)}")
                     named.add(below)
                 elif below is not None and below != prev:
                     why += (f"; `## [{below}]` below it has no git tag, so it closed "
@@ -2475,7 +2521,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         pending = ""
         if declared and declared[0] in tags.elsewhere:
             pending = (f" (`## [{declared[0]}]` is in the file, and {not_here(declared[0])}: "
-                       f"{merge_hint})")
+                       f"{merge_hint(declared[0])})")
         elif declared:
             pending = (f" (`## [{declared[0]}]` is in the file, but git has no tag "
                        f"`{declared[0]}`: add this section once that tag is pushed)")
@@ -2490,8 +2536,9 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
                          f"{no_release(x)}"
                     if not could_be_release(x) and (x in tags.tags or x in tags.elsewhere)
                     else f"; its definition `{url}` compares from {x}, whose git tag is "
-                         f"not in this checkout's history"
-                         + ("" if said and x == declared[0] else f" -- {merge_hint}")
+                         + (f"in this checkout's history but not in `{RELEASE_BRANCH}`'s"
+                            if x in tags.branch_only else "not in this checkout's history")
+                         + ("" if said and x == declared[0] else f" -- {merge_hint(x)}")
                     if x in tags.elsewhere
                     else f"; its definition `{url}` compares from {x}, a version "
                          f"with no git tag")
@@ -4314,6 +4361,29 @@ def self_test() -> int:
     ]:
         checked += 1
         failures += 0 if count_case(label, expected, lines, tags) else 1
+    # BRANCH-ONLY TAGS (Devin): a 0.9.10 in HEAD's history that `main` does not
+    # hold -- a maintenance branch's own tag -- is no release. It needs no entry
+    # and is no base; a definition or an `[Unreleased]` comparison naming it is
+    # refused with the reason, and never with "merge `main`", which cannot help.
+    BO = TagState(frozenset({"0.9.9"}), True, "the self-test's tags", frozenset({"0.9.10"}),
+                  frozenset(), False, False, frozenset({"0.9.10"}))
+    checked += 1
+    failures += 0 if count_case("R2196 L: a branch-only 0.9.10 in HEAD's history is no "
+                                "release", 0, R99, BO) else 1
+    for label, lines in [
+        ("`[Unreleased]` from it", U + CL([E9, E8, E7], [UR("0.9.10"), TP("0.9.9")])[1:]),
+        ("a definition of it below the release in preparation",
+         CL([E11, E10, E9], [CP("0.9.9", "0.9.11"), CP("0.9.9", "0.9.10"), TP("0.9.9")])),
+    ]:
+        found = found_for(lines, BO)
+        checked += 1
+        if not (len(found) == 1
+                and "is in this checkout's history but not in `main`'s" in found[0]
+                and "a tag is a release only once `main` holds its commit" in found[0]
+                and "merge the history" not in found[0]):
+            failures += 1
+            print(f"self-test FAIL: changelog R2196 L: {label}, over a branch-only 0.9.10, "
+                  f"is refused with the reason: got {found}", file=sys.stderr)
     # ...and a heading spelled so is no entry: the 0.9.10 tag stays unrecorded,
     # whichever non-ASCII digit stands in for the ASCII one.
     for digit in ("\uff10", "\u0660"):
@@ -4620,10 +4690,11 @@ def self_test() -> int:
                               "refuses the missing 0.9.10 as the full clone does",
                               st.known and st.tags == {"0.9.9", "0.9.10", f"{PFX}0.9.11"}
                               and len(analyse(shallow / "CHANGELOG.md", post, shallow)) == 2))
-                # BRANCHES: 0.9.9 tagged on the main line; a `maint` branch forked there
-                # tags 0.9.10; the main line moves on. From the main line, 0.9.10 is
-                # another line's release; from `maint`, it is this line's and needs
-                # its entry. A shallow clone, which cannot place the tags, is unknown.
+                # BRANCHES: 0.9.9 tagged on `main`; a `maint` branch forked there tags
+                # 0.9.10 and is never merged; `main` moves on. `main` does not hold
+                # 0.9.10, so it is no release -- from `main`, nor from `maint`, whose
+                # own history holds it (Devin: branch-only tags). A shallow clone,
+                # which cannot place the tags, is unknown.
                 lines_dir = Path(tmp) / "lines"
                 lines_dir.mkdir()
                 (lines_dir / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
@@ -4643,11 +4714,23 @@ def self_test() -> int:
                 steps.append(("...and the production path accepts the main line's file",
                               analyse(lines_dir / "CHANGELOG.md", post, lines_dir) == []))
                 G(lines_dir, "checkout", "-q", "maint")
+                st = read_git_tags(lines_dir)
+                steps.append(("on the never-merged branch that holds 0.9.10, 0.9.10 is still "
+                              "no release: `main` does not hold it",
+                              st.known and st.tags == {"0.9.9"} and st.branch_only == {"0.9.10"}
+                              and "0.9.10" in st.elsewhere))
                 _tag_state_cache.clear()
-                found = analyse(lines_dir / "CHANGELOG.md", post, lines_dir)
-                steps.append(("on the branch that holds 0.9.10, the same file is refused",
-                              len(found) == 2 and any("git tag `0.9.10` is a release" in f
-                                                      for f in found)))
+                steps.append(("...so the same file is accepted there: no entry needed",
+                              analyse(lines_dir / "CHANGELOG.md", post, lines_dir) == []))
+                from10 = U + CL([E9, E8, E7], [UR("0.9.10"), TP("0.9.9")])[1:]
+                _tag_state_cache.clear()
+                found = analyse(lines_dir / "CHANGELOG.md", from10, lines_dir)
+                steps.append(("...and the branch's 0.9.10 is no `[Unreleased]` base, with a "
+                              "finding that says why and that merging changes nothing",
+                              len(found) == 1 and "compare/0.9.9...HEAD" in found[0]
+                              and "is in this checkout's history but not in `main`'s" in found[0]
+                              and "a tag is a release only once `main` holds its commit"
+                              in found[0] and "merge the history" not in found[0]))
                 G(lines_dir, "checkout", "-q", "-")
                 cut = Path(tmp) / "cut"
                 G(Path(tmp), "clone", "-q", "--depth=1", "--no-tags", lines_dir.as_uri(), str(cut))
@@ -4898,6 +4981,104 @@ def self_test() -> int:
                     st = read_git_tags(fdev)
                     steps.append((f"R2196: ...but `upstream` at {url} is not read",
                                   st.known and "0.9.10" in st.elsewhere and not st.ahead))
+                # FORK-ONLY TAGS (Devin): the repository's `main` has 0.9.9; a fork's
+                # `main` adds and tags 0.9.10, which the repository never released. In
+                # a fork clone (`origin` the fork, `upstream` the repository) the line
+                # is `upstream/main` alone -- not united with the fork's `origin/main`
+                # -- so the fork's 0.9.10 needs no entry and is no base: not from a
+                # branch made from the repository's `main`, nor from the fork's own
+                # `main`, whose history holds it.
+                canon = Path(tmp) / "canon"
+                canon.mkdir()
+                (canon / "CHANGELOG.md").write_text("\n".join(at99) + "\n", encoding="utf-8")
+                G(canon, "init", "-q", "-b", RELEASE_BRANCH)
+                G(canon, "add", "-A")
+                G(canon, "commit", "-q", "-m", "0.9.9 release")
+                G(canon, "tag", "-a", "0.9.9", "-m", "Anamorph 0.9.9")
+                forked = Path(tmp) / "forked.git"
+                G(Path(tmp), "clone", "-q", "--bare", canon.as_uri(), str(forked))
+                fw = Path(tmp) / "fw"
+                G(Path(tmp), "clone", "-q", forked.as_uri(), str(fw))
+                G(fw, "commit", "-q", "--allow-empty", "-m", "the fork's own release")
+                G(fw, "tag", "-a", "0.9.10", "-m", "fork 0.9.10")
+                G(fw, "push", "-q", "origin", RELEASE_BRANCH, "0.9.10")
+                fk = Path(tmp) / "fk"
+                G(Path(tmp), "clone", "-q", forked.as_uri(), str(fk))
+                G(fk, "remote", "add", "upstream", canon.as_uri())
+                G(fk, "fetch", "-q", "--tags", "upstream")
+                G(fk, "remote", "set-url", "origin", "https://github.com/someone/Anamorph.git")
+                G(fk, "remote", "set-url", "upstream", f"{REPO_URL}.git")
+                G(fk, "checkout", "-q", "-b", "feature", f"upstream/{RELEASE_BRANCH}")
+                (fk / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
+                G(fk, "commit", "-q", "-am", "feature: [Unreleased] from 0.9.9")
+                st = read_git_tags(fk)
+                _tag_state_cache.clear()
+                steps.append(("fork-only tags: with the repository's 0.9.9 and a fork's own "
+                              "0.9.10, a branch from the repository's `main` holds 0.9.9 alone",
+                              st.known and st.tags == {"0.9.9"} and "0.9.10" in st.elsewhere
+                              and analyse(fk / "CHANGELOG.md", post, fk) == []))
+                steps.append(("...the line is the repository's `upstream/main`, not also the "
+                              "fork's `origin/main`",
+                              f"(upstream/{RELEASE_BRANCH})" in st.source
+                              and f"origin/{RELEASE_BRANCH}" not in st.source))
+                G(fk, "checkout", "-q", "-b", "on-fork-main", f"origin/{RELEASE_BRANCH}")
+                (fk / "CHANGELOG.md").write_text("\n".join(post) + "\n", encoding="utf-8")
+                G(fk, "commit", "-q", "-am", "on the fork's main: [Unreleased] from 0.9.9")
+                st = read_git_tags(fk)
+                _tag_state_cache.clear()
+                steps.append(("...and on the fork's own `main`, whose history holds the fork's "
+                              "0.9.10, it is still no release",
+                              st.known and st.tags == {"0.9.9"} and st.branch_only == {"0.9.10"}
+                              and analyse(fk / "CHANGELOG.md", post, fk) == []))
+                # A remote that IS the repository but whose `main` was never fetched:
+                # unknown, naming that remote -- not a fall back to the fork's `main`.
+                upstream_main = G(fk, "rev-parse", f"upstream/{RELEASE_BRANCH}").strip()
+                G(fk, "update-ref", "-d", f"refs/remotes/upstream/{RELEASE_BRANCH}")
+                st = read_git_tags(fk)
+                steps.append(("...with the repository's remote but not its `main`, the line is "
+                              "unknown, with the remedy -- not the fork's `main`",
+                              not st.known and "`upstream`" in st.source
+                              and f"git fetch upstream {RELEASE_BRANCH}:refs/remotes/upstream/"
+                              f"{RELEASE_BRANCH}" in st.source))
+                G(fk, "update-ref", f"refs/remotes/upstream/{RELEASE_BRANCH}", upstream_main)
+                # NO REMOTE THAT IS THE REPOSITORY: an ordinary clone's `origin/main`
+                # (here a local path, as a mirror or proxy would be) is the line...
+                oc = Path(tmp) / "oc"
+                G(Path(tmp), "clone", "-q", canon.as_uri(), str(oc))
+                G(oc, "checkout", "-q", "-b", "feature")
+                st = read_git_tags(oc)
+                steps.append(("with no remote that is the repository, an ordinary clone reads "
+                              "`origin/main`", st.known and st.tags == {"0.9.9"}
+                              and f"(origin/{RELEASE_BRANCH})" in st.source))
+                # ...and a checkout whose remotes offer neither is unknown: its local
+                # `main` is not read while a remote exists that the line could be on.
+                G(oc, "remote", "rename", "origin", "mirror")
+                st = read_git_tags(oc)
+                steps.append(("...but with neither, and a remote, the local `main` is not "
+                              "guessed at: unknown, with the remedy",
+                              not st.known and f"git fetch origin {RELEASE_BRANCH}:refs/remotes/"
+                              f"origin/{RELEASE_BRANCH}" in st.source))
+                # A SKIPPED VERSION on the repository's line: 0.9.9 tagged, 0.9.10 closed
+                # untagged, 0.9.11 tagged. 0.9.11 is the newest release and compares
+                # against 0.9.9; `[Unreleased]` runs from 0.9.11, never from 0.9.10.
+                sk = Path(tmp) / "sk"
+                G(Path(tmp), "clone", "-q", canon.as_uri(), str(sk))
+                G(sk, "commit", "-q", "--allow-empty", "-m", "0.9.10 closed untagged")
+                G(sk, "commit", "-q", "--allow-empty", "-m", "0.9.11 release")
+                G(sk, "tag", "-a", "0.9.11", "-m", "Anamorph 0.9.11")
+                G(sk, "update-ref", f"refs/remotes/origin/{RELEASE_BRANCH}", "HEAD")
+                skipped = U + CL([E11, E10, E9], [UR("0.9.11"), CP("0.9.9", "0.9.11"),
+                                                  TP("0.9.9")])[1:]
+                _tag_state_cache.clear()
+                steps.append(("a skipped version on the line: 0.9.9 and 0.9.11 tagged, 0.9.10 "
+                              "recorded untagged, `[Unreleased]` from 0.9.11 -- accepted",
+                              analyse(sk / "CHANGELOG.md", skipped, sk) == []))
+                skipped10 = U + CL([E11, E10, E9], [UR("0.9.10"), CP("0.9.9", "0.9.11"),
+                                                    TP("0.9.9")])[1:]
+                _tag_state_cache.clear()
+                found = analyse(sk / "CHANGELOG.md", skipped10, sk)
+                steps.append(("...and from the untagged 0.9.10, refused for 0.9.11",
+                              len(found) == 1 and "compare/0.9.11...HEAD" in found[0]))
                 # A tag name that is not UTF-8 is no release, and does not stop the run.
                 with open(up / ".git" / "packed-refs", "ab") as packed:
                     packed.write(G(up, "rev-parse", "HEAD").strip().encode() +
@@ -5530,6 +5711,136 @@ def self_test() -> int:
                 failures += 1
                 print(f"self-test FAIL [extractor]: {name}\n  expected: {expected}\n"
                       f"  got:      {got}", file=sys.stderr)
+
+    # ---- ONE RELEASE-TAG GRAMMAR: `release.yml` AND `RELEASE_TAG` (Devin) --------
+    #
+    # A release tag is a bare `x.y.z` with no leading zero (ADR-0059): what
+    # `RELEASE_TAG` reads the tags with, and what `release.yml` must cut a
+    # release from. Its trigger glob `[0-9]+.[0-9]+.[0-9]+` cannot refuse a
+    # leading zero, so the workflow's validate step is the authority -- and it
+    # accepted `0.09.10` while this checker called it no release. So the step is
+    # extracted from the workflow and RUN, verbatim, in scratch repositories (the
+    # tag, a CMake version naming it, a dated entry, the real extractor), and
+    # must accept exactly the tags `RELEASE_TAG` accepts, annotated; the trigger
+    # must admit every one of them, or a real release would never start.
+    # Skipped WITH A NOTE where `bash`, `git` or `awk` is missing (Windows
+    # developer machines); the `docs` job and `preflight.sh` have all three.
+    workflow = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
+    tools = {t: shutil.which(t) for t in ("bash", "git", "awk")}
+    if not all(tools.values()):
+        print("check-docs: NOTE -- no " + ", ".join(f"`{t}`" for t, w in tools.items() if not w)
+              + " on PATH, so release.yml's tag validation was not run (it runs in CI and in "
+              "preflight.sh).", file=sys.stderr)
+    else:
+        wf = workflow.read_text(encoding="utf-8").splitlines() if workflow.is_file() else []
+
+        def block_after(start: int) -> list[str]:
+            # The lines indented deeper than line `start`, up to the first that is not.
+            depth = len(wf[start]) - len(wf[start].lstrip())
+            out = []
+            for line in wf[start + 1:]:
+                if line.strip() and len(line) - len(line.lstrip()) <= depth:
+                    break
+                out.append(line)
+            return out
+        push = next((n for n, l in enumerate(wf) if l.strip() == "push:"), None)
+        tag_at = next((n for n in range(push or 0, len(wf)) if wf[n].strip() == "tags:"), None)
+        globs = [m.group(1) for l in (block_after(tag_at) if tag_at is not None else [])
+                 for m in [re.fullmatch(r"\s*-\s*[\"']?(.*?)[\"']?\s*", l)] if m and m.group(1)]
+        meta = next((n for n, l in enumerate(wf) if l.strip() == "id: meta"), None)
+        run_at = next((n for n in range(meta or 0, len(wf)) if wf[n].strip() == "run: |"), None)
+        body = block_after(run_at) if meta is not None and run_at is not None else []
+        indent = min((len(l) - len(l.lstrip()) for l in body if l.strip()), default=0)
+        script = "\n".join(l[indent:] for l in body)
+
+        def glob_regex(pattern: str) -> re.Pattern[str]:
+            # GitHub's filter pattern: `*` any run without `/`, `**` any run, `?`
+            # and `+` zero-or-one and one-or-more of the character before, `[...]`
+            # one character of the set; everything else is itself.
+            out, i = [], 0
+            while i < len(pattern):
+                if pattern[i] == "[":
+                    j = pattern.index("]", i)
+                    out.append(pattern[i:j + 1])
+                    i = j + 1
+                    continue
+                if pattern.startswith("**", i):
+                    out.append(".*")
+                    i += 2
+                    continue
+                c = pattern[i]
+                out.append("[^/]*" if c == "*" else c if c in "+?" else re.escape(c))
+                i += 1
+            return re.compile("".join(out))
+
+        def triggers(tag: str) -> bool:
+            hit = False
+            for g in globs:
+                if g.startswith("!"):
+                    hit = hit and not glob_regex(g[1:]).fullmatch(tag)
+                else:
+                    hit = hit or bool(glob_regex(g).fullmatch(tag))
+            return hit
+
+        def validate(tag: str, annotated: bool = True) -> bool:
+            # The validate step, run as the tag push runs it: True when it passes.
+            with tempfile.TemporaryDirectory() as box:
+                box_dir = Path(box)
+                origin_dir, work = box_dir / "origin", box_dir / "work"
+                origin_dir.mkdir()
+                env = dict(git_env(), GIT_CONFIG_NOSYSTEM="1",
+                           GIT_CONFIG_GLOBAL=os.devnull, LC_ALL="C.UTF-8")
+
+                def git_in(where: Path, *args: str) -> None:
+                    subprocess.run([tools["git"], "-C", str(where), "-c", "user.name=self-test",
+                                    "-c", "user.email=self-test@invalid", "-c", "tag.gpgsign=false",
+                                    "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                                    *args], capture_output=True, check=True, env=env)
+                git_in(origin_dir, "init", "-q", "-b", RELEASE_BRANCH)
+                (origin_dir / "CMakeLists.txt").write_text(
+                    f"project(Anamorph VERSION {tag} LANGUAGES C CXX)\n", encoding="utf-8")
+                (origin_dir / "CHANGELOG.md").write_text(
+                    f"# Changelog\n\n## [{tag}] — 2026-10-10\n### Fixed\n- x\n", encoding="utf-8")
+                (origin_dir / "scripts").mkdir()
+                shutil.copy(extractor, origin_dir / "scripts" / extractor.name)
+                git_in(origin_dir, "add", "-A")
+                git_in(origin_dir, "commit", "-q", "-m", "release")
+                git_in(origin_dir, "tag", *(["-a", "-m", f"Anamorph {tag}"] if annotated else []),
+                       tag)
+                git_in(box_dir, "clone", "-q", origin_dir.as_uri(), str(work))
+                (box_dir / "out").write_text("", encoding="utf-8")
+                done = subprocess.run(
+                    [tools["bash"], "-c", script], cwd=work, capture_output=True, text=True,
+                    env=dict(env, GITHUB_REF=f"refs/tags/{tag}", GITHUB_SHA="0" * 40,
+                             RUNNER_TEMP=str(box_dir), GITHUB_OUTPUT=str(box_dir / "out")))
+                return (done.returncode == 0
+                        and "is-release=true" in (box_dir / "out").read_text(encoding="utf-8"))
+
+        checked += 1
+        if not (globs and script and extractor.is_file()):
+            failures += 1
+            print("self-test FAIL [release tag grammar]: release.yml's tag trigger or its "
+                  "`id: meta` validate step could not be found", file=sys.stderr)
+        else:
+            for tag in ("0.9.9", "0.9.10", "0.10.0", "1.0.0", "10.20.30",
+                        "0.09.10", "00.9.10", "0.09.010", "0.9.010", f"{PFX}0.9.10",
+                        "0.9", "0.9.10.1", "0.9.10-rc1", "0.9.1\uff10"):
+                release = bool(RELEASE_TAG.fullmatch(tag))
+                checked += 1
+                ran = validate(tag)
+                if ran != release or (release and not triggers(tag)):
+                    failures += 1
+                    print(f"self-test FAIL [release tag grammar]: `{tag}` -- RELEASE_TAG "
+                          f"{'accepts' if release else 'refuses'} it, release.yml's validate "
+                          f"step {'passes' if ran else 'refuses'} it"
+                          + (", and its trigger does not start" if release and not triggers(tag)
+                             else ""), file=sys.stderr)
+            checked += 1
+            if validate("0.9.10", annotated=False):
+                failures += 1
+                print("self-test FAIL [release tag grammar]: a lightweight `0.9.10` passes "
+                      "release.yml's validate step, which requires an annotated tag",
+                      file=sys.stderr)
 
     # Counted as they run, never hand-maintained: the previous literal
     # (`len(cases) + 2 + 5 + 3`) drifted the moment a case was added, and the
