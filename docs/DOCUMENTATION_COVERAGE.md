@@ -13048,14 +13048,15 @@ So a pull request could go green and then break `main`.
 **The rule.** Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging), so the release line is `main`'s
 history. `main` is the remote-tracking `main` of `origin`, which CI's full-history checkout fetches, and of any
 remote whose URL is this repository (a fork clone's `upstream`). The local branch is read only where no such branch
-exists. HEAD is placed on each:
+exists; the repository is recognised under any URL GitHub serves it at, as `git remote get-url` resolves it. HEAD
+is placed on each:
 - **on `main`'s first-parent line** (`main`, an older `main` commit, a release tag): `HEAD`'s history. A later tag
   is its future;
 - **not in `main`'s history** (a branch headed for `main`): `HEAD`'s history and `main`'s. The tags it lacks are kept
   in `ahead`, and the missing-entry finding names them as releases on `main` that the branch's history does not
   hold, with "merge `main`" as the remedy;
-- **merged through a merge's second parent** (a pull request's commit after its merge): `HEAD`'s history and `main`'s
-  as it stood just before that merge;
+- **merged into `main` off its first-parent line** (a pull request's commit after its merge, the tip or an earlier
+  one): `HEAD`'s history and `main`'s as it stood just before the merge that landed it;
 - **no `main` at all**: unknown, with `git fetch origin main:refs/remotes/origin/main` as the remedy.
 
 A tag on none of these is another line's (`elsewhere`), as before.
@@ -13067,7 +13068,7 @@ The ordering the review asked for already held and still holds:
 
 **After the fix:** T1 FAIL (2); T2 FAIL (2), naming 0.9.10 as a release on `main`; T2m FAIL (2).
 
-**Self-test.** 564 → 627 cases.
+**Self-test.** 564 → 633 cases.
 - 18 count cases: the review's acceptance cases A–J, including D with 0.9.10 on `main` unmerged, and F's
   invalid form (0.9.11 tagged and not recorded, 0.9.10 untagged: the base is 0.9.11, never 0.9.10).
 - 8 wording checks: every form of `[Unreleased]` over a missing 0.9.10 names it; a release on `main` is named
@@ -13080,29 +13081,32 @@ The ordering the review asked for already held and still holds:
   - a single-branch clone without `main` is unknown and refuses once, and after the remedy it names it reads the
     line;
   - a local `main` with an unpushed commit, behind a fetched `origin/main` holding 0.9.10, is bound by it;
-  - a merged pull request's commit is bound by the 0.9.10 `main` had then, not by the 0.9.11 tagged after;
-  - in a fork clone the repository's own `main`, under `upstream`, binds the branch;
+  - a merged pull request's tip and its earlier commit are each bound by the 0.9.10 `main` had then, not by the
+    0.9.11 tagged after;
+  - in a fork clone the repository's own `main`, under `upstream`, binds the branch at five URL forms (https,
+    `ssh.github.com:443`, an ssh port, scp-style, an `insteadOf` alias); a remote under another URL is not read;
   - a tag name that is not UTF-8 is read, not fatal.
 - The reader test repositories are now created on `main`.
-- Each step of the tag-reader case now counts as a case of its own, 38 cases from one. Before this, a mutant
+- Each step of the tag-reader case now counts as a case of its own, 44 cases from one. Before this, a mutant
   failing three steps reported "3 of N cases" failed when one case had.
 
-**Mutation.** Fifty mutants each fail the self-test, on a clean clone of the final checker; the counts are in
+**Mutation.** Fifty-three mutants each fail the self-test, on a clean clone of the final checker; the counts are in
 ADR-0058's evidence. None is killed by a crash. Among them:
 
 | Mutant | Failing cases |
 |---|---|
-| the intersection | 20 |
-| a missing entry ignored | 34 |
-| `newest_tagged` before reconciliation | 20 |
-| `[Unreleased]` from the newest entry | 44 |
-| other branches' tags counted | 12 |
+| the intersection | 21 |
+| a missing entry ignored | 35 |
+| `newest_tagged` before reconciliation | 21 |
+| `[Unreleased]` from the newest entry | 45 |
+| other branches' tags counted | 18 |
 | the first-tag guard removed | 22 |
 | the skipped-tag fix reverted | 26 |
-| `main`'s tags ignored (this pass's defect) | 6 |
-| the any-ref rule (a local `main` hiding `origin/main`'s release) | 2 |
-| a merged pull request's commit read as `main`'s past | 1 |
-| a fork's `upstream` ignored | 1 |
+| `main`'s tags ignored (this pass's defect) | 11 |
+| the any-ref rule (a local `main` hiding `origin/main`'s release) | 3 |
+| a merged pull request's commit read as `main`'s past | 2 |
+| an earlier merged commit's landing missed (first-parent-only walk) | 1 |
+| a fork's `upstream` ignored | 5 |
 
 **Review.** Three reviewers (code, a hunt for any remaining hidden-release path, documents against code), with a
 skeptic per finding, confirmed 16 findings and refuted 3. All are fixed:
@@ -13126,6 +13130,24 @@ skeptic per finding, confirmed 16 findings and refuted 3. All are fixed:
 The refuted three: the "merge `main`" remedy (correct for this rule), the same overclaim reached by a
 non-reproducing path, and PR #159's description (not a repository file; updated with this pass).
 
+**Verification round.** Two reviewers (code and CI contexts; documents against code), each finding checked by a
+skeptic, confirmed 8 findings and refuted none. All are fixed:
+- **One blocking.** A merged pull request's commit that is not the merge's own second parent was bound by nothing.
+  `rev-list --first-parent --ancestry-path` marks a first-parent commit only when HEAD is its direct parent. So
+  every earlier commit of a merged pull request read `HEAD`'s history alone, and a re-run of its push check
+  passed with `main`'s earlier release hidden. PR #158's non-tip commits on `origin/main` are such commits. The
+  landing merge is now the oldest first-parent commit among HEAD's descendants (`--ancestry-path` alone), and a
+  test checks an earlier commit as well as the tip.
+- **The repository's other URLs.** `upstream` at `ssh.github.com:443`, at an explicit ssh port, or under an
+  `insteadOf` alias was not recognised. Remotes are now matched on `git remote get-url`, against every form GitHub
+  serves.
+- **Stale statements:**
+  - a merged commit's source said "which this branch is headed for";
+  - the `TagState` docstring described two placements, not three;
+  - a comment repeated "(`tag_state`)";
+  - ADR-0058's Related code named the removed `RELEASE_BRANCH_REFS`;
+  - `ADR_INDEX.md` said all of `main` binds a merged commit.
+
 **Cost, stated.** Every open branch whose file lacks a new release's entry fails at its tip until it merges
 `main`. That is the price of checking at the tip what `main` will check after the merge. A branch whose last check
 predates a release keeps its green status until it is pushed or its checks are re-run.
@@ -13136,7 +13158,7 @@ predates a release keeps its green status until it is pushed or its checks are r
 - `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
 - ADR-0058 (status line, the applicable-tag and release-line bullets, the amendment record, the self-test list,
   Consequences, Related code, Evidence) and its `ADR_INDEX.md` row;
-- ADR-0059's counts (627; a prefixed URL fails 124);
+- ADR-0059's counts (633; a prefixed URL fails 125);
 - `CI_CD.md` (the `docs` row and the local-run note, with the remotes read and the remedy);
 - `REPOSITORY_MAP.md`'s `check-docs.py` row;
 - the policy template's comparison base.

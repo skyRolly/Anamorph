@@ -65,7 +65,8 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    branch forked is one the branch will land on, so it counts before the branch merges it; and for a
    pull request's commit already merged into `main`, it is `HEAD`'s history and `main`'s as it stood
    just before that merge (`git for-each-ref --merged`). `main` is the remote-tracking `main` of
-   `origin`, or of any remote that is this repository (a fork clone's `upstream`); a local `main` is
+   `origin`, or of any remote that is this repository under any URL GitHub serves it at (a fork clone's
+   `upstream`); a local `main` is
    used only where none exists, since it can hold commits no release line has. A version counts as
    tagged when its tag is one. A prefixed tag, an older one, and one on
    neither history — another branch never merged into `main` — are none of this line's: such a higher
