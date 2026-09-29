@@ -103,10 +103,13 @@ sequence, literally:
    what is binding is that the tagged tree carries the dated heading and the definition, so work
    that landed earlier on the branch already satisfies this and needs no re-commit.
 2. `check-docs.py` (every push) checks the definitions against the repository's **git tags**, not
-   against what `CHANGELOG.md` declares: every version whose tag exists has a definition naming its
-   own tag, compared against the most recent earlier version whose tag exists (the first tag points
-   at its own tag page); no other past version has one; no version older than the first tag has
-   one. The newest version entry is the release in preparation and must carry its definition before
+   against what `CHANGELOG.md` declares. It counts a tag as a release of this line when it is a bare
+   `x.y.z` not older than the first tag and its commit is in `HEAD`'s history; a tag reachable only
+   from another branch is that branch's and is ignored here. Every such release tag has its
+   `## [x.y.z]` entry — one without is reported, so no link can compare past a release the file
+   omits — and a definition naming its own tag, compared against the most recent earlier release tag
+   (the first tag points at its own tag page); no other past version has one; no version older than
+   the first tag has one. The newest version entry is the release in preparation and must carry its definition before
    its tag exists, because this commit writes it. That link is unresolvable only between this commit
    and the tag push in step 3, which is the same interval in which the dated heading names a release
    that does not exist yet.
@@ -133,9 +136,12 @@ refuses it, whatever its definition names, while no version in the file has a gi
 throughout the cycle that prepares 0.9.9, when the 0.9.9 entry is in the file but its tag is not.
 Add the section in a commit after the tag push, and fetch the tags first (`git fetch --tags`): the
 checker reads the tag refs of the checkout it runs in, with no network access, so a clone that has
-not fetched the new tag refuses the section. CI's `docs` job fetches every tag. Where the tags
-cannot be read at all (a directory that is not the root of a git checkout), the checker refuses the
-links that depend on them and says why.
+not fetched the new tag refuses the section. It compares from the newest release tag in `HEAD`'s
+history, so tag the release commit on `main` itself: a tag cut on another branch never becomes
+`main`'s base. CI's `docs` job fetches the full history and every tag. Where the tags cannot be read
+at all (a directory that is not the root of a git checkout), or a shallow clone cuts off a release
+tag's commit so git cannot tell whether it is in `HEAD`'s history (run `git fetch --unshallow --tags`),
+the checker refuses the links that depend on them and says why.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**

@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3490` and `.github/workflows/build.yml:3575`, this round being
+`.github/workflows/build.yml:3493` and `.github/workflows/build.yml:3578`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1876,7 +1876,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:711` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:714` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1887,7 +1887,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:471` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:474` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -13005,6 +13005,115 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
 
+## 98th pass — 2026-09-29, every release tag needs its entry; the snapshot header reviewed (PR #159)
+
+**Scope.** Two review findings (Devin) on PR #159 at `f3f2b39`: "Missing release hides the newest tag"
+(`scripts/check-docs.py`) and "Snapshot header changes with its generator"
+(`tests/fixtures/parameter_registry.snapshot:2`). The first changes `check_changelog_links`, `read_git_tags`, the
+self-test and the `docs` job's checkout. The second changes nothing. No production code, parameter,
+serialization, DSP, threading or latency change. No tag was created; every tag in this pass's tests lives in a
+temporary repository.
+
+**Finding 1, reproduced first** (on `f3f2b39`). `newest_tagged` was the newest ENTRY whose tag exists, and
+`previous_of` walked the entries. So the file could hide a release:
+- tags `0.9.9` and `0.9.10`, the file recording only 0.9.9, `[Unreleased]: .../compare/0.9.9...HEAD`: 0 findings;
+- `0.9.10` and `0.9.11` both tagged, neither recorded: 0 findings;
+- every tag ref counted, on whichever branch it sat.
+
+**The invariant.** Every applicable release tag has its `## [x.y.z]` entry before it can be the newest
+comparison base.
+
+**Applicable release tag**, stated in `CHANGELOG_POLICY.md` rule 8 and the ADR-0058 amendment: a bare `x.y.z`
+tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is in `HEAD`'s history
+(`git for-each-ref --merged=HEAD refs/tags`).
+- Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging), so a later `main` commit reaches every one.
+- A tag on another branch that `HEAD` does not reach is another line's release. It needs no entry here and is no
+  base. A definition naming one is refused with "it is on another branch".
+- A prefixed tag and a tag below 0.9.9 are never releases.
+- A lightweight tag counts, as it did before; `release.yml` still refuses to release one.
+- A shallow clone that cuts off a release-shaped tag's commit reads as **unknown**: `--merged` cannot see past the
+  cut. The finding names `git fetch --unshallow --tags`. CI's `docs` job now checks out with `fetch-depth: 0`
+  as well as `fetch-tags: true`.
+
+**The fix.**
+- `releases` is the sorted list of applicable tags.
+- Each release without an entry is a finding at the file's first entry, newest first.
+- `newest_tagged` is the newest release, and `previous_of[v]` the newest release older than `v`.
+- A comparison past a missing release names that release, not "the entry below closed without a tag".
+
+**Required cases, on the fix** (reproduction harness, the production `check_changelog_links` and `tag_state()`):
+
+| Case | Tags | File records | Result |
+|---|---|---|---|
+| A | none | 0.9.9, `[Unreleased]` from 0.9.9 | refused: no base |
+| B | 0.9.9 | 0.9.9 | base 0.9.9, accepted |
+| C | 0.9.9, 0.9.10 | both | base 0.9.10, accepted |
+| D | 0.9.9, 0.9.10 | 0.9.9 only, `[Unreleased]` from 0.9.9 | 2 findings: 0.9.10 missing; base must be 0.9.10 |
+| D2 | 0.9.9, 0.9.10 | 0.9.9 only, `[Unreleased]` from 0.9.10 | 1 finding: 0.9.10 missing |
+| E | 0.9.9, 0.9.12 | 0.9.12, 0.9.11 and 0.9.10 untagged, 0.9.9 | base 0.9.12, accepted |
+| F | 0.9.9 | 0.9.11 and 0.9.10 untagged, 0.9.9 | base 0.9.9, accepted |
+| — | 0.9.9, 0.9.10 and 0.9.11 | 0.9.9 only | 3 findings: 0.9.11 and 0.9.10 missing, newest first; the base |
+| — | 0.9.9 here, 0.9.10 on another branch | 0.9.9 | accepted |
+
+The twelve earlier cases A–J (the 95th and 96th passes) still behave as recorded.
+
+**Self-test.** 537 → 554 cases.
+- The synthetic-fixture loop now runs each fixture against the tags of the versions it records (`fixture_tags()`),
+  so the new rule reads them as their authors meant. Every fixture keeps its old verdict.
+- Two existing expectations changed by design:
+  - a misspelled first-tag heading is one finding, not two: the tag is now the base, and the heading's own finding
+    covers it;
+  - the reader test's lightweight `0.9.10` on `HEAD` is now a release with no entry, so the production path
+    refuses `[Unreleased]` from 0.9.9 there, naming 0.9.10.
+- The 13 new count cases and 4 new wording checks are listed in ADR-0058's amendment.
+- The reader test gained a two-line topology in a real temporary repository: `main` tags 0.9.9, `maint` tags
+  0.9.10, `main` moves on.
+  - On `main`, 0.9.10 is elsewhere and the file is accepted.
+  - On `maint`, the file is refused for the missing 0.9.10.
+  - A shallow clone cut below both tags is unknown, with the remedy, until `git fetch --unshallow --tags`.
+- **Mutation.** Twenty-five mutants each fail it; the counts are in ADR-0058's evidence. Among them, the ones the
+  review asked for:
+  - the intersection (the finding's own repro): 8;
+  - a missing entry ignored: 10;
+  - the newest entry with a tag-looking link as the base: 16;
+  - other branches' tags counted: 5;
+  - the no-tag `[Unreleased]` refusal removed: 18;
+  - the skipped-tag fix reverted: 22.
+
+**Finding 2: the snapshot header changed with its generator. Justified; kept.** Investigated, not reverted:
+1. *What changed:* lines 2–3 of `tests/fixtures/parameter_registry.snapshot`, from "(ADR + PARAMETER_REGISTRY.md /
+   update required)" to "update PARAMETER_REGISTRY.md (and add an ADR where PARAMETER_COMPATIBILITY_POLICY.md
+   requires one), then:". Commit `0fd0eb6` (2026-09-28, the 92nd pass).
+2. *The generator changed identically in the same commit.* The header is written by `registry::` in
+   `tests/state_tests.cpp:238-240`; the fixture-workflow comment and the failure note changed with it. The
+   header is therefore what `--write-snapshot` emits today, so a regeneration reproduces it byte for byte.
+3. *Why:* the 91st pass reported the old header as drift. It said every regeneration needs an ADR, while
+   `PARAMETER_COMPATIBILITY_POLICY.md` rule 2 (and ADR-0002) let a display name change without one. That is
+   exactly the Dimensional rename (`1f0bc7c`), which re-froze the snapshot. The 92nd pass then corrected it.
+4. *Records unchanged:* every non-comment line (670 of 673) is byte-identical across `1f0bc7c`, `origin/main`
+   (`b755cfb`), `0fd0eb6^` and this branch; `git diff origin/main` on the file touches lines 2–3 only. No
+   parameter ID, name, range, default, choice list, count, order, or the bypass line changed.
+5. *No version or notation content:* the two lines name no version; the ADR-0059 sweep did not touch them.
+6. *No effect on validation:* `registry::compare` skips a line when both sides start with `#`
+   (`tests/state_tests.cpp:299`), so the header cannot make the comparison pass or fail. The State suite passes on
+   this pass's source.
+7. *Not part of the version-format sweep:* it came in the 92nd pass's documentation corrections, ten commits
+   before the ADR-0059 sweep (`bfa9c73`), which does not touch the file.
+8. *Correct as written:* it now says what the policy says. Reverting it would restore a statement the policy
+   contradicts, and would need the generator reverted too, or the next `--write-snapshot` would change it back.
+
+**Historical capture.** `tests/fixtures/field_capture_0_9_5.session.manifest` still reads `emitter=v0.9.5`,
+byte-identical to `72fe2e0` (97th pass).
+
+**Documents:** `CHANGELOG_POLICY.md` rule 8; `RELEASE_PROCESS.md` §Tagging (the check's step 2, and the
+`[Unreleased]` paragraph); ADR-0058 (status line, Decision, Consequences, Related code, self-test list,
+Evidence) and its `ADR_INDEX.md` row; ADR-0059's self-test evidence (554 cases; a prefixed URL fails 98, a
+prefixed git tag counted as a release 4); `CI_CD.md` (the `docs` row and the local-run note);
+`REPOSITORY_MAP.md`'s `check-docs.py` row; `build.yml`'s `docs` checkout comment. `CHANGELOG.md` is not changed:
+the rule governs how the file is checked, and 0.9.9 is still the release in preparation with no tag.
+
+**This file:** this entry and the *Last updated* line.
+
 ## 97th pass — 2026-09-29, the 0.9.5 capture restored; the 0.9.6 first-tag plan is history (PR #159)
 
 **Scope.** Two review findings (Devin) on PR #159, and a narrow search for the same kinds of defect. No
@@ -15963,7 +16072,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:519-524` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:522-527` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)

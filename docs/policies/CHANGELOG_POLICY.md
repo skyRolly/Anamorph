@@ -56,18 +56,25 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 
    **Whether a version was tagged is what the repository's git tags say, not what this file
    declares.** `check-docs.py` reads the tag refs of the checkout it runs in (no network; CI's `docs`
-   job fetches every tag), and a version counts as tagged when its bare tag exists and it is not older
-   than the first tag. The definitions must agree with the tags. Versions older than `0.9.9` were never
+   job fetches the full history and every tag). A tag is a **release tag of this line** when it is the
+   bare `x.y.z` form, not older than the first tag, and its commit is in `HEAD`'s history (`git
+   for-each-ref --merged=HEAD`); a version counts as tagged when its tag is one. A prefixed tag, an
+   older one, and one reachable only from another branch are none of this line's: a higher tag cut on
+   an unrelated branch neither needs an entry here nor becomes a base. **Every release tag needs its
+   `## [x.y.z]` entry**: the check reports each one that has none, newest first, so the newest release tag is always
+   a recorded version and no link can compare past one the file omits. The definitions must agree with
+   the tags. Versions older than `0.9.9` were never
    tagged and must have no definition — there is no page to link. After the first tag a version may
    still close without one: git has no tag for it, its entry stays, it carries **no** definition (as
    0.9.7 and 0.9.8 do), and it is never a comparison base; a version whose tag exists carries its
    definition. The one exception is the newest version entry while it is the **release in
    preparation** (no `## [Unreleased]` above it): it must carry its definition whether or not its tag
    has been pushed yet. An `[Unreleased]` section's definition is `/compare/<last tag>...HEAD`, from the
-   newest version whose tag exists. Until a tag exists there is no base, so the section itself is
+   newest release tag in `HEAD`'s history, which must itself have its entry. Until a tag exists there is no base, so the section itself is
    refused, whatever its definition names — including before the `0.9.9` tag is pushed, although the
    0.9.9 entry is in the file — and unreleased work goes in the dated entry it will ship in (§Entry
-   template). Where the tags cannot be read (not the root of a git checkout, no `git`), the check refuses
+   template). Where the tags cannot be read (not the root of a git checkout, no `git`, or a shallow clone
+   whose history cuts off a release-shaped tag, so git cannot tell whether it is this line's), the check refuses
    the file's release links with one finding that gives the reason, and still checks what needs no tags;
    a file whose only version at or above the first tag is the release in preparation needs none. The definition is written **in the
    release commit**, before the tag exists, because a tag can only point at a commit that already does
