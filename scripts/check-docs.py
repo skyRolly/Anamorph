@@ -4701,8 +4701,8 @@ def self_test() -> int:
                 G(lone, "fetch", "-q", "origin", "main:refs/remotes/origin/main")
                 st = read_git_tags(lone)
                 steps.append(("R2196: ...after the remedy it names, the release line is read",
-                              "git fetch origin main:refs/remotes/origin/main" in
-                              found[0] and st.known and st.headed
+                              len(found) == 1 and "git fetch origin main:refs/remotes/origin/main"
+                              in found[0] and st.known and st.headed
                               and st.tags == {"0.9.9", "0.9.10"}))
                 # A LOCAL `main` that has left `origin/main` (unpushed commits) is no
                 # release line: `origin/main` is, and its newer release binds HEAD
@@ -4776,9 +4776,12 @@ def self_test() -> int:
                 with open(up / ".git" / "packed-refs", "ab") as packed:
                     packed.write(G(up, "rev-parse", "HEAD").strip().encode() +
                                  b" refs/tags/bad\xff\n")
-                st = read_git_tags(up)
-                steps.append(("a tag name that is not UTF-8 is read, not fatal",
-                              st.known and any(t.startswith("bad") for t in st.tags)))
+                try:
+                    st = read_git_tags(up)
+                    ok = st.known and any(t.startswith("bad") for t in st.tags)
+                except ValueError:
+                    ok = False
+                steps.append(("a tag name that is not UTF-8 is read, not fatal", ok))
                 (repo_dir / "docs").mkdir()
                 steps.append(("a subdirectory of a checkout is not its root: unknown",
                               not read_git_tags(repo_dir / "docs").known))
