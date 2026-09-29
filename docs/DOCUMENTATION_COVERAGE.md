@@ -13029,17 +13029,20 @@ tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is i
 - Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging), so a later `main` commit reaches every one.
 - A tag on another branch that `HEAD` does not reach is another line's release. It needs no entry here and is no
   base. A definition naming one is refused with "it is on another branch".
-- A prefixed tag and a tag below 0.9.9 are never releases.
+- A prefixed tag, a tag below 0.9.9 and a tag with a leading zero (`0.09.10`, `RELEASE_TAG`) are never releases.
 - A lightweight tag counts, as it did before; `release.yml` still refuses to release one.
-- A shallow clone that cuts off a release-shaped tag's commit reads as **unknown**: `--merged` cannot see past the
-  cut. The finding names `git fetch --unshallow --tags`. CI's `docs` job now checks out with `fetch-depth: 0`
-  as well as `fetch-tags: true`.
+- A shallow clone reads as **unknown**, whatever tags it holds: `--merged` cannot see past the cut, and
+  `git clone --depth` does not fetch a tag whose commit lies beyond it. The finding names
+  `git fetch --unshallow --tags`. CI's `docs` job now checks out with `fetch-depth: 0` as well as
+  `fetch-tags: true`.
 
 **The fix.**
 - `releases` is the sorted list of applicable tags.
 - Each release without an entry is a finding at the file's first entry, newest first.
 - `newest_tagged` is the newest release, and `previous_of[v]` the newest release older than `v`.
 - A comparison past a missing release names that release, not "the entry below closed without a tag".
+- A tag that exists only on another branch is named as such, with the remedy (merge the commit it tags, on
+  `main`), in every finding that turns on it; none says git has no such tag.
 
 **Required cases, on the fix** (reproduction harness, the production `check_changelog_links` and `tag_state()`):
 
@@ -13057,7 +13060,7 @@ tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is i
 
 The twelve earlier cases A–J (the 95th and 96th passes) still behave as recorded.
 
-**Self-test.** 537 → 554 cases.
+**Self-test.** 537 → 558 cases.
 - The synthetic-fixture loop now runs each fixture against the tags of the versions it records (`fixture_tags()`),
   so the new rule reads them as their authors meant. Every fixture keeps its old verdict.
 - Two existing expectations changed by design:
@@ -13065,20 +13068,47 @@ The twelve earlier cases A–J (the 95th and 96th passes) still behave as record
     covers it;
   - the reader test's lightweight `0.9.10` on `HEAD` is now a release with no entry, so the production path
     refuses `[Unreleased]` from 0.9.9 there, naming 0.9.10.
-- The 13 new count cases and 4 new wording checks are listed in ADR-0058's amendment.
+- The 14 new count cases and 7 new wording checks are listed in ADR-0058's amendment.
 - The reader test gained a two-line topology in a real temporary repository: `main` tags 0.9.9, `maint` tags
   0.9.10, `main` moves on.
   - On `main`, 0.9.10 is elsewhere and the file is accepted.
   - On `maint`, the file is refused for the missing 0.9.10.
   - A shallow clone cut below both tags is unknown, with the remedy, until `git fetch --unshallow --tags`.
-- **Mutation.** Twenty-five mutants each fail it; the counts are in ADR-0058's evidence. Among them, the ones the
+- A depth-1 clone is unknown without its tags and with every tag fetched and reached; the production path
+  refuses once, naming it. Unshallowed, it reads as the full clone does.
+- **Mutation.** Thirty-one mutants each fail it; the counts are in ADR-0058's evidence. Among them, the ones the
   review asked for:
   - the intersection (the finding's own repro): 8;
   - a missing entry ignored: 10;
-  - the newest entry with a tag-looking link as the base: 16;
-  - other branches' tags counted: 5;
-  - the no-tag `[Unreleased]` refusal removed: 18;
-  - the skipped-tag fix reverted: 22.
+  - the newest entry with a tag-looking link as the base: 17;
+  - other branches' tags counted: 3;
+  - the no-tag `[Unreleased]` refusal removed: 19;
+  - the skipped-tag fix reverted: 24.
+
+**Review.** Three read-only reviewers (checker correctness, test adequacy and safety, documentation facts), each
+finding checked by a skeptic, confirmed 15 findings and refuted none. They are 9 distinct defects, all fixed.
+- **Three in the checker, all in this pass's own change** (5 findings):
+  - Another branch's tag was still called missing in three findings: the `[Unreleased]` refusal ("git has no tag
+    `0.9.9`: add this section once that tag is pushed"), its definition, and the no-base finding. The fourth, the
+    entry below a comparison, is covered by the same fix. It is reachable with this repository's workflow. After
+    `main` tags the merge commit of a PR, the PR branch does not have the tag until it merges `main`; the old
+    remedy could not clear the finding, and the definition finding's remedy (drop the definition) would break
+    `main`. Each now names the other branch and the merge.
+  - A shallow clone that never fetched a release tag read as "known, no tags": false findings, and a remedy
+    (`git fetch --tags`) that leaves the clone shallow. A shallow clone is now always unknown. That also removes
+    the partial-cut rule, which no case pinned (a mutant keeping only the all-cut case passed all 554).
+  - `\d+` accepted a leading-zero tag (`0.09.10`) as a release, which demanded an entry no heading can carry.
+- **Six in the documents and comments** (10 findings), wording this pass left behind:
+  - `CHANGELOG_POLICY.md` rule 8 and its template, and `RELEASE_PROCESS.md` §Tagging, still used "whose tag exists"
+    and "while no version in the file has a git tag". They now say "tagged" and "while this line has no release
+    tag".
+  - "A tag cut on another branch never becomes `main`'s base" was false once that branch merges. It now says it
+    becomes `main`'s release only when merged.
+  - ADR-0058's first Decision bullet and its `[Unreleased]` bullet still gave the 2026-09-28 definition, and its
+    self-test list still said the depth-1 clone accepts `[Unreleased]`.
+  - `check_changelog_links`' docstring, the no-base comment and two reader-test comments still described the old
+    rule and CI's old checkout.
+  - This entry did not record the citation re-anchors (below).
 
 **Finding 2: the snapshot header changed with its generator. Justified; kept.** Investigated, not reverted:
 1. *What changed:* lines 2–3 of `tests/fixtures/parameter_registry.snapshot`, from "(ADR + PARAMETER_REGISTRY.md /
@@ -13105,14 +13135,29 @@ The twelve earlier cases A–J (the 95th and 96th passes) still behave as record
 **Historical capture.** `tests/fixtures/field_capture_0_9_5.session.manifest` still reads `emitter=v0.9.5`,
 byte-identical to `72fe2e0` (97th pass).
 
-**Documents:** `CHANGELOG_POLICY.md` rule 8; `RELEASE_PROCESS.md` §Tagging (the check's step 2, and the
-`[Unreleased]` paragraph); ADR-0058 (status line, Decision, Consequences, Related code, self-test list,
-Evidence) and its `ADR_INDEX.md` row; ADR-0059's self-test evidence (554 cases; a prefixed URL fails 98, a
-prefixed git tag counted as a release 4); `CI_CD.md` (the `docs` row and the local-run note);
-`REPOSITORY_MAP.md`'s `check-docs.py` row; `build.yml`'s `docs` checkout comment. `CHANGELOG.md` is not changed:
-the rule governs how the file is checked, and 0.9.9 is still the release in preparation with no tag.
+**Documents:**
+- `CHANGELOG_POLICY.md` rule 8 and its template;
+- `RELEASE_PROCESS.md` §Tagging: the check's step 2, the closed-untagged paragraph, and the `[Unreleased]`
+  paragraph, which now covers tagging on `main`, merging `main` into an older branch, and shallow clones;
+- ADR-0058 (status line, Decision, Consequences, Related code, self-test list, Evidence) and its
+  `ADR_INDEX.md` row;
+- ADR-0059's self-test evidence (558 cases; a prefixed URL fails 100, a prefixed git tag counted as a
+  release 4);
+- `CI_CD.md` (the `docs` row and the local-run note);
+- `REPOSITORY_MAP.md`'s `check-docs.py` row;
+- `build.yml`'s `docs` checkout comment.
 
-**This file:** this entry and the *Last updated* line.
+`CHANGELOG.md` is not changed: the rule governs how the file is checked, and 0.9.9 is still the release in
+preparation, with no tag.
+
+**Citations.** The `docs` checkout comment grew by three lines, so ten `build.yml` citations shifted and were
+re-anchored with `check-citations.py --fix`:
+- five in this file's older passes (`:3490`, `:3575`, `:711`, `:471`, `:519-524`, each +3);
+- one in `KNOWN_ISSUES.md` (`:2260-2262`);
+- one in `RELEASE_POLICY.md` (`:687, 1507, 2019`);
+- three in `COMPATIBILITY_MATRIX.md` (`:1955`, `:2745`, `:2520-2576`).
+
+**This file:** this entry, the *Last updated* line, and the five re-anchored citations.
 
 ## 97th pass — 2026-09-29, the 0.9.5 capture restored; the 0.9.6 first-tag plan is history (PR #159)
 

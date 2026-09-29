@@ -1667,7 +1667,7 @@ python3 scripts/check-linux-abi.py --self-test                   # gate needs li
 `check-docs.py` reads the release tags from the checkout's own tag refs, with no network, and counts
 only those whose commits are in `HEAD`'s history, so run it from the root of a full clone that has
 them (`git fetch --tags`; in a shallow clone, `git fetch --unshallow --tags`); a copy that is not a git
-checkout, or a shallow clone that cuts off a release tag, cannot say which versions were released, and
+checkout, or a shallow clone, cannot say which versions were released, and
 the `CHANGELOG.md` links that depend on it are refused with that reason.
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
