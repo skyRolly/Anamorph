@@ -57,8 +57,9 @@ correct to leave frozen.
 Evidence [Verified]: `.github/workflows/build.yml` (`env:` block).
 
 `release.yml`: `push` of an annotated bare-version `[0-9]+.[0-9]+.[0-9]+` tag (e.g. `0.9.9`, no prefix —
-  ADR-0059; a prefixed tag matches no trigger and starts no release, and `validate` asserts the shape and
-  tag == CMake `project VERSION`), plus `workflow_dispatch`
+  ADR-0059; a prefixed tag matches no trigger and starts no release; the glob cannot refuse a leading zero,
+  so `validate` is the authority: it asserts `check-docs.py`'s `RELEASE_TAG` grammar — no leading zero,
+  which `check-docs.py --self-test` proves by running the step — and tag == CMake `project VERSION`), plus `workflow_dispatch`
 as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
 validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check, and —
 since the section is published verbatim as the release **notes body**, heading included — a check
@@ -101,7 +102,7 @@ jobs that guard classes the build matrix cannot see:
 | Job | Runner | Builds | pluginval |
 |---|---|---|---|
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
-| **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint; the checkout fetches the full history, every branch and every tag, `fetch-depth: 0` and `fetch-tags: true`, because the `CHANGELOG.md` link check reads which versions were released from the git tags on the release line — `HEAD`'s history, and `origin/main`'s but those cut after `HEAD`, since a same-repo PR is checked at its tip — and requires an entry for each — `CHANGELOG_POLICY.md` rule 8) | — |
+| **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint; the checkout fetches the full history, every branch and every tag, `fetch-depth: 0` and `fetch-tags: true`, because the `CHANGELOG.md` link check reads which versions were released from the git tags on the release line — the tags `origin/main` holds but those cut after `HEAD`, since a same-repo PR is checked at its tip — and requires an entry for each — `CHANGELOG_POLICY.md` rule 8) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, `check-realtime.py`, `check-dispatch.py`, `check-state-coverage.py`, then `check-citations.py --check`; plus the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
 | **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below), the six blocking race probes, and the **XML boundary differential** (`tests/xml_boundary_differential.cpp`, ADR-0056 — compiled here like the two realtime canaries, Linux-only because it contains its parses in forked children on 1 MB `pthread` stacks) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
@@ -1665,15 +1666,19 @@ python3 scripts/check-linux-abi.py --self-test                   # gate needs li
 ```
 
 `check-docs.py` reads the release tags from the checkout's own tag refs, with no network, and counts
-only those on the release line (`HEAD`'s history, and `main`'s but those cut after `HEAD`), so run it
+only those this repository's `main` holds (but those cut after `HEAD`; a branch's own tag and a fork's
+are no releases), so run it
 from the root of a full clone that has them and `main` (`git fetch --tags`; in a shallow clone,
 `git fetch --unshallow --tags`; without `main`, `git fetch origin main:refs/remotes/origin/main`); a
 copy that is not a git checkout, a shallow clone, or one without `main` cannot say which versions were
 released, and the `CHANGELOG.md` links that depend on it are refused with that reason. `main` is read
-from `origin/main`, or from any remote whose URL is this repository (a fork clone's `upstream`), and
-from the local branch only where no such remote-tracking branch exists; a remote under another URL --
-another repository, or a local mirror or proxy whose path ends in this one -- is not read, so keep the
-one that is this repository fetched.
+from every remote whose URL is this repository (`origin` in CI, a fork clone's `upstream`) and then not
+also from a fork's `origin`; failing any such remote, from `origin/main` when `origin` is the only remote;
+and from the local branch only in a checkout with no remote at all. Any other checkout is unknown, with a
+remedy that adds the repository as a remote (`git remote add upstream https://github.com/skyRolly/Anamorph`). A remote under another URL -- a fork, another repository, or a
+local mirror or proxy whose path ends in this one -- is not this repository, so in a fork clone add and
+fetch the repository as a remote; a remote that is this repository but whose `main` was never fetched
+leaves the line unknown, with the remedy.
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
 so a local run against `origin/main` can reach a different verdict — and on a branch with more than

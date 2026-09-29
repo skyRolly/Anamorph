@@ -5,7 +5,8 @@ asked for the release workflow and every tag-related policy to be brought into l
 enacts that as a Policy change (`ADR_POLICY.md` rule 5). It changes `RELEASE_POLICY.md` §Artifacts,
 `CHANGELOG_POLICY.md` rule 8 and its template, and `RELEASE_PROCESS.md` §Tagging. Amended 2026-09-29:
 the convention governs version *references*, not captured output of an older binary, which keeps its
-exact bytes (§Decision).
+exact bytes (§Decision). Amended again 2026-09-29: the release tag has no leading zero, and `release.yml`
+validates it with the grammar `check-docs.py` reads tags with (§Decision).
 
 ## Context
 - **The repository wrote versions in two ways.** The version itself was bare everywhere it is defined:
@@ -44,7 +45,12 @@ changelog heading, its link and the prose all agree without translation.
   names. It is the permanent convention: a prefixed version is not introduced again.
 - **The release tag is the bare version**: `git tag -a 0.9.9 -m "Anamorph 0.9.9"`.
   - `release.yml` triggers on `[0-9]+.[0-9]+.[0-9]+` only.
-  - It asserts that the tag has that shape, including for a `workflow_dispatch` started from a tag ref.
+  - It asserts that the tag has that shape, including for a `workflow_dispatch` started from a tag ref --
+    with no leading zero in any component, the grammar of `check-docs.py`'s `RELEASE_TAG` (amended
+    2026-09-29 from a review finding: the step accepted `0.09.10`, which the checker calls no version).
+    The trigger glob cannot express that, so it stays a coarse filter and the step is the authority;
+    `check-docs.py --self-test` runs the step verbatim in scratch repositories and requires it to accept
+    exactly what `RELEASE_TAG` accepts, and the trigger to admit every such tag.
   - It requires tag == CMake `project VERSION`.
   - It creates the draft release under that tag.
   - A prefixed tag matches no trigger and starts no release.
@@ -111,20 +117,26 @@ changelog heading, its link and the prose all agree without translation.
 ## Related code
 - `.github/workflows/release.yml` — the trigger pattern, the tag-shape assertion, `TAG="${VERSION}"`, and
   `gh release create "${VERSION}"`.
-- `scripts/check-docs.py` — `check_changelog_links` (`tag = key`), and the `PFX` self-test cases.
+- `scripts/check-docs.py` — `check_changelog_links` (`tag = key`), `RELEASE_TAG`, the `PFX` self-test
+  cases, and the "one release-tag grammar" self-test, which runs `release.yml`'s validate step.
 - `CHANGELOG.md` — the `[0.9.9]` definition and the preamble.
 - `scripts/check-citations.py` — one `DELIBERATE_REAIMS` entry.
 
 ## Evidence + confidence
-- **[Verified]** `python3 scripts/check-docs.py --self-test`: 643 cases pass. They include a prefixed tag
+- **[Verified]** `python3 scripts/check-docs.py --self-test`: 677 cases pass. They include a prefixed tag
   page, a prefixed comparison and a prefixed 0.9.9 tag page, each refused, and a prefixed git tag, which
   is not the version's tag (so it makes no comparison base and no `[Unreleased]` base, and a prefixed
-  higher tag needs no changelog entry). With the prefix restored in `check_changelog_links`, 126 cases
+  higher tag needs no changelog entry). With the prefix restored in `check_changelog_links`, 134 cases
   fail, and the real `CHANGELOG.md` is refused; with a prefixed git tag counted as a release, 5 fail.
   (Re-measured 2026-09-29 after the checker began requiring an entry for every release tag on the
-  release line, ADR-0058; first recorded as 492 and 51, then 511 and 65, then 537, 79 and 2, then 638 and 125.)
+  release line, ADR-0058; first recorded as 492 and 51, then 511 and 65, then 537, 79 and 2, then 638 and 125, then 643 and 126.)
 - **[Verified]** The tag-shape test from `release.yml`, run in bash: `0.9.9` matches; the prefixed form and
-  `0.9.9x` are refused.
+  `0.9.9x` are refused. Since 2026-09-29 the whole validate step runs in the self-test (sandbox
+  repositories, the real extractor): `0.9.9`, `0.9.10`, `0.10.0`, `1.0.0` and `10.20.30` pass; `0.09.10`,
+  `00.9.10`, `0.09.010`, `0.9.010`, a prefixed tag, `0.9`, `0.9.10.1`, `0.9.10-rc1` and `0.9.1０` are
+  refused, as `RELEASE_TAG` decides, and so is a lightweight `0.9.10`. Before the amendment the step
+  passed `0.09.10`, `00.9.10` and `0.09.010` with a matching CMake version (reproduced; with its old
+  expression restored the self-test fails 4 cases).
 - **[Verified]** A repository-wide search for a prefixed version token outside the preserved third-party
   identifiers above returns nothing, apart from the 0.9.5 capture's label and the places that quote it
   (State test 25, this record, `ADR_INDEX.md`, `REPOSITORY_MAP.md` and `DOCUMENTATION_COVERAGE.md`), and

@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **the release line is this repository's `main` alone, and one release-tag grammar** (2026-09-29; three review findings: a fork's `origin/main` was united with the repository's `main`, a branch's own tag counted as a release, and `release.yml` accepted a leading-zero tag the checker refuses), whose entry is the **100th pass**; before it **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13004,6 +13004,193 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
+
+## 100th pass — 2026-09-29, the release line is this repository's `main` alone; one release-tag grammar (PR #159)
+
+**Scope.** Three review findings (Devin), treated as open until the final revision no longer met their
+failure conditions:
+- "Fork-only tags block valid changelogs" (`scripts/check-docs.py`);
+- "Branch-only tags block changelog checks" (`scripts/check-docs.py`);
+- "Release trigger and checker disagree on leading zeros" (`.github/workflows/release.yml:38`).
+
+The previous review's informational note on `build.yml` (release links depend on the called `docs` gate) was
+checked and needs no change: the `docs` job checks out the full history, every branch and every tag
+(`fetch-depth: 0`, `fetch-tags: true`), runs `check-docs.py`, and runs in `release.yml`'s call of `build.yml`
+too; `release.yml`'s `validate` checks tag ⇄ CMake version ⇄ dated entry, the `docs` gate the link
+definitions against the tags. The two complement each other.
+
+This pass changes:
+- `read_git_tags`: which `main` is the release line, and which tags on it count;
+- `not_here()` and `merge_hint()`: the wording for a tag in `HEAD`'s history that `main` does not hold;
+- `REPOSITORY_REMOTE`, now derived from `REPO_URL` (the same pattern, byte for byte);
+- `release.yml`'s validate step (the tag grammar) and its header comment;
+- the self-test; `check-citations.py`'s gloss of `release.yml`'s gate lines;
+- the documents below.
+
+No production code, C++ test, parameter, serialization, DSP, threading or latency change. No tag was created;
+every tag in this pass's tests lives in a temporary repository.
+
+**Review state.** Nothing from Devin is on the pull request: no review, review comment, check run or status
+(the `devin-ai-integration` check suite on `91fbdb2` is queued with no runs). The findings were taken as
+reported, against `91fbdb2`, where `release.yml:38` is the tag trigger.
+
+**Reproduced first, on `91fbdb2`**, in real temporary repositories with the production `read_git_tags` and
+`check_changelog_links`, and `release.yml`'s validate step run verbatim in sandboxes:
+
+| Case | At `91fbdb2` | Expected |
+|---|---|---|
+| Fork clone: a branch from the repository's `main` (0.9.9); the fork's own `main` tags 0.9.10 | FAIL (2) | PASS |
+| The same file on the fork's own `main`, whose history holds the fork's 0.9.10 | FAIL (2) | PASS |
+| A `maint` branch forks from 0.9.9, tags 0.9.10, is never merged; checked on `maint` | FAIL (2) | PASS |
+| `release.yml` validate: `0.09.10`, `00.9.10`, `0.09.010`, each with a matching CMake version | accepted | refused |
+
+The other acceptance cases were already right on `91fbdb2` and stay right: an ordinary clone reading
+`origin/main`; `[Unreleased]` from a branch-only 0.9.10 refused; a PR branch forked before `main` tagged 0.9.10
+(FAIL 2); 0.9.9 and 0.9.10 on `main` with only 0.9.9 recorded (FAIL 2); both recorded (PASS from 0.9.10, FAIL
+1 from 0.9.9); a skipped version (PASS); the first tag (FAIL before the real tag, PASS after).
+
+**Root causes.**
+- *Fork-only:* the line was `origin/main` united with the `main` of every remote whose URL is the
+  repository. In a fork clone `origin` is the fork, so the fork's own tags joined the release line.
+- *Branch-only:* a release was any tag in `HEAD`'s history, or in `main`'s and not cut after `HEAD`. A tag
+  cut on the checked-out branch, which `main` does not hold, counted: it demanded an entry and became the
+  `[Unreleased]` base.
+- *Grammar:* the validate step's `^[0-9]+\.[0-9]+\.[0-9]+$` accepted a leading zero that `RELEASE_TAG`
+  refuses, so a `0.09.10` tag with a matching CMake version would have passed validation and failed only
+  later, in the called `docs` job.
+
+**The rule.**
+- **`main` is this repository's.** The remote-tracking `main` of every remote whose URL is this repository
+  (`REPO_URL`, under any URL GitHub serves; `origin` in CI, `upstream` in a fork clone) — and then no other
+  remote's. Failing any such remote, `origin/main`, but only when `origin` is the only remote. Failing any
+  remote at all, the local `main`. Everything else is unknown, with a remedy that names a real remote:
+  - a remote that is the repository but whose `main` was never fetched;
+  - several remotes none of which is recognisably the repository.
+
+  Each ref is read by its full name and used by its commit.
+- **A tag is a release only when that `main` holds its commit.** It binds every commit except those it was
+  cut after (a tag on a strict descendant of `HEAD`; a tag on `HEAD` itself is kept). A tag in `HEAD`'s
+  history that `main` does not hold is `branch_only`: no entry, no base. A finding that turns on one says
+  it is in this checkout's history but not in `main`'s, and never offers "merge `main`".
+- **One tag grammar.** `release.yml`'s validate step requires `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`,
+  `RELEASE_TAG`'s grammar. The trigger glob cannot refuse a leading zero, so it stays a coarse filter and the
+  step is the authority. A negative glob was rejected: if GitHub evaluated it differently from its reading
+  here, a real release tag would never start the workflow.
+
+The reconciliation order is unchanged:
+1. read the applicable tags;
+2. report each without an entry, newest first;
+3. only then take `newest_tagged` and `previous_of` from those tags.
+
+**Self-test.** 643 → 677 cases:
+- **2 more `maint` steps.** On the never-merged branch, 0.9.10 is branch-only; the file is accepted; and
+  `[Unreleased]` from 0.9.10 is refused with the reason and no merge remedy.
+- **8 topology steps:**
+  - the fork clone, from a branch off the repository's `main`;
+  - its line naming `upstream/main` alone;
+  - the fork's own `main`;
+  - the repository remote without its `main`: unknown;
+  - an ordinary clone reading `origin/main`;
+  - a checkout whose only remote is not `origin`: unknown, the local `main` not guessed at;
+  - a skipped version on the line, accepted from 0.9.11 and refused from 0.9.10.
+- **3 synthetic branch-only cases:** the count case (0), and the `[Unreleased]` and definition wording.
+- **16 release-grammar cases.** The workflow's trigger and validate step are located, then the step runs
+  verbatim for fourteen tag spellings and a lightweight tag.
+
+- **5 more from the review round:**
+  - a release tag with a 5000-digit component, read rather than fatal;
+  - an SSH host-alias `upstream` beside a fork, which reads as unknown;
+  - a tag spelled `refs/remotes/upstream/main`, which does not stand in for the missing ref;
+  - the fork-`main` wording, naming `upstream/main`;
+  - a headed branch's off-line tag, with no merge remedy.
+
+The negative controls fail:
+- `release.yml` with its old expression: 4 cases;
+- a trigger narrowed to `[1-9]+.[0-9]+.[0-9]+`: 4 cases;
+- the step's tag re-fetch without `--force`, removed, or aimed at the wrong ref: 5 cases each (once the sandbox
+  checks out as `actions/checkout` does).
+
+**Mutation.** Seventy-one mutants each fail the self-test, none by crashing, on a clean clone of `13bab38`:
+sixty-seven of the checker, and four of `release.yml` run against the unmutated checker. The full counts are
+in ADR-0058's evidence. Among them:
+
+| Mutant | Failing cases |
+|---|---|
+| the repository's `main` united with a fork's `origin/main` | 4 |
+| `origin/main` preferred over the repository's remote | 9 |
+| the repository's remote not recognised by URL | 9 |
+| the repository's remote without its `main` falling back to `origin/main` | 1 |
+| the local `main` read although the checkout has remotes | 1 |
+| branch-only tags in `HEAD`'s history counted | 4 |
+| a tag on `HEAD`'s own commit read as its future | 10 |
+| a branch-only tag offered the merge remedy / called "not in this checkout's history" | 3 / 3 |
+| `RELEASE_TAG` admitting leading zeros | 6 |
+| the tag-grammar case trusting the grammar instead of running the step | 9 |
+| `release.yml`: validator back to `[0-9]+` / last component unguarded / trigger narrowed / annotated check removed | 4 / 1 / 4 / 1 |
+| the intersection; `newest_tagged` before reconciliation | 20; 20 |
+| a missing entry ignored | 39 |
+| `[Unreleased]` from the newest entry | 44 |
+| the first-tag guard removed | 22 |
+| the skipped-tag fix reverted | 29 |
+
+A first run on `9089fab` left one survivor: the tag-grammar case taking `RELEASE_TAG`'s verdict without running
+the step. Nothing proved the step had spoken. The case now requires the step's own refusal message for every
+refused tag, `is-release=true` for every accepted one, and the annotated-tag message for the lightweight tag
+(`13bab38`).
+
+**Review.** Four reviewers each took one lens (topology, tag grammar, regressions, wording). Each ran real
+temporary repositories, and a skeptic reproduced every finding before it counted. They confirmed 12 findings,
+all minor or wording, none reachable in CI or a normal workflow. The regressions reviewer found none (34 cases
+of its own plus the helper suites). All 12 are fixed in `9c0e961`:
+- **A tag spelled `refs/remotes/upstream/main` stood in for the missing ref.** Git's shorthand lookup did this,
+  and it made an unknown line a fork's. Refs are now read by full name (`show-ref --verify`) and used by commit.
+- **The unknown-line remedy was wrong in two ways.** It named `git fetch origin` in a checkout with no
+  `origin` (reported three times). With no remote at all, it spoke of "a remote".
+- **`release.yml` cited ADR-0059 for the no-leading-zero rule before ADR-0059 stated it.** ADR-0059 is
+  amended.
+- **A 5000-digit release-shaped tag crashed the run** in `int()`, which predates this revision. The cap is
+  lifted.
+- **Remedy wording:**
+  - "merge the history that carries it" could no longer make a non-`main` tag a release;
+  - "merge `main`" named a fork clone's own `main`;
+  - the branch-only wording said "not in `main`'s" where the checked-out `main` is the fork's.
+
+  The remedy now names the ref read (`upstream/main`), and is offered only where merging `main` helps.
+- **The source text left out "except those tagged after this commit"** for an older `main` commit.
+- **The unreadable-tags finding said to "run check-docs.py from the git checkout itself".**
+- **The `check_changelog_links` docstring and a comment** still stated the old line.
+
+The grammar reviewer also showed that the sandbox used `git clone`, which copies the annotated tag. So the
+step's re-fetch of the tag object never mattered, and three mutants of it passed. The sandbox now checks out
+as `actions/checkout` does, leaving a peeled local tag.
+
+Refuted, or within the rule as stated, and each addressed anyway:
+- **A canonical remote under an SSH host alias or a proxy `insteadOf` is not recognised.** The owner's rule
+  then fell back to the fork's `origin/main`. That fallback now applies only when `origin` is the only remote.
+  Beside other remotes, the line is unknown with a remedy, since which remote is the repository cannot be
+  guessed.
+- **A fork's tag fetched onto a commit the repository's `main` holds counts.** A fork's same-named tag also
+  keeps the repository's own out. Git records no tag's source, so these are stated limitations (ADR-0058).
+  CI fetches this repository's tags alone.
+- **The `TagState` docstring overstated that a fork's `main` is "not read at all".** It now says "not beside
+  this repository's".
+
+**Limitations, stated.**
+- A fork clone with no remote for this repository reads the fork's `origin/main`, the only line it has; add
+  the repository as a remote.
+- A tag on a local commit counts only once the `main` read holds that commit (after the push and a fetch).
+- The trigger glob admits leading-zero tags; the validate step refuses them before any build runs.
+
+**Documents:**
+- `CHANGELOG_POLICY.md` rule 8;
+- `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
+- ADR-0058 (status line, the applicable-tag and release-line bullets, the tag grammar, the self-test list,
+  Consequences, Related code, Evidence) and ADR-0059 (status line, Decision, Related code, Evidence), with
+  their `ADR_INDEX.md` rows;
+- `CI_CD.md` (the `release.yml` paragraph, the `docs` row, the local-run note);
+- `REPOSITORY_MAP.md` (the `check-docs.py` and `release.yml` rows).
+
+**This file:** this entry and the *Last updated* line.
 
 ## 99th pass — 2026-09-29, the missing-release finding closed at a pull request's tip (PR #159)
 

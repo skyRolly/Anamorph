@@ -58,22 +58,28 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    **Whether a version was tagged is what the repository's git tags say, not what this file
    declares.** `check-docs.py` reads the tag refs of the checkout it runs in (no network; CI's `docs`
    job fetches the full history, every branch and every tag). A tag is a **release tag of this line**
-   when it is the bare `x.y.z` form, not older than the first tag, and its commit is on this
-   checkout's **release line**: releases are tagged on `main`, so it is `HEAD`'s history **and every
-   release tag in `main`'s history except those cut after `HEAD`** (on a commit descending from it,
-   `git for-each-ref --merged` and `--contains`). For `main` itself, an older `main` commit or a
-   release tag that is `HEAD`'s history, and a later release is its future; for a branch headed for
+   when it is the bare `x.y.z` form (ASCII digits, no leading zero), not older than the first tag, and
+   its commit is on the **release line**: releases are tagged on this repository's `main`, so a tag is a
+   release only when `main`'s history holds its commit — **every release tag in `main`'s history except
+   those cut after `HEAD`** (on a commit descending from it, `git for-each-ref --merged` and
+   `--contains`). A tag `main` does not hold is no release, whatever else holds it: one cut on a branch
+   never merged into `main` — even the checked-out branch, whose own history holds it — and one on a
+   fork's `main`. For `main` itself, an older `main` commit or a
+   release tag that is `main`'s tags in `HEAD`'s history, and a later release is its future; for a branch headed for
    `main` it is all of `main`'s — a release `main` gained after the branch forked is one the branch will
    land on, so it counts before the branch merges it; and for a commit already merged into `main` it is,
    with releases tagged on `main` itself, `main`'s releases from before the merge that landed it.
    Ancestry decides, not `main`'s first-parent
-   order, which a fast-forward can rewrite. `main` is the remote-tracking `main` of
-   `origin`, or of any remote that is this repository under any URL GitHub serves it at (a fork clone's
-   `upstream`); a local `main` is
-   used only where none exists, since it can hold commits no release line has. A version counts as
-   tagged when its tag is one. A prefixed tag, an older one, and one on
-   neither history — another branch never merged into `main` — are none of this line's: such a higher
-   tag neither needs an entry here nor becomes a base. **Every release tag needs its
+   order, which a fast-forward can rewrite. `main` is the remote-tracking `main` of every remote whose
+   URL is this repository (`https://github.com/skyRolly/Anamorph`, under any URL GitHub serves it at) —
+   `origin` in CI, a fork clone's `upstream` — and **never also a fork's `origin/main`**; failing any such
+   remote, `origin/main` when `origin` is the only remote; failing any remote at all, the local `main`.
+   Otherwise the line is unknown, never guessed: a remote that is this repository but whose `main` was
+   never fetched, or several remotes none of which is recognisably this repository (one may be, under a
+   host alias or a proxy, beside a fork). A
+   version counts as tagged when its tag is one. A prefixed tag, an older one, and one `main` does not
+   hold — a branch's own, a fork's — are none of this line's: such a higher tag neither needs an entry
+   here nor becomes a base. **Every release tag needs its
    `## [x.y.z]` entry**: the check reports each one that has none, newest first, so the newest release tag is always
    a recorded version and no link can compare past one the file omits. The definitions must agree with
    the tags. Versions older than `0.9.9` were never
@@ -89,13 +95,13 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    template). A branch made before a release, or not merged with `main` since, is still bound by it:
    the check reports the release as one on `main` that the branch's history does not hold, and `main` merged into the
    branch brings its entry in. Where the tags cannot be read (not the root of a git checkout, no `git`,
-   a shallow clone, which cannot tell which tags are in `HEAD`'s history, or a checkout with no `main`,
-   whose release line cannot be told from another branch), the check refuses
+   a shallow clone, which cannot tell which tags are in `HEAD`'s history, or a checkout without this
+   repository's `main`, whose release line cannot be told from another branch or a fork), the check refuses
    the file's release links with one finding that gives the reason, and still checks what needs no tags;
    a file whose only version at or above the first tag is the release in preparation needs none. The definition is written **in the
    release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
-   refusing any tag other than the bare CMake version. `check-docs.py` requires exactly the form the
+   refusing any tag other than the bare CMake version, with the same grammar (no leading zero). `check-docs.py` requires exactly the form the
    version calls for, in both directions. It verifies that a tag exists, not that it is annotated;
    `release.yml` refuses a lightweight tag.
 
