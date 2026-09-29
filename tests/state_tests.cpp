@@ -82,49 +82,14 @@ namespace
     bool opFailed (anamorph::PresetManager::OpResult r)
     { return r == anamorph::PresetManager::OpResult::failed; }
 
-    // A test that checks the BEHAVIOUR of other checks (which run, which fail, what they say)
-    // runs them under a capture: while `capturing` is set, each result and note is recorded
-    // there instead of being counted or printed, so a deliberate failure is that test's
-    // evidence, not a failure of the suite. The capturing test asserts on it with ordinary
-    // checks once the capture is lifted.
-    struct CapturedChecks
-    {
-        std::vector<std::pair<bool, std::string>> results;   // (passed, what)
-        std::vector<std::string> notes;
-        int failed() const
-        {
-            int n = 0;
-            for (const auto& r : results) n += r.first ? 0 : 1;
-            return n;
-        }
-    };
-    CapturedChecks* capturing = nullptr;
-
     void check (bool cond, const char* what)
     {
-        if (capturing != nullptr) { capturing->results.emplace_back (cond, what); return; }
         ++checks;
         if (! cond) { ++failures; std::printf ("  [FAIL] %s\n", what); }
     }
 
-    // Progress output that a capture records instead of printing.
-   #if defined (__GNUC__) || defined (__clang__)
-    __attribute__ ((format (printf, 1, 2)))
-   #endif
-    void note (const char* format, ...)
-    {
-        char text[1024];
-        va_list args;
-        va_start (args, format);
-        std::vsnprintf (text, sizeof (text), format, args);
-        va_end (args);
-        if (capturing != nullptr) capturing->notes.emplace_back (text);
-        else std::fputs (text, stdout);
-    }
-
     void checkStr (const juce::String& got, const juce::String& expected, const char* what)
     {
-        if (capturing != nullptr) { capturing->results.emplace_back (got == expected, what); return; }
         ++checks;
         if (got != expected)
         {
@@ -136,11 +101,6 @@ namespace
 
     void checkNear (double got, double expected, double tol, const char* what)
     {
-        if (capturing != nullptr)
-        {
-            capturing->results.emplace_back (std::abs (got - expected) <= tol, what);
-            return;
-        }
         ++checks;
         if (! (std::abs (got - expected) <= tol))
         {
@@ -16035,6 +15995,57 @@ static constexpr juce::uint64 fieldCaptureManifestHash = 0x87a04bb89d88f423ull;
 // stops running is a failure, not a smaller pass.
 static constexpr size_t fieldCaptureCheckCount = 19;
 
+// Where State test 25's checks go: by default into the suite's own check() / checkNear()
+// and stdout; with `into` set, recorded there instead -- neither counted nor printed -- so
+// the gate legs below can run those checks and assert on which ran, which failed and what
+// they said. A sink of the test's own, not a switch inside check(): the suite's shared
+// helpers stay exactly as they were, and with them how the compiler inlines every other
+// test into main() (a capture-aware check() let six processor-holding tests be inlined
+// there, and under ASan, which gives every inlined local its own slot, main's frame then
+// overflowed the 8 MB stack).
+struct CapturedChecks
+{
+    std::vector<std::pair<bool, std::string>> results;   // (passed, what)
+    std::vector<std::string> notes;
+    int failed() const
+    {
+        int n = 0;
+        for (const auto& r : results) n += r.first ? 0 : 1;
+        return n;
+    }
+};
+
+struct FieldCaptureSink
+{
+    CapturedChecks* into = nullptr;
+
+    void ok (bool cond, const char* what) const
+    {
+        if (into != nullptr) into->results.emplace_back (cond, what);
+        else check (cond, what);
+    }
+
+    void approx (double got, double expected, double tol, const char* what) const
+    {
+        if (into != nullptr) into->results.emplace_back (std::abs (got - expected) <= tol, what);
+        else checkNear (got, expected, tol, what);
+    }
+
+   #if defined (__GNUC__) || defined (__clang__)
+    __attribute__ ((format (printf, 2, 3)))
+   #endif
+    void note (const char* format, ...) const
+    {
+        char text[1024];
+        va_list args;
+        va_start (args, format);
+        std::vsnprintf (text, sizeof (text), format, args);
+        va_end (args);
+        if (into != nullptr) into->notes.emplace_back (text);
+        else std::fputs (text, stdout);
+    }
+};
+
 // State test 25's checks over the capture's bytes, against the hashes that pin them.
 // Returns false only when a hash does not match, and then nothing was parsed, restored or
 // compared; true once the integrity gate has passed and the checks after it ran (a manifest
@@ -16048,18 +16059,19 @@ static constexpr size_t fieldCaptureCheckCount = 19;
 // hash AND a false restore failure). So a mismatch is reported, named as the root
 // cause, and nothing is parsed, restored or compared.
 static bool runFieldCaptureChecks (const juce::MemoryBlock& blobData, const juce::MemoryBlock& manifestData,
-                                   juce::uint64 blobHash, juce::uint64 manifestHash)
+                                   juce::uint64 blobHash, juce::uint64 manifestHash,
+                                   const FieldCaptureSink& sink)
 {
-    note ("  capture fnv1a-64 %016llx (%d bytes), manifest %016llx (%d bytes)\n",
+    sink.note ("  capture fnv1a-64 %016llx (%d bytes), manifest %016llx (%d bytes)\n",
           (unsigned long long) fieldCaptureHash (blobData), (int) blobData.getSize(),
           (unsigned long long) fieldCaptureHash (manifestData), (int) manifestData.getSize());
     const bool blobIntact     = fieldCaptureHash (blobData) == blobHash;
     const bool manifestIntact = fieldCaptureHash (manifestData) == manifestHash;
-    check (blobIntact, "the session blob is the 0.9.5 binary's capture, byte for byte");
-    check (manifestIntact, "the manifest is the 0.9.5 binary's record, byte for byte");
+    sink.ok (blobIntact, "the session blob is the 0.9.5 binary's capture, byte for byte");
+    sink.ok (manifestIntact, "the manifest is the 0.9.5 binary's record, byte for byte");
     if (! blobIntact || ! manifestIntact)
     {
-        note ("  FIXTURE INTEGRITY FAILED: %s no longer the 0.9.5 binary's output (hash above), so "
+        sink.note ("  FIXTURE INTEGRITY FAILED: %s no longer the 0.9.5 binary's output (hash above), so "
               "nothing is parsed, restored or compared from it -- restore %s from git; no check that "
               "depends on the capture ran\n",
               blobIntact ? "the manifest is" : manifestIntact ? "the session blob is" : "both files are",
@@ -16082,9 +16094,9 @@ static bool runFieldCaptureChecks (const juce::MemoryBlock& blobData, const juce
     }
     // The label exactly as the 0.9.5 binary wrote it -- historical output, not
     // current notation (see the header above).
-    check (expected["emitter"] == "v0.9.5",
+    sink.ok (expected["emitter"] == "v0.9.5",
            "the manifest carries the label the 0.9.5 binary wrote, unrewritten");
-    check (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
+    sink.ok (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
     if (slotA.size() != 5 || slotB.size() != 5) return true;
 
     auto valueOf = [] (const juce::StringArray& fields, const juce::String& key) -> float
@@ -16095,9 +16107,13 @@ static bool runFieldCaptureChecks (const juce::MemoryBlock& blobData, const juce
         return -1.0f;
     };
 
-    check (blobData.getSize() > 1000, "the capture is a real session blob, not a stub");
+    sink.ok (blobData.getSize() > 1000, "the capture is a real session blob, not a stub");
 
-    AnamorphAudioProcessor proc;
+    // On the heap: the gate legs below call this four more times, and a compiler that
+    // inlines it gives each copy its own ~138 kB processor in the caller's frame -- under
+    // ASan that pushed main's frame past the 8 MB stack.
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();
+    auto& proc = *owned;
     proc.prepareToPlay (48000.0, 512);
     proc.setStateInformation (blobData.getData(), (int) blobData.getSize());
     juce::Timer::callPendingTimersSynchronously();
@@ -16111,35 +16127,35 @@ static bool runFieldCaptureChecks (const juce::MemoryBlock& blobData, const juce
     {
         const float want = valueOf (slotA, pr.key);
         const float got  = rawOf (proc, pr.id);
-        note ("  slotA %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
-        checkNear ((double) got, (double) want, 1.0e-5,
+        sink.note ("  slotA %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
+        sink.approx ((double) got, (double) want, 1.0e-5,
                    "the active slot's sound reproduces from the 0.9.5 capture");
     }
 
     // (2) PRESET NAME and (3) DIRTY-STAR.
-    note ("  preset name: \"%s\" (0.9.5: \"%s\"), dirty %d (0.9.5: %s)\n",
+    sink.note ("  preset name: \"%s\" (0.9.5: \"%s\"), dirty %d (0.9.5: %s)\n",
           proc.getPresets().currentName().toRawUTF8(),
           expected["presetName"].toRawUTF8(),
           (int) proc.getPresets().isDirty(), expected["dirty"].toRawUTF8());
-    check (proc.getPresets().currentName() == expected["presetName"],
+    sink.ok (proc.getPresets().currentName() == expected["presetName"],
            "the preset name reproduces from the 0.9.5 capture");
-    check ((int) proc.getPresets().isDirty() == expected["dirty"].getIntValue(),
+    sink.ok ((int) proc.getPresets().isDirty() == expected["dirty"].getIntValue(),
            "the dirty-star reproduces from the 0.9.5 capture");
-    check (proc.abActiveSlot() == expected["activeSlot"].getIntValue(),
+    sink.ok (proc.abActiveSlot() == expected["activeSlot"].getIntValue(),
            "the active A/B slot reproduces from the 0.9.5 capture");
 
     // (4) BOTH A/B SLOTS -- switch to B and compare against what 0.9.5 had there.
     //     Non-vacuity: the two slots must actually DIFFER in the manifest, or this
     //     leg would pass on a build that ignored the B slot entirely.
-    check (! juce::approximatelyEqual (valueOf (slotA, "width"), valueOf (slotB, "width")),
+    sink.ok (! juce::approximatelyEqual (valueOf (slotA, "width"), valueOf (slotB, "width")),
            "the capture's two slots really do differ (the B leg is not vacuous)");
     proc.abSwitchTo (1);
     for (const auto& pr : params)
     {
         const float want = valueOf (slotB, pr.key);
         const float got  = rawOf (proc, pr.id);
-        note ("  slotB %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
-        checkNear ((double) got, (double) want, 1.0e-5,
+        sink.note ("  slotB %-8s 0.9.5 %.6f -> 0.9.6 %.6f\n", pr.key, want, got);
+        sink.approx ((double) got, (double) want, 1.0e-5,
                    "the B slot reproduces from the 0.9.5 capture");
     }
     return true;
@@ -16160,7 +16176,7 @@ static void testCrossVersionFieldCapture()
     check (blob.loadFileAsData (blobData), "the capture loads from disk");
     check (manifestFile.loadFileAsData (manifestData), "...and so does its manifest");
     const int failuresBefore = failures;
-    if (! runFieldCaptureChecks (blobData, manifestData, fieldCaptureBlobHash, fieldCaptureManifestHash))
+    if (! runFieldCaptureChecks (blobData, manifestData, fieldCaptureBlobHash, fieldCaptureManifestHash, {}))
         return;   // the integrity failure is the finding; the gate legs below read these same bytes
     if (failures != failuresBefore)
     {
@@ -16175,10 +16191,7 @@ static void testCrossVersionFieldCapture()
     auto runCaptured = [] (const juce::MemoryBlock& b, const juce::MemoryBlock& m,
                            juce::uint64 bh, juce::uint64 mh, CapturedChecks& into)
     {
-        capturing = &into;
-        const bool ran = runFieldCaptureChecks (b, m, bh, mh);
-        capturing = nullptr;
-        return ran;
+        return runFieldCaptureChecks (b, m, bh, mh, FieldCaptureSink { &into });
     };
     // The bytes with one same-length span replaced; the result is checked below, so a
     // span that is not there makes the leg fail rather than pass on unchanged bytes.

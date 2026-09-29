@@ -10951,7 +10951,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2879` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2839` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -13019,7 +13019,8 @@ runs `check-docs.py --self-test` and `check-docs.py`; `draft-release` needs `bui
 
 This pass changes:
 - `release.yml`'s validate step (the release-or-rehearsal gate, a rehearsal notice) and its comments;
-- State test 25 (`tests/state_tests.cpp`) and the suite's capture helpers (`CapturedChecks`, `note`);
+- State test 25 (`tests/state_tests.cpp`), with a sink of its own (`FieldCaptureSink`, `CapturedChecks`); the
+  suite's shared `check` helpers are unchanged (see *CI* below);
 - the `check-docs.py` self-test; `check-citations.py`'s gloss of `release.yml`'s gate lines, whose line
   numbers moved;
 - the documents below, and 17 citations re-anchored by `check-citations.py --fix` (one of them a `build.yml`
@@ -13070,7 +13071,7 @@ lightweight tag, or a CMake mismatch, each refused.
   are each not taken for it; and four trigger cases, each running the step for the same annotated, dated
   `0.9.9` and evaluating the job's condition on what it wrote: a push (`is-release=true`, runs); a dispatch from the tag, a dispatch
   from `main`, another event at the tag (`is-release=false`, skipped).
-- *State test 25, 5,596 → 5,600 checks:* four gate legs run under `CapturedChecks` on in-memory copies (intact,
+- *State test 25, 5,596 → 5,600 checks:* four gate legs run into a `CapturedChecks` on in-memory copies (intact,
   its 19 checks pinned; manifest edited; blob edited; label rewritten with the hash re-pinned) and skipped when
   the capture has already failed (`TESTING.md` has the legs). The suites: State 5,600 checks, 0 failures; DSP
   all passed.
@@ -13085,7 +13086,7 @@ lightweight tag, or a CMake mismatch, each refused.
 - *`release.yml`'s gate, against the unmutated checker:* twelve mutants (below) each fail the self-test.
 - *State test 25:* six mutants each fail the suite: the early return removed (2), the integrity condition
   `&&` (2), the label check made to pass always (1), the label compared without its prefix (1), a return
-  before the slot-B checks (1, gate a's pinned count), `check` ignoring the capture (7).
+  before the slot-B checks (1, gate a's pinned count), the sink ignoring the capture (7).
 - *The checker's 92 and `release.yml`'s nine earlier mutants,* re-run against this revision: each still fails
   (ADR-0058's evidence has the counts).
 
@@ -13124,6 +13125,21 @@ skeptic before it counted; 13 reported, all addressed:
   names it; the self-test count (698, before the reader's two cases); the re-anchored-citation count; an
   unqualified citation of the finding's line, which the citation gate would have moved; "19 dependent checks"
   (2 hashes and 17); where the gate legs are skipped; an `ADR_INDEX.md` provenance clause.
+
+**CI.** The first push of this pass, `a8230c0`, went red in two jobs:
+- **`sanitizers`: ASan stack-overflow in `main`**, entering `testSaveBaselineDescribesTheBytesUnderAutomation`
+  (its own frame 1.29 MB). This pass's cause. The first spelling made the suite's shared `check`/`checkNear`
+  capture-aware; that changed their inlining, clang then inlined six other tests into `main` (among them
+  `testAHostResetClearsTheLiveMeters`, `testApplyNeverWritesANonFiniteGain` and
+  `testForeignPresetDoesNotResetSound`, each holding a processor), and ASan, which gives every inlined local
+  its own slot, grew `main`'s frame by 438,464 bytes (measured with clang 18, `-fstack-usage`, the job's
+  sanitizer flags: 13,644,664 on `044016f`, 14,083,128 on `a8230c0`). The fix leaves the shared helpers
+  byte-identical to `044016f` and routes State test 25 through a sink of its own, with its processor on the
+  heap (the suite's convention): `main` is 13,501,496, below `044016f`'s, and no other test changes how it
+  is inlined. The suite passes under `ulimit -s 1024` as well (the Windows-parity step).
+- **`macos-intel`: pluginval's own teardown aborted** (`std::bad_function_call` after `SUCCESS`, AU randomise
+  pass 2/3). No plug-in source changed in this pass; this is the non-deterministic pluginval shutdown abort
+  recorded on PR #141 and in the 0.9.8 audit worklog, and the next push re-ran the job.
 
 **Limitations, stated.**
 - `draft-release`'s condition is evaluated for the one form the workflow uses, its value read whole; any other
@@ -13872,7 +13888,7 @@ checks in ADR-0058, which is complete.
    update required)" to "update PARAMETER_REGISTRY.md (and add an ADR where PARAMETER_COMPATIBILITY_POLICY.md
    requires one), then:". Commit `0fd0eb6` (2026-09-28, the 92nd pass).
 2. *The generator changed identically in the same commit.* The header is written by `registry::` in
-   `tests/state_tests.cpp:280-282`; the fixture-workflow comment and the failure note changed with it. The
+   `tests/state_tests.cpp:240-242`; the fixture-workflow comment and the failure note changed with it. The
    header is therefore what `--write-snapshot` emits today, so a regeneration reproduces it byte for byte.
 3. *Why:* the 91st pass reported the old header as drift. It said every regeneration needs an ADR, while
    `PARAMETER_COMPATIBILITY_POLICY.md` rule 2 (and ADR-0002) let a display name change without one. That is
@@ -13882,7 +13898,7 @@ checks in ADR-0058, which is complete.
    parameter ID, name, range, default, choice list, count, order, or the bypass line changed.
 5. *No version or notation content:* the two lines name no version; the ADR-0059 sweep did not touch them.
 6. *No effect on validation:* `registry::compare` skips a line when both sides start with `#`
-   (`tests/state_tests.cpp:341`), so the header cannot make the comparison pass or fail. The State suite passes on
+   (`tests/state_tests.cpp:301`), so the header cannot make the comparison pass or fail. The State suite passes on
    this pass's source.
 7. *Not part of the version-format sweep:* it came in the 92nd pass's documentation corrections, ten commits
    before the ADR-0059 sweep (`bfa9c73`), which does not touch the file.
@@ -16042,10 +16058,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22183`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15594` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -16061,7 +16077,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19287`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19300`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -16090,7 +16106,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13750` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13710` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -16386,7 +16402,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13750`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13710`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at
