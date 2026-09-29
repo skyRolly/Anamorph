@@ -2128,6 +2128,16 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
     merge_hint = ("if it is this line's release, merge the history that carries it into "
                   "this branch (`main`, for a release tagged there)")
 
+    def could_be_release(t: str) -> bool:
+        # Only a bare version at or above the first tag can be a release, wherever
+        # it sits; merging a prefixed, leading-zero or older tag in makes it none.
+        return bool(RELEASE_TAG.fullmatch(t)) and vtuple(t) >= first
+
+    def no_release(t: str) -> str:
+        # Why a tag git holds is still no release of this line.
+        return ("predates this line's first tag and is no release"
+                if RELEASE_TAG.fullmatch(t) else "names no version and is no release")
+
     def base_note(url: str, named: set[str | None]) -> str:
         # The base a comparison URL names, when its tag exists but not in HEAD's
         # history and the finding has not named it already: say so, rather than
@@ -2136,7 +2146,7 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         b = m.group(1) if m else None
         return (f"; `{b}`, which it compares from, is not a base here: {not_here(b)} -- "
                 f"{merge_hint}" if b is not None and b not in named and b in tags.elsewhere
-                else "")
+                and could_be_release(b) else "")
 
     # Without the tags, only a file that needs none can be checked: one whose
     # only version at or above the first tag is the release in preparation.
@@ -2226,8 +2236,8 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         if e.version is not None and e.version < first:
             findings.append(
                 f"{path}:{line_no}: `[{key}]` predates this line's first tag "
-                f"({'.'.join(map(str, first))}) and was never tagged -- "
-                f"there is no release page to link, so it must not be defined"
+                f"({'.'.join(map(str, first))}), so it is no release of this line, whatever "
+                f"git holds -- there is no release page to link, so it must not be defined"
             )
             continue
         if not verifiable:
@@ -2347,15 +2357,16 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
             url = defined["unreleased"][1]
             m = re.fullmatch(rf"{re.escape(REPO_URL)}/compare/(\d+\.\d+\.\d+)\.\.\.HEAD", url)
             said = bool(declared) and declared[0] in tags.elsewhere
+            x = m.group(1) if m else ""
             also = (f"; its definition `{url}` names no tagged base" if not m
-                    else f"; its definition `{url}` compares from {m.group(1)}, whose git "
-                         f"tag is not in this checkout's history"
-                         + ("" if said and m.group(1) == declared[0] else f" -- {merge_hint}")
-                    if m.group(1) in tags.elsewhere
-                    else f"; its definition `{url}` compares from {m.group(1)}, whose git "
-                         f"tag predates this line's first tag and is no release"
-                    if m.group(1) in tags.tags
-                    else f"; its definition `{url}` compares from {m.group(1)}, a version "
+                    else f"; its definition `{url}` compares from {x}, whose git tag "
+                         f"{no_release(x)}"
+                    if not could_be_release(x) and (x in tags.tags or x in tags.elsewhere)
+                    else f"; its definition `{url}` compares from {x}, whose git tag is "
+                         f"not in this checkout's history"
+                         + ("" if said and x == declared[0] else f" -- {merge_hint}")
+                    if x in tags.elsewhere
+                    else f"; its definition `{url}` compares from {x}, a version "
                          f"with no git tag")
         findings.append(
             f"{path}:{e.line_no}: `## [Unreleased]` needs a tagged release to compare "
@@ -4243,6 +4254,24 @@ def self_test() -> int:
          U + CL([E9, E8, E7], [UR("0.9.8")])[1:], T("0.9.8"),
          ["compares from 0.9.8, whose git tag predates this line's first tag"],
          ["a version with no git tag"]),
+        # ...and one with a leading zero names no version at all: it does not
+        # "predate" the first tag (0.09.10 reads as 0.9.10).
+        ("an `[Unreleased]` definition from a leading-zero tag",
+         U + CL([E9, E8, E7], [UR("0.09.10"), TP("0.9.9")])[1:], T("0.09.10"),
+         ["compares from 0.09.10, whose git tag names no version"], ["predates"]),
+        # A tag that could never be a base, wherever it sits, is not offered for a
+        # merge: merged in, a tag below the first tag is still no release.
+        ("a comparison from a pre-first tag outside this history",
+         U + CL([E9, E8, E7], [UR("0.9.8"), TP("0.9.9")])[1:],
+         TagState(frozenset({"0.9.9"}), True, "the self-test's tags", frozenset({"0.9.8"})),
+         ["must be `https://github.com/skyRolly/Anamorph/compare/0.9.9...HEAD`"],
+         ["which it compares from", "merge the history"]),
+        # A definition below the first tag is refused as no release -- not as
+        # "never tagged", which a stray tag in this history would contradict.
+        ("a pre-first definition with a stray tag in this history",
+         CL([E9, E8, E7], [TP("0.9.9"), CP("0.9.7", "0.9.8")]), T("0.9.8", "0.9.9"),
+         ["`[0.9.8]` predates this line's first tag (0.9.9), so it is no release of this "
+          "line, whatever git holds"], ["was never tagged"]),
     ]:
         found = found_for(lines, tags)
         checked += 1
