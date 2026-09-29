@@ -143,12 +143,12 @@ tag the release commit on `main` itself: every later `main` commit, and every br
 then has the tag in its history. A branch made before the tag, or not merged with `main` since, is
 bound by the release all the same — CI checks a same-repo pull request at its tip, so the checker reads
 `main`'s tags for any branch headed there, and reports the release's missing entry as one on `main`
-the branch has not merged — so merge `main` into it before adding the section; and a tag cut on a
+the branch's history does not hold — so merge `main` into it before adding the section; and a tag cut on a
 branch other than `main` is `main`'s release only once that branch is merged. CI's `docs` job fetches
 the full history, every branch and every tag. Where the tags cannot be read at all (a directory that is
 not the root of a git checkout), the checkout is a shallow clone, which cannot tell which tags are in
 `HEAD`'s history (run `git fetch --unshallow --tags`), or it has no `main` (run `git fetch origin
-main`), the checker refuses the links that depend on them and says why.
+main:refs/remotes/origin/main`), the checker refuses the links that depend on them and says why.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**

@@ -13008,10 +13008,16 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 ## 99th pass — 2026-09-29, the missing-release finding closed at a pull request's tip (PR #159)
 
 **Scope.** The review finding "Missing release hides the newest tag" (Devin) was still reported against
-`scripts/check-docs.py` at `R2196`, on `482a2b0`. It was treated as not fixed. This pass changes `read_git_tags`,
-two findings' wording, the self-test and the documents. No production code, C++ test, parameter, serialization,
-DSP, threading or latency change. No tag was created; every tag in this pass's tests lives in a temporary
-repository, and the real repository gained none.
+`scripts/check-docs.py` at `R2196`, on `482a2b0`. It was treated as not fixed. This pass changes:
+- `read_git_tags`: the release line, and how HEAD is placed on it;
+- the missing-entry and no-base findings, and the shared `not_here()` and `merge_hint` text that six other findings
+  quote;
+- the self-test;
+- `build.yml`'s `docs` checkout comment;
+- the documents.
+
+No production code, C++ test, parameter, serialization, DSP, threading or latency change. No tag was created;
+every tag in this pass's tests lives in a temporary repository, and the real repository gained none.
 
 **The review's anchor.** Devin posts nothing to the GitHub PR: no review, review comment, check run or status
 exists for it on `482a2b0`, `03a743b` or `f3f2b39`. Line 2196 of `scripts/check-docs.py` differs by revision:
@@ -13040,15 +13046,19 @@ was hidden, and the file passed. That tip is the only place CI checks a same-rep
 So a pull request could go green and then break `main`.
 
 **The rule.** Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging), so the release line is `main`'s
-history.
-- A checkout in `main`'s history (`main`, an older `main` commit, a release tag; `git merge-base --is-ancestor`)
-  has `HEAD`'s history as its line. A later tag is its future.
-- A branch headed for `main` has `HEAD`'s history and `main`'s. The tags it lacks are kept in `ahead`, and the
-  missing-entry finding names them as releases on `main` the branch has not merged, with "merge `main`" as the
-  remedy.
-- `main` is read as `origin/main` (which CI's full-history checkout fetches) and as the local branch, whichever
-  exist. A checkout with neither is unknown.
-- A tag on neither history is another line's (`elsewhere`), as before.
+history. `main` is the remote-tracking `main` of `origin`, which CI's full-history checkout fetches, and of any
+remote whose URL is this repository (a fork clone's `upstream`). The local branch is read only where no such branch
+exists. HEAD is placed on each:
+- **on `main`'s first-parent line** (`main`, an older `main` commit, a release tag): `HEAD`'s history. A later tag
+  is its future;
+- **not in `main`'s history** (a branch headed for `main`): `HEAD`'s history and `main`'s. The tags it lacks are kept
+  in `ahead`, and the missing-entry finding names them as releases on `main` that the branch's history does not
+  hold, with "merge `main`" as the remedy;
+- **merged through a merge's second parent** (a pull request's commit after its merge): `HEAD`'s history and `main`'s
+  as it stood just before that merge;
+- **no `main` at all**: unknown, with `git fetch origin main:refs/remotes/origin/main` as the remedy.
+
+A tag on none of these is another line's (`elsewhere`), as before.
 
 The ordering the review asked for already held and still holds:
 1. read the applicable tags;
@@ -13057,7 +13067,7 @@ The ordering the review asked for already held and still holds:
 
 **After the fix:** T1 FAIL (2); T2 FAIL (2), naming 0.9.10 as a release on `main`; T2m FAIL (2).
 
-**Self-test.** 564 → 590 cases.
+**Self-test.** 564 → 627 cases.
 - 18 count cases: the review's acceptance cases A–J, including D with 0.9.10 on `main` unmerged, and F's
   invalid form (0.9.11 tagged and not recorded, 0.9.10 untagged: the base is 0.9.11, never 0.9.10).
 - 8 wording checks: every form of `[Unreleased]` over a missing 0.9.10 names it; a release on `main` is named
@@ -13067,25 +13077,58 @@ The ordering the review asked for already held and still holds:
   - with `main` merged and 0.9.10 recorded it passes, and so does `main`;
   - the 0.9.9 tag commit passes, with 0.9.10 as its future;
   - an unrelated branch's 0.9.11 is ignored;
-  - a single-branch clone without `main` is unknown and refuses once.
+  - a single-branch clone without `main` is unknown and refuses once, and after the remedy it names it reads the
+    line;
+  - a local `main` with an unpushed commit, behind a fetched `origin/main` holding 0.9.10, is bound by it;
+  - a merged pull request's commit is bound by the 0.9.10 `main` had then, not by the 0.9.11 tagged after;
+  - in a fork clone the repository's own `main`, under `upstream`, binds the branch;
+  - a tag name that is not UTF-8 is read, not fatal.
 - The reader test repositories are now created on `main`.
+- Each step of the tag-reader case now counts as a case of its own, 38 cases from one. Before this, a mutant
+  failing three steps reported "3 of N cases" failed when one case had.
 
-**Mutation.** Forty-four mutants each fail the self-test, on a clean clone of the checker commit (`de0d51e`); the
-counts are in ADR-0058's evidence. Among them:
+**Mutation.** Fifty mutants each fail the self-test, on a clean clone of the final checker; the counts are in
+ADR-0058's evidence. None is killed by a crash. Among them:
 
 | Mutant | Failing cases |
 |---|---|
-| the intersection | 18 |
-| a missing entry ignored | 31 |
-| `newest_tagged` before reconciliation | 18 |
-| `[Unreleased]` from the newest entry | 42 |
-| other branches' tags counted | 9 |
+| the intersection | 20 |
+| a missing entry ignored | 34 |
+| `newest_tagged` before reconciliation | 20 |
+| `[Unreleased]` from the newest entry | 44 |
+| other branches' tags counted | 12 |
 | the first-tag guard removed | 22 |
 | the skipped-tag fix reverted | 26 |
-| `main`'s tags ignored (this pass's defect) | 3 |
+| `main`'s tags ignored (this pass's defect) | 6 |
+| the any-ref rule (a local `main` hiding `origin/main`'s release) | 2 |
+| a merged pull request's commit read as `main`'s past | 1 |
+| a fork's `upstream` ignored | 1 |
+
+**Review.** Three reviewers (code, a hunt for any remaining hidden-release path, documents against code), with a
+skeptic per finding, confirmed 16 findings and refuted 3. All are fixed:
+- **Three local false negatives in the first spelling**, now closed by the placement above:
+  - a local `main` holding HEAD hid `origin/main`'s newer release: HEAD counted as main's past if it was in ANY
+    `main`'s history;
+  - a merged pull request's commit, reached only through a merge's second parent, counted as `main`'s past, so a
+    re-run on it passed what had failed before the merge;
+  - a fork clone's canonical `upstream` was ignored.
+- **The no-`main` remedy did not work.** `git fetch origin main` in a single-branch clone writes only `FETCH_HEAD`.
+  The remedy is now `git fetch origin main:refs/remotes/origin/main`, and a test runs it.
+- **A non-UTF-8 tag name crashed the run.** Git's output is now decoded with replacement.
+- **Stale statements:**
+  - `build.yml`'s comment, three code comments, ADR-0058's first Decision bullet and its remedy wording, and the
+    policy template still described `HEAD`'s history alone;
+  - ADR-0058 claimed a pull request "cannot pass CI" with such a changelog. That holds only for a check run after
+    the tag, and the sentence now says so: CI re-checks a branch only when it is pushed;
+  - this entry understated the wording it changed.
+- **The mutation counts' unit:** reader steps counted as failing cases (above).
+
+The refuted three: the "merge `main`" remedy (correct for this rule), the same overclaim reached by a
+non-reproducing path, and PR #159's description (not a repository file; updated with this pass).
 
 **Cost, stated.** Every open branch whose file lacks a new release's entry fails at its tip until it merges
-`main`. That is the price of checking at the tip what `main` will check after the merge.
+`main`. That is the price of checking at the tip what `main` will check after the merge. A branch whose last check
+predates a release keeps its green status until it is pushed or its checks are re-run.
 
 **Documents:**
 - `CHANGELOG_POLICY.md` rule 8 (the release line; a branch bound by `main`'s releases; a checkout without `main`
@@ -13093,9 +13136,10 @@ counts are in ADR-0058's evidence. Among them:
 - `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
 - ADR-0058 (status line, the applicable-tag and release-line bullets, the amendment record, the self-test list,
   Consequences, Related code, Evidence) and its `ADR_INDEX.md` row;
-- ADR-0059's counts (590; a prefixed URL fails 122);
-- `CI_CD.md` (the `docs` row and the local-run note);
-- `REPOSITORY_MAP.md`'s `check-docs.py` row.
+- ADR-0059's counts (627; a prefixed URL fails 124);
+- `CI_CD.md` (the `docs` row and the local-run note, with the remotes read and the remedy);
+- `REPOSITORY_MAP.md`'s `check-docs.py` row;
+- the policy template's comparison base.
 
 **This file:** this entry and the *Last updated* line.
 

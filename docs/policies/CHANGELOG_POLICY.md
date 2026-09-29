@@ -59,11 +59,15 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    declares.** `check-docs.py` reads the tag refs of the checkout it runs in (no network; CI's `docs`
    job fetches the full history, every branch and every tag). A tag is a **release tag of this line**
    when it is the bare `x.y.z` form, not older than the first tag, and its commit is on this
-   checkout's **release line**: releases are tagged on `main`, so for a checkout in `main`'s history
-   (`main`, an older `main` commit, a release tag) that is `HEAD`'s history, and for a branch headed
-   for `main` it is `HEAD`'s history **and `main`'s** — a release `main` gained after the branch forked
-   is one the branch will land on, so it counts before the branch merges it (`git for-each-ref
-   --merged`). A version counts as tagged when its tag is one. A prefixed tag, an older one, and one on
+   checkout's **release line**: releases are tagged on `main`, so for a checkout on `main`'s
+   first-parent line (`main`, an older `main` commit, a release tag) that is `HEAD`'s history; for a
+   branch headed for `main` it is `HEAD`'s history **and `main`'s** — a release `main` gained after the
+   branch forked is one the branch will land on, so it counts before the branch merges it; and for a
+   pull request's commit already merged into `main`, it is `HEAD`'s history and `main`'s as it stood
+   just before that merge (`git for-each-ref --merged`). `main` is the remote-tracking `main` of
+   `origin`, or of any remote that is this repository (a fork clone's `upstream`); a local `main` is
+   used only where none exists, since it can hold commits no release line has. A version counts as
+   tagged when its tag is one. A prefixed tag, an older one, and one on
    neither history — another branch never merged into `main` — are none of this line's: such a higher
    tag neither needs an entry here nor becomes a base. **Every release tag needs its
    `## [x.y.z]` entry**: the check reports each one that has none, newest first, so the newest release tag is always
@@ -79,7 +83,7 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    refused, whatever its definition names — including before the `0.9.9` tag is pushed, although the
    0.9.9 entry is in the file — and unreleased work goes in the dated entry it will ship in (§Entry
    template). A branch made before a release, or not merged with `main` since, is still bound by it:
-   the check reports the release as one on `main` the branch has not merged, and `main` merged into the
+   the check reports the release as one on `main` that the branch's history does not hold, and `main` merged into the
    branch brings its entry in. Where the tags cannot be read (not the root of a git checkout, no `git`,
    a shallow clone, which cannot tell which tags are in `HEAD`'s history, or a checkout with no `main`,
    whose release line cannot be told from another branch), the check refuses
@@ -356,7 +360,7 @@ The link definition has one exception, and it is the first tag: `0.9.9` is the l
 tag (ADR-0058), so it has no predecessor to compare against and its definition is
 `[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9`. Every tagged version after it uses
 the comparison form shown above, against the most recent earlier **tagged** version — the nearest
-entry below it that is tagged — its release tag in `HEAD`'s history. A version that closes without a tag keeps its entry, loses
+entry below it that is tagged — its release tag on the release line (rule 8). A version that closes without a tag keeps its entry, loses
 its definition, and is skipped as a comparison base. `check-docs.py` requires exactly the form the
 version calls for, and rejects the other one.
 

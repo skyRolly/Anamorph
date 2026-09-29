@@ -1667,9 +1667,12 @@ python3 scripts/check-linux-abi.py --self-test                   # gate needs li
 `check-docs.py` reads the release tags from the checkout's own tag refs, with no network, and counts
 only those on the release line (`HEAD`'s history, and `main`'s for a branch headed there), so run it
 from the root of a full clone that has them and `main` (`git fetch --tags`; in a shallow clone,
-`git fetch --unshallow --tags`; without `main`, `git fetch origin main`); a copy that is not a git
-checkout, a shallow clone, or one without `main` cannot say which versions were released, and
-the `CHANGELOG.md` links that depend on it are refused with that reason.
+`git fetch --unshallow --tags`; without `main`, `git fetch origin main:refs/remotes/origin/main`); a
+copy that is not a git checkout, a shallow clone, or one without `main` cannot say which versions were
+released, and the `CHANGELOG.md` links that depend on it are refused with that reason. `main` is read
+from `origin/main`, or from any remote whose URL is this repository (a fork clone's `upstream`), and
+from the local branch only where no such remote-tracking branch exists; a remote under another URL is
+not read, so keep the one that is this repository fetched.
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
 so a local run against `origin/main` can reach a different verdict — and on a branch with more than
