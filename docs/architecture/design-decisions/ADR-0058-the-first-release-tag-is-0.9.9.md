@@ -127,12 +127,17 @@ without a tag, rather than only for this one.
         `--ancestry-path` together with `--first-parent` marks a merge only when HEAD is its own second
         parent, which left every earlier commit bound by nothing). It landed on `main` as it stood just
         before that merge: the tags there bind it, and later ones are its future. Reading it as `main`'s
-        past let a re-run on a merged commit pass what failed before the merge;
+        past let a re-run on a merged commit pass what failed before the merge. A merge `main` never
+        holds whose parents are all on its line -- a fork pull request's test merge (`refs/pull/N/merge`)
+        checked again after the pull request merged -- is bound as its parents are, not as a branch still
+        headed for `main`;
       - `main` is the remote-tracking `main` of `origin` -- which CI's full-history checkout fetches
         (`actions/checkout` with `fetch-depth: 0` maps `+refs/heads/*:refs/remotes/origin/*`) -- and of
         any remote whose URL is this repository under any form GitHub serves it at (https, scp-style,
-        ssh:// with a port or through `ssh.github.com:443`; `REPOSITORY_REMOTE`, matched on `git remote
-        get-url`, which applies `insteadOf` aliases), as a fork clone's `upstream`; HEAD is placed on each and
+        ssh:// with a port or through `ssh.github.com:443`; `REPOSITORY_REMOTE`, anchored on the host and
+        matched on `git remote get-url`, which applies `insteadOf` aliases -- a local path or another host
+        whose path merely ends in `/github.com/skyRolly/Anamorph` is a mirror, not this repository), as a
+        fork clone's `upstream`; HEAD is placed on each and
         their bound tags are united. The local branch is read only where no such remote-tracking branch
         exists: a local `main` can hold unpushed commits no release line has, and treating HEAD as its
         past hid `origin/main`'s newer release. A checkout with none is **unknown**, with `git fetch
@@ -170,9 +175,10 @@ without a tag, rather than only for this one.
       definition naming it; an `[Unreleased]` section, or an `[Unreleased]` or version definition, that
       would compare from it; a version with no older release tag in this history; and an entry below a
       comparison. The finding says the tag exists but is not in this checkout's history -- "nor in
-      `main`'s" for a branch headed there -- and, if it is this line's release, to merge the history that
-      carries it; for a checkout on `main`'s line it adds "(`main`, for a release tagged there)", and for
-      a branch, whose line holds `main`'s tags already, it does not. It does not say where the commit sits, which the checker does not know, and never says git has no such
+      `main`'s" for a branch headed there (`unmerged`) -- and, if it is this line's release, to merge the
+      history that carries it; for a commit on or merged into `main`, where the tag may be one `main`
+      gained later, it adds "(`main`, for a release tagged there)", and for a branch headed there, whose
+      line holds `main`'s tags already, it does not. It does not say where the commit sits, which the checker does not know, and never says git has no such
       tag. The remedy is offered only for a tag that could be a release (bare, not older than the first
       tag): merging a prefixed, leading-zero or older tag in would make it none. A tag git holds that is
       no release -- below the first tag, or with a leading zero -- is named as such, never as absent: a
@@ -269,8 +275,10 @@ without a tag, rather than only for this one.
       commit are each bound by the 0.9.10 `main` had then and not by the 0.9.11 tagged after the merge
       (2 each, none naming 0.9.11); in a fork clone whose `origin` is the fork, the repository's own
       `main` under `upstream` binds the branch, with `upstream` at an https, `ssh.github.com:443`, ssh
-      port, scp-style and `insteadOf`-alias URL, and not under another repository's URL; a tag name that
-      is not UTF-8 is read, not fatal;
+      port, scp-style and `insteadOf`-alias URL, and not under another repository's URL, a local
+      mirror path, a proxy, or a `#@` URL; a merged fork pull request's test merge is bound as its
+      parents are, not by the 0.9.11 tagged after the merge; a tag name that is not UTF-8 is read, not
+      fatal;
     - a subdirectory, a plain directory, a checkout git will not open ("dubious ownership"), a checkout
       whose tags cannot be listed, no `git`, and a `git` that cannot run all read as unknown, with the
       reason; in the plain directory and with no `git`, the production path refuses once, naming it.
@@ -321,7 +329,7 @@ without a tag, rather than only for this one.
 ## Related code
 - `scripts/check-docs.py` — `FIRST_TAGGED_VERSION`, `FIXTURE_FIRST_TAGGED_VERSION`, `first_tagged()`,
   `RELEASE_BRANCH`, `REPOSITORY_REMOTE`, `TagState` (`tags` on this line, `elsewhere`, `ahead`,
-  `headed`), `GIT_LOCATION_VARS`, `git_env()`, `read_git_tags()` (`git remote get-url`, `for-each-ref
+  `headed`, `unmerged`), `GIT_LOCATION_VARS`, `git_env()`, `read_git_tags()` (`git remote get-url`, `for-each-ref
   --merged`, `merge-base --is-ancestor`, `rev-list --first-parent` and `--ancestry-path` for HEAD's
   placement, a shallow clone or a checkout without `main` unknown), `RELEASE_TAG`, `tag_state()`, `check_changelog_links` (`releases`,
   `tagged`, `in_prep`, `verifiable`, `previous_of`, `newest_tagged`, the missing-entry finding), and the
@@ -347,24 +355,26 @@ without a tag, rather than only for this one.
   no 0.9.10 entry failed (2), but 0.9.10 tagged on `main` after the branch forked passed at the branch's
   tip (0 findings) and failed on `main` after the merge (2). With the release line, the branch's tip fails
   (2), naming 0.9.10 as a release on `main` that the branch's history does not hold.
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 633 cases (537 before the
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 638 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case now counts as a case of its own, so a mutant's
-  count is the number of failing cases and steps alike). Fifty-three mutants of the 2026-09-29 rule each
+  count is the number of failing cases and steps alike). Fifty-six mutants of the 2026-09-29 rule each
   fail it, none by crashing, with the number of failing cases (measured on a clean clone of the final
   checker):
-  - the bases from the tags that have an entry (the intersection, the finding's own repro): 21; the
-    missing-entry finding removed: 35; the base taken from the newest entry with a tag-looking link: 33;
-    `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 21;
+  - the bases from the tags that have an entry (the intersection, the finding's own repro): 22; the
+    missing-entry finding removed: 36; the base taken from the newest entry with a tag-looking link: 34;
+    `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 22;
   - `main`'s tags ignored for a branch headed there (the finding's remaining path): 11; `main`'s later
-    tags counted on `main`'s own past: 1; a checkout without `main` read as known: 3; a release on `main`
-    the branch lacks called "in this checkout's history": 3; every tag counted as `main`'s: 5; HEAD in
+    tags counted on `main`'s own past: 2; a checkout without `main` read as known: 3; a release on `main`
+    the branch lacks called "in this checkout's history": 3; every tag counted as `main`'s: 8; HEAD in
     ANY `main`'s history reading HEAD's history alone (a local `main` hiding `origin/main`'s release): 3;
-    a merged pull request's commit read as `main`'s past: 2; bound by `main`'s later tags too: 2; its
-    landing found by a first-parent-only ancestry walk (an earlier commit bound by nothing): 1; only
-    `origin` read (a fork's `upstream` ignored): 5; the raw configured URL matched (an `insteadOf` alias
-    unresolved): 1; the URL pattern without `ssh.github.com` or a port: 2; git output decoded strictly:
-    1; the no-`main` remedy reverted to `git fetch origin main`: 1;
-  - tags on another branch counted as this line's: 18; the no-tag `[Unreleased]` refusal removed,
+    a merged pull request's commit read as `main`'s past: 2; bound by `main`'s later tags too: 3; its
+    landing found by a first-parent-only ancestry walk (an earlier commit bound by nothing): 1; a merged
+    fork pull request's test merge read as a branch headed for `main`: 1; only `origin` read (a fork's
+    `upstream` ignored): 5; the raw configured URL matched (an `insteadOf` alias unresolved): 1; the URL
+    pattern without `ssh.github.com` or a port: 2; unanchored (a mirror path matching): 3; a merged
+    commit's later tag called absent from `main`: 1; git output decoded strictly: 1; the no-`main`
+    remedy reverted to `git fetch origin main`: 1;
+  - tags on another branch counted as this line's: 22; the no-tag `[Unreleased]` refusal removed,
     restoring the shape-only check: 22; a prefixed tag counted as a release: 4; a leading-zero tag
     counted as a release: 2;
   - `previous_of` set back to "the entry directly below": 26; drawn from the tagged entries only: 3;
@@ -375,15 +385,15 @@ without a tag, rather than only for this one.
     (an earlier spelling): 3;
   - a definition on an untagged past version accepted: 9; a tagged version without one accepted: 3;
     the release in preparation required to be tagged already: 18; unreadable tags read as no tags: 11;
-  - the inherited `GIT_DIR` kept in the reader: 1; the constant set back to (0, 9, 7): 92; a prefixed
-    tag in the URL: 125; `[Unreleased]` from the newest entry whether tagged or not: 45;
+  - the inherited `GIT_DIR` kept in the reader: 1; the constant set back to (0, 9, 7): 93; a prefixed
+    tag in the URL: 126; `[Unreleased]` from the newest entry whether tagged or not: 46;
   - missing releases reported oldest first: 1; comparing past a missing release explained as "the entry
     below closed without a tag": 1;
   - a tag outside `HEAD`'s history not named as such: in a definition, 1; in the `[Unreleased]` refusal
     ("git has no tag"), 1; in its definition ("a version with no git tag"), 1; in the no-base finding, 1;
     for the entry below a comparison ("closed without one"), 1; as the base of an `[Unreleased]`
-    definition once a release is in this history, 1; as the base of a version definition, 1;
-  - the remedy claiming the tagged commit is on `main`: 4; offered for a tag that can never be a base: 1;
+    definition once a release is in this history, 2; as the base of a version definition, 1;
+  - the remedy claiming the tagged commit is on `main`: 5; offered for a tag that can never be a base: 1;
   - a non-release tag git holds called "a version with no git tag": 2; a leading-zero one said to
     predate the first tag: 1; a definition below the first tag called "never tagged": 1.
 - **[Verified]** Before the 2026-09-29 amendment, 537 cases; twenty-eight mutants of the rule each failed

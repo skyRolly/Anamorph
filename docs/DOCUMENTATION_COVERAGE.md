@@ -13068,7 +13068,7 @@ The ordering the review asked for already held and still holds:
 
 **After the fix:** T1 FAIL (2); T2 FAIL (2), naming 0.9.10 as a release on `main`; T2m FAIL (2).
 
-**Self-test.** 564 → 633 cases.
+**Self-test.** 564 → 638 cases.
 - 18 count cases: the review's acceptance cases A–J, including D with 0.9.10 on `main` unmerged, and F's
   invalid form (0.9.11 tagged and not recorded, 0.9.10 untagged: the base is 0.9.11, never 0.9.10).
 - 8 wording checks: every form of `[Unreleased]` over a missing 0.9.10 names it; a release on `main` is named
@@ -13084,29 +13084,33 @@ The ordering the review asked for already held and still holds:
   - a merged pull request's tip and its earlier commit are each bound by the 0.9.10 `main` had then, not by the
     0.9.11 tagged after;
   - in a fork clone the repository's own `main`, under `upstream`, binds the branch at five URL forms (https,
-    `ssh.github.com:443`, an ssh port, scp-style, an `insteadOf` alias); a remote under another URL is not read;
+    `ssh.github.com:443`, an ssh port, scp-style, an `insteadOf` alias); a remote under another URL, a local
+    mirror path, a proxy or a `#@` URL is not read;
+  - a merged fork pull request's test merge is bound as its parents are, not by a release tagged after the merge;
   - a tag name that is not UTF-8 is read, not fatal.
 - The reader test repositories are now created on `main`.
-- Each step of the tag-reader case now counts as a case of its own, 44 cases from one. Before this, a mutant
+- Each step of the tag-reader case now counts as a case of its own, 48 cases from one. Before this, a mutant
   failing three steps reported "3 of N cases" failed when one case had.
 
-**Mutation.** Fifty-three mutants each fail the self-test, on a clean clone of the final checker; the counts are in
+**Mutation.** Fifty-six mutants each fail the self-test, on a clean clone of the final checker; the counts are in
 ADR-0058's evidence. None is killed by a crash. Among them:
 
 | Mutant | Failing cases |
 |---|---|
-| the intersection | 21 |
-| a missing entry ignored | 35 |
-| `newest_tagged` before reconciliation | 21 |
-| `[Unreleased]` from the newest entry | 45 |
-| other branches' tags counted | 18 |
+| the intersection | 22 |
+| a missing entry ignored | 36 |
+| `newest_tagged` before reconciliation | 22 |
+| `[Unreleased]` from the newest entry | 46 |
+| other branches' tags counted | 22 |
 | the first-tag guard removed | 22 |
 | the skipped-tag fix reverted | 26 |
 | `main`'s tags ignored (this pass's defect) | 11 |
 | the any-ref rule (a local `main` hiding `origin/main`'s release) | 3 |
 | a merged pull request's commit read as `main`'s past | 2 |
 | an earlier merged commit's landing missed (first-parent-only walk) | 1 |
+| a fork pull request's test merge read as headed for `main` | 1 |
 | a fork's `upstream` ignored | 5 |
+| the URL pattern unanchored (a mirror path matching) | 3 |
 
 **Review.** Three reviewers (code, a hunt for any remaining hidden-release path, documents against code), with a
 skeptic per finding, confirmed 16 findings and refuted 3. All are fixed:
@@ -13148,6 +13152,21 @@ skeptic, confirmed 8 findings and refuted none. All are fixed:
   - ADR-0058's Related code named the removed `RELEASE_BRANCH_REFS`;
   - `ADR_INDEX.md` said all of `main` binds a merged commit.
 
+**Final check.** One reviewer per lens (code; documents), each finding checked by a skeptic, confirmed 5 findings,
+all minor and none in CI, and refuted 2. All five are fixed:
+- The URL pattern also matched a local path or another host whose path ends in `/github.com/skyRolly/Anamorph`
+  (a GOPATH or ghq mirror, a proxy, a `#@` URL). It is now anchored on the host.
+- A fork pull request's test merge (`refs/pull/N/merge`), re-run after the pull request merged, read as a branch
+  still headed for `main`, so a release tagged after the merge bound it. A merge whose parents are all on the line
+  is now bound as its parents are.
+- A merged commit was told that a tag `main` gained later is absent from `main`'s history. `TagState.unmerged` now
+  decides that wording.
+- Two comments (the `RELEASE_BRANCH` block, `TagState`'s `elsewhere`) described the placement loosely.
+
+A commit that reached `main` only through a squash or rebase is not in `main`'s history. Git cannot tell it from
+a branch still headed there, so it stays bound by `main`'s tags; only a re-run on such a closed pull request is
+affected.
+
 **Cost, stated.** Every open branch whose file lacks a new release's entry fails at its tip until it merges
 `main`. That is the price of checking at the tip what `main` will check after the merge. A branch whose last check
 predates a release keeps its green status until it is pushed or its checks are re-run.
@@ -13158,7 +13177,7 @@ predates a release keeps its green status until it is pushed or its checks are r
 - `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
 - ADR-0058 (status line, the applicable-tag and release-line bullets, the amendment record, the self-test list,
   Consequences, Related code, Evidence) and its `ADR_INDEX.md` row;
-- ADR-0059's counts (633; a prefixed URL fails 125);
+- ADR-0059's counts (638; a prefixed URL fails 126);
 - `CI_CD.md` (the `docs` row and the local-run note, with the remotes read and the remedy);
 - `REPOSITORY_MAP.md`'s `check-docs.py` row;
 - the policy template's comparison base.

@@ -1671,8 +1671,9 @@ from the root of a full clone that has them and `main` (`git fetch --tags`; in a
 copy that is not a git checkout, a shallow clone, or one without `main` cannot say which versions were
 released, and the `CHANGELOG.md` links that depend on it are refused with that reason. `main` is read
 from `origin/main`, or from any remote whose URL is this repository (a fork clone's `upstream`), and
-from the local branch only where no such remote-tracking branch exists; a remote under another URL is
-not read, so keep the one that is this repository fetched.
+from the local branch only where no such remote-tracking branch exists; a remote under another URL --
+another repository, or a local mirror or proxy whose path ends in this one -- is not read, so keep the
+one that is this repository fetched.
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
 so a local run against `origin/main` can reach a different verdict — and on a branch with more than
