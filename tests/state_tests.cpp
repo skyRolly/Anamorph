@@ -15957,6 +15957,17 @@ static void testPhysicalButtonQueryIgnoresCachedState()
 //
 //     Covers all four things the checklist item names: sound, preset name,
 //     dirty-star, and both A/B slots.
+//
+//     THE CAPTURE IS EVIDENCE, NOT PROSE. Both files are what the 0.9.5 binary
+//     WROTE (committed in 72fe2e0), byte for byte, and they are pinned here by
+//     content hash. An edit to either file would leave this test comparing the
+//     current build against a rewritten record instead of the old binary's
+//     output, and the hash makes such an edit fail, a repository-wide notation
+//     sweep included. The manifest's first line is that binary's own label,
+//     `emitter=v0.9.5`: the prefixed spelling the project used then. ADR-0059's
+//     bare convention governs current version references, not captured output,
+//     and it exempts this file by name. A sweep once rewrote the label to the bare
+//     form, and this assertion with it (bfa9c73, restored 2026-09-29).
 static void testCrossVersionFieldCapture()
 {
     std::printf ("State test 25: a 0.9.5-written session reproduces exactly (cross-version capture)\n");
@@ -15967,11 +15978,37 @@ static void testCrossVersionFieldCapture()
     check (manifestFile.existsAsFile(), "...and so is its manifest");
     if (! blob.existsAsFile() || ! manifestFile.existsAsFile()) return;
 
+    // The two files as the 0.9.5 binary wrote them: FNV-1a-64 over their raw bytes
+    // (the manifest keeps the CRLF line endings it was written with; `.gitattributes`
+    // marks both files -text, so no checkout converts them). Reproduce with any
+    // FNV-1a-64, e.g. over `git show 72fe2e0:tests/fixtures/field_capture_v0_9_5.session.manifest`.
+    auto fnv1a64 = [] (const juce::MemoryBlock& bytes) -> juce::uint64
+    {
+        juce::uint64 h = 0xcbf29ce484222325ull;
+        for (size_t i = 0; i < bytes.getSize(); ++i)
+        {
+            h ^= (juce::uint64) (juce::uint8) bytes[i];
+            h *= 0x100000001b3ull;
+        }
+        return h;
+    };
+    auto blobData = juce::MemoryBlock();
+    auto manifestData = juce::MemoryBlock();
+    check (blob.loadFileAsData (blobData), "the capture loads from disk");
+    check (manifestFile.loadFileAsData (manifestData), "...and so does its manifest");
+    std::printf ("  capture fnv1a-64 %016llx (%d bytes), manifest %016llx (%d bytes)\n",
+                 (unsigned long long) fnv1a64 (blobData), (int) blobData.getSize(),
+                 (unsigned long long) fnv1a64 (manifestData), (int) manifestData.getSize());
+    check (fnv1a64 (blobData) == 0x63512badf96b42a2ull,
+           "the session blob is the 0.9.5 binary's capture, byte for byte");
+    check (fnv1a64 (manifestData) == 0x87a04bb89d88f423ull,
+           "the manifest is the 0.9.5 binary's record, byte for byte");
+
     // Parse the emitter's own record. Anything missing is a broken fixture, not a
     // pass -- the check() calls below would otherwise compare against 0.0.
     juce::StringPairArray expected;
     juce::StringArray slotA, slotB;
-    for (const auto& lineRef : juce::StringArray::fromLines (manifestFile.loadFileAsString()))
+    for (const auto& lineRef : juce::StringArray::fromLines (manifestData.toString()))
     {
         const auto line = lineRef.trim();
         if (line.isEmpty()) continue;
@@ -15980,7 +16017,10 @@ static void testCrossVersionFieldCapture()
         else if (line.contains ("=")) expected.set (line.upToFirstOccurrenceOf ("=", false, false),
                                                     line.fromFirstOccurrenceOf ("=", false, false));
     }
-    check (expected["emitter"] == "0.9.5", "the manifest was written by the 0.9.5 binary");
+    // The label exactly as the 0.9.5 binary wrote it -- historical output, not
+    // current notation (see the header above).
+    check (expected["emitter"] == "v0.9.5",
+           "the manifest carries the label the 0.9.5 binary wrote, unrewritten");
     check (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
     if (slotA.size() != 5 || slotB.size() != 5) return;
 
@@ -15992,8 +16032,6 @@ static void testCrossVersionFieldCapture()
         return -1.0f;
     };
 
-    auto blobData = juce::MemoryBlock();
-    check (blob.loadFileAsData (blobData), "the capture loads from disk");
     check (blobData.getSize() > 1000, "the capture is a real session blob, not a stub");
 
     AnamorphAudioProcessor proc;
