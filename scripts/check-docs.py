@@ -1424,21 +1424,16 @@ def read_git_tags(root: Path) -> TagState:
             chain = run("rev-list", "--first-parent", r).stdout.split()
             bound, where = place(head, r, chain)
             if where == "headed":
-                # A merge of commits all already on the line -- a pull request's
-                # test merge (`refs/pull/N/merge`) checked again after the pull
-                # request merged -- is bound as its parents are, not as a branch
-                # still headed for `main`.
-                parents = run("rev-list", "--parents", "-n", "1", head).stdout.split()[1:]
-                sides = [place(c, r, chain) for c in parents] if len(parents) > 1 else []
-                failed = next((b for b, w in sides if w == "error" or isinstance(b, str)), None)
-                if failed is not None:
-                    return TagState(frozenset(), False, str(failed))
-                if sides and all(w in ("chain", "merged") for _, w in sides):
-                    bound = set().union(*(b for b, _ in sides if isinstance(b, set)))
-                    headed = True
-                else:
-                    bound = listed(r)
-                    headed = unmerged = True
+                # Not in `main`'s history: a branch headed for it, bound by the
+                # whole line. That includes a merge `main` never holds whose
+                # parents are all on it -- a fork pull request's test merge
+                # (`refs/pull/N/merge`) re-run after the pull request merged, but
+                # equally a branch tip merging two `main` commits with edits of
+                # its own. Git cannot tell them apart by ancestry, so both are
+                # bound by `main`'s later releases: a re-run on a closed pull
+                # request may fail; a branch never hides one.
+                bound = listed(r)
+                headed = unmerged = True
             elif where == "merged":
                 headed = True
             if where == "error" or isinstance(bound, str):
@@ -4807,20 +4802,22 @@ def self_test() -> int:
                                   and "as it stood when this commit was merged" in st.source
                                   and len(found) == 2
                                   and not any("0.9.11" in f for f in found)))
-                # A fork pull request is checked at GitHub's test merge
-                # (`refs/pull/N/merge`), a commit `main` never holds: re-run after
-                # the pull request merged, it is bound as its parents are.
-                test_merge = G(up, "commit-tree", f"{pr_tip}^{{tree}}", "-p", pre_merge,
-                               "-p", pr_tip, "-m", "test merge").strip()
-                G(up, "checkout", "-q", test_merge)
+                # A merge `main` never holds whose parents are both on it -- here a
+                # branch tip merging two `main` commits with an edit of its own --
+                # is headed for `main`: the release tagged after its parents binds
+                # it. (A fork pull request's test merge re-run after the pull
+                # request merged looks the same to git, and fails closed.)
+                own_merge = G(up, "commit-tree", f"{pr_tip}^{{tree}}", "-p", "0.9.9^{commit}",
+                              "-p", pre_merge, "-m", "a branch tip merging two main commits").strip()
+                G(up, "checkout", "-q", own_merge)
                 st = read_git_tags(up)
                 _tag_state_cache.clear()
                 found = analyse(up / "CHANGELOG.md", post, up)
-                steps.append(("R2196: a merged fork pull request's test merge is bound as its "
-                              "parents are, not by a release tagged after the merge",
-                              st.known and not st.unmerged and st.tags == {"0.9.9", "0.9.10"}
-                              and "0.9.11" in st.elsewhere and len(found) == 2
-                              and not any("0.9.11" in f for f in found)))
+                steps.append(("R2196: a branch tip merging two `main` commits is bound by the "
+                              "release `main` tagged after them",
+                              st.known and st.unmerged and "0.9.11" in st.ahead
+                              and any("git tag `0.9.11` is a release on `main`" in f
+                                      for f in found)))
                 G(up, "checkout", "-q", RELEASE_BRANCH)
                 # A fork clone: `origin` is the fork, whose `main` is stale; the
                 # repository itself is `upstream`, and its release binds the branch.
