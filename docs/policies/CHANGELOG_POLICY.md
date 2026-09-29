@@ -75,7 +75,7 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    refused, whatever its definition names — including before the `0.9.9` tag is pushed, although the
    0.9.9 entry is in the file — and unreleased work goes in the dated entry it will ship in (§Entry
    template). A branch made before a release, or not merged with `main` since, does not have that
-   release's tag in its history: the check names the tag as another branch's, and `main` merged into
+   release's tag in its history: the check names the tag as one outside this history, and `main` merged into
    the branch brings it in. Where the tags cannot be read (not the root of a git checkout, no `git`, or a
    shallow clone, which cannot tell which tags are in `HEAD`'s history), the check refuses
    the file's release links with one finding that gives the reason, and still checks what needs no tags;

@@ -13041,8 +13041,9 @@ tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is i
 - Each release without an entry is a finding at the file's first entry, newest first.
 - `newest_tagged` is the newest release, and `previous_of[v]` the newest release older than `v`.
 - A comparison past a missing release names that release, not "the entry below closed without a tag".
-- A tag that exists only on another branch is named as such, with the remedy (merge the commit it tags, on
-  `main`), in every finding that turns on it; none says git has no such tag.
+- A tag that exists outside `HEAD`'s history is named as such, with the remedy (if it is this line's release,
+  merge the history that carries it: `main`, for a release tagged there), in every finding that turns on it;
+  none says git has no such tag.
 
 **Required cases, on the fix** (reproduction harness, the production `check_changelog_links` and `tag_state()`):
 
@@ -13060,7 +13061,7 @@ tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is i
 
 The twelve earlier cases A–J (the 95th and 96th passes) still behave as recorded.
 
-**Self-test.** 537 → 558 cases.
+**Self-test.** 537 → 561 cases.
 - The synthetic-fixture loop now runs each fixture against the tags of the versions it records (`fixture_tags()`),
   so the new rule reads them as their authors meant. Every fixture keeps its old verdict.
 - Two existing expectations changed by design:
@@ -13068,7 +13069,7 @@ The twelve earlier cases A–J (the 95th and 96th passes) still behave as record
     covers it;
   - the reader test's lightweight `0.9.10` on `HEAD` is now a release with no entry, so the production path
     refuses `[Unreleased]` from 0.9.9 there, naming 0.9.10.
-- The 14 new count cases and 7 new wording checks are listed in ADR-0058's amendment.
+- The 14 new count cases and 10 new wording checks are listed in ADR-0058's amendment.
 - The reader test gained a two-line topology in a real temporary repository: `main` tags 0.9.9, `maint` tags
   0.9.10, `main` moves on.
   - On `main`, 0.9.10 is elsewhere and the file is accepted.
@@ -13076,14 +13077,14 @@ The twelve earlier cases A–J (the 95th and 96th passes) still behave as record
   - A shallow clone cut below both tags is unknown, with the remedy, until `git fetch --unshallow --tags`.
 - A depth-1 clone is unknown without its tags and with every tag fetched and reached; the production path
   refuses once, naming it. Unshallowed, it reads as the full clone does.
-- **Mutation.** Thirty-one mutants each fail it; the counts are in ADR-0058's evidence. Among them, the ones the
-  review asked for:
+- **Mutation.** Thirty-five mutants each fail it, run on a clean clone of the final commit; the counts are in
+  ADR-0058's evidence. Among them, the ones the review asked for:
   - the intersection (the finding's own repro): 8;
   - a missing entry ignored: 10;
-  - the newest entry with a tag-looking link as the base: 17;
+  - the newest entry with a tag-looking link as the base: 18;
   - other branches' tags counted: 3;
-  - the no-tag `[Unreleased]` refusal removed: 19;
-  - the skipped-tag fix reverted: 24.
+  - the no-tag `[Unreleased]` refusal removed: 20;
+  - the skipped-tag fix reverted: 25.
 
 **Review.** Three read-only reviewers (checker correctness, test adequacy and safety, documentation facts), each
 finding checked by a skeptic, confirmed 15 findings and refuted none. They are 9 distinct defects, all fixed.
@@ -13109,6 +13110,23 @@ finding checked by a skeptic, confirmed 15 findings and refuted none. They are 9
   - `check_changelog_links`' docstring, the no-base comment and two reader-test comments still described the old
     rule and CI's old checkout.
   - This entry did not record the citation re-anchors (below).
+
+**Verification round.** Two read-only reviewers (code, documents against code), each finding checked by a
+skeptic, re-examined the fixes. They confirmed 7 findings and refuted 5. All 7 are fixed:
+- Once a release is in this history, the `[Unreleased]` definition check named only the right base. It did not
+  name a base outside the history, and its remedy would break after merging `main`. A version definition's
+  comparison had the same gap. Both now name that base (`base_note`).
+- The remedy said the tagged commit is "on `main`". A tag outside `HEAD`'s history may sit on an unmerged branch,
+  a deleted one, or none. It now reads "if it is this line's release, merge the history that carries it into this
+  branch (`main`, for a release tagged there)".
+- An `[Unreleased]` definition from a tag in this history below the first tag was called "a version with no git
+  tag". It now says the tag predates the first tag.
+- `build.yml`'s `docs` checkout comment and ADR-0058 still said the default checkout reads as "nothing was ever
+  tagged". Since this pass it reads as unknown, being shallow. The comment keeps its line count.
+- ADR-0058 said `elsewhere` exists "only so a definition" can name it.
+
+The five refuted findings: two concerned the generic tail of the unknown-state refusal, two the wording of
+one code comment (reworded anyway), and one the unit the mutation counts use.
 
 **Finding 2: the snapshot header changed with its generator. Justified; kept.** Investigated, not reverted:
 1. *What changed:* lines 2–3 of `tests/fixtures/parameter_registry.snapshot`, from "(ADR + PARAMETER_REGISTRY.md /

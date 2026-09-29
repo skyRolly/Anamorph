@@ -139,7 +139,7 @@ checker reads the tag refs of the checkout it runs in, with no network access, s
 not fetched the new tag refuses the section. It compares from the newest release tag in `HEAD`'s
 history, so tag the release commit on `main` itself: every later `main` commit, and every branch made
 from one, then has the tag in its history. A branch made before the tag, or not merged with `main`
-since, does not — the checker names the tag as another branch's — so merge `main` into it before adding
+since, does not — the checker names the tag as one outside its history — so merge `main` into it before adding
 the section; and a tag cut on a branch other than `main` is `main`'s release only once that branch is
 merged. CI's `docs` job fetches the full history and every tag. Where the tags cannot be read at all (a
 directory that is not the root of a git checkout), or the checkout is a shallow clone, which cannot tell
