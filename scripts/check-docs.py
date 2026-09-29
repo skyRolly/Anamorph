@@ -1212,8 +1212,9 @@ def first_tagged() -> tuple[int, int, int]:
 
 
 # THE RELEASE LINE. Releases are tagged on this branch (RELEASE_PROCESS.md
-# §Tagging), so a release tag its history holds is a release of every branch
-# headed for it, merged into it yet or not. The reader takes it from the
+# §Tagging), so a release tag its history holds binds every branch headed for
+# it, before the branch merges it, and a commit merged into it when the tag came
+# before that merge (`read_git_tags`). The reader takes it from the
 # remote-tracking `main` of `origin` (what CI's full-history checkout fetches)
 # and of any remote that IS this repository -- in a fork clone `origin` is the
 # fork and the repository is `upstream` -- and from the local branch only where
@@ -1222,9 +1223,11 @@ def first_tagged() -> tuple[int, int, int]:
 RELEASE_BRANCH = "main"
 # Any URL GitHub serves this repository at: https, scp-style and ssh:// (with a
 # port, or through `ssh.github.com:443`), matched on the URL git resolves
-# (`git remote get-url`, which applies `insteadOf`).
-REPOSITORY_REMOTE = re.compile(r"(?:^|[/@.])(?:ssh\.)?github\.com(?::\d+)?[:/]skyRolly/Anamorph"
-                               r"(?:\.git)?/?$", re.IGNORECASE)
+# (`git remote get-url`, which applies `insteadOf`). The host is anchored: a
+# local path or another host ending in `/github.com/skyRolly/Anamorph` is a
+# mirror whose `main` can hold commits no release line has.
+REPOSITORY_REMOTE = re.compile(r"^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/#?]+@)?(?:ssh\.)?github\.com"
+                               r"(?::\d+)?[:/]skyRolly/Anamorph(?:\.git)?/?$", re.IGNORECASE)
 
 
 class TagState(NamedTuple):
@@ -1254,9 +1257,10 @@ class TagState(NamedTuple):
       holds 0.9.10 -- and CI checks a same-repo PR at its tip. Those tags, and
       a merged commit's, are also kept in `ahead`, so a finding can say to merge
       `main`.
-    A tag neither reaches -- another branch never merged into `main` -- belongs
-    to another line; it is kept apart in `elsewhere`, so a finding can say where
-    it is, and it is no release of this checkout's line.
+    A tag none of these holds -- on another branch never merged into `main`, or,
+    for a commit on or merged into `main`, one `main` gained later -- is kept
+    apart in `elsewhere`, so a finding can say where it is; it is no release of
+    this checkout's line.
 
     `known` is False when those refs cannot be read (not a git checkout, the path
     is not the checkout's root, git is missing or fails) or cannot be placed (a
@@ -1273,6 +1277,7 @@ class TagState(NamedTuple):
     elsewhere: frozenset[str] = frozenset()
     ahead: frozenset[str] = frozenset()
     headed: bool = False   # HEAD is off `main`'s first-parent line (a branch, or a merged PR's commit)
+    unmerged: bool = False  # ...and not in `main`'s history at all: a branch headed for it
 
 
 # Git's repository-location variables: `git rev-parse --local-env-vars`, plus
@@ -1393,32 +1398,51 @@ def read_git_tags(root: Path) -> TagState:
         # - NOT in the line's history (a branch headed for `main`): the whole
         #   line binds it -- a release `main` gained after the branch forked is
         #   one the branch will land on.
+        def place(commit: str, r: str, chain: list[str]) -> tuple[set[str] | str, str]:
+            # (the tags of line `r` that bind `commit`, where it stands: "chain",
+            # "merged", "headed", or "error" with the reason in place of the tags)
+            anc = run("merge-base", "--is-ancestor", commit, r)
+            if anc.returncode not in (0, 1):
+                return (f"git could not tell whether HEAD is in `{RELEASE_BRANCH}`'s history: "
+                        f"{anc.stderr.strip()}", "error")
+            if anc.returncode == 1:
+                return (set(), "headed")
+            if commit in chain:
+                return (set(), "chain")
+            # The first-parent commits that hold it, newest first: every descendant
+            # of it on the line (`--ancestry-path`, NOT limited to first parents,
+            # which would mark a merge only when the commit is its own second
+            # parent). The oldest is the merge that landed it.
+            holds = set(run("rev-list", "--ancestry-path", f"{commit}..{r}").stdout.split())
+            landed = [c for c in chain if c in holds]
+            return (listed(f"{landed[-1]}^1") if landed else set(), "merged")
+
         on_line: set[str] = set()
         headed = False    # off `main`'s first-parent line
         unmerged = False  # ...and not in its history at all: headed for it
         for r in line:
-            placed = run("merge-base", "--is-ancestor", "HEAD", r)
-            if placed.returncode not in (0, 1):
-                return TagState(frozenset(), False,
-                                f"git could not tell whether HEAD is in `{RELEASE_BRANCH}`'s "
-                                f"history: {placed.stderr.strip()}")
-            if placed.returncode == 1:
-                bound: set[str] | str = listed(r)
-                headed = unmerged = True
-            else:
-                chain = run("rev-list", "--first-parent", r).stdout.split()
-                if head in chain:
-                    continue
-                # The first-parent commits that hold HEAD, newest first: every
-                # descendant of HEAD on the line (`--ancestry-path`, NOT limited
-                # to first parents, which would mark a merge only when HEAD is
-                # its own second parent). The oldest is the merge that landed it.
-                holds = set(run("rev-list", "--ancestry-path", f"{head}..{r}").stdout.split())
-                landed = [c for c in chain if c in holds]
-                bound = listed(f"{landed[-1]}^1") if landed else set()
+            chain = run("rev-list", "--first-parent", r).stdout.split()
+            bound, where = place(head, r, chain)
+            if where == "headed":
+                # A merge of commits all already on the line -- a pull request's
+                # test merge (`refs/pull/N/merge`) checked again after the pull
+                # request merged -- is bound as its parents are, not as a branch
+                # still headed for `main`.
+                parents = run("rev-list", "--parents", "-n", "1", head).stdout.split()[1:]
+                sides = [place(c, r, chain) for c in parents] if len(parents) > 1 else []
+                failed = next((b for b, w in sides if w == "error" or isinstance(b, str)), None)
+                if failed is not None:
+                    return TagState(frozenset(), False, str(failed))
+                if sides and all(w in ("chain", "merged") for _, w in sides):
+                    bound = set().union(*(b for b, _ in sides if isinstance(b, set)))
+                    headed = True
+                else:
+                    bound = listed(r)
+                    headed = unmerged = True
+            elif where == "merged":
                 headed = True
-            if isinstance(bound, str):
-                return TagState(frozenset(), False, bound)
+            if where == "error" or isinstance(bound, str):
+                return TagState(frozenset(), False, str(bound))
             on_line |= bound
     except (OSError, subprocess.SubprocessError) as exc:
         return TagState(frozenset(), False, f"git could not run: {exc}")
@@ -1433,7 +1457,7 @@ def read_git_tags(root: Path) -> TagState:
                           else "as it stood when this commit was merged into it")
                        if headed else "")
                     + " -- `git fetch --tags` brings one pushed since it last fetched",
-                    elsewhere, ahead, headed)
+                    elsewhere, ahead, headed, unmerged)
 
 
 # The self-test binds this so its fixtures do not depend on which tags this
@@ -2228,19 +2252,19 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool],
         return key in released
 
     # A tag that exists but is off this line (`elsewhere`) is not missing, and
-    # the remedy is not to push it. For a branch headed for `main`, `main`'s tags
-    # are this line's already (`ahead`), so one off the line sits on some other
-    # history; for a checkout in `main`'s history it may be a release `main`
-    # gained later. Where its commit sits is not known here (another branch, or
+    # the remedy is not to push it. For a branch headed for `main` (`unmerged`),
+    # `main`'s tags are this line's already (`ahead`), so one off the line sits on
+    # some other history; for a commit on or merged into `main` it may be a
+    # release `main` gained later. Where its commit sits is not known here (another branch, or
     # none), so the finding does not guess.
     def not_here(t: str) -> str:
         return (f"the git tag `{t}` exists but is not in this checkout's history"
-                + (f" nor in `{RELEASE_BRANCH}`'s" if tags.headed else ""))
+                + (f" nor in `{RELEASE_BRANCH}`'s" if tags.unmerged else ""))
     # For a branch headed for `main`, `main`'s tags are this line's already, so
     # one outside the line is on some other history; for a checkout in `main`'s
     # history, it may be a release `main` gained later.
     merge_hint = ("if it is this line's release, merge the history that carries it into "
-                  "this branch" + ("" if tags.headed
+                  "this branch" + ("" if tags.unmerged
                                    else f" (`{RELEASE_BRANCH}`, for a release tagged there)"))
 
     def could_be_release(t: str) -> bool:
@@ -4261,7 +4285,7 @@ def self_test() -> int:
     def LINE(line: set[str], ahead: set[str] = set(),
              elsewhere: set[str] = set()) -> TagState:
         return TagState(frozenset(line), True, "the self-test's tags", frozenset(elsewhere),
-                        frozenset(ahead), True)
+                        frozenset(ahead), True, True)
 
     R99 = U + CL([E9, E8, E7], [UR("0.9.9"), TP("0.9.9")])[1:]
     for label, expected, lines, tags in [
@@ -4327,6 +4351,18 @@ def self_test() -> int:
         failures += 1
         print(f"self-test FAIL: changelog R2196 a release on `main` the branch lacks is "
               f"named, and is the base: got {found}", file=sys.stderr)
+    # A commit already merged into `main`: a tag `main` gained after the merge is
+    # its future, off its line -- not "nor in `main`'s", and the remedy names `main`.
+    found = found_for(U + CL([E9, E8, E7], [UR("0.9.10"), TP("0.9.9")])[1:],
+                      TagState(frozenset({"0.9.9"}), True, "the self-test's tags",
+                               frozenset({"0.9.10"}), frozenset(), True, False))
+    checked += 1
+    if not (any("the git tag `0.9.10` exists but is not in this checkout's history" in f
+                and "(`main`, for a release tagged there)" in f for f in found)
+            and not any("nor in `main`'s" in f for f in found)):
+        failures += 1
+        print(f"self-test FAIL: changelog R2196 a merged commit's later tag is not called "
+              f"absent from `main`: got {found}", file=sys.stderr)
     # A skipped version never stands in for a missing newer release: with 0.9.11
     # tagged and not recorded, the base is 0.9.11, not the untagged 0.9.10.
     found = found_for(U + CL([E10, E9], [UR("0.9.10"), TP("0.9.9")])[1:], T("0.9.9", "0.9.11"))
@@ -4754,6 +4790,7 @@ def self_test() -> int:
                 pr_tip = G(up, "rev-parse", "HEAD").strip()
                 pr_first = G(up, "rev-parse", "HEAD~1").strip()
                 G(up, "checkout", "-q", RELEASE_BRANCH)
+                pre_merge = G(up, "rev-parse", "HEAD").strip()
                 G(up, "merge", "-q", "--no-ff", "-s", "ours", "-m", "merge pr", "pr")
                 G(up, "commit", "-q", "--allow-empty", "-m", "0.9.11 release")
                 G(up, "tag", "-a", "0.9.11", "-m", "Anamorph 0.9.11")
@@ -4770,6 +4807,20 @@ def self_test() -> int:
                                   and "as it stood when this commit was merged" in st.source
                                   and len(found) == 2
                                   and not any("0.9.11" in f for f in found)))
+                # A fork pull request is checked at GitHub's test merge
+                # (`refs/pull/N/merge`), a commit `main` never holds: re-run after
+                # the pull request merged, it is bound as its parents are.
+                test_merge = G(up, "commit-tree", f"{pr_tip}^{{tree}}", "-p", pre_merge,
+                               "-p", pr_tip, "-m", "test merge").strip()
+                G(up, "checkout", "-q", test_merge)
+                st = read_git_tags(up)
+                _tag_state_cache.clear()
+                found = analyse(up / "CHANGELOG.md", post, up)
+                steps.append(("R2196: a merged fork pull request's test merge is bound as its "
+                              "parents are, not by a release tagged after the merge",
+                              st.known and not st.unmerged and st.tags == {"0.9.9", "0.9.10"}
+                              and "0.9.11" in st.elsewhere and len(found) == 2
+                              and not any("0.9.11" in f for f in found)))
                 G(up, "checkout", "-q", RELEASE_BRANCH)
                 # A fork clone: `origin` is the fork, whose `main` is stale; the
                 # repository itself is `upstream`, and its release binds the branch.
@@ -4804,11 +4855,16 @@ def self_test() -> int:
                     st = read_git_tags(fdev)
                     steps.append((f"R2196: ...and with `upstream` at {url}",
                                   st.known and "0.9.10" in st.ahead))
-                # A remote under another URL is not this repository's release line.
-                G(fdev, "remote", "set-url", "upstream", "https://github.com/someone/Anamorph.git")
-                st = read_git_tags(fdev)
-                steps.append(("R2196: ...but a remote under another URL is not read",
-                              st.known and "0.9.10" in st.elsewhere and not st.ahead))
+                # A remote under another URL is not this repository's release line --
+                # another repository, nor a mirror or proxy whose path ends in it.
+                for url in ("https://github.com/someone/Anamorph.git",
+                            "/home/someone/go/src/github.com/skyRolly/Anamorph",
+                            "https://gitclone.com/github.com/skyRolly/Anamorph.git",
+                            "https://evil.example#@github.com/skyRolly/Anamorph"):
+                    G(fdev, "remote", "set-url", "upstream", url)
+                    st = read_git_tags(fdev)
+                    steps.append((f"R2196: ...but `upstream` at {url} is not read",
+                                  st.known and "0.9.10" in st.elsewhere and not st.ahead))
                 # A tag name that is not UTF-8 is no release, and does not stop the run.
                 with open(up / ".git" / "packed-refs", "ab") as packed:
                     packed.write(G(up, "rev-parse", "HEAD").strip().encode() +
