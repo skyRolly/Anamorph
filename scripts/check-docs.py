@@ -5908,7 +5908,10 @@ def self_test() -> int:
             # The validate step, run as the tag push runs it -- in a checkout made
             # the way `actions/checkout` makes one for a tag, whose local tag is the
             # PEELED commit, so the step's re-fetch of the tag object is what lets
-            # it see an annotated tag at all: whether it passes, and what it said. The CMake version is the tag wherever the step's own
+            # it see an annotated tag at all: whether it passes, and what it said.
+            # It passes only by exiting 0 AND writing to `GITHUB_OUTPUT` the two
+            # outputs the release jobs read, `is-release=true` and `version=<tag>`
+            # (echoed to the log instead, they reach no job). The CMake version is the tag wherever the step's own
             # parse can read it (a leading-zero version too, so only the tag
             # grammar can refuse it), else a valid one, so the grammar test is
             # what the tag meets first.
@@ -5945,13 +5948,24 @@ def self_test() -> int:
                 git_in(work, "-c", "protocol.version=2", "fetch", "-q", "--no-tags", "--depth=1",
                        "origin", f"+{sha}:refs/tags/{tag}")
                 git_in(work, "checkout", "-q", "--force", f"refs/tags/{tag}")
+                # The sandbox must be the checkout the step meets: a local tag that
+                # is the tag object (as `git clone` leaves it) would let the step
+                # pass without its re-fetch, so nothing would test that re-fetch.
+                local = subprocess.run([tools["git"], "-C", str(work), "cat-file", "-t",
+                                        f"refs/tags/{tag}"], capture_output=True, text=True,
+                                       env=env).stdout.strip()
+                if local != "commit":
+                    return False, (f"the sandbox's local tag `{tag}` is a {local or 'missing'} "
+                                   f"object, not the peeled commit actions/checkout leaves")
                 (box_dir / "out").write_text("", encoding="utf-8")
                 done = subprocess.run(
                     [tools["bash"], "-e", "-c", script], cwd=work, capture_output=True, text=True,
                     env=dict(env, GITHUB_REF=f"refs/tags/{tag}", GITHUB_SHA=sha,
                              RUNNER_TEMP=str(box_dir), GITHUB_OUTPUT=str(box_dir / "out")))
-                said = done.stdout + done.stderr + (box_dir / "out").read_text(encoding="utf-8")
-                return done.returncode == 0 and "is-release=true" in said, said
+                outputs = (box_dir / "out").read_text(encoding="utf-8").splitlines()
+                said = done.stdout + done.stderr + "\n".join(outputs)
+                return (done.returncode == 0 and "is-release=true" in outputs
+                        and f"version={tag}" in outputs), said
 
         checked += 1
         if not (globs and script and extractor.is_file()):

@@ -232,9 +232,10 @@ without a tag, rather than only for this one.
       requires `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$` and is the authority; the trigger stays
       a coarse filter, since a negative glob that GitHub evaluated differently from its local reading
       would stop a real release from starting at all. `check-docs.py --self-test` extracts the step from
-      the workflow and runs it verbatim in scratch repositories: it must accept exactly the tags
-      `RELEASE_TAG` accepts (annotated; a lightweight tag is refused), and the trigger must admit every
-      one of them.
+      the workflow and runs it verbatim in scratch repositories checked out as `actions/checkout` checks
+      out a tag (the local tag the peeled commit, which the case asserts): it must accept exactly the
+      tags `RELEASE_TAG` accepts (annotated; a lightweight tag is refused), writing `is-release=true` and
+      `version=<tag>` to `GITHUB_OUTPUT` for each, and the trigger must admit every one of them.
       Both are ASCII digits only (`re.ASCII`): a heading `## [0.9.1０]` is no entry for 0.9.10, which
       stays unrecorded, and a tag `0.9.1０` is no release.
     The earlier invariants hold unchanged: the first tag is `0.9.9`; `[Unreleased]` is refused while no
@@ -454,32 +455,35 @@ without a tag, rather than only for this one.
   revision all three files pass, the three tags are refused, and the earlier acceptance cases hold (a
   missing 0.9.10 on the line fails, naming it; both recorded passes only from 0.9.10; the first tag;
   skipped versions; the branch tip, merged commits, fast-forward and two-parent shapes).
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 677 cases (537 before the
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 679 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
-  is the number of failing cases and steps alike). Seventy-nine mutants each fail it, none by crashing,
-  with the number of failing cases (measured on a clean clone of `9c0e961`; seventy-two of the checker,
+  is the number of failing cases and steps alike). Eighty-four mutants each fail it, none by crashing,
+  with the number of failing cases (measured on a clean clone of `2c5d6e5`; seventy-seven of the checker,
   seven of `release.yml` run against the unmutated checker):
-  - the final amendment: the repository's `main` united with a fork's `origin/main`: 7; `origin/main`
-    preferred over the repository's remote: 16; the repository's remote not recognised by URL (a fork's
-    `origin/main` read instead): 11; the repository's remote without its `main` falling back to
+  - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
+    preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's
+    `origin/main` read instead): 12; the repository's remote without its `main` falling back to
     `origin/main`: 2; `origin/main` read whenever an `origin` exists, beside other unrecognised remotes:
-    5; the local `main` read although the checkout has remotes: 6; a local `main` united with the remote
-    line: 13; a line ref resolved by shorthand (a tag spelled `refs/remotes/<n>/main` standing in for it):
+    5; the local `main` read although the checkout has remotes: 7; a local `main` united with the remote
+    line: 14; a line ref resolved by shorthand (a tag spelled `refs/remotes/<n>/main` standing in for it):
     1; branch-only tags in `HEAD`'s history counted as releases: 5; a tag on `HEAD`'s own commit read as
     its future: 10; a branch-only tag offered the merge remedy: 2, or called "not in this checkout's
     history": 4; a branch headed for `main` offered a merge for a tag `main` does not hold: 1; the
-    remedy naming plain `main`, not the ref read: 2; the source text without the future-tag exclusion: 1;
+    remedy naming plain `main`, not the ref read: 3; the source text without the future-tag exclusion: 3,
+    or with it where nothing was cut: 2; the fetch hint naming no remote: 1; the unknown-line remedy
+    always adding `upstream`, which may exist: 5; an `insteadOf` rule rewriting the repository's URL left
+    unnamed: 1; the line refs in configuration order, a stale remote named first: 1;
     `RELEASE_TAG` admitting leading zeros: 6; the tag-grammar case trusting the grammar instead of running
     the step: 9; `release.yml`'s validator back to `[0-9]+`: 4, without the leading-zero rule in the
     last component: 1; its trigger narrowed: 4; its annotated-tag check removed: 1; its re-fetch of the
     tag object without `--force`, removed, or of the wrong ref: 5 each;
   - the bases from the tags that have an entry (the intersection, the finding's own repro): 21; the
-    missing-entry finding removed: 40; the base taken from the newest entry with a tag-looking link: 33;
+    missing-entry finding removed: 41; the base taken from the newest entry with a tag-looking link: 33;
     `newest_tagged` taken from the releases the file records, before the missing ones are reconciled: 21;
-  - `main`'s tags ignored for a branch headed there (the finding's remaining path): 14; a commit in
+  - `main`'s tags ignored for a branch headed there (the finding's remaining path): 15; a commit in
     `main`'s history bound by `main`'s later tags too (its future not subtracted): 3; every commit in
     `main`'s history read as `main`'s past: 4; `main`'s first-parent order deciding a commit on it (the
-    fast-forward shape): 1; a checkout without `main` read as known: 11; a release on `main` the branch
+    fast-forward shape): 1; a checkout without `main` read as known: 12; a release on `main` the branch
     lacks called "in this checkout's history": 6; every tag counted as `main`'s: 10; a merge `main` never
     holds whose parents are all on it bound as its parents are (`af4ac33`'s rule, which hid the later
     release at a branch tip merging two `main` commits): 1; the raw configured URL matched (an
