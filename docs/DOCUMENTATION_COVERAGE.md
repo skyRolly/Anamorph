@@ -13086,7 +13086,8 @@ The ordering the review asked for already held and still holds:
   - in a fork clone the repository's own `main`, under `upstream`, binds the branch at five URL forms (https,
     `ssh.github.com:443`, an ssh port, scp-style, an `insteadOf` alias); a remote under another URL, a local
     mirror path, a proxy or a `#@` URL is not read;
-  - a merged fork pull request's test merge is bound as its parents are, not by a release tagged after the merge;
+  - a branch tip merging two `main` commits with an edit of its own is headed for `main`, and the 0.9.11 tagged
+    after those commits binds it;
   - a tag name that is not UTF-8 is read, not fatal.
 - The reader test repositories are now created on `main`.
 - Each step of the tag-reader case now counts as a case of its own, 48 cases from one. Before this, a mutant
@@ -13097,18 +13098,18 @@ ADR-0058's evidence. None is killed by a crash. Among them:
 
 | Mutant | Failing cases |
 |---|---|
-| the intersection | 22 |
+| the intersection | 21 |
 | a missing entry ignored | 36 |
-| `newest_tagged` before reconciliation | 22 |
-| `[Unreleased]` from the newest entry | 46 |
+| `newest_tagged` before reconciliation | 21 |
+| `[Unreleased]` from the newest entry | 45 |
 | other branches' tags counted | 22 |
 | the first-tag guard removed | 22 |
 | the skipped-tag fix reverted | 26 |
-| `main`'s tags ignored (this pass's defect) | 11 |
+| `main`'s tags ignored (this pass's defect) | 12 |
 | the any-ref rule (a local `main` hiding `origin/main`'s release) | 3 |
 | a merged pull request's commit read as `main`'s past | 2 |
 | an earlier merged commit's landing missed (first-parent-only walk) | 1 |
-| a fork pull request's test merge read as headed for `main` | 1 |
+| a merge `main` never holds bound as its parents are (`af4ac33`'s rule, reverted) | 1 |
 | a fork's `upstream` ignored | 5 |
 | the URL pattern unanchored (a mirror path matching) | 3 |
 
@@ -13157,15 +13158,24 @@ all minor and none in CI, and refuted 2. All five are fixed:
 - The URL pattern also matched a local path or another host whose path ends in `/github.com/skyRolly/Anamorph`
   (a GOPATH or ghq mirror, a proxy, a `#@` URL). It is now anchored on the host.
 - A fork pull request's test merge (`refs/pull/N/merge`), re-run after the pull request merged, read as a branch
-  still headed for `main`, so a release tagged after the merge bound it. A merge whose parents are all on the line
-  is now bound as its parents are.
+  still headed for `main`, so a release tagged after the merge bound it. `af4ac33` bound a merge whose parents are
+  all on the line as its parents are; the last check below reverted that.
 - A merged commit was told that a tag `main` gained later is absent from `main`'s history. `TagState.unmerged` now
   decides that wording.
 - Two comments (the `RELEASE_BRANCH` block, `TagState`'s `elsewhere`) described the placement loosely.
 
-A commit that reached `main` only through a squash or rebase is not in `main`'s history. Git cannot tell it from
-a branch still headed there, so it stays bound by `main`'s tags; only a re-run on such a closed pull request is
-affected.
+**Last check.** One reviewer per lens (code; documents), each finding checked by a skeptic, confirmed 2 findings:
+- **One blocking, introduced by the final check's fix.** A branch tip that merges two `main` commits (0.9.9's and
+  a later one) with edits of its own has a test merge's ancestry. Bound as its parents are, it hid the 0.9.11
+  `main` tagged after them, and a changelog lacking 0.9.11 passed at that tip. Git cannot tell the two apart by
+  ancestry, and a tree comparison would be a new, fragile rule; the parent rule was reverted (`3086e38`). A merge
+  `main` never holds is again headed for it, and the self-test checks such a tip, which must name 0.9.11.
+- The documents described the reverted rule; they now state it as a limitation.
+
+A commit `main` never holds is read as a branch still headed there: a commit that reached `main` only through a
+squash or rebase, and a fork pull request's test merge re-run after the pull request merged. Git cannot tell them
+from a branch, so they stay bound by `main`'s tags and fail closed; only a re-run on such a closed pull request is
+affected, and `main`'s own check is the one that counts.
 
 **Cost, stated.** Every open branch whose file lacks a new release's entry fails at its tip until it merges
 `main`. That is the price of checking at the tip what `main` will check after the merge. A branch whose last check
@@ -13177,7 +13187,7 @@ predates a release keeps its green status until it is pushed or its checks are r
 - `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
 - ADR-0058 (status line, the applicable-tag and release-line bullets, the amendment record, the self-test list,
   Consequences, Related code, Evidence) and its `ADR_INDEX.md` row;
-- ADR-0059's counts (638; a prefixed URL fails 126);
+- ADR-0059's counts (638; a prefixed URL fails 125);
 - `CI_CD.md` (the `docs` row and the local-run note, with the remotes read and the remedy);
 - `REPOSITORY_MAP.md`'s `check-docs.py` row;
 - the policy template's comparison base.
