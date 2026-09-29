@@ -5782,8 +5782,12 @@ def self_test() -> int:
                     hit = hit or bool(glob_regex(g).fullmatch(tag))
             return hit
 
-        def validate(tag: str, annotated: bool = True) -> bool:
-            # The validate step, run as the tag push runs it: True when it passes.
+        def validate(tag: str, annotated: bool = True) -> tuple[bool, str]:
+            # The validate step, run as the tag push runs it: whether it passes, and
+            # what it said. The CMake version is the tag wherever the step's own
+            # parse can read it (a leading-zero version too, so only the tag
+            # grammar can refuse it), else a valid one, so the grammar test is
+            # what the tag meets first.
             with tempfile.TemporaryDirectory() as box:
                 box_dir = Path(box)
                 origin_dir, work = box_dir / "origin", box_dir / "work"
@@ -5797,8 +5801,9 @@ def self_test() -> int:
                                     "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
                                     *args], capture_output=True, check=True, env=env)
                 git_in(origin_dir, "init", "-q", "-b", RELEASE_BRANCH)
+                cmake = tag if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tag) else "0.9.10"
                 (origin_dir / "CMakeLists.txt").write_text(
-                    f"project(Anamorph VERSION {tag} LANGUAGES C CXX)\n", encoding="utf-8")
+                    f"project(Anamorph VERSION {cmake} LANGUAGES C CXX)\n", encoding="utf-8")
                 (origin_dir / "CHANGELOG.md").write_text(
                     f"# Changelog\n\n## [{tag}] — 2026-10-10\n### Fixed\n- x\n", encoding="utf-8")
                 (origin_dir / "scripts").mkdir()
@@ -5813,8 +5818,8 @@ def self_test() -> int:
                     [tools["bash"], "-c", script], cwd=work, capture_output=True, text=True,
                     env=dict(env, GITHUB_REF=f"refs/tags/{tag}", GITHUB_SHA="0" * 40,
                              RUNNER_TEMP=str(box_dir), GITHUB_OUTPUT=str(box_dir / "out")))
-                return (done.returncode == 0
-                        and "is-release=true" in (box_dir / "out").read_text(encoding="utf-8"))
+                said = done.stdout + done.stderr + (box_dir / "out").read_text(encoding="utf-8")
+                return done.returncode == 0 and "is-release=true" in said, said
 
         checked += 1
         if not (globs and script and extractor.is_file()):
@@ -5827,19 +5832,25 @@ def self_test() -> int:
                         "0.9", "0.9.10.1", "0.9.10-rc1", "0.9.1\uff10"):
                 release = bool(RELEASE_TAG.fullmatch(tag))
                 checked += 1
-                ran = validate(tag)
-                if ran != release or (release and not triggers(tag)):
+                ran, said = validate(tag)
+                # A refusal must be the step's own grammar test speaking, not some
+                # other failure -- nor no run at all.
+                refused_for_shape = f"release tag {tag} is not a bare MAJOR.MINOR.PATCH" in said
+                if (ran != release or (not release and not refused_for_shape)
+                        or (release and not triggers(tag))):
                     failures += 1
                     print(f"self-test FAIL [release tag grammar]: `{tag}` -- RELEASE_TAG "
                           f"{'accepts' if release else 'refuses'} it, release.yml's validate "
                           f"step {'passes' if ran else 'refuses'} it"
+                          + ("" if release or refused_for_shape else " but not for its shape")
                           + (", and its trigger does not start" if release and not triggers(tag)
                              else ""), file=sys.stderr)
             checked += 1
-            if validate("0.9.10", annotated=False):
+            ran, said = validate("0.9.10", annotated=False)
+            if ran or "not an annotated tag" not in said:
                 failures += 1
-                print("self-test FAIL [release tag grammar]: a lightweight `0.9.10` passes "
-                      "release.yml's validate step, which requires an annotated tag",
+                print("self-test FAIL [release tag grammar]: a lightweight `0.9.10` is not "
+                      "refused by release.yml's validate step as a lightweight tag",
                       file=sys.stderr)
 
     # Counted as they run, never hand-maintained: the previous literal
