@@ -1293,8 +1293,9 @@ class TagState(NamedTuple):
     checked-out branch included -- is kept in `branch_only`: counting it let a
     maintenance branch's own tag demand an entry and become the base. A fork's
     `main` is not read beside this repository's, so its own tags are no releases
-    either (a fork clone with no remote for this repository has only the fork's
-    `origin/main`, and it is read). `line` names the refs read. Every
+    either (a fork clone whose only remote is the fork has only the fork's
+    `origin/main`, and it is read; beside any other remote the line is
+    unknown). `line` names the refs read, the one holding the most tags first. Every
     tag that is not this line's -- those two, one on another branch, one
     `main` gained after this commit -- is kept apart in `elsewhere`, so a
     finding can say where it is.
@@ -5354,6 +5355,8 @@ def self_test() -> int:
             except subprocess.CalledProcessError as exc:
                 steps.append((f"setting up the repositories: `{' '.join(exc.cmd[-3:])}` failed: "
                               f"{exc.stderr.strip()}", False))
+            except Exception as exc:  # noqa: BLE001 -- a reader that raises fails a case, not the run
+                steps.append((f"the tag reader raised {type(exc).__name__}: {exc}", False))
             finally:
                 os.environ.clear()
                 os.environ.update(saved_env)
