@@ -163,7 +163,8 @@ without a tag, rather than only for this one.
         the local `main`, since a repository nothing was cloned from is its own line. Everything else is
         **unknown**, never a guess at a fork's or a local `main`: a remote that is this repository but
         whose `main` was never fetched (remedy `git fetch --refmap= <remote>
-        +main:refs/remotes/<remote>/main`: forced, so a stale ref is replaced; `--refmap=`, so the remote's
+        +main:refs/remotes/<remote>/main`: forced, as every fetch the reader prints is, so it can be run
+        again once the ref exists; `--refmap=`, so the remote's
         configured refspec cannot also try to write a checked-out branch, as a `--mirror` clone's would;
         the name shell-quoted; a single-branch clone's `git fetch origin main` writes only `FETCH_HEAD`),
         and several remotes none
@@ -182,7 +183,8 @@ without a tag, rather than only for this one.
         and used by its commit: as a revision, a missing `refs/remotes/upstream/main` was resolved from a
         tag spelled like it. The source names the fetch that brings a release pushed since, `git fetch
         --tags --refmap= <remote> +main:refs/remotes/<remote>/main`: the tag alone is no release until the `main`
-        read holds it, and a single-branch clone's refspec never updates that `main` (a review finding,
+        read holds it, and a configured refspec that does not cover that `main` -- a single-branch clone
+        of another branch -- never updates it (a review finding,
         2026-09-29: `git fetch --tags origin` brought 0.9.10 and the missing entry went unreported); a
         line that is the local `main`, with no remote, names no fetch;
       - **a tag `main` does not hold is no release**, wherever it sits: one cut on a branch never merged
@@ -480,27 +482,28 @@ without a tag, rather than only for this one.
   revision all three files pass, the three tags are refused, and the earlier acceptance cases hold (a
   missing 0.9.10 on the line fails, naming it; both recorded passes only from 0.9.10; the first tag;
   skipped versions; the branch tip, merged commits, fast-forward and two-parent shapes).
-- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 683 cases (537 before the
+- **[Verified]** The checker: `python3 scripts/check-docs.py --self-test` passes, 685 cases (537 before the
   2026-09-29 amendments; each step of the tag-reader case counts as a case of its own, so a mutant's count
-  is the number of failing cases and steps alike). Ninety-three mutants each fail it, none by crashing,
-  with the number of failing cases (measured on a clean clone of `d49b1b1`; eighty-four of the checker,
+  is the number of failing cases and steps alike). Ninety-seven mutants each fail it, none by crashing,
+  with the number of failing cases (measured on a clean clone of `2cc3a40`; eighty-eight of the checker,
   nine of `release.yml` run against the unmutated checker):
   - the final amendment: the repository's `main` united with a fork's `origin/main`: 6; `origin/main`
     preferred over the repository's remote: 17; the repository's remote not recognised by URL (a fork's
-    `origin/main` read instead): 13; the repository's remote without its `main` falling back to
+    `origin/main` read instead): 14; the repository's remote without its `main` falling back to
     `origin/main`: 2; `origin/main` read whenever an `origin` exists, beside other unrecognised remotes:
-    5; the local `main` read although the checkout has remotes: 9; a local `main` united with the remote
-    line: 16; a line ref resolved by shorthand (a tag spelled `refs/remotes/<n>/main` standing in for it):
+    5; the local `main` read although the checkout has remotes: 11; a local `main` united with the remote
+    line: 18; a line ref resolved by shorthand (a tag spelled `refs/remotes/<n>/main` standing in for it):
     1; branch-only tags in `HEAD`'s history counted as releases: 5; a tag on `HEAD`'s own commit read as
-    its future: 11; a branch-only tag offered the merge remedy: 2, or called "not in this checkout's
+    its future: 10; a branch-only tag offered the merge remedy: 2, or called "not in this checkout's
     history": 4; a branch headed for `main` offered a merge for a tag `main` does not hold: 1; the
     remedy naming plain `main`, not the ref read: 3; the source text without the future-tag exclusion: 3,
-    or with it where nothing was cut: 2; the fetch hint naming no remote: 2, or bringing the tags
-    without the line's `main`: 2; the unknown-line remedy always adding `upstream`, which may exist: 6;
-    its name ignoring a removed remote's leftover refs: 1, or a legacy remote file: 1; its names bounded
-    (every one taken): 1; its URL one an `insteadOf` rule rewrites away: 3; the rewritten URL shown with
-    its credentials: 1; the no-`main` remedy's refspec unforced: 3; the line refs in name order, a stale
-    remote named first: 1;
+    or with it where nothing was cut: 2; the fetch hint naming no remote: 3, or bringing the tags
+    without the line's `main`: 3; the unknown-line remedy always adding `upstream`, which may exist: 7;
+    its name ignoring a removed remote's leftover refs: 2, a legacy remote file: 1, or a ref named
+    `refs/remotes/<name>`: 1; its names bounded (every one taken): 1; its URL one an `insteadOf` rule
+    rewrites away: 2; its fetch from another remote (the fork) into the one it adds: 1; the rewritten URL
+    shown with its credentials: 1; every printed fetch's refspec unforced: 5, without `--refmap=`: 5, or
+    with the remote name unquoted: 1; the line refs in name order, a stale remote named first: 1;
     `RELEASE_TAG` admitting leading zeros: 6; the tag-grammar case trusting the grammar instead of running
     the step: 9; `release.yml`'s validator back to `[0-9]+`: 4, without the leading-zero rule in the
     last component: 1; its trigger narrowed: 4; its annotated-tag check removed: 1; its re-fetch of the
@@ -513,13 +516,13 @@ without a tag, rather than only for this one.
   - `main`'s tags ignored for a branch headed there (the finding's remaining path): 16; a commit in
     `main`'s history bound by `main`'s later tags too (its future not subtracted): 3; every commit in
     `main`'s history read as `main`'s past: 4; `main`'s first-parent order deciding a commit on it (the
-    fast-forward shape): 1; a checkout without `main` read as known: 15; a release on `main` the branch
+    fast-forward shape): 1; a checkout without `main` read as known: 17; a release on `main` the branch
     lacks called "in this checkout's history": 6; every tag counted as `main`'s: 10; a merge `main` never
     holds whose parents are all on it bound as its parents are (`af4ac33`'s rule, which hid the later
     release at a branch tip merging two `main` commits): 1; the raw configured URL matched (an
     `insteadOf` alias unresolved): 1; the URL pattern without `ssh.github.com` or a port: 2; unanchored
     (a mirror path matching): 3; a merged commit's later tag called absent from `main`: 1; git output
-    decoded strictly: 1; the no-`main` remedy reverted to `git fetch <remote> main`: 3;
+    decoded strictly: 1; the no-`main` remedy reverted to `git fetch <remote> main`: 4;
   - the heading grammar with Unicode digits (`## [0.9.1０]` recording 0.9.10): 2; a release tag with
     Unicode digits: 2;
   - tags on another branch counted as this line's: 17; the no-tag `[Unreleased]` refusal removed,

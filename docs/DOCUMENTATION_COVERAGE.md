@@ -13082,7 +13082,7 @@ The reconciliation order is unchanged:
 2. report each without an entry, newest first;
 3. only then take `newest_tagged` and `previous_of` from those tags.
 
-**Self-test.** 643 → 683 cases:
+**Self-test.** 643 → 685 cases:
 - **2 more `maint` steps.** On the never-merged branch, 0.9.10 is branch-only; the file is accepted; and
   `[Unreleased]` from 0.9.10 is refused with the reason and no merge remedy.
 - **8 topology steps:**
@@ -13113,6 +13113,9 @@ The reconciliation order is unchanged:
   `insteadOf` rule the remedy uses a form the rule leaves alone, shows no credentials, and, run as written,
   reads the line; with every form rewritten, it says to lift the rule; and the name it adds is one nothing
   holds (a removed remote's refs, a legacy remote file, 120 configured remotes).
+- **2 more from the fourth review round:** a ref named `refs/remotes/<name>` itself takes that name; and a
+  remote name with a shell metacharacter is quoted in the fetch the source names. The single-branch clone's
+  remedy and the `insteadOf` remedy are now run exactly as printed, the latter beside a fork remote.
 
 The negative controls fail:
 - `release.yml` with its old expression: 4 cases;
@@ -13123,30 +13126,32 @@ The negative controls fail:
   each (0 before the second review round);
 - the sandbox fetching the tag object, as `git clone` does: 14 cases (0 before the second review round).
 
-**Mutation.** Ninety-three mutants each fail the self-test, none by crashing, on a clean clone of `d49b1b1`:
-eighty-four of the checker, and nine of `release.yml` run against the unmutated checker. The full counts are
+**Mutation.** Ninety-seven mutants each fail the self-test, none by crashing, on a clean clone of `2cc3a40`:
+eighty-eight of the checker, and nine of `release.yml` run against the unmutated checker. The full counts are
 in ADR-0058's evidence. Among them:
 
 | Mutant | Failing cases |
 |---|---|
 | the repository's `main` united with a fork's `origin/main` | 6 |
 | `origin/main` preferred over the repository's remote | 17 |
-| the repository's remote not recognised by URL | 13 |
+| the repository's remote not recognised by URL | 14 |
 | the repository's remote without its `main` falling back to `origin/main` | 2 |
 | `origin/main` read beside other unrecognised remotes | 5 |
-| the local `main` read although the checkout has remotes | 9 |
+| the local `main` read although the checkout has remotes | 11 |
 | a line ref resolved by shorthand | 1 |
 | branch-only tags in `HEAD`'s history counted | 5 |
-| a tag on `HEAD`'s own commit read as its future | 11 |
+| a tag on `HEAD`'s own commit read as its future | 10 |
 | a branch-only tag offered the merge remedy / called "not in this checkout's history" | 2 / 4 |
 | a headed branch offered a merge for a tag `main` does not hold | 1 |
 | `RELEASE_TAG` admitting leading zeros | 6 |
 | the tag-grammar case trusting the grammar instead of running the step | 9 |
 | the tag-grammar sandbox fetching the tag object (as `git clone` does) | 14 |
-| the unknown-line remedy always adding `upstream` / under a URL a rule rewrites away | 6 / 3 |
-| its name ignoring leftover refs / a legacy remote file; the names bounded | 1 / 1; 1 |
-| the rewritten URL shown with credentials / the no-`main` refspec unforced | 1 / 3 |
-| the fetch hint naming no remote / without the line's `main`; the line refs in name order | 2 / 2; 1 |
+| the unknown-line remedy always adding `upstream` / under a URL a rule rewrites away | 7 / 2 |
+| its name ignoring leftover refs / a legacy remote file / a `refs/remotes/<name>` ref; the names bounded | 2 / 1 / 1; 1 |
+| its fetch from another remote (the fork) into the one it adds | 1 |
+| the rewritten URL shown with credentials | 1 |
+| every printed fetch unforced / without `--refmap=` / with the remote name unquoted | 5 / 5 / 1 |
+| the fetch hint naming no remote / without the line's `main`; the line refs in name order | 3 / 3; 1 |
 | the remedy naming plain `main` / the future-tag clause missing / said where nothing was cut | 3 / 3 / 2 |
 | `release.yml`: validator back to `[0-9]+` / last component unguarded / trigger narrowed / annotated check removed | 4 / 1 / 4 / 1 |
 | `release.yml`: the tag re-fetch without `--force` / removed / of the wrong ref | 5 / 5 / 5 |
@@ -13168,6 +13173,8 @@ Survivors were closed along the way:
 - **One on `aa71585` was caught only by a crash**: bounding the remedy's names raised `StopIteration`, which
   ended the self-test instead of failing a case. An exception from the tag reader now fails a named case
   (`d49b1b1`).
+- **The fourth round's documents lens showed one more**: a remedy fetching from the wrong remote into the one
+  it adds passed, since the step ran only `git remote add`. It now runs the whole command (`2cc3a40`).
 
 **Review.** Four reviewers each took one lens (topology, tag grammar, regressions, wording). Each ran real
 temporary repositories, and a skeptic reproduced every finding before it counted. They confirmed 12 findings,
@@ -13258,9 +13265,10 @@ skeptic.
   or in its history (lightweight too), case E in a CI-style detached checkout and as a test merge, every
   grammar case, and the end-to-end release simulation.
 - **The checker: 9 confirmed** (5 minor, 4 wording), none reachable in CI. Fixed in `aa71585`:
-  - a single-branch clone's `git fetch --tags origin`, as the source advised, brought a new release tag but
-    not `origin/main`, so the tag was no release and its missing entry went unreported (minor). The source
-    now names `git fetch --tags <remote> +main:refs/remotes/<remote>/main`;
+  - in a single-branch clone of a feature branch, `git fetch --tags origin`, as the source advised,
+    brought a new release tag but not `origin/main`, so the tag was no release and its missing entry went
+    unreported (minor). The source now names `git fetch --tags <remote> +main:refs/remotes/<remote>/main`
+    (with `--refmap=` since the fourth round);
   - under an `insteadOf` rule that rewrites the repository's URL, the remedy could never work, and following
     it added another remote on every run (minor). It now uses the first form GitHub serves that no rule
     rewrites away (`git@github.com:...` beside an https proxy rule), or says to lift the rule where every form
@@ -13269,7 +13277,7 @@ skeptic.
     remote's leftover `upstream/main` rejected the fetch, and the fork's tag on it then counted; a legacy
     `$GIT_DIR/remotes` file made `git remote add` fail (minor). The name now avoids both, and the refspec is
     forced;
-  - with every one of the hundred candidate names taken, the reader raised `StopIteration` (minor); the
+  - with every one of the 101 candidate names taken, the reader raised `StopIteration` (minor); the
     names are now unbounded;
   - the rewritten URL was printed with any credentials in it (minor); they are stripped;
   - wording: the no-base finding still named bare `main`; the grammar case's failure message said "refuses"
@@ -13280,6 +13288,33 @@ skeptic.
   self-test list's fork-clone remedy (`anamorph` where `upstream` is taken), the `TagState` docstring's
   fork-clone clause (only where `origin` is the only remote), and "configuration order" for what was name
   order.
+
+**Fourth review round** (on `e3cd7a8`). Two lenses, the third round's checker changes and the documents, each
+finding reproduced by a skeptic. None is reachable in CI, a tag-push checkout, an ordinary clone or a fork
+clone with `upstream`. Fixed in `46096d9` and `2cc3a40`:
+- **The checker: 4 minor, 2 wording.**
+  - Where every URL form is rewritten, the remedy's code span ended in ", once no `insteadOf` rule rewrites
+    it", so it was no command, and the `ssh.github.com:443` form was not tried. The condition now precedes
+    the span, and that form is tried.
+  - In a worktree of a `--mirror` clone with `main` checked out, the printed fetches were refused (the
+    remote's configured refspec also tried to write `main`) and repeated unchanged. Every fetch the reader
+    prints now carries `--refmap=`.
+  - A ref named `refs/remotes/<name>` itself blocked the remedy's fetch (a directory/file conflict). Such a
+    name is now taken.
+  - A remote name with a shell metacharacter made a printed fetch run something else. Names are now
+    shell-quoted.
+  - Wording: the self-test blamed `read_git_tags` for an exception raised elsewhere, and the `TagState`
+    docstring said "beside any other remote" where that remote may be this repository.
+- **The documents: 6 wording confirmed**, one of them the docstring above, and a seventh refuted.
+  - The self-test ran only the `insteadOf` remedy's `git remote add`, so a remedy fetching from the wrong
+    remote passed. The step now runs the printed command whole, beside a fork remote, and requires the
+    added remote's `main` to be the repository's.
+  - `RELEASE_PROCESS.md` gave only a fetch as the no-`main` remedy. It and `CI_CD.md` gave a bare `git fetch
+    --tags`, which in a fork clone fetches the fork. Both now name the checker's commands.
+  - Two statements were untrue: "a single-branch clone's refspec never updates `main`" (not so for a
+    single-branch clone of `main`), and "the hundred candidate names" (there were 101). The refuted one
+    held that the reason given for forcing the no-`main` remedy never applies where it is shown; the
+    sentence now gives the reason that plainly holds (every printed fetch is forced, so it can be re-run).
 
 **Limitations, stated.**
 - A fork clone whose only remote is the fork reads the fork's `origin/main`, the only line it has; add the
