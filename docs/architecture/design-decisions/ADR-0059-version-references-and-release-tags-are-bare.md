@@ -116,7 +116,7 @@ changelog heading, its link and the prose all agree without translation.
 - `scripts/check-citations.py` — one `DELIBERATE_REAIMS` entry.
 
 ## Evidence + confidence
-- **[Verified]** `python3 scripts/check-docs.py --self-test`: 561 cases pass. They include a prefixed tag
+- **[Verified]** `python3 scripts/check-docs.py --self-test`: 564 cases pass. They include a prefixed tag
   page, a prefixed comparison and a prefixed 0.9.9 tag page, each refused, and a prefixed git tag, which
   is not the version's tag (so it makes no comparison base and no `[Unreleased]` base, and a prefixed
   higher tag needs no changelog entry). With the prefix restored in `check_changelog_links`, 101 cases

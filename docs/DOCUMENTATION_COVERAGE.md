@@ -13061,7 +13061,7 @@ tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is i
 
 The twelve earlier cases A–J (the 95th and 96th passes) still behave as recorded.
 
-**Self-test.** 537 → 561 cases.
+**Self-test.** 537 → 564 cases.
 - The synthetic-fixture loop now runs each fixture against the tags of the versions it records (`fixture_tags()`),
   so the new rule reads them as their authors meant. Every fixture keeps its old verdict.
 - Two existing expectations changed by design:
@@ -13069,7 +13069,7 @@ The twelve earlier cases A–J (the 95th and 96th passes) still behave as record
     covers it;
   - the reader test's lightweight `0.9.10` on `HEAD` is now a release with no entry, so the production path
     refuses `[Unreleased]` from 0.9.9 there, naming 0.9.10.
-- The 14 new count cases and 10 new wording checks are listed in ADR-0058's amendment.
+- The 14 new count cases and 13 new wording checks are listed in ADR-0058's amendment.
 - The reader test gained a two-line topology in a real temporary repository: `main` tags 0.9.9, `maint` tags
   0.9.10, `main` moves on.
   - On `main`, 0.9.10 is elsewhere and the file is accepted.
@@ -13077,13 +13077,13 @@ The twelve earlier cases A–J (the 95th and 96th passes) still behave as record
   - A shallow clone cut below both tags is unknown, with the remedy, until `git fetch --unshallow --tags`.
 - A depth-1 clone is unknown without its tags and with every tag fetched and reached; the production path
   refuses once, naming it. Unshallowed, it reads as the full clone does.
-- **Mutation.** Thirty-five mutants each fail it, run on a clean clone of the final commit; the counts are in
+- **Mutation.** Thirty-eight mutants each fail it, run on a clean clone of the final checker; the counts are in
   ADR-0058's evidence. Among them, the ones the review asked for:
   - the intersection (the finding's own repro): 8;
   - a missing entry ignored: 10;
-  - the newest entry with a tag-looking link as the base: 18;
+  - the newest entry with a tag-looking link as the base: 19;
   - other branches' tags counted: 3;
-  - the no-tag `[Unreleased]` refusal removed: 20;
+  - the no-tag `[Unreleased]` refusal removed: 21;
   - the skipped-tag fix reverted: 25.
 
 **Review.** Three read-only reviewers (checker correctness, test adequacy and safety, documentation facts), each
@@ -13127,6 +13127,18 @@ skeptic, re-examined the fixes. They confirmed 7 findings and refuted 5. All 7 a
 
 The five refuted findings: two concerned the generic tail of the unknown-state refusal, two the wording of
 one code comment (reworded anyway), and one the unit the mutation counts use.
+
+**Final check.** One reviewer, with a skeptic per finding, re-examined those fixes. It confirmed 3 findings and
+refuted 2. All 3 are fixed:
+- The merge remedy was offered for a tag that can never be a base: below the first tag, prefixed, or with a leading
+  zero. It is now offered only for a tag that could be a release.
+- The `[Unreleased]` refusal said a leading-zero tag (`0.09.10`) "predates" the first tag. It now says that tag
+  names no version. A pre-first tag outside this history is named as no release, and no merge is suggested.
+- A definition below the first tag was refused as "never tagged", which a stray tag in this history contradicts.
+  It is now refused as "no release of this line, whatever git holds"; ADR-0058 says so.
+
+The two refuted findings: the merge-then-no-release sequence (superseded by the first fix), and the list of wording
+checks in ADR-0058, which is complete.
 
 **Finding 2: the snapshot header changed with its generator. Justified; kept.** Investigated, not reverted:
 1. *What changed:* lines 2–3 of `tests/fixtures/parameter_registry.snapshot`, from "(ADR + PARAMETER_REGISTRY.md /
