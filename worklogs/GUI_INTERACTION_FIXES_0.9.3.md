@@ -1,4 +1,4 @@
-# Multiband add-split line stall + unified pop-up dismissal, and two menu-rendering fixes (v0.9.3)
+# Multiband add-split line stall + unified pop-up dismissal, and two menu-rendering fixes (0.9.3)
 
 > Two maintainer-reported GUI interaction bugs. Both turned out to be one-line-class fixes sitting on
 > top of non-obvious mechanisms — a repaint optimisation that could not see the moving thing, and a
@@ -9,7 +9,7 @@
   `[0.9.3]` CHANGELOG heading. Dated sign-offs and manual-verification records below keep the date
   they actually happened on -- they are events, not the release. · **Version:** 0.9.3
   (PR #101, commit `7afd07e`) · **Branch:** `claude/beautiful-sagan-JAUFI`.
-  PR #100 (v0.9.2) is merged and is this branch's merge-base — it is not the source of these fixes.
+  PR #100 (0.9.2) is merged and is this branch's merge-base — it is not the source of these fixes.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
 - **Scope:** editor only. No parameter, serialization or DSP change — 0.9.3 is state- and
@@ -363,7 +363,7 @@ Hover survives for two reasons that hold independently of any ordering we choose
 2. **This editor does not derive hover from enter/exit anyway.** `stepMicroAnims` computes
    `over` geometrically — `mouseInside && c->isShowing() && c->getLocalBounds().contains
    (c->getMouseXYRelative())` (`src/PluginEditor.cpp:1331-1333`) — to drive `hovA`, and the combo
-   `"hov"` flag uses the same test (`:1072-1073`). That is the v0.6.1 stuck-hover fix, and it makes
+   `"hov"` flag uses the same test (`:1072-1073`). That is the 0.6.1 stuck-hover fix, and it makes
    `hovA` immune to `componentUnderMouse` churn by construction.
 
 A third, partial gate applies to the common path: `ComboBox` and `TextEditor` open their menus from
@@ -439,7 +439,7 @@ the contract it exists to enforce; per-control guards re-create the approach the
 patching JUCE is a gated Build System change for a Low-severity cosmetic race. Filed as **KI-018**
 with the mechanism, the workaround and what would close it upstream.
 
-**Also corrected in this round:** `docs/COMMERCIAL_STATUS.md` still named v0.9.2 as the release in
+**Also corrected in this round:** `docs/COMMERCIAL_STATUS.md` still named 0.9.2 as the release in
 preparation in three places. Only those three statements changed; its genuinely historical references
 (which versions were never tagged, what 0.9.2 contained) are preserved, and its review date stands —
 the file's substance is unaffected by a renumbering, which is what that date tracks.

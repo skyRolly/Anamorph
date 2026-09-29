@@ -422,6 +422,17 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # THE CHANGELOG LINK CHECK READS THE RELEASE LINE'S TAGS: `origin/main`'s,
+          # this repository's, less any cut after HEAD -- for a branch too, since a
+          # same-repo PR is checked at its tip (CHANGELOG_POLICY.md rule 8). The
+          # default single-commit checkout is shallow, fetches no tags and no `main`;
+          # the checker reads a shallow clone, or one without `main`, as unknown and
+          # refuses every link that needs a tag. `fetch-depth: 0` brings the full
+          # history and every branch (`+refs/heads/*:refs/remotes/origin/*`), so
+          # `origin/main`, and `fetch-tags` every tag ref.
+          fetch-depth: 0
+          fetch-tags: true
       - name: Lint documentation structure
         run: |
           python3 scripts/check-docs.py --self-test
@@ -849,7 +860,7 @@ jobs:
       # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
       # (`testPendingDuckDoesNotSurviveActivation`, tests/dsp_tests.cpp:1388) against
       # the state suite's 709,760 (`testSettingsPublicationIsFieldLevelAndOrdered-
-      # ByObservation`, tests/state_tests.cpp:21971) -- 28% of the 1 MB reserve, not
+      # ByObservation`, tests/state_tests.cpp:22196) -- 28% of the 1 MB reserve, not
       # 0%. This arms a tripwire rather than introducing a failure: both suites were
       # verified green under `ulimit -s 1024` before the step was widened.
       #
@@ -1800,7 +1811,7 @@ jobs:
           # not parse the output at all.
           "debug_artifacts=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      # v0.9.0 packaging (additive): a user-installable Inno Setup installer
+      # 0.9.0 packaging (additive): a user-installable Inno Setup installer
       # built from the SAME validated (debug-purged) staging directory the zip
       # was archived from. It therefore gates on the same `public_ok` checkpoint
       # the customer zip does: repacking a tree that failed validation would
@@ -2420,7 +2431,7 @@ jobs:
         if: ${{ !cancelled() && steps.au_install.outcome != 'skipped' }}
         run: rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
 
-      # v0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
+      # 0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
       # skeleton) built from the SAME validated staging dir the zip was
       # archived from. pkgbuild/productbuild are OS-native on the runner;
       # RH-PR-3 will later sign+notarize this same package. The deterministic

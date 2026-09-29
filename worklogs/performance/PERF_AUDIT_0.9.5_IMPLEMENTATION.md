@@ -1,7 +1,7 @@
-# A7-1 implementation — v0.9.5
+# A7-1 implementation — 0.9.5
 
 **Round A7, item 1 of the roadmap in
-[`PERF_AUDIT_v0.9.4_INVESTIGATION.md`](PERF_AUDIT_v0.9.4_INVESTIGATION.md).** That round measured the
+[`PERF_AUDIT_0.9.4_INVESTIGATION.md`](PERF_AUDIT_0.9.4_INVESTIGATION.md).** That round measured the
 cost and proposed the change in a throwaway build; this round implements it in the product tree,
 re-derives the evidence there, and adds the regression coverage the roadmap made a condition of
 landing.
@@ -308,7 +308,7 @@ unchanged and the twin-dump evidence cited. Implementation detail lives here, no
 | Item | Status |
 |---|---|
 | **A7-0** — run the bench on a named machine, fill the `PERFORMANCE_BUDGET.md` numeric rows | **still open.** Needs a held-still desktop; nothing in this round can substitute. RISK-002 stays open. |
-| **A7-1** — VelvetNoise linear-history slide | **DONE (v0.9.5)** — this document. |
+| **A7-1** — VelvetNoise linear-history slide | **DONE (0.9.5)** — this document. |
 | **A7-2** — remove the residual per-block term | **open**, and now better sized: 13,502 Ir/block at 48 kHz remains. Gated on A7-0's evidence that small buffers still hurt. |
 | **A7-5** — multiband LR4 bank SIMD | **open, blocked** on an AVX2 / `-march` ADR + Architecture Review, jointly with W5-D. |
 | A7-3 | closed — subsumed by A7-1. |

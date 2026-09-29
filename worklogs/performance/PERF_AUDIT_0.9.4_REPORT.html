@@ -361,18 +361,18 @@ footer {
   <div class="eyebrow">
     <span>Performance audit</span><span class="sep">/</span>
     <span>Round A7</span><span class="sep">/</span>
-    <span>v0.9.4 audit</span><span class="sep">/</span>
-    <span>Item 1 shipped in v0.9.5</span>
+    <span>0.9.4 audit</span><span class="sep">/</span>
+    <span>Item 1 shipped in 0.9.5</span>
   </div>
   <h1>Anamorph Engine Cost Audit</h1>
   <p class="dek">Six optimization waves have already run. This round measured what is left, and found
   one dominant cost that the previous rounds closed as absent — because they measured it in the one
-  configuration where it is switched off. That fix has since shipped in v0.9.5, and the product tree
+  configuration where it is switched off. That fix has since shipped in 0.9.5, and the product tree
   reproduced every predicted figure to one decimal place.</p>
   <div class="mast-meta">
     <span>Method: callgrind instruction attribution + committed AnamorphBench</span>
     <span>Machine: Intel Xeon @ 2.80&nbsp;GHz, 4 cores, gcc 13.3.0</span>
-    <span>Worklog: worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md</span>
+    <span>Worklog: worklogs/performance/PERF_AUDIT_0.9.4_INVESTIGATION.md</span>
   </div>
 </header>
 
@@ -412,7 +412,7 @@ footer {
     </div>
     <div class="stat">
       <div class="stat-n pos">Shipped</div>
-      <div class="stat-l">A7-1, in v0.9.5</div>
+      <div class="stat-l">A7-1, in 0.9.5</div>
       <div class="stat-s">1 of 8 candidates was recommended; it landed, and the product tree matched the estimate exactly.</div>
     </div>
   </div>
@@ -424,7 +424,7 @@ footer {
       report proposed was prototyped and measured, and the proposal turned out to be the weaker of two
       options: it makes the average better and the worst block no better. The alternative is ready to
       execute. See the roadmap below.</li>
-      <li><strong>A7-1 (the VelvetNoise history slide) — <span class="chip now">Shipped v0.9.5</span></strong>
+      <li><strong>A7-1 (the VelvetNoise history slide) — <span class="chip now">Shipped 0.9.5</span></strong>
       One file, no hard-stop class, largest measured gain. The product tree reproduced every figure
       below to one decimal place, the audio is bit-identical on the committed twin dump plus a
       180-configuration sweep, and Test 39 now guards the new cross-block invariant.</li>
@@ -673,7 +673,7 @@ footer {
           <td>Slide the H5 linear history instead of re-gathering it from the ring each block</td>
           <td><strong>Measured</strong> −14.3&nbsp;% at 48k/32, −32.3&nbsp;% at 192k/32, −4.7&nbsp;% at 48k/128</td>
           <td class="num">A — proven</td><td class="num">low</td>
-          <td><span class="chip now">Shipped v0.9.5</span></td>
+          <td><span class="chip now">Shipped 0.9.5</span></td>
         </tr>
         <tr>
           <td class="mono">A7-2</td>
@@ -759,7 +759,7 @@ footer {
     sample rates, compared by an FNV-1a hash over every output sample of both channels. Zero
     mismatches.</p>
 
-    <h4>What the product tree measured <span class="chip now">v0.9.5</span></h4>
+    <h4>What the product tree measured <span class="chip now">0.9.5</span></h4>
     <p>The shipped implementation is not the throwaway one: it clears the slide offset on
     <em>entry</em> to <code>processBlock</code> rather than from an RAII guard on each non-gather
     exit, so every other path — and every path a later round adds — leaves the image invalid by
@@ -828,7 +828,7 @@ footer {
     <article class="step">
       <div class="step-n">02</div>
       <div class="step-body">
-        <h3 class="step-h">A7-1 — the VelvetNoise history slide <span class="chip now">Shipped v0.9.5</span></h3>
+        <h3 class="step-h">A7-1 — the VelvetNoise history slide <span class="chip now">Shipped 0.9.5</span></h3>
         <p>Largest measured gain, Class A, one file, no hard-stop class, no policy conflict.</p>
         <dl class="kv">
           <dt>Depended on</dt><dd>Nothing.</dd>
@@ -939,7 +939,7 @@ footer {
       <li><strong>The GUI tick path was not measured</strong> — only paint.</li>
       <li><strong>Software renderer only.</strong> No GPU, no macOS or Windows rasterizer.</li>
       <li><strong>A7-1's Class-A evidence was this round's</strong>, from a scratch build —
-      <strong>discharged in v0.9.5</strong>: regenerated on the product tree with the committed
+      <strong>discharged in 0.9.5</strong>: regenerated on the product tree with the committed
       <code>AnamorphDspDump</code> twin diff plus a 180-configuration sweep.</li>
       <li><strong>One scenario shape.</strong> The working reference is <code>bench.cpp</code>'s; a
       user on Chorus with multiband off has a different profile.</li>
@@ -984,7 +984,7 @@ footer {
 <footer>
   <span>Anamorph performance audit — round A7</span>
   <span>Investigation only; no product code changed</span>
-  <span>Full method and evidence: worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md</span>
+  <span>Full method and evidence: worklogs/performance/PERF_AUDIT_0.9.4_INVESTIGATION.md</span>
 </footer>
 
 </div>

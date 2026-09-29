@@ -1,6 +1,6 @@
-# Product Readiness Roadmap (post-RH-PR-8, v0.8.13 cycle)
+# Product Readiness Roadmap (post-RH-PR-8, 0.8.13 cycle)
 
-Supersedes the execution-phase portion of `POST_v0.8.12_AUDIT_AND_ROADMAP.md` (its Phase-1
+Supersedes the execution-phase portion of `POST_0.8.12_AUDIT_AND_ROADMAP.md` (its Phase-1
 items are now shipped: state harness PR #82, JUCE 9 migration PR #83, RH-PR-8 pipeline PR #84
 + rehearsal PR #85). This is a forward roadmap, not an audit; drift review was limited to
 correctness-affecting items (none found — the doc set was synced continuously through the
@@ -17,10 +17,10 @@ shipped PRs).
 
 ## 2. Remaining blockers
 
-### Must do before v1.0
-1. **Level-5 auditions** — one DAW session covers both outstanding sign-offs: v0.8.12's
+### Must do before 1.0
+1. **Level-5 auditions** — one DAW session covers both outstanding sign-offs: 0.8.12's
    unrecorded audition AND JUCE 9 vs 8.0.14 (ADR-0022 acceptance). Human-gated; blocks the
-   v0.8.13 tag.
+   0.8.13 tag.
 2. **macOS notarization (RH-PR-3)** + **Windows Authenticode (RH-PR-5)** — Gatekeeper/
    SmartScreen make unsigned commercial distribution effectively broken. Human-gated
    (Apple Developer account, cert service, ADR-0019).
@@ -32,7 +32,7 @@ shipped PRs).
    declared support matrix; plus serialization-schema freeze fixtures from every released
    0.8.x before 1.0 freezes the schema.
 
-### Should do for v0.9.x
+### Should do for 0.9.x
 1. `auval` in CI (macos runner: `auval -v aufx Anmr Anmf`) — closes "AU built but never
    validated" headlessly; small.
 2. Golden-audio regression harness (renders per factory preset, hash-compared; extends the
@@ -57,7 +57,7 @@ restructuring); crossover glide < 0.5 s stays escalated (Hard-Stop levers only).
 
 | Item | Classification | Why |
 |---|---|---|
-| Level-5 auditions (v0.8.12 + JUCE 9) | **Must do now** (P0) | The only blocker between five merged infrastructure PRs and the first traceable release; one DAW session covers both; every other phase benefits from the tagged baseline |
+| Level-5 auditions (0.8.12 + JUCE 9) | **Must do now** (P0) | The only blocker between five merged infrastructure PRs and the first traceable release; one DAW session covers both; every other phase benefits from the tagged baseline |
 | Flat-recombination retroactive ADR | **Must do now** (P0, tiny) | An *audible* 0.8.10 maths change with no decision record — the one true correctness debt in the doc set; must exist before 1.0 freezes history, cheapest now |
 | macOS dSYM restoration | **Must do now** (P1, small) | Rehearsal re-proved the gap (macOS-debug artifact skipped); crash symbolication missing on the platform most likely to need it; CI-only, reversible |
 | pluginval version pin | **Must do now** (P1, small) | The release gate currently downloads "latest" — an upstream release could change gate behaviour underneath a release build; one-line class of fix |
@@ -105,13 +105,13 @@ restructuring); crossover glide < 0.5 s stays escalated (Hard-Stop levers only).
 
 ## 3. Recommended roadmap (ordered)
 
-**Phase 1 — v0.8.13 release completion** *(P0; small; the pipeline is validated and waiting)*
+**Phase 1 — 0.8.13 release completion** *(P0; small; the pipeline is validated and waiting)*
 1. Pre-tag engineering nits (P1, small, no deps): pluginval version pin; macOS dSYM
    restoration; retroactive flat-recombination ADR (docs-only debt from 0.8.10). Risk: low.
 2. Release prep (P0, small): version bump 0.8.13; CHANGELOG `[0.8.13]` (JUCE 9 bump per the
    0.8.8 precedent; tag/draft-release availability note); docs sync. Risk: low.
-3. **Human gates** (P0): combined Level-5 audition (v0.8.12 fixes + JUCE 9 A/B) → ADR-0022
-   Accepted → `git tag -a v0.8.13` → review + publish the draft release. **Closes RISK-003.**
+3. **Human gates** (P0): combined Level-5 audition (0.8.12 fixes + JUCE 9 A/B) → ADR-0022
+   Accepted → `git tag -a 0.8.13` → review + publish the draft release. **Closes RISK-003.**
    Risk: low-medium (JUCE 9 visual delta is the one real unknown; the audition exists to
    catch it — fallback is trivial, re-pin to 8.0.14).
 
@@ -135,7 +135,7 @@ restructuring); crossover glide < 0.5 s stays escalated (Hard-Stop levers only).
 3. RH-PR-5b/6 installers; RH-PR-4/7 licensing implementation (ADR-0016/0017 first);
    LICENSE/EULA files. Risk: medium (licensing touches the wrapper — serialize with GUI work).
 
-**Phase 4 — v1.0 preparation**
+**Phase 4 — 1.0 preparation**
 RH-PR-9 QA matrix + full signed-release rehearsal on clean machines; schema-freeze fixture
 sweep (state blobs from every released 0.8.x/0.9.x into `tests/fixtures/`); support-matrix
 declaration; 1.0 audition + tag. Risk: low (process, not code).
@@ -154,7 +154,7 @@ declaration; 1.0 audition + tag. Risk: low (process, not code).
 
 ## 5. Technical recommendations (order rationale)
 
-1. **Ship v0.8.13 first** — everything else benefits from a tagged, traceable baseline.
+1. **Ship 0.8.13 first** — everything else benefits from a tagged, traceable baseline.
 2. **auval-in-CI before the host-matrix program** — free automation first, hardware after.
 3. **Presets before golden-audio** — freeze the bank, then lock it with renders.
 4. **Signing before installers** — installers wrap signed bundles, not the reverse.

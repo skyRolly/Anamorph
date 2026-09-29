@@ -1,6 +1,6 @@
 # A7-2 · A7-5 / W5-D · A7-9 — engineering investigation
 
-**Date:** 2026-08-22 · **Base:** `main` at `100b98c` (v0.9.5, PR #127 merged) · **Product code
+**Date:** 2026-08-22 · **Base:** `main` at `100b98c` (0.9.5, PR #127 merged) · **Product code
 changed: none.**
 
 This round answers three questions that do not need the physical benchmark machine A7-0 is blocked
@@ -59,7 +59,7 @@ B reads the same floats from where they already are.
 
 The previous round's prototype still carried `linHist`; only its tap loop had been replaced. It has
 been rebuilt as the plan actually describes — image, slide flag and allocation all removed — and
-re-measured against the shipped v0.9.5 engine.
+re-measured against the shipped 0.9.5 engine.
 
 | evidence | result |
 |---|---|
@@ -113,7 +113,7 @@ transport always playing, so it never crossed between paths — and the result w
 
 | build under test | Test 39's two bit-identity checks | first difference |
 |---|---|---|
-| shipped v0.9.5 | pass ×4 rates | — |
+| shipped 0.9.5 | pass ×4 rates | — |
 | **seeded, Test 39 as committed** | **FAIL ×4 rates** | block 215 — the transport stop |
 | **seeded, transport-stop events removed** | **FAIL ×4 rates** | block 247 — the moving density |
 | **seeded, every path crossing removed** | **pass ×4 rates** | — |
@@ -580,7 +580,7 @@ bound stated; and the three source comments rewritten to say what is actually tr
 | item | status after this round |
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open, unchanged.** Not attempted. RISK-002 unchanged. Rows unpopulated. |
-| **A7-1** — VelvetNoise history slide | DONE (v0.9.5, PR #127). |
+| **A7-1** — VelvetNoise history slide | DONE (0.9.5, PR #127). |
 | **A7-2** — residual per-block term | **IMPLEMENTED 2026-08-22** (`PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md`). Previously: Variant A rejected on measurement; **variant B recommended**, prototype re-verified faithfully. A7-2T is now in the tree, so the remaining gate is **A7-0**. |
 | **A7-2T** — commit the path-equivalence oracle | **DONE.** `testVelvetGatherEqualsPerSampleLoop` (Test 40): 24 checks at 4 rates × blocks 32/128/512/4096 plus a density-1.0 pass; suite 178 → 202. Proven live on a seeded one-sample tap-delay error (20 of 20 fail, at sample 3 of block 0). No product change. |
 | **A7-5 / W5-D** — multiband LR4 SIMD / AVX2 | **investigated; not implemented; ADR not drafted.** Blocked on the §11 cross-slice experiment and on decisions 1–5. |

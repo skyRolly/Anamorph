@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.9** (PR #156, 2026-09-27). **0.9.9 added four issues**, all found in that PR's
+Version-synced to **0.9.9** (PR #156, 2026-09-27). **0.9.9 added four issues**, all found in that PR's
 review: **KI-029**, a non-finite parameter value (open), and **KI-030**, **KI-031** and **KI-032**, each
 fixed in the same change set and kept as a RESOLVED row with its record. **KI-029 is a reused number:**
 the 0.9.7 change set filed a different KI-029 — a preset loaded while automation was moving a control
@@ -14,7 +14,7 @@ one. The 0.9.7 and 0.9.8 syncs were not recorded in this header, and the history
 filed and removed that first KI-029 and amended KI-027 (ADR-0034); 0.9.8 closed **KI-010** (2026-09-13).
 Net for 0.9.9: **four issues added (one open, three resolved in place), none removed.**
 
-Prior sync: **v0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
+Prior sync: **0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
 one issue** — **KI-028**, a lost mouse release leaving the value box's host gesture open, found by
 reviewing round 1's own fix — and **corrected KI-027 on four points** after re-verifying it against
 the pinned JUCE: the expensive branch needs oversampling to have been selected by hand (it is not a
@@ -37,7 +37,7 @@ same round, per the same rule the A7-9 note below applies. KI-010 gained a dated
 third gesture-less path existed and is fixed); KI-026's status line now carries the twin-dump
 scope qualifier. Net for 0.9.6: **one issue added, none removed.**
 
-Prior sync: **v0.9.5** (the A7 performance programme). That round **added one issue**:
+Prior sync: **0.9.5** (the A7 performance programme). That round **added one issue**:
 **KI-026**, the x86-64 ISA floor. It is the first entry here recording a limitation that was
 *chosen* rather than discovered — ADR-0031 compiles the Linux binaries and the macOS `x86_64` slice
 `-march=haswell` for a measured −17.2 % of the engine's instruction count with the output
@@ -47,7 +47,7 @@ defect they fixed (three Amount-0 fast paths that were unreachable after a ramp-
 filed here, having been found by measurement in the same programme that fixed it. Net for 0.9.5:
 **one issue added, none removed.**
 
-Prior sync: **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026, plus the
+Prior sync: **0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026, plus the
 C++ standard 17 → 23 migration, ADR-0027 — **no issue added or removed**: the only `src/` change
 is one added `#include`, engine output bit-identical across both the two JUCE versions and
 C++17 vs C++23, and
@@ -79,7 +79,7 @@ added and the same two removed**, plus KI-023.
 **Drift corrected in the same round (`DOCUMENTATION_LIFECYCLE_POLICY` C6):** the summary table
 below stopped at KI-022, so **KI-023 had a full entry but no table row** since it was filed on
 2026-08-18. The row is added here alongside the two new ones; no other content changed.
-Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
+Prior sync: **0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
 **five issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;
@@ -87,29 +87,29 @@ KI-019, the app-switch pop-up dismissal is inert on Linux/X11; KI-020, the dismi
 is per-instance where pop-up modality is process-global; and, from the 0.9.3 **installer** work,
 KI-021, a Linux per-user install leaves an existing system-wide one in place, and KI-022, the macOS
 package no longer follows a bundle the user moved out of its standard location).
-Prior sync: **v0.9.2**
+Prior sync: **0.9.2**
 (preset drop-down lifetime/crash fix, factory-preset identity, the
 `Window Size` → `UI Scale` label and the installer component titles — **one issue added**: KI-017,
 macOS suppresses key auto-repeat for letters and digits in any focused text field, which is an OS
 text-input behaviour rather than a plug-in defect; **no issue removed** — the crash fixed this
 cycle was never filed here, it was reported directly by the maintainer). Prior sync:
-**v0.9.1** (manufacturer-code change, ADR-0023 — **one issue added**: KI-016,
+**0.9.1** (manufacturer-code change, ADR-0023 — **one issue added**: KI-016,
 sessions saved before 0.9.1 report the plug-in as missing because the AU manufacturer field and
 the VST3 class UID changed; no issue removed, no status moved, and the DSP is bit-identical to
-0.9.0). Prior sync: **v0.9.0** (release-prep, 2026-07-24, PR #87 + the installer/packaging rework
+0.9.0). Prior sync: **0.9.0** (release-prep, 2026-07-24, PR #87 + the installer/packaging rework
 PR #89 — no plugin code changed since
-v0.8.12 (the JUCE 9 bump is proven bit-identical), so no issue's status moved except one issue
-**removed**: KI-005 "No graphical installer" — v0.9.0 ships a Linux install script (inside
+0.8.12 (the JUCE 9 bump is proven bit-identical), so no issue's status moved except one issue
+**removed**: KI-005 "No graphical installer" — 0.9.0 ships a Linux install script (inside
 the zip), a Windows Inno Setup installer and a macOS .pkg, all installing system-wide with
 component selection on Windows/macOS (unsigned until RH-PR-3/5; `docs/procedures/PACKAGING.md`
-§Installers). Previously verified against repository HEAD `64e87c4` (post-v0.8.12
-content re-audit), synced to the **v0.8.12 release** (changelog-dated 2026-07-22, PR #79
+§Installers). Previously verified against repository HEAD `64e87c4` (post-0.8.12
+content re-audit), synced to the **0.8.12 release** (changelog-dated 2026-07-22, PR #79
 performance Wave 6 + PR #80 GUI interaction fixes — one issue **added**: KI-013, the
 release-outside stuck-press reconcile is inert on macOS
-(JUCE's realtime query returns cached button state there); no issue removed. The **v0.8.11 release**
+(JUCE's realtime query returns cached button state there); no issue removed. The **0.8.11 release**
 of 2026-07-20 (PRs #60/#61 — the ADR-0015 crossover-follower fixes; PRs #62/#76 — performance
 Waves 3–5; PR #63 — RH-PR-2 build hardening) added and
-removed none). Prior sync: the **v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill + rapid-swap
+removed none). Prior sync: the **0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill + rapid-swap
 robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plus the pre-merge
 correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
 undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
@@ -124,7 +124,7 @@ limitation
 forced-duck dry-fill output-gain latch (Test 30), and **KI-011** (Apple-Silicon-native tooltip
 white corners — fix applied, hardware re-test pending); **KI-009 carried
 forward** — the REAPER Save Preset focus report, host-specific, pending manual investigation, not
-fixed). Prior: the v0.8.9 release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no
+fixed). Prior: the 0.8.9 release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no
 new/removed issues), including the KI-008 addition from the PR #57 investigation (previously synced
 for the functional/UX PR #56;
 JUCE 8.0.14; before that 0.8.8 for PR #54).
@@ -136,7 +136,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
-| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix in place — no recurrence observed (green release gates recorded in HANDOVER Build Status, v0.8.9–v0.8.12) |
+| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix in place — no recurrence observed (green release gates recorded in HANDOVER Build Status, 0.8.9–0.8.12) |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 | KI-010 | ~~Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path)~~ | Low | **CLOSED 2026-09-13 -- and the typed half was never true of the shipped code.** The Multiband-wheel half was closed 2026-09-12 by ADR-0053. The typed half was re-tested rather than re-read in round 14: the value box IS `juce::Slider`'s own `valueBox` (this plug-in supplies it from `LookAndFeel::createSliderTextBox`), JUCE wires `valueBox->onTextChange` to `Slider::Pimpl::textChanged`, and that wraps its `setValue` in a `ScopedDragNotification`. Measured: one gesture open, one close, and one Undo returns the typed value. State test 88 leg N is the guard |
@@ -181,12 +181,12 @@ CI ad-hoc codesigns the macOS bundles but does **not** notarize them. Two user-f
 consequences, both still open:
 - **Zip route:** Gatekeeper quarantines the extracted bundles, so the user must run
   `xattr -dr com.apple.quarantine` before the DAW will load them.
-- **`.pkg` route (v0.9.0):** the installed payloads are **not** quarantined (no Terminal step),
+- **`.pkg` route (0.9.0):** the installed payloads are **not** quarantined (no Terminal step),
   but opening the unsigned package itself is refused once — the user has to approve it via
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2252-2254 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2263-2265 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -205,7 +205,7 @@ behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified*
 - **Evidence [Verified]:** docs/architecture/COMPATIBILITY_MATRIX.md (hosts Unverified); docs/procedures/TESTING.md ("What cannot be verified headlessly").
   Enforced as a manual line item in `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
-*(KI-005 "No graphical installer" — RESOLVED in v0.9.0: Linux install script shipped in
+*(KI-005 "No graphical installer" — RESOLVED in 0.9.0: Linux install script shipped in
 the zip, Windows Inno Setup installer (component selection + dual-path destination page),
 macOS .pkg (component selection); see `docs/procedures/PACKAGING.md` §Installers. The
 installers are not yet signed/notarized — that remains KI-002 / RH-PR-3/5.
@@ -339,7 +339,7 @@ the JUCE focus/peer path REAPER takes).
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
   passes up to four times (src/PluginEditor.cpp:2406-2414; declared src/PluginEditor.h:585). This shipped in
-  the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
+  the 0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
@@ -412,7 +412,7 @@ with the focus-driven `knobSweepTime` easing).
   and left `canUndo()` **false**; a width drag moved it 1.000 -> 1.750 and left `canUndo()`
   **true**. The entry above was already correct — this only replaces "verified" with a number,
   and confirms the gap is pre-existing (the merge base carries the same gesture-less
-  `setParam`), so it is not a regression of the v0.9.8 SpectrumImager work.
+  `setParam`), so it is not a regression of the 0.9.8 SpectrumImager work.
   **Not contradicted by State test 80** (wheel-gesture round, same day), which asserts that a wheel
   tick *during a held drag* leaves `canUndo()` **true**: that entry belongs to the **drag** the tick
   finished -- `cancelActiveDrag` closes its gesture, `openGestures` reaches zero, and the coalescer
@@ -470,7 +470,7 @@ glide: +31 cents at a 150 Hz crossing; chained 12 ms bank crossfades: −25…�
 sidebands; τ=15 ms one-pole tracking: ~50 cent FM at a fast crossing; a 1.25 oct/s
 "inaudibility" cap + 0.25 s release consolidation: measurably clean but rejected in interactive
 testing for **interaction latency**; a flat ~4 oct/s cap: fixed the flick case but pinned every
-normal drag whole octaves behind on the ~90 px/octave display — the v0.8.10 slow-drag
+normal drag whole octaves behind on the ~90 px/octave display — the 0.8.10 slow-drag
 regression). The shipped design (ADR-0015 final + slow-drag fix) is a slew-limited smoother
 under a **frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s**, keeping the restated
 product trade: *a small amount of controlled FM is preferable to obvious interaction latency.*
@@ -490,7 +490,7 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
   dry-alignment rework, and a project-owner decision. Not attempted here by policy.
 - **Evidence [Verified]:** src/dsp/MultibandWidth.h (design rationale + measurements);
   tests/dsp_tests.cpp `testMultibandSplitDragNoPitchShift` (Test 29, grades the whole movement);
-  ADR-0015 "v0.8.10 final decision"; CHANGELOG [0.8.10] + [0.8.11] (the slow-drag fix entry moved
+  ADR-0015 "0.8.10 final decision"; CHANGELOG [0.8.10] + [0.8.11] (the slow-drag fix entry moved
   there in the maintainer-instructed consolidation). Severity **Low** (small bounded
   artifact, accepted product trade).
 
@@ -503,7 +503,7 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
 > predicates — the abandoned-gesture sweep gate and the press glow — read it, so the two cannot
 > disagree. See the registry row above and State test 23 (`#if JUCE_MAC`, run by the macOS CI job).
 
-- **Problem (up to round 4):** v0.8.12 reconciles stuck pressed/drag state against the real OS
+- **Problem (up to round 4):** 0.8.12 reconciles stuck pressed/drag state against the real OS
   mouse-button state when a mouse-up lands outside the plugin window (CHANGELOG `[0.8.12]`). On
   macOS the mechanism was **inert**: JUCE 8.0.14's `ModifierKeys::getCurrentModifiersRealtime()`
   refreshes only *keyboard* modifiers there and returns the *cached* mouse-button flags (it never
@@ -515,13 +515,13 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
 - **Evidence [Verified]:** JUCE 8.0.14 (FetchContent) `juce_NSViewComponentPeer_mac.mm` (realtime query
   returns cached mouse flags; **re-verified unchanged in JUCE 9.0.0** during the ADR-0022 bump and
   again in **9.0.1** during ADR-0026, where the file is byte-identical — still
-  keyboard-modifiers-only); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
+  keyboard-modifiers-only); `worklogs/MOUSE_RELEASE_STATE_FIX_0.8.12.md` §2 (platform caveat);
   CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Recorded here as fixable only via a
   JUCE-side change or a platform-specific `pressedMouseButtons` query — **the latter is what round 4
   did**, in `src/gui/PhysicalMouseButtons_mac.mm`. Severity was **Low**, external (JUCE platform
   implementation).
 
-*(KI-014 "The macOS AU is shipped but never validated automatically" — RESOLVED in v0.9.4: the
+*(KI-014 "The macOS AU is shipped but never validated automatically" — RESOLVED in 0.9.4: the
 macOS CI job now runs the full pluginval release gate against the AU as well as the VST3, at the
 same strictness, in both modes, three consecutive passes each, and against the **packaged**
 bundle — the stripped, ad-hoc-signed tree the artifact ships from. The registry problem the entry
@@ -555,7 +555,7 @@ distribution, alongside Anamorph's own LICENSE/EULA text.
   `docs/COMMERCIAL_STATUS.md` §4.
 
 ## KI-016 — Sessions saved before 0.9.1 report Anamorph as missing
-v0.9.1 changed the **manufacturer code** from `Anmf` to `RTec` (**ADR-0023**) — the vendor
+0.9.1 changed the **manufacturer code** from `Anmf` to `RTec` (**ADR-0023**) — the vendor
 identifier every RollyTech plug-in shares. That code is the **AU component's manufacturer field**,
 and it feeds the **VST3 class UID** (JUCE derives the UID from the manufacturer code, the plug-in
 code and the plug-in name), so a host that recorded the pre-0.9.1 identity in a session cannot
@@ -672,7 +672,7 @@ keys fine":
   arriving.
 
 ## KI-018 — a fast click right after dismissing a pop-up can register as a double-click
-Since v0.9.3 the click that dismisses a pop-up is consumed by the editor's `PopupShield` and reaches
+Since 0.9.3 the click that dismisses a pop-up is consumed by the editor's `PopupShield` and reaches
 no control — that part works. What it cannot do is un-count that click. If the user clicks again
 **within the double-click timeout and close to the same spot**, the control that finally receives it
 sees `getNumberOfMultipleClicks() == 2` and JUCE calls its `mouseDoubleClick`. On a knob that means a
@@ -712,7 +712,7 @@ already in the run by the time we could react to it.
   per-source (rather than process-global) double-click timeout. Both are upstream changes.
 
 ## KI-019 — Linux/X11: an open pop-up is not dismissed when you switch application
-Since v0.9.3 the editor cancels an open drop-down or right-click menu when the plug-in window is
+Since 0.9.3 the editor cancels an open drop-down or right-click menu when the plug-in window is
 hidden, when the editor is destroyed, or when the user switches to another application. **The third
 of those does not happen on Linux.** The first two work normally there.
 
@@ -741,7 +741,7 @@ dismissal, not an unwanted one.
   code in a component that has none.
 
 ## KI-020 — the pop-up dismissal guarantee is per-instance, not per-process
-Since v0.9.3 the click that dismisses a pop-up reaches no control — **in the editor that owns the
+Since 0.9.3 the click that dismisses a pop-up reaches no control — **in the editor that owns the
 pop-up**. With two or more Anamorph editors visible at once it does not hold across them.
 
 **Mechanism.** JUCE modality is process-global. A menu open in instance A blocks *every* component in

@@ -1240,4 +1240,4 @@ rounds, twenty-three killed, with M15 and M18 recorded as surviving — each beh
 single-threaded harness can enter, and each stated as unmeasured rather than as covered. The three
 corrections in the second round were each reproduced as failing checks before the code was touched.
 The mutation record is in `docs/procedures/TESTING.md` and in
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66 and §67.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §66 and §67.

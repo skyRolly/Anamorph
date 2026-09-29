@@ -202,8 +202,8 @@ is **not** a standing approval: `ARCHITECTURE_REVIEW_GATE.md` still classifies *
 Registry field add, removal or semantic change as a gated item and an AI-agent Hard Stop, and the
 next one needs its own review and its own record. The release-time
 `procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` is a separate gate and is unaffected by this
-sign-off — in particular its manual **Session reload** box (a v0.9.1 binary's session opened in
-v0.9.3) is still owed before a release is cut.
+sign-off — in particular its manual **Session reload** box (a 0.9.1 binary's session opened in
+0.9.3) is still owed before a release is cut.
 
 **Amended related code:** `src/PresetManager.h` (`SelectionFields`, `encodeSelection`,
 `decodeSelection`, the two-argument `adoptRestoredState`), `src/PresetManager.cpp` (the encode/decode

@@ -28,7 +28,8 @@ A release corresponds to the CI artifacts built per push: `Anamorph-Linux`, `Ana
 extracts straight to the payload), plus the two installer artifacts
 `Anamorph-Windows-installer` and `Anamorph-macOS-installer`. See
 `procedures/PACKAGING.md`.
-Since RH-PR-8, pushing an annotated `vX.Y.Z` release tag additionally produces a **draft**
+Since RH-PR-8, pushing an annotated release tag — the bare version `x.y.z`, with no prefix
+(ADR-0059) — additionally produces a **draft**
 GitHub Release carrying the **exact staging trees CI built and validated**, archived as
 `Anamorph-<version>-<OS>.zip` with the executable bits the artifact transport drops
 restored and verified fail-closed, + the two installers (moved
@@ -66,5 +67,5 @@ attribution & support files".
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
 Evidence [Verified]: CMakeLists.txt:14, 467-492 (the versioning block: the cache variable, then the
 `set_source_files_properties` that attaches it to the one translation unit reading it);
-.github/workflows/build.yml:679, 1499, 2011 (the per-OS Configure steps passing
+.github/workflows/build.yml:690, 1510, 2022 (the per-OS Configure steps passing
 `-DANAMORPH_BUILD_NUMBER`).

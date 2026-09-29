@@ -102,7 +102,7 @@ defect is indistinguishable from a verdict of 0 from a defect that is not there,
 false-confidence failure the TSan suppression assertion was corrected for on 2026-09-08.
 
 Wired into the `linux` CI job. State 2 840 / 0.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §47.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §47.
 
 ## Applied again 2026-09-09 — the band move, the second caller of this rule
 
@@ -162,4 +162,4 @@ caller having proved the record a moment earlier, and a defaulted parameter woul
 caller reach that dependency with nothing proved and no diagnostic.
 
 State 2 860 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §60.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §60.

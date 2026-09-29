@@ -146,7 +146,7 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
      no live read is involved (ADR-0037; it used to be resolved by `setMeta` reading the live
      parameters on the first switch-in). Both rules are stated field-by-field in
      `SERIALIZATION_REGISTRY.md`, `AB` child.
-3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
+3. **Else if the root is the bare APVTS state type:** backward-compat path for 0.2 sessions
    (the same repair → `apvts.replaceState` → `reassertParameters` sequence, `resolveLegacy`, and the
    A/B defaults).
 4. **Else — neither shape:** a foreign or forward-version root. Nothing above ran, so the function
@@ -172,7 +172,7 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 | Legacy format | Handling | Source |
 |---|---|---|
-| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :700-705 |
+| **0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :700-705 |
 | **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :688-692 (within `readSlot`, :652-693) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :628-631; InternalState.h:106-128 |
 | **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:1372-1389; :128-131 |

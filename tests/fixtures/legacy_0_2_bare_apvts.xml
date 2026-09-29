@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Legacy fixture: v0.2 host chunk — the BARE APVTS tree, no AnamorphRoot wrapper,
+<!-- Legacy fixture: 0.2 host chunk — the BARE APVTS tree, no AnamorphRoot wrapper,
      no raw attributes, no InternalState, no A/B. Read path: the
      xml->hasTagName("ANAMORPH") backward-compat branch in setStateInformation.
-     Frozen: do not modernise this file — it models what v0.2 wrote. -->
+     Frozen: do not modernise this file — it models what 0.2 wrote. -->
 <ANAMORPH>
   <PARAM id="drive" value="6.0"/>
   <PARAM id="algorithm" value="2.0"/>

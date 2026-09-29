@@ -1,8 +1,10 @@
 # ============================================================================
 #  Release pipeline foundation (RH-PR-8, closes the RISK-003 infrastructure gap)
 #
-#  Trigger: pushing an ANNOTATED release tag  vMAJOR.MINOR.PATCH  (e.g. v0.9.0)
-#  on the release commit. Tag pushes do not trigger build.yml (its `branches`
+#  Trigger: pushing an ANNOTATED release tag  MAJOR.MINOR.PATCH  (e.g. 0.9.9)
+#  on the release commit. The tag is the bare version, exactly the CMake project
+#  VERSION -- no prefix, no leading zero (ADR-0059); the validate step's grammar
+#  is the authority, the trigger only a coarse filter. Tag pushes do not trigger build.yml (its `branches`
 #  filter excludes tag events), so a release runs the full build+validation
 #  matrix exactly ONCE — by CALLING build.yml (workflow_call): same three OS
 #  jobs, same blocking DSP+state suites, same pluginval strictness-10 gates,
@@ -16,12 +18,14 @@
 #              action, after the Level-5 audition per RELEASE_POLICY).
 #
 #  workflow_dispatch = pipeline REHEARSAL: runs validate (report-only where a
-#  real tag is required) + the full build, but never creates a release. This
-#  lets the pipeline be exercised without cutting a tag.
+#  real tag is required) + the full build, but never creates a release -- from
+#  ANY ref, a tag ref included: the validate step decides by the EVENT (a tag
+#  push) as well as the ref. This lets the pipeline be exercised without
+#  cutting a tag.
 #
 #  Deliberately NOT here (later RH-PRs, per RELEASE_HARDENING_PLAN §6/§8):
 #  code signing (RH-PR-5), notarization (RH-PR-3), update checks (RH-PR-7).
-#  Installers (v0.9.0): BUILT by build.yml's per-platform packaging steps
+#  Installers (0.9.0): BUILT by build.yml's per-platform packaging steps
 #  (Inno Setup exe / .pkg; the Linux zip itself carries install.sh) and only
 #  STAGED here — moved unmodified, never re-packed. The per-platform zips are
 #  archived here from the validated staging trees, behind a fail-closed
@@ -34,7 +38,7 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:   # rehearsal mode: validate + build only, no release
 
 permissions:
@@ -62,9 +66,28 @@ jobs:
           [ -n "$CMAKE_VERSION" ] || { echo "::error::could not parse project VERSION from CMakeLists.txt"; exit 1; }
           echo "CMake project version: $CMAKE_VERSION"
 
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          # RELEASE OR REHEARSAL: a release is a TAG PUSH, and nothing else. The ref
+          # alone cannot tell -- "Run workflow" can be started from a tag, and then
+          # GITHUB_REF is refs/tags/<tag> exactly as it is for the push -- so a
+          # rehearsal dispatched from an existing tag used to take this branch, write
+          # is-release=true and reach draft-release (a Devin finding, 2026-09-29).
+          # The event is read as an ALLOWLIST: under this workflow's two triggers that
+          # is exactly "not workflow_dispatch", and a trigger added later is a
+          # rehearsal until someone makes it a release on purpose -- except
+          # `workflow_call`, whose event and ref are the CALLER's, so adding that
+          # trigger needs this gate reviewed against every caller.
+          if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-            TAG_VERSION="${TAG#v}"
+            # The tag IS the version: bare MAJOR.MINOR.PATCH, no prefix, no leading
+            # zero (ADR-0059) -- the grammar `check-docs.py`'s RELEASE_TAG reads the
+            # tags with. THIS test is the authority: the trigger glob cannot refuse a
+            # leading zero (`0.09.10` matches it). `check-docs.py --self-test` runs
+            # this step to prove the two grammars agree.
+            if ! [[ "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::release tag ${TAG} is not a bare MAJOR.MINOR.PATCH version with no leading zero -- the release tag is exactly the CMake project VERSION, e.g. 0.9.9 (ADR-0059)"
+              exit 1
+            fi
+            TAG_VERSION="$TAG"
             echo "release tag: $TAG (commit ${GITHUB_SHA})"
 
             # The tag must be ANNOTATED (tagger + date = traceability metadata).
@@ -127,16 +150,20 @@ jobs:
             echo "is-release=true"  >> "$GITHUB_OUTPUT"
             echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           else
-            # Rehearsal (workflow_dispatch): no tag to cross-check; report the
-            # state that a real tag would be validated against.
+            # Rehearsal (workflow_dispatch, from whatever ref it was started on): no
+            # tag to cross-check; report the state that a real tag would be
+            # validated against.
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+              echo "::notice::rehearsal (${GITHUB_EVENT_NAME:-no event}) started from tag ${GITHUB_REF#refs/tags/}: a rehearsal validates and builds but never drafts a release -- a release is cut only by PUSHING the annotated tag"
+            fi
             awk -v ver="${CMAKE_VERSION}" -f scripts/changelog-section.awk CHANGELOG.md > "$RUNNER_TEMP/section.md"
             if [ -s "$RUNNER_TEMP/section.md" ]; then
               echo "rehearsal: CHANGELOG already has a [${CMAKE_VERSION}] section"
               if ! head -n 1 "$RUNNER_TEMP/section.md" | grep -qE "^## \[${CMAKE_VERSION//./\\.}\][^0-9]*[0-9]{4}-[0-9]{2}-[0-9]{2}"; then
-                echo "::warning::rehearsal: the [${CMAKE_VERSION}] heading carries no release date -- a real v${CMAKE_VERSION} tag would FAIL validation until it is dated"
+                echo "::warning::rehearsal: the [${CMAKE_VERSION}] heading carries no release date -- a real ${CMAKE_VERSION} tag would FAIL validation until it is dated"
               fi
             else
-              echo "::warning::rehearsal: CHANGELOG has no extractable [${CMAKE_VERSION}] section yet -- a real v${CMAKE_VERSION} tag would FAIL validation until the release entry exists outside any fenced example"
+              echo "::warning::rehearsal: CHANGELOG has no extractable [${CMAKE_VERSION}] section yet -- a real ${CMAKE_VERSION} tag would FAIL validation until the release entry exists outside any fenced example"
             fi
             echo "is-release=false" >> "$GITHUB_OUTPUT"
             echo "version=${CMAKE_VERSION}" >> "$GITHUB_OUTPUT"
@@ -188,7 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.validate.outputs.version }}"
-          TAG="v${VERSION}"
+          TAG="${VERSION}"   # the tag is the bare version (ADR-0059)
           mkdir -p dist
           DIST_ABS="$PWD/dist"
           # Each Anamorph-<OS> artifact carries the platform's validated
@@ -230,7 +257,7 @@ jobs:
             zipinfo "dist/Anamorph-${VERSION}-${OS}.zip" "$F" 2>/dev/null | grep -q '^-rwx' \
               || { echo "::error::${F} is missing or lost its executable bit in Anamorph-${VERSION}-${OS}.zip"; exit 1; }
           done
-          # Installers (v0.9.0): built by build.yml's packaging steps with
+          # Installers (0.9.0): built by build.yml's packaging steps with
           # the version already embedded in the name (the Linux installer is
           # install.sh inside the zip above — no separate Linux package).
           # Fail-closed on absence AND on a version mismatch (a skewed
@@ -286,7 +313,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.validate.outputs.version }}"
-          gh release create "v${VERSION}" \
+          gh release create "${VERSION}" \
             --draft \
             --verify-tag \
             --title "Anamorph ${VERSION}" \
@@ -302,4 +329,4 @@ jobs:
             dist/Anamorph-"${VERSION}"-SUPPORT.md \
             dist/SHA256SUMS.txt \
             dist/RELEASE_MANIFEST.txt
-          echo "Draft release v${VERSION} created -- publishing remains a manual step (RELEASE_POLICY Level-5 audition first)."
+          echo "Draft release ${VERSION} created -- publishing remains a manual step (RELEASE_POLICY Level-5 audition first)."

@@ -1,4 +1,4 @@
-# Multiband Bandwidth drag-behaviour fix (v0.8.12 GUI interaction)
+# Multiband Bandwidth drag-behaviour fix (0.8.12 GUI interaction)
 
 > A bare mouse **press** on a band's Width ("Bandwidth") line changed the value immediately (the
 > divider snapped to the click position and the parameter was written) instead of waiting for an
@@ -74,14 +74,14 @@ Width, double-click all remain as-is).
   — the only changed file — compiled **warning-free**. (The full rebuild surfaced the codebase's
   pre-existing baseline warnings in `ScopeBuffer.h` / `PluginParameters.cpp` / `AnamorphEngine.cpp` /
   `VelvetNoise.cpp` / `PluginProcessor.cpp`; those files are byte-identical to `main`, i.e. **no new**
-  warnings — they only re-emitted because the v0.8.12 version-string bump forced a full recompile.)
+  warnings — they only re-emitted because the 0.8.12 version-string bump forced a full recompile.)
 - **DSP suite:** `AnamorphTests` — **140 checks, 0 failures**, identical to baseline (no DSP touched).
   GUI mouse interaction has no unit test (the suite is a DSP console app); the fix is verified by the
   event-path reasoning above and by matching the established, long-shipped crossover-handle contract.
 - **Behaviour:** press-without-drag writes nothing (empty begin/end gesture); drag writes the Width via
   the unchanged `yToWidth` mapping; divider motion and every other Multiband interaction are unchanged.
 
-## 6. Follow-up (same v0.8.12): relative drag + click-vs-drag threshold
+## 6. Follow-up (same 0.8.12): relative drag + click-vs-drag threshold
 
 A second pass refined the drag itself (the click fix above left the drag ABSOLUTE — it still snapped
 Width to the cursor Y on the first move). The drag is now **relative** and gains a 3 px engage
@@ -106,4 +106,4 @@ This is the grab-offset + 3 px gate the vertical crossover already used (`dragGr
 the divider visual: `busy` (`dragBand >= 0`) snaps `drawnW` to the live parameter every frame, which
 now holds the original value until the drag engages — so the line holds still on press, exactly the
 desired feel. Full record of the accompanying release-outside stuck-state fix:
-`worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`.
+`worklogs/MOUSE_RELEASE_STATE_FIX_0.8.12.md`.

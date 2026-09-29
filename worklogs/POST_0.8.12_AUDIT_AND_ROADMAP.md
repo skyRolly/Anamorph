@@ -1,11 +1,11 @@
-# Post-v0.8.12 repository audit & development roadmap
+# Post-0.8.12 repository audit & development roadmap
 
-> Full repository-level review after the v0.8.12 release: documentation-drift audit (with the
+> Full repository-level review after the 0.8.12 release: documentation-drift audit (with the
 > corrections applied in the same PR), technical state assessment (DSP / GUI / compatibility /
 > release engineering), a verdict on every previously deferred candidate, and a prioritized
 > phased roadmap. **Documentation-only — no code change, no version bump.**
 
-- **Date:** 2026-07-22 · **Base:** `main` @ `64e87c4` (v0.8.12, PR #80 merged) · **Branch:** `claude/beautiful-sagan-JAUFI`.
+- **Date:** 2026-07-22 · **Base:** `main` @ `64e87c4` (0.8.12, PR #80 merged) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 
 ## 1. Method
 
@@ -20,7 +20,7 @@ re-grepped against the current tree). Finally, the complete edit set was itself 
 verified by three further independent lenses before commit (citation accuracy — every added
 file:line opened and confirmed, including the KI-013 JUCE-source claim; historical-falsification /
 policy compliance; missed-drift completeness). That pass corrected four of this audit's own edits —
-a set-wide "behaviour-neutral" mislabel of v0.8.11's PRs #60/#61 (which are behaviour-changing by
+a set-wide "behaviour-neutral" mislabel of 0.8.11's PRs #60/#61 (which are behaviour-changing by
 design, KI-012), an unevidenced KI-007 status upgrade, HANDOVER's Known-Blockers range missing the
 new KI-013, and one claimed-but-unapplied HANDOVER cite fix — and surfaced the second-pass items
 marked ▸ in the table below.
@@ -37,7 +37,7 @@ ADRs match the index; authority order enforced).
 
 **Weaknesses.** (1) **Compatibility automation is the big gap**: the only automated state test is
 the A/B-index clamp; `getState→setState` round-trip, parameter-registry snapshot diff, the three
-legacy migration read paths (v0.2 bare APVTS, pre-0.6.4 A/B, pre-0.8.4 view params) and preset
+legacy migration read paths (0.2 bare APVTS, pre-0.6.4 A/B, pre-0.8.4 view params) and preset
 save/load have **zero** automated coverage while COMPATIBILITY_POLICY makes them the project's
 highest-authority contract. (2) **Distribution engineering is unstarted**: no release pipeline/tags
 (RISK-003), ad-hoc macOS signing only (KI-002), no Authenticode, no installers (KI-005), no
@@ -48,8 +48,8 @@ host-tested. (4) Maintenance watch items: `PluginEditor.cpp` (1843 L) and `Spect
 
 **Remaining risks.** RH-R1/R2/R3/R5 (licensing/notarization/Authenticode/installers — all
 human-gated business decisions, ADR-0016..0020 reserved); RISK-002 (multiband CPU on low-power
-hosts — formal budget numbers still TODO); KI-013 (new this audit: the v0.8.12 release-outside
-reconcile is inert on macOS — JUCE platform limitation, Low); the v0.8.12 **Level-5 manual
+hosts — formal budget numbers still TODO); KI-013 (new this audit: the 0.8.12 release-outside
+reconcile is inert on macOS — JUCE platform limitation, Low); the 0.8.12 **Level-5 manual
 audition is not yet recorded** (the one open RELEASE_POLICY precondition); supply-chain soft spots:
 pluginval fetched from `releases/latest` (unpinned) inside the release gate, JUCE pinned by tag
 (mutable) rather than commit SHA; macOS crash symbolication currently degrades under Release+LTO
@@ -64,18 +64,18 @@ qualifier instead of a rewrite).
 | File | Drift found → fix applied |
 |---|---|
 | CHANGELOG.md | `[0.8.12]` dated 2026-07-21 but two of its fixes landed 2026-07-22 → re-dated; "MultiBand"/"Bandwidth" (6 lines) → registry terms "Multiband"/"Width" |
-| docs/HANDOVER.md | Snapshot-HEAD ledger frozen at `c605fbe` (0.8.7-era) → `64e87c4`; "two items" vs three listed; Build Status frozen at v0.8.11/136 checks → v0.8.12/140; Release Status missing v0.8.12 (RELEASE_POLICY precondition 6 was in violation) → added, with the unrecorded Level-5 audition noted; RH-PR-2 still "recommended" though shipped → marked shipped (PR #63, ADR-0021); `CMakeLists.txt:89` → `:146`; `scratchpad/xbench.cpp` qualified as session-local |
-| docs/KNOWN_ISSUES.md | Header version-sync two releases stale (v0.8.10) → re-synced to v0.8.12; KI-007 "pending CI" → CI-confirmed; dead line cites in KI-001/002/003/006/009 → refreshed; KI-012 evidence cite → `[0.8.10] + [0.8.11]`; **KI-013 added** (macOS-inert reconcile, Low, external) |
-| docs/FUTURE_RISKS.md | Header stale (v0.8.10) → re-synced; RISK-002 mitigation listed the SoloMonitor settled-skip as future work though it shipped (H1 0.8.9 + Wave 3, Test 33) → marked shipped; "It is unprofiled" → accurate statement (session-local Wave-3/4/5 measurements exist; formal budgets TODO); dead cites in RISK-002/004 → refreshed |
+| docs/HANDOVER.md | Snapshot-HEAD ledger frozen at `c605fbe` (0.8.7-era) → `64e87c4`; "two items" vs three listed; Build Status frozen at 0.8.11/136 checks → 0.8.12/140; Release Status missing 0.8.12 (RELEASE_POLICY precondition 6 was in violation) → added, with the unrecorded Level-5 audition noted; RH-PR-2 still "recommended" though shipped → marked shipped (PR #63, ADR-0021); `CMakeLists.txt:89` → `:146`; `scratchpad/xbench.cpp` qualified as session-local |
+| docs/KNOWN_ISSUES.md | Header version-sync two releases stale (0.8.10) → re-synced to 0.8.12; KI-007 "pending CI" → CI-confirmed; dead line cites in KI-001/002/003/006/009 → refreshed; KI-012 evidence cite → `[0.8.10] + [0.8.11]`; **KI-013 added** (macOS-inert reconcile, Low, external) |
+| docs/FUTURE_RISKS.md | Header stale (0.8.10) → re-synced; RISK-002 mitigation listed the SoloMonitor settled-skip as future work though it shipped (H1 0.8.9 + Wave 3, Test 33) → marked shipped; "It is unprofiled" → accurate statement (session-local Wave-3/4/5 measurements exist; formal budgets TODO); dead cites in RISK-002/004 → refreshed |
 | docs/POSTMORTEMS.md | Dead line cites in INC-003/004/006/007/009 (code moved under Waves 1–6 / RH-PR-2) → refreshed; SHAs/dates/tests all verified correct |
 | docs/REPOSITORY_MAP.md | "23 headless DSP acceptance tests" → 33; missing rows for `FrameClock.h` + `LR4Xover.h` → added; stale CMake cite → refreshed |
-| docs/DOCUMENTATION_COVERAGE.md | **PR #80 never updated this file** (lifecycle slip) → retroactive entry added; worklogs self-coverage row listed only release-hardening/ → now lists performance/, the v0.8.12 fix records and this file |
+| docs/DOCUMENTATION_COVERAGE.md | **PR #80 never updated this file** (lifecycle slip) → retroactive entry added; worklogs self-coverage row listed only release-hardening/ → now lists performance/, the 0.8.12 fix records and this file |
 | README.md | Validation-gate scope understated ("headless Linux") → "both modes ×3, blocking on all three CI platforms" |
 | docs/procedures/CI_CD.md | `checkout@v5`/`upload-artifact@v5` → `@v7` (matches build.yml) |
 | docs/policies/DEPENDENCY_POLICY.md | `JUCE_*` flags cite `:123-132` → `:183-188`; compliance-log "23 DSP self-tests" → "then-current 23" (historically correct figure, qualified) |
 | docs/procedures/PACKAGING.md · docs/architecture/COMPATIBILITY_MATRIX.md | Stale CMakeLists line cites for identifiers/formats → `:137-158` block |
 | docs/architecture/design-decisions/ADR_INDEX.md | "130 self-tests" → "then-current 130-check suite" (checks ≠ tests; ADR-0021 body already said "130 checks" and is untouched — ADRs are append-only) |
-| worklogs/BANDWIDTH_DRAG_FIX_v0.8.12.md · MOUSE_RELEASE_STATE_FIX_v0.8.12.md | "MultiBand" → "Multiband" (7 lines; content untouched); ▸ MOUSE_RELEASE date 2026-07-21 → 2026-07-22 (its commits are `9ff597b`/`6777a69`, both 2026-07-22 — the same evidence behind the CHANGELOG re-date) |
+| worklogs/BANDWIDTH_DRAG_FIX_0.8.12.md · MOUSE_RELEASE_STATE_FIX_0.8.12.md | "MultiBand" → "Multiband" (7 lines; content untouched); ▸ MOUSE_RELEASE date 2026-07-21 → 2026-07-22 (its commits are `9ff597b`/`6777a69`, both 2026-07-22 — the same evidence behind the CHANGELOG re-date) |
 | ▸ docs/procedures/BUILD.md | Five stale CMakeLists cites (tests/Standalone options, build-number, formats, `JUCE_*` block) → `:27,207` / `:28,141-143` / `:178` / `:137-143` / `:180-189` |
 | ▸ docs/policies/TESTING_POLICY.md · docs/policies/CODE_STYLE.md | Warning-flags cite `:143,165` → `:201,225` |
 | ▸ docs/procedures/TROUBLESHOOTING.md | INTERFACE-lib cite `:54-73` → `:110-120` |
@@ -84,7 +84,7 @@ qualifier instead of a rewrite).
 | ▸ docs/architecture/PERFORMANCE_BUDGET.md | GUI-redraw row had no Wave-6 (0.8.12) record — the release's only perf change — → one-sentence addition + `[0.8.12]`/WAVE6 evidence refs |
 | ▸ docs/architecture/RELEASE_HARDENING_PLAN.md | "full 136-check suite" → "then-current 136-check" qualifier (suite is 140 today) |
 
-**Reported, not fixed (needs owner/decision):** (1) the v0.8.12 Level-5 audition record; (2) a
+**Reported, not fixed (needs owner/decision):** (1) the 0.8.12 Level-5 audition record; (2) a
 **retroactive ADR for the 0.8.10 multiband flat-recombination change** — it audibly changed the
 multiband summation maths (removed a −17.75 dB dip) yet has no ADR, and ADR-0015 presupposes "flat
 recombination preserved" as a constraint no record decided; ADR_POLICY's "DSP algorithm
@@ -131,7 +131,7 @@ as a naming decision for the maintainer, not applied.
    session fixtures for the three legacy read paths, preset save/load round-trip, wired into CI as
    a blocking step. Converts RELEASE_COMPATIBILITY_CHECKLIST items 1–3 from manual to automated
    **before** 1.0 freezes the schema.
-2. **RH-PR-8: first git tag (v0.8.12) + tag-triggered `release.yml` skeleton** — P1 · closes
+2. **RH-PR-8: first git tag (0.8.12) + tag-triggered `release.yml` skeleton** — P1 · closes
    RISK-003/RH-R6; reuses the existing build/stage steps; artifacts + checksums on tag · Risk: CI-only
    · Scope: small.
 3. **Supply-chain pins** — P1 · pin pluginval to an exact release (it is a *blocking release gate*
@@ -139,7 +139,7 @@ as a naming decision for the maintainer, not applied.
    intent) · Risk: none · Scope: small.
 4. **macOS dSYM restoration** (`-Wl,-object_path_lto`) — P2 · Risk: CI-only · Scope: small.
 5. **Docs decisions**: retroactive ADR for multiband flat recombination; optional GUI-rendering ADR;
-   record the v0.8.12 Level-5 audition once performed — P2 · Scope: small.
+   record the 0.8.12 Level-5 audition once performed — P2 · Scope: small.
 6. **CI hygiene (optional)**: concurrency-cancel groups; ccache — P3 · Scope: small.
 
 ### Phase 2 — 0.9.x "Host reality & product surface"
@@ -169,12 +169,12 @@ declaration; schema freeze (kVersion audit + full checklist run against fixtures
 
 ## 6. Recommended next task
 
-**"Anamorph v0.8.13 — State-serialization & parameter-compatibility regression harness."**
+**"Anamorph 0.8.13 — State-serialization & parameter-compatibility regression harness."**
 First because: it guards the project's highest-authority contract (COMPATIBILITY_POLICY) exactly
 where audit found the largest gap between policy and automation; it is fully headless (fits the
 sandbox + CI, unlike host/signing work); it has zero product-behaviour risk; and it must exist
 *before* 1.0 freezes the schema — every later phase (presets, licensing state, installers) builds
 on serialized state being provably stable. Suggested scope: a `tests/state_tests.cpp` console
-target linking the plugin objects, fixtures under `tests/fixtures/` for v0.2 / pre-0.6.4 /
+target linking the plugin objects, fixtures under `tests/fixtures/` for 0.2 / pre-0.6.4 /
 pre-0.8.4 / current blobs, a parameter-registry snapshot file with a diff test, preset round-trip,
 CI wiring as a blocking step, plus the RELEASE_COMPATIBILITY_CHECKLIST cross-references.

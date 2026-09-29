@@ -1,4 +1,4 @@
-# SpectrumImager — topology transaction consistency audit (v0.9.8)
+# SpectrumImager — topology transaction consistency audit (0.9.8)
 
 **Head at the start of the round:** `91e20d9`. **Preceding chain:** ADR-0038 (a gesture is void once
 its topology moves), ADR-0039 (a gesture owns the world it was latched in), ADR-0040 (a gesture
@@ -10,7 +10,7 @@ plan is computed where it is used).
 
 | Handle | What it was | Disposition |
 |---|---|---|
-| `whlv0zass` | `local_workflow` — *"Audit every SpectrumImager write and preview path against the ADR-0040/0042 ownership invariant, and rule the two review findings"*, the previous round's RO-1 fan-out | **Redundant — stopped.** Its question was answered and shipped as ADR-0043; every conclusion it existed to reach is already in `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` |
+| `whlv0zass` | `local_workflow` — *"Audit every SpectrumImager write and preview path against the ADR-0040/0042 ownership invariant, and rule the two review findings"*, the previous round's RO-1 fan-out | **Redundant — stopped.** Its question was answered and shipped as ADR-0043; every conclusion it existed to reach is already in `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_0.9.8.md` |
 | `wn9z13hsv` | an earlier round's workflow | Already gone — lost to a container restart; `TaskStop` reports no such task, so there is no handle and nothing consuming resources |
 | `btqalfv71`, `b7ljd47ih`, `bceeuq71w`, `bk2n9gf12`, `b1eth7hd9`, and the CI/valgrind monitors | last round's background bash tasks | All completed, all results consumed and reported |
 | sub-agents | — | `ListAgents`: none. No other session on this machine |

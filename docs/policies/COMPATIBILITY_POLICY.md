@@ -83,11 +83,11 @@ carve-out is unavailable and condition 2 proper is unsatisfiable for it.
 
 ## Backward-compatibility paths that must be preserved
 
-- v0.2 bare-APVTS session format (`setStateInformation` else-branch).
+- 0.2 bare-APVTS session format (`setStateInformation` else-branch).
 - pre-0.6.4 A/B slots (params-only `slotA`/`slotB`).
 - pre-0.8.4 legacy APVTS view params (migrated to `InternalState`).
 
-Evidence [Verified]: src/PluginProcessor.cpp:3123-3222 (`decodeRestore` + `setStateInformation`: the AnamorphRoot read path, the pre-0.6.4 `readSlot` legacy-key fallback at :1334-1335, and the v0.2 else-branch at :1388); src/InternalState.h:255-309.
+Evidence [Verified]: src/PluginProcessor.cpp:3123-3222 (`decodeRestore` + `setStateInformation`: the AnamorphRoot read path, the pre-0.6.4 `readSlot` legacy-key fallback at :1334-1335, and the 0.2 else-branch at :1388); src/InternalState.h:255-309.
 
 ## Runtime compatibility: the x86-64 ISA floor
 

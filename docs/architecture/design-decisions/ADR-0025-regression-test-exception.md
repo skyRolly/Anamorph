@@ -18,7 +18,7 @@ compiles the plug-in sources and exercises the real `AnamorphAudioProcessor`, bu
 without ever instantiating it**. pluginval validates the built VST3 through a host it does not
 control. Level 5 is a human in a DAW.
 
-Some real defects fall between those surfaces. The v0.9.2 preset drop-down crash (**INC-010**) is
+Some real defects fall between those surfaces. The 0.9.2 preset drop-down crash (**INC-010**) is
 the concrete case that forced this decision: a use-after-free that exists only while a modal child
 component is open *and* its owner is destroyed. It is not expressible in either self-test target,
 and pluginval's editor open/close does not open a menu first.
@@ -30,7 +30,7 @@ Three ways of handling that, and until now the repository has silently used the 
   gate — that the release process depends on.
 - Block the fix until a test exists. That makes shipping a **crash fix** contingent on building new
   test infrastructure, which is a worse outcome for users than shipping the fix with a disclosed gap.
-- Ship the fix and record the gap in a Procedure. This is what v0.9.2 did (`TESTING.md` §Gaps in the
+- Ship the fix and record the gap in a Procedure. This is what 0.9.2 did (`TESTING.md` §Gaps in the
   automated coverage, alongside the pre-existing AU-conformance and golden-audio entries, which
   `KNOWN_ISSUES.md` KI-014 and `RELEASE_HARDENING_PLAN.md` RH-F3 already cite as the canonical
   register). It is honest and it is where readers already look — but a Procedure cannot carry an

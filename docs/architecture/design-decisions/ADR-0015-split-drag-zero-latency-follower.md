@@ -5,7 +5,7 @@
 ## Context
 
 Moving a Multiband split (or a whole band via its Solo handle) modulates a **minimum-phase IIR
-crossover**, and the v0.8.10 pre-merge testing (PR #59) established, by measurement, that this is
+crossover**, and the 0.8.10 pre-merge testing (PR #59) established, by measurement, that this is
 inherently artifact-bound: the LR4 reconstruction carries a fixed 2π of allpass phase per split at
 every width setting, so a cutoff sweeping at `R` oct/s shifts every frequency near it by
 `0.312·R` Hz (`dφ/dt / 2π`). No transition scheme removes that energy — it only redistributes it
@@ -67,7 +67,7 @@ pure-side-gain width semantics preserved (widths must stay phase-free gain ramps
   alignment rework. Recorded as the future roadmap direction (an opt-in "linear phase" mode, the
   documented industry pattern).
 
-## Decision (v0.8.10, third design — evaluated and refined; see "v0.8.10 final decision" below)
+## Decision (0.8.10, third design — evaluated and refined; see "0.8.10 final decision" below)
 
 Keep the zero-latency LR4 architecture and transition via a **bounded rate-capped follower**:
 
@@ -92,7 +92,7 @@ identical path (parameter → per-block target → follower); block size does no
 per-sample follower; exactly one smoothing stage exists (verified: no GUI/parameter smoothing
 upstream).
 
-## v0.8.10 final decision (refinement — direct interaction over inaudibility; rate law refined again in the slow-drag fix below)
+## 0.8.10 final decision (refinement — direct interaction over inaudibility; rate law refined again in the slow-drag fix below)
 
 The bounded follower above was evaluated in interactive testing and its **latency was rejected**
 as a UX regression: at 1.25 oct/s the audible crossover lagged every ordinary fast drag (a
@@ -128,7 +128,7 @@ Follower trajectories stay deterministic and closed-form: lag grows at `(v − 4
 a drag outruns the cap, drains at 4 oct/s otherwise, and resolves in `lag/4` s after release.
 Manual drags and host automation share the identical path; exactly one smoothing stage exists.
 
-## Crossover Follower Slow-Drag Regression (v0.8.10 maintenance fix)
+## Crossover Follower Slow-Drag Regression (0.8.10 maintenance fix)
 
 **Observed behaviour.** Interactive testing of the flat 4 oct/s cap above reported an inversion:
 *very fast* flicks felt acceptable while *slow-to-normal* drags left the audible crossover
@@ -166,7 +166,7 @@ to a **frequency-proportional cap `R(f) = 4 · max(1, f/300 Hz)` oct/s**:
 Kinematics after the fix (same reconstruction): drags ≤ 4 oct/s track 1:1 (± the 20 ms ease); the
 600 px/s complaint gesture converges **0.01 s** after release (was 0.63 s); a 950 px/s drag 0.09 s
 (was 0.94 s); even a full-panel flick lands in ~0.5 s of continuous motion (was ~1.4 s plus the
-in-drag trailing). No timers, no prediction, no consolidation — the v0.8.10 final architecture
+in-drag trailing). No timers, no prediction, no consolidation — the 0.8.10 final architecture
 (zero-latency LR4, per-sample glide + discrete-jump bank fade, flat recombination) is unchanged;
 only the glide's rate law and arrival shape moved.
 
@@ -176,7 +176,7 @@ Regression: Test 29 gained a **normal-drag tracking** scenario on both paths (15
 leak ≤ 0.15, measures 0.01). Re-pinned to the flat cap, both checks fail (0.47 and 0.60) —
 verified in both directions. All prior Test 29 bounds hold at the same measured values.
 
-## High-Sample-Rate Terminal-Snap Robustness (v0.8.10 maintenance fix)
+## High-Sample-Rate Terminal-Snap Robustness (0.8.10 maintenance fix)
 
 **Issue.** The slew-limited smoother's terminal snap (`|gap| ≤ 0.05 + 2e-4·target` Hz) exists
 because a float one-pole cannot land exactly: the per-sample add `f += gap·smoothCoeff` stops

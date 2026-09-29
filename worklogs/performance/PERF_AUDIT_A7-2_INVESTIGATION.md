@@ -6,14 +6,14 @@ NOT be taken**, and the reason is measured rather than argued. The alternative i
 and is described here in enough detail to be implemented directly, but landing it is a maintainer
 decision for the two reasons in §7.
 
-Follows [`PERF_AUDIT_v0.9.4_INVESTIGATION.md`](PERF_AUDIT_v0.9.4_INVESTIGATION.md) §7 item A7-2 and
-[`PERF_AUDIT_v0.9.5_IMPLEMENTATION.md`](PERF_AUDIT_v0.9.5_IMPLEMENTATION.md), which shipped A7-1.
+Follows [`PERF_AUDIT_0.9.4_INVESTIGATION.md`](PERF_AUDIT_0.9.4_INVESTIGATION.md) §7 item A7-2 and
+[`PERF_AUDIT_0.9.5_IMPLEMENTATION.md`](PERF_AUDIT_0.9.5_IMPLEMENTATION.md), which shipped A7-1.
 
 ---
 
 ## 1. What the residual term actually is
 
-Solved from the 32- vs 256-sample pair on the shipped v0.9.5 engine, per function:
+Solved from the 32- vs 256-sample pair on the shipped 0.9.5 engine, per function:
 
 | | 48 kHz | 192 kHz |
 |---|---|---|
@@ -62,7 +62,7 @@ get it goes away.
 
 ## 3. Both are bit-exact
 
-Each prototype was compared against the shipped v0.9.5 engine over **180 configurations** — 9
+Each prototype was compared against the shipped 0.9.5 engine over **180 configurations** — 9
 scenarios (working, multiband off, Haas, Chorus, Dimensional, oversampling ×8, defaults, bypass,
 split drag) × 5 block sizes × 4 sample rates — hashed (FNV-1a) over every output sample of both
 channels.
@@ -81,7 +81,7 @@ different offset, B reads the same floats from where they already are.
 
 Callgrind Ir/sample, steady state (3.0 s run minus 1.0 s, halved), against the shipped engine:
 
-| SR | block | v0.9.5 now | A (cursor) | B (no image) | A | B |
+| SR | block | 0.9.5 now | A (cursor) | B (no image) | A | B |
 |---|---|---|---|---|---|---|
 | 48 kHz | 32 | 2018.5 | 1755.1 | 1787.4 | **−13.1 %** | −11.4 % |
 | 48 kHz | 128 | 1702.9 | 1639.2 | 1646.1 | −3.7 % | −3.3 % |
@@ -93,7 +93,7 @@ Decomposed at 48 kHz:
 
 | | fixed per block | marginal per sample |
 |---|---|---|
-| v0.9.5 now | 13,502 Ir | 1596.6 Ir |
+| 0.9.5 now | 13,502 Ir | 1596.6 Ir |
 | Variant A | **4,984 Ir** | 1599.3 Ir |
 | Variant B | **6,066 Ir** | 1597.9 Ir |
 
@@ -138,14 +138,14 @@ evidence, and the rest is the arithmetic of the algorithm.
 
 | | `linHist` per instance, 48 kHz / 192 kHz |
 |---|---|
-| v0.9.5 now | 10.7 KB / 36.6 KB |
+| 0.9.5 now | 10.7 KB / 36.6 KB |
 | Variant A | **+8.6 KB / +34.5 KB** (roughly double) |
 | Variant B | **−10.7 KB / −36.6 KB** (the buffer is not needed) |
 
 ### State, which points the same way again
 
 A **adds** a second piece of cross-block state (`linBase`) to a module that gained its first
-(`linHistSlide`) in v0.9.5, and both must be invalidated by the same rule. B **removes** both: with no
+(`linHistSlide`) in 0.9.5, and both must be invalidated by the same rule. B **removes** both: with no
 image there is nothing to keep valid across blocks, and the A7-1 invariant disappears rather than
 being extended. Test 39 keeps its value either way — block-length invariance is exactly the property
 that guards B's split-run arithmetic, and the mixed-block-size run added on review covers the case
@@ -157,7 +157,7 @@ where the runs differ from block to block.
 
 | | verdict |
 |---|---|
-| **A7-2A — the roadmap's proposed ring-free double buffer** | **Do not implement.** It buys average CPU by converting a uniform per-block cost into a periodic full-size spike, leaves the worst block exactly where v0.9.5 left it, roughly doubles the history buffer, and adds a second cross-block invariant. |
+| **A7-2A — the roadmap's proposed ring-free double buffer** | **Do not implement.** It buys average CPU by converting a uniform per-block cost into a periodic full-size spike, leaves the worst block exactly where 0.9.5 left it, roughly doubles the history buffer, and adds a second cross-block invariant. |
 | **A7-2B — gather straight from the ring** | **Recommended.** 1–2 points behind A on average, ahead of it on the worst block (which is the number that matters), frees the buffer instead of growing it, and deletes the cross-block state instead of adding to it. Class A, 0/180 mismatches. |
 
 The roadmap's framing — *"the proposed direction is a ring-free double-buffer history structure, but
@@ -181,7 +181,7 @@ Two reasons, both of them the maintainer's call rather than an engineering judge
 2. **The recommended change is not the change that was scoped.** A7-2 was scoped as the
    double-buffer; the investigation concludes the double-buffer is the wrong half of the fork and
    recommends a rewrite of the H5 gather kernel instead — Wave-2 contractual code, in the same
-   function v0.9.5 changed hours ago and which has not yet had its release audition. Substituting a
+   function 0.9.5 changed hours ago and which has not yet had its release audition. Substituting a
    different design for the scoped one, unprompted, is what the architecture review gate exists to
    catch.
 
@@ -244,10 +244,10 @@ changes. If the maintainer un-gates it, §8 is the plan.
 | Item | Status |
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open**, and gating A7-2. RISK-002 open. |
-| **A7-1** | DONE (v0.9.5). |
+| **A7-1** | DONE (0.9.5). |
 | **A7-2** | **IMPLEMENTED 2026-08-22 as variant B** — see `PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md`. Previously: Proposal (A) rejected on measurement; alternative (B) recommended and planned. **A7-2T is now in the tree**; awaiting A7-0 and a maintainer decision on the design substitution. |
 | **A7-2T** — commit the path-equivalence oracle (§8 step 6) | **DONE (PR #129), and spent: A7-2B landed against it.** `testVelvetGatherEqualsPerSampleLoop` (Test 40), 24 checks, proven live on a seeded one-sample tap-delay error (20 of 20 fail). A7-2B's remaining gate is A7-0. |
 | **A7-5** — multiband LR4 SIMD | open, blocked on an AVX2 ADR (with W5-D). The ADR should not be drafted until the universal binary's two slices are diffed — `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part II. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |
-| **A7-9** — the Amount glide stalls above zero under FTZ | open, Class B. **Widened**: the same false premise is load-bearing in `HaasProcessor` and `ChorusEngine` too, and the missed park is the largest single item on this roadmap. Evidence in the v0.9.5 worklog §5 and `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. |
+| **A7-9** — the Amount glide stalls above zero under FTZ | open, Class B. **Widened**: the same false premise is load-bearing in `HaasProcessor` and `ChorusEngine` too, and the missed park is the largest single item on this roadmap. Evidence in the 0.9.5 worklog §5 and `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. |

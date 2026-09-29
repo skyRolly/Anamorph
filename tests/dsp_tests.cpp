@@ -2262,7 +2262,7 @@ static void testMultibandSplitDragNoPitchShift()
         check (maxDelta < 0.06, "the discrete-jump bank fade is click-free");
     }
 
-    // --- NORMAL-DRAG TRACKING (the v0.8.10 slow-drag regression) -------------
+    // --- NORMAL-DRAG TRACKING (the 0.8.10 slow-drag regression) -------------
     // The Multiband display spans ~10 octaves in ~900 px, so an ordinary
     // 600 px/s drag is ~6.6 oct/s -- ABOVE the old flat 4 oct/s cap. That cap
     // pinned the DSP split whole octaves behind the mouse for the entire drag
@@ -3490,7 +3490,7 @@ static void testVelvetBlockLengthInvariance()
     // while `a` is still ~7.8e-36, so the glide stalls just above zero instead of
     // reaching it. `currentAmount > 0.0f` therefore stays true and the gather
     // path keeps its eligibility. (Measured on the shipped code, pre-A7-1 and
-    // post- alike; PERF_AUDIT_v0.9.5_IMPLEMENTATION.md §5 carries it. The parked
+    // post- alike; PERF_AUDIT_0.9.5_IMPLEMENTATION.md §5 carries it. The parked
     // path is still reached from a fresh `prepare()` with Amount at its 0
     // default, which is the state it was written for.) Its invalidation duty is
     // held structurally instead: the offset is cleared on ENTRY to
@@ -4640,7 +4640,7 @@ static int runMatchInjectProbe()
         p.autoGainMatch = true;
         p.width = chain == 0 ? 1.9f : 1.5f;
         if (chain == 1) { p.driveDb = 6.0f; p.algoAmount = 0.5f; }
-        if (chain == 2)                                // the v0.2 FIXTURE chain round 9 restored, field for field
+        if (chain == 2)                                // the 0.2 FIXTURE chain round 9 restored, field for field
         {
             p.driveDb = 6.0f; p.algorithm = static_cast<anamorph::Algorithm> (2); p.width = 1.5f;
             p.mix = 0.8f; p.haasDelayMs = 20.0f; p.outputGainDb = -3.0f;

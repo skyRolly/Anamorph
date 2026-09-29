@@ -18,7 +18,7 @@ one gains an early return, one line is added to `tick()`, and two members are ad
 ## Context
 
 The full write-path audit is in
-`worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` §2. Every crossover, width, band-count,
+`worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_0.9.8.md` §2. Every crossover, width, band-count,
 solo and preview write was traced for its cached state, its ownership check, its reentrancy safety
 and its stale behaviour. **The invariant is fully applied everywhere except two rows**, and they are
 the two the review named.

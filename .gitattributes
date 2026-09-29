@@ -1,0 +1,5 @@
+# The 0.9.5 field capture is output WRITTEN by an older binary, kept byte for
+# byte (the manifest with the CRLF line endings it was written with). State
+# test 25 pins both files by content hash, so no checkout may convert them.
+tests/fixtures/field_capture_0_9_5.session -text
+tests/fixtures/field_capture_0_9_5.session.manifest -text

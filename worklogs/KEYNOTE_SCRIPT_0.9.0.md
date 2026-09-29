@@ -1,7 +1,7 @@
 # Anamorph — Product Video Script: "Four Ways to Shape Stereo Space"
 
 > **Status & class.** Session work product (worklog), prepared against the repository at
-> **v0.9.0 (pre-1.0, internal-testing phase)**. This is a *marketing draft* — **derived
+> **0.9.0 (pre-1.0, internal-testing phase)**. This is a *marketing draft* — **derived
 > content**: it restates facts established by the code, tests, ADRs and architecture docs, and
 > may never be cited as evidence for a technical claim (`docs/SOURCE_OF_TRUTH.md`). It does not
 > change product status: Anamorph is **not yet released or for sale**
@@ -14,7 +14,7 @@
 
 ---
 
-## Positioning lock (v1.0)
+## Positioning lock (1.0)
 
 **Thesis (spoken form):** "Width is not just a number. It's a method."
 

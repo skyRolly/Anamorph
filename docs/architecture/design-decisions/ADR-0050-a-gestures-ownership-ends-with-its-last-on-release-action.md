@@ -155,7 +155,7 @@ future change moves the staleness gate again, and the delete-x and solo call sit
 front of them at all — and the guard's own comment now records this so the next reader does not
 delete it as dead.
 
-State 2 840 / 0. `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §46.
+State 2 840 / 0. `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §46.
 
 ## Amended 2026-09-09 — the other two escalated sites, closed
 
@@ -210,7 +210,7 @@ parameters, in the same order; only the point at which the members are cleared m
 the reentrant path — from a double close plus a leaked-open sibling, to a cheap exit.
 
 State 2 851 / 0, TSan 0 warnings with `Matched 1 suppressions`, all four topology probes 0.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §58.
 
 ## Applied again 2026-09-10 — the record a release action owns can be dropped by something else
 

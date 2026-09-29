@@ -136,7 +136,7 @@ All behaviour-neutral (no optimization/numerics flag touched; `-ffast-math` stay
 ## 4. Experiments & validation runs (evidence)
 
 - **Baseline** (bc5f852, unmodified flags): full self-test suite `130 checks, 0 failures`
-  (the pre-Wave-3 tree's count; the suite is 136 checks after the v0.8.11 rebase — §6).
+  (the pre-Wave-3 tree's count; the suite is 136 checks after the 0.8.11 rebase — §6).
 - **Twin engine dump** (behaviour-neutrality proof): a local console harness (kept out of the
   shipped tree; source preserved below) drives `anamorph::AnamorphEngine` at 48 kHz/512 through
   ~10.7 s of deterministic input (two detuned sines + fixed-seed LCG noise) with a feature-heavy
@@ -203,7 +203,7 @@ int main (int argc, char** argv)
 All measured on Linux x86_64 / GCC / Release with the full hardening set applied:
 
 - **DSP self-tests:** `130 checks, 0 failures` (identical to baseline; 136/136 on the rebased
-  v0.8.11 tree — §6).
+  0.8.11 tree — §6).
 - **Twin engine dump:** byte-identical to baseline —
   `sha256 6efa116a923440125522368dbe815abdba414c32d95d4e75f8142c3b716e3472` for BOTH
   `dump_baseline.bin` and `dump_hardened.bin`; `cmp` clean. The flag set is behaviour-neutral
@@ -234,10 +234,10 @@ All measured on Linux x86_64 / GCC / Release with the full hardening set applied
   bump, ADR-0012); the strictness-10 both-modes gate runs on CI, which now validates the
   **stripped** Linux binary (the strip step was ordered before pluginval on purpose).
 
-## 6. Review follow-up — artifact-safety fixes (v0.8.11 sync)
+## 6. Review follow-up — artifact-safety fixes (0.8.11 sync)
 
-**Release context:** RH-PR-2 ships as part of **v0.8.11**. The branch was rebased onto main
-after the v0.8.11 version bump (PR #64) and performance Wave 3 (PR #62) merged; the CHANGELOG
+**Release context:** RH-PR-2 ships as part of **0.8.11**. The branch was rebased onto main
+after the 0.8.11 version bump (PR #64) and performance Wave 3 (PR #62) merged; the CHANGELOG
 entry moved from `[Unreleased]` into `[0.8.11]` **### Security** per the release structure.
 Post-rebase suite under the hardened flags: **136 checks, 0 failures** (Wave 3 added Test 33 +
 checks). The flag set itself is unchanged from §2, so the §5 byte-exact twin-dump proof of
@@ -297,20 +297,20 @@ touched then or now; Wave 3's own behaviour evidence is in
 - Workflow YAML parse-validated. First real Windows/macOS execution remains this PR's CI run
   (asserted strictly — wrong assumptions fail loudly, and now cannot upload).
 
-### Conflict-resolution notes (rebase onto v0.8.11 main)
+### Conflict-resolution notes (rebase onto 0.8.11 main)
 
 - `CHANGELOG.md`: kept main's `[0.8.11]` structure (Wave 3 `### Changed` + the two maintenance
   fixes under `### Fixed`); the RH-PR-2 entry added as `### Security` inside `[0.8.11]`
   (Keep-a-Changelog section order), updated to describe the upload-gating/self-validation
   behaviour. `[Unreleased]` no longer exists.
 - `docs/DOCUMENTATION_COVERAGE.md`: both sides prepended a "Last updated" entry — resolved
-  with this PR's entry first, the v0.8.11 version-prep entry demoted to the "Prior:" chain
+  with this PR's entry first, the 0.8.11 version-prep entry demoted to the "Prior:" chain
   (nothing dropped).
 - `docs/REPOSITORY_MAP.md`: both sides added a `worklogs/` top-level entry (Wave 3's and this
   PR's) — merged into one.
 - `docs/architecture/RELEASE_HARDENING_PLAN.md` QA-gate row: synced 31/130 → **32/136** — the
   one-line drift the version-bump PR explicitly recorded as pending "once the PRs land".
-- `CMakeLists.txt` auto-merged: v0.8.11 version from main preserved, `AnamorphHardening`
+- `CMakeLists.txt` auto-merged: 0.8.11 version from main preserved, `AnamorphHardening`
   block intact. `build.yml` had no upstream changes.
 
 ## 7. Final review fixes

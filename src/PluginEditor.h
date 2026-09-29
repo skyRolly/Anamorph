@@ -13,7 +13,7 @@
 #include "gui/LevelMeter.h"
 
 // ============================================================================
-//  AnamorphAudioProcessorEditor  (v0.3 UI pass)
+//  AnamorphAudioProcessorEditor  (0.3 UI pass)
 // ============================================================================
 // ---- Which component should provide the tooltip text this tick -------------------------------
 //
@@ -100,7 +100,7 @@ public:
     // reconcile on the editor timer, under the predicate that already decides a
     // button is logically down but physically up. Public and separately callable
     // so the sweep can be tested without synthesising OS-level button state --
-    // the predicate itself is pre-existing, shipped since v0.8.12. Its macOS
+    // the predicate itself is pre-existing, shipped since 0.8.12. Its macOS
     // limitation (KI-013) was closed in round 4: the predicate now reads the
     // physical buttons through anamorph::gui::anyPhysicalMouseButtonDown().
     void abortAbandonedDragGestures();
@@ -485,7 +485,7 @@ private:
     //      indices, ABControl::hovered) cannot be cleared, whatever the hit test resolves to.
     //   2. Every other hover visual here is derived GEOMETRICALLY, never from enter/exit:
     //      stepMicroAnims takes `over` from getMouseXYRelative() to drive hovA (PluginEditor.cpp:
-    //      1678-1682) and the combo "hov" flag does the same (:1392-1395). That is the v0.6.1
+    //      1678-1682) and the combo "hov" flag does the same (:1392-1395). That is the 0.6.1
     //      stuck-hover fix, and it makes hovA immune to componentUnderMouse churn by construction.
     //      It also makes it blind to OCCLUSION, which is the other half and was missing until 0.9.4:
     //      getMouseXYRelative is a pure coordinate transform (juce_Component.cpp:3233-3236), so a

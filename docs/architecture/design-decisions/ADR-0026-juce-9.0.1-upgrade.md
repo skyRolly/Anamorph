@@ -8,7 +8,7 @@ JUCE is pinned to an exact version, and any JUCE bump is a **Build System change
 ADR + verification** (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`, `DEPENDENCY_POLICY.md`
 rule 1). ADR-0012 recorded 8.0.8 → 8.0.14, ADR-0022 recorded 8.0.14 → 9.0.0 and replaced the
 mutable tag-name pin with the tag's **immutable commit SHA**. JUCE **9.0.1** was released
-upstream on 2026-08-10; the commissioned v0.9.4 task is the controlled migration to it.
+upstream on 2026-08-10; the commissioned 0.9.4 task is the controlled migration to it.
 
 ## Problem
 Move to JUCE 9.0.1 with **no change** to DSP output, reported latency, parameter semantics or
@@ -31,7 +31,7 @@ serialization; keep the diff minimal; keep the pin immutable.
 - **No C++ source change, and no build-dependency change.** Neither 9.0.1 breaking change has
   project exposure, and no JUCE module Anamorph uses changed its declared `linuxPackages` /
   `OSXFrameworks` / `windowsLibs` metadata — only the `version:` field moved 9.0.0 → 9.0.1
-  (audit table in `worklogs/JUCE901_UPGRADE_v0.9.4.md` §1). `scripts/setup-linux.sh` is
+  (audit table in `worklogs/JUCE901_UPGRADE_0.9.4.md` §1). `scripts/setup-linux.sh` is
   therefore unchanged; `libegl-dev` (added by ADR-0022) remains the Linux GL requirement.
   Toolchain contract unchanged: CMake ≥ 3.22, **C++17**.
 
@@ -86,7 +86,7 @@ Evidence:
 - Upstream [Verified]: `git ls-remote --tags` → `9.0.1` = `e18f7f5…`; the FetchContent'd tree at
   `build/_deps/juce-src` resolves to that SHA with subject "JUCE version 9.0.1"; JUCE
   `BREAKING_CHANGES.md` ("Version 9.0.1", 2 entries) and `CHANGE_LIST.md` reviewed at that commit.
-- Twin dump [Verified]: `worklogs/JUCE901_UPGRADE_v0.9.4.md` §3 (32/32 hashes + latencies
+- Twin dump [Verified]: `worklogs/JUCE901_UPGRADE_0.9.4.md` §3 (32/32 hashes + latencies
   identical; scratchpad tool, methodology recorded in the worklog per the ADR-0022 precedent).
 - Known-issue re-checks [Verified]: `getNativeRealtimeModifiers` (KI-013) and
   `LinuxComponentPeer::isActiveApplication` (KI-019) are byte-identical between 9.0.0 and 9.0.1 —

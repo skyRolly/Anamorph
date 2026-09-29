@@ -79,7 +79,7 @@
 # that writes parameter B from inside A's dispatch on one thread while writing A
 # from inside B's on another creates the same cycle for real, on locks JUCE takes
 # around its own listener dispatch. Anamorph cannot close that without a
-# threading-model change (ARCHITECTURE_REVIEW_GATE). See the worklog for v0.9.8.
+# threading-model change (ARCHITECTURE_REVIEW_GATE). See the worklog for 0.9.8.
 #
 # ENFORCED SINCE 2026-09-08. The rule above -- every entry must match something --
 # was stated here and checked by nobody. The `tsan` job now counts the ENTRIES

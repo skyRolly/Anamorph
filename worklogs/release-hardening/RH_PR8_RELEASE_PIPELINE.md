@@ -1,4 +1,4 @@
-# RH-PR-8 — Release Pipeline Foundation (v0.8.13 cycle)
+# RH-PR-8 — Release Pipeline Foundation (0.8.13 cycle)
 
 Implements the RELEASE_HARDENING_PLAN §1/§10 "Tags + release.yml" skeleton (the audit
 roadmap's Phase-1 item; closes the RISK-003 / RH-R6 *infrastructure* gap — the risk itself
@@ -26,7 +26,7 @@ machine-enforces that tag ⇄ CMake version ⇄ CHANGELOG agree at release time.
   **exactly once**, via the call.
 * **`.github/workflows/release.yml`** (new) — three jobs:
   1. `validate` (fail-closed, before any build minutes): tag must be **annotated**
-     (`git cat-file -t` = `tag`), `vX.Y.Z` must equal `project VERSION`, and `CHANGELOG.md`
+     (`git cat-file -t` = `tag`), the tag's version must equal `project VERSION`, and `CHANGELOG.md`
      must already contain `## [X.Y.Z]` — i.e. RELEASE_PROCESS steps 1–2 are enforced.
   2. `build`: `uses: ./.github/workflows/build.yml` — the identical matrix/gates/artifacts.
   3. `draft-release` (`permissions: contents: write` scoped to this one job; top level stays
@@ -40,9 +40,9 @@ machine-enforces that tag ⇄ CMake version ⇄ CHANGELOG agree at release time.
   * `workflow_dispatch` = **rehearsal**: validate (report-only where a tag is required) +
     full build; the release job is skipped (`is-release == 'true'` guard) — the pipeline can
     be exercised end-to-end without cutting a tag.
-* **Tag convention** (documented in RELEASE_PROCESS §Tagging): annotated `vMAJOR.MINOR.PATCH`
-  on the release commit on `main`, created after pre-release steps complete. No tag was
-  created by this change (infrastructure only; first tag: the v0.8.13 release).
+* **Tag convention** (documented in RELEASE_PROCESS §Tagging): annotated tag named for
+  `MAJOR.MINOR.PATCH` (prefixed at the time; the bare version since ADR-0059) on the release commit on `main`, created after pre-release steps complete. No tag was
+  created by this change (infrastructure only; first tag: the 0.8.13 release).
 
 ## 3. Traceability model
 
@@ -79,7 +79,7 @@ unchanged — the release assets are *copies* staged from the same artifacts.
 
 1. Version bump + CHANGELOG entry + docs sync + green gates (RELEASE_PROCESS 1–6, unchanged).
 2. **Level-5 manual audition** (unchanged; also the open gate for ADR-0022/JUCE 9).
-3. `git tag -a vX.Y.Z && git push origin vX.Y.Z` (new — replaces "collect artifacts by hand").
+3. `git tag -a x.y.z && git push origin x.y.z` — the bare version since ADR-0059 (new — replaces "collect artifacts by hand").
 4. Review the draft GitHub Release and **publish it** (new, deliberately manual).
 5. macOS de-quarantine guidance for users remains until RH-PR-3 (notarization).
 
@@ -143,7 +143,7 @@ Run: <https://github.com/skyRolly/Anamorph/actions/runs/30011792515> (`workflow_
   zip is `cmp`-identical to the build output.
 * **Verdict**: the pipeline is validated for the first real tag. Remaining first-tag-only
   step: the draft-release job's `gh release create` executes for the first time on the real
-  `v0.8.13` tag (its logic is local-proven; the draft is reviewable before publishing, so the
+  `0.8.13` tag (its logic is local-proven; the draft is reviewable before publishing, so the
   residual risk is contained by design). No documentation drift was revealed.
 
 ## 7. Future RH items this unblocks

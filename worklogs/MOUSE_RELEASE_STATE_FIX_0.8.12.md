@@ -1,4 +1,4 @@
-# Mouse release-outside stuck-state fix (v0.8.12 GUI interaction)
+# Mouse release-outside stuck-state fix (0.8.12 GUI interaction)
 
 > A control (knob, slider, or the Multiband drag) could stay stuck in the pressed/dragging state if
 > the physical mouse button was released **outside** the plugin window. Root cause: the host delivers

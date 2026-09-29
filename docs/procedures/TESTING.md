@@ -176,7 +176,7 @@ three ways: the engaged stretch must really decorrelate; the transport stop must
 wet (measured 15.4-25.2 % of the engaged figure with the stop, 90.6-128.9 % with the stop event
 removed, so the 50 % bound sits between two measured populations); and both defect classes were
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
-`worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
+`worklogs/performance/PERF_AUDIT_0.9.5_IMPLEMENTATION.md` §2.2.
 
 **Road-map R7's production-path coverage — Tests 59–61 (PR #155, 2026-09-22).** Three paths every host runs
 and no test had executed, found under gcov and each proven live by mutation
@@ -739,7 +739,7 @@ ignoring an awaited swap — (1) 391; the activation re-using the prime's snapsh
 ordering itself is not observable on one thread: State test 139 (F2) is its ThreadSanitizer witness.
 
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
-(`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
+(`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, 0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
 
 **Why it exists, and why Tests 52 and 53 could not have caught it.** The path crossfade `osBlend`
@@ -776,7 +776,7 @@ probe, `AnamorphTests --os-off-probe`, prints the H3/H1 and RMS traces for all s
 directions — out of the wrap, into it, and between two factors — and asserts nothing.
 
 Before it, the **oversampling path-swap guard**
-(`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, v0.9.7). It pins that crossing the
+(`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, 0.9.7). It pins that crossing the
 Drive threshold with a factor selected is **indistinguishable from crossing it with Oversampling
 Off** — 24 combinations of {2×, 4×, 8×} × {Haas, Velvet} × {0 → 6 dB, 6 → 0 dB} × {instantaneous
 step, 300 ms knob sweep}, each against its own Oversampling-Off control.
@@ -809,7 +809,7 @@ the level, the stereo image and the sample continuity for seven swap classes; it
 is the record behind the seamlessness investigation.
 
 Before it, the **oversampling latency-stability guard**
-(`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, v0.9.7). It pins that the latency reported
+(`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, 0.9.7). It pins that the latency reported
 to the host is a function of the **Oversampling factor alone** — the fix for a reported host-graph
 restart on an ordinary Drive or Algorithm move — and it is built so that the two wrong fixes fail it.
 
@@ -946,7 +946,7 @@ read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are
 preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests).
 
-### State-compatibility self-tests (v0.8.13 harness)
+### State-compatibility self-tests (0.8.13 harness)
 
 `tests/state_tests.cpp` additionally carries a **ThreadSanitizer probe that the suite never
 runs**: `AnamorphStateTests --state-thread-probe` drives host `setState`/`getState` calls from a
@@ -991,6 +991,36 @@ of the switch duck and is superseded by the live loudness measurement before the
 Keep the probe with the finding it refuted: it is what a later round re-measures instead of
 re-deriving.
 
+State test 25, the cross-version field capture, **checks its fixture's integrity first, and nothing
+else when that fails.** Both capture files are pinned by an FNV-1a-64 content hash: they are what the
+rebuilt 0.9.5 binary wrote, the manifest's label in that binary's spelling included (ADR-0059). A file whose
+hash does not match is no longer that binary's output, so the test reports the hash failure, prints
+`FIXTURE INTEGRITY FAILED: ... restore the file from git`, and parses, restores and compares nothing
+from it. Until 2026-09-29 an edited manifest also failed "the active slot's sound reproduces from the
+0.9.5 capture", which points at the build (a review finding). The test then checks that gate itself,
+on in-memory copies of the bytes. The checks go through a sink of the test's own (`FieldCaptureSink`):
+by default into the suite's `check`, `checkNear` and stdout, and for the gate legs into a
+`CapturedChecks`, recorded instead of counted or printed. The suite's shared helpers are deliberately
+untouched: a first spelling made `check` itself capture-aware, which changed how clang inlines six other
+processor-holding tests into `main`, and under ASan (every inlined local in a slot of its own) `main`'s
+frame then overflowed the 8 MB stack (CI `sanitizers` on `a8230c0`):
+- (a) intact: 19 checks, the two hashes and the 17 that depend on the capture, and none fails (the
+  count is pinned, so a check that stops running fails the leg);
+- (b) slot A's width edited in the manifest, and (c) a stored width edited in the blob: that file's
+  hash fails, alone, with the integrity note, and nothing else runs;
+- (d) the label rewritten to the bare spelling, with the manifest's pinned hash re-pinned to the edit:
+  the label check fails, alone, and every dependent check still runs.
+
+The legs start from the capture as committed, so they run only when it passed intact: on a hash
+mismatch the test ends at the integrity note, and on any other failure a `gate legs not run` line says
+so. Controls, each through the whole suite on an edited copy of the
+fixtures: a manifest with a slot value edited (outside or inside the 1e-5 tolerance), its label
+rewritten, or its CRLF converted to LF, or a blob byte edited, fails 1 check, the hash, with the
+integrity note; the label rewritten with its hash re-pinned fails 1, the label. The gate's mutants
+each fail it: the early return removed (gate legs b and c, 2 failures), the integrity condition
+`&&` for `||` (2), the label check made to pass always (d, 1), the label compared without its prefix
+(d, 1), a return before the slot-B checks (a, 1), and the sink ignoring the capture (7).
+
 State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
 It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
 `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
@@ -1009,7 +1039,7 @@ comment — comparing 0 with 0 (latency only moves with Drive when oversampling 
 
 `AnamorphStateTests --legacy-settings-probe` is the fifth opt-in instrument and the evidence behind
 State test 28: it feeds malformed host-hidden Settings ("nan", "inf", "1e39", "abc", "7", …) through
-the real v0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
+the real 0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
 consumers saw, and what a re-save then wrote. Pre-fix on x86-64 every non-finite value became
 −2147483647 (an impossible ComboBox id, persisted on save), "2147483647" wrapped to INT_MIN, and
 scopePersist passed NaN/±inf/out-of-range straight through. Round 13 extended State test 28 to the
@@ -1313,7 +1343,7 @@ downstream state never was, because a parser could read a file and then reject t
 
 `--risk014-probe census` is the same instrument pointed the other way and is the only shape that
 asserts nothing about corruption: it prints the size and depth of the sessions the product really
-writes, so a proposed cap can be read against them. This build 10 438 B / depth 3, the v0.9.5 field
+writes, so a proposed cap can be read against them. This build 10 438 B / depth 3, the 0.9.5 field
 capture 10 629 B / depth 3, the three legacy roots 268 / 590 / 740 B at depth 2–3, and the capture's
 two slot payloads 2 046 and 2 051 B at depth 2. Round 50 shipped **no regression test** for any of it, deliberately: a regression test
 asserts that behaviour is intended, and whether it was intended was the open question. Round 51
@@ -2574,10 +2604,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -2592,7 +2622,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:19075`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19300`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -4596,11 +4626,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15552` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15554` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4639,7 +4669,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14633`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14635`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
@@ -4730,7 +4760,7 @@ snapshot** (IDs/names/order/automation flags/step texts exact + range mappings p
 normalised points, vs `tests/fixtures/parameter_registry.snapshot`), a raw-exact
 save→load→save round-trip (byte-identical; APVTS + `raw` + InternalState + A/B slots + preset
 meta; undo cleared), the three legacy migration paths via frozen fixtures
-(`legacy_v0_2_bare_apvts.xml`, `legacy_pre_0_6_4_ab_slots.xml`,
+(`legacy_0_2_bare_apvts.xml`, `legacy_pre_0_6_4_ab_slots.xml`,
 `legacy_pre_0_8_4_view_params.xml`), corrupt/foreign-state robustness (garbage/truncated blob,
 out-of-range `AB@active` clamp end-to-end, unknown future fields, corrupt slot XML), the user
 preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypass/`advancedMode`
@@ -5275,8 +5305,8 @@ else in the suite: `~BulkApply` without its completion — 4 checks, (E1) and th
 later one); `~SoundAppliedGuard` without its `fire()` — 2, (E2); the request raised before `loadAdopted`'s refusals —
 11, every refusal and then everything after it. No committed test failed any of the three before this one.
 
-**Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
-required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
+**Changing the parameter surface intentionally** (`PARAMETER_REGISTRY.md` updated, plus an ADR where
+`PARAMETER_COMPATIBILITY_POLICY.md` requires one — a display-name change needs none, rule 2): re-freeze the snapshot with
 `AnamorphStateTests --write-snapshot` and let the snapshot diff be reviewed in the PR. An
 **unintentional** change fails the suite on all three CI platforms — that is the point.
 The registry comparison is numerically tolerant (1e-4 relative) only for the numeric fields —
@@ -5542,6 +5572,15 @@ event — where it is the only job that runs at all.)
 | `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 | `fuzz` | the `AnamorphFuzzState` recipe under §"Opt-in targets" above, verbatim — the CI step adds only `-seed=20260818 -rss_limit_mb=4096 -print_final_stats=1` and an `-artifact_prefix` for the reproducer it uploads on a finding |
 
+**The `docs` job's self-test runs `release.yml`'s validate step.** `check-docs.py --self-test` runs the
+step verbatim in scratch repositories, as each trigger runs it (`GITHUB_EVENT_NAME`, `GITHUB_REF`), and
+evaluates the `draft-release` job's `if:` on what the step writes to `GITHUB_OUTPUT`, reading the workflow
+and that file as GitHub and the runner read them (the `validate` job's own step, each value whole, the
+`name<<DELIMITER` form). Only a push of an
+annotated, dated tag that names the CMake version reaches the draft release. A `workflow_dispatch` from
+that tag or from `main`, or another event at the tag, is a rehearsal. A prefixed, leading-zero,
+malformed or lightweight tag, or one that disagrees with the CMake version, is refused (ADR-0059).
+
 **`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and nothing else.** The DSP suite treats a denormal in
 the engine output as a failure, which holds because the audio path runs under
 `juce::ScopedNoDenormals` and the CPU flushes denormals to zero *in hardware*. valgrind emulates
@@ -5631,7 +5670,7 @@ exactly when the raw SARIF is most worth keeping.
 | Symptom | Likely cause | Where to look |
 |---|---|---|
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
-| A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
+| A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (registry update, an ADR where that policy requires one, `--write-snapshot`) |
 | pluginval: `FAILED … real validation failure` | a genuine validation defect | the pluginval log line; do **not** retry — and note a *timeout* also lands here (exit 1, log line `*** FAILED: Timeout after`) |
 | pluginval: `CRASHED …` / `crashed …` | a signal death (exit ≥ 128), or one pluginval trapped itself (macOS: exit 9 + `pluginval received …, exiting immediately`) | on Linux the known X11 host flake, retried 3× and then a failure; elsewhere it fails at once (`scripts/run-pluginval.sh:140-228`, `run_one_pass`, `classify_pass_exit`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
@@ -5675,7 +5714,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      place, so the behaviour it produces is the behaviour those two are tested for. What is not
      covered is only the TRIGGER: that a tick, rather than a mouse event, is what notices.
   3. *Where the gap is tracked.* Here, and cross-referenced from ADR-0043 and
-     `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` §12.
+     `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_0.9.8.md` §12.
   4. *Whether infrastructure could close it.* **Yes, concretely, and it is a harness change on its
      own merits.** A test seam that lets the suite step one frame — either a public
      `FrameClock::fire (double dt)` for tests or a shown editor with a driven message loop — would
@@ -5718,7 +5757,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
 
 - **Editor interaction defects have no headless test either.** A second
-  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering **all six** v0.9.3 GUI fixes.
+  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering **all six** 0.9.3 GUI fixes.
   Enumerated in full rather than leaving any to be inferred, because ADR-0025 §3 makes the four
   disclosures mandatory *per invocation* and every one of the six ships without a regression test:
 
@@ -5747,7 +5786,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:365`) and
      `Component::toFront` on a non-always-on-top component inserts behind every always-on-top sibling
      (`juce_Component.cpp:914-922`). Conditions and reasoning in
-     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform. That check was
+     `worklogs/GUI_INTERACTION_FIXES_0.9.3.md`, plus a manual check per platform. That check was
      **performed and signed off by the maintainer on 2026-08-09 for the first two fixes** (the
      add-split preview line and the pop-up dismissal behaviour), discharging this disclosure for
      those. The later three — the shield's interception-only redesign, the two menu-rendering fixes
@@ -5757,7 +5796,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      the equal-width Widen / Style-Focus row is confirmed **intentional**, the narrower Simple-mode
      Widen control is **accepted**, the current pop-up/menu width behaviour is **accepted**, and the
      remaining visual verification items are **approved** (recorded in
-     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7 and §10). That sign-off covers the **visual/UI**
+     `worklogs/GUI_INTERACTION_FIXES_0.9.3.md` §7 and §10). That sign-off covers the **visual/UI**
      items only: the behavioural per-platform checks in the same lists (a dismissing click reaching
      no control, pop-up lifetime across a hidden/closed/backgrounded window, the out-of-process host
      confirmation) and the **installer** checks in the fifth bullet below are **not** covered by it
@@ -5807,7 +5846,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      the same reason, and were verified the same way — the harness above, extended to every overlay,
      plus three mutation runs and a before/after idle-pass measurement.
   4. *Whether infrastructure could close it.* **Yes — and this fix narrows the standing claim above,
-     which is worth recording rather than repeating.** The INC-010 and v0.9.3 entries both state that
+     which is worth recording rather than repeating.** The INC-010 and 0.9.3 entries both state that
      the *behavioural* half — a driven message loop with synthetic pointer input — "remains out of
      reach". Measured 2026-08-19, on Linux it is not: `xvfb` is already installed on the CI runner
      for pluginval, and the harness above drove the editor, opened menus and positioned the pointer
@@ -5846,7 +5885,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   right tool for "did this change alter the sound" is the **twin dump** — build the engine before
   and after, run the same scenario matrix through both, compare hashes and reported latencies —
   which is what the JUCE 9 migration used across 32 scenarios
-  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness has been **committed** since the
+  (`worklogs/JUCE9_MIGRATION_0.8.13.md`). That harness has been **committed** since the
   2026-08-18 round as `tests/dsp_dump.cpp` (§"Proving a dependency bump is bit-identical" above)
   — this bullet said "session-local and not committed" for five rounds after that stopped being
   true (ER-TST-05); the method no longer needs re-creating per investigation.

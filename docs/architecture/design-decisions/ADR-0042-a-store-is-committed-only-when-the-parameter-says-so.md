@@ -196,4 +196,4 @@ reachable path, and recorded in the worklog rather than changed inside a round a
 **Verified.** State test 74 legs A, B, C, D, I(ii) and J(ii) fail before and pass after; positive
 controls E, F, G, H, I(i), J(i) green throughout; State tests 66–73 unchanged and green. Mutations
 M1–M7 each killed by exactly the intended leg. State suite 2 667 / 0, DSP 396 / 0.
-`worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§36-41.
+`worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` §§36-41.

@@ -1,10 +1,10 @@
-# v0.9.0 Release-Hardening & Commercial-Readiness Audit
+# 0.9.0 Release-Hardening & Commercial-Readiness Audit
 
 > Final pre-tag hardening pass over the whole repository: licensing/compliance readiness, user
 > documentation quality, maintenance quality, and release-blocker discovery. **No DSP, GUI,
 > parameter, serialization or CI-gate behaviour was changed.**
 
-- **Date:** 2026-07-25 · **Base:** `main` @ `0a98ebd` (v0.9.0 RC; PRs #89/#90/#91 merged) ·
+- **Date:** 2026-07-25 · **Base:** `main` @ `0a98ebd` (0.9.0 RC; PRs #89/#90/#91 merged) ·
   **Branch:** `claude/beautiful-sagan-JAUFI` → PR #92.
 - **Method:** six parallel investigation lenses (licence forensics, release blockers, user-doc
   quality, roadmap triage, maintenance sweep, support infrastructure) over the repository *and*
@@ -26,7 +26,7 @@ Four `RELEASE_POLICY` preconditions are provably unsatisfied on disk:
 |---|---|---|---|
 | 2 | Compatibility checklist passed | `RELEASE_COMPATIBILITY_CHECKLIST.md` has **8 unchecked boxes and 0 checked**, and there is no per-release instance of it anywhere in the repo — it has never been recorded as completed. The host-matrix and "presets sound identical" items require a DAW. | maintainer, with a DAW |
 | 5 | Architecture Review cleared | **ADR-0022 is still `Proposed`.** A JUCE pin change is an explicit `ARCHITECTURE_REVIEW_GATE` Build System change, so the release contains an ungated gated-change. | maintainer sign-off |
-| 7 | Manual audition acknowledged | No Level-5 audition is recorded — for v0.8.12 **or** the JUCE 9 build. | maintainer, with a DAW |
+| 7 | Manual audition acknowledged | No Level-5 audition is recorded — for 0.8.12 **or** the JUCE 9 build. | maintainer, with a DAW |
 | — | (new) Licensing | The repository declares **no licence of its own**: no `LICENSE`, no EULA in either installer. Coupled to the unmade JUCE 9 AGPLv3-vs-commercial tier choice. Filed as **KI-015 / RH-R11**. | owner/legal |
 
 Precondition 1 (tests green) holds locally and in CI; preconditions 3, 4 and 6 hold.
@@ -174,7 +174,7 @@ sources simply grew underneath them. The worst was the canonical one: `AnamorphE
 cited identically as `:493-949` in both `SIGNAL_FLOW.md` and `DSP_GRAPH_REFERENCE.md` when the
 function actually spans **660-1339**. Fixed here: that pair, `toEngine` (`:241-300`/`:201-300` →
 `:326-389`), `ScopedNoDenormals` (`:66` → `:109`), the three legacy state-restore paths in
-`STATE_SERIALIZATION.md` (v0.2 `:381-384` → `:596-600`; `readSlot` `:371-375` → `:576-593`;
+`STATE_SERIALIZATION.md` (0.2 `:381-384` → `:596-600`; `readSlot` `:371-375` → `:576-593`;
 `migrateFromLegacyApvts` `:345-348` → `:557-560`), and KI-009's two anchors, which were off by
 ~100 lines. Also: `PARAMETER_REGISTRY.md` carried a `‡` footnote with no `‡` anywhere in the
 table (now attached to `mbBands`/`mbSolo`'s Auto-Safe column, which is what ADR-0014 changed), and
@@ -264,14 +264,14 @@ changelog sense; the packaging additions are recorded there because they alter w
 **Do not tag yet.** The sequence, in dependency order:
 
 1. **ADR-0022 → Accepted** (maintainer Architecture-Review sign-off). Blocks precondition 5.
-2. **Level-5 audition** of the JUCE 9 build, covering the outstanding v0.8.12 items in the same
+2. **Level-5 audition** of the JUCE 9 build, covering the outstanding 0.8.12 items in the same
    session. Blocks precondition 7 and feeds item 3.
 3. **Complete `RELEASE_COMPATIBILITY_CHECKLIST.md`** and record the completed instance. Blocks
    precondition 2.
 4. **Licensing decision** (JUCE tier → Anamorph `LICENSE`/EULA → Steinberg review). Blocks a
    *commercial* release; a free/AGPL release still needs the `LICENSE` file.
 
-Then `git tag -a v0.9.0` → the draft GitHub Release → manual publish. Steps 1-3 gate the tag;
+Then `git tag -a 0.9.0` → the draft GitHub Release → manual publish. Steps 1-3 gate the tag;
 step 4 gates selling it.
 
 ---

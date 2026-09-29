@@ -142,7 +142,7 @@ would make this record say more than the owner did.
 
 1. **Human Architecture Review — completed and approved.** `ARCHITECTURE_REVIEW_GATE.md` gates a
    Build System change and says a green build does not clear it; the review was carried out against
-   the evidence above and in `worklogs/JUCE902_UPGRADE_v0.9.8.md`, and the decision is to accept the
+   the evidence above and in `worklogs/JUCE902_UPGRADE_0.9.8.md`, and the decision is to accept the
    bump as implemented, including the `JUCE_USE_MP3AUDIOFORMAT=0` pin.
 2. **Level-5 manual audition — completed** (`DEPENDENCY_POLICY.md` rule 2). A DAW audition against
    this build, which is a human sign-off and not headlessly reproducible. It is what covers the
@@ -156,4 +156,4 @@ would make this record say more than the owner did.
   (9.0.0 → 9.0.1), ADR-0027 (C++23), ADR-0011 (X11/EGL).
 - `docs/policies/DEPENDENCY_POLICY.md` (rules 1–5 and the compliance log),
   `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, `docs/procedures/TESTING.md`
-  §Proving a dependency bump is bit-identical, `worklogs/JUCE902_UPGRADE_v0.9.8.md`.
+  §Proving a dependency bump is bit-identical, `worklogs/JUCE902_UPGRADE_0.9.8.md`.

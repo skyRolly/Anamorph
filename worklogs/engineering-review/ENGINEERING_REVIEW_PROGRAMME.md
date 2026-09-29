@@ -33,7 +33,7 @@ entries and CHANGELOG notes cite.
 
 > *"State race remains outside latency fields. Atomic latency values do not synchronize concurrent
 > restore, prepare, A/B, preset, or engine state."* — the D-2 finding, re-raised as a dedicated
-> v0.9.7 threading/state hardening task with a fixed brief: evidence first, an explicit ownership
+> 0.9.7 threading/state hardening task with a fixed brief: evidence first, an explicit ownership
 > model, no lock on the audio thread, no behaviour change beyond what a demonstrated race requires.
 
 **An `ARCHITECTURE_REVIEW_GATE` "Thread Model change"** (a new cross-thread path and a new atomic
@@ -1747,7 +1747,7 @@ by `replaceState` + `reassertParameters`, not by `applySoundTree`, so it first r
 that `soundSignatureAfterLoading` models that store/report pass bit for bit. Assuming that equality
 instead of measuring it is precisely what round 10 got wrong (§19), so it belongs to a round that can
 measure rather than to a closure round. **Closed 2026-09-06 by ADR-0037** — measured, then migrated at
-the decode boundary; record in `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md`.
+the decode boundary; record in `worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md`.
 
 **Host serialization: disposition D, unchanged, no new evidence.** The finding moved line again
 (`src/PluginProcessor.h:437`) because this round added lines above it. That is not evidence. The
@@ -2121,7 +2121,7 @@ build must match and asserting a number would have to guess how much of it belon
   consistent with the Settings menu, which has always been an ordinary duck-to-silence. Filed in
   ADR-0034 as a candidate for a later, separately-gated improvement — latching the fill's offset from
   the TARGET would restore seamlessness for a 4-6 sample crossfade misalignment — not folded in here.
-* **RELEASE_POLICY precondition 7 reopens for v0.9.7** — the Level-5 audition is per-version and
+* **RELEASE_POLICY precondition 7 reopens for 0.9.7** — the Level-5 audition is per-version and
   this build changes audible behaviour. The compatibility checklist's latency box was **re-run**.
 
 ### Three state tests re-instrumented, one of which would have HUNG
@@ -3098,7 +3098,7 @@ which is what stops a fix that merely resets everything to defaults from passing
 ABSENT as the separate rule it is. **62 checks fail against the pre-policy build, 0 after**, and the
 controls pass in both, which is what makes the 62 meaningful.
 
-**Nothing else moved.** No schema change, no property renamed, no `restoreState` redesign, legacy v0.2
+**Nothing else moved.** No schema change, no property renamed, no `restoreState` redesign, legacy 0.2
 semantics unchanged (State test 28), partial-settings reset unchanged (State test 29), the
 byte-identical save/load/save round-trip unchanged (State test 3), and round 17's finiteness guard in
 `Vectorscope::setPersistence` kept as the defensive backstop the decision asks for.
@@ -3315,7 +3315,7 @@ A/B data into that same instance and performs the first switch. Before the fix:
 
 | restore path | stale value | first switch injected | a fresh instance injects |
 |---|---|---|---|
-| v0.2 bare APVTS (`abResetToDefaults`) | −1.040 dB (slot B) | **−1.040 dB** | 0.000 dB |
+| 0.2 bare APVTS (`abResetToDefaults`) | −1.040 dB (slot B) | **−1.040 dB** | 0.000 dB |
 | modern root, no `AB` node (`abResetToDefaults`) | −1.040 dB (slot B) | **−1.040 dB** | 0.000 dB |
 | `AB` node present, no payloads, `active` = 1 (`readSlot`) | −2.438 dB (slot A) | **−2.438 dB** | 0.000 dB |
 
@@ -3362,7 +3362,7 @@ measurements are the reason:
 - **Asserting "injects exactly 0 dB" is not right, and the fresh-instance comparison is.**
   `LoudnessMatch`'s feed-forward predict is an absolute function of Drive and Mix and lowers the
   published gain when the restored session implies more boost, so the reading sits off 0 by however
-  much the restore moved those controls (−3.161 dB against the v0.2 fixture, −0.052 dB against a
+  much the restore moved those controls (−3.161 dB against the 0.2 fixture, −0.052 dB against a
   modern save). The fresh control experiences the identical predict, so comparing against it cancels
   that term and leaves only the injection.
 - **The test performs the host's ordinary post-restore activation** (setState, then `prepareToPlay`
@@ -3657,7 +3657,7 @@ as before).
 ### ER-STATE-18 — CONFIRMED and FIXED — but not where the review looked
 
 The finding was *"when a modern session omits an optional setting, `migrateFromLegacyApvts` never
-resets it"*, filed against `src/PluginProcessor.cpp:1038` — the **v0.2 branch**. The brief asked
+resets it"*, filed against `src/PluginProcessor.cpp:1038` — the **0.2 branch**. The brief asked
 whether this was real, a contradiction with the documented missing-node behaviour, or a confusion
 between the legacy and modern paths. Measurement answers all three at once, and the answer is the
 interesting kind: **the symptom is real, and the named mechanism is exactly backwards.**
@@ -3687,7 +3687,7 @@ field **"Required: No"** with a stated **Default**. That means the default is *a
 field is absent — but `restoreState` read "not required" as "skip". `tree` is a processor member and
 a host restores into one live instance repeatedly, so skipping an absent field means keeping the
 previous project's value, which the next save then writes out as if the session had always held it.
-This is the same state-isolation class rounds 2, 8 and 11 closed for the Settings on the v0.2 path
+This is the same state-isolation class rounds 2, 8 and 11 closed for the Settings on the 0.2 path
 (ER-STATE-08), the A/B slots (ER-STATE-12) and a root with no sound child (ER-STATE-15) — the fourth
 member, and the last of the four processor members that restore into a reused instance.
 
@@ -3775,7 +3775,7 @@ audition protocol. Nothing was performed in this environment, which is headless;
 to have been.
 
 **Consequence.** `RELEASE_POLICY.md` precondition 2 is satisfied; the checklist is **eight of eight**
-(six measured, two attested). The engineering/process precondition list for v0.9.6 is now empty.
+(six measured, two attested). The engineering/process precondition list for 0.9.6 is now empty.
 **One tag blocker remains — the missing licence, KI-015** — and it is an owner/legal action.
 `HANDOVER.md` (Release Status, Known Blockers, Roadmap, the tag-order sentence) and
 `COMMERCIAL_STATUS.md` §6 say so.
@@ -3786,7 +3786,7 @@ to have been.
 
 ### ER-STATE-17 — CONFIRMED and FIXED — malformed legacy Settings hit an undefined conversion
 
-**Reproduced first**, through the real v0.2 restore, with `--legacy-settings-probe`. Round 11's
+**Reproduced first**, through the real 0.2 restore, with `--legacy-settings-probe`. Round 11's
 ER-STATE-15 work is what exposed this: it routed more inputs into `migrateFromLegacyApvts`, whose
 `(int)` cast is undefined for NaN, ±infinity and out-of-range doubles ([conv.fpint]) — and JUCE's
 own text parser **accepts "nan" and "inf" as numbers** (`juce_CharacterFunctions.h:254-273`), so
@@ -3813,7 +3813,7 @@ conversion, so that conversion is defined for every input the lambda can return 
 cannot overflow. A finite out-of-domain value lands on the nearest valid choice, which is what
 `NormalisableRange` does for an out-of-range parameter. No serialization format change.
 
-**Regression coverage: State test 28** — 88 checks over both legacy shapes (the bare v0.2 tree and
+**Regression coverage: State test 28** — 88 checks over both legacy shapes (the bare 0.2 tree and
 the pre-0.8.4 `AnamorphRoot`), asserting for each field that the tree value is in domain, that the
 DSP atomic agrees with the tree, and that a re-save writes the repaired value. **Verified
 discriminating: 49 checks fail without the fix**, 0 with it. Valid legacy migration is unchanged —
@@ -4027,7 +4027,7 @@ the round-2/3 record" banner rather than being rewritten — the programme's rul
 historical records, and the diagnosis is why the fix was findable.
 
 **Deliberately NOT changed**, because they are accurate history rather than live claims:
-`docs/KNOWN_ISSUES.md:97` (a dated v0.8.12 version-sync header recording KI-013 as *added* at that
+`docs/KNOWN_ISSUES.md:97` (a dated 0.8.12 version-sync header recording KI-013 as *added* at that
 release — true then), the dated round entries in `DOCUMENTATION_COVERAGE.md`, and the round-3/4
 sections of this worklog and the older audit worklogs.
 
@@ -4041,7 +4041,7 @@ them platform-qualified — implies macOS was separately broken in a shipped bui
 
 Consolidated into a single entry describing the final state on all three platforms. **The one half
 that genuinely shipped broken is preserved**: a knob staying visually "pressed" after a release
-outside the window on macOS is KI-013, present since v0.8.12, and the merged entry still names it.
+outside the window on macOS is KI-013, present since 0.8.12, and the merged entry still names it.
 Both regression tests stay cited (State tests 21 and 23).
 
 The `[0.9.6]` Fixed count goes 19 → 18, which happens to restore `HANDOVER.md`'s "eighteen Fixed
@@ -4172,15 +4172,15 @@ dispositions were decided by running things rather than by reading them.
 
 **Reproduced first, on the current tree, before any code was touched.** The instrument is
 `AnamorphStateTests --legacy-ab-probe`: seed a "previous project" with distinguishable A and B
-sounds (raw width 0.90 / 0.10), restore a v0.2 session into the SAME instance, then switch slots
+sounds (raw width 0.90 / 0.10), restore a 0.2 session into the SAME instance, then switch slots
 and read back.
 
 | leg | pre-fix | post-fix |
 |---|---|---|
-| v0.2 restore, then switch to B | **0.10** — the previous project's B | 0.75 — the restored state |
-| v0.2 restore with the previous project left active on B, first switch reads A | **0.90** — its A; and `active` came back as **1**, its index | 0.75; `active` = 0 |
+| 0.2 restore, then switch to B | **0.10** — the previous project's B | 0.75 — the restored state |
+| 0.2 restore with the previous project left active on B, first switch reads A | **0.90** — its A; and `active` came back as **1**, its index | 0.75; `active` = 0 |
 | `AnamorphRoot` with its `AB` child stripped, then switch to B | **0.10** | 0.90 — the restored state |
-| FRESH instance, v0.2 restore, switch to B | **0.5** — the Default snapshot | 0.75 |
+| FRESH instance, 0.2 restore, switch to B | **0.5** — the Default snapshot | 0.75 |
 
 Both slots are demonstrated stale, not just the one the review named, and so is the active index.
 The restored value differs from both previous-project values, which the probe asserts before
@@ -4197,7 +4197,7 @@ place. The comment that had described this as the easy leg was corrected, not th
 the previous session left here" — but it is *called from inside the `AB` node's branch*, so it can
 only reach a blob that HAS that node. Two restore paths carry no A/B data and never reached it: an
 `AnamorphRoot` with no `AB` child (every field in the `AB` table is "Required: No", so the node is
-optional) and the v0.2 bare-APVTS branch, which predates the feature entirely. `abSlot[]` and
+optional) and the 0.2 bare-APVTS branch, which predates the feature entirely. `abSlot[]` and
 `abActive` are processor members, and a host restores into one live instance repeatedly.
 
 **Ownership and lifetime** (review step 7): `abSlot[2]` and `abActive` are members of
@@ -4214,7 +4214,7 @@ already specifies it. `SERIALIZATION_REGISTRY.md`'s `AB` table gives `active` a 
 the slot params a default of **"lazily initialised from current"**, and the prose beside it states
 the rule in as many words: *"absent must mean the default rather than 'whatever the previous session
 left' — and that has to hold for the slot as a WHOLE, not field by field."* So the answer is
-**deterministic reseed**, not "clear" and not "migrate" (there is nothing to migrate: v0.2 carries
+**deterministic reseed**, not "clear" and not "migrate" (there is nothing to migrate: 0.2 carries
 no A/B data). No new compatibility decision is required and no architecture gate is triggered — this
 restores conformance to a contract already recorded, changes no schema field, and leaves every blob
 that carries an `AB` node restoring exactly as before.
@@ -4225,7 +4225,7 @@ seeding is what makes it correct at that point in the restore: `abEnsureInit()` 
 `currentStateSet()` at first use, which is after the restore has finished, so the slots come back
 holding the state that was just restored rather than a snapshot taken mid-restore.
 
-**Regression coverage: State test 26**, five legs — v0.2/reused/B, v0.2/reused/A (reached by leaving
+**Regression coverage: State test 26**, five legs — 0.2/reused/B, 0.2/reused/A (reached by leaving
 the previous project active on B, since switching away from a slot stores the live state into it and
 would otherwise hide contamination), fresh instance, `AB`-stripped root, and a fifth leg that pins
 the *other* direction: a root that DOES carry an `AB` node still restores both slots' own sounds, so
@@ -4287,7 +4287,7 @@ eight boxes checked with measured evidence**, recorded in that file's §Completi
 is still open — but what is left is a DAW session, not analysis, and this section says exactly which
 two and why they were not ticked.
 
-| # | Item | v0.9.6 | Evidence |
+| # | Item | 0.9.6 | Evidence |
 |---|---|---|---|
 | 1 | Parameter IDs unchanged | **PASS** | State test 2; `tests/fixtures/parameter_registry.snapshot` byte-identical to `origin/main`, last touched `d6bdb13` |
 | 2 | Serialization schema verified | **PASS** | State tests 1, 3 + legacy fixtures 4/5/6 |
@@ -4296,21 +4296,21 @@ two and why they were not ticked.
 | 5 | Host matrix verified | **OPEN** | needs a DAW |
 | 6 | Latency reporting verified | **PASS** | `AnamorphTests` Test 3+4, plus State tests 22 and 24 |
 | 7 | Automation playback verified | **OPEN** | needs a host |
-| 8 | Session reload verified | **PASS** | State test 25 against a real v0.9.5 field capture |
+| 8 | Session reload verified | **PASS** | State test 25 against a real 0.9.5 field capture |
 
 ### Item 8 stopped being a reconstruction
 
-The checklist had carried a caveat since v0.8.13: the three legacy fixtures are *reconstructions*
+The checklist had carried a caveat since 0.8.13: the three legacy fixtures are *reconstructions*
 built by current code, so they can only contain what today's understanding says an old format held.
-A fixture written by the current binary cannot answer "does vN read what vN−1 wrote" — it answers
-"does vN agree with itself", which is a weaker question wearing the same clothes.
+A fixture written by the current binary cannot answer "does version N read what N−1 wrote" — it answers
+"does N agree with itself", which is a weaker question wearing the same clothes.
 
-So the previous version's binary was rebuilt and asked. The tree at `2c5e760^` (v0.9.5) was
+So the previous version's binary was rebuilt and asked. The tree at `2c5e760^` (0.9.5) was
 extracted with `git archive`, its `tests/state_tests.cpp` given an `--emit-session` hook, and
 `AnamorphStateTests` built against the same JUCE pin. That binary WROTE
-`tests/fixtures/field_capture_v0_9_5.session` (10,629 bytes) and a `.manifest` recording what it
-believed the state was, B slot included. **State test 25** loads the capture into v0.9.6 and asserts
-against the manifest, not against v0.9.6's own round-trip.
+`tests/fixtures/field_capture_0_9_5.session` (10,629 bytes) and a `.manifest` recording what it
+believed the state was, B slot included. **State test 25** loads the capture into 0.9.6 and asserts
+against the manifest, not against 0.9.6's own round-trip.
 
 All four things item 8 names reproduce exactly: sound (5 parameters), preset name (`Gentle Width`),
 dirty-star (set), and **both** A/B slots — and the two slots hold different values, so the B leg is
@@ -4363,8 +4363,8 @@ by code.
 
 ## Round 6 — 2026-09-01 — D-3 recorded: the Level-5 audition PASSED
 
-**D-3 is CLOSED. The Level-5 audition was completed by the maintainer against the final v0.9.6
-build and PASSED.** That discharges `RELEASE_POLICY.md` precondition 7. **v0.9.6 is no longer
+**D-3 is CLOSED. The Level-5 audition was completed by the maintainer against the final 0.9.6
+build and PASSED.** That discharges `RELEASE_POLICY.md` precondition 7. **0.9.6 is no longer
 blocked by D-3**; every statement in this programme that said otherwise is superseded by this
 section, and the round-5 text has been marked accordingly.
 
@@ -4372,7 +4372,7 @@ The full record is `docs/procedures/LEVEL5_AUDITION.md` §Recorded auditions.
 
 ### What the record contains, and what it does not
 
-The maintainer's report supplies the verdict (**PASS**), the build (**the final v0.9.6 build**) and
+The maintainer's report supplies the verdict (**PASS**), the build (**the final 0.9.6 build**) and
 the performer (**the maintainer**). It does not supply the audition date, the DAW, the OS or CPU
 architecture, the plugin format, the session used, the per-item outcomes for protocol groups A–E,
 or an exact artifact/commit identity.
@@ -4386,20 +4386,20 @@ have been present at the audition.
 
 ### Correspondence to the final build — what was actually verified
 
-The instruction for this round was to verify the recorded evidence corresponds to the final v0.9.6
+The instruction for this round was to verify the recorded evidence corresponds to the final 0.9.6
 build. Stated precisely: **no artifact or commit identity was supplied, so that correspondence rests
 on the maintainer's attestation rather than on anything checkable in this repository.** That is
 sufficient for precondition 7, which is a human sign-off by definition and not a machine-checkable
 artifact — but the basis of the claim is recorded rather than glossed, so a later reader can see
 which parts are attested and which are verified.
 
-What this repository *can* confirm, and does: the tree carries no other v0.9.6 audition record, so
+What this repository *can* confirm, and does: the tree carries no other 0.9.6 audition record, so
 this is the only one, and there is no competing or superseding account to reconcile it against.
 
 ### Carried forward for the next release
 
 Capturing the record table at audition time costs a minute and makes the record self-supporting.
-The blank rows in the v0.9.6 entry are the argument for doing that, and the note is in the protocol.
+The blank rows in the 0.9.6 entry are the argument for doing that, and the note is in the protocol.
 
 ### Remaining tag blockers
 
@@ -4409,7 +4409,7 @@ boxes, with only the two host-dependent ones open.)*
 
 ---
 
-## Round 5 — 2026-09-01 — release finalisation for v0.9.6
+## Round 5 — 2026-09-01 — release finalisation for 0.9.6
 
 **Entry state:** round 4 pushed at `f572479`; CI green; D-1, D-4 and KI-028 all closed. Two review
 items to process, a documentation drift sweep, a testing-methodology rule to record, and the
@@ -4422,7 +4422,7 @@ audition **specified** (and performed by the maintainer shortly afterwards — r
 ### D-3 — not done *by this round*; subsequently PERFORMED and PASSED
 
 > **SUPERSEDED 2026-09-01 (round 6).** The maintainer completed the Level-5 audition against the
-> final v0.9.6 build and it **PASSED**. D-3 is closed and **v0.9.6 is not blocked by it**. The
+> final 0.9.6 build and it **PASSED**. D-3 is closed and **0.9.6 is not blocked by it**. The
 > account below is kept because its reasoning is still correct about what *this programme* can and
 > cannot supply — it was never a claim that the audition would not happen, only that an automated
 > agent cannot be the one to perform it. Record: `docs/procedures/LEVEL5_AUDITION.md`.
@@ -4445,7 +4445,7 @@ its scope lived in whoever remembered the release. `docs/procedures/LEVEL5_AUDIT
 that scope from the `[0.9.6]` change set — twelve items in five groups (activation/restore, A/B and
 undo, latency and automation, damaged-state recovery, metering and host matrix), each naming the
 specific failure it looks for, plus the record format and an explicit "partial is a legitimate
-record; partial described as complete is not" rule. It also states why the 2026-08-15 v0.9.4
+record; partial described as complete is not" rule. It also states why the 2026-08-15 0.9.4
 audition does not carry over: ADR-0031/0032 changed the x86-64 machine code everywhere, and 0.9.6
 changed audible behaviour in exactly the windows that were previously defective.
 
@@ -4526,7 +4526,7 @@ tests to paths already covered — this round added none.
 1. `CHANGELOG.md` `[0.9.6]` dated **2026-08-31 → 2026-09-01**, the release date, matching where
    rounds 3-5 actually landed.
 2. `docs/HANDOVER.md` roadmap row stated the Level-5 audition "was performed 2026-08-15 against the
-   shipping v0.9.4 build" with nothing marking it superseded. Now says it is **INVALID for v0.9.6**
+   shipping 0.9.4 build" with nothing marking it superseded. Now says it is **INVALID for 0.9.6**
    and why, pointing at the new protocol. (The `Known Blockers` row already listed the "re-opened
    Level-5 audition" correctly and was left alone.)
 3. The two lint-coverage corrections above.
@@ -4625,7 +4625,7 @@ test that would have turned the Linux job red.
   race. No mutex, no `callAsync`, no state-architecture change. Exposure is host-determined, which is
   what the deferral turns on.
 - **D-3 — release blocker, tracked only.** The Level-5 audition must be a human DAW session against
-  the FINAL shipping build. The 2026-08-15 audition covered v0.9.4 and is invalid: ADR-0031/0032
+  the FINAL shipping build. The 2026-08-15 audition covered 0.9.4 and is invalid: ADR-0031/0032
   changed the x86-64 machine code everywhere, and 0.9.6 changed audible behaviour in the defective
   windows.
 - **ER-STATE-04.5 — not reopened.** Refuted in round 3 (the `id`+`raw`-without-`value` shape does not
@@ -4646,7 +4646,7 @@ removed or renamed, and no well-formed file loads differently.
 
 ## Round 3 — 2026-09-01 — closing the residuals: measurement before remediation
 
-**Entry state:** rounds 1 and 2 CLOSED. Baseline `main @ e8f4422` → v0.9.6 on
+**Entry state:** rounds 1 and 2 CLOSED. Baseline `main @ e8f4422` → 0.9.6 on
 `claude/anamorph-ci-workflow-8iu7yk`; DSP **46 tests / 242 checks**, state **18 tests / 941
 checks**, `preflight.sh` exit 0, citation self-test green, realtime lint green, pinned clang-22
 gate reporting no new first-party warnings, GCC baseline unchanged. Three maintainer decisions
@@ -4778,7 +4778,7 @@ repeated its premise corrected.
 | CI gates | `-Wshadow-uncaptured-local` (Clang) / `-Wshadow` (GCC) from round 1's `adoptIfAnamorph` lambda shadowing `xml`; four `-Wfloat-equal` from bare `!=` on floats in Tests 43/44/46 | The gate output itself. Fixed at source, **no baseline widened**: the lambda parameter renamed, the comparisons moved to `juce::exactlyEqual` (JUCE's helper for deliberate exact comparison, already the idiom in `state_tests.cpp`). Re-verified with a pinned clang-22 rebuild (no NEW warnings, 17 accepted sites) and a GCC rebuild (1 shadow site in `PluginProcessor.cpp`, the pre-existing baselined one, down from 2) |
 | **ER-DSP-06** (new) | **Every activation ducked the audio to near-silence for ~35 ms**, and a restored session additionally opened at the wrong level for ~20 ms | Measured through the real wrapper, before and after. Before: min block RMS / settled = **0.0014** (fresh instance) and **0.0011** (restored), first block **2.4×** too loud. After: 0.982 / 0.983 / 1.000. State test 16 |
 | **ER-STATE-03** | **A `value="nan"` in a session or preset silenced the plug-in permanently**, and round-tripped through save | Measured: output peak **0.000000** over 8 blocks before the fix, 0.699720 after. State test 17, which also drives the preset path through a real poisoned file |
-| **ER-STATE-08** | **A v0.2 session restored into a reused instance kept the previous project's host-hidden Settings** — all six of them | State test 4's InternalState assertion was vacuous; made non-vacuous (Oversampling 4x, non-default UI Scale set first) it fails **twice** before the fix and passes after |
+| **ER-STATE-08** | **A 0.2 session restored into a reused instance kept the previous project's host-hidden Settings** — all six of them | State test 4's InternalState assertion was vacuous; made non-vacuous (Oversampling 4x, non-default UI Scale set first) it fails **twice** before the fix and passes after |
 | **ER-STATE-06** | **A preset entry with no saved value set that control to its range MINIMUM**, not its default — a silent mono collapse for Width | Measured through the real `loadFile` on a real file: width normalised **0.000** before, 0.500 (the default) after. State test 18 |
 | **ER-DSP-07** | **`reset()` never cleared `pendingForced`**, so a forced duck in flight at a host re-prepare latched it true — and the Level-Match consumer at the end of `process()` runs only `if (! pendingForced)` | Test 47 injects −6 dB after a re-prepare mid-forced-duck: **0.000 dB** adopted before the fix (silently dropped), −5.868 dB after |
 | ER-STATE-04, ER-GUI-02, ER-CI-02/03/04/05/06, ER-DOC-04 | Eight verified comment/diagnostic corrections | Each checked against the pinned JUCE or the actual workflow before editing; see below |
@@ -4907,11 +4907,11 @@ designs are a decision, so round 3 picks one.
 The sweep concentrated where round 1 and round 2 had both been editing (session/preset restore),
 on the principle that our own recent changes are the least-reviewed code in the tree.
 
-**ER-STATE-08 — CONFIRMED, FIXED.** A v0.2 bare-APVTS session restored into a **reused** instance
+**ER-STATE-08 — CONFIRMED, FIXED.** A 0.2 bare-APVTS session restored into a **reused** instance
 left all six host-hidden Settings (Oversampling, UI Scale, Scope Persistence, Show Meters,
 Tooltips, UI Animations) at the *previous project's* values. The `AnamorphRoot` branch of
 `setStateInformation` migrates them (`internal.migrateFromLegacyApvts`) for every pre-0.8.4
-session; the v0.2 branch one `else if` below never touched `internal` at all — and a v0.2 session
+session; the 0.2 branch one `else if` below never touched `internal` at all — and a 0.2 session
 is older still, so it is the same vintage the migration exists for. Fixed with the same call.
 Confirmed by measurement, not reading: State test 4's InternalState assertion was **vacuous** (it
 checked a value nobody had moved), so it was made non-vacuous first — Oversampling set to 4x and
@@ -5086,7 +5086,7 @@ tooling false-positive; it added 6 findings (1 medium).
 | ER-TST-02 | The twin-dump/ADR-0032-gate bit-identity claim is steady-state-scoped; blind axes (duck/adopt, crossfades, solo, xover glide, NaN-heal) named nowhere | Med | **DOCUMENTED**: TESTING.md §Gaps coverage-boundary entry + KI-026 scope qualifier. Matrix extension = round-2 candidate (not committed) |
 | ER-TST-04 | channelMode/swapLR/inputBalance/polarity + chorusRate/chorusDepth/dimMode: zero behavioural coverage anywhere (chorus family zero even at module level) | Med | **FIXED**: Test 46 — conditioning semantics pinned on the transparent chain (incl. exact polarity sign-flip) + discrimination checks (rate, depth, all six dimMode pairs) |
 | ER-CI-01 | `run-pluginval.ps1` retried genuine Win32-exception crashes 3× per pass — the masking removed from macOS 2026-08-18 survived on Windows; its null-exit justification was retired by the KI-007 WaitForExit fix | Med | **FIXED**: real abnormal exit fails immediately; retry only for `$null` (launch failure). TESTING.md §retry, RISK-004, and the sh-side comment re-synced |
-| ER-DOC-01 | v0.9.5 renumbering incomplete: 7 documents still named v0.9.4 as the release in preparation / first tag; HANDOVER asserted the Level-5 audition "against the build that ships" for a superseded build; stale open-KI enumeration | High | **FIXED** as part of the 0.9.6 bump: all forward-looking claims renumbered; precondition 7 restated **OPEN** (→ **D-3**); KI enumeration completed (KI-018–023, KI-026) |
+| ER-DOC-01 | 0.9.5 renumbering incomplete: 7 documents still named 0.9.4 as the release in preparation / first tag; HANDOVER asserted the Level-5 audition "against the build that ships" for a superseded build; stale open-KI enumeration | High | **FIXED** as part of the 0.9.6 bump: all forward-looking claims renumbered; precondition 7 restated **OPEN** (→ **D-3**); KI enumeration completed (KI-018–023, KI-026) |
 | ER-DOC-02 / ER-DEP-02 | `NOTICE` (shipped attribution asset) declared JUCE 9.0.0/f8f8864 while the product ships 9.0.1/e18f7f5 | Med | **FIXED** + `NOTICE` added to the DEPENDENCY_POLICY JUCE-bump re-verification checklist so the next bump cannot miss it |
 | ER-DOC-03 | CI_CD.md job inventory omitted `macos-crossslice` and the release-blocking `windows-avx2-ab`; "seven non-packaging jobs" stale (nine); REPOSITORY_MAP same | Med | **FIXED**: two table rows, count, release-blocking carve-out for `macos-crossslice`, REPOSITORY_MAP row |
 | ER-DEP-01 | `NOTICE` omitted the AudioUnitSDK Apache-2.0 attribution for the macOS AU while carrying SheenBidi's under the same licence | Med | **FIXED**: AudioUnitSDK section added (© 2000-2021 Apple Inc., from the pinned tree's LICENSE.txt); THIRD_PARTY_LICENSES mandatory-notices updated |
@@ -5131,7 +5131,7 @@ covers the real entry point.
 
 KI-001, KI-012/ADR-0015, RISK-002, the A7-9 platform terminal states, the H4 Class-B
 level-match trade, KI-016/023/026, KI-003/004/007 host-coverage gaps, RISK-004 (Linux),
-RISK-005, KI-015/RISK-006 licensing, pluginval unpinned (RH-F6), the v0.2 abSlot staleness
+RISK-005, KI-015/RISK-006 licensing, pluginval unpinned (RH-F6), the 0.2 abSlot staleness
 note (worklog §11), metadata-only AnamorphRoot adoption (deliberate, worklog §13), KI-009,
 KI-010 (typed+wheel halves), KI-013, KI-017–KI-022, macos-intel thin-build scope, Windows
 staging self-check scope, `gcc:16` floating major, Renovate rejection.
@@ -5155,8 +5155,8 @@ green after re-anchoring (see the round's commits).
 - **D-2 (RISK-007):** whether to add a narrow guard (mutex over the state-set members, or
   callAsync marshalling of the metadata tail) for off-main-thread state calls, or accept the
   AU exposure as documented. Also gated. Round 2 can run the TSan harness first (recommended).
-- **D-3 (Level-5 audition):** **[CLOSED 2026-09-01 — PERFORMED BY THE MAINTAINER, PASSED; see round 6.]** As recorded at the time: precondition 7 is open for v0.9.6 — the 2026-08-15 audition
-  covered v0.9.4; since then every x86-64 binary's machine code changed (ADR-0031/0032) and
+- **D-3 (Level-5 audition):** **[CLOSED 2026-09-01 — PERFORMED BY THE MAINTAINER, PASSED; see round 6.]** As recorded at the time: precondition 7 is open for 0.9.6 — the 2026-08-15 audition
+  covered 0.9.4; since then every x86-64 binary's machine code changed (ADR-0031/0032) and
   0.9.6 changed engine behaviour in the defective windows (prepare-settle, oversized blocks).
   Needs a human DAW session; cannot be automated (TESTING_POLICY Level 5).
 - **D-4 (version):** 0.9.6 bump + renumbering executed per the repo's established pattern —

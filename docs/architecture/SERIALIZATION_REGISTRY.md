@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:2921-2924 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:2921-2924 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (0.2 bare APVTS);
 src/InternalState.h:198-433.
 
 ## `AnamorphRoot` properties
@@ -47,7 +47,7 @@ reaches it is a truncated, hand-edited or forward-version blob. Source:
 src/PluginProcessor.cpp:2778-2889; State test 27.
 
 **A chunk of neither recognised shape is not a restore at all.** `setStateInformation` handles two
-root shapes — `AnamorphRoot` and the bare v0.2 APVTS tree. Anything else (a foreign or
+root shapes — `AnamorphRoot` and the bare 0.2 APVTS tree. Anything else (a foreign or
 forward-version root) matches neither, so no parameter, Settings value or A/B slot is touched, and
 the function **returns before the adoption block**: preset name, identity, checkmark and dirty
 baseline all stay exactly as they were. That is the same answer the guard at the top already gives a
@@ -242,7 +242,7 @@ and a host restores into ONE live instance repeatedly, so skipping an absent fie
 "leave it alone" — it means "keep the PREVIOUS project's value", which is not a state the incoming
 session ever described, and which the next save then writes out as if it were. Measured before the
 loop wrote unconditionally (`--partial-settings-probe`): a modern session omitting a single Setting
-inherited the previous project's value in **6 cases out of 6**, while the pre-0.8.4/v0.2 path —
+inherited the previous project's value in **6 cases out of 6**, while the pre-0.8.4/0.2 path —
 `migrateFromLegacyApvts`, which has always written all six — inherited in **0**. A session that
 carries the field is unaffected. State test 29 pins all four cases (omitted, explicitly present,
 legacy, malformed). Source: src/InternalState.h:194-248.
@@ -351,7 +351,7 @@ just restored — sound and metadata from one project.
 whole** (2026-09-01, ER-STATE-12). `readSlot`'s rule above could only reach blobs that HAVE an `AB`
 node, since it is called from inside that node's branch. Two restore paths carry no A/B data —
 an `AnamorphRoot` with no `AB` child (every field in the table above is "Required: No", so the node
-itself is optional) and a **v0.2** bare-APVTS session, which predates the feature — and both left
+itself is optional) and a **0.2** bare-APVTS session, which predates the feature — and both left
 `abSlot[]` and `active` holding the PREVIOUS restore's values on a reused instance, so the next A/B
 switch recalled the previous project's sound underneath the restored one. The restore's decode
 (`decodeRestore`, since D-2; `abResetToDefaults()` before it) now yields the documented defaults
@@ -359,7 +359,7 @@ switch recalled the previous project's sound underneath the restored one. The re
 `adoptRestoreTail` assigns the slot set as a whole, and the existing `abEnsureInit()` re-seeds from
 the state that was just restored. A blob that DOES carry an `AB` node is unaffected: its slots restore as before.
 Source: src/PluginProcessor.cpp:3041-3065 (the `AB`-absent branch of `decodeRestore`), :1388-1410 (the
-v0.2 branch) and :1063-1108 (`adoptRestoreTail`, which assigns the slot set and resets the
+0.2 branch) and :1063-1108 (`adoptRestoreTail`, which assigns the slot set and resets the
 Level-Match memory); State test 26.
 
 **The per-slot Level-Match gain is part of the slot, and resets with it** (2026-09-02,
@@ -421,9 +421,9 @@ the per-slot identity is written at :831 / :835 and read at :918.
 
 | Format | Detection | Handling |
 |---|---|---|
-| v0.2 bare APVTS tree | `xml->hasTagName(apvtsStateType)` | repair on a private copy → `apvts.replaceState` → `reassertParameters` (`applySoundTree`) |
+| 0.2 bare APVTS tree | `xml->hasTagName(apvtsStateType)` | repair on a private copy → `apvts.replaceState` → `reassertParameters` (`applySoundTree`) |
 
-Source: src/PluginProcessor.cpp:3067-3090.
+Source: src/PluginProcessor.cpp:3067-3089 (`decodeRestore`'s bare-APVTS branch).
 
 ## The HOST-STATE parser boundary (0.9.9, ADR-0056)
 

@@ -11,7 +11,7 @@ and only three are met:
 |---|---|
 | 1 — an ADR records the decision | ✅ this document |
 | 2 — migration plan, or the identity carve-out | ✅ carve-out 2a/2b/2c (below) |
-| 3 — the **Release Compatibility Checklist** passes | ❌ **OPEN** — never completed for this release (`HANDOVER.md`, Release Status). It is a **release-time** gate, not a merge-time one, so it does not block landing this change; it does block cutting `v0.9.1`. |
+| 3 — the **Release Compatibility Checklist** passes | ❌ **OPEN** — never completed for this release (`HANDOVER.md`, Release Status). It is a **release-time** gate, not a merge-time one, so it does not block landing this change; it does block cutting `0.9.1`. |
 | 4 — Architecture Review Gate cleared | ✅ 2026-07-30 |
 
 Condition 3 is deliberately left open rather than waved through: this ADR states below that it
@@ -63,7 +63,7 @@ serialization, which is untouched).
 - **B. Change to a company-spelling code now, before the first tag.** Chosen. Breaks the identity
   of builds already given to testers; costs one documented, recoverable disruption at the cheapest
   moment it will ever be available.
-- **C. Change it at v1.0.** Same breakage, strictly later, against a larger installed base, and
+- **C. Change it at 1.0.** Same breakage, strictly later, against a larger installed base, and
   after the point where `COMPATIBILITY_POLICY` treats the identity as settled. Strictly worse
   than B.
 - **Which code:** `RTec` (chosen), `RolT`, `Roll`, `RlyT` were considered. All satisfy the AU
@@ -74,7 +74,7 @@ serialization, which is untouched).
 
 ## Decision
 
-`PLUGIN_MANUFACTURER_CODE` becomes **`RTec`** in v0.9.1, and is the vendor code for **every**
+`PLUGIN_MANUFACTURER_CODE` becomes **`RTec`** in 0.9.1, and is the vendor code for **every**
 RollyTech plug-in from now on. Anabasis adopts the same value at its P1 skeleton, before it has
 ever built, so it never carries an identity it has to change.
 

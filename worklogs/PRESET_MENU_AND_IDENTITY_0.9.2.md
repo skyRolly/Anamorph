@@ -1,4 +1,4 @@
-# Preset drop-down lifetime/crash + factory-preset identity, and the macOS key-repeat investigation (v0.9.2)
+# Preset drop-down lifetime/crash + factory-preset identity, and the macOS key-repeat investigation (0.9.2)
 
 > Five maintainer-reported items. Four produced code; one produced a root-cause and a Known Issue
 > instead, because the mechanism turned out to sit below the plug-in. This worklog keeps the
@@ -440,8 +440,8 @@ renders a bare ` *`.
 The reviewer flagged it as a *possible* UX consequence and asked whether it was intended. It is not,
 and the repository already answers the question. `adoptRestoredState` ends with
 `sigAtLoad = soundSig(); // restored state counts as the clean baseline`, `SERIALIZATION_REGISTRY.md`
-records that as the root `presetBaseline` default-if-absent, and state test 4 pins it for a v0.2
-session (`restored v0.2 state adopts a clean baseline`). A pre-0.6.4 A/B slot is the *same situation*
+records that as the root `presetBaseline` default-if-absent, and state test 4 pins it for a 0.2
+session (`restored 0.2 state adopts a clean baseline`). A pre-0.6.4 A/B slot is the *same situation*
 — restored parameters with no recorded baseline — so it should get the same answer. Two answers to
 one question was the defect.
 
@@ -506,7 +506,7 @@ old code left holding the previous tree for the same reason.
 review named and leaves the rule stated field by field, which is what produced the defect. Resetting
 first states the invariant once and survives the next field being added.
 
-**Not extended to a missing `AB` child.** When the whole `AB` node is absent (a v0.2 session, or a
+**Not extended to a missing `AB` child.** When the whole `AB` node is absent (a 0.2 session, or a
 stripped modern blob) `readSlot` is never called and `abSlot[]` — and `abActive` — persist from the
 previous restore. That is the *consistently stale* shape, pre-existing since 0.6.4, and outside the
 finding. Recorded here so it is a known gap rather than an oversight.
@@ -573,7 +573,7 @@ present vs absent — each: load a named factory preset (project A), build proje
 with the identity stripped so the name fallback is what resolves the tick, then restore into the
 **same live instance** and assert both the name and that the tick did not stay on project A's row.
 All **eight** assertions fail with the fix reverted (`got "Gentle Width"` in every case). No existing
-assertion changed: state test 4's `preset name falls back to Default` still passes, because a v0.2
+assertion changed: state test 4's `preset name falls back to Default` still passes, because a 0.2
 blob has no `presetName` property at all — which is exactly the absent/empty distinction the fix
 introduces. Suite: 866 → **878 checks**, 0 failures; `AnamorphTests` 140, unchanged.
 
@@ -606,7 +606,7 @@ meaning and no ADR decision moved.
 ## 13. Eighth review round — an unrecognised chunk is not a restore, and A/B slot symmetry
 
 **`setStateInformation` had a third case nobody was maintaining.** It handles two root shapes,
-`AnamorphRoot` and the bare v0.2 APVTS tree. A chunk matching neither — a foreign or forward-version
+`AnamorphRoot` and the bare 0.2 APVTS tree. A chunk matching neither — a foreign or forward-version
 root, which state test 7 has exercised since 0.8.13 — fell straight through to the adoption block:
 
 ```
@@ -712,7 +712,7 @@ changed, for four reasons that need to survive the next reviewer:
 4. **No shipped version can write one.** `getStateInformation` always appends
    `copyStateWithRawValues()`, so this is hand-edited/corrupt territory — state test 7's remit.
 
-The same probe re-raised the v0.2 branch leaving `abSlot[]` and `abActive` from the previous restore.
+The same probe re-raised the 0.2 branch leaving `abSlot[]` and `abActive` from the previous restore.
 That is the *consistently stale* gap already recorded at the end of §11: pre-existing since 0.6.4,
 both halves of each slot from the same (old) project, and outside this round.
 

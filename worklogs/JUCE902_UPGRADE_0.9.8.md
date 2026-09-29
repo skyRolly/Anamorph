@@ -1,4 +1,4 @@
-# JUCE 9.0.1 → 9.0.2 upgrade — measurement record (v0.9.8)
+# JUCE 9.0.1 → 9.0.2 upgrade — measurement record (0.9.8)
 
 Companion evidence for **ADR-0054**. Everything below is a measurement taken on this tree, with the
 command that produced it. Where a question was answered "no exposure", the search that answered it is

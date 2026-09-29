@@ -284,7 +284,7 @@ loop directly, which is the axis Test 39 cannot see.
 
 Callgrind Ir/block, startup-subtracted, scenario `working` (density 0.5):
 
-| configuration | v0.9.5 | A7-2B | delta |
+| configuration | 0.9.5 | A7-2B | delta |
 |---|---:|---:|---:|
 | 48 kHz / 32 | 65,141.4 | 57,161.8 | **−12.2 %** |
 | 48 kHz / 128 | 220,223.6 | 212,995.2 | −3.3 % |
@@ -478,7 +478,7 @@ The A7-9 gates themselves are untouched, which is the decision this does not pre
 | item | status |
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **blocked, unchanged.** This container is a masked-CPU shared machine; §9 re-demonstrates why. RISK-002 open, rows unpopulated. |
-| **A7-1** — Velvet history slide | DONE (v0.9.5), and **superseded by A7-2B**. |
+| **A7-1** — Velvet history slide | DONE (0.9.5), and **superseded by A7-2B**. |
 | **A7-2T** — path-equivalence oracle (Test 40) | DONE (PR #129). Spent as designed: A7-2B landed against it. |
 | **A7-2 / A7-2B** — residual per-block term | **DONE this round.** Class A on both instruments; −12.2 % at 48 kHz/32, −37.2 % at 192 kHz/32; rate dependence removed; one +1.0 % corner recorded. |
 | **A7-5E** — cross-slice experiment | **CONFIRMED BY EXECUTION** (§5): the committed harness, cross-built and run on both architectures, differs in **32/32** scenarios. Two mechanisms — contraction (flag-removable) and oversampling coefficients from libm (not). The macOS CI diff remains worth running as platform-exact confirmation, no longer as the deciding experiment. |

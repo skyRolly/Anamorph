@@ -8,8 +8,8 @@ The C++ standard is part of the build contract: `DEPENDENCY_POLICY.md` lists it 
 dependency table alongside JUCE and pluginval, and `ARCHITECTURE_REVIEW_GATE.md` classifies a
 CMake/build-configuration change as a gated **Build System change**. The project has compiled at
 `CMAKE_CXX_STANDARD 17` since its first commit; ADR-0012, ADR-0022 and ADR-0026 each recorded a
-JUCE bump while explicitly leaving the C++17 contract untouched. The commissioned v0.9.4
-follow-up task is the controlled migration to **C++23**, applied to the finished v0.9.4 tree
+JUCE bump while explicitly leaving the C++17 contract untouched. The commissioned 0.9.4
+follow-up task is the controlled migration to **C++23**, applied to the finished 0.9.4 tree
 **without advancing the version number**.
 
 ## Problem
@@ -72,7 +72,7 @@ substantial compatibility or long-term maintenance problems that cannot reasonab
   sets identical**. That 27/29 spans **both** self-test targets' compile-command sets (the 8
   shared DSP sources compile once per target); ADR-0026's 18/19 is the `AnamorphStateTests` set
   alone, which still measures 18/19 at C++23 — different scope, not drift
-  (`worklogs/CXX23_MIGRATION_v0.9.4.md` §4.4) (the pre-existing `-Wsign-conversion`/`-Wshadow`/`-Wswitch-enum`/
+  (`worklogs/CXX23_MIGRATION_0.9.4.md` §4.4) (the pre-existing `-Wsign-conversion`/`-Wshadow`/`-Wswitch-enum`/
   `-Wfloat-equal`/`-Wmisleading-indentation`/`-Woverloaded-virtual` baseline).
 - **pluginval strictness 10**: deterministic ×3 and `--randomise` ×3, green locally on the C++23
   build and on all three blocking CI platform gates.
@@ -116,7 +116,7 @@ Evidence:
   (`-std:c++latest`, MSVC ≥ 19.29.30129); Microsoft `/std` reference for the
   `/std:c++latest` and `/std:c++23preview` stability statements. JUCE's `cxx_std_17`
   INTERFACE minimum: `extras/Build/CMake/JUCEModuleSupport.cmake:340,595`.
-- Build/test/twin-dump/warning evidence [Verified]: `worklogs/CXX23_MIGRATION_v0.9.4.md`
+- Build/test/twin-dump/warning evidence [Verified]: `worklogs/CXX23_MIGRATION_0.9.4.md`
   §§2-4 (the macOS failure and its fix, 32/32 identical hashes + latencies, 140 + 894 checks,
   29/29 identical warning instances, pluginval both modes ×3).
 - Policy basis: `ARCHITECTURE_REVIEW_GATE.md` (Build System change), `DEPENDENCY_POLICY.md`

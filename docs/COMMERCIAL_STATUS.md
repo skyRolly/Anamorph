@@ -10,8 +10,8 @@ restating them; where this file and the record it cites disagree, the cited reco
 Last reviewed: **2026-07-26**. One change of substance since: on 2026-09-27 decision 6 (§4) was narrowed to
 the trademark status of the product and company names, when the fourth widening algorithm was renamed
 **Dimensional**. The release then in preparation was
-v0.9.0; none of v0.9.0 through v0.9.5 was tagged, and the release in preparation is now
-**v0.9.7** (the ADR-0034 latency change on top of the 0.9.6 engineering-review fixes). Nothing in this document — the product model, the
+0.9.0; no release has been tagged since (the repository has no release tag), and the release in preparation is now
+**0.9.9** (`CMakeLists.txt:14`; `CHANGELOG.md` `[0.9.9]`, dated 2026-09-29). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
 
@@ -29,7 +29,7 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**v0.9.8**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**0.9.9**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
@@ -114,21 +114,32 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — **one item, as of 2026-09-03: the Level-5 audition, reopened for v0.9.7.**
+**Engineering / process** — **empty as of 2026-09-28 for 0.9.9.** The owner completed the Level-5 audition
+and attested checklist items 5 and 7, so `RELEASE_POLICY.md` preconditions 1–7 are recorded as met (`docs/HANDOVER.md`
+Release Status). The first tag is decided: **0.9.9**, written bare (ADR-0058, ADR-0059).
+
+**Scope of §4 against the tag.** `RELEASE_POLICY.md` preconditions 1–7 do not include §4, and a tag push only drafts
+a GitHub Release, so §4 is not a code, CI or tag blocker. Items 1–4 block **commercial** distribution and sale.
+Publishing the draft makes the binaries publicly downloadable; whether that distribution itself needs item 1 or 2
+settled first is the owner's legal/commercial decision, and this repository does not answer it (`KI-015`). No item
+here is declared cleared.
+
+The rest of this paragraph is the record as of 2026-09-03, when the one item was **the Level-5 audition, reopened
+for 0.9.7.**
 `RELEASE_POLICY.md` precondition 2, the
 compatibility gate, is satisfied: `RELEASE_COMPATIBILITY_CHECKLIST.md` stands at **eight of eight boxes** —
 six with measured evidence (that file's §Completion record and §Evidence name what was run for each; box 6,
-latency reporting, was **re-run for v0.9.7** because ADR-0034 changed the reported value), and
+latency reporting, was **re-run for 0.9.7** because ADR-0034 changed the reported value), and
 **Host matrix** and **Automation playback** on the **maintainer's attestation** of 2026-09-01, recorded the way
 precondition 7 was: verdict, date and performer, with the hosts, operating systems, plug-in formats and
 automation lanes exercised marked NOT RECORDED because they were not supplied. The **Level-5 manual audition
-is OPEN for v0.9.7**: the 2026-08-15 audition covered the
-then-shipping v0.9.4 / JUCE 9.0.1 build and did not carry over (the machine code changed on every
+is OPEN for 0.9.7**: the 2026-08-15 audition covered the
+then-shipping 0.9.4 / JUCE 9.0.1 build and did not carry over (the machine code changed on every
 x86-64 platform under ADR-0031/0032, and the engine gained the 0.9.6 fixes — ER-DOC-01), so it was
-re-run, and **the maintainer performed it against the final v0.9.6 build and it PASSED** (recorded
+re-run, and **the maintainer performed it against the final 0.9.6 build and it PASSED** (recorded
 2026-09-01; `docs/procedures/LEVEL5_AUDITION.md` §Recorded auditions, where the fields the report
 did not supply are marked NOT RECORDED rather than inferred) — and **that verdict likewise does not carry
-to v0.9.7**, which changes what the plug-in reports to the host and changes one audible behaviour beyond
+to 0.9.7**, which changes what the plug-in reports to the host and changes one audible behaviour beyond
 latency (a forced swap crossing the Drive engagement threshold with oversampling selected now dry-fills
 instead of dipping to silence). So the tag is blocked by two things, not one: KI-015 (§4), an owner/legal
 action, and this audition. Every ADR remains `Accepted`. Signing and notarization

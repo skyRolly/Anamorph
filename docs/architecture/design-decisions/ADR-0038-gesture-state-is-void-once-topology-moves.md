@@ -25,7 +25,7 @@ meaning what they meant at any instant.
 Three rounds of review fixed three consequences one consumer at a time: `projectFromOrig` reading
 past its copied prefix, `dragOrigX` seeded only for the splits in use, and `mouseUp` forwarding a
 stale handle into `removeBand`. Review then found two more, and the audit
-(`worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md`) found two beyond those.
+(`worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md`) found two beyond those.
 
 ## Problem
 
@@ -124,4 +124,4 @@ guard fails 3 checks across State tests 66 and 68, printing `the restored split 
 overwritten with 200.0 Hz`. Inverted mutation: deleting the call-site guard while keeping the refusal
 leaves everything green. Full state suite 2 544 / 0; DSP 396 / 0; valgrind memcheck 0 errors;
 ThreadSanitizer clean; `check-realtime` 0 violations. Investigation record:
-`worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md`.
+`worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md`.

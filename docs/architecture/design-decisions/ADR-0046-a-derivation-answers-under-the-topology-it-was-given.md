@@ -153,7 +153,7 @@ they were.** Measured separately:
 The extent is what produces this signature. The pins are threaded anyway — one reading for the
 derivation and the proof is this ADR's rule, it removes a read rather than adding one, and a wrong T
 range is a wrong *clamp* that `projectFromOrig`'s safety pass re-clamps — but that half is
-**unmeasured by this instrument and is not claimed as measured**. `worklogs/…_v0.9.8.md` §44 item C
+**unmeasured by this instrument and is not claimed as measured**. `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §44 item C
 is corrected accordingly.
 
 **Not a new gate item.** This changes no accepted decision: it applies this ADR's own rule to the one

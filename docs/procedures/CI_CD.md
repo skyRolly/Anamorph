@@ -56,8 +56,14 @@ the strictness a past bump was actually verified at — a fact about a run, not 
 correct to leave frozen.
 Evidence [Verified]: `.github/workflows/build.yml` (`env:` block).
 
-`release.yml`: `push` of an annotated `v[0-9]+.[0-9]+.[0-9]+` tag, plus `workflow_dispatch`
-as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
+`release.yml`: `push` of an annotated bare-version `[0-9]+.[0-9]+.[0-9]+` tag (e.g. `0.9.9`, no prefix —
+  ADR-0059; a prefixed tag matches no trigger and starts no release; the glob cannot refuse a leading zero,
+  so `validate` is the authority: it asserts `check-docs.py`'s `RELEASE_TAG` grammar — no leading zero,
+  which `check-docs.py --self-test` proves by running the step — and tag == CMake `project VERSION`), plus `workflow_dispatch`
+as a no-release **rehearsal** (validate + full build only) from any ref, a tag included: `validate` takes the
+release path only when `GITHUB_EVENT_NAME` is `push` *and* `GITHUB_REF` is a tag ref, so a rehearsal started
+from a tag writes `is-release=false` and `draft-release` does not run (ADR-0059; the self-test runs the step with
+each trigger's event and ref and evaluates `draft-release`'s `if:` on its outputs). Jobs: fail-closed metadata
 validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check, and —
 since the section is published verbatim as the release **notes body**, heading included — a check
 that the heading carries an ISO release date, which rejects a bare undated heading as well as
@@ -99,7 +105,7 @@ jobs that guard classes the build matrix cannot see:
 | Job | Runner | Builds | pluginval |
 |---|---|---|---|
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
-| **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
+| **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint; the checkout fetches the full history, every branch and every tag, `fetch-depth: 0` and `fetch-tags: true`, because the `CHANGELOG.md` link check reads which versions were released from the git tags on the release line — the tags `origin/main` holds but those cut after `HEAD`, since a same-repo PR is checked at its tip — and requires an entry for each — `CHANGELOG_POLICY.md` rule 8) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, `check-realtime.py`, `check-dispatch.py`, `check-state-coverage.py`, then `check-citations.py --check`; plus the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
 | **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below), the six blocking race probes, and the **XML boundary differential** (`tests/xml_boundary_differential.cpp`, ADR-0056 — compiled here like the two realtime canaries, Linux-only because it contains its parses in forked children on 1 MB `pthread` stacks) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
@@ -810,7 +816,7 @@ at 60 minutes, and nothing in the lane was weakened or skipped to fit it.
    not skipped": both create their debug directory at the top of the step, so an abort part-way
    through would otherwise fire the upload against a directory that exists and may be empty, failing
    a *second* time on `if-no-files-found` and burying the real error under a cascade.
-8. **Installers (v0.9.0)** — the Linux zip itself carries `install.sh`/`uninstall.sh`
+8. **Installers (0.9.0)** — the Linux zip itself carries `install.sh`/`uninstall.sh`
    (per-user install by default, system-wide on request, since 0.9.3; `release.yml`
    restores and then fail-closed-verifies their executable bits when it archives the
    release zip). After the Windows/macOS staging steps, a separate packaging step builds the
@@ -1215,7 +1221,7 @@ file -- go through one shared `anchor_still_right()`, because when they each car
 only one of them had the substitution, and a version bump landing beside an added citation was
 reported as drift. Added for the
 0.9.5 release, which was the first version bump after `CMakeLists.txt` came under the gate
-and which the gate blocked; `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §4a.
+and which the gate blocked; `worklogs/performance/PERF_AUDIT_0.9.5_IMPLEMENTATION.md` §4a.
 
 Declare the pair in `DELIBERATE_REAIMS` in the **same change set** as the re-anchor, never in a
 follow-up. The list is expected to return to empty: an entry stops matching once the
@@ -1231,7 +1237,7 @@ every one of those anchors is `UNMAPPABLE` against the merge base — the text t
 no line number satisfies the same-text test and `--fix` cannot repair it. Against the branch's
 previous push the same anchors look clean, because that base already carries the rewrite, so the
 gate is green on the branch and red on the first default-branch build after the merge. Declare them
-in the same change set. The v0.9.4 round's six entries are that case, and the block in
+in the same change set. The 0.9.4 round's six entries are that case, and the block in
 `scripts/check-citations.py` records which region each one names.
 
 ## Artifacts
@@ -1430,7 +1436,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1442,7 +1448,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15552` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15554` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when
@@ -1661,6 +1667,25 @@ python3 scripts/check-clang-warnings.py --self-test              # gate needs a 
 python3 scripts/check-gcc-warnings.py --self-test                # gate needs a gcc build log
 python3 scripts/check-linux-abi.py --self-test                   # gate needs linked artifacts
 ```
+
+`check-docs.py` reads the release tags from the checkout's own tag refs, with no network, and counts
+only those this repository's `main` holds (but those cut after `HEAD`; a branch's own tag and a fork's
+are no releases), so run it
+from the root of a full clone that has them and `main` (the fetch the checker names, `git fetch --tags
+--refmap= <remote> +refs/heads/main:refs/remotes/<remote>/main` from the remote that is this repository
+-- a fork clone's `upstream`, not its `origin`; in a shallow clone, `git fetch --unshallow --tags`;
+without `main`, the same fetch without `--tags`, as the checker prints it); a
+copy that is not a git checkout, a shallow clone, or one without `main` cannot say which versions were
+released, and the `CHANGELOG.md` links that depend on it are refused with that reason. `main` is read
+from every remote whose URL is this repository (`origin` in CI, a fork clone's `upstream`) and then not
+also from a fork's `origin`; failing any such remote, from `origin/main` when `origin` is the only remote;
+and from the local branch only in a checkout with no remote at all. Any other checkout is unknown, with a
+remedy that adds the repository as a remote (`git remote add upstream https://github.com/skyRolly/Anamorph`,
+under a name neither a remote nor a removed one's leftover refs hold, at a URL form no `insteadOf` rule
+rewrites away, or else saying to lift the rule). A remote under another URL -- a fork, another repository, or a
+local mirror or proxy whose path ends in this one -- is not this repository, so in a fork clone add and
+fetch the repository as a remote; a remote that is this repository but whose `main` was never fetched
+leaves the line unknown, with the remedy.
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
 so a local run against `origin/main` can reach a different verdict — and on a branch with more than

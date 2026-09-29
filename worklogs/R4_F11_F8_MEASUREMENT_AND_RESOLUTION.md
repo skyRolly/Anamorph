@@ -4,7 +4,7 @@
 `claude/anamorph-comprehensive-review-90tpty`. **Date:** 2026-09-21.
 
 Both findings entered this round *implementation-Verified, impact-Unverified*
-(`GLOBAL_REVIEW_v0.9.9_INVESTIGATION.md` §7). The round therefore began with measurement, and the
+(`GLOBAL_REVIEW_0.9.9_INVESTIGATION.md` §7). The round therefore began with measurement, and the
 measurement changed both findings — one in its detail, the other in its verdict, twice.
 
 ---

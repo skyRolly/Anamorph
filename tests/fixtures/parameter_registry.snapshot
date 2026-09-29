@@ -1,6 +1,6 @@
 # Anamorph parameter registry snapshot -- compatibility fixture.
-# Regenerate ONLY for an intentional parameter change (ADR + PARAMETER_REGISTRY.md
-# update required):  AnamorphStateTests --write-snapshot
+# Regenerate ONLY for an intentional parameter change: update PARAMETER_REGISTRY.md (and add
+# an ADR where PARAMETER_COMPATIBILITY_POLICY.md requires one), then:  AnamorphStateTests --write-snapshot
 paramCount=36
 bypassParamId=bypass
 param=channelMode

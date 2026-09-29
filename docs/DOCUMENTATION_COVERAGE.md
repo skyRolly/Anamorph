@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **only a tag push drafts a release, and a corrupted capture fails at its hash alone** (2026-09-29; two review findings: a `workflow_dispatch` rehearsal started from a tag took `release.yml`'s release path and drafted a release, and State test 25 ran its restore checks on a capture whose hash had already failed), whose entry is the **101st pass**; before it **the release line is this repository's `main` alone, and one release-tag grammar** (2026-09-29; three review findings: a fork's `origin/main` was united with the repository's `main`, a branch's own tag counted as a release, and `release.yml` accepted a leading-zero tag the checker refuses), whose entry is the **100th pass**; before it **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -21,7 +21,7 @@ the maintainer-instructed latency change. Before it, for the
 **0.9.6 change set** — the
 **engineering-review programme, rounds 1 through 27**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
-the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
+the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the 0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
 `worklogs/engineering-review/` programme worklog + live HTML dashboard); round 2 (CI recovery and
 two restore defects, whose section also carries the **rounds 3 and 4** bullets); **rounds 5 and 6**
@@ -211,14 +211,14 @@ function. That structural case was **proven live** by re-inlining the old compar
 source check counts itself and passes regardless of the code.
 
 **Check counts reconciled from the binaries.** The coverage entry below said "174 checks (Test 39
-adds 12)" while `HANDOVER.md` and the v0.9.5 worklog said 178 and 16; the worklog separately gave
+adds 12)" while `HANDOVER.md` and the 0.9.5 worklog said 178 and 16; the worklog separately gave
 178 plain against 172 ASan and called that "two fewer". Both were stale rather than wrong-in-kind:
 Test 39 gained a fourth check per rate on review (the mixed-block-size run), and the ASan figure had
 not been re-measured since. Re-run, not re-derived: **plain 178 / ASan 176** for `AnamorphTests`,
 **920 / 920** for `AnamorphStateTests`, 0 failures and **0 sanitizer diagnostics** in every case. The
 delta is 2 and always was — Test 38's malloc half compiling out under ASan and saying so. The same
 pass corrected `RELEASE_HARDENING_PLAN.md` ("37 DSP self-tests … 162 checks") and
-`TESTING_POLICY.md` ("the 37 DSP self-tests"), both left behind when v0.9.5 added Test 39. Historical
+`TESTING_POLICY.md` ("the 37 DSP self-tests"), both left behind when 0.9.5 added Test 39. Historical
 round entries in this file keep their own figures: they record what was true when they were written.
 
 **Test 39 now varies the block size**, which review identified as the case it was missing:
@@ -258,7 +258,7 @@ prototype over 4,000 gather blocks: one compaction in **81.6** blocks at 48 kHz/
 average one — so this trades a uniform per-block cost for a periodic full-size spike, which is the
 wrong shape for an audio thread even though the mean falls. It also roughly **doubles** the history
 buffer (+8.6 KB at 48 kHz, +34.5 KB at 192 kHz per instance) and adds a **second** cross-block
-invariant to a module that gained its first in v0.9.5. The ring gather compacts **zero** times at
+invariant to a module that gained its first in 0.9.5. The ring gather compacts **zero** times at
 every setting, **frees** the buffer instead of growing it, and **deletes** both cross-block flags
 rather than extending them. Both remove the sample-rate dependence of the fixed term entirely: at
 32-sample blocks, 48 kHz and 192 kHz land on the same figure where the shipped engine differs by
@@ -270,12 +270,12 @@ there is still no wall-clock datum from a named machine and RISK-002 is still op
 counts are the right unit for comparing two implementations and the wrong one for deciding whether a
 user is dropping buffers. And the recommended change is **not the change that was scoped**: swapping
 a rewrite of the Wave-2 H5 gather kernel in for the proposed double-buffer, unprompted, in the same
-function v0.9.5 changed hours ago and before that release has had its audition, is what the
+function 0.9.5 changed hours ago and before that release has had its audition, is what the
 architecture review gate exists to catch. `PERF_AUDIT_A7-2_INVESTIGATION.md` carries the evidence and
 a ready-to-execute plan; the A7 audit worklog and its HTML report are updated in place so the roadmap
 row reads "proposal rejected" rather than "consider later". [Verified]
 
-**A7-1 implementation, v0.9.5 (2026-08-22): the optimization the audit below sized now shipped, its
+**A7-1 implementation, 0.9.5 (2026-08-22): the optimization the audit below sized now shipped, its
 evidence re-derived on the product tree, a permanent guard added for the cross-block state it
 introduces — and the release blocked by this repository's own citation gate, for a reason no release
 had met before.**
@@ -372,7 +372,7 @@ with the `sanitizers` job's own flag set: **176** and 920 checks, **0 sanitizer 
 range with a tool rather than only with the argument in the source. `check-realtime` 44 files /
 0 violations, `check-portability` 52 / 0, `check-docs` 104 clean, `check-citations --self-test`
 130 cases and `--check --base origin/main` green, full `scripts/preflight.sh` green.
-`worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` is the round's record; the A7 audit below
+`worklogs/performance/PERF_AUDIT_0.9.5_IMPLEMENTATION.md` is the round's record; the A7 audit below
 and its HTML report are updated in place to say A7-1 shipped rather than describing it as proposed.
 [Verified]
 
@@ -380,8 +380,8 @@ and its HTML report are updated in place to say A7-1 shipped rather than describ
 dominant cost found that the previous rounds recorded as absent — because they measured it in the one
 configuration where it is switched off. Investigation only; no product code changed.**
 
-**What the round produced.** `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` (the evidence
-trail and the roadmap) and `worklogs/performance/PERF_AUDIT_v0.9.4_REPORT.html` (a self-contained
+**What the round produced.** `worklogs/performance/PERF_AUDIT_0.9.4_INVESTIGATION.md` (the evidence
+trail and the roadmap) and `worklogs/performance/PERF_AUDIT_0.9.4_REPORT.html` (a self-contained
 rendered companion for reading and assigning from). The HTML is a VIEW of the worklog, stated as such
 in both files and in `REPOSITORY_MAP.md`, because a second copy of a decision is a second thing to
 keep true.
@@ -430,7 +430,7 @@ number, and the roadmap already names the queue position (*"one consolidated Rev
 matters commercially"*).
 
 **Eight candidates, one recommended.** Four were already disposed of in
-`worklogs/POST_v0.8.12_AUDIT_AND_ROADMAP.md` §4 and are re-confirmed rather than re-litigated —
+`worklogs/POST_0.8.12_AUDIT_AND_ROADMAP.md` §4 and are re-confirmed rather than re-litigated —
 including the largest single consumer, the multiband LR4 bank at 41.7 % of the working reference,
 which stays blocked behind the same AVX2 ADR as W5-D. The GUI was measured too (one full editor
 repaint = 28.6M Ir, of which `Vectorscope::paint` itself is 2.9 % — the rest is JUCE's software
@@ -1345,7 +1345,7 @@ first user-visible change the version has taken since it was written. No ADR: no
 reopened — the geometric hover design stays exactly as it is and gains the one term it was missing.**
 
 **The root cause is that geometry cannot express occlusion, and this editor's hover is geometry on
-purpose.** Since v0.6.1 hover has been derived from the pointer's position rather than from
+purpose.** Since 0.6.1 hover has been derived from the pointer's position rather than from
 mouseEnter/mouseExit, because those events fired unreliably and left highlights stuck on. That is
 still the right design and is untouched. But `Component::getMouseXYRelative()` is
 `getLocalPoint (nullptr, Desktop::getMousePositionFloat())` (`juce_Component.cpp:3233-3236`) — a pure
@@ -1353,7 +1353,7 @@ coordinate transform with no hit test in it — so a control covered by a drop-d
 the pointer exactly as before and lights while the pointer is provably on the menu.
 `cursorIsOverOpenPopup()` supplies the missing term, and it is geometry too: the pointer measured
 against the pop-up instead of against the control. Three mechanisms were considered and rejected with
-reasons recorded in the code — `isMouseOver`/`componentUnderMouse` (the enter/exit machinery v0.6.1
+reasons recorded in the code — `isMouseOver`/`componentUnderMouse` (the enter/exit machinery 0.6.1
 moved away from, and a frozen cached flag off the message thread), `reallyContains` (a per-platform
 z-order syscall, 44 per vblank on the path the idle gate exists to keep quiet), and the process-global
 modal stack (it would make this editor's hover a function of another instance's menu, or of the
@@ -1523,7 +1523,7 @@ with the two new ones. Separately, and **not** acted on: `check-citations.py` no
 they described re-aims relative to the old merge base. They are notes, not failures, and pruning them
 is tooling hygiene for its own round rather than part of a hover fix.
 
-**A standing claim in the testing documentation is narrowed by evidence.** The INC-010 and v0.9.3
+**A standing claim in the testing documentation is narrowed by evidence.** The INC-010 and 0.9.3
 gap entries both state that the *behavioural* half of editor testing — a driven message loop with
 synthetic pointer input — "remains out of reach". On Linux it is not: `xvfb` is already on the CI
 runner for pluginval, and the harness above drove the editor, opened menus and positioned the real
@@ -1602,7 +1602,7 @@ the About-link re-aim left open below, or for anything else in the reviews that 
 rounds.
 
 **What the sign-off rests on, stated so the two are not confused.** It discharges ADR-0025 §3
-disclosure 2 the way the v0.9.3 entries did — on the reasoning, the root cause and the recorded
+disclosure 2 the way the 0.9.3 entries did — on the reasoning, the root cause and the recorded
 evidence, which here is a **measurement**, not an argument: `hovA` 0.990 → 0.000 under an open combo
 list, 0.990 → 0.000 under a preset menu tall enough to reach the A/B control, and both branches
 mutation-tested. That evidence is **Linux-only and taken on a synthetic (`xvfb`) display**, and the
@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3482` and `.github/workflows/build.yml:3567`, this round being
+`.github/workflows/build.yml:3493` and `.github/workflows/build.yml:3578`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1876,7 +1876,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:703` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:714` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1887,7 +1887,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:463` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:474` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -3314,7 +3314,7 @@ nothing.
 - **CHANGELOG: the bullet is removed, not rewritten.** `CHANGELOG_POLICY` rule 3 admits only
   user-visible changes, and this one is user-visible in neither direction — the artifact is
   unchanged. Rule 2 forbids invented history, which is what a reworded entry claiming some *other*
-  benefit would be. 0.9.4 is untagged (no `vX.Y.Z` tag has been cut), so this corrects a draft rather
+  benefit would be. 0.9.4 is untagged (no release tag has been cut), so this corrects a draft rather
   than rewriting published notes.
 - **`build.yml`: the comment now states the actual behaviour** — objcopy stores the basename via
   `lbasename`, both forms produce a byte-identical section, and the `cd` form is written that way so
@@ -3993,7 +3993,7 @@ wrong the tree was without them.
 
    **What was deliberately left alone, and why it is not an oversight.** Four older entries in
    *this* file quote anchor pairs in old → new form — the two "reported-then-corrected line drift
-   (C6)" entries, the `setup-linux.sh` `curl`/`unzip` entry, and the post-v0.9.0 maintenance audit.
+   (C6)" entries, the `setup-linux.sh` `curl`/`unzip` entry, and the post-0.9.0 maintenance audit.
    Those are not citations; they are the historical record of *previous* re-anchoring operations,
    and **both** halves of each pair are meant to read as they did then — the old half is supposed
    to be stale, and the new half records where that operation landed it, not where the content sits
@@ -4212,7 +4212,7 @@ latency surface is touched, and the machine code is identical, so no
 excludes it: nothing a user of the plug-in can observe changed.
 
 Docs synced: `CI_CD` (its toolchain paragraph recorded these four as unfixed and now records the
-fix and the byte-identical-object evidence) and the **KNOWN_ISSUES** / **FUTURE_RISKS** v0.9.4
+fix and the byte-identical-object evidence) and the **KNOWN_ISSUES** / **FUTURE_RISKS** 0.9.4
 version-sync headers, which pointed at `CI_CD` for the same four diagnostics. No other document
 named them.
 
@@ -4275,7 +4275,7 @@ Docs synced (`DOCUMENTATION_LIFECYCLE_POLICY` trigger map, **CI workflow → `CI
 and the floating-label choice), `TESTING` (the RH-F3/auval feasibility sentence names the runner),
 and the two documents that repeat that same sentence — `KNOWN_ISSUES` KI-014 and
 `RELEASE_HARDENING_PLAN` RH-F3 — plus `BUILD`'s toolchain line, whose "Verified on …" record names
-the macOS compiler, and the **KNOWN_ISSUES** and **FUTURE_RISKS** v0.9.4 version-sync headers
+the macOS compiler, and the **KNOWN_ISSUES** and **FUTURE_RISKS** 0.9.4 version-sync headers
 (each states what the version's changes did to that document; both record "no entry added" with
 the reason). `COMPATIBILITY_MATRIX` needed no edit: its macOS row cites the workflow, not an image
 label, and the deployment target and both architectures are unchanged. `HANDOVER` needed none: its
@@ -4289,7 +4289,7 @@ same conflation appears in `ADR-0027` §Verification and the C++23 worklog; thos
 of that change and are left as written.
 
 **Dated records left alone (C6, report-don't-rewrite).** `ADR-0027` §Verification, both C++23
-worklog tables, `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md:160` and the `macos-14` run-ID comment
+worklog tables, `worklogs/RELEASE_HARDENING_AUDIT_0.9.0.md:160` and the `macos-14` run-ID comment
 in `packaging/macos/build-pkg.sh` state what was measured **on the image of the day**. They are
 historical evidence, not live statements, and are not retro-edited.
 
@@ -4317,7 +4317,7 @@ Docs synced: CHANGELOG `[0.9.4]` (a second `### Changed` entry above the JUCE on
 C++-standard dependency row, the snapshot paragraph, Current Version, Build Status, Release
 Status and Known Blockers), the **KNOWN_ISSUES** and **FUTURE_RISKS** version-sync headers,
 `.github/workflows/codeql.yml` (its header comment named the standard), and
-`worklogs/CXX23_MIGRATION_v0.9.4.md`. CI_CD needed no edit — it names no standard.
+`worklogs/CXX23_MIGRATION_0.9.4.md`. CI_CD needed no edit — it names no standard.
 `TESTING.md`/`TESTING_POLICY` needed none: no test was added, changed or removed, and the gate
 is unchanged.
 
@@ -4335,7 +4335,7 @@ command set: the JUCE cycle measured `AnamorphStateTests` alone, this one measur
 targets, so the 8 shared `AnamorphDSP` sources are counted once per target and
 `tests/dsp_tests.cpp` is covered at all. Re-measuring the narrower set at C++23 returns exactly
 18/19, so nothing drifted. Stated in CHANGELOG, `DEPENDENCY_POLICY`, ADR-0027 and
-`worklogs/CXX23_MIGRATION_v0.9.4.md` §4.4; the numbers themselves are unchanged.
+`worklogs/CXX23_MIGRATION_0.9.4.md` §4.4; the numbers themselves are unchanged.
 
 **Dated records left alone (C6, report-don't-rewrite).** `ADR-0022:39`, `ADR-0026:36` and the two
 JUCE worklogs each state the toolchain contract **as of that change**, where "C++17" was true.
@@ -4365,11 +4365,11 @@ COMPATIBILITY_MATRIX, FUTURE_RISKS (RISK-001 + the version-sync header), HANDOVE
 paragraph + Current Version / Build Status / Release Status / Known Blockers / the JUCE dependency
 row), RELEASE_PROCESS and COMMERCIAL_STATUS (the tag/release-in-preparation statements),
 THIRD_PARTY_LICENSES + TRADEMARKS + COMMERCIAL_STATUS + RELEASE_HARDENING_PLAN (the pinned
-version each cites), `.github/dependabot.yml`, and `worklogs/JUCE901_UPGRADE_v0.9.4.md`. CI_CD
+version each cites), `.github/dependabot.yml`, and `worklogs/JUCE901_UPGRADE_0.9.4.md`. CI_CD
 needed no edit — it is version-free by design.
 
 **A tag-name consequence, recorded rather than assumed.** `git tag` is still empty, so the first
-annotated tag becomes **v0.9.4** — v0.9.3 joins 0.9.0-0.9.2 as written-up-but-never-cut. That
+annotated tag becomes **0.9.4** — 0.9.3 joins 0.9.0-0.9.2 as written-up-but-never-cut. That
 moved three live statements: `CHANGELOG_POLICY` rule 2, the CHANGELOG preamble and RISK-003's
 mitigation.
 
@@ -4548,7 +4548,7 @@ now also prints for non-permission failures.
 *Sign-off recorded (2026-08-11).* The maintainer approved the **visual** items: the equal-width Widen
 / Style-Focus row is intentional, the narrower Simple-mode Widen control is acceptable, the current
 pop-up/menu width behaviour is acceptable, and the remaining visual verification items are approved.
-Recorded in `TESTING.md` (ADR-0025 disclosure 2) and `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7
+Recorded in `TESTING.md` (ADR-0025 disclosure 2) and `worklogs/GUI_INTERACTION_FIXES_0.9.3.md` §7
 and §10. **Scope of that sign-off:** visual/UI only — the behavioural per-platform checks and every
 **installer** check (the macOS four-case re-install matrix, a DAW finding `~/.vst3` on Linux) are not
 covered and remain owed.
@@ -4851,7 +4851,7 @@ this fix was a Settings-only predicate on `Backdrop` reading `ComboBox::isPopupA
 **removed** within the same PR once the same defect turned up on the Save Preset dialog, where
 `TextEditor`'s menu state is private and the predicate could not reach it. Nothing named
 `swallowsDismissClick` or `isPopupActive` survives in the editor — the shield is the mechanism.)
-Reasoning, edge cases and the JUCE-signal analysis: `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`.
+Reasoning, edge cases and the JUCE-signal analysis: `worklogs/GUI_INTERACTION_FIXES_0.9.3.md`.
 **Neither fix has an automated test** — both are
 editor-interaction defects and the harness instantiates no editor and drives no pointer; registered
 as a second **ADR-0025** exception with its four disclosures in `TESTING.md` §Gaps, beside INC-010.
@@ -4865,7 +4865,7 @@ rather than to its cause cannot find the rest of the class.
 **Version carriers swept** for the 0.9.2 → 0.9.3 bump: `CMakeLists.txt`, `CHANGELOG.md`, `README.md`,
 `HANDOVER.md`, `KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `RELEASE_PROCESS.md`, `RELEASE_HARDENING_PLAN.md`,
 `CHANGELOG_POLICY.md`, ADR-0024 — every place naming the *release in preparation* or the *first
-annotated tag*, which is now **v0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded
+annotated tag*, which is now **0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded
 before a tag was cut). Historical references to what 0.9.2 introduced are left as they are.
 
 ---
@@ -4993,7 +4993,7 @@ degenerate parent. `saveUser` therefore returns **false**, nothing is written an
 dialog stays open with the text intact — the save fails *visibly*, which is exactly what the proposed
 guard was meant to produce. Verified empirically against the pinned `juce_core` for `~foo`, `~/foo`,
 `~` and `~root`, with a normal name as the control. **No code change; no defect.** The refutation and
-its probe are in `worklogs/PRESET_MENU_AND_IDENTITY_v0.9.2.md` §7.
+its probe are in `worklogs/PRESET_MENU_AND_IDENTITY_0.9.2.md` §7.
 
 **Redo invalidation, narrowed after review.** The `else` branch above cleared redo unconditionally,
 so *re-picking the row that is already ticked* — identical sound, identical identity — silently threw
@@ -5036,7 +5036,7 @@ unequal to every possible sound and the slot read as **permanently modified** �
 bar rendered a bare ` *`: a modified-marker against a preset that does not exist. The project already
 has a rule for "restored parameters, no recorded baseline": `adoptRestoredState` sets the restored
 state as the clean one, which `SERIALIZATION_REGISTRY.md` documents for the root `presetBaseline` and
-state test 4 pins for a v0.2 session. `setMeta` now applies that same rule, so it is one rule with one
+state test 4 pins for a 0.2 session. `setMeta` now applies that same rule, so it is one rule with one
 spelling instead of two answers to the same question. Unreachable from undo, redo, A/B and copy —
 every in-memory producer fills the baseline — so the branch is legacy-restore only. The *empty name*
 was left as-is deliberately: the slot genuinely has no preset, and the pre-fix "Default" was a
@@ -5079,7 +5079,7 @@ name-fallback tick is the documented ADR-0024 answer for identity-less state; pr
 adopted verbatim. `adoptRestoredState` now assigns the name unconditionally, so "what the session
 carried" and "what absence means" stop being decided in two places. No serialization field changed,
 and no existing assertion moved — state test 4's `preset name falls back to Default` still passes,
-because a v0.2 blob has no `presetName` property. Four cases (empty/absent × baseline/no-baseline)
+because a 0.2 blob has no `presetName` property. Four cases (empty/absent × baseline/no-baseline)
 are pinned in state test 12; all eight new assertions were verified to fail with the fix reverted.
 Maintainer confirmation of the direction is recorded per the review sign-off.
 
@@ -5130,7 +5130,7 @@ handling of a recognised root is the existing design and state test 7's `restore
 on it (an `AnamorphRoot` carrying only an `AB` child must still apply the clamped `active`); the
 obvious alternative — skip adoption when there are no params — re-introduces the cross-restore
 leakage the previous round removed; and `getStateInformation` always writes an `ANAMORPH` child, so no
-shipped version can produce one. Reasoning in full in `worklogs/…v0.9.2.md` §13.
+shipped version can produce one. Reasoning in full in `worklogs/…0.9.2.md` §13.
 
 **`setMeta`'s identity-less overload removed.** The two-argument overload forwarded a
 default-constructed `Selection`, so "forget which row produced this sound" — the mis-tick ADR-0024
@@ -5142,7 +5142,7 @@ parameters the metadata describes must already be applied, because `soundSig()` 
 
 **Re-raised and re-refuted: the `~foo` `saveUser` claim.** A later review reported this ledger as
 still asserting that `saveUser` "writes outside the folder and still returns success". It does not,
-and has not since the round recorded in `worklogs/…v0.9.2.md` §8 — the sentence was removed there and
+and has not since the round recorded in `worklogs/…0.9.2.md` §8 — the sentence was removed there and
 the entry above has stated the refutation ever since (introduced `9b67b8d`, corrected `55e062d`). The
 repository holds no conflicting description: `DOCUMENTATION_COVERAGE.md` and worklog §7 both say the
 write fails and `saveUser` returns **false**, and §9 records that the *encode*-side sibling — a
@@ -5214,7 +5214,7 @@ checks; no `CHANGELOG` entry, since nothing user-visible changed (`CHANGELOG_POL
 **First-tag renumbering, swept this time.** The 0.9.0 → 0.9.1 renumbering was recorded here as
 incomplete; the 0.9.1 → 0.9.2 one repeated it and is now closed in the same pass:
 `CHANGELOG.md` preamble, `CHANGELOG_POLICY.md`, `FUTURE_RISKS.md` (×2), `COMMERCIAL_STATUS.md`
-(×3) and `RELEASE_HARDENING_PLAN.md` (×5) all named v0.9.1 as the first annotated tag. Neither
+(×3) and `RELEASE_HARDENING_PLAN.md` (×5) all named 0.9.1 as the first annotated tag. Neither
 `FUTURE_RISKS.md` nor `COMMERCIAL_STATUS.md` had been touched by the version bump at all.
 
 Prior: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
@@ -5228,9 +5228,9 @@ matches the format every existing entry already uses. Exercised against five hea
 sections. Synced: `release.yml` (tag branch + rehearsal warning), `RELEASE_PROCESS`, `CI_CD`,
 `HANDOVER`.
 
-**`FUTURE_RISKS` was edited for 0.9.1 but kept a v0.9.0 version-sync lead**, leaving it and
+**`FUTURE_RISKS` was edited for 0.9.1 but kept a 0.9.0 version-sync lead**, leaving it and
 `KNOWN_ISSUES` disagreeing about which version the status documents are synced to. Re-led to
-v0.9.1, recording that ADR-0023 adds no new *risk* — the one-time session break is a known issue
+0.9.1, recording that ADR-0023 adds no new *risk* — the one-time session break is a known issue
 (KI-016), not a forward-looking one.
 
 **More reported-then-corrected line drift (C6), in a document this change set touched.** `BUILD.md`
@@ -5264,7 +5264,7 @@ an exception consumes**: true while no tag exists — for every identity field a
 permanently false from the first tag, again for every field at once. Reworded in
 `COMPATIBILITY_POLICY` and ADR-0023.
 
-**The 0.9.0 → 0.9.1 first-tag renumbering was incomplete.** Still claiming v0.9.0 as the first tag:
+**The 0.9.0 → 0.9.1 first-tag renumbering was incomplete.** Still claiming 0.9.0 as the first tag:
 `RELEASE_PROCESS` (§After release), `CHANGELOG_POLICY` rule 2, `FUTURE_RISKS` RISK-003,
 `RELEASE_HARDENING_PLAN` (Version-management row, RH-R6, RH-PR-8 row, RH-F3 timing), `HANDOVER`
 (Branch Strategy). All corrected.
@@ -5285,7 +5285,7 @@ check is right and stays; the wording is fixed in `release.yml`, `CI_CD`, `RELEA
 range), plus the same drift in `TROUBLESHOOTING` (`:115-125` → `:124-135`), found by the reviewer.
 Both re-verified against the file. Reporting came first, in the prior pass; this is the correction.
 
-**Stale version snapshots refreshed:** `HANDOVER`'s snapshot preamble (v0.9.0 was never tagged;
+**Stale version snapshots refreshed:** `HANDOVER`'s snapshot preamble (0.9.0 was never tagged;
 0.9.1 is the release in preparation and the first tag) and `COMMERCIAL_STATUS` (§Last reviewed,
 §2, §6). `COMMERCIAL_STATUS` keeps its **2026-07-26** review date deliberately — its substance
 (product model, distribution model, open owner/legal decisions) is untouched by a version
@@ -5300,9 +5300,9 @@ and `auval -v aufx Anmr RTec` was run on macOS. That was the only check that exe
 and no automated gate in this repository could have stood in for it, since nothing in the suite
 observes plug-in identity. Status synced in ADR-0023 (incl. its *Verification performed* section),
 `ADR_INDEX`, `COMPATIBILITY_POLICY` (exceptions table), and `HANDOVER` (Current Version, Release
-Status, Known Blockers — the v0.9.1 tag blockers drop from five to **four**; the remaining four are
+Status, Known Blockers — the 0.9.1 tag blockers drop from five to **four**; the remaining four are
 the missing licence plus three `RELEASE_POLICY` preconditions, all carried unchanged from the
-v0.9.0 audit and all still requiring a human). Deliberately **not** upgraded: the ADR's
+0.9.0 audit and all still requiring a human). Deliberately **not** upgraded: the ADR's
 `AnamorphTests` / `AnamorphStateTests` / pluginval rows stay `Unverified in-repo` — the sign-off
 covered the identity behaviour, which is what needed a human; the machine-checkable gates are
 reported by CI on the change set, and an ADR must not claim a green gate it did not observe (C2/C7).
@@ -5331,20 +5331,20 @@ one-time. Added: **ADR-0023** (options incl. "keep `Anmf` forever" and the rejec
 ADR count in the self-coverage table synced 17 → **18**.
 Synced: CHANGELOG (`[0.9.1] ### Changed`, evidence = PR #97 per `CHANGELOG_POLICY` rule 2; the
 preamble's "from [0.9.0] onward each release is tagged" claim corrected — 0.9.0 was written up but
-never tagged, so the first annotated tag will be v0.9.1), README (§Project status), HANDOVER
-(Current Version, Release Status incl. the tag name `v0.9.1`, Known Blockers), COMPATIBILITY_POLICY
+never tagged, so the first annotated tag will be 0.9.1), README (§Project status), HANDOVER
+(Current Version, Release Status incl. the tag name `0.9.1`, Known Blockers), COMPATIBILITY_POLICY
 (new *Plugin identity change* prohibited-row; an **identity carve-out** to exception condition 2 —
 enacted by ADR-0023, because condition 2 as written is unsatisfiable by construction for an
 identity change and the policy would otherwise have contradicted itself; and an
 "Exceptions granted so far" table recording that the carve-out's 2a ground is spent),
-RELEASE_PROCESS (§Tagging — next tag is `v0.9.1`, and date the heading before tagging),
+RELEASE_PROCESS (§Tagging — next tag is `0.9.1`, and date the heading before tagging),
 `release.yml` + CI_CD (a fail-closed check rejecting a tag whose CHANGELOG heading is still marked
 `Unreleased`, since the heading is published verbatim as the release-notes title), TRADEMARKS
 (§1 — the code is a RollyTech name-bearing identifier), PACKAGING (§Plugin identifiers),
 KNOWN_ISSUES (version-sync lead), and every `auval -v aufx Anmr Anmf` invocation → `RTec`
 (`packaging/macos/INSTALL.txt`, `docs/user/INSTALLATION.md`, `PACKAGING.md`, `TROUBLESHOOTING.md`,
 `TESTING.md`, `KNOWN_ISSUES.md` KI-014, `RELEASE_HARDENING_PLAN.md` RH-F3).
-**Deliberately not changed:** `worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md:36` still carries the
+**Deliberately not changed:** `worklogs/PRODUCT_READINESS_ROADMAP_0.8.13.md:36` still carries the
 old `auval` recipe — worklogs are a historical evidence trail, not maintained documents, and
 rewriting one to match today's code would falsify the record.
 **Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt` `:62-73` for the
@@ -5355,14 +5355,14 @@ citation anywhere in the documentation shifts.
 
 Prior: for the **product video script worklog** (2026-07-29, on top of `main` @
 `82b2f61`). **No `src/` change; no product-document change.** Added (and subsequently revised,
-in the same unmerged branch) `worklogs/KEYNOTE_SCRIPT_v0.9.0.md` — a session work product
+in the same unmerged branch) `worklogs/KEYNOTE_SCRIPT_0.9.0.md` — a session work product
 (marketing draft): a locked product positioning ("width is a method"; the plugin as instrument,
 not assistant) and a complete ~7-minute developer-walkthrough video script with production
 guardrails, all derived from the existing developer chain. An earlier keynote-style draft in
 the same file was superseded by this revision; a Chinese adaptation is deferred until the
 English script is approved. It is explicitly marked derived content, may never be cited
 as evidence, quotes no unmeasured performance numbers (constraint C2), uses no ™/® symbols
-(`TRADEMARKS.md`), and does not alter product status (`docs/COMMERCIAL_STATUS.md`: v0.9.0
+(`TRADEMARKS.md`), and does not alter product status (`docs/COMMERCIAL_STATUS.md`: 0.9.0
 remains internal-testing, not for sale). Worklogs sit outside the four documentation classes
 (`docs/REPOSITORY_MAP.md` describes `worklogs/` generically), so no
 `REPOSITORY_MAP`/`SOURCE_OF_TRUTH`/README class-table change applies; this entry satisfies the
@@ -5390,7 +5390,7 @@ distribution), COMMERCIAL_STATUS, KNOWN_ISSUES (KI-015), FUTURE_RISKS (RISK-006)
 CHANGELOG `[0.9.0]`, this file.
 
 Prior: for the **internal-testing preparation & closed-source product documentation pass**
-(2026-07-26, PR #94, on top of `main` @ `aecd448`). **No `src/` change.** The v0.9.0 **release date moved to
+(2026-07-26, PR #94, on top of `main` @ `aecd448`). **No `src/` change.** The 0.9.0 **release date moved to
 2026-07-26** in `CHANGELOG.md` and its two HANDOVER restatements (PR-landing and audit-run dates
 left untouched). `SUPPORT.md` was **rewritten from a public support document into the internal
 testing guide** — evaluation-only permission, no source-code rights, no redistribution, the
@@ -5439,8 +5439,8 @@ required before commercial distribution. Synced: PACKAGING, CI_CD, RELEASE_PROCE
 RELEASE_POLICY, REPOSITORY_MAP, SOURCE_OF_TRUTH (doc-class scope), USER_MANUAL (online link
 fallbacks), CHANGELOG `[0.9.0]`, this file.
 
-Prior: the **v0.9.0 release-hardening & commercial-readiness audit** (2026-07-25,
-on `main` @ `0a98ebd`, PR #92; record: `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`). **No `src/`
+Prior: the **0.9.0 release-hardening & commercial-readiness audit** (2026-07-25,
+on `main` @ `0a98ebd`, PR #92; record: `worklogs/RELEASE_HARDENING_AUDIT_0.9.0.md`). **No `src/`
 change.** Six parallel investigation lenses + adversarial verification over the repository and
 the pinned JUCE tree. **New:** `NOTICE` and `THIRD_PARTY_LICENSES.md` (verified third-party
 inventory — every component classified compiled-in vs vendored-but-not-built from
@@ -5461,14 +5461,14 @@ names rather than GUI labels, and the MULTIBAND `On` toggle was undocumented; IN
 gained the missing macOS `mkdir -p`; macOS `INSTALL.txt` dropped its "unsigned developer build
 for testing" line. **Policy/plan:** RELEASE_POLICY (artifact list + a new third-party-attribution
 precondition), RELEASE_HARDENING_PLAN (RH-R10 corrected, **RH-R11** added for the missing
-LICENSE/EULA, §12a post-v0.9.0 follow-ups RH-F1..F6), PERFORMANCE_BUDGET (a required benchmark
+LICENSE/EULA, §12a post-0.9.0 follow-ups RH-F1..F6), PERFORMANCE_BUDGET (a required benchmark
 procedure for RISK-002 — no infrastructure added), TESTING (a "gaps in the automated coverage"
 section: the AU is never auval-validated, and no frozen golden-audio reference exists by
 design), KNOWN_ISSUES (**KI-014** AU unvalidated, **KI-015** no declared licence), HANDOVER
 (release status: four unsatisfied RELEASE_POLICY preconditions, none fixable by code),
 REPOSITORY_MAP, PACKAGING, CI_CD, README, CHANGELOG `[0.9.0]`. Validation: Release build green,
 140-check DSP + 774-check state suites green, pluginval strictness 10 green in both modes ×3.
-Prior: for the **post-v0.9.0 maintenance audit** (2026-07-24, on `main` @ `4226d2c`):
+Prior: for the **post-0.9.0 maintenance audit** (2026-07-24, on `main` @ `4226d2c`):
 a repository-wide drift/maintainability pass with **no behaviour change** — no DSP, GUI,
 parameter, serialization or CI-gate change, so **no CHANGELOG entry and no version bump**
 (CHANGELOG_POLICY rule 3). Fixed: `CMakeLists.txt` — the 9-file wrapper/GUI source list was
@@ -5477,15 +5477,15 @@ one only would silently desync the state suite's coverage) → single `ANAMORPH_
 variable, build graph provably identical (`ninja: no work to do` after reconfigure), plus the
 stale "DSP self-tests" section header for a block that builds both suites;
 `.github/dependabot.yml` — comment still said JUCE **8.0.14** pinned to a **tag** (it is 9.0.0
-pinned by immutable commit SHA, ADR-0022); `release.yml` — stale `v0.8.13` tag example (the
-first tag is v0.9.0); `packaging/windows/Anamorph.iss` — validation note cited a CI run and step
+pinned by immutable commit SHA, ADR-0022); `release.yml` — stale `0.8.13` tag example (the
+first tag is 0.9.0); `packaging/windows/Anamorph.iss` — validation note cited a CI run and step
 name that predate the rewritten script; `packaging/windows/INSTALL.txt` — the zip's own notes
 told the reader to run an installer `.exe` that is not in the zip (macOS INSTALL.txt already
 said "from the GitHub release"); `BUILD.md` — the Linux dependency list omitted **`libegl-dev`**,
 required since JUCE 9, and still called the JUCE pin a "tag" (+ a new EGL row in
 TROUBLESHOOTING); `SOURCE_OF_TRUTH.md` — authority level 2 named only `tests/dsp_tests.cpp`,
 not `tests/state_tests.cpp`; **KI-002 rewritten** — it claimed manual `xattr` is required for
-macOS artifacts full stop, contradicting the v0.9.0 `.pkg` route (payloads are not quarantined;
+macOS artifacts full stop, contradicting the 0.9.0 `.pkg` route (payloads are not quarantined;
 what remains there is the one-time Gatekeeper approval of the unsigned package), with the same
 zip-vs-pkg scope applied in `PACKAGING.md`, `RELEASE_PROCESS.md` and `TROUBLESHOOTING.md`;
 `HANDOVER.md` — snapshot HEAD frozen at `86b4273` (pre-#88/#89) → `4226d2c`, and "the three
@@ -5501,7 +5501,7 @@ owner / exceed "minimal"): the CMake-version-parsing regex exists in three indep
 (build.yml Windows PowerShell, build.yml macOS `sed`, release.yml `sed`); the Windows installer
 does not remember the VST3 folder across upgrades and its `UninstallDisplayIcon` points at
 `Anamorph.exe` even on a VST3-only install; HANDOVER's status cells are multi-thousand-character
-single table rows. Prior: for the **v0.9.0 installer/packaging rework** (2026-07-24, PR #89): the
+single table rows. Prior: for the **0.9.0 installer/packaging rework** (2026-07-24, PR #89): the
 Windows Inno Setup installer gains a **component page** (Install VST3 / Install
 Standalone, both pre-selected, ≥1 enforced) and a **single destination page with both
 paths** (VST3 above Standalone; the launch-after-install checkbox is removed); the macOS
@@ -5518,7 +5518,7 @@ INSTALLATION.md (all three platforms + version-number placeholders replacing lit
 versions), USER_MANUAL (version-agnostic wording), README (Installing section),
 KNOWN_ISSUES (KI-005 wording), RELEASE_HARDENING_PLAN (installer rows/plan wording),
 HANDOVER (status rows), REPOSITORY_MAP (packaging rows), CHANGELOG `[0.9.0]` packaging
-bullet. Prior: for the **v0.9.0 release preparation** (2026-07-24, PR #87, on top of
+bullet. Prior: for the **0.9.0 release preparation** (2026-07-24, PR #87, on top of
 `main` @ `86b4273`): version bump 0.8.12 → **0.9.0** + CHANGELOG `[0.9.0]`; **installable
 packages** added to CI (Linux `Anamorph-<version>-Linux.tar.gz` + `packaging/linux/`
 install/uninstall scripts, Windows `Anamorph-<version>-Windows-Installer.exe` via
@@ -5530,14 +5530,14 @@ manual, attached to releases; INSTALLATION.md — per-platform install guide) cl
 roadmap's "zero user docs" P0 gap; `INSTALL.txt` now ships in all three zips (previously
 macOS only). Docs synced per the lifecycle triggers: PACKAGING (installable-packages
 section replaces the "no installer" TODO; artifact table + install-locations evidence),
-RELEASE_PROCESS (v0.9.0 tag examples; release-asset list), CI_CD (triggers/pipeline/
+RELEASE_PROCESS (0.9.0 tag examples; release-asset list), CI_CD (triggers/pipeline/
 artifact table incl. the macOS-debug best-effort correction), README (version, user-docs
 links, Releases distribution), HANDOVER (all status rows), KNOWN_ISSUES (KI-005 resolved —
 installers exist; header re-synced), FUTURE_RISKS (header re-synced), CHANGELOG_POLICY +
-CHANGELOG preamble (tags exist from v0.9.0), RELEASE_HARDENING_PLAN (RH-R5 mitigated,
-RH-PR-5b/6 skeletons landed, first-tag references v0.8.13 → v0.9.0), REPOSITORY_MAP
+CHANGELOG preamble (tags exist from 0.9.0), RELEASE_HARDENING_PLAN (RH-R5 mitigated,
+RH-PR-5b/6 skeletons landed, first-tag references 0.8.13 → 0.9.0), REPOSITORY_MAP
 (docs/user/ + packaging/* rows), and one stale code comment (SpectrumImager.h alt-click
-solo semantics, pre-0.8.10 wording). Prior: for the **product-readiness roadmap review** (v0.8.13 cycle, 2026-07-23, on
+solo semantics, pre-0.8.10 wording). Prior: for the **product-readiness roadmap review** (0.8.13 cycle, 2026-07-23, on
 `main` @ `dcfad73`; extended the same day with the **item-by-item re-evaluation + independent
 gap hunt**: 14 carried items re-classified (Must-now / before-1.0 / nice / defer, with
 reasons); NEW findings — **Steinberg VST3-SDK licence compliance + third-party NOTICES**
@@ -5545,13 +5545,13 @@ reasons); NEW findings — **Steinberg VST3-SDK licence compliance + third-party
 support-workflow gap (no issue templates/SUPPORT.md), the undo/gesture-coalescer test gap
 (largest hand-verified-only subsystem; now cheap to cover via the state-harness target), and
 a "what 1.0 commits to" policy gap; plus an explicit outdated-assumptions retirement list.
-Original entry: (v0.8.13 cycle, 2026-07-23, on
+Original entry: (0.8.13 cycle, 2026-07-23, on
 `main` @ `dcfad73` — PRs #82/#83/#84/#85 all merged). Roadmap-only pass, deliberately NOT
 another audit: drift review limited to correctness-affecting items (none found). NEW
-`worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md` — maturity assessment (engineering High /
+`worklogs/PRODUCT_READINESS_ROADMAP_0.8.13.md` — maturity assessment (engineering High /
 release Medium-high / commercial Low / UX Medium), blockers split (pre-1.0 vs 0.9.x vs
-optional), 4-phase ordered roadmap (v0.8.13 completion → user-facing readiness → commercial
-infra → v1.0 prep), documentation-review verdicts (user docs MISSING → Phase-2 item 1;
+optional), 4-phase ordered roadmap (0.8.13 completion → user-facing readiness → commercial
+infra → 1.0 prep), documentation-review verdicts (user docs MISSING → Phase-2 item 1;
 developer + release docs sufficient/complete), and technical-order rationale (auval before
 host matrix; presets before golden-audio; signing before installers; licensing last).
 HANDOVER Roadmap row re-pointed at the new plan (the previous pointer directed the next agent
@@ -5562,16 +5562,16 @@ Unix permissions nor symlinks, and turns the release job's staging into a **rena
 step (the archives CI validated are published byte-identically; Linux round-trip proven
 locally with real build output — 755 bits + `cmp`-identical; annotated-accept /
 lightweight-reject tag tests replicated green; PACKAGING.md artifact-layout table updated
-to the single-archive contents) — (v0.8.13 cycle, 2026-07-23,
+to the single-archive contents) — (0.8.13 cycle, 2026-07-23,
 branch `claude/beautiful-sagan-JAUFI` on `main` @ `ee82380` — PR #83 merged). Infrastructure
 only, no product behaviour/version change. NEW `.github/workflows/release.yml` (annotated
-`vX.Y.Z` tag → fail-closed tag⇄version⇄CHANGELOG validation → the FULL existing `build.yml`
+release tag → fail-closed tag⇄version⇄CHANGELOG validation → the FULL existing `build.yml`
 gates reused via a new additive `workflow_call` trigger (6-line `on:`-block diff, branch/PR
 behaviour byte-identical; tag pushes triggered nothing before) → **draft** GitHub Release
 with versioned artifact copies + `SHA256SUMS.txt` + `RELEASE_MANIFEST.txt` + CHANGELOG-section
 notes; `workflow_dispatch` rehearsal mode; `contents: write` scoped to the one release job;
 no third-party actions beyond `actions/*` + `gh`; publishing stays manual per RELEASE_POLICY).
-No tag created (first: the v0.8.13 release — closes RISK-003 when cut). Docs synced:
+No tag created (first: the 0.8.13 release — closes RISK-003 when cut). Docs synced:
 RELEASE_PROCESS (§Tagging + release pipeline; stale "no tags TODO" replaced), RELEASE_POLICY
 (Artifacts note), CI_CD (Triggers + source-of-truth), FUTURE_RISKS RISK-003 mitigation,
 RELEASE_HARDENING_PLAN (§1 baseline rows + §10 RH-PR-8 row per its §13 update protocol),
@@ -5580,11 +5580,11 @@ REPOSITORY_MAP, HANDOVER. Work record:
 review: no new third-party actions; SHA-pinning of actions + the pluginval download pin remain
 open supply-chain items). Validation: both workflows YAML-parse; the validate/stage shell
 logic executed locally against real repo data (version parse, CHANGELOG gate, 46-line notes
-extraction); end-to-end proof = the post-merge `workflow_dispatch` rehearsal. Prior: for the **JUCE 8.0.14 → 9.0.0 migration & dependency hardening** (v0.8.13
+extraction); end-to-end proof = the post-merge `workflow_dispatch` rehearsal. Prior: for the **JUCE 8.0.14 → 9.0.0 migration & dependency hardening** (0.8.13
 cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `1502077` — PR #82
 merged). **Dependency migration, zero C++ source changes**: the complete 9.0.0
 breaking-change surface has no project exposure (audit table in
-`worklogs/JUCE9_MIGRATION_v0.8.13.md` §1.1). CMake pin → the tag's **immutable commit SHA**
+`worklogs/JUCE9_MIGRATION_0.8.13.md` §1.1). CMake pin → the tag's **immutable commit SHA**
 `f8f8864…` with new `ANAMORPH_JUCE_VERSION` (supply-chain hardening, audit roadmap item);
 `scripts/setup-linux.sh` + `libegl-dev` (JUCE 9 Linux GL uses EGL, not GLX). Validation:
 engine output **bit-identical** 8.0.14 vs 9.0.0 (32-scenario twin dump incl. latencies);
@@ -5598,16 +5598,16 @@ REPOSITORY_MAP, COMPATIBILITY_MATRIX, FUTURE_RISKS RISK-001, KNOWN_ISSUES (KI-01
 evidence re-verified against the JUCE 9 tree; KI-013 not fixed upstream), HANDOVER — plus a
 repo-wide `CMakeLists.txt:NN` citation sweep (+5 shift from the pin block; every cite
 re-verified, two pre-existing stale cites fixed: ARCHITECTURE.md, COMPATIBILITY_MATRIX VST3
-row). No version bump / CHANGELOG entry (stays inside v0.8.13; a JUCE bump is user-visible at
+row). No version bump / CHANGELOG entry (stays inside 0.8.13; a JUCE bump is user-visible at
 release time — the release-prep changelog entry will record it, per the 8.0.14 precedent
 where the bump shipped inside `[0.8.8]`). Prior: for the **state-serialization & parameter-compatibility regression harness**
-(v0.8.13 cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `823bfbe` —
+(0.8.13 cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `823bfbe` —
 PR #81 merged). **Validation infrastructure only** — no parameter, serialization, DSP or
 user-visible behaviour change; no version bump / CHANGELOG entry (release-prep steps; the
 changelog scopes to user-visible changes). NEW: `tests/state_tests.cpp` (9 headless
 state-compatibility tests exercising the real `AnamorphAudioProcessor`: schema shape vs
 SERIALIZATION_REGISTRY, parameter-registry snapshot vs a frozen fixture, raw-exact
-save→load→save round-trip, the v0.2 / pre-0.6.4 / pre-0.8.4 legacy-migration paths via frozen
+save→load→save round-trip, the 0.2 / pre-0.6.4 / pre-0.8.4 legacy-migration paths via frozen
 fixture XMLs, corrupt/foreign-state robustness, user-preset round-trip + exclusion rules, A/B +
 view-param preservation), `tests/fixtures/` (registry snapshot + 3 legacy session models), the
 `AnamorphStateTests` CMake console target (test block only — shipped targets untouched), and the
@@ -5619,20 +5619,20 @@ DEVELOPMENT.md, README, RELEASE_HARDENING_PLAN (QA-gate row), HANDOVER. The whol
 adversarially verified pre-commit (3 lenses: citation accuracy, test quality, policy/scope);
 the pass surfaced and fixed one missed required sync (CI_CD.md), several overstated wordings,
 and four test hardenings (recorded in the worklog §4). Design + architecture
-record: `worklogs/STATE_HARNESS_v0.8.13.md` (includes the honest remaining-gaps statement:
-legacy fixtures are reconstructions; cross-version vN−1→vN reload stays manual). Prior: for the **post-v0.8.12 repository audit & documentation-consistency pass**
+record: `worklogs/STATE_HARNESS_0.8.13.md` (includes the honest remaining-gaps statement:
+legacy fixtures are reconstructions; cross-version N−1→N reload stays manual). Prior: for the **post-0.8.12 repository audit & documentation-consistency pass**
 (2026-07-22, branch `claude/beautiful-sagan-JAUFI` at `main` @ `64e87c4` — PR #80 merged).
-**Documentation-only.** Two things: (1) **retroactive coverage of PR #80** (v0.8.12 GUI interaction
+**Documentation-only.** Two things: (1) **retroactive coverage of PR #80** (0.8.12 GUI interaction
 fixes: bare-press no-write + relative Width drag with 3 px threshold in `src/gui/SpectrumImager.{h,cpp}`,
 release-outside stuck-press reconcile in `src/PluginEditor.cpp`; recorded in
-`worklogs/BANDWIDTH_DRAG_FIX_v0.8.12.md` + `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` — PR #80
+`worklogs/BANDWIDTH_DRAG_FIX_0.8.12.md` + `worklogs/MOUSE_RELEASE_STATE_FIX_0.8.12.md` — PR #80
 synced CHANGELOG/HANDOVER/worklogs but missed this file, a lifecycle slip closed here); and
 (2) a **full drift audit with minimal corrections**: CHANGELOG `[0.8.12]` re-dated 2026-07-22 (two
 of its fixes landed that day) and "MultiBand"/"Bandwidth" normalized to the registry terms
-"Multiband"/"Width"; HANDOVER snapshot-HEAD + Build/Release-Status rows refreshed to v0.8.12 (were
-frozen at v0.8.11/136 checks) and RH-PR-2 marked shipped; KNOWN_ISSUES + FUTURE_RISKS headers
-re-synced (were at v0.8.10) with **KI-013 added** (macOS-inert release-outside reconcile — platform
-limitation of the v0.8.12 fix); stale line-number evidence citations refreshed in KNOWN_ISSUES
+"Multiband"/"Width"; HANDOVER snapshot-HEAD + Build/Release-Status rows refreshed to 0.8.12 (were
+frozen at 0.8.11/136 checks) and RH-PR-2 marked shipped; KNOWN_ISSUES + FUTURE_RISKS headers
+re-synced (were at 0.8.10) with **KI-013 added** (macOS-inert release-outside reconcile — platform
+limitation of the 0.8.12 fix); stale line-number evidence citations refreshed in KNOWN_ISSUES
 (KI-001/002/003/006/009/012), FUTURE_RISKS (RISK-002 incl. marking the shipped H1/Wave-3
 SoloMonitor skip, RISK-004), POSTMORTEMS (INC-003/004/006/007/009), REPOSITORY_MAP (test count
 23→33, `FrameClock.h` + `LR4Xover.h` rows added, CMake cites), README (3-OS pluginval gate scope),
@@ -5643,8 +5643,8 @@ same class of post-RH-PR-2 stale CMake/script cites, caught by the pre-commit ve
 PERFORMANCE_BUDGET (GUI-redraw row gained its missing Wave-6/0.8.12 record), RELEASE_HARDENING_PLAN
 ("then-current 136-check" qualifier). The whole edit set was adversarially verified pre-commit
 (3 lenses: citation accuracy, history preservation, completeness — see the worklog §1).
-Roadmap + deferred-item review recorded in `worklogs/POST_v0.8.12_AUDIT_AND_ROADMAP.md`. No code
-change; no version bump. Prior: for **performance Wave 6 — GPU/GUI rendering-efficiency (v0.8.12)** (2026-07-21,
+Roadmap + deferred-item review recorded in `worklogs/POST_0.8.12_AUDIT_AND_ROADMAP.md`. No code
+change; no version bump. Prior: for **performance Wave 6 — GPU/GUI rendering-efficiency (0.8.12)** (2026-07-21,
 branch `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `c6f3226` — PR #78 merged). **One
 behaviour-neutral code change** (`src/gui/SpectrumImager.cpp`, `paintHeadphone`): the per-band solo-
 headphone transparency layer was allocating a **plot-sized offscreen framebuffer every Advanced-mode
@@ -5658,7 +5658,7 @@ green**; no DSP/threading/parameter/serialization/latency change; GPU measuremen
 headless container (analytical estimate — the affected GL path is macOS/Windows-only, Linux is CPU per
 ADR-0011). Version bump `0.8.11 → 0.8.12` (`CMakeLists.txt` `:14`). Synced: this file, CHANGELOG
 (`[0.8.12]` **### Changed**), HANDOVER (Current-Version + Pending-Tasks rows), README (version line).
-Evidence: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`. Prior: for the **v0.8.11 final
+Evidence: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`. Prior: for the **0.8.11 final
 performance pass & release-readiness audit** (2026-07-20,
 branch `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `4aac4eb` — PR #76 = Waves 4+5,
 merged). **No code change:** the three remaining named candidates were closed with measured
@@ -5674,8 +5674,8 @@ intentionally unconditional (feeds the live match readout). Release-readiness au
 140-check suite green, no version/test-count drift, no release blockers; documentation-only, so
 **no CHANGELOG entry** per CHANGELOG_POLICY rule 3. Synced: this file, PERFORMANCE_BUDGET (final-
 pass bullet), HANDOVER (Pending-Tasks + Release-Status rows). Evidence:
-`worklogs/performance/FINAL_PASS_v0.8.11_INVESTIGATION.md`. Prior: for **performance Wave 5 — per-block/settled-state runtime optimisation +
-v0.8.11 changelog consolidation** (2026-07-20, branch `claude/beautiful-sagan-JAUFI`, rebased
+`worklogs/performance/FINAL_PASS_0.8.11_INVESTIGATION.md`. Prior: for **performance Wave 5 — per-block/settled-state runtime optimisation +
+0.8.11 changelog consolidation** (2026-07-20, branch `claude/beautiful-sagan-JAUFI`, rebased
 onto main @ `912a755` — the security-tooling/CodeQL-autofix PRs #65–#75; the one rebase
 conflict (both sides' new head entry in THIS file) was resolved by keeping both in order).
 Eight Class-A trims from a two-lens fresh-eyes Workflow sweep (per-block + per-sample; the GUI
@@ -5688,7 +5688,7 @@ worklog: atomic-exchange load-gating (THREADING_POLICY conservatism), generation
 snapshot cache (incomplete contract); deferred: K-weighting SIMD bank (W5-D), lat==0
 mix-ring elimination (W5-A). Callgrind A/B: transparent −4.5 %, hostlike-b64 −5.5 %; twin
 dump bit-exact ×19; suite 140 checks; warning set unchanged. Also corrected Wave 4's
-drift-contaminated small-buffer datum (real overhead +10–20 %, not 2×). **v0.8.11
+drift-contaminated small-buffer datum (real overhead +10–20 %, not 2×). **0.8.11
 consolidation (maintainer instruction):** the `[Unreleased]` Wave-4 entry moved into
 `[0.8.11]`, now dated **2026-07-20**, with a new Wave-5 sibling entry; HANDOVER
 Current-Version/Release-Status/Pending-Tasks rows re-synced (PRs #60/#61/#62/#63/#76 named;
@@ -5728,7 +5728,7 @@ path-filtered triggers, and `upload-sarif` v3→v4; `dependency-review.yml` comm
 only. Validated: schema (github-workflows + dependabot vendor schemas), local build of the
 exact analysis targets, 136/136 self-tests. Synced: CI_CD (§Security scanning),
 REPOSITORY_MAP. Prior: for **RH-PR-2 Build Hardening + review follow-up** (2026-07-18, release-hardening
-program, ADR-0021, PR #63 `release-hardening/build-hardening`, rebased onto the v0.8.11 bump —
+program, ADR-0021, PR #63 `release-hardening/build-hardening`, rebased onto the 0.8.11 bump —
 the CHANGELOG entry now lives under `[0.8.11]` **### Security**). Behaviour-neutral binary
 hygiene: an `AnamorphHardening` INTERFACE target pins `-fstack-protector-strong`, section GC,
 Release `-g`, full RELRO (`-z,relro,-z,now,-z,noexecstack`) on Linux, `-Wl,-dead_strip` on
@@ -5749,8 +5749,8 @@ plugin helpers (plan §1 drift corrected). Synced: new ADR-0021 (+ ADR_INDEX row
 RELEASE_HARDENING_PLAN (§1/§2/§6.1/§10/§12 statuses + the pending QA-row 32/136 sync noted by
 the version-bump entry below), CI_CD, PACKAGING, BUILD, REPOSITORY_MAP (worklogs/ entry merged
 with Wave 3's), CHANGELOG (`[0.8.11]` ### Security); investigation + validation + review
-evidence in `worklogs/release-hardening/RH_PR2_INVESTIGATION.md`. Prior: for the **v0.8.11 version preparation** (2026-07-18, PR
-`release/v0.8.11-version-bump` — version/release metadata only, no functional change).
+evidence in `worklogs/release-hardening/RH_PR2_INVESTIGATION.md`. Prior: for the **0.8.11 version preparation** (2026-07-18, PR #64,
+merge `2f81763` — version/release metadata only, no functional change).
 `CMakeLists.txt` project version 0.8.10 → **0.8.11** (single source: `ANAMORPH_VERSION_STRING`
 and the JUCE plugin version derive from it); README version line; HANDOVER status rows
 (Current Version / Build / Release / Pending Tasks — the completed Wave-3 candidate removed
@@ -5790,7 +5790,7 @@ H1/crossover-move/GUI rows updated, stale process() line-range corrected), CHANG
 RELEASE_HARDENING_PLAN.md — its QA-gate row still reads "31 DSP self-tests … (130 checks)" and
 needs the one-line 32/136 sync once the PRs land (recorded drift, not silently fixed).
 Prior: the **high-sample-rate crossover terminal-snap robustness fix** (2026-07-17,
-v0.8.10 maintenance, PR `fix/high-sr-crossover-snap`). Review of the slew-limited smoother found
+0.8.10 maintenance, PR `fix/high-sr-crossover-snap`). Review of the slew-limited smoother found
 a numerical edge case, confirmed by exact-float simulation: the per-sample one-pole add stalls
 once its move drops below `ulp(f)/2`, and the terminal-snap eps (0.05 + 2e-4·f) out-runs that
 stall only up to 96 kHz (margin ≥ 1.76×; 3.55–4.27× at 44.1/48 kHz) — at 192 kHz the margin is
@@ -5808,7 +5808,7 @@ stash-rebuild). Synced: ADR-0015 (new "High-Sample-Rate Terminal-Snap Robustness
 CHANGELOG, README, TESTING_POLICY, TESTING, HANDOVER, RELEASE_HARDENING_PLAN QA row. Test-only
 `getLiveCutoff`/`isSettledCold` accessors added to the two headers. Prior: the **crossover
 follower slow-drag regression fix** (2026-07-17, post-merge
-v0.8.10 maintenance, new PR). The v0.8.10 final flat ~4 oct/s cap was calibrated at a 150 Hz
+0.8.10 maintenance, new PR). The 0.8.10 final flat ~4 oct/s cap was calibrated at a 150 Hz
 crossing, but the display maps ~10 octaves onto ~900 px, so ordinary 400–2000 px/s drags are
 4–22 oct/s — every normal drag trailed by octaves and crawled after release while violent flicks
 escaped via the discrete-jump fade (the reported slow-vs-fast inversion). The glide in
@@ -5835,10 +5835,10 @@ README, TESTING_POLICY, TESTING, HANDOVER synced). (2) **Crossover fade comments
 destination is latched at fade start — movement during the fade waits (glide paused), and after
 the fade lands a NEW fade may start toward the then-current targets (skipped if within 0.1 oct);
 the old wording implied the fade always (re)targets the newest cutoffs. Prior: the
-**v0.8.10 final follower decision** (2026-07-17, PR #59). The
+**0.8.10 final follower decision** (2026-07-17, PR #59). The
 bounded-convergence follower (1.25 oct/s cap + release consolidation) was evaluated in
 interactive testing and **rejected for interaction latency**; final design (ADR-0015
-"v0.8.10 final decision"): the rate cap rises to a hard **~4 oct/s** (drags ≤ 4 oct/s track
+"0.8.10 final decision"): the rate cap rises to a hard **~4 oct/s** (drags ≤ 4 oct/s track
 exactly — zero GUI/DSP gap; faster movement keeps a controlled ~15-cent worst FM at a 150 Hz
 crossing, ~half the pre-fix implementation; a 6-oct flick catches up in ~1.25 s of continuous
 motion) and the **release consolidation is removed entirely** (no timers, no delayed jump);
@@ -5853,11 +5853,11 @@ window; both rejection directions re-verified; checks stay **106**). Prior: the
 program (licensing, anti-piracy posture, build hardening, signing/notarization, installers,
 release pipeline, multi-agent parallelization contract). No code change; decisions it proposes
 are gated on future ADR-0016..0020 + Architecture Review. Architecture self-coverage count
-updated (15 docs; ADR count synced to 15 after ADR-0015). Prior: the **v0.8.10
+updated (15 docs; ADR count synced to 15 after ADR-0015). Prior: the **0.8.10
 follower refinement + investigation record** (2026-07-14, PR #59) — bounded convergence via
 rate cap 1.0 → 1.25 oct/s plus release consolidation, with the complete A–H3 architecture
 investigation history (including the H3 hostile-review failure on width purity and
-the linear-phase roadmap direction) made permanent as **ADR-0015**. Prior: the **third v0.8.10 pre-merge correctness
+the linear-phase roadmap direction) made permanent as **ADR-0015**. Prior: the **third 0.8.10 pre-merge correctness
 round** (2026-07-14, PR #59), two
 items. (1) **Split-movement final design** — pure-sine testing rejected the second round's
 one-pole tracker too (it FMs at the full drag rate: ~50 cents measured at a fast crossing). A
@@ -5875,7 +5875,7 @@ the processed path around it was scaled by Output Gain × Balance; at −24 dB a
 toggle spiked 15.8×. The fill gain is now latched at fade-out entry like `dryDuckLat`
 (SIGNAL_FLOW forced-swap note, CHANGELOG); new `testDryFillRespectsOutputGain` (Test 30). DSP
 test count 28→**29**, checks 97→**102** (README, TESTING_POLICY, TESTING, HANDOVER). Prior: the
-**second v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
+**second 0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
 fixes. (1) **Split-drag transition rework** — pure-sine testing of the first round's chained bank
 crossfades showed modulation sidebands around the tone (−25…−28 dBc during a fast drag: a chain
 of ~12 ms fades is amplitude/phase modulation and cannot preserve the magnitude response
@@ -5891,7 +5891,7 @@ juce::TooltipWindow declares itself opaque while drawTooltip leaves the capsule 
 unpainted; the undefined pixels render white on ARM-native AppKit (Intel/Rosetta showed the
 stale transparent backing). The editor now marks the TooltipWindow non-opaque on macOS
 (KNOWN_ISSUES KI-011, CHANGELOG; hardware re-test pending, KI-006 pattern). Prior: the first
-**v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), three fixes:
+**0.8.10 pre-merge correctness round** (2026-07-14, PR #59), three fixes:
 (a) **Split-drag pitch shift** — `MultibandWidth` and `SoloMonitor` no longer glide their
 crossover cutoffs per sample (a swept LR4's allpass phase rotation audibly detuned the audio
 during and after a fast split/band drag); cutoff changes are now ~12 ms fixed-coefficient bank
@@ -5908,7 +5908,7 @@ gesture (the imager's split/width resets already did), so a reset is one undoabl
 clears redo; `undo()`/`redo()` flush a settled-but-unpolled gesture first. Conforms to ADR-0008's
 gesture-coalesced design (no ADR change); CHANGELOG. No parameter/serialization/latency/threading
 change; the split-drag fix changes only the transition behaviour of moving crossovers (settled
-output bit-identical). Prior: the **v0.8.10 release finalization** (2026-07-14, PR #59). The `[Unreleased]`
+output bit-identical). Prior: the **0.8.10 release finalization** (2026-07-14, PR #59). The `[Unreleased]`
 CHANGELOG entries (undo/redo forced-duck dry-fill + rapid-swap robustness, multiband flat
 recombination, adaptive `FrameClock` GUI refresh) are folded into the `[0.8.10]` section; the
 version is bumped to 0.8.10 across CMakeLists / README / HANDOVER / KNOWN_ISSUES / FUTURE_RISKS;
@@ -5926,7 +5926,7 @@ gained fade-in and fade-out latency-crossing retarget cases during the pre-merge
 No parameter/automation/
 preset/serialization/latency change; the multiband fix changes only the multiband audio output
 (the intended fix — twin dump confirms latency unchanged, non-multiband scenarios identical).
-Prior: for the **post-v0.8.9 PR** (three items + a fresh profiling baseline). (1) Undo/Redo
+Prior: for the **post-0.8.9 PR** (three items + a fresh profiling baseline). (1) Undo/Redo
 audible-dropout fix — the forced switch duck is now dry-filled from the true-bypass ring;
 documented in SIGNAL_FLOW (forced-swap note) + CHANGELOG `[Unreleased]`, guarded by the new
 `testForcedSwapNoDropout` (Test 26, count 24→**25** DSP tests, 73→**77** checks). (2) Adaptive
@@ -5934,9 +5934,9 @@ display-rate GUI refresh — new `gui::FrameClock` (VBlank, capped ~120 Hz) repl
 60 Hz visualizer timers, with dt-corrected ballistics; new module coverage row + THREAD_MODEL timer
 table/top-row + PERFORMANCE_BUDGET GUI row + CHANGELOG `[Unreleased]`. (3) **KI-009** added — the
 REAPER Save Preset focus report (host-specific, pending manual investigation), version-sync header
-updated. A post-v0.8.9 DSP+GUI profiling baseline was produced (callgrind Ir + wall-clock +
+updated. A post-0.8.9 DSP+GUI profiling baseline was produced (callgrind Ir + wall-clock +
 EdBench A/B); per established convention the report stays in the session scratchpad and is **not**
-committed (no volatile clock-dependent numbers enter the permanent budget). Prior: the **v0.8.9
+committed (no volatile clock-dependent numbers enter the permanent budget). Prior: the **0.8.9
 release** (finalized 2026-07-12, PR #58) — the `[Unreleased]` CHANGELOG entries from Wave-2 Step-1
 and Step-2 (H3/H4/H5/H6/H11/H15/ALG-4, the tooltip revert, and the `viewGenWatcher` destructor
 lifecycle fix) folded into `[0.8.9]`; every `CHANGELOG [Unreleased]` evidence citation across the
@@ -5991,7 +5991,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, COMMERCIAL_STATUS | Present |
 | user | USER_MANUAL, INSTALLATION | Present |
 | architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 23 ADRs (0016–0020 reserved, see plan §8) | Present |
-| worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_v0.8.13.md` | Present |
+| worklogs | performance/ (Waves 3–6 + the 0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level 0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_0.8.12.md`) + `POST_0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_0.8.13.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
 | root — developer/status | README, CHANGELOG, CLAUDE | Present |
@@ -6616,10 +6616,10 @@ preparation / first tag" claims renumbered in HANDOVER (:76 and the Branch/Relea
 CHANGELOG:9, CHANGELOG_POLICY:12, RELEASE_PROCESS (§Tagging commands + :112), COMMERCIAL_STATUS
 (:11-12/:30/:115-118), FUTURE_RISKS (RISK-003), RELEASE_HARDENING_PLAN (:29/:46/:300/:346 + the QA
 row counts). The **Level-5 precondition is restated OPEN** wherever it was asserted "against the
-build that ships" (HANDOVER:91, COMMERCIAL_STATUS §5) — the 2026-08-15 audition covered v0.9.4,
-the shipping build is now v0.9.6, and no carry-forward was ever decided; this is maintainer
+build that ships" (HANDOVER:91, COMMERCIAL_STATUS §5) — the 2026-08-15 audition covered 0.9.4,
+the shipping build is now 0.9.6, and no carry-forward was ever decided; this is maintainer
 decision D-3, not something a doc edit can clear. HANDOVER's open-KI enumeration completed
-(KI-018–KI-023, KI-026 were missing). Historical v0.9.4 narrative (HANDOVER:49/:89/:94/:102,
+(KI-018–KI-023, KI-026 were missing). Historical 0.9.4 narrative (HANDOVER:49/:89/:94/:102,
 worklog filenames, FUTURE_RISKS prior-sync chain) deliberately untouched — Class B.
 
 **Shipped-attribution corrections:** NOTICE:24 pin line 9.0.0/f8f8864 → 9.0.1/e18f7f5
@@ -6699,7 +6699,7 @@ than reasoned about, decision D-1 materially corrected, and one new issue filed.
   15 → 16 → 17 → 18), REPOSITORY_MAP test rows, README:64, TESTING_POLICY, RELEASE_HARDENING_PLAN QA
   row, HANDOVER Test row (45 / 241; 18 tests / 941 checks). Neither probe is run by the suite; the
   latency one asserts nothing at all, because the reported latency is a gate category.
-- `src/PluginProcessor.cpp` (v0.2 branch of `setStateInformation` now calls
+- `src/PluginProcessor.cpp` (0.2 branch of `setStateInformation` now calls
   `internal.migrateFromLegacyApvts`, ER-STATE-08) → CHANGELOG (one Fixed entry, replacing round 1's
   absent-PARAM entry — see below), State test 4. No schema change: this reaches an EXISTING
   migration from a branch that was skipping it.
@@ -6778,7 +6778,7 @@ is a **static pairing diagnostic, not an allocation counter**, so `AllocationGua
 global operators are a false positive by construction. `docs/policies/TESTING_POLICY.md` gained rule
 3a, the state-mutation stress-pattern rule.
 
-**Round 6 — D-3 recorded.** The maintainer performed the audition against the final v0.9.6 build and
+**Round 6 — D-3 recorded.** The maintainer performed the audition against the final 0.9.6 build and
 it **PASSED**, discharging `RELEASE_POLICY.md` precondition 7. Recorded in
 `LEVEL5_AUDITION.md` §Recorded auditions, and synced to `docs/HANDOVER.md` (Release Status, Known
 Blockers, Roadmap), `docs/COMMERCIAL_STATUS.md` §6 and
@@ -6802,15 +6802,15 @@ addition and a checklist completion from the CHANGELOG.
 
 **Changes and their doc syncs (trigger map applied):**
 - `tests/state_tests.cpp` (State test 25, the cross-version field capture) and
-  `tests/fixtures/field_capture_v0_9_5.session` + `.manifest` (NEW) →
+  `tests/fixtures/field_capture_0_9_5.session` + `.manifest` (NEW) →
   `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (item 8 ticked, its "reconstruction, not
   field capture" caveat closed, evidence appendix), `docs/REPOSITORY_MAP.md` (the state-suite row
   and the `tests/fixtures/` row, which now distinguishes the one fixture that is **not** a
-  reconstruction), and the count sweep below. The fixture was WRITTEN by a v0.9.5 binary rebuilt
+  reconstruction), and the count sweep below. The fixture was WRITTEN by a 0.9.5 binary rebuilt
   from the tree at `2c5e760^` — the three legacy XMLs are built by current code and can only contain
   what today's understanding says an old format held; this one cannot.
 - `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (§Completion record, per-item PASS/OPEN
-  prefixes, §Evidence for the v0.9.6 completion) → `docs/HANDOVER.md` (Release Status, Known
+  prefixes, §Evidence for the 0.9.6 completion) → `docs/HANDOVER.md` (Release Status, Known
   Blockers and Roadmap rows: "three preconditions" → two, and "has never been completed" → the 6/8
   position), `docs/COMMERCIAL_STATUS.md` §6 (same correction; it had been the last document still
   asserting the checklist was uncompleted).
@@ -6823,7 +6823,7 @@ gate by ten tests. Also corrected: `README.md:64`, `docs/procedures/TESTING.md` 
 description), `docs/REPOSITORY_MAP.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md` (QA-gate row)
 and `docs/HANDOVER.md` (Test Status row). Two stale release-mechanics facts in the HANDOVER Release
 Status row were corrected while there, both verified first: the tag-order sentence still named
-`git tag -a v0.9.4` where the same row already says the tag is `v0.9.6`, and it still cited the
+`git tag -a 0.9.4` where the same row already says the tag is `0.9.6`, and it still cited the
 `[0.9.4]`-era re-dating deadline of 2026-08-19 where the CHANGELOG `[0.9.6]` heading is dated
 2026-09-01.
 
@@ -6841,7 +6841,7 @@ one CONFIRMED defect fixed, one obsolete comment rewritten, one enforcement boun
 Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 8 and the dashboard.
 
 **Code changes and their doc syncs (trigger map applied):**
-- `src/PluginProcessor.{h,cpp}` (`abResetToDefaults()`, called from the v0.2 branch and from the
+- `src/PluginProcessor.{h,cpp}` (`abResetToDefaults()`, called from the 0.2 branch and from the
   new `AB`-absent branch of `setStateInformation`) → CHANGELOG `[0.9.6]` (one Fixed entry — it IS
   user-visible: pressing A or B after loading an old session recalled the previous project's
   sound), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph under the `AB` child
@@ -6940,13 +6940,13 @@ round-2/3 record" banner rather than being rewritten, per the no-rewriting-histo
 Windows) and round 4's signal (macOS) — both inside one unreleased version, so no user ever saw the
 intermediate state and presenting them separately implied macOS had shipped broken. Merged into one
 entry describing the final state on all three platforms, preserving the half that *did* ship broken
-(the stuck visual press on macOS, KI-013, present since v0.8.12) and both regression-test citations
+(the stuck visual press on macOS, KI-013, present since 0.8.12) and both regression-test citations
 (State tests 21 and 23). The Fixed count goes 19 → 18, which restores `docs/HANDOVER.md`'s
 "eighteen Fixed entries" to accuracy — that line had gone stale by one when round 8 added its entry.
 Counted, not assumed.
 
 **Deliberately not changed**, being accurate history rather than live claims: `KNOWN_ISSUES.md:97`
-(the dated v0.8.12 version-sync header recording KI-013 as *added* at that release), the dated round
+(the dated 0.8.12 version-sync header recording KI-013 as *added* at that release), the dated round
 entries in this file, and the round-3/4 sections of the programme worklog and older audit worklogs.
 The third readout entry — the round-1 fix for the drag path opening no gesture at all — is a
 different defect and was left alone.
@@ -7094,7 +7094,7 @@ verified with no change. Records: `worklogs/engineering-review/ENGINEERING_REVIE
   it exactly as before.
 
 **Where the finding was, versus where it was filed.** The review located it in
-`migrateFromLegacyApvts` (`PluginProcessor.cpp:1038`, the v0.2 branch). Measurement put it the other
+`migrateFromLegacyApvts` (`PluginProcessor.cpp:1038`, the 0.2 branch). Measurement put it the other
 way round: the modern path inherited 6 of 6, the legacy path 0 of 6. The legacy function has always
 written all six unconditionally. Recorded in both the worklog and the probe's own output so the two
 paths cannot be confused again. It is also **not** a contradiction with the informational item
@@ -7691,8 +7691,8 @@ reported value"* and `LATENCY_MODEL.md` carries the binding invariant; the chang
 signal-flow change (a new delay element). Both are discharged by the maintainer's instruction plus
 **ADR-0034**, which is `Accepted` and **amends ADR-0003**'s latency clause (its engagement rule and
 filter choice stand). `RELEASE_COMPATIBILITY_CHECKLIST` box 6 was **re-run**, not carried, and
-`RELEASE_POLICY` precondition 7 — the Level-5 audition — **reopens for v0.9.7** on the same
-per-version rule that reopened it for v0.9.6.
+`RELEASE_POLICY` precondition 7 — the Level-5 audition — **reopens for 0.9.7** on the same
+per-version rule that reopened it for 0.9.6.
 
 **Code (four files).** `src/dsp/AnamorphEngine.{h,cpp}` — `osLatencyFor` behind both accessors, the
 `osCompDelayBuffer` ring plus its five flush sites, and five in-code comments that asserted the
@@ -7979,7 +7979,7 @@ baselines, `CHANGELOG.md` (no version bump — CI-only), `docs/policies/TESTING_
 
 ## D-2 / RISK-007 — the state race outside the latency fields, resolved by ownership (2026-09-03, the 0.9.7 change set)
 
-The dedicated v0.9.7 threading/state hardening task. Every piece of program metadata the processor
+The dedicated 0.9.7 threading/state hardening task. Every piece of program metadata the processor
 owns is now message-thread state; a host thread that saves or restores off the message thread
 exchanges immutable snapshots with it through two lock-free single-object cells (ADR-0036). Nothing on
 the audio thread changed. The full evidence trail — the access map, the ThreadSanitizer baseline on
@@ -8003,7 +8003,7 @@ new tests and a CI lane)**
   list gains the no-direct-host-access rule.
 - `docs/architecture/STATE_SERIALIZATION.md` — a "Which thread" section; the restore logic re-stated
   with the repair-before-`replaceState` step and the resolve/apply split of the Settings.
-- `docs/FUTURE_RISKS.md` — the header re-synced to v0.9.7; RISK-007 marked RESOLVED in the table and
+- `docs/FUTURE_RISKS.md` — the header re-synced to 0.9.7; RISK-007 marked RESOLVED in the table and
   with a resolution bullet at the top of its entry, the measured record kept in full.
 - `docs/procedures/TESTING.md` — the four TSan probes and their expected silence, the `tsan` lane,
   State tests 37–41 one by one, the re-shaped tests 22 and 27; the CI table row; 40 tests.
@@ -8564,7 +8564,7 @@ tooltip entry's naming note).
 
 **Not changed, deliberately.** Dated historical records keep the wording that was true when they
 were written, per `CHANGELOG_POLICY` rule 2 ("no invented history"): the `[0.8.x]` CHANGELOG entries
-that name the *Persist* bar, `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`, and this document's own
+that name the *Persist* bar, `worklogs/MOUSE_RELEASE_STATE_FIX_0.8.12.md`, and this document's own
 2026-08 tooltip and hover-occlusion entries, which describe the Settings rows as they were labelled
 then. The tooltip entry now opens with a one-sentence note naming the rename, so a reader meeting
 *Vectorscope Persist* there knows it is the same row under its old label rather than a spelling this
@@ -8641,7 +8641,7 @@ is written `## [x.y.z]`, a link reference, and this round defined none, reasonin
 tag not yet pushed would be a fabricated citation while also telling the release process to add the
 definition "in the commit the tag points at" — two instructions that cannot both hold, since a tag
 points at a commit that already exists. The round-2 entry below records the corrected sequence: the
-definition is written in the release commit, naming the deterministic tag `v` + CMake version, and
+definition is written in the release commit, naming the deterministic tag the CMake version fixes, and
 the tag follows.
 
 **Documents updated:** `CHANGELOG.md` (the date, the two evidence corrections, the structure, and a
@@ -8684,10 +8684,10 @@ whether a change is notable; wording; whether a date is the right date.
 
 **The sequence that replaces the impossible one.** The definition is written in the **release
 commit**, naming the tag that commit is about to carry — deterministic, because `release.yml`
-refuses any tag other than `v` + the CMake `project VERSION` — and the tag is pushed straight after.
+refuses any tag the CMake `project VERSION` does not fix — and the tag is pushed straight after.
 The link is unresolvable only between that commit and the tag push, the same interval in which the
 dated heading names a release that does not exist yet. `CHANGELOG.md` gains
-`[0.9.7]: .../releases/tag/v0.9.7`; rule 8, pre-release step 2 and §Tagging all state the same
+`[0.9.7]: .../releases/tag/0.9.7`; rule 8, pre-release step 2 and §Tagging all state the same
 three steps.
 
 **One parser now serves four rules.** `parse_changelog` reads the ATX grammar (0–3 columns, 1–6
@@ -8709,7 +8709,7 @@ also too strict in the other direction, reporting a definition that CommonMark a
 titled, angle-bracketed) as missing.
 
 **The link rule now is what rule 8 says it is.** The first spelling accepted either URL form for any
-version and never checked the compare base or the host, so `[0.9.7]: .../compare/v0.9.6...v0.9.7` —
+version and never checked the compare base or the host, so `[0.9.7]: .../compare/0.9.6...0.9.7` —
 a comparison against a tag that was never cut — passed. It now requires exactly the form the version
 calls for: the tag page for `0.9.7`, a comparison against the previous release for everything
 after, `[Unreleased]` against the last tag, all inside this repository. (This paragraph and rule 8
@@ -8759,7 +8759,7 @@ link definitions a heading; it now uses `LIST_MARKER`, `interrupts_paragraph` an
 A tagged-era version with no older entry below it produced a literal `v?` inside the URL the author
 was told to write. And link labels are now compared after CommonMark's whitespace normalisation.
 The `[Unreleased]` definition is additionally pinned to the **newest released version** rather than
-any `v<x.y.z>`: a comparison from an older tag silently misreports what is unreleased.
+any other tag: a comparison from an older tag silently misreports what is unreleased.
 
 **One extractor, two callers.** `release.yml` held two implementations of "which lines are this
 release's section": a full CommonMark fence state machine in the notes step, and a simplified toggle
@@ -8798,7 +8798,7 @@ fixes carry the mutation proofs recorded with them. `check-docs` 120 files clean
 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
 
 **Reported, not fixed (outside this round's scope).** `LEVEL5_AUDITION.md:15-16` still says the
-2026-08-15 v0.9.4 audition "is invalid for **v0.9.6**"; the current version is 0.9.7, which
+2026-08-15 0.9.4 audition "is invalid for **0.9.6**"; the current version is 0.9.7, which
 `RELEASE_PROCESS.md:32-33` names correctly. The audition document is not part of the changelog
 enforcement chain and was left alone.
 
@@ -8870,7 +8870,7 @@ diverging it is a product-family decision, not a fix to make here. (b) The `[0.9
 reads as a round-by-round transcript, which rule 3's "the git log is not the changelog" discourages.
 Round 2 already removed the passages that were duplicated elsewhere in the entry; rewriting the rest
 is a stylistic rewrite of an accurate entry, which the same policy's "correct minimally" forbids.
-(c) `LEVEL5_AUDITION.md:15-16` still says the 2026-08-15 v0.9.4 audition "is invalid for v0.9.6";
+(c) `LEVEL5_AUDITION.md:15-16` still says the 2026-08-15 0.9.4 audition "is invalid for 0.9.6";
 the current version is 0.9.7, which `RELEASE_PROCESS.md:32-33` names correctly.
 
 
@@ -8948,7 +8948,7 @@ Anabasis copy they were adopted from — deliberately, because only this reposit
 implementation of the same grammar to disagree with; the sibling carries the same latent defect
 harmlessly, and porting it back is a decision for that repository. Seven functions remain
 byte-for-byte identical and are named in the module docstring. `LEVEL5_AUDITION.md:15-16` still
-refers to v0.9.6 and is deliberately untouched: it is outside the changelog compliance chain and is
+refers to 0.9.6 and is deliberately untouched: it is outside the changelog compliance chain and is
 recorded here as a separate documentation follow-up.
 
 
@@ -8979,9 +8979,10 @@ rewritten as a release entry; a preamble `### [Verified]` sub-heading got the sa
 `names_a_release` now decides the level-1 and level-3 cases: a version number, `Unreleased`, a
 lost `]` with a version behind it, or a version and an ISO date together.
 
-**A `v`-prefixed version was invisible.** `\b\d+\.\d+\.\d+\b` cannot match inside `v0.9.8` —
-`v` and `0` are both word characters, so there is no boundary — and the anchored pattern did not
-allow the prefix either. `## v0.9.8 — 2026-10-01` passed as ordinary prose.
+**A `v`-prefixed version was invisible.** `\b\d+\.\d+\.\d+\b` cannot match a version written with the
+leading `v` (the prefix ADR-0059 later retired): `v` and the first digit are both word characters, so
+there is no boundary — and the anchored pattern did not allow the prefix either. A level-2 heading
+naming such a version, dated 2026-10-01, passed as ordinary prose.
 
 **A heading behind a container marker was invisible to both functions.** `> ### Fixed` and
 `- ### Fixed` render as headings; `atx_heading` is anchored at columns 0–3 and `deep_heading` needs
@@ -9025,7 +9026,7 @@ raw-HTML line to the renderer — both tools agree, so the pipeline stays cohere
 exists in this file. A link reference definition written directly under preamble prose cannot
 interrupt a paragraph in CommonMark but is counted as a definition here. Two `## [Unreleased]`
 headings are reported as a placement defect rather than as a duplicate. `LEVEL5_AUDITION.md:15-16`
-still refers to v0.9.6 and remains a separate documentation follow-up outside this chain.
+still refers to 0.9.6 and remains a separate documentation follow-up outside this chain.
 
 
 ## Changelog system round 4 (2026-09-05) — one classifier, and the last four review findings
@@ -9100,11 +9101,11 @@ versioned entries' boundaries.
 
 **Also in this round, on the owner's instruction:** the `LEVEL5_AUDITION.md` version drift, which
 three previous rounds recorded as a deliberate out-of-scope residual, is corrected. §When a previous
-audition stops counting now applies the rule to the release it currently blocks — the v0.9.6
-audition of 2026-09-01 does not carry over to v0.9.7, because ADR-0034 changed the reported latency
-and the Drive-crossing swap behaviour — and keeps the v0.9.4 → v0.9.6 case as the worked example the
-rule was first written from. §Scope for v0.9.6 is kept as written (it is the record of a completed
-audition) with a note that a v0.9.7 audition needs its own scope. `RELEASE_PROCESS.md` step 7 now
+audition stops counting now applies the rule to the release it currently blocks — the 0.9.6
+audition of 2026-09-01 does not carry over to 0.9.7, because ADR-0034 changed the reported latency
+and the Drive-crossing swap behaviour — and keeps the 0.9.4 → 0.9.6 case as the worked example the
+rule was first written from. §Scope for 0.9.6 is kept as written (it is the record of a completed
+audition) with a note that a 0.9.7 audition needs its own scope. `RELEASE_PROCESS.md` step 7 now
 names the same audition the audition document does.
 
 
@@ -9606,15 +9607,15 @@ a round of its own rather than a coda to this one. Recorded here so the next rou
 shapes rather than from a search.
 
 **LEVEL5_AUDITION.md version drift, verified rather than re-fixed.** The reviewer names `:15-16`,
-and on `origin/main` those lines read "The v0.9.4 audition of 2026-08-15 is invalid for v0.9.6 on
-both counts" — an invalidation rule that stopped at v0.9.6 and never said what it means for the
+and on `origin/main` those lines read "The 0.9.4 audition of 2026-08-15 is invalid for 0.9.6 on
+both counts" — an invalidation rule that stopped at 0.9.6 and never said what it means for the
 release in preparation. That is corrected on this branch (commit `1869c68`): the rule now states
-that **the v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7**, names ADR-0034's reported
-latency change and the Drive-crossing swap as the reasons, and keeps the v0.9.4 -> v0.9.6 case as
+that **the 0.9.6 audition of 2026-09-01 does not carry over to 0.9.7**, names ADR-0034's reported
+latency change and the Drive-crossing swap as the reasons, and keeps the 0.9.4 -> 0.9.6 case as
 the worked example the rule was first written from. Every remaining 0.9.6 reference in the document
-is HISTORICAL and must stay: the worked example (`:25`, `:31`), the scope kept as the v0.9.6 record
-with a pointer to what a v0.9.7 scope must cover (`:34`, `:36`, `:41`, `:47`), and the recorded
-v0.9.6 PASS with its deliberately blank rows (`:112`-`:149`). `RELEASE_PROCESS.md:34` names the same
+is HISTORICAL and must stay: the worked example (`:25`, `:31`), the scope kept as the 0.9.6 record
+with a pointer to what a 0.9.7 scope must cover (`:34`, `:36`, `:41`, `:47`), and the recorded
+0.9.6 PASS with its deliberately blank rows (`:112`-`:149`). `RELEASE_PROCESS.md:34` names the same
 audition. Repository version metadata cross-checked: `CMakeLists.txt:14` `VERSION 0.9.7`, the newest
 CHANGELOG entry `[0.9.7]`, `HANDOVER.md` Current Version **0.9.7**. No further edit was needed and
 none was made. [Verified]
@@ -9804,7 +9805,7 @@ A/B slot (parameters alone under `AB@slotA`) entered the model with an empty bas
 live-read baseline after rounds 9, 10 and 15 removed the other three. Investigated, measured,
 decided and implemented as **migrate at the boundary** (Option B of three), with every legacy read
 path kept. Records: `docs/architecture/design-decisions/ADR-0037-legacy-ab-slot-baseline-at-the-boundary.md`
-(the decision), `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md` (the evidence trail and chronology).
+(the decision), `worklogs/LEGACY_AB_SLOT_BASELINE_0.9.7.md` (the evidence trail and chronology).
 
 **The measurement that decided it.** 86 062 restore-and-switch cycles through the real path (blob
 under the legacy key → `readSlot` → `abSwitchTo`) compared the bytes-only predictor with the live
@@ -10230,7 +10231,7 @@ wrote, or the imager observing the processor's `soundSetGen`. No finding in this
 no test exercises it. Separately, a vanished band's own Width and its solo mask bit remain writable
 with no gesture in flight; that is Bands/parameter coherence, not gesture lifetime.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` (the investigation),
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` (the investigation),
 `ADR-0038` + `ADR_INDEX` (the decision), `TESTING.md` (State test 68, and State test 66's
 supersession), `CHANGELOG.md` `[0.9.7]` Fixed. Neither `REPOSITORY_MAP.md` nor `SOURCE_OF_TRUTH.md`
 enumerates individual ADRs or worklogs, so neither needed a row. Not a gate item: no parameter ID,
@@ -10289,7 +10290,7 @@ always retaken by the next `mouseDown` before anything can consume it. `addBandA
 leaves a residual by construction: a change landing between its single read and its writes is a plain
 concurrent write, not a stale-identifier retarget, and no lock-free design can exclude it.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§8-14 (reproduction, the
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` §§8-14 (reproduction, the
 caller-check measurement, the value-level trace, the coherence table, the full field sweep, and what
 could not be proven), `ADR-0039` + `ADR_INDEX` (the decision, amending ADR-0038 and superseding
 nothing), `TESTING.md` (State tests 69 and 70, and the partial supersession of State test 68's
@@ -10349,7 +10350,7 @@ re-checked because this round touches the same stores, and nothing found makes t
 incorrect behaviour. Undo attribution during a bare width click, and the wheel path's gesture-less
 writes, are recorded as out of scope with the reason.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§15-24 (findings, reproduction,
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` §§15-24 (findings, reproduction,
 the JUCE dispatch, the invariant, seven candidate architectures with their rejections, why the window
 closes and what it leaves, width semantics, the implementation chronology, the full stale-write audit
 table and the residuals), `ADR-0040` + `ADR_INDEX`, `TESTING.md` (State test 71), `CHANGELOG.md`
@@ -10394,7 +10395,7 @@ actually hold at every store rather than at most of them.
 count re-proof — leaves all 2 611 checks green. Its consequence is inert: writes to splits above the
 live count, which the DSP does not read.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §25, `ADR-0040`'s new
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` §25, `ADR-0040`'s new
 "Correction, same day" section and its amended confidence statement, `TESTING.md` (State test 72).
 [Verified]
 
@@ -10438,7 +10439,7 @@ its own precondition was refused, and that is fixed.
 working; two gestures cannot own the same state at once, and the wheel's refresh cannot re-anchor
 `dragGrabDY`/`dragGrabDX`.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§26-35 (findings, reproduction,
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` §§26-35 (findings, reproduction,
 the common invariant, the threshold measurement, the transaction ruling, solo semantics, refresh
 semantics, chronology, the full audit table with the invariant stated once, residuals), `ADR-0041` +
 `ADR_INDEX`, `TESTING.md` (State test 73), `CHANGELOG.md` `[0.9.7]` Fixed (two new bullets — the solo
@@ -10523,7 +10524,7 @@ made, live again when the count returns) and handing the spread a pin outside th
 the way ADR-0039 closed the same class in `removeBand` — refuse, never clamp — with the same one-line
 guard added to `resetCrossover`. State test 74 leg N, mutation M11.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§36-47 (findings, reproduction,
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_0.9.8.md` §§36-47 (findings, reproduction,
 the invariant split into its three halves, the reporting contract, the two spreads, the cross-thread
 re-ruling, chronology, the final audit table, validation), `ADR-0042` + the `ADR-0041` correction +
 `ADR_INDEX`, `TESTING.md` (State test 74), `CHANGELOG.md` `[0.9.7]` Fixed. Not a gate item: no
@@ -10568,7 +10569,7 @@ names the ten-load multiband snapshot as an `ARCHITECTURE_REVIEW_GATE` item, bec
 fix replaces the reader. The held-audition guard stays an accepted GUI-only gap: the only seam that
 would work is a production method existing solely for a test.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§10-12 (the agent
+**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §§10-12 (the agent
 inventory, every consumed result classified and acted on, and a correction to this round's own
 reporting — a stale test binary was read as green twice in this PR), `ADR-0045` + `ADR_INDEX`,
 `ADR-0042`/`ADR-0044` census corrections, `FUTURE_RISKS.md` RISK-010, `TESTING.md` (State test 77 and
@@ -10613,7 +10614,7 @@ and the harness never shows the editor, so even a public `tick (dt)` would retur
 the held-solo guard. The vblank was never the only obstacle. Disposition unchanged, disclosure
 corrected, and the concrete closing change now named.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` (the running-work inventory,
+**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` (the running-work inventory,
 the reproduction, what the audit did to the first fix, the F2 residue table, the F3 determination,
 the F4 re-evaluation and the A–E option verdicts), `ADR-0044` + `ADR_INDEX`, `TESTING.md` (State
 test 76 and the corrected `FrameClock` gap entry), `CHANGELOG.md` `[0.9.8]`. Not a gate item: no
@@ -10717,7 +10718,7 @@ de-numbered in the wording this entry's predecessor already uses rather than re-
 recording its removal. Worklog §15; the convention that costs nothing is to spell the full path
 whenever a citation is worth checking, as this entry does.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` (findings, the full
+**Docs.** `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_0.9.8.md` (findings, the full
 write-path table, the reproduction, the rulings, rejected approaches, the decision, chronology,
 mutations, the ADR-0025 disclosures, the anchor audit), `ADR-0043` + `ADR_INDEX`, `TESTING.md`
 (State test 75, the new `FrameClock` gap entry and the `tsan` recipe), `FUTURE_RISKS.md` RISK-009,
@@ -10800,7 +10801,7 @@ last two used as shorthand labels for findings, not as live citations) and `:512
 
 **Docs.** `ADR-0046` + `ADR_INDEX`, `TESTING.md` (State test 78 and its measured coverage limit),
 `FUTURE_RISKS.md` (RISK-010 narrowed, RISK-011 added), `CHANGELOG.md` `[0.9.8]` Fixed,
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§16-19, `check-citations.py`.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §§16-19, `check-citations.py`.
 Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
 change, and no Accepted ADR conflict. [Verified]
 
@@ -10842,7 +10843,7 @@ complete `KNOWN_ISSUES` record — which gained the measurement and nothing else
 
 **Docs.** `ADR-0044` (amendment section), `TESTING.md` (State test 79 and its mutation record),
 `KNOWN_ISSUES.md` (the U4 corroboration),
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§20-23. **No CHANGELOG entry**: the
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §§20-23. **No CHANGELOG entry**: the
 round changes no user-visible behaviour, and `CHANGELOG_POLICY` scopes that file to changes that do.
 Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
 change, and no Accepted ADR conflict. [Verified]
@@ -10905,7 +10906,7 @@ untouched. Also re-aimed: two anchors in this file and in §27 that cited the wh
 **Docs.** `ADR-0041` (amendment), `CHANGELOG.md` `[0.9.8] ### Changed`, `TESTING.md` (State test 80
 and the tsan recipe row), `tests/tsan-suppressions.txt` (the rule marked enforced),
 `.github/workflows/build.yml` (the assertion step),
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§26-29. Not a gate item: no parameter
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §§26-29. Not a gate item: no parameter
 ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
 conflict — ADR-0041 is amended with its own measured consequences, not contradicted. [Verified]
 
@@ -10950,14 +10951,14 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2837` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2839` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
 `TESTING.md` (the probe, its numbers, the widened-window recipe, State test 81 and its mutation
 record), `THREADING_POLICY.md` (one row added for the audio/host-thread WRITES to automatable
 parameters the GUI reads — the direction the table described in only one direction; the model is
-unchanged and none was proposed), `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md`
+unchanged and none was proposed), `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md`
 §§32-35. Two anchors that had drifted for the third time inside this PR now cite the FUNCTION rather
 than a line. Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
 reported-latency change, and no Accepted ADR contradicted — ADR-0046's rule is extended, not
@@ -11049,7 +11050,7 @@ Documenting a measurement is not the same as pinning it. Worklog §43.
 **Documentation.** `ADR-0048` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
 `TESTING.md` (the probe, its numbers, its two construction mistakes, State test 82 and the CI recipe
 row), `.github/workflows/build.yml` (the new gate), `removeBand`'s invariant comment,
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§38-41. Not a gate item: no parameter
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §§38-41. Not a gate item: no parameter
 ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
 contradicted — ADR-0046's rule is extended and ADR-0045's asymmetry is applied, not reversed. [Verified]
 
@@ -11088,7 +11089,7 @@ exist. Both failed aims are recorded in the probe's own header rather than delet
 `RISK-009` already had, plus an explicit statement that this round's three GUI-side writer fixes are
 not evidence about an audio-side reader risk); `.github/workflows/build.yml` (the new gate);
 `scripts/preflight.sh` (the local first-party warning sweep);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§45-49.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §§45-49.
 
 **Gate status.** Not a gate item on the code: no parameter ID, serialization, threading-model,
 DSP-order or reported-latency change. ADR-0052 narrows the SCOPE of Accepted ADR-0041 and the
@@ -11124,7 +11125,7 @@ legitimate four-band move look like a defect — the false positive that left on
 
 **Documentation.** `ADR-0046` (amended) and its index row; `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `TESTING.md` (the probe, its numbers, its two corrections, the CI recipe row);
-`.github/workflows/build.yml`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §55 and
+`.github/workflows/build.yml`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §55 and
 the correction to §44.
 
 **Gate status.** Not a gate item and no new ADR: no accepted decision changes, two private member
@@ -11171,7 +11172,7 @@ It is out of this round's scope and belongs with its own probe measurement. Work
 
 **Documentation.** `ADR-0050` (amended — no new decision, the same rule at the two sites it had
 escalated); `CHANGELOG.md` `[0.9.8] ### Fixed`; `TESTING.md` (State test 83, its four legs and the
-ensemble mutation record); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58 and
+ensemble mutation record); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §58 and
 §59. One citation re-aim: `dragCrossoverTo` moved from line 702 to line 619 of
 `src/gui/SpectrumImager.cpp` when `bandSoloed`'s definition was deleted, corrected in both the
 anchor and the `DELIBERATE_REAIMS` declaration. (Written out in words rather than as
@@ -11232,7 +11233,7 @@ by measurement, with the instrument deliberately left alone since only the label
 **Documentation.** `ADR-0051` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `TESTING.md` (State test 84 and the new probe, with both aiming mistakes and the load sensitivity);
 `.github/workflows/build.yml` (the gate, sized for power at 18 000 moves);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §60, and §59 marked closed.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §60, and §59 marked closed.
 
 **Gate status.** Not a gate item and no new ADR: no accepted decision changes, one call site changes
 in one private function, `beginBandMove`'s `n` loses its default so the newly load-bearing
@@ -11279,7 +11280,7 @@ second suppression, so the suppression file stays at one entry.
 
 **Documentation.** `ADR-0045` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `TESTING.md` (State test 77 legs E/F and State test 76 legs K/L, with both aiming corrections);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §61.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §61.
 
 **Gate status.** Not a gate item and no new ADR: ADR-0045's Decision already reads "a positional
 identifier is stamped with the topology it was taken in and is void once that topology moves", and
@@ -11320,7 +11321,7 @@ no workflow file changes this round. No human approval is required and none is m
 
 **Documentation.** `ADR-0045` and `ADR-0047` (both applied again — no new decision); `CHANGELOG.md`
 `[0.9.8] ### Fixed`; `TESTING.md` (State test 79 legs C/D, and the withdrawn probe);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §62. [Verified]
 
 ### Twenty-third pass — a comment that claimed a measurement nobody took (2026-09-10)
 
@@ -11342,7 +11343,7 @@ cross-thread-only class sentence belongs to the DELETE half, with State test 79 
 test that enters the reentrant solo half.
 
 **Documentation.** `src/gui/SpectrumImager.cpp` (comments only, object code identical);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62j. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §62j. [Verified]
 
 ### Twenty-fourth pass — the press hit-test, and an ADR scope claim that was false (2026-09-10)
 
@@ -11382,7 +11383,7 @@ or shared object; the one CI step added is not a build-system item. No human app
 
 **Documentation.** `ADR-0046` (amended — scope, not Decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `docs/procedures/TESTING.md` (State test 85 and the probe);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §63;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §63;
 `.github/workflows/build.yml` (the sixth probe gate). [Verified]
 
 ### Twenty-fifth pass — the release action's record, dropped by the safety net (2026-09-10)
@@ -11425,7 +11426,7 @@ approval required.
 
 **Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `docs/procedures/TESTING.md` (State test 79 leg E);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §64. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §64. [Verified]
 
 ### Twenty-sixth pass — the one startup that opens two gestures (2026-09-10)
 
@@ -11485,7 +11486,7 @@ to defeat it. No new ADR. No human approval required.
 
 **Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `docs/procedures/TESTING.md` (State test 83 legs E and F);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §65. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §65. [Verified]
 
 ### Twenty-seventh pass — the mouse wheel, and what an interaction is (2026-09-12)
 
@@ -11551,7 +11552,7 @@ check passed whether or not the mechanism worked.
 replaced rather than amended (it described behaviour this release no longer ships) and a new `###
 Fixed` entry for the multiband wheel's missing undo step; `docs/KNOWN_ISSUES.md` KI-010 (second path
 closed, typed path still open); `docs/user/USER_MANUAL.md` §6 gesture table and §Troubleshooting;
-`docs/procedures/TESTING.md`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66.
+`docs/procedures/TESTING.md`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §66.
 [Verified]
 
 ### Twenty-eighth pass — the review of the mouse wheel (2026-09-12)
@@ -11631,7 +11632,7 @@ the pointed-control rule and the empty press, the Settings entry's stale leg cit
 re-cited from PR #143 to **PR #144**, which is where this work actually lands after #143 merged;
 `docs/user/USER_MANUAL.md` §3 universal gestures and the §6 gesture table;
 `docs/procedures/TESTING.md`; `src/gui/LookAndFeel.h` gains `DragGestureOwner::takeWheelNotch`;
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §67;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §67;
 and the two corrected sentences in the twenty-seventh pass above. [Verified]
 
 ### Twenty-ninth pass — the review of the review of the mouse wheel (2026-09-12)
@@ -11717,7 +11718,7 @@ leg L bases its shared timestamp past `getCurrentTime()`);
 `src/gui/LookAndFeel.h` gains `wheelTargetValue`; `src/gui/SpectrumImager.h` gains
 `originsFromRecord` and `bandMovePlan`; `src/PluginProcessor.h` records the `ScopedWheelStep`
 disposition at the destructor;
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §68. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §68. [Verified]
 
 ### Thirtieth pass — the review of the review of the review (2026-09-13)
 
@@ -11782,7 +11783,7 @@ re-aim of the `dragCrossoverTo` anchor onto the live `bandCount()` read it was a
 declaration is the line this round rewrote) and a §59 note that recorded a PAST re-aim in
 `path:line` form, which the gate read as a live anchor; `src/PluginProcessor.h` (the `ScopedWheelStep` cost and its uncovered
 sub-case, and the new `insidePollBody` seam);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §69. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §69. [Verified]
 
 ### Thirty-first pass — the defect the thirtieth introduced, and a residual reclassified (2026-09-13)
 
@@ -11826,7 +11827,7 @@ not implemented here.
 Decision); `docs/FUTURE_RISKS.md` RISK-012 re-classified from accepted residual to confirmed and
 escalated, with the withdrawn objection; `docs/procedures/TESTING.md` (the leg U2 rewrite and why,
 leg X, mutations M45–M47); `CHANGELOG.md` `[0.9.8]` — the round-12 Fixed entry completed with the
-other half of its own rule; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §70.
+other half of its own rule; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §70.
 [Verified]
 
 ### Thirty-second pass — the approved amendment, and the write sequence (2026-09-13)
@@ -11874,7 +11875,7 @@ thirty-third pass;** `docs/user/USER_MANUAL.md` (the "Known quirks" entry replac
 with the real Undo/automation rule); `docs/procedures/TESTING.md` (legs Y, D2, M, N, the three
 re-based legs, mutations M48–M54); `CHANGELOG.md` `[0.9.8]` (three Fixed entries);
 `src/gui/LookAndFeel.h` (the `snapValue` prose, now that `Knob` does override it);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §71. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §71. [Verified]
 
 ### Thirty-third pass — the store the closing snapshot could not see (2026-09-13)
 
@@ -11919,7 +11920,7 @@ the thirty-second pass's claim is corrected in place rather than deleted.
 `docs/user/USER_MANUAL.md` (one Undo covers everything that edit moved);
 `docs/procedures/TESTING.md` (legs Z, Z2, Z3, Z4, the rendered-grid comparison, mutations M55–M57);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §72. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §72. [Verified]
 
 ### Thirty-fourth pass — the store that spoke for a value that was no longer there (2026-09-14)
 
@@ -11958,7 +11959,7 @@ Flow, Latency, Plugin Format, Build System: untouched.
 `docs/procedures/TESTING.md` (legs Z5, Z6, State test 89, the per-function stack table, mutations
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §73. [Verified]
 
 ### Fifty-fourth pass — one slot for two depths (2026-09-17)
 
@@ -12158,7 +12159,7 @@ Plugin Format, Build System: untouched.
 `wheelTakenByOwningPress` → `wheelTakenByAnyPress` rename, the reversed half of round 29's
 objection, Related code); `docs/procedures/TESTING.md` (State tests 106, 107 and 108, mutations
 M156–M167 with M163 recorded as equivalent); `CHANGELOG.md` `[0.9.8]`;
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §88;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §88;
 `scripts/ubsan-ignorelist.txt` (a second section, and its header prose re-counted). [Verified]
 
 ### Forty-ninth pass — the wheel that read one axis, and the press that did not own it (2026-09-16)
@@ -12230,7 +12231,7 @@ line, the corrected one-write bullet and a rewritten *Related code*); `docs/proc
 `docs/user/USER_MANUAL.md` (§3 and the Multiband gesture table);
 `CHANGELOG.md` `[0.9.8]` (the pointer sentence corrected in place, and a new Changed entry for
 horizontal trackpad scrolling);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §87. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §87. [Verified]
 
 ### Forty-eighth pass — the queue that could not tell two deferrals apart, and the pointer that answered the wrong question (2026-09-16)
 
@@ -12290,7 +12291,7 @@ ruling quoted in full, the wording approval and the RISK-009 re-audit); `docs/FU
 RISK-009 (a round-28b bullet with the acquisition inventory as evidence);
 `docs/procedures/TESTING.md` (the round-28b block: legs L and M, State test 104's six legs, the
 empty-directory mistake and MB1–MB6);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §86. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §86. [Verified]
 
 ### Forty-seventh pass — the predicate that cannot exist, and the bound spelled twice (2026-09-16)
 
@@ -12372,7 +12373,7 @@ at State test 61 until an `afterDrain` hook moved them.
 JUCE-internal residual it stays OPEN on); `docs/policies/THREADING_POLICY.md` (the round-28 clause
 table and the corrected retry-door claim); `docs/procedures/TESTING.md` (State test 103, its eleven
 legs, the Bypass-carrier note and the two defects); `tests/tsan-suppressions.txt` (a fourth entry,
-with its proof); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §85. [Verified]
+with its proof); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §85. [Verified]
 
 **Closeout (2026-09-16), and it is part of this pass rather than a new one — same trigger, same
 head.** The mutation suite finished at **M132–M144, thirteen mutants, none surviving**, but not on
@@ -12393,7 +12394,7 @@ with nothing dropped and the merged step coherent. The test asserts a step COUNT
 edit now settles first, which is the door production gives it. One in-source claim went stale with
 the same change and is corrected: `pollUndoCoalesceAdopted`'s first-line comment said *"a
 user-action door blocks on it exactly as it always has"*, and since the admission no door blocks.
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §85h;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §85h;
 `docs/procedures/TESTING.md` round-28 block. [Verified]
 
 ### Forty-sixth pass — the invariant that had no predicate, and the `true` that meant two things (2026-09-15)
@@ -12477,7 +12478,7 @@ amendment, and the round-25 residual bullet marked withdrawn); `docs/policies/TH
 `tests/tsan-suppressions.txt` (two entries deleted, each with its measurement);
 `docs/procedures/TESTING.md` (State tests 101 and 102, mutations M120–M131, the M123 survivor, the
 suppression measurement); `.github/workflows/build.yml` and `scripts/preflight.sh` (the new lint);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §84a–§84i. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §84a–§84i. [Verified]
 
 ### Forty-fifth pass — a door that may not wait (2026-09-15)
 
@@ -12528,7 +12529,7 @@ the guards now live in one place and the call sites call it bare. Round 25's M10
 **Documentation.** `ADR-0036` §29 (with the distinct approval);
 `docs/FUTURE_RISKS.md` RISK-009 (the round-26 entry and the stated residual);
 `docs/procedures/TESTING.md` (State test 100's four legs, the watchdog, mutations M110–M115);
-`CHANGELOG.md` `[0.9.8]`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §83.
+`CHANGELOG.md` `[0.9.8]`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §83.
 [Verified]
 
 ### Forty-fourth pass — the coverage found a door the report did not name (2026-09-15)
@@ -12587,7 +12588,7 @@ one that isolates the adoption as the mutator.
 points 8 and 9, the examined residuals, coverage for legs I and J);
 `docs/FUTURE_RISKS.md` RISK-011 (a third door, and a sharpened residual);
 `docs/procedures/TESTING.md` (legs I and J, mutations M108/M109, the leg-I failure and the harness
-deadlock); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §82b–§82d. [Verified]
+deadlock); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §82b–§82d. [Verified]
 
 ### Forty-third pass — the poll was not the only thing the pump could deliver (2026-09-15)
 
@@ -12642,7 +12643,7 @@ extended with `deferWhileUserTransactionActive` and the `PresetManager` hook);
 `docs/FUTURE_RISKS.md` RISK-011 (RESOLVED in two halves, with the residual);
 `docs/procedures/TESTING.md` (State test 99's nine legs, the leg table, mutations M101–M107 and the
 two re-spellings); `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §82. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §82. [Verified]
 
 ### Forty-second pass — the transaction that had a beginning and an end but never said so (2026-09-15)
 
@@ -12688,7 +12689,7 @@ deliberate non-goals and the gate table carrying the owner's approval; `Related 
 `docs/procedures/TESTING.md` (State test 98's seven legs, the dispatch-order argument, mutations
 M96-M100); `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `tests/tsan-suppressions.txt` (a third entry, with the mechanism that makes its cycle unclosable);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §81. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §81. [Verified]
 
 ### Forty-first pass — the endpoint a first-party bare bracket never stated, and the two survivors (2026-09-15)
 
@@ -12749,7 +12750,7 @@ approval); `ADR-0052` (the guard asks the Slider and that is right — the gap i
 `ADR_INDEX.md`; `docs/FUTURE_RISKS.md` RISK-012 (the attribution matrix and the definitive
 disposition); `docs/procedures/TESTING.md` (State tests 96 and 97, leg L rewritten, M87/M88 rows,
 mutations M93–M95); `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §80, and §79's RISK-012 paragraph
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §80, and §79's RISK-012 paragraph
 corrected in place. [Verified]
 
 ### Fortieth pass — the restore that was taken but could not be finished, and the presses that spoke for nobody (2026-09-15)
@@ -12797,7 +12798,7 @@ acquisition must cover everything the operation does atomically, and an operatio
 must consume nothing); `tests/tsan-suppressions.txt` (the round-21 paragraph corrected, and three of
 its own citations re-anchored — they were already stale at `06adf01`);
 `docs/procedures/TESTING.md` (State test 95, legs J/K/O, mutations M89–M92);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §79. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §79. [Verified]
 
 ### Thirty-ninth pass — the lock the poll was waiting on, and the stores that spoke for nobody (2026-09-15)
 
@@ -12848,7 +12849,7 @@ the rule restated); `docs/architecture/THREAD_MODEL.md` (the timer-door exceptio
 and the `PresetManager::saveUser` residual recorded; RISK-012 narrowed to the empty press and kept
 OPEN); `tests/tsan-suppressions.txt` (the `HostSeat` entry's justification rewritten);
 `docs/procedures/TESTING.md` (State test 94, legs F, G, A, C, H, H2, and M83-M88);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §78. No `CHANGELOG.md` change: both
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §78. No `CHANGELOG.md` change: both
 fixes are corrections to work already inside the unreleased `[0.9.8]` entry. [Verified]
 
 ### Thirty-eighth pass — the endpoint a complete gesture could not state in time (2026-09-14)
@@ -12888,7 +12889,7 @@ and given an evidence-based final classification — **still open**, against the
 alone, and deliberately NOT downgraded to an accepted residual because that window still violates
 the stated product rule; `docs/procedures/TESTING.md` (State test 93, M76-M82, the leg-J note and
 the two control legs whose harness was wrong on the first run);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §77. No `CHANGELOG.md` change: the
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §77. No `CHANGELOG.md` change: the
 `[0.9.8]` *Fixed* bullet already states the behaviour ("Redo always puts back what you did"), which
 is what this round restores on a path that was broken. [Verified]
 
@@ -13002,7 +13003,1604 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/FUTURE_RISKS.md` RISK-012 reclassified from accepted residual to fixed defect;
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
+
+## 101st pass — 2026-09-29, only a tag push drafts a release; a corrupted capture fails at its hash alone (PR #159)
+
+**Scope.** Two review findings (Devin), treated as open until the final revision no longer met their failure
+conditions:
+- "Tag-selected rehearsals create draft releases" (`044016f:.github/workflows/release.yml:67`);
+- "Capture mismatch produces misleading follow-on checks" (`044016f:tests/state_tests.cpp:15997`).
+
+The informational note on `build.yml` (release links depend on the called `docs` gate) was checked again and
+needs no change: under `workflow_call` the `docs` job runs for the tag push and for a dispatch (only a same-repo
+`pull_request` skips it), checks out the full history and every tag (`fetch-depth: 0`, `fetch-tags: true`), and
+runs `check-docs.py --self-test` and `check-docs.py`; `draft-release` needs `build`, whose result includes it.
+
+This pass changes:
+- `release.yml`'s validate step (the release-or-rehearsal gate, a rehearsal notice) and its comments;
+- State test 25 (`tests/state_tests.cpp`), with a sink of its own (`FieldCaptureSink`, `CapturedChecks`); the
+  suite's shared `check` helpers are unchanged (see *CI* below);
+- the `check-docs.py` self-test; `check-citations.py`'s gloss of `release.yml`'s gate lines, whose line
+  numbers moved;
+- the documents below, and 17 citations re-anchored by `check-citations.py --fix` (one of them a `build.yml`
+  comment: a line number, nothing else in that file changed).
+
+No production code, parameter, serialization, state-schema, DSP, threading or latency change. The capture
+files are byte-identical (`git diff --quiet -- tests/fixtures`; the manifest still opens `emitter=v0.9.5`,
+CRLF). No tag or release was created; every tag in this pass's tests lives in a temporary repository.
+
+**Review state.** Nothing from Devin is on the pull request (no review, review thread or check run). The findings
+were taken as reported, against `044016f`.
+
+**Reproduced first, on `044016f`:**
+
+| Case | At `044016f` | Expected |
+|---|---|---|
+| `release.yml` validate, `workflow_dispatch` at an annotated, dated `0.9.9` (CMake 0.9.9) | `is-release=true`; `draft-release`'s `if:` true | `is-release=false`; `draft-release` skipped |
+| The State suite with the capture's manifest edited (slot A's width `0.812500` → `0.812600`) | 2 failures: the manifest hash, and "the active slot's sound reproduces from the 0.9.5 capture" | 1 failure, the hash, named as the fixture's |
+
+The other workflow cases were already right on `044016f` and stay right: a push of the tag (`is-release=true`,
+`draft-release` runs), a dispatch from `main` (`is-release=false`), and a prefixed, a leading-zero (`0.09.9`) or a
+lightweight tag, or a CMake mismatch, each refused.
+
+**Root causes.**
+- *Rehearsal:* the step chose the release path on `GITHUB_REF` alone. A dispatch started from a tag carries the
+  same `refs/tags/<tag>` as the push, so it ran every release check, passed, and wrote `is-release=true`.
+- *Capture:* State test 25 checked both hashes and carried on. On an edited file every later check read the
+  edit, and a mismatch there read as a restore regression in the build.
+
+**The rule.**
+- **A release is a tag push.** The validate step takes the release path when `GITHUB_EVENT_NAME` is `push` and
+  `GITHUB_REF` is a tag ref. The event is read as an allowlist: under the workflow's two triggers that is
+  exactly "not `workflow_dispatch`", and a trigger added later is a rehearsal until it is made a release,
+  except `workflow_call`, which carries the caller's event and ref and so needs the gate reviewed. A
+  rehearsal from a tag prints a notice that a release is cut only by pushing the tag. The trigger, the tag
+  grammar, the annotated check, the CMake and changelog checks and `draft-release`'s condition are unchanged.
+- **A capture that fails its hash is the whole finding.** State test 25 reports the mismatch, says the fixture's
+  integrity failed and to restore the file from git, and parses, restores and compares nothing from it. The hash
+  check, the exact label assertion and the fixture are unchanged. With a correct hash and a wrong label, the
+  label fails and the dependent checks run as before (they do not read the label).
+
+**Tests.**
+- *`check-docs.py --self-test`, 689 → 700 cases:* `0.09.9` and a prefixed `0.9.9` in the grammar loop; a
+  lightweight `0.9.9`; a `0.9.9` tag on a CMake 0.9.10 tree, refused for the mismatch; the `draft-release`
+  wiring (its `if:` and the validate job's `is-release` output, read from the workflow with each value whole,
+  as GitHub reads it, any other form failing closed), and two cases that it is read so: the same `if:`
+  continued on a second line with `|| github.event_name == 'workflow_dispatch'`, and written as a `>-` block,
+  are each not taken for it; and four trigger cases, each running the step for the same annotated, dated
+  `0.9.9` and evaluating the job's condition on what it wrote: a push (`is-release=true`, runs); a dispatch from the tag, a dispatch
+  from `main`, another event at the tag (`is-release=false`, skipped).
+- *State test 25, 5,596 → 5,600 checks:* four gate legs run into a `CapturedChecks` on in-memory copies (intact,
+  its 19 checks pinned; manifest edited; blob edited; label rewritten with the hash re-pinned) and skipped when
+  the capture has already failed (`TESTING.md` has the legs). The suites: State 5,600 checks, 0 failures; DSP
+  all passed.
+- *Controls, each through the whole State suite on an edited copy of the fixtures* (the binary compiled against
+  that copy; the repository's fixtures never written): a manifest slot value edited outside or inside the 1e-5
+  tolerance, the label rewritten, CRLF → LF, a blob width edited, a blob byte the restore does not read: 1
+  failure each, the hash, with the integrity note; the label rewritten with its hash re-pinned: 1, the label,
+  the dependent checks run and pass, the gate legs skipped; the label assertion relaxed to the bare form with
+  the historical fixture: 1, the label.
+
+**Mutation.**
+- *`release.yml`'s gate, against the unmutated checker:* twelve mutants (below) each fail the self-test.
+- *State test 25:* six mutants each fail the suite: the early return removed (2), the integrity condition
+  `&&` (2), the label check made to pass always (1), the label compared without its prefix (1), a return
+  before the slot-B checks (1, gate a's pinned count), the sink ignoring the capture (7).
+- *The checker's 92 and `release.yml`'s nine earlier mutants,* re-run against this revision: each still fails
+  (ADR-0058's evidence has the counts).
+
+| `release.yml` mutant (against the unmutated checker) | Failing cases |
+|---|---|
+| the gate on the ref alone (the finding's own shape) | 2 |
+| a denylist of `workflow_dispatch` instead of the `push` allowlist | 1 |
+| event and ref OR-ed | 2 |
+| the wrong event variable (no push is a release) | 20 |
+| the rehearsal writing `is-release=true` / no `is-release` | 3 / 3 |
+| `draft-release` run `always()` / gated `!= 'false'` / without `needs: validate` / on a hard-wired job output | 1 / 1 / 1 / 1 |
+| `draft-release`'s `if:` continued on a second line with `\|\| github.event_name == 'workflow_dispatch'` | 1 |
+| a decoy job before `validate` holding the fixed step; `validate`'s own gate back on the ref alone | 2 |
+
+Ten earlier counts moved, each because the new cases exercise the same code: `RELEASE_TAG` admitting leading
+zeros 7 → 8, the grammar case trusting the grammar 9 → 11, the clone-style sandbox 14 → 21, and of
+`release.yml`'s: the old validator 4 → 5, the annotated check removed 1 → 2, the three re-fetch mutants 5 → 7,
+the two output mutants 5 → 6. Every other count is `c729463`'s. 113 mutants in all, none surviving, none by
+crashing.
+
+**Review.** Three reviewers (the release gate, State test 25, the documents), each finding reproduced by a
+skeptic before it counted; 13 reported, all addressed:
+- **The self-test could be walked past (2, one rated blocking).** Its reader dropped a YAML value's continuation
+  lines, so `draft-release`'s `if:` extended on a second line with `|| github.event_name == 'workflow_dispatch'`
+  still read as the gated form while GitHub would draft on a dispatch; and it ran the first `id: meta` step in
+  the file, so a decoy job holding the fixed step let `validate`'s own gate go back on the ref alone. Neither
+  is reachable from the workflow as it stands. The reader now keeps every value whole and takes the step from
+  `validate`; two cases and two mutants (above) pin both.
+- **`GITHUB_OUTPUT` read as `name=value` lines only** (minor): a `name<<DELIMITER` block written after it would
+  go unseen. It is now parsed as the runner parses it. A `${{ }}` expression in the step, which the sandbox
+  cannot substitute, now fails the case (the finding itself was refuted: the step holds none).
+- **State test 25** (2): gate (a) asserted only `> 10` checks, so a return before the slot-B checks passed; the
+  count is now pinned at 19. The return value's comment said "whether the checks that depend on the fixture
+  ran", untrue at the slot-count exit; reworded.
+- **Wording** (8): a later `workflow_call` trigger carries the caller's event, so the allowlist sentence now
+  names it; the self-test count (698, before the reader's two cases); the re-anchored-citation count; an
+  unqualified citation of the finding's line, which the citation gate would have moved; "19 dependent checks"
+  (2 hashes and 17); where the gate legs are skipped; an `ADR_INDEX.md` provenance clause.
+
+**CI.** The first push of this pass, `a8230c0`, went red in two jobs:
+- **`sanitizers`: ASan stack-overflow in `main`**, entering `testSaveBaselineDescribesTheBytesUnderAutomation`
+  (its own frame 1.29 MB). This pass's cause. The first spelling made the suite's shared `check`/`checkNear`
+  capture-aware; that changed their inlining, clang then inlined six other tests into `main` (among them
+  `testAHostResetClearsTheLiveMeters`, `testApplyNeverWritesANonFiniteGain` and
+  `testForeignPresetDoesNotResetSound`, each holding a processor), and ASan, which gives every inlined local
+  its own slot, grew `main`'s frame by 438,464 bytes (measured with clang 18, `-fstack-usage`, the job's
+  sanitizer flags: 13,644,664 on `044016f`, 14,083,128 on `a8230c0`). The fix leaves the shared helpers
+  byte-identical to `044016f` and routes State test 25 through a sink of its own, with its processor on the
+  heap (the suite's convention): `main` is 13,501,496, below `044016f`'s, and no other test changes how it
+  is inlined. The suite passes under `ulimit -s 1024` as well (the Windows-parity step).
+- **`macos-intel`: pluginval's own teardown aborted** (`std::bad_function_call` after `SUCCESS`, AU randomise
+  pass 2/3). No plug-in source changed in this pass; this is the non-deterministic pluginval shutdown abort
+  recorded on PR #141 and in the 0.9.8 audit worklog, and the next push re-ran the job.
+
+**Limitations, stated.**
+- `draft-release`'s condition is evaluated for the one form the workflow uses, its value read whole; any other
+  form fails the wiring case until the self-test is taught it.
+- A trigger added later is a rehearsal under the allowlist, except `workflow_call`, whose event and ref are the
+  caller's; adding it needs the gate reviewed against every caller.
+- The gate legs start from the capture as committed, so on a capture that already fails they are skipped, and
+  the real run's failure is the report.
+
+**Documents:**
+- ADR-0059 (status line, Decision, the capture bullet, Evidence), with its `ADR_INDEX.md` row;
+- ADR-0058 (the self-test list, Related code, Evidence), with its `ADR_INDEX.md` row;
+- `RELEASE_PROCESS.md` (the rehearsal paragraph); `CI_CD.md` (the `release.yml` paragraph);
+- `TESTING.md` (State test 25's gate, the `docs` self-test's workflow cases);
+- `REPOSITORY_MAP.md` (the `release.yml` and fixtures rows); `HANDOVER.md` and `RELEASE_HARDENING_PLAN.md`
+  (the State count).
+
+**This file:** this entry and the *Last updated* line.
+
+## 100th pass — 2026-09-29, the release line is this repository's `main` alone; one release-tag grammar (PR #159)
+
+**Scope.** Three review findings (Devin), treated as open until the final revision no longer met their
+failure conditions:
+- "Fork-only tags block valid changelogs" (`scripts/check-docs.py`);
+- "Branch-only tags block changelog checks" (`scripts/check-docs.py`);
+- "Release trigger and checker disagree on leading zeros" (`.github/workflows/release.yml:38`).
+
+The previous review's informational note on `build.yml` (release links depend on the called `docs` gate) was
+checked and needs no change: the `docs` job checks out the full history, every branch and every tag
+(`fetch-depth: 0`, `fetch-tags: true`), runs `check-docs.py`, and runs in `release.yml`'s call of `build.yml`
+too; `release.yml`'s `validate` checks tag ⇄ CMake version ⇄ dated entry, the `docs` gate the link
+definitions against the tags. The two complement each other.
+
+This pass changes:
+- `read_git_tags`: which `main` is the release line, and which tags on it count;
+- `not_here()` and `merge_hint()`: the wording for a tag in `HEAD`'s history that `main` does not hold;
+- `REPOSITORY_REMOTE`, now derived from `REPO_URL` (the same pattern, byte for byte);
+- `release.yml`'s validate step (the tag grammar) and its header comment;
+- the self-test; `check-citations.py`'s gloss of `release.yml`'s gate lines;
+- the documents below.
+
+No production code, C++ test, parameter, serialization, DSP, threading or latency change. No tag was created;
+every tag in this pass's tests lives in a temporary repository.
+
+**Review state.** Nothing from Devin is on the pull request: no review, review comment, check run or status
+(the `devin-ai-integration` check suite on `91fbdb2` is queued with no runs). The findings were taken as
+reported, against `91fbdb2`, where `release.yml:38` is the tag trigger.
+
+**Reproduced first, on `91fbdb2`**, in real temporary repositories with the production `read_git_tags` and
+`check_changelog_links`, and `release.yml`'s validate step run verbatim in sandboxes:
+
+| Case | At `91fbdb2` | Expected |
+|---|---|---|
+| Fork clone: a branch from the repository's `main` (0.9.9); the fork's own `main` tags 0.9.10 | FAIL (2) | PASS |
+| The same file on the fork's own `main`, whose history holds the fork's 0.9.10 | FAIL (2) | PASS |
+| A `maint` branch forks from 0.9.9, tags 0.9.10, is never merged; checked on `maint` | FAIL (2) | PASS |
+| `release.yml` validate: `0.09.10`, `00.9.10`, `0.09.010`, each with a matching CMake version | accepted | refused |
+
+The other acceptance cases were already right on `91fbdb2` and stay right: an ordinary clone reading
+`origin/main`; `[Unreleased]` from a branch-only 0.9.10 refused; a PR branch forked before `main` tagged 0.9.10
+(FAIL 2); 0.9.9 and 0.9.10 on `main` with only 0.9.9 recorded (FAIL 2); both recorded (PASS from 0.9.10, FAIL
+1 from 0.9.9); a skipped version (PASS); the first tag (FAIL before the real tag, PASS after).
+
+**Root causes.**
+- *Fork-only:* the line was `origin/main` united with the `main` of every remote whose URL is the
+  repository. In a fork clone `origin` is the fork, so the fork's own tags joined the release line.
+- *Branch-only:* a release was any tag in `HEAD`'s history, or in `main`'s and not cut after `HEAD`. A tag
+  cut on the checked-out branch, which `main` does not hold, counted: it demanded an entry and became the
+  `[Unreleased]` base.
+- *Grammar:* the validate step's `^[0-9]+\.[0-9]+\.[0-9]+$` accepted a leading zero that `RELEASE_TAG`
+  refuses, so a `0.09.10` tag with a matching CMake version would have passed validation and failed only
+  later, in the called `docs` job.
+
+**The rule.**
+- **`main` is this repository's.** The remote-tracking `main` of every remote whose URL is this repository
+  (`REPO_URL`, under any URL GitHub serves; `origin` in CI, `upstream` in a fork clone) — and then no other
+  remote's. Failing any such remote, `origin/main`, but only when `origin` is the only remote. Failing any
+  remote at all, the local `main`. Everything else is unknown, with a remedy that names a real remote:
+  - a remote that is the repository but whose `main` was never fetched;
+  - several remotes none of which is recognisably the repository.
+
+  Each ref is read by its full name and used by its commit.
+- **A tag is a release only when that `main` holds its commit.** It binds every commit except those it was
+  cut after (a tag on a strict descendant of `HEAD`; a tag on `HEAD` itself is kept). A tag in `HEAD`'s
+  history that `main` does not hold is `branch_only`: no entry, no base. A finding that turns on one says
+  it is in this checkout's history but not in `main`'s, and never offers "merge `main`".
+- **One tag grammar.** `release.yml`'s validate step requires `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`,
+  `RELEASE_TAG`'s grammar. The trigger glob cannot refuse a leading zero, so it stays a coarse filter and the
+  step is the authority. A negative glob was rejected: if GitHub evaluated it differently from its reading
+  here, a real release tag would never start the workflow.
+
+The reconciliation order is unchanged:
+1. read the applicable tags;
+2. report each without an entry, newest first;
+3. only then take `newest_tagged` and `previous_of` from those tags.
+
+**Self-test.** 643 → 689 cases:
+- **2 more `maint` steps.** On the never-merged branch, 0.9.10 is branch-only; the file is accepted; and
+  `[Unreleased]` from 0.9.10 is refused with the reason and no merge remedy.
+- **8 topology steps:**
+  - the fork clone, from a branch off the repository's `main`;
+  - its line naming `upstream/main` alone;
+  - the fork's own `main`;
+  - the repository remote without its `main`: unknown;
+  - an ordinary clone reading `origin/main`;
+  - a checkout whose only remote is not `origin`: unknown, the local `main` not guessed at;
+  - a skipped version on the line, accepted from 0.9.11 and refused from 0.9.10.
+- **3 synthetic branch-only cases:** the count case (0), and the `[Unreleased]` and definition wording.
+- **16 release-grammar cases.** The workflow's trigger and validate step are located, then the step runs
+  verbatim for fourteen tag spellings and a lightweight tag.
+
+- **5 more from the review round:**
+  - a release tag with a 5000-digit component, read rather than fatal;
+  - an SSH host-alias `upstream` beside a fork, which reads as unknown;
+  - a tag spelled `refs/remotes/upstream/main`, which does not stand in for the missing ref;
+  - the fork-`main` wording, naming `upstream/main`;
+  - a headed branch's off-line tag, with no merge remedy.
+- **2 more from the second review round:** two remotes that are both the repository, one of them stale
+  (the finding names the one holding the release); and an `insteadOf` rule that rewrites the repository's
+  URL, which the unknown line's reason names. The grammar case now also requires the step to write
+  `is-release=true` and `version=<tag>` to `GITHUB_OUTPUT`, and the sandbox's local tag to be the peeled
+  commit.
+- **4 more from the third review round:** the fetch the source names, run as written in a single-branch
+  clone, brings a release pushed since, with the `main` that holds it; under a credential-bearing
+  `insteadOf` rule the remedy uses a form the rule leaves alone, shows no credentials, and, run as written,
+  reads the line; with every form rewritten, it says to lift the rule; and the name it adds is one nothing
+  holds (a removed remote's refs, a legacy remote file, 120 configured remotes).
+- **2 more from the fourth review round:** a ref named `refs/remotes/<name>` itself takes that name; and a
+  remote name with a shell metacharacter is quoted in the fetch the source names. The single-branch clone's
+  remedy and the `insteadOf` remedy are now run exactly as printed, the latter beside a fork remote.
+- **4 more from the final review round:** where the line cannot be read, a newer release-shaped tag in the
+  checkout makes a file with only the release in preparation refused, naming the tag (synthetic, and in a
+  real shallow clone holding 0.9.10), while the in-preparation release's own tag, or tags that name no
+  release, leave it exempt. The single-branch clone's remedy and hint now run under `fetch.prune=true`.
+
+The negative controls fail:
+- `release.yml` with its old expression: 4 cases;
+- a trigger narrowed to `[1-9]+.[0-9]+.[0-9]+`: 4 cases;
+- the step's tag re-fetch without `--force`, removed, or aimed at the wrong ref: 5 cases each (once the sandbox
+  checks out as `actions/checkout` does);
+- the step echoing `is-release=true` to the log instead of `GITHUB_OUTPUT`, or writing no `version`: 5 cases
+  each (0 before the second review round);
+- the sandbox fetching the tag object, as `git clone` does: 14 cases (0 before the second review round).
+
+**Mutation.** A hundred and one mutants each fail the self-test, none by crashing, on a clean clone of
+`c729463`: ninety-two of the checker, and nine of `release.yml` run against the unmutated checker (the same
+counts as on `46b82f5`, whose checker differs only in one message's wording). The full counts are
+in ADR-0058's evidence. Among them:
+
+| Mutant | Failing cases |
+|---|---|
+| the repository's `main` united with a fork's `origin/main` | 6 |
+| `origin/main` preferred over the repository's remote | 17 |
+| the repository's remote not recognised by URL | 14 |
+| the repository's remote without its `main` falling back to `origin/main` | 2 |
+| `origin/main` read beside other unrecognised remotes | 5 |
+| the local `main` read although the checkout has remotes | 11 |
+| a line ref resolved by shorthand | 1 |
+| branch-only tags in `HEAD`'s history counted | 5 |
+| a tag on `HEAD`'s own commit read as its future | 10 |
+| a branch-only tag offered the merge remedy / called "not in this checkout's history" | 2 / 4 |
+| a headed branch offered a merge for a tag `main` does not hold | 1 |
+| `RELEASE_TAG` admitting leading zeros | 7 |
+| the tag-grammar case trusting the grammar instead of running the step | 9 |
+| the tag-grammar sandbox fetching the tag object (as `git clone` does) | 14 |
+| the unknown-line remedy always adding `upstream` / under a URL a rule rewrites away | 7 / 2 |
+| its name ignoring leftover refs / a legacy remote file / a `refs/remotes/<name>` ref; the names bounded | 2 / 1 / 1; 1 |
+| its fetch from another remote (the fork) into the one it adds | 1 |
+| the rewritten URL shown with credentials | 1 |
+| every printed fetch unforced / without `--refmap=` / with the remote name unquoted / with a bare `main` source | 5 / 5 / 1 / 3 |
+| an unreadable line: a newer tag present ignored / the in-preparation tag counted / a leading-zero tag counted | 3 / 1 / 1 |
+| the fetch hint naming no remote / without the line's `main`; the line refs in name order | 3 / 3; 1 |
+| the remedy naming plain `main` / the future-tag clause missing / said where nothing was cut | 3 / 3 / 2 |
+| `release.yml`: validator back to `[0-9]+` / last component unguarded / trigger narrowed / annotated check removed | 4 / 1 / 4 / 1 |
+| `release.yml`: the tag re-fetch without `--force` / removed / of the wrong ref | 5 / 5 / 5 |
+| `release.yml`: `is-release=true` echoed to the log / `version` not written | 5 / 5 |
+| the intersection; `newest_tagged` before reconciliation | 21; 21 |
+| a missing entry ignored | 41 |
+| `[Unreleased]` from the newest entry | 45 |
+| the first-tag guard removed | 22 |
+| the skipped-tag fix reverted | 29 |
+
+Survivors were closed along the way:
+- **A first run on `9089fab` left one survivor.** The tag-grammar case took `RELEASE_TAG`'s verdict without
+  running the step. The case now requires the step's own refusal message for every refused tag, and
+  `is-release=true` for every accepted one (`13bab38`).
+- **The review's three re-fetch mutants survived until the sandbox checked out as `actions/checkout` does**
+  (`9c0e961`).
+- **Three more survived on `2c5d6e5`**, from the second review round's grammar lens: the sandbox fetching the
+  tag object, and `release.yml` echoing either output to the log instead of `GITHUB_OUTPUT` (`4d32b10`).
+- **One on `aa71585` was caught only by a crash**: bounding the remedy's names raised `StopIteration`, which
+  ended the self-test instead of failing a case. An exception from the tag reader now fails a named case
+  (`d49b1b1`).
+- **The fourth round's documents lens showed one more**: a remedy fetching from the wrong remote into the one
+  it adds passed, since the step ran only `git remote add`. It now runs the whole command (`2cc3a40`).
+- One mutant of the final round was first spelled so that a `v`-prefixed tag reached `vtuple()` and crashed
+  the synthetic cases; it was re-spelled (a leading-zero tag counted) and fails 1 case on the same clone.
+
+**Review.** Four reviewers each took one lens (topology, tag grammar, regressions, wording). Each ran real
+temporary repositories, and a skeptic reproduced every finding before it counted. They confirmed 12 findings,
+all minor or wording, none reachable in CI or a normal workflow. The regressions reviewer found none (34 cases
+of its own plus the helper suites). All 12 are fixed in `9c0e961`:
+- **A tag spelled `refs/remotes/upstream/main` stood in for the missing ref.** Git's shorthand lookup did this,
+  and it made an unknown line a fork's. Refs are now read by full name (`show-ref --verify`) and used by commit.
+- **The unknown-line remedy was wrong in two ways.** It named `git fetch origin` in a checkout with no
+  `origin` (reported three times). With no remote at all, it spoke of "a remote".
+- **`release.yml` cited ADR-0059 for the no-leading-zero rule before ADR-0059 stated it.** ADR-0059 is
+  amended.
+- **A 5000-digit release-shaped tag crashed the run** in `int()`, which predates this revision. The cap is
+  lifted.
+- **Remedy wording:**
+  - "merge the history that carries it" could no longer make a non-`main` tag a release;
+  - "merge `main`" named a fork clone's own `main`;
+  - the branch-only wording said "not in `main`'s" where the checked-out `main` is the fork's.
+
+  The remedy now names the ref read (`upstream/main`), and is offered only where merging `main` helps.
+- **The source text left out "except those tagged after this commit"** for an older `main` commit.
+- **The unreadable-tags finding said to "run check-docs.py from the git checkout itself".**
+- **The `check_changelog_links` docstring and a comment** still stated the old line.
+
+The grammar reviewer also showed that the sandbox used `git clone`, which copies the annotated tag. So the
+step's re-fetch of the tag object never mattered, and three mutants of it passed. The sandbox now checks out
+as `actions/checkout` does, leaving a peeled local tag.
+
+Refuted, or within the rule as stated, and each addressed anyway:
+- **A canonical remote under an SSH host alias or a proxy `insteadOf` is not recognised.** The owner's rule
+  then fell back to the fork's `origin/main`. That fallback now applies only when `origin` is the only remote.
+  Beside other remotes, the line is unknown with a remedy, since which remote is the repository cannot be
+  guessed.
+- **A fork's tag fetched onto a commit the repository's `main` holds counts.** A fork's same-named tag also
+  keeps the repository's own out. Git records no tag's source, so these are stated limitations (ADR-0058).
+  CI fetches this repository's tags alone.
+- **The `TagState` docstring overstated that a fork's `main` is "not read at all".** It now says "not beside
+  this repository's".
+
+**Second review round** (on `90e259a`). Three reviewers (topology, tag grammar, wording), each finding again
+reproduced by a skeptic before it counted. They confirmed 12: one minor, eleven wording, none reachable in CI
+(whose checkout has one remote, `origin`, at the repository's URL). Fixed in `2c5d6e5`:
+- **The unknown-line remedy could not run where it was offered** (minor). It always said `git remote add
+  upstream`, which fails where a remote of that name exists -- a fork clone whose `upstream` is the repository
+  under an SSH host alias, the case the self-test pinned. Under an `insteadOf` rule that rewrites the
+  repository's URL, a remote added under that URL is not recognisable either. The remedy now adds the
+  repository under the first of `upstream`, `anamorph`, `release-line` that no remote has, and the reason
+  names such a rule (both refined in the third round, below).
+- **The checker's wording** (4):
+  - the source's `git fetch --tags` fetched `origin` (a fork clone's fork), not the remote the line was
+    read from; it names that remote;
+  - three sites still named bare `main` where the line was `upstream/main`; they name the ref read (a
+    fourth, the no-base finding, was found in the third round);
+  - with two remotes that are both the repository, the first in name order was named even when
+    stale; the one holding the most tags is named first;
+  - the source said "except those tagged after this commit" where nothing was excepted. A skeptic refuted
+    this one (the statement holds by ancestry), but it is said now only where a tag was cut.
+- **The documents** (8), each still describing `13bab38`'s behaviour or pairing a stale count:
+  - ADR-0058's applicable-tag bullet ("`HEAD`'s history, and `main`'s"), its remedy paragraph, its Related
+    code and Consequences (`origin/main` without "when `origin` is the only remote"), and its status line
+    ("two" findings for three);
+  - `ADR_INDEX.md`'s 0058 row (the sole-`origin` rule, and a merge remedy offered for every off-line tag);
+  - ADR-0059's evidence, which paired 677 cases with the prefix mutant's count at 672;
+  - `build.yml`'s `docs`-job comment (the old line; rewritten in the same eight lines);
+  - `CHANGELOG_POLICY.md` rule 8's `--contains` gloss (a tag on `HEAD` itself counts) and a garbled clause.
+
+The grammar reviewer's two findings were refuted as defects -- `release.yml` is correct as it stands -- but
+each showed a gap in the self-test, closed in `4d32b10`:
+- The case read `is-release=true` from the step's whole log and never read `version`. So an edit that
+  echoed either output to the log instead of `GITHUB_OUTPUT` passed, although no release job would run.
+  It now reads the two outputs from `GITHUB_OUTPUT`.
+- Nothing asserted that the sandbox's local tag is the peeled commit. A sandbox that fetched the tag object,
+  as the first spelling's `git clone` did, left the step's re-fetch untested and kept every case green.
+  The case now asserts it.
+
+Checked and not findings: a repository remote whose name holds a `/`, packed refs, a stale tracking ref of a
+removed remote, a URL-less remote, the tag-push checkout re-run after `main` moved on, and a differential of
+the step's expression against `RELEASE_TAG` over 3584 strings (ASCII and Unicode digits). The step's CMake-
+and changelog-equality checks are not what this case tests (its fixture always matches them), and no
+document claims they are.
+
+**Third review round** (on `c12dcb4`). Three lenses: the second round's checker changes, the documents, and
+an independent check that no Devin failure condition still applies. Each finding was again reproduced by a
+skeptic.
+- **Devin closure: nothing applies.** None of the three findings, nor a logical equivalent, reproduced at
+  `c12dcb4`: 77 real-repository cases, 10 probes, 12 `release.yml` cases and 3 runs over the full tree, with
+  0 mismatches. They covered a fork clone under twelve `upstream` URL forms and two `insteadOf` aliases, fork
+  tags fetched from `origin`, a fork `main` ahead of and behind the repository's, a branch-only tag on `HEAD`
+  or in its history (lightweight too), case E in a CI-style detached checkout and as a test merge, every
+  grammar case, and the end-to-end release simulation.
+- **The checker: 9 confirmed** (5 minor, 4 wording), none reachable in CI. Fixed in `aa71585`:
+  - in a single-branch clone of a feature branch, `git fetch --tags origin`, as the source advised,
+    brought a new release tag but not `origin/main`, so the tag was no release and its missing entry went
+    unreported (minor). The source now names `git fetch --tags <remote> +refs/heads/main:refs/remotes/<remote>/main`
+    (with `--refmap=` since the fourth round);
+  - under an `insteadOf` rule that rewrites the repository's URL, the remedy could never work, and following
+    it added another remote on every run (minor). It now uses the first form GitHub serves that no rule
+    rewrites away (`git@github.com:...` beside an https proxy rule), or says to lift the rule where every form
+    is rewritten; the note no longer says no remote can be recognised;
+  - the remedy's name was checked against `git remote` alone, and its refspec was not forced: a removed
+    remote's leftover `upstream/main` rejected the fetch, and the fork's tag on it then counted; a legacy
+    `$GIT_DIR/remotes` file made `git remote add` fail (minor). The name now avoids both, and the refspec is
+    forced;
+  - with every one of the 101 candidate names taken, the reader raised `StopIteration` (minor); the
+    names are now unbounded;
+  - the rewritten URL was printed with any credentials in it (minor); they are stripped;
+  - wording: the no-base finding still named bare `main`; the grammar case's failure message said "refuses"
+    for a pass that wrote no outputs and for an invalid sandbox, and dropped the reason; a local-`main` line
+    with no remote named `git fetch --tags`, which can bring nothing.
+- **The documents: 6 wording**, three of them the same defects as the checker's (the `insteadOf` note, the
+  bare `main` site, the remedy's names). Fixed: ADR-0058's missing-entry quote (now the ref read), its
+  self-test list's fork-clone remedy (`anamorph` where `upstream` is taken), the `TagState` docstring's
+  fork-clone clause (only where `origin` is the only remote), and "configuration order" for what was name
+  order.
+
+**Fourth review round** (on `e3cd7a8`). Two lenses, the third round's checker changes and the documents, each
+finding reproduced by a skeptic. None is reachable in CI, a tag-push checkout, an ordinary clone or a fork
+clone with `upstream`. Fixed in `46096d9` and `2cc3a40`:
+- **The checker: 4 minor, 2 wording.**
+  - Where every URL form is rewritten, the remedy's code span ended in ", once no `insteadOf` rule rewrites
+    it", so it was no command, and the `ssh.github.com:443` form was not tried. The condition now precedes
+    the span, and that form is tried.
+  - In a worktree of a `--mirror` clone with `main` checked out, the printed fetches were refused (the
+    remote's configured refspec also tried to write `main`) and repeated unchanged. Every fetch of
+    `<remote>/main` the reader prints now carries `--refmap=`.
+  - A ref named `refs/remotes/<name>` itself blocked the remedy's fetch (a directory/file conflict). Such a
+    name is now taken.
+  - A remote name with a shell metacharacter made a printed fetch run something else. Names are now
+    shell-quoted.
+  - Wording: the self-test blamed `read_git_tags` for an exception raised elsewhere, and the `TagState`
+    docstring said "beside any other remote" where that remote may be this repository.
+- **The documents: 6 wording confirmed**, one of them the docstring above, and a seventh refuted.
+  - The self-test ran only the `insteadOf` remedy's `git remote add`, so a remedy fetching from the wrong
+    remote passed. The step now runs the printed command whole, beside a fork remote, and requires the
+    added remote's `main` to be the repository's.
+  - `RELEASE_PROCESS.md` gave only a fetch as the no-`main` remedy. It and `CI_CD.md` gave a bare `git fetch
+    --tags`, which in a fork clone fetches the fork. Both now name the checker's commands.
+  - Two statements were untrue: "a single-branch clone's refspec never updates `main`" (not so for a
+    single-branch clone of `main`), and "the hundred candidate names" (there were 101). The refuted one
+    held that the reason given for forcing the no-`main` remedy never applies where it is shown; the
+    sentence now gives the reason that plainly holds (every printed fetch is forced, so it can be re-run).
+
+**Final review round** (on `d3b0a24`, the head the fourth round's fixes produced). Two lenses: an independent
+check that no Devin failure condition applies on that exact head, and the fourth round's delta, limited to
+what a CI run, a tag push, an ordinary clone or a fork clone with `upstream` can reach, a regression, a
+printed command that fails as written, or an untrue statement. Each finding reproduced by a skeptic. Fixed in
+`46b82f5`:
+- **Devin closure.** On the known path none of the three findings, nor an equivalent, applies: 66 cases of
+  its own (ten `upstream` URL forms, fork `main` behind, diverged and ahead, three remotes, a branch-only tag
+  on `HEAD` or detached at it, case E, skipped versions, the first tag) and the helper suites, 0 mismatches.
+  One local equivalent was confirmed (minor): where the line cannot be read (a shallow, single-branch or
+  unrecognised-remote checkout), a file whose only entry is the release in preparation was exempt from the
+  tags, so a newer release tag the checkout already held went unreported. The exemption now holds only while
+  the checkout's tag refs hold no release-shaped tag newer than that entry (`TagState.present`); otherwise
+  the file is refused with the reason, naming the tag.
+- **The delta.** Under `fetch.prune=true`, which many developers set, every printed fetch of `<remote>/main`
+  (`+main:refs/remotes/<remote>/main`) pruned the ref it was to write and then failed, leaving the line
+  unknown (reported as blocking for a developer's clone; not reachable in CI, whose checkout the reader
+  never asks to fetch). The source is now fully qualified, `+refs/heads/main:...`, and the self-test runs
+  the remedy and the hint under `fetch.prune=true`. Three wording findings: `CI_CD.md` hard-coded `origin`
+  for the no-`main` fetch; "every fetch the reader prints" is scoped to the fetches of `<remote>/main` (the
+  shallow remedy is `git fetch --unshallow --tags`); and ADR-0058's "`git fetch origin main` writes only
+  `FETCH_HEAD`" is scoped to a single-branch clone of another branch.
+
+**Final verification** (on `46b82f5`). One reviewer ran the two final-round fixes, each finding again
+reproduced by a skeptic. Every printed fetch (the no-`main` remedy, the unknown-line remedy, the hint) ran
+as written in ten checkout shapes (an ordinary clone, single-branch clones of a feature branch and of
+`main`, fork clones, the CI merge and tag-push shapes, a linked and a `--mirror` worktree, shallow chains)
+under six prune settings (`fetch.prune`, `remote.<r>.prune`, `fetch.pruneTags`, alone and together): all
+succeeded and left the line known and current; the old `+main:` form deleted `origin/main` under
+`fetch.prune`. The repository's own `CHANGELOG.md` stays clean in every normal unknown state (a shallow or
+single-branch clone, an export, a subdirectory, the checkout at the 0.9.9 tag), and is refused, naming
+0.9.10, only where a checkout holds a newer tag it cannot place. One wording finding: the refusal said the
+file must record the newer tag "if it is a release", which a release cut after the commit does not need; it
+now says "a release this commit comes after" (`c729463`).
+
+**Limitations, stated.**
+- A fork clone whose only remote is the fork reads the fork's `origin/main`, the only line it has; add the
+  repository as a remote.
+- A tag on a local commit counts only once the `main` read holds that commit (after the push and a fetch).
+- The trigger glob admits leading-zero tags; the validate step refuses them before any build runs.
+
+**Documents:**
+- `CHANGELOG_POLICY.md` rule 8;
+- `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
+- ADR-0058 (status line, the applicable-tag and release-line bullets, the tag grammar, the self-test list,
+  Consequences, Related code, Evidence) and ADR-0059 (status line, Decision, Related code, Evidence), with
+  their `ADR_INDEX.md` rows;
+- `CI_CD.md` (the `release.yml` paragraph, the `docs` row, the local-run note);
+- `build.yml`'s `docs`-job checkout comment (second review round);
+- `REPOSITORY_MAP.md` (the `check-docs.py` and `release.yml` rows).
+
+**This file:** this entry and the *Last updated* line.
+
+## 99th pass — 2026-09-29, the missing-release finding closed at a pull request's tip (PR #159)
+
+**Scope.** The review finding "Missing release hides the newest tag" (Devin) was still reported against
+`scripts/check-docs.py` at `R2196`, on `482a2b0`. It was treated as not fixed. This pass changes:
+- `read_git_tags`: the release line, and how HEAD is placed on it;
+- the version-heading grammar, `RELEASE_TAG` and the definition label: ASCII digits only;
+- the missing-entry and no-base findings, and the shared `not_here()` and `merge_hint` text that six other findings
+  quote;
+- the self-test;
+- `build.yml`'s `docs` checkout comment;
+- the documents.
+
+No production code, C++ test, parameter, serialization, DSP, threading or latency change. No tag was created;
+every tag in this pass's tests lives in a temporary repository, and the real repository gained none.
+
+**The review's anchor.** Devin posts nothing to the GitHub PR: no review, review comment, check run or status
+exists for it on `482a2b0`, `03a743b` or `f3f2b39`. Line 2196 of `scripts/check-docs.py` differs by revision:
+- on `482a2b0` (and `03a743b`) it is `newest_tagged = releases[-1] if releases else None`, the line the finding is
+  about;
+- on `f3f2b39` it was a message line, on `5f76ac4` the `claimed` check, and on `2201fab` the `[Unreleased]` message.
+
+So the anchor fits the current source exactly, and the finding was taken as a claim about it.
+
+**Reproduced first, on `482a2b0`, in real repositories** (the production `read_git_tags` and
+`check_changelog_links`):
+
+| State | At `482a2b0` | Expected |
+|---|---|---|
+| T1: 0.9.9 and 0.9.10 both in `HEAD`'s history, no 0.9.10 heading, `[Unreleased]` from 0.9.9 | FAIL (2) | FAIL |
+| T2: `main` tags 0.9.9; a PR branch forks; `main` tags 0.9.10; the branch adds `[Unreleased]` from 0.9.9; checked at the branch tip | **PASS (0)** | FAIL |
+| T2m: the same after the branch is merged into `main` | FAIL (2) | FAIL |
+
+T1, the literal state, was already refused. T2 was the finding's remaining path. `releases` held only the
+`--merged=HEAD` tags, so at the branch tip `newest_tagged` fell back to 0.9.9, the newest release on the line
+was hidden, and the file passed. That tip is the only place CI checks a same-repo PR:
+- the `docs` job runs on the branch push;
+- the same-repo guard skips it on the `pull_request` event;
+- `merge-check`, which builds the merge commit, runs no `check-docs.py`.
+
+So a pull request could go green and then break `main`.
+
+**The rule.** Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging), so the release line is `main`'s
+history. `main` is the remote-tracking `main` of `origin`, which CI's full-history checkout fetches, and of any
+remote whose URL is this repository (a fork clone's `upstream`). The local branch is read only where no such branch
+exists; the repository is recognised under any URL GitHub serves it at, as `git remote get-url` resolves it. A
+checkout's line is `HEAD`'s history and every release tag in `main`'s except those cut after `HEAD` (on a commit
+descending from it: `for-each-ref --merged=<main>` less `--contains=HEAD`). So:
+- **`main`, an older `main` commit, a release tag**: `HEAD`'s history. A later tag descends from it: its future;
+- **not in `main`'s history** (a branch headed for `main`): `HEAD`'s history and all of `main`'s. The tags it lacks
+  are kept in `ahead`, and the missing-entry finding names them as releases on `main` that the branch's history
+  does not hold, with "merge `main`" as the remedy;
+- **merged into `main`** (a pull request's commit after its merge, the tip or an earlier one): `HEAD`'s history and
+  `main`'s releases from before the merge that landed it, which descends from it;
+- **no `main` at all**: unknown, with `git fetch origin main:refs/remotes/origin/main` as the remedy.
+
+(Until `4126e95` the placement went by `main`'s first-parent chain and the landing merge on it; the final review
+below replaced that with ancestry.)
+
+A tag on none of these is another line's (`elsewhere`), as before.
+
+The ordering the review asked for already held and still holds:
+1. read the applicable tags;
+2. report each without an entry;
+3. take `newest_tagged` and `previous_of` from the tags themselves, never from the entries.
+
+**After the fix:** T1 FAIL (2); T2 FAIL (2), naming 0.9.10 as a release on `main`; T2m FAIL (2).
+
+**Self-test.** 564 → 643 cases.
+- 18 count cases: the review's acceptance cases A–J, including D with 0.9.10 on `main` unmerged, and F's
+  invalid form (0.9.11 tagged and not recorded, 0.9.10 untagged: the base is 0.9.11, never 0.9.10).
+- 9 wording checks: every form of `[Unreleased]` over a missing 0.9.10 names it; a release on `main` is named
+  as such; the skipped version is not the base.
+- A real release-line repository in the reader test:
+  - the branch tip fails (2), and fails once when it compares from 0.9.10 with no entry;
+  - with `main` merged and 0.9.10 recorded it passes, and so does `main`;
+  - the 0.9.9 tag commit passes, with 0.9.10 as its future;
+  - an unrelated branch's 0.9.11 is ignored;
+  - a single-branch clone without `main` is unknown and refuses once, and after the remedy it names it reads the
+    line;
+  - a local `main` with an unpushed commit, behind a fetched `origin/main` holding 0.9.10, is bound by it;
+  - a merged pull request's tip and its earlier commit are each bound by the 0.9.10 `main` had then, not by the
+    0.9.11 tagged after;
+  - in a fork clone the repository's own `main`, under `upstream`, binds the branch at five URL forms (https,
+    `ssh.github.com:443`, an ssh port, scp-style, an `insteadOf` alias); a remote under another URL, a local
+    mirror path, a proxy or a `#@` URL is not read;
+  - a branch tip merging two `main` commits with an edit of its own is headed for `main`, and the 0.9.11 tagged
+    after those commits binds it;
+  - a branch that merged `main` and was fast-forwarded onto it, with 0.9.12 tagged on `main` meanwhile: its own
+    commit, now on `main`'s first-parent order, and a commit merged in through it are each bound by 0.9.12;
+  - a tag name that is not UTF-8 is read, not fatal.
+- The reader test repositories are now created on `main`.
+- Each step of the tag-reader case now counts as a case of its own, 50 cases from one. Before this, a mutant
+  failing three steps reported "3 of N cases" failed when one case had.
+- 3 non-ASCII-digit cases: a tag `0.9.1０` is no release; a heading `## [0.9.1０]` or `## [0.9.1٠]` is no entry.
+
+**Mutation.** Fifty-seven mutants each fail the self-test, on a clean clone of the final checker (`4126e95`); the
+counts are in ADR-0058's evidence. None is killed by a crash. Among them:
+
+| Mutant | Failing cases |
+|---|---|
+| the intersection | 21 |
+| a missing entry ignored | 40 |
+| `newest_tagged` before reconciliation | 21 |
+| `[Unreleased]` from the newest entry | 45 |
+| other branches' tags counted | 24 |
+| the first-tag guard removed | 22 |
+| the skipped-tag fix reverted | 26 |
+| `main`'s tags ignored (this pass's defect) | 14 |
+| the any-ref rule (a local `main` hiding `origin/main`'s release) | 5 |
+| every commit in `main`'s history read as `main`'s past | 4 |
+| `main`'s first-parent order deciding a commit on it (the fast-forward shape) | 1 |
+| a commit in `main`'s history bound by later tags too | 3 |
+| a merge `main` never holds bound as its parents are (`af4ac33`'s rule, reverted) | 1 |
+| the heading grammar / a release tag with Unicode digits | 2 / 1 |
+| a fork's `upstream` ignored | 5 |
+| the URL pattern unanchored (a mirror path matching) | 3 |
+
+**Review.** Three reviewers (code, a hunt for any remaining hidden-release path, documents against code), with a
+skeptic per finding, confirmed 16 findings and refuted 3. All are fixed:
+- **Three local false negatives in the first spelling**, now closed by the placement above:
+  - a local `main` holding HEAD hid `origin/main`'s newer release: HEAD counted as main's past if it was in ANY
+    `main`'s history;
+  - a merged pull request's commit, reached only through a merge's second parent, counted as `main`'s past, so a
+    re-run on it passed what had failed before the merge;
+  - a fork clone's canonical `upstream` was ignored.
+- **The no-`main` remedy did not work.** `git fetch origin main` in a single-branch clone writes only `FETCH_HEAD`.
+  The remedy is now `git fetch origin main:refs/remotes/origin/main`, and a test runs it.
+- **A non-UTF-8 tag name crashed the run.** Git's output is now decoded with replacement.
+- **Stale statements:**
+  - `build.yml`'s comment, three code comments, ADR-0058's first Decision bullet and its remedy wording, and the
+    policy template still described `HEAD`'s history alone;
+  - ADR-0058 claimed a pull request "cannot pass CI" with such a changelog. That holds only for a check run after
+    the tag, and the sentence now says so: CI re-checks a branch only when it is pushed;
+  - this entry understated the wording it changed.
+- **The mutation counts' unit:** reader steps counted as failing cases (above).
+
+The refuted three: the "merge `main`" remedy (correct for this rule), the same overclaim reached by a
+non-reproducing path, and PR #159's description (not a repository file; updated with this pass).
+
+**Verification round.** Two reviewers (code and CI contexts; documents against code), each finding checked by a
+skeptic, confirmed 8 findings and refuted none. All are fixed:
+- **One blocking.** A merged pull request's commit that is not the merge's own second parent was bound by nothing.
+  `rev-list --first-parent --ancestry-path` marks a first-parent commit only when HEAD is its direct parent. So
+  every earlier commit of a merged pull request read `HEAD`'s history alone, and a re-run of its push check
+  passed with `main`'s earlier release hidden. PR #158's non-tip commits on `origin/main` are such commits. The
+  landing merge is now the oldest first-parent commit among HEAD's descendants (`--ancestry-path` alone), and a
+  test checks an earlier commit as well as the tip.
+- **The repository's other URLs.** `upstream` at `ssh.github.com:443`, at an explicit ssh port, or under an
+  `insteadOf` alias was not recognised. Remotes are now matched on `git remote get-url`, against every form GitHub
+  serves.
+- **Stale statements:**
+  - a merged commit's source said "which this branch is headed for";
+  - the `TagState` docstring described two placements, not three;
+  - a comment repeated "(`tag_state`)";
+  - ADR-0058's Related code named the removed `RELEASE_BRANCH_REFS`;
+  - `ADR_INDEX.md` said all of `main` binds a merged commit.
+
+**Final check.** One reviewer per lens (code; documents), each finding checked by a skeptic, confirmed 5 findings,
+all minor and none in CI, and refuted 2. All five are fixed:
+- The URL pattern also matched a local path or another host whose path ends in `/github.com/skyRolly/Anamorph`
+  (a GOPATH or ghq mirror, a proxy, a `#@` URL). It is now anchored on the host.
+- A fork pull request's test merge (`refs/pull/N/merge`), re-run after the pull request merged, read as a branch
+  still headed for `main`, so a release tagged after the merge bound it. `af4ac33` bound a merge whose parents are
+  all on the line as its parents are; the last check below reverted that.
+- A merged commit was told that a tag `main` gained later is absent from `main`'s history. `TagState.unmerged` now
+  decides that wording.
+- Two comments (the `RELEASE_BRANCH` block, `TagState`'s `elsewhere`) described the placement loosely.
+
+**Last check.** One reviewer per lens (code; documents), each finding checked by a skeptic, confirmed 2 findings:
+- **One blocking, introduced by the final check's fix.** A branch tip that merges two `main` commits (0.9.9's and
+  a later one) with edits of its own has a test merge's ancestry. Bound as its parents are, it hid the 0.9.11
+  `main` tagged after them, and a changelog lacking 0.9.11 passed at that tip. Git cannot tell the two apart by
+  ancestry, and a tree comparison would be a new, fragile rule; the parent rule was reverted (`3086e38`). A merge
+  `main` never holds is again headed for it, and the self-test checks such a tip, which must name 0.9.11.
+- The documents described the reverted rule; they now state it as a limitation.
+
+**Final review.** One reviewer hunting for any remaining hidden-release path, in real repositories, confirmed 3
+findings, all minor, none reachable at a commit CI checks (a push tip, or a merge `main` never holds), and found
+the `3086e38`/`f3e4c95` revert and its documents correct. All three are fixed in `4126e95`:
+- **The first-parent order is not the order `main` advanced in.** A branch that merges `main` and is then
+  fast-forwarded onto it puts its own commits on `main`'s first-parent chain after a release they never held, and
+  a commit merged in through it lands under a merge whose first parent is not `main`'s old tip. A re-check of
+  either passed with that release unrecorded. A commit is now placed by ancestry: every release in `main`'s history
+  binds it unless the release was cut after it. With releases tagged on `main` itself, every shape above gives
+  the result it gave; the two fast-forward shapes are new self-test steps. A release tagged on a side commit and
+  merged into `main` later now also binds a re-check of a `main` commit from before that merge (fail closed; the
+  maintenance-line case in ADR-0058's Consequences). A second review of `4126e95` in real repositories found no
+  material finding: no false negative, crash or fail-open path, and no false positive in the normal flows
+  (merge-button, squash and rebase merges, the tag-push checkout, a re-check after the tag).
+- **`\d` is Unicode.** `## [0.9.1０]` (a fullwidth zero) matched the heading grammar and `int()` read it as 0.9.10,
+  so the 0.9.10 tag counted as recorded under a heading no extraction finds; a tag `0.9.1０` counted as a release.
+  The heading grammar, `RELEASE_TAG` and the definition label are ASCII-only.
+- **Two `rev-list` calls ignored their status.** A worktree file named `refs/remotes/origin/main` made one
+  ambiguous and placement fail open. Both calls are gone; the placement's own calls (`merge-base`,
+  `for-each-ref --merged` and `--contains`) check theirs.
+
+A commit `main` never holds is read as a branch still headed there: a commit that reached `main` only through a
+squash or rebase, and a fork pull request's test merge re-run after the pull request merged. Git cannot tell them
+from a branch, so they stay bound by `main`'s tags and fail closed; only a re-run on such a closed pull request is
+affected, and `main`'s own check is the one that counts.
+
+**Cost, stated.** Every open branch whose file lacks a new release's entry fails at its tip until it merges
+`main`. That is the price of checking at the tip what `main` will check after the merge. A branch whose last check
+predates a release keeps its green status until it is pushed or its checks are re-run.
+
+**Documents:**
+- `CHANGELOG_POLICY.md` rule 8 (the release line; a branch bound by `main`'s releases; a checkout without `main`
+  unknown);
+- `RELEASE_PROCESS.md` §Tagging (step 2 and the `[Unreleased]` paragraph);
+- ADR-0058 (status line, the applicable-tag and release-line bullets, the amendment record, the self-test list,
+  Consequences, Related code, Evidence) and its `ADR_INDEX.md` row;
+- ADR-0059's counts (643; a prefixed URL fails 126, a prefixed tag counted 5);
+- `CI_CD.md` (the `docs` row and the local-run note, with the remotes read and the remedy);
+- `REPOSITORY_MAP.md`'s `check-docs.py` row;
+- the policy template's comparison base.
+
+**This file:** this entry and the *Last updated* line.
+
+## 98th pass — 2026-09-29, every release tag needs its entry; the snapshot header reviewed (PR #159)
+
+**Scope.** Two review findings (Devin) on PR #159 at `f3f2b39`: "Missing release hides the newest tag"
+(`scripts/check-docs.py`) and "Snapshot header changes with its generator"
+(`tests/fixtures/parameter_registry.snapshot:2`). The first changes `check_changelog_links`, `read_git_tags`, the
+self-test and the `docs` job's checkout. The second changes nothing. No production code, parameter,
+serialization, DSP, threading or latency change. No tag was created; every tag in this pass's tests lives in a
+temporary repository.
+
+**Finding 1, reproduced first** (on `f3f2b39`). `newest_tagged` was the newest ENTRY whose tag exists, and
+`previous_of` walked the entries. So the file could hide a release:
+- tags `0.9.9` and `0.9.10`, the file recording only 0.9.9, `[Unreleased]: .../compare/0.9.9...HEAD`: 0 findings;
+- `0.9.10` and `0.9.11` both tagged, neither recorded: 0 findings;
+- every tag ref counted, on whichever branch it sat.
+
+**The invariant.** Every applicable release tag has its `## [x.y.z]` entry before it can be the newest
+comparison base.
+
+**Applicable release tag**, stated in `CHANGELOG_POLICY.md` rule 8 and the ADR-0058 amendment: a bare `x.y.z`
+tag (ADR-0059), not older than `FIRST_TAGGED_VERSION` (0.9.9), whose commit is in `HEAD`'s history
+(`git for-each-ref --merged=HEAD refs/tags`).
+- Releases are tagged on `main` (`RELEASE_PROCESS.md` §Tagging), so a later `main` commit reaches every one.
+- A tag on another branch that `HEAD` does not reach is another line's release. It needs no entry here and is no
+  base. A definition naming one is refused with "it is on another branch".
+- A prefixed tag, a tag below 0.9.9 and a tag with a leading zero (`0.09.10`, `RELEASE_TAG`) are never releases.
+- A lightweight tag counts, as it did before; `release.yml` still refuses to release one.
+- A shallow clone reads as **unknown**, whatever tags it holds: `--merged` cannot see past the cut, and
+  `git clone --depth` does not fetch a tag whose commit lies beyond it. The finding names
+  `git fetch --unshallow --tags`. CI's `docs` job now checks out with `fetch-depth: 0` as well as
+  `fetch-tags: true`.
+
+**The fix.**
+- `releases` is the sorted list of applicable tags.
+- Each release without an entry is a finding at the file's first entry, newest first.
+- `newest_tagged` is the newest release, and `previous_of[v]` the newest release older than `v`.
+- A comparison past a missing release names that release, not "the entry below closed without a tag".
+- A tag that exists outside `HEAD`'s history is named as such, with the remedy (if it is this line's release,
+  merge the history that carries it: `main`, for a release tagged there), in every finding that turns on it;
+  none says git has no such tag.
+
+**Required cases, on the fix** (reproduction harness, the production `check_changelog_links` and `tag_state()`):
+
+| Case | Tags | File records | Result |
+|---|---|---|---|
+| A | none | 0.9.9, `[Unreleased]` from 0.9.9 | refused: no base |
+| B | 0.9.9 | 0.9.9 | base 0.9.9, accepted |
+| C | 0.9.9, 0.9.10 | both | base 0.9.10, accepted |
+| D | 0.9.9, 0.9.10 | 0.9.9 only, `[Unreleased]` from 0.9.9 | 2 findings: 0.9.10 missing; base must be 0.9.10 |
+| D2 | 0.9.9, 0.9.10 | 0.9.9 only, `[Unreleased]` from 0.9.10 | 1 finding: 0.9.10 missing |
+| E | 0.9.9, 0.9.12 | 0.9.12, 0.9.11 and 0.9.10 untagged, 0.9.9 | base 0.9.12, accepted |
+| F | 0.9.9 | 0.9.11 and 0.9.10 untagged, 0.9.9 | base 0.9.9, accepted |
+| — | 0.9.9, 0.9.10 and 0.9.11 | 0.9.9 only | 3 findings: 0.9.11 and 0.9.10 missing, newest first; the base |
+| — | 0.9.9 here, 0.9.10 on another branch | 0.9.9 | accepted |
+
+The twelve earlier cases A–J (the 95th and 96th passes) still behave as recorded.
+
+**Self-test.** 537 → 564 cases.
+- The synthetic-fixture loop now runs each fixture against the tags of the versions it records (`fixture_tags()`),
+  so the new rule reads them as their authors meant. Every fixture keeps its old verdict.
+- Two existing expectations changed by design:
+  - a misspelled first-tag heading is one finding, not two: the tag is now the base, and the heading's own finding
+    covers it;
+  - the reader test's lightweight `0.9.10` on `HEAD` is now a release with no entry, so the production path
+    refuses `[Unreleased]` from 0.9.9 there, naming 0.9.10.
+- The 14 new count cases and 13 new wording checks are listed in ADR-0058's amendment.
+- The reader test gained a two-line topology in a real temporary repository: `main` tags 0.9.9, `maint` tags
+  0.9.10, `main` moves on.
+  - On `main`, 0.9.10 is elsewhere and the file is accepted.
+  - On `maint`, the file is refused for the missing 0.9.10.
+  - A shallow clone cut below both tags is unknown, with the remedy, until `git fetch --unshallow --tags`.
+- A depth-1 clone is unknown without its tags and with every tag fetched and reached; the production path
+  refuses once, naming it. Unshallowed, it reads as the full clone does.
+- **Mutation.** Thirty-eight mutants each fail it, run on a clean clone of the final checker; the counts are in
+  ADR-0058's evidence. Among them, the ones the review asked for:
+  - the intersection (the finding's own repro): 8;
+  - a missing entry ignored: 10;
+  - the newest entry with a tag-looking link as the base: 19;
+  - other branches' tags counted: 3;
+  - the no-tag `[Unreleased]` refusal removed: 21;
+  - the skipped-tag fix reverted: 25.
+
+**Review.** Three read-only reviewers (checker correctness, test adequacy and safety, documentation facts), each
+finding checked by a skeptic, confirmed 15 findings and refuted none. They are 9 distinct defects, all fixed.
+- **Three in the checker, all in this pass's own change** (5 findings):
+  - Another branch's tag was still called missing in three findings: the `[Unreleased]` refusal ("git has no tag
+    `0.9.9`: add this section once that tag is pushed"), its definition, and the no-base finding. The fourth, the
+    entry below a comparison, is covered by the same fix. It is reachable with this repository's workflow. After
+    `main` tags the merge commit of a PR, the PR branch does not have the tag until it merges `main`; the old
+    remedy could not clear the finding, and the definition finding's remedy (drop the definition) would break
+    `main`. Each now names the other branch and the merge.
+  - A shallow clone that never fetched a release tag read as "known, no tags": false findings, and a remedy
+    (`git fetch --tags`) that leaves the clone shallow. A shallow clone is now always unknown. That also removes
+    the partial-cut rule, which no case pinned (a mutant keeping only the all-cut case passed all 554).
+  - `\d+` accepted a leading-zero tag (`0.09.10`) as a release, which demanded an entry no heading can carry.
+- **Six in the documents and comments** (10 findings), wording this pass left behind:
+  - `CHANGELOG_POLICY.md` rule 8 and its template, and `RELEASE_PROCESS.md` §Tagging, still used "whose tag exists"
+    and "while no version in the file has a git tag". They now say "tagged" and "while this line has no release
+    tag".
+  - "A tag cut on another branch never becomes `main`'s base" was false once that branch merges. It now says it
+    becomes `main`'s release only when merged.
+  - ADR-0058's first Decision bullet and its `[Unreleased]` bullet still gave the 2026-09-28 definition, and its
+    self-test list still said the depth-1 clone accepts `[Unreleased]`.
+  - `check_changelog_links`' docstring, the no-base comment and two reader-test comments still described the old
+    rule and CI's old checkout.
+  - This entry did not record the citation re-anchors (below).
+
+**Verification round.** Two read-only reviewers (code, documents against code), each finding checked by a
+skeptic, re-examined the fixes. They confirmed 7 findings and refuted 5. All 7 are fixed:
+- Once a release is in this history, the `[Unreleased]` definition check named only the right base. It did not
+  name a base outside the history, and its remedy would break after merging `main`. A version definition's
+  comparison had the same gap. Both now name that base (`base_note`).
+- The remedy said the tagged commit is "on `main`". A tag outside `HEAD`'s history may sit on an unmerged branch,
+  a deleted one, or none. It now reads "if it is this line's release, merge the history that carries it into this
+  branch (`main`, for a release tagged there)".
+- An `[Unreleased]` definition from a tag in this history below the first tag was called "a version with no git
+  tag". It now says the tag predates the first tag.
+- `build.yml`'s `docs` checkout comment and ADR-0058 still said the default checkout reads as "nothing was ever
+  tagged". Since this pass it reads as unknown, being shallow. The comment keeps its line count.
+- ADR-0058 said `elsewhere` exists "only so a definition" can name it.
+
+The five refuted findings: two concerned the generic tail of the unknown-state refusal, two the wording of
+one code comment (reworded anyway), and one the unit the mutation counts use.
+
+**Final check.** One reviewer, with a skeptic per finding, re-examined those fixes. It confirmed 3 findings and
+refuted 2. All 3 are fixed:
+- The merge remedy was offered for a tag that can never be a base: below the first tag, prefixed, or with a leading
+  zero. It is now offered only for a tag that could be a release.
+- The `[Unreleased]` refusal said a leading-zero tag (`0.09.10`) "predates" the first tag. It now says that tag
+  names no version. A pre-first tag outside this history is named as no release, and no merge is suggested.
+- A definition below the first tag was refused as "never tagged", which a stray tag in this history contradicts.
+  It is now refused as "no release of this line, whatever git holds"; ADR-0058 says so.
+
+The two refuted findings: the merge-then-no-release sequence (superseded by the first fix), and the list of wording
+checks in ADR-0058, which is complete.
+
+**Finding 2: the snapshot header changed with its generator. Justified; kept.** Investigated, not reverted:
+1. *What changed:* lines 2–3 of `tests/fixtures/parameter_registry.snapshot`, from "(ADR + PARAMETER_REGISTRY.md /
+   update required)" to "update PARAMETER_REGISTRY.md (and add an ADR where PARAMETER_COMPATIBILITY_POLICY.md
+   requires one), then:". Commit `0fd0eb6` (2026-09-28, the 92nd pass).
+2. *The generator changed identically in the same commit.* The header is written by `registry::` in
+   `tests/state_tests.cpp:240-242`; the fixture-workflow comment and the failure note changed with it. The
+   header is therefore what `--write-snapshot` emits today, so a regeneration reproduces it byte for byte.
+3. *Why:* the 91st pass reported the old header as drift. It said every regeneration needs an ADR, while
+   `PARAMETER_COMPATIBILITY_POLICY.md` rule 2 (and ADR-0002) let a display name change without one. That is
+   exactly the Dimensional rename (`1f0bc7c`), which re-froze the snapshot. The 92nd pass then corrected it.
+4. *Records unchanged:* every non-comment line (670 of 673) is byte-identical across `1f0bc7c`, `origin/main`
+   (`b755cfb`), `0fd0eb6^` and this branch; `git diff origin/main` on the file touches lines 2–3 only. No
+   parameter ID, name, range, default, choice list, count, order, or the bypass line changed.
+5. *No version or notation content:* the two lines name no version; the ADR-0059 sweep did not touch them.
+6. *No effect on validation:* `registry::compare` skips a line when both sides start with `#`
+   (`tests/state_tests.cpp:301`), so the header cannot make the comparison pass or fail. The State suite passes on
+   this pass's source.
+7. *Not part of the version-format sweep:* it came in the 92nd pass's documentation corrections, ten commits
+   before the ADR-0059 sweep (`bfa9c73`), which does not touch the file.
+8. *Correct as written:* it now says what the policy says. Reverting it would restore a statement the policy
+   contradicts, and would need the generator reverted too, or the next `--write-snapshot` would change it back.
+
+**Historical capture.** `tests/fixtures/field_capture_0_9_5.session.manifest` still reads `emitter=v0.9.5`,
+byte-identical to `72fe2e0` (97th pass).
+
+**Documents:**
+- `CHANGELOG_POLICY.md` rule 8 and its template;
+- `RELEASE_PROCESS.md` §Tagging: the check's step 2, the closed-untagged paragraph, and the `[Unreleased]`
+  paragraph, which now covers tagging on `main`, merging `main` into an older branch, and shallow clones;
+- ADR-0058 (status line, Decision, Consequences, Related code, self-test list, Evidence) and its
+  `ADR_INDEX.md` row;
+- ADR-0059's self-test evidence (558 cases; a prefixed URL fails 100, a prefixed git tag counted as a
+  release 4);
+- `CI_CD.md` (the `docs` row and the local-run note);
+- `REPOSITORY_MAP.md`'s `check-docs.py` row;
+- `build.yml`'s `docs` checkout comment.
+
+`CHANGELOG.md` is not changed: the rule governs how the file is checked, and 0.9.9 is still the release in
+preparation, with no tag.
+
+**Citations.** The `docs` checkout comment grew by three lines, so ten `build.yml` citations shifted and were
+re-anchored with `check-citations.py --fix`:
+- five in this file's older passes (`:3490`, `:3575`, `:711`, `:471`, `:519-524`, each +3);
+- one in `KNOWN_ISSUES.md` (`:2260-2262`);
+- one in `RELEASE_POLICY.md` (`:687, 1507, 2019`);
+- three in `COMPATIBILITY_MATRIX.md` (`:1955`, `:2745`, `:2520-2576`).
+
+**This file:** this entry, the *Last updated* line, and the five re-anchored citations.
+
+## 97th pass — 2026-09-29, the 0.9.5 capture restored; the 0.9.6 first-tag plan is history (PR #159)
+
+**Scope.** Two review findings (Devin) on PR #159, and a narrow search for the same kinds of defect. No
+production code, parameter, serialization, DSP, threading or latency change.
+
+**Finding 1: the 0.9.5 capture was rewritten.**
+- **Lineage, from git.**
+  - `72fe2e0` (2026-09-01) committed `tests/fixtures/field_capture_v0_9_5.session` (10,629 bytes) and its
+    `.manifest`, both WRITTEN by the 0.9.5 binary. That binary was rebuilt from the tree at `2c5e760^`
+    (`CMakeLists.txt` there reads 0.9.5) with an `--emit-session` hook in its state suite; the hook is
+    scratch and was never committed, only its output was. The manifest's first line was `emitter=v0.9.5`,
+    with CRLF line endings, and State test 25 asserted `expected["emitter"] == "v0.9.5"`.
+  - `bfa9c73` (2026-09-28, the ADR-0059 sweep) renamed both files, rewrote that line to the bare form and
+    changed the assertion to match. The session blob stayed byte-identical (it holds no version string).
+- **Why it matters.** The manifest is the old binary's own record: State test 25 reads it as "what 0.9.5
+  had". Rewriting it, and the assertion with it, left the test checking a record the old binary never
+  wrote, and nothing could notice.
+- **The distinction.** ADR-0059's bare notation governs *current* version references. Output captured from
+  an older binary is evidence, and keeps its exact bytes whatever notation it uses. The file *names* follow
+  the convention: they are repository metadata.
+- **The fix.**
+  - The manifest is restored byte for byte from `72fe2e0` (`cmp` against the git object: identical).
+  - State test 25 pins both capture files by FNV-1a-64 over their raw bytes (`63512badf96b42a2`, 10,629
+    bytes; `87a04bb89d88f423`, 228 bytes) and asserts the label exactly as written.
+  - `.gitattributes`, new, marks both files `-text`, so no checkout converts the manifest's CRLF line
+    endings. That was checked with `core.autocrlf=true` and with a renormalize under `input`.
+  - ADR-0059 is amended: a second preserved category, "output captured from an older binary", and its
+    record of the sweep corrected. `ADR_INDEX.md` row 0059 and `REPOSITORY_MAP.md`'s fixtures row follow.
+- **Suites on this pass's final source:** State 5,596 checks, 0 failures; DSP 944 checks, 0 failures. State
+  test 25 has three more checks than before: the manifest loads, and the two hashes; the label check is
+  replaced. That is 5,593 + 3, so `HANDOVER.md`'s Test Status row and `RELEASE_HARDENING_PLAN.md`'s QA-gate
+  row now say 5,596 (the review found both still at 5,593).
+- **Controls**, each run through the whole State suite (5,596 checks):
+  - the label rewritten to the bare form: 2 failures (the manifest hash, the label);
+  - the assertion relaxed to the bare form with the fixture rewritten to match, which is exactly what the
+    sweep did: 1 failure (the manifest hash; before this pass the test passed in that state, green in CI
+    on `dedae6a`);
+  - the assertion relaxed, with the historical fixture: 1 failure (the label);
+  - a slot-B value nudged inside the 1e-5 tolerance the value checks use: 1 failure (the hash);
+  - one blob byte changed where the restore does not read it: 1 failure (the hash);
+  - the manifest converted to LF line endings: 1 failure (the hash).
+
+  The fixtures were restored and re-compared with `72fe2e0` after the controls.
+- **The same class of defect elsewhere: none found.** A read-only audit went over every normalization commit
+  in this PR. Three auditors covered tests and sources, `docs/`, and `worklogs/`, each followed by a skeptic.
+  They looked for fixture bytes, assertions against output that is not the current build's, verbatim program
+  output, external identifiers (branches, tags, artifacts, URLs) and quoted commit messages.
+  - The manifest was the only rewritten output of an older binary.
+  - Of 19 other candidates, 16 were refuted as prose the convention covers. Among them is the 0.2 legacy
+    fixture's header comment: that fixture is hand-modelled (`worklogs/STATE_HARNESS_0.8.13.md` §2.3), and
+    `juce::parseXML` drops the comment before any test reads the fixture.
+  - One candidate received no verdict, and two were confirmed by their skeptic. All three are of one kind:
+    lines in this file's historical passes quoting the repository's own `CHANGELOG.md` link definitions as
+    they were then written. The two confirmed ones are in "Changelog system round 2": the tag page for 0.9.7,
+    and the comparison the first link check accepted.
+  - They are quotations of the repository's own text, not an older binary's output, and ADR-0059 normalized
+    this file by design, so they stay as they are. The substance of each record, which link form was
+    accepted, does not depend on the spelling. Restoring them verbatim is the owner's option.
+
+**Finding 2: the 0.9.6 record predicted a first tag that never happened.**
+`RELEASE_COMPATIBILITY_CHECKLIST.md`'s retained 0.9.6 record said "0.9.6 will be the first tagged release".
+Its note on scope now says 0.9.6 *was planned* to be the first tagged release, that the plan was not carried
+out (0.9.6, 0.9.7 and 0.9.8 each closed without a tag), and that the first formal tag is 0.9.9 (ADR-0058). The
+0.9.6 evidence is unchanged. The 0.9.9 record's sentence "The 0.9.6 record below stays as written" now names
+this one exception.
+
+**Narrow search** for the same contradiction ("will be", "planned", "first tag", "first tagged release",
+"first formal tag", with 0.9.6 and other pre-0.9.9 versions) in the release and compatibility documents and
+`HANDOVER.md`: every other match is already historical ("was then … planned as the first annotated tag",
+"Prior sync: … named 0.9.3 as the first tag") or states the current rule. Nothing else changed.
+
+**First-tag policy, re-confirmed on this pass's tree:**
+- `check-docs.py --self-test` passes 537 cases, and the tree is clean;
+- the twelve reproduction cases A–J behave as required;
+- `FIRST_TAGGED_VERSION` is `(0, 9, 9)`;
+- no tag exists locally or on GitHub.
+
+**Citations.** Seven `tests/state_tests.cpp` anchors shifted with the longer State test 25 and were re-anchored
+with `check-citations.py --fix`, in `TESTING.md`, `CI_CD.md`, this file and one `build.yml` comment.
+
+**Review.** Three read-only reviewers (test and evidence integrity, documentation facts, scope and remaining
+contradictions), each followed by a skeptic, confirmed three findings and refuted four. All three are fixed:
+- ADR-0059's search evidence did not name `REPOSITORY_MAP.md`, which quotes the label, or the capture's
+  pre-rename git-object path;
+- `HANDOVER.md` and `RELEASE_HARDENING_PLAN.md` still gave the State suite as 5,593 checks (found by two
+  reviewers).
+
+One refuted finding, two dates for the amendment, was aligned anyway: ADR-0059, `ADR_INDEX.md` and State test 25
+now all say 2026-09-29, the date of this pass. No hard-stop change was found, and no current version is written
+with a prefix.
+
+**This file:** this entry and the *Last updated* line.
+
+## 96th pass — 2026-09-28, "tagged" read from git, not from the changelog (PR #159)
+
+**Scope.** One review finding (Devin) against `check_changelog_links`: `[Unreleased]` still validated before the
+first actual tag existed. The fix changes where the checker learns which versions were tagged, and the `docs`
+job's checkout. No production code, no C++ test suite and no release record changed.
+
+**The finding, reproduced first** (`8582632`, the 95th pass's head). The checker read "tagged" from the file: a
+version above the first tag when its entry carried a definition, and the first tag's entry "by fact". Four cases
+passed that must fail:
+- D: the 0.9.9 entry and its tag page in the file, no git tag, `[Unreleased]` from 0.9.9 — 0 findings;
+- H: the repository's own `CHANGELOG.md` with that section — 0 findings;
+- I: a definition left on a version that closed untagged, and the next one comparing from it — 0 findings;
+- J: a definition deleted from a version that was tagged — 0 findings.
+
+D and H were the window the 95th pass documented as left to the procedure. I and J were ADR-0058's two documented
+blind spots. The other eight owner cases were already right.
+
+**Drift reported.** `RELEASE_PROCESS.md` §Tagging said the checker "counts the `0.9.9` entry as tagged as soon as
+the entry is in the file" and that "the sequence, not the checker" keeps `[Unreleased]` out. ADR-0058 said a
+version "is tagged exactly when its entry carries a link definition". Both were true of the code, and both are
+what the finding is about.
+
+**The fix.**
+- `TagState`, `read_git_tags` and `tag_state` read the tag refs of the checkout being checked
+  (`git for-each-ref refs/tags`), locally, with no network, after checking that the directory is that
+  checkout's root.
+- Not a checkout, a subdirectory of one, or no `git` gives an **unknown** state, never "no tags". What depends
+  on the tags is then refused once, with the reason; the rest is checked.
+- A version is tagged when its bare tag exists and it is not older than `FIRST_TAGGED_VERSION`.
+- The definitions must agree with the tags, in both directions. The one exception is the release in
+  preparation (the newest entry, no `[Unreleased]` above it), whose definition is required before its tag
+  exists.
+- `previous_of` and the `[Unreleased]` base follow the tags. So skipped tags keep working, now by git's
+  account.
+- `build.yml`'s `docs` job checks out with `fetch-tags: true`.
+
+**Tests.** The self-test runs 537 cases.
+- Every changelog case names the git tags it runs against. They are handed to the same `tag_state()` the tree
+  run uses, so the decision logic is the production logic.
+- The synthetic fixture loop runs with 0.9.7 and 0.9.8 tagged.
+- The owner's eleven cases are present:
+  - no tags, with and without `[Unreleased]`, and from 0.9.7 or 0.9.8;
+  - **0.9.9 declared with its tag absent**;
+  - the tag present;
+  - one and two skipped versions;
+  - a tag without a definition;
+  - a prefixed tag;
+  - lightweight tags listed by the reader.
+- Also:
+  - the repository's own `CHANGELOG.md` with the section, before and after the tag;
+  - the same file under two tag states; I and J; a retroactive `0.9.8` tag;
+  - a stray git tag `0.9.8` below the first tag, which is no base;
+  - the unknown state: refused once, with what needs no tags still checked;
+  - wording checks.
+- The reader is driven against real temporary git repositories, with `GIT_DIR`, `GIT_WORK_TREE` and
+  `GIT_INDEX_FILE` naming a decoy that must gain no commit and no tag. The repositories cover:
+  - an untagged repository, then the same with an annotated `0.9.9`;
+  - lightweight and prefixed tags;
+  - a depth-1 clone without the tags, then with CI's tag refspec fetched;
+  - a subdirectory, a plain directory, a checkout git will not open, and one whose tags git cannot list;
+  - no `git`, and a `git` that cannot run.
+
+  The production path runs where the verdict matters.
+
+**Mutation.** Twenty-eight mutants each fail the self-test (`git_env` keeping the location variables fails it
+through the setup step against the decoy):
+
+| Mutant | Cases failed |
+|---|---|
+| The no-tag `[Unreleased]` refusal reverted to the shape-only check | 19 |
+| A changelog definition taken as proof of a tag | 6 |
+| Actual tags ignored (the file-only rule) | 9 |
+| The first tag counted as tagged by fact (the 95th pass's rule) | 6 |
+| `previous_of` = the entry directly below | 17 |
+| A prefixed tag counted as the version's tag | 2 |
+| A definition on an untagged past version accepted | 6 |
+| A tagged version without a definition accepted | 3 |
+| The release in preparation must already be tagged | 14 |
+| Unreadable tags read as no tags | 7 |
+| Unreadable tags read as the declarations | 7 |
+| Reader: a subdirectory answers with the enclosing checkout's tags | 1 |
+| Reader: lightweight tags not counted | 2 |
+| Reader: no checkout read as a checkout with no tags | 3 |
+| A prefixed tag URL | 79 |
+| First tag (0, 9, 7) | 45 |
+| `[Unreleased]` base = the newest entry, tagged or not | 16 |
+| `tagged()` without its not-older-than-the-first-tag clause | 2 |
+| Unreadable tags: nothing checked after the refusal | 2 |
+| Reader: no git read as a checkout with no tags | 2 |
+| Reader: an unlistable checkout read as no tags | 1 |
+| Reader: a git that cannot run read as no tags | 1 |
+| Reader: a shallow clone read as unknown | 3 |
+| Reader: the shallow hint dropped | 1 |
+| Reader: the inherited `GIT_DIR` not cleared | 11 |
+| `git_env()`: the location variables kept | 1 |
+| The real-file fixture follows the live file | 1 |
+| Reader: every `rev-parse` refusal called "not a git checkout" | 1 |
+
+**The release sequence, run in a sandbox** (a local bare origin; nothing was pushed to the repository and no tag
+was created in it). Each step used a CI-like depth-1 checkout, with the tag refspec that `fetch-tags` adds, and
+ran the `docs` job's two commands: `--self-test` (537 cases, passing at every step), then the tree lint.
+- merged `main`, no tag: clean;
+- the same with `[Unreleased]` from 0.9.9: refused;
+- `release.yml`'s validate step, extracted from the workflow, on an annotated `0.9.9`: accepted;
+- the `docs` job on the tag: clean;
+- a later commit with `[Unreleased]` from 0.9.9:
+  - refused without the tags, which is the old default checkout;
+  - clean with them;
+  - clean in a local clone after `git fetch --tags`;
+  - refused, with the reason, in a copy that is no checkout;
+- a prefixed tag: not admitted by the trigger pattern, and refused by the validate step;
+- a lightweight `0.9.9`: refused by the validate step ("is commit, not an annotated tag");
+- the next cycle: `[Unreleased]` renamed to the 0.9.10 release commit with the CMake version bumped. The `docs`
+  job was clean before the `0.9.10` tag, the validate step accepted the annotated tag, and the `docs` job was
+  clean on it.
+
+**Review.** Four read-only reviewers (checker logic, tests and mutation, CI and release, docs), each followed by a
+skeptic, confirmed eight findings (five distinct defects) and refuted six. All five are fixed:
+- **An inherited `GIT_DIR` redirected git.**
+  - What happened: a hook or `git rebase -x` in a linked worktree exports an absolute `GIT_DIR` (and
+    `GIT_INDEX_FILE` for pre-commit), and `-C` does not override it. So the self-test's scratch `init`,
+    `commit` and `tag -a 0.9.9` landed in the user's own repository, and the reader could list another
+    repository's tags.
+  - Fix: every git process now runs without git's repository-location variables (`GIT_LOCATION_VARS`,
+    `git_env()`). The reader tests run under a decoy.
+- **The self-test depended on the live `CHANGELOG.md`.** The fixture inserted `[Unreleased]` above 0.9.9 in the
+  file as it is, so the documented next edits (the section after the tag push, the next release's entry) would
+  have failed `--self-test`, the `docs` job and, through `workflow_call`, the next release. The fixture is now
+  cut back to the file as it stands while 0.9.9 is the newest entry, and a case proves it.
+- **`v >= first` in `tagged()` was unpinned.** A stray git tag `0.9.8` would have made `[Unreleased]` pass
+  before the first real tag. Two cases now pin it.
+- **Unknown state, "checks the rest", was untested.** Two cases now pin it.
+- **The reader's shallow, no-git, unlistable and cannot-run branches were untested.** Tests were added.
+
+Three refuted findings were diagnostics, and they were improved anyway:
+- a `rev-parse` refusal other than "not a repository" (dubious ownership) now carries git's reason instead of
+  "not a git checkout";
+- a full clone's source says how to fetch a tag pushed since;
+- the untagged-definition finding says "a tag this checkout does not have" instead of "a tag that was never
+  cut".
+
+**CI caught one more.** On `e1b4a98` the `docs` job failed 1 of 537 cases: "a checkout git will not open". GitHub's
+runner (git 2.55.0) carries `safe.directory = *`, which waives the ownership check that
+`GIT_TEST_ASSUME_DIFFERENT_OWNER` drives.
+- Reproduced locally with that setting in a global config: 1 of 537 failed.
+- Fix: the reader tests now run with no system or user git configuration (`GIT_CONFIG_NOSYSTEM`, an empty
+  `GIT_CONFIG_GLOBAL`).
+- The self-test now passes with `safe.directory = *` in either config, and without it. The 28 mutants fail as
+  before.
+
+The other three were refuted as documented behaviour:
+- a local unpushed tag counts locally, and CI sees only pushed tags;
+- the unknown state skips the release in preparation's form, which depends on the tags; the policy wording now
+  says what is checked;
+- the shallow hint was untested (now tested anyway).
+
+**Documents synced:**
+- `CHANGELOG_POLICY.md` rule 8 and its template paragraph;
+- `RELEASE_PROCESS.md` §Tagging (step 2, closing without a tag, the `[Unreleased]` paragraph);
+- ADR-0058, amended: its decision, tests, consequences (the blind spots closed, the checkout's tag refs as the
+  limit, existence not annotation), related code and evidence;
+- ADR-0059's evidence counts;
+- `ADR_INDEX.md` row 0058;
+- `CI_CD.md` (the `docs` row, and a note under the local reproduction commands);
+- `REPOSITORY_MAP.md`'s `check-docs.py` row.
+
+Ten `build.yml` citations shifted by the eight added lines and were re-anchored with `check-citations.py --fix`:
+- five in this file's older passes;
+- one in `KNOWN_ISSUES.md`;
+- three in `COMPATIBILITY_MATRIX.md`;
+- one in `RELEASE_POLICY.md`.
+
+**Hard stops.** None. No parameter, serialization, threading, DSP or latency change. ADR-0058 is new in this
+unmerged PR, and it is amended to enforce its own decision, not reversed.
+
+**This file:** this entry and the *Last updated* line. The 95th pass keeps the counts it recorded (511 cases),
+which were true of its head.
+
+## 95th pass — 2026-09-28, `[Unreleased]` refused before the first tag (PR #159)
+
+**Scope.** One review finding (Devin) against `check_changelog_links`, the owner's correction of the PR #159
+description, a brief look at the RISK-012/013 index rows, and what an adversarial review of this pass found. No
+production code, no C++ test suite and no release record changed.
+
+**The finding, reproduced first.** With no tagged version in the file, the checker asked only that the
+`[Unreleased]` URL have the `/compare/<x>...HEAD` shape. Run against `b0db3db`:
+- `[Unreleased]: .../compare/0.9.8...HEAD` above the untagged 0.9.8 and 0.9.7 gave **0 findings**, and so did a
+  base of 0.9.7;
+- with no definition, the one finding told the author to add `.../compare/<last tag>...HEAD`, which no base
+  could satisfy.
+
+The self-test pinned the defect as intended behaviour: *"`[Unreleased]` above only never-tagged versions is held
+to the shape"*, expecting 0.
+
+**Drift reported.** `CHANGELOG_POLICY.md`'s template paragraph already said an `## [Unreleased]` section "is
+available from the `0.9.9` tag onward". The checker did not enforce it. Rule 7 sent unreleased work to
+`[Unreleased]` unconditionally, and neither `RELEASE_PROCESS.md` §Tagging nor ADR-0058 stated the restriction.
+
+**The fix.**
+- `newest_tagged` is computed once.
+- With a tagged version, the definition must be `/compare/<newest tagged>...HEAD`, as before.
+- With none, the section itself is refused, once, at its heading, with or without a definition. The finding
+  names the first tag. It describes the definition truly: "compares from 0.9.8, a version that was never
+  tagged" when it names a version, and "names no tagged base" when it names none (`main`, `HEAD`, another
+  repository).
+- Only a well-formed entry counts as tagged. A misspelled first-tag heading is its own finding, and until it
+  is fixed the section above it is refused as well: the check fails closed. A guard that skipped the refusal
+  there was tried and withdrawn, because the second review showed it over-suppressing and incomplete.
+- There is no special case for 0.9.9: the rule reads `FIRST_TAGGED_VERSION` and the definitions, as `previous_of`
+  does.
+
+**Tests.** The self-test runs 511 cases.
+- **Cases A–G:**
+  - A: nothing tagged and no `[Unreleased]` passes;
+  - B: nothing tagged, the section is refused;
+  - C and D: nothing tagged, a definition from 0.9.7 or from 0.9.8 is refused;
+  - E: 0.9.9 tagged, the section compares from 0.9.9;
+  - F: 0.9.9 and 0.9.10 tagged, it compares from 0.9.10;
+  - G: from the untagged 0.9.10 between tagged 0.9.9 and 0.9.11 is refused, and from 0.9.11 passes.
+- **Also:**
+  - a definition naming 0.9.9 before its entry exists;
+  - a file with no version at all;
+  - the untagged 0.9.8 under a tagged 0.9.9, and the older 0.9.9 under a tagged 0.9.10;
+  - a stray pre-first-tag `[0.9.8]` definition, which does not make 0.9.8 a base;
+  - 0.9.9 undefined with `[Unreleased]` from 0.9.9, where the missing `[0.9.9]` is the one finding;
+  - a misspelled first-tag heading: its own finding and the refusal;
+  - four wording checks: B, C, D and a definition naming no version. Each asserts one finding, at the heading's
+    line, naming the first tag, and a definition clause that is present, and true, exactly when it should be.
+- **Synthetic fixtures (first tag 0.9.7).** Nine fixtures held `[Unreleased]` with no tagged version in the
+  file.
+  - Eight now have the tagged 0.9.7 below them, so each still tests what its label says: the with-definition
+    pass case (relabelled "above a tagged release"), missing definition, another host, placement ×2, duplicate
+    ×2 and first-is-fine.
+  - The "alone" fixture became a refusal, and the old untagged "above the first release" content was kept as a
+    new refusal case.
+
+**Mutation**, nineteen mutants each failing the self-test:
+
+| Mutant | Cases failed |
+|---|---|
+| The pre-fix shape-only acceptance restored | 12 |
+| The refusal removed at the heading only | 12 |
+| The refusal made to need a definition | 1 (the case B wording check; the count alone cannot see it) |
+| The refusal reported at the definition line | 3 |
+| The refusal reported at the first version heading | 4 |
+| `[Unreleased]` from the newest entry, tagged or not | 9 |
+| …from the newest DEFINED entry | 2 |
+| …from the newest entry both tagged and defined | 1 |
+| The definition clause always appended | 1 |
+| …naming the line instead of the URL | 2 |
+| …claiming an untagged version for a URL that names none | 1 |
+| `previous_of` set back to the entry below | 11 |
+| …with every version needing a definition | 12 |
+| A prefixed tag | 65 |
+| (0, 9, 7) | 37 |
+| The newest entry required under `[Unreleased]` | 2 |
+| The first tag not required | 2 |
+| The first tag not a base | 2 |
+| The skipped-base message inverted | 1 |
+
+**The three concepts together.** The checker was asked what it requires in each state of the line:
+- no tags: nothing has a base, and `[Unreleased]` is refused;
+- 0.9.9 tagged: 0.9.9 is a tag page, and `[Unreleased]` compares from 0.9.9;
+- 0.9.9 tagged, 0.9.10 untagged, 0.9.11 tagged: 0.9.11 compares against 0.9.9, and `[Unreleased]` compares
+  from 0.9.11;
+- all three tagged, as a control: each compares against the one below, and `[Unreleased]` from 0.9.11.
+
+**Blind spot, stated.** "Tagged" is what the changelog records, not what git holds. The 0.9.9 entry counts as
+tagged as soon as it is in the file, which is throughout the cycle that prepared it, not only from its release
+commit. So an `## [Unreleased]` section added above it before the tag is pushed is not refused. The review
+reproduced this on the current head, with no tag cut: the real `CHANGELOG.md` plus a section from 0.9.9 gives 0
+findings. Owner case E needs exactly that file to pass, so the checker stays as it is. `RELEASE_PROCESS.md`
+§Tagging, rule 8 and ADR-0058 now say the sequence keeps the section out until the tag is pushed, and they no
+longer say "while no version is tagged" without "in the file".
+
+**Documents synced:**
+- `CHANGELOG_POLICY.md` rule 7 (unreleased work goes under `[Unreleased]` once a version is tagged), rule 8
+  (the refusal, the dated-entry advice the finding cites, and the window) and the template paragraph;
+- `RELEASE_PROCESS.md` §Tagging;
+- ADR-0058 (the decision, the tests, the evidence, and rules 2, 7 and 8 as the policy it changes) and ADR-0059's
+  evidence counts;
+- `ADR_INDEX.md` row 0058. Row 0059 carries no counts and is unchanged.
+
+**PR #159 description.** It is rewritten to the current state:
+- the Level-5 audition is complete on the owner's sign-off;
+- checklist items 5 and 7 PASS on the owner's attestation;
+- the checker and policy changes are part of the PR;
+- 0.9.9 is the first formal tag.
+
+Owner attestation, automated evidence and repository evidence are kept apart. Nothing the owner did not
+supply is filled in.
+
+**Review**, in two rounds, each reviewer paired with one skeptic per finding.
+
+**First round.** Five read-only reviewers (checker correctness, tests and mutation, docs, release state, scope
+and hard stops) confirmed 12 findings and refuted 2. All 14 were addressed:
+- the window wording above;
+- the definition clause's truth;
+- the rule the finding cites, and rule 7;
+- the fixture count and the `ADR_INDEX` claim in an earlier draft of this entry;
+- three test gaps, each shown by a surviving mutant: the base being "defined" instead of "tagged", the clause's
+  wording, and the refusal's line;
+- two stale current-state lines outside this change:
+  - `HANDOVER.md`'s Roadmap row cited the 0.9.6 checklist of 2026-09-01 for the remaining 0.9.9 steps. It now
+    gives the 0.9.9 record.
+  - `RELEASE_HARDENING_PLAN.md`'s QA-gate row carried a stray ", ;" from the 94th pass.
+- **The two refuted findings** were the line of the refusal, which is now pinned anyway, and a misspelled
+  first-tag heading drawing the refusal as well. For the second, a guard was added.
+
+**Second round.** Two reviewers, on the fixes above, confirmed 4 findings and refuted 4:
+- the guard was both over-suppressing and incomplete, so it was withdrawn and the fail-closed behaviour pinned
+  instead;
+- the window starts when the first tag's entry enters the file, not at its release commit;
+- ADR-0058 changes rule 7 too.
+
+Neither round found a hard-stop conflict. ADR-0058 is new in this unmerged PR and is tightened, not reversed,
+and no `CHANGELOG.md` entry is due for a CI lint (rule 3).
+
+**RISK-012/013, looked at and left as post-release cleanup.**
+- **RISK-012** carries contradictory status statements, so a one-line index row would mean choosing between
+  them:
+  - "RESOLVED" 2026-09-13, at the head of the entry;
+  - "STILL OPEN" after rounds 20 and 21;
+  - "OPEN, and narrowed" after round 22;
+  - "stays OPEN … with no shipped-format exposure", at its foot.
+
+  This file records it both as "disposed, not narrowed" and as "narrowed, still OPEN".
+- **RISK-013** is stated plainly as a "formally accepted residual".
+- Neither entry states the Severity and Likelihood the index columns ask for, so a row for either would be an
+  invented judgement.
+
+**This file:** this entry and the *Last updated* line. The 94th pass keeps the counts it recorded (492 cases),
+which were true of its head.
+
+## 94th pass — 2026-09-28, bare versions, skipped tags, and the 0.9.9 release records (PR #159)
+
+**Scope.** Four owner instructions and two Devin findings, on top of the 93rd pass:
+- the version format;
+- 0.9.9 as the first formal tag;
+- the owner-completed Level-5 audition;
+- the owner-completed checklist items 5 and 7;
+- Devin finding #1 (a stale summary of the first-tag decision);
+- Devin finding #2 (a later skipped tag would still be taken as a comparison base).
+
+No production code changed. The `src/` edits are comment text only, with every line count kept. The test code
+changes only fixture names, printed labels and one manifest label.
+
+**ADR-0059 (new, Accepted): version references and release tags are bare.**
+- Every version is written `x.y.z`: documentation, scripts, changelog, release records, policy, comments,
+  tests, examples and file names.
+- `release.yml`:
+  - triggers on `[0-9]+.[0-9]+.[0-9]+` only;
+  - asserts the tag's shape, including for a dispatch from a tag ref;
+  - requires tag == CMake `project VERSION`;
+  - runs `gh release create "${VERSION}"`.
+- `check-docs.py` requires `/releases/tag/x.y.z` and `/compare/a.b.c...x.y.z`. Self-test cases build the retired
+  prefix from one constant (`PFX`), so none is spelled out.
+- **Normalized.**
+  - 825 prefixed tokens in 79 files.
+  - The prefixed placeholders and tag globs, by hand. Where text described the old convention, it says
+    "prefixed at the time".
+  - 28 files renamed, with every reference rewritten: ADR-0058, 23 worklogs, the field capture and its manifest,
+    the 0.2 legacy fixture and its fuzz seed.
+  - A second sweep caught prefixes after `_` or `…`, and the symbolic N / N−1 placeholders.
+- **Kept, deliberately:** third-party GitHub Action tag names as upstream spells them (the pin comments, the
+  msvc-code-analysis-action release name, and prose about those tags).
+- One cited span changed text: `decodeRestore`'s 0.2 branch comments. It is re-spelled `:3067-3089`, with a
+  `check-citations.py` `DELIBERATE_REAIMS` entry.
+- A CI_CD.md line still documented the prefixed trigger. It is corrected.
+
+**Devin finding #2 — fixed in `check_changelog_links`.**
+- After `FIRST_TAGGED_VERSION` a version is tagged exactly when its entry carries a link definition.
+  `previous_of[k]` is the most recent earlier TAGGED version, not the entry below.
+- The first tag must carry a definition, and it stays a base by fact.
+- The newest entry must carry one while it is the release in preparation, i.e. with no `## [Unreleased]` above it.
+- `[Unreleased]` compares from the newest tagged version.
+- The docstring states both blind spots: a deleted definition surfaces at the next comparison, and a leftover one
+  is guarded procedurally.
+- **Tests.** Cases A–E, as specified, plus:
+  - the first tag without a definition below a newer entry;
+  - five `[Unreleased]` cases;
+  - a text assertion on the skipped-base finding.
+
+  The self-test runs 492 cases.
+- **Mutation.** Nine mutants each fail the self-test:
+
+  | Mutant | Cases failed |
+  |---|---|
+  | The old `previous_of` | 9 |
+  | The whole pre-fix rule | 10 |
+  | A prefixed tag | 51 |
+  | (0, 9, 7) | 20 |
+  | An untagged `[Unreleased]` base | 3 |
+  | The first tag not required | 1 |
+  | The first tag not a base | 1 |
+  | The message inverted | 1 |
+  | The newest entry required under `[Unreleased]` | 2 |
+
+**Devin finding #1 — fixed.**
+- The comment above `FIRST_TAGGED_VERSION` now states the current rule: 0.9.9 first (ADR-0058), bare tags
+  (ADR-0059), and the skipped-tag base.
+- The 92nd pass's "the first tag — an owner decision" is marked as the state at that pass, closed by ADR-0058.
+- The PR description names the checker and policy changes as part of this revision, to be reviewed as such.
+
+**Release records.**
+- **`LEVEL5_AUDITION.md`:**
+  - a 0.9.9 record, *completed, signed off by the owner, no defect reported*, as the owner stated it;
+  - every field the owner did not supply is NOT RECORDED, including per-item A–F outcomes;
+  - owner-attested, automated and unsupplied evidence are kept apart.
+- **`RELEASE_COMPATIBILITY_CHECKLIST.md`:** eight of eight for 0.9.9, with items 5 and 7 attested by the owner
+  2026-09-28 and hosts/lanes NOT RECORDED.
+- **HANDOVER, COMMERCIAL_STATUS §6, RELEASE_HARDENING_PLAN and RELEASE_PROCESS step 7** now say no
+  `RELEASE_POLICY` precondition is open.
+- **KI-015** is not cleared. It is not a code, CI or tag blocker, and may block public or commercial distribution
+  depending on the owner's legal/commercial decision. No legal determination is made.
+
+**Review.** A workflow of seven read-only reviewers and one skeptic per finding confirmed 27 findings and refuted
+6. All confirmed findings are fixed:
+- the checker's unpinned rules;
+- the prefixes the word-boundary search missed;
+- the field-capture manifest's CRLF endings, which the bulk rewrite had normalized, restored byte-for-byte apart
+  from the label;
+- stale "audition open" lines;
+- ADR-0059's rename counts;
+- a rewritten git branch name, now cited as PR #64 / merge `2f81763`;
+- a coverage paragraph whose example had lost the prefix it was about.
+
+**Reported, not changed (post-release cleanup):**
+- `FUTURE_RISKS.md`'s index has no rows for RISK-012 and RISK-013. RISK-012's status has been corrected more than
+  once, and summarising it is a judgement this pass does not make.
+- `HANDOVER.md` line 98 keeps the 0.9.7-era tag command in the bare form. That is a historical plan, not a
+  current instruction.
+
+**This file:** this entry, the *Last updated* line, and the 92nd pass's first-tag item.
+
+## 93rd pass — 2026-09-28, the release-tag blocker resolved (0.9.9; PR #159)
+
+**Scope.** This pass closes four items the 92nd pass reported and did not correct: the first tag, the Chorus L/R
+phase, `FUTURE_RISKS.md`'s marker and RISK-011 row, and `HANDOVER.md`'s snapshot line. It also re-runs the compatibility
+checklist for 0.9.9, writes the 0.9.9 audition scope, and states where the licence stands against the tag.
+
+It changes no production code. The only `src/` edits are two comments, and every line count is kept.
+
+**The first tag — ADR-0058 (Accepted, 2026-09-28; the owner delegated the choice).**
+- Neither 0.9.7 nor 0.9.8 was tagged. No tag and no Release exists: `git tag -l`, and the repository's tags and
+  releases API, both return empty.
+- The two versions closed untagged, exactly as 0.9.0–0.9.6 had. 0.9.7 ran `ac47151`…`2ed512c` and 0.9.8 ran
+  `faac9fa`…`661a90b`.
+- No release audition exists for either.
+- Retroactive tags were rejected:
+  - they would assert releases that never met the tagging precondition;
+  - each push would draft a GitHub Release through `release.yml`;
+  - which commit to tag is ambiguous.
+- `0.9.9` is the first tag. `check-docs.py` now pins this:
+  - `FIRST_TAGGED_VERSION = (0, 9, 9)`;
+  - the self-test binds `FIXTURE_FIRST_TAGGED_VERSION` (0.9.7) for its synthetic fixtures only;
+  - four new cases cover the real value: 468 cases pass, and three of the four fail with the old constant.
+- `CHANGELOG.md` has one definition, `[0.9.9]` → `/releases/tag/0.9.9`, and `[0.9.7]` and `[0.9.8]` have none.
+  Its preamble names 0.9.9.
+- The policy and records follow it:
+  - `CHANGELOG_POLICY.md` rules 2 and 8 and its template;
+  - `RELEASE_PROCESS.md` §Tagging, which gives 0.9.9 as the next and first tag, with its commands;
+  - `ADR_INDEX.md`;
+  - `FUTURE_RISKS.md` RISK-003;
+  - `RELEASE_HARDENING_PLAN.md` (RH-R6, RH-PR-8, the baseline row and the closing note);
+  - `HANDOVER.md`;
+  - `COMMERCIAL_STATUS.md` §6.
+- No tag is created.
+
+**Chorus L/R phase (Devin).** `ChorusEngine.cpp:191-192` sets the right LFO to the quadrature output
+(`sinR = lfoC`), a quarter turn from the left. Four places described it wrongly, and now say 90° or a quarter
+cycle:
+- `DSP_ALGORITHMS.md`'s Chorus bullet;
+- `ChorusEngine.h`'s banner;
+- `ChorusEngine.cpp:212`;
+- `USER_MANUAL.md` §4.
+
+The DSP is unchanged. A repository-wide search afterwards returns only the Dimensional voice's two taps, which
+are anti-phase *within* a channel (`d1 = base + depth·sin`, `d2 = base − depth·sin`), and unrelated
+correlation-meter wording.
+
+**Compatibility checklist re-run for 0.9.9** (`RELEASE_COMPATIBILITY_CHECKLIST.md` §Completion record — 0.9.9, and
+§Evidence).
+- Items 1, 2, 3, 4, 6 and 8 **PASS**.
+  - Item 8 is new evidence. A session and a user preset were written by the 0.9.8 binary, rebuilt from `661a90b`,
+    and loaded in 0.9.9. Both A/B slots matched on all 36 parameters, the Dimensional value 3 and `dimMode` 3
+    reached the engine, and the names were current. The render was bit-identical: 28 checks, 0 failures, with two
+    controls.
+  - Pluginval passed at strictness 10 in both modes, run here.
+- Items 5 and 7 are **OPEN**, and their boxes are unticked. 0.9.8 moved JUCE to 9.0.2 and changed how edits and host
+  automation meet, so the 2026-09-01 attestations do not carry. Each needs the maintainer.
+
+**Level-5.** Not performed: this environment has no DAW. `LEVEL5_AUDITION.md` said a 0.9.9 audition needed its own
+scope and held none, so §Scope for 0.9.9 (A–F) is now written from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` entries.
+`RELEASE_PROCESS.md` step 7 points at it.
+
+**The licence (KI-015): a documentation inconsistency, not a new determination.**
+- `RELEASE_POLICY.md`'s preconditions do not include it.
+- KI-015, `THIRD_PARTY_LICENSES.md`, RH-F1 and `COMMERCIAL_STATUS.md` §4 scope it to commercial distribution.
+- `HANDOVER.md`'s Known Blockers said it blocked the tag, a roll-up of 2026-07-30.
+- `HANDOVER.md` and `COMMERCIAL_STATUS.md` §6 now say the following:
+  - the licence stays open and blocks commercial distribution;
+  - a tag push only drafts a Release;
+  - whether *publishing* that draft needs the licence settled first is an owner/legal question this repository does
+    not answer.
+- Nothing is removed from any blocker list.
+
+**The other reported drift, corrected.**
+- `FUTURE_RISKS.md`: the marker is synced to 0.9.9, and the RISK-011 index row reads RESOLVED 2026-09-15, as its
+  entry does.
+- `HANDOVER.md`: the snapshot line names `b755cfb` (refreshed 2026-09-28), with `2d0a906` kept as where it was first
+  taken.
+
+**Drift reported, not corrected.** `FUTURE_RISKS.md`'s index table has no row for RISK-012 or RISK-013. Both entries
+exist, and each carries a status corrected more than once. Summarising RISK-012's status into one row is a judgement
+this pass does not make.
+
+**This file:** this entry, the *Last updated* line, and one correction to the 92nd pass: its CI paragraph said Rosetta
+was unavailable on the `macos` image, but that job's log runs the x86_64 slice under `arch -x86_64` (DSP 940 / 0, State
+5,558 / 0), on `b755cfb` and again on this pass's head.
+
+## 92nd pass — 2026-09-28, the 0.9.9 release cleanup on merged main (`b755cfb`)
+
+**Scope.** PRs #156 (B2 / ADR-0057, KI-032) and #158 (the Dimensional rename) are merged; `main` is `b755cfb`, its
+tree byte-identical to the #158 head. A post-merge verification of that state, three named documentation
+corrections, a current-state consistency audit, and a release-policy audit. No production code changed.
+
+**Verification of merged main.**
+- **Suites (local, 1 MiB stack):** DSP 944 / 0, State 5,593 / 0 on `b755cfb` and again on this round's tree.
+- **B2 / KI-032 on this round's tree** (its `src/` is `b755cfb`'s): the deterministic enumeration (scratch harness,
+  the production API) 0 of 1,287 cases incomplete, 0 wrong, 0 stuck, 0 Level-Match landings wrong, the Devin class
+  0 of 650; `--bulk-swap-probe 40` 0 of 1,680; `--bulk-swap-probe 20 12000` 0 of 120; `--bulk-swap-stress 20` and
+  `20 12000` 0 of 4,620 each, 0 wrong, 0 pending. An allocation hook over every armed `processBlock` counted 28
+  process-wide allocations, every one resolved by stack: 3 in the harness's own start-up `selfCheck`, 25 on JUCE's
+  `TimerThread` (18 in `run`, 7 posting to the message queue); **none on the thread calling `processBlock`**.
+- **Dimensional:** the names and the tooltip are in `src/`, the snapshot and the `[0.9.9]` Changed entry; every
+  former-name spelling the rename removed, and `SDD-320` / `Roland` / `BOSS`, return 0 hits. A scratch harness
+  through the production processor and editor: 43 checks, 0 failures.
+- **CI on `b755cfb`:** CodeQL passed; the MSVC job passed, and its PREfast SARIF is **identical by rule, message and
+  file** to the pre-merge `49eebb9` artifact (181 `C6262`, 8 `C26495`, 4 `C26498`); Build & Validate passed (13 jobs;
+  `merge-check` runs on pull requests only; `sanitizers` in 52 minutes against its 60-minute cap), the native arm64
+  `macos` job included (DSP 940 / 0 with Test 75's 7,791 cases, State 5,558 / 0 with State tests
+  139–141; the same job also ran the x86_64 slice under Rosetta, DSP 940 / 0 and State 5,558 / 0 — this line first said
+  Rosetta was unavailable there, which the job log contradicts, and was corrected in the 93rd pass).
+
+**The three named corrections.**
+- `DSP_ALGORITHMS.md` ChorusEngine section: the anchors re-aimed (`.cpp:166-179`, `.cpp:227-231`, `.cpp:210-219`),
+  and the Chorus blend `in·(1−wet) + tap·wet` called linear, not equal-power.
+- `COMMERCIAL_STATUS.md`: the header and §2 name 0.9.9 as the release in preparation (no release tag exists).
+- The registry snapshot's header, the state suite's fixture-workflow comment and failure note, and `TESTING.md`'s two
+  copies now say what `PARAMETER_COMPATIBILITY_POLICY.md` says: update `PARAMETER_REGISTRY.md`, plus an ADR where the
+  policy requires one (a display-name change needs none — rule 2, ADR-0002). The fixture moves in its two comment
+  lines only.
+
+**An owner decision, recorded.** A host typing the fourth choice's pre-0.9.9 label takes `RawChoice::getValueForText`'s
+unknown-text fallback, the first choice (Haas). Nothing persisted stores parameter text. Owner decision 2026-09-28:
+**not fixed**, no alias (`PARAMETER_REGISTRY.md` § footnote). Measured in the scratch harness, with arbitrary unknown
+text as the control.
+
+**The consistency audit** (three auditors, a skeptic per finding; 18 confirmed, 5 refuted). Corrected:
+`HANDOVER.md` (the status preamble, Release Status, Known Blockers and Roadmap lead with 0.9.9, the 0.9.6/0.9.7
+record kept as history; the build pin reads JUCE 9.0.2); `COMMERCIAL_STATUS.md` §6 and `LEVEL5_AUDITION.md` (the
+open audition is 0.9.9's); `REPOSITORY_MAP.md` and `RELEASE_HARDENING_PLAN.md` (75 DSP tests / 944 checks, 138 State
+tests / 5,593); `REALTIME_SAFETY_AUDIT.md` (the RTSan figure dated 2026-08-19).
+
+**Reported, not corrected** (all four were closed by the 93rd pass; the first-tag item by ADR-0058):
+- **The first tag — an owner decision** at the time of this pass. `CHANGELOG.md`'s link definitions, `CHANGELOG_POLICY.md` rule 8 (and :321),
+  `check-docs.py`'s `FIRST_TAGGED_VERSION` and `RELEASE_PROCESS.md` §Tagging assume `0.9.7` and `0.9.8` exist; neither
+  was cut. Tagging `0.9.9` alone publishes a `compare/0.9.8...0.9.9` link to a page that does not exist. The choices
+  are cutting `0.9.7` / `0.9.8` on the commits that closed them, or a policy change (an ADR) making `0.9.9` first.
+- `FUTURE_RISKS.md`'s version-sync marker (0.9.7) and its RISK-011 index row (open; the entry says RESOLVED).
+- `HANDOVER.md`'s snapshot line still names `2d0a906`.
+- The Chorus entry of `DSP_ALGORITHMS.md`, `ChorusEngine.h`, `ChorusEngine.cpp:212` and the user manual call the Chorus
+  L/R taps anti-phase; the code offsets them by a quarter turn (`.cpp:191-192`).
+
+**This file:** this entry and the *Last updated* line.
 
 ## 91st pass — 2026-09-27, the Dimensional rename (0.9.9; release date set to 2026-09-29)
 
@@ -13048,7 +14646,7 @@ documentation only; the engine's code is unchanged.
   `COMMERCIAL_STATUS.md` decision 6 keeps only the trademark status of the product and company names. No legal
   determination is made or implied.
 - **History:** `CHANGELOG.md` names the algorithm Dimensional throughout, with a preamble sentence saying so, and its
-  0.8.8 display-name entry is reworded neutrally; the worklogs use the new name, and the v0.9.0 keynote script now
+  0.8.8 display-name entry is reworded neutrally; the worklogs use the new name, and the 0.9.0 keynote script now
   describes the algorithm by what it does.
 
 **Kept, deliberately.** The factory preset **Synth Dimension** (key `synthDimension`). Its name uses the ordinary
@@ -13057,7 +14655,7 @@ copy, which only the owner specifies (`AI_AGENT_POLICY.md` C8). Reported for the
 
 **Drift reported (C6):**
 - `TRADEMARKS.md` §4 cited `docs/user/USER_MANUAL.md:287` for text at `:313`. It went with the item.
-- `ChorusEngine.h`, `USER_MANUAL.md` and the v0.9.0 keynote script described the voice inconsistently with one
+- `ChorusEngine.h`, `USER_MANUAL.md` and the 0.9.0 keynote script described the voice inconsistently with one
   another. All three now describe the algorithm itself.
 - `USER_MANUAL.md` called the four voicings progressively "slower"; `ChorusEngine::setDimMode` raises the rate from
   0.40 to 0.75 Hz across them. Corrected to "wider and deeper" (`src/dsp/ChorusEngine.cpp:38-41`).
@@ -13071,7 +14669,7 @@ copy, which only the owner specifies (`AI_AGENT_POLICY.md` C8). Reported for the
 **Drift reported, not corrected** (outside this algorithm):
 - `DSP_ALGORITHMS.md`'s Chorus bullet cites `.cpp:144-151` for a branch at `.cpp:210-219`, and calls its linear
   `in·(1−wet) + tap·wet` blend "equal-power".
-- `COMMERCIAL_STATUS.md`'s header still says the release in preparation is v0.9.7.
+- `COMMERCIAL_STATUS.md`'s header still says the release in preparation is 0.9.7.
 
 **Review.** A workflow (four diff reviewers, three repository-wide sweeps, one skeptic per finding) confirmed nine
 findings, all corrected in the commit after `1f0bc7c`: the `setDimMode` comment's description of the voicings; the
@@ -13105,7 +14703,7 @@ precondition, and a set of documentation and comment drifts. Nothing in the prot
 **Documents changed.**
 - **Stale current-state statements**, the four named in the 89th pass:
   - `TESTING.md` (75 DSP tests, 138 State tests);
-  - `KNOWN_ISSUES.md` (synced to v0.9.9, with the reused KI-029 number disambiguated);
+  - `KNOWN_ISSUES.md` (synced to 0.9.9, with the reused KI-029 number disambiguated);
   - `HANDOVER.md` (twenty-five Fixed entries; the Test Status counts);
   - `POSTMORTEMS.md` INC-013 (the retired 0.9.7 KI-029, history kept).
   Their copies, corrected too: `README.md`, `TESTING_POLICY.md`, and `HANDOVER.md`'s Clang-baseline count.
@@ -13129,7 +14727,7 @@ precondition, and a set of documentation and comment drifts. Nothing in the prot
 
 **Drift reported, not corrected:**
 - ADR-0036's "Apply writes one parameter" (it writes two since round 24; not the bulk-swap boundary);
-- `HANDOVER.md`'s Release Status ("the release in preparation is now v0.9.7") and Known Blockers (the v0.9.6 tag);
+- `HANDOVER.md`'s Release Status ("the release in preparation is now 0.9.7") and Known Blockers (the 0.9.6 tag);
 - `RELEASE_HARDENING_PLAN.md`'s dated baseline row;
 - the dated stack-frame figures in `build.yml`'s stack-guard comment.
 
@@ -13189,7 +14787,7 @@ that approval; ADR-0057 is **Accepted** and records it. All of it is 0.9.9, date
 `tests/state_tests.cpp`.
 
 **Drift reported, not corrected** (DOCUMENTATION_LIFECYCLE): `TESTING.md` still says "53 DSP tests" near its top;
-`KNOWN_ISSUES.md`'s "version-synced to v0.9.6" line predates KI-029..KI-032; `HANDOVER.md` counts "five Fixed
+`KNOWN_ISSUES.md`'s "version-synced to 0.9.6" line predates KI-029..KI-032; `HANDOVER.md` counts "five Fixed
 entries" for `[0.9.9]`; `POSTMORTEMS.md` INC-013 names a KI-029 that is not today's KI-029.
 
 **This file:** this entry and the *Last updated* line.
@@ -14310,7 +15908,7 @@ for the shared ones. Final: **six mutants, six kills** (M1 session guard → 5 f
 
 **Compatibility, re-verified rather than quoted.** State test 116 leg F asserts every retained
 fixture through the real entry point — the three legacy root formats
-`SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive (268 / 590 / 740 B, depth 2–3), the v0.9.5 field
+`SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive (268 / 590 / 740 B, depth 2–3), the 0.9.5 field
 capture (10 629 B, depth 3) — plus a live save→restore round trip (10 444 B against the 262 144 B
 cap). Slot payloads in the real capture: 2 046 and 2 051 B at depth 2. Re-measured with
 `--risk014-probe` on the fixed head, the shapes that used to SIGSEGV or never return are each refused
@@ -14391,7 +15989,7 @@ real decision rather than a formality.
 **The compatibility question the 2026-09-18 deferral was made for is now answered for two of its
 three parts**, by `--risk014-probe census` against the fixtures already in `tests/fixtures/`: every
 session this product has written is nested at most **3** deep and is at most **10 629 bytes** (this
-build 10 438 B, the v0.9.5 field capture 10 629 B, the three legacy roots `SESSION_COMPATIBILITY_
+build 10 438 B, the 0.9.5 field capture 10 629 B, the three legacy roots `SESSION_COMPATIBILITY_
 POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2–3), a slot payload is at most **2 051
 bytes** at depth **2**, and **none carries a `DOCTYPE`** — `XmlElement::TextFormat::dtd` defaults to
 empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor `ValueTree::toXmlString` sets it.
@@ -14460,10 +16058,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21971`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15552` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -14479,7 +16077,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19075`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19300`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -14508,7 +16106,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13708` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13710` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -14804,7 +16402,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13708`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13710`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at
@@ -15153,8 +16751,8 @@ detection is ever removed. Five mutants, all killed. End-to-end on the real tree
 critical-dependencies table still gave `9.0.1` / `e18f7f5…` / ADR-0026 as the current pin. Now
 `9.0.2` / `7278278…` / ADR-0054, with the bump list gaining its fourth entry and the row carrying the
 gloss that keeps it honest. The rest of the file was scanned for current-state drift caused by this
-upgrade: none — its other JUCE mentions are historical release descriptions (the v0.9.4 9.0.0 → 9.0.1
-upgrade) and a v0.9.4-era build-status record, all correct as written and left alone.
+upgrade: none — its other JUCE mentions are historical release descriptions (the 0.9.4 9.0.0 → 9.0.1
+upgrade) and a 0.9.4-era build-status record, all correct as written and left alone.
 
 **Synced:** `scripts/check-citations.py`, `docs/procedures/TESTING.md` (the two ways a bump can fail
 the gate), `docs/HANDOVER.md`, `THIRD_PARTY_LICENSES.md`, `docs/architecture/COMPATIBILITY_MATRIX.md`,
@@ -15172,7 +16770,7 @@ the Architecture Review (approved as implemented, `JUCE_USE_MP3AUDIOFORMAT=0` pi
 ADR's "Outstanding (owner)" section is replaced by a section that records the two sign-offs and
 says explicitly that **no audition observation is written down because none was reported** —
 inventing one would make the record say more than the owner did. `ADR_INDEX.md`, the
-`DEPENDENCY_POLICY.md` compliance log and `worklogs/JUCE902_UPGRADE_v0.9.8.md` §6 were moved to the
+`DEPENDENCY_POLICY.md` compliance log and `worklogs/JUCE902_UPGRADE_0.9.8.md` §6 were moved to the
 same state; no historical measurement or date was rewritten.
 
 **Review finding — `docs/procedures/BUILD.md`, "build contract remains stale": CONFIRMED and
@@ -15243,7 +16841,7 @@ reasoning, rule 3's doc-sync list, two compliance-log entries), `THIRD_PARTY_LIC
 `TRADEMARKS.md`, `README.md`, `COMMERCIAL_STATUS.md`, `BUILD.md`, `TROUBLESHOOTING.md`, `CI_CD.md`,
 `TESTING.md`, `LATENCY_MODEL.md`, `REALTIME_SAFETY_AUDIT.md`, `THREADING_POLICY.md`,
 `KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `dependabot.yml`, `build.yml`, `codeql.yml`, `msvc.yml`,
-ADR-0054 + `ADR_INDEX.md`, `worklogs/JUCE902_UPGRADE_v0.9.8.md`. A measurement dated against an older
+ADR-0054 + `ADR_INDEX.md`, `worklogs/JUCE902_UPGRADE_0.9.8.md`. A measurement dated against an older
 tree kept its date and gained the re-verification; it was not rewritten as if it had been taken now.
 
 **No `CHANGELOG.md` bullet** (rule 3 — by measurement nothing user-visible changed); `[0.9.8]` is
@@ -15292,7 +16890,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:511-516` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:522-527` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -15335,4 +16933,4 @@ verdicts are unaffected by this round's change and were not re-run for bookkeepi
 `ADR-0036` §33 (verification of §31, no new decision); `docs/FUTURE_RISKS.md` RISK-009 (round-35
 bullet, disposition unchanged); `docs/procedures/TESTING.md` (State tests 112 and 113, M213–M221);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §93. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §93. [Verified]

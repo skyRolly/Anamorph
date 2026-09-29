@@ -18,7 +18,7 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 2. **No invented history.** Never infer that a past version contained a feature by reasoning
    backward from current code. Each entry cites an **Evidence Source** — a commit SHA, commit
    range, or PR (entries up to `[0.8.12]` predate git tags, so a release tag alone was never
-   available as evidence for them; from the first annotated release tag — **`v0.9.7`** (0.9.0 through 0.9.6 were each written up but never tagged) — onward the
+   available as evidence for them; from the first annotated release tag — **`0.9.9`** (0.9.0 through 0.9.8 were each written up but never tagged; ADR-0058) — onward the
    tag is also citable). An entry that cannot be tied to such evidence is marked
    `[Unverified Historical Reconstruction]`.
 3. **User-visible changes only.** Refactors, cleanups, formatting, and renames are **not**
@@ -35,27 +35,78 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 7. **Latest version first; every version heading carries an ISO `YYYY-MM-DD` release date.** The
    heading grammar is `## [x.y.z] — YYYY-MM-DD` (a plain `-` for the dash is accepted, being the
    specification's own spelling; ` [YANKED]` may follow), at column 0, versions strictly decreasing
-   down the file, the date a real calendar date. Work that is not yet released goes under
-   `## [Unreleased]`, which sits above the first version and nowhere else — a version heading that
-   reads `— Unreleased` or has no date is not a release and is rejected. A heading that only
+   down the file, the date a real calendar date. Once a version is tagged, work that is not yet
+   released goes under `## [Unreleased]` (rule 8), which sits above the first version and nowhere
+   else — a version heading that reads `— Unreleased` or has no date is not a release and is
+   rejected. A heading that only
    **reads** as a release — one that lost a bracket, or names a version at another heading level —
    is held to the same grammar rather than passing as prose (§The structural grammar,
    restriction 3). `check-docs.py` enforces all of this on every push; `release.yml` re-checks the tagged version's heading and date at tag
    time. Two reconstructed headings at the foot predate this policy and are accepted by
    their exact text — `## [0.7.5] – [0.7.0] — 2026-06-21…22` and
    `## [0.6.x] and earlier — 2026-06 (reconstructed)`; no new heading may take either form.
-8. **Version headings are linkable.** The bracketed version is a link reference, and from `0.9.7` —
-   the first version this line tags — every one has a definition at the foot of the file, into this
-   repository (`https://github.com/skyRolly/Anamorph`), naming its own tag:
-   `/releases/tag/v0.9.7` for that first tag, which has no predecessor to compare against, and
-   `/compare/v<the previous release>...v<x.y.z>` for every version after it — the previous release
-   being the next-older entry, which in a newest-first file is the one directly **below** it. An `[Unreleased]`
-   section's definition is `/compare/v<last tag>...HEAD`. The definition is written **in the release
-   commit**, before the tag exists, because a tag can only point at a commit that already does
+8. **Version headings are linkable.** The bracketed version is a link reference. A tagged version has
+   a definition at the foot of the file, into this repository (`https://github.com/skyRolly/Anamorph`),
+   naming its own tag, which is the bare version `x.y.z` (ADR-0059):
+   - `/releases/tag/0.9.9` for **0.9.9**, the first version this line tags (ADR-0058; this rule named
+     `0.9.7` until 0.9.7 and 0.9.8 were closed untagged), which has no predecessor to compare against;
+   - `/compare/<previous tag>...<x.y.z>` for every tagged version after it, where the previous tag is
+     the **most recent earlier tagged version**. In a newest-first file that is the nearest entry
+     **below** it that is tagged (every release tag has its entry, below) — the entry directly below
+     only when that one was tagged.
+
+   **Whether a version was tagged is what the repository's git tags say, not what this file
+   declares.** `check-docs.py` reads the tag refs of the checkout it runs in (no network; CI's `docs`
+   job fetches the full history, every branch and every tag). A tag is a **release tag of this line**
+   when it is the bare `x.y.z` form (ASCII digits, no leading zero), not older than the first tag, and
+   its commit is on the **release line**: releases are tagged on this repository's `main`, so a tag is a
+   release only when `main`'s history holds its commit — **every release tag in `main`'s history except
+   those cut after `HEAD`** (on a commit strictly descending from it -- a tag on `HEAD` itself counts;
+   `git for-each-ref --merged` and `--contains`). A tag `main` does not hold is no release, whatever else holds it: one cut on a branch
+   never merged into `main` — even the checked-out branch, whose own history holds it — and one on a
+   fork's `main`. For `main` itself, or an older `main` commit, that is
+   `main`'s tags in `HEAD`'s history, and a later release is its future; for a branch headed for
+   `main` it is all of `main`'s — a release `main` gained after the branch forked is one the branch will
+   land on, so it counts before the branch merges it; and for a commit already merged into `main` it is,
+   with releases tagged on `main` itself, `main`'s releases from before the merge that landed it.
+   Ancestry decides, not `main`'s first-parent
+   order, which a fast-forward can rewrite. `main` is the remote-tracking `main` of every remote whose
+   URL is this repository (`https://github.com/skyRolly/Anamorph`, under any URL GitHub serves it at) —
+   `origin` in CI, a fork clone's `upstream` — and **never also a fork's `origin/main`**; failing any such
+   remote, `origin/main` when `origin` is the only remote; failing any remote at all, the local `main`.
+   Otherwise the line is unknown, never guessed: a remote that is this repository but whose `main` was
+   never fetched, or several remotes none of which is recognisably this repository (one may be, under a
+   host alias or a proxy, beside a fork). A
+   version counts as tagged when its tag is one. A prefixed tag, an older one, and one `main` does not
+   hold — a branch's own, a fork's — are none of this line's: such a higher tag neither needs an entry
+   here nor becomes a base. **Every release tag needs its
+   `## [x.y.z]` entry**: the check reports each one that has none, newest first, so the newest release tag is always
+   a recorded version and no link can compare past one the file omits. The definitions must agree with
+   the tags. Versions older than `0.9.9` were never
+   tagged and must have no definition — there is no page to link. After the first tag a version may
+   still close without one: git has no tag for it, its entry stays, it carries **no** definition (as
+   0.9.7 and 0.9.8 do), and it is never a comparison base; a tagged version carries its
+   definition. The one exception is the newest version entry while it is the **release in
+   preparation** (no `## [Unreleased]` above it): it must carry its definition whether or not its tag
+   has been pushed yet. An `[Unreleased]` section's definition is `/compare/<last tag>...HEAD`, from the
+   newest release tag on this line, which must itself have its entry. Until this line has a release tag there is no base, so the section itself is
+   refused, whatever its definition names — including before the `0.9.9` tag is pushed, although the
+   0.9.9 entry is in the file — and unreleased work goes in the dated entry it will ship in (§Entry
+   template). A branch made before a release, or not merged with `main` since, is still bound by it:
+   the check reports the release as one on `main` that the branch's history does not hold, and `main` merged into the
+   branch brings its entry in. Where the tags cannot be read (not the root of a git checkout, no `git`,
+   a shallow clone, which cannot tell which tags are in `HEAD`'s history, or a checkout without this
+   repository's `main`, whose release line cannot be told from another branch or a fork), the check refuses
+   the file's release links with one finding that gives the reason, and still checks what needs no tags;
+   a file whose only version at or above the first tag is the release in preparation needs none, unless
+   the checkout's tag refs hold a release-shaped tag newer than it, which the file must record if it is a
+   release this commit comes after, and which the check then cannot place: the file is refused, and the
+   tag named. The definition is written **in the
+   release commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
-   refusing any tag other than `v` + the CMake version. Versions older than `0.9.7` were never tagged
-   and must have no definition — there is no page to link. `check-docs.py` requires exactly the form
-   the version calls for, in both directions.
+   refusing any tag other than the bare CMake version, with the same grammar (no leading zero). `check-docs.py` requires exactly the form the
+   version calls for, in both directions. It verifies that a tag exists, not that it is annotated;
+   `release.yml` refuses a lightweight tag.
 
 ## The structural grammar
 
@@ -312,25 +363,28 @@ link form, immediately below.
 - **<What went wrong, in the user's terms, and no longer does>.** <Cause in one sentence, if it helps.>
   Evidence: <PR #NN|commit sha>. [Verified]
 
-[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/v<previous version>...v<x.y.z>
+[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/<previous tag>...<x.y.z>
 ```
 
 The definition line belongs with the others at the **foot of the file**, not under the entry — it is
-shown here so the template is complete.
+shown here so the template is complete. Tags are the bare version, with no prefix (ADR-0059).
 
-The link definition has one exception, and it is the next release: `v0.9.7` is the line's **first**
-tag, so it has no predecessor to compare against and its definition is
-`[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7`. Every version after it uses the
-comparison form shown above, against the release before it — the entry directly **below** it in this
-newest-first file. `check-docs.py` requires exactly the form the version calls for, and rejects the
-other one.
+The link definition has one exception, and it is the first tag: `0.9.9` is the line's **first**
+tag (ADR-0058), so it has no predecessor to compare against and its definition is
+`[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9`. Every tagged version after it uses
+the comparison form shown above, against the most recent earlier **tagged** version — the nearest
+entry below it that is tagged — its release tag on the release line (rule 8). A version that closes without a tag keeps its entry, loses
+its definition, and is skipped as a comparison base. `check-docs.py` requires exactly the form the
+version calls for, and rejects the other one.
 
 Work not yet released goes under `## [Unreleased]` in the same shape, with
-`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`; the release commit
+`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/<last tag>...HEAD`; the release commit
 renames the heading to `## [<x.y.z>] — <YYYY-MM-DD>` and re-points the definition (rules 7 and 8).
 That definition needs a tag to compare against, so an `## [Unreleased]` section is available from
-`v0.9.7` onward — until then unreleased work simply sits in the dated entry it will ship in, which
-is how every entry in this file was written.
+the `0.9.9` tag onward — until then unreleased work simply sits in the dated entry it will ship in,
+which is how every entry in this file was written. `check-docs.py` refuses an `## [Unreleased]`
+section while this line has no release tag, with or without a definition — before the
+`0.9.9` tag is pushed as well as after 0.9.9's entry is written.
 
 ## Source of truth for history
 
