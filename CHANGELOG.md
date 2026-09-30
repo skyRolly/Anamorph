@@ -45,7 +45,7 @@ including in entries written before 0.9.9 gave it that name.
   channel fixes on **Linux**, and a device that reports no current sample rate is now opened at
   44.1 kHz instead of being asked for zero. Cross-link:
   `docs/architecture/design-decisions/ADR-0060-juce-9.0.3-upgrade.md`,
-  `worklogs/JUCE903_UPGRADE_0.9.9.md`. [Verified]
+  `worklogs/JUCE903_UPGRADE_0.9.9.md`. Evidence: commit `6041ede`. [Verified]
 
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
