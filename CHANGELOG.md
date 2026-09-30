@@ -20,7 +20,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
-## [0.9.9] — 2026-09-29
+## [0.9.9] — 2026-10-01
 
 ### Changed
 - **The fourth widening algorithm is now called Dimensional.** The Widen Algorithm menu and your host's
@@ -28,6 +28,24 @@ including in entries written before 0.9.9 gave it that name.
   tooltip reads *Voicing of the Dimensional widener*. Only the names changed: the parameter IDs (`algorithm`,
   `dimMode`), the order of the choices, the four voicings and the sound are all the same, so saved sessions,
   presets, A/B slots and automation recall exactly as before. Evidence: commit `1f0bc7c`. [Verified]
+- **JUCE framework 9.0.2 → 9.0.3**, pinned by the release tag's immutable commit SHA
+  `be29c81492b6151c8ea8d14c840e1311963b3a83`, the same SHA-pin mechanism as every bump since 9.0.0.
+  **Anamorph's sound, reported latency, parameters and saved state are unchanged.** Proven rather
+  than assumed: the 32-scenario engine twin dump is **bit-identical** under 9.0.2 and 9.0.3 — every
+  output hash and every reported latency — and the DSP and state suites pass on the 9.0.3 build.
+  `juce_dsp` and `juce_audio_processors` differ between the two tags only in their version strings.
+  **No new third-party code ships.** 9.0.3 adds Opus audio files and WebP images to JUCE, both
+  switched on by default; Anamorph reads and writes neither, so both are switched off in every build
+  and neither library is in the plug-in or the Standalone app. The Ogg Vorbis code JUCE already
+  compiled now carries libogg 1.3.6 instead of 1.3.4, under the same licence.
+  What the upgrade does bring is upstream maintenance in the framework under the **editor** and the
+  **Standalone app**: window placement and focus fixes on **Windows**; fixes to the OpenGL frame buffer
+  the editor draws through on **macOS and Windows**, for graphics drivers that allocate a larger
+  texture than was asked for; and, in the Standalone's audio-device layer, ALSA sample-rate and
+  channel fixes on **Linux**, and a device that reports no current sample rate is now opened at
+  44.1 kHz instead of being asked for zero. Cross-link:
+  `docs/architecture/design-decisions/ADR-0060-juce-9.0.3-upgrade.md`,
+  `worklogs/JUCE903_UPGRADE_0.9.9.md`. Evidence: commit `6041ede`. [Verified]
 
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it

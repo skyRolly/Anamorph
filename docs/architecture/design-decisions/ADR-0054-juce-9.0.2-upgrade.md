@@ -35,7 +35,7 @@ keep the pin immutable.
   **lightweight** tag, so the ref and the commit are the same object and there is no peeling step.
   GitHub still serves shallow fetch-by-SHA, so `GIT_SHALLOW` is retained.
 - **`JUCE_USE_MP3AUDIOFORMAT=0` is now pinned explicitly**, on all six targets that carry the
-  `JUCE_*` contract (`CMakeLists.txt:505, 536, 579, 619, 660, 701`). This is the ONE build change
+  `JUCE_*` contract (`CMakeLists.txt:506, 547, 592, 634, 677, 720`). This is the ONE build change
   the bump requires, and it is a change that **preserves** the shipped configuration rather than
   altering it — see *The one flag that had to be pinned*.
 - **No C++ source change.** The single 9.0.2 breaking change has no project exposure, and the two

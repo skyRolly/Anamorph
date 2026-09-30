@@ -64,11 +64,11 @@ option(ANAMORPH_BUILD_DSPDUMP "Build AnamorphDspDump, the DSP bit-identity harne
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
 set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)")
-# JUCE 9.0.2 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
+# JUCE 9.0.3 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
 # name, so the dependency cannot silently change under a re-pointed tag
 # (dependency hardening; the human-readable version lives in ANAMORPH_JUCE_VERSION).
-set(ANAMORPH_JUCE_VERSION "9.0.2" CACHE STRING "Human-readable JUCE version of the pinned commit")
-set(ANAMORPH_JUCE_TAG  "72782788ce18c2d4d760b28e0921d6ffc6431102" CACHE STRING
+set(ANAMORPH_JUCE_VERSION "9.0.3" CACHE STRING "Human-readable JUCE version of the pinned commit")
+set(ANAMORPH_JUCE_TAG  "be29c81492b6151c8ea8d14c840e1311963b3a83" CACHE STRING
     "JUCE git rev to fetch when no local path is given (commit SHA of tag ${ANAMORPH_JUCE_VERSION})")
 
 # ----------------------------------------------------------------------------
@@ -495,14 +495,25 @@ target_compile_definitions(Anamorph PUBLIC
     ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"
     JUCE_WEB_BROWSER=0          # no webview needed -> no hard webkit dependency at runtime
     JUCE_USE_CURL=0
-    # JUCE 9.0.2 flipped this module default 0 -> 1 (juce_audio_formats.h:110-112)
-    # and dropped the patent disclaimer that came with it. Anamorph calls no
-    # AudioFormat API at all, so the decoder would be dead weight in every
-    # shipped binary AND would falsify THIRD_PARTY_LICENSES.md's standing
-    # statement that "Anamorph therefore ships no MP3 decoder". Pinning it to 0
-    # KEEPS the shipped configuration the bump found it in -- the flag is the
-    # no-op, not the omission (ADR-0054; DEPENDENCY_POLICY rule 5).
+    # JUCE 9.0.2 flipped this module default 0 -> 1 (juce_audio_formats.h:110-112
+    # at 9.0.2; :134-136 at 9.0.3) and dropped the patent disclaimer that came
+    # with it. Anamorph calls no AudioFormat API at all, so the decoder would be
+    # dead weight in every shipped binary AND would falsify
+    # THIRD_PARTY_LICENSES.md's standing statement that "Anamorph therefore
+    # ships no MP3 decoder". Pinning it to 0 KEEPS the shipped configuration the
+    # bump found it in -- the flag is the no-op, not the omission (ADR-0054;
+    # DEPENDENCY_POLICY rule 5).
     JUCE_USE_MP3AUDIOFORMAT=0
+    # JUCE 9.0.3 added two codecs, both ON by default: Opus (JUCE_USE_OPUS,
+    # juce_audio_formats.h:110-112 -- vendored opus, opusfile and libopusenc)
+    # and WebP (JUCE_USE_WEBP, juce_graphics.h:127-129 -- vendored libwebp).
+    # Anamorph reads and writes neither audio files nor images of either kind,
+    # so both would be dead code in every shipped binary and two more
+    # third-party libraries that THIRD_PARTY_LICENSES.md and NOTICE do not
+    # carry. Pinned to 0 for the reason the MP3 flag is: the bump keeps the
+    # shipped configuration it found (ADR-0060).
+    JUCE_USE_OPUS=0
+    JUCE_USE_WEBP=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_REPORT_APP_USAGE=0
@@ -534,6 +545,8 @@ if(ANAMORPH_BUILD_TESTS)
     target_compile_definitions(AnamorphTests PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_MP3AUDIOFORMAT=0   # see the Anamorph block above
+        JUCE_USE_OPUS=0             # see the Anamorph block above
+        JUCE_USE_WEBP=0             # see the Anamorph block above
         JUCE_USE_CURL=0
         JUCE_STANDALONE_APPLICATION=1
     )
@@ -577,6 +590,8 @@ if(ANAMORPH_BUILD_TESTS)
         ANAMORPH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
         JUCE_WEB_BROWSER=0
         JUCE_USE_MP3AUDIOFORMAT=0   # see the Anamorph block above
+        JUCE_USE_OPUS=0             # see the Anamorph block above
+        JUCE_USE_WEBP=0             # see the Anamorph block above
         JUCE_USE_CURL=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_REPORT_APP_USAGE=0
@@ -617,6 +632,8 @@ if(ANAMORPH_BUILD_BENCH)
     target_compile_definitions(AnamorphBench PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_MP3AUDIOFORMAT=0   # see the Anamorph block above
+        JUCE_USE_OPUS=0             # see the Anamorph block above
+        JUCE_USE_WEBP=0             # see the Anamorph block above
         JUCE_USE_CURL=0
         JUCE_STANDALONE_APPLICATION=1)
     target_link_libraries(AnamorphBench
@@ -658,6 +675,8 @@ if(ANAMORPH_BUILD_DSPDUMP)
     target_compile_definitions(AnamorphDspDump PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_MP3AUDIOFORMAT=0   # see the Anamorph block above
+        JUCE_USE_OPUS=0             # see the Anamorph block above
+        JUCE_USE_WEBP=0             # see the Anamorph block above
         JUCE_USE_CURL=0
         JUCE_STANDALONE_APPLICATION=1)
     target_link_libraries(AnamorphDspDump
@@ -699,6 +718,8 @@ if(ANAMORPH_BUILD_FUZZ)
         ANAMORPH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
         JUCE_WEB_BROWSER=0
         JUCE_USE_MP3AUDIOFORMAT=0   # see the Anamorph block above
+        JUCE_USE_OPUS=0             # see the Anamorph block above
+        JUCE_USE_WEBP=0             # see the Anamorph block above
         JUCE_USE_CURL=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_REPORT_APP_USAGE=0
