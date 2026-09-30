@@ -47,7 +47,7 @@ namespace anamorph::gui
 //    JUCE's own `jassert (0 <= touchIndex && touchIndex < 100)`
 //    (juce_MouseInputSourceList.h:67-89). The slot itself is RECYCLED: `MultiTouchMapper` hands out
 //    the lowest free index and `clearTouch` frees it at TouchEnd (juce_MultiTouchMapper.h:46-62,
-//    juce_XWindowSystem_linux.cpp:4176, :4207), so the high-water mark is the number of SIMULTANEOUS
+//    juce_XWindowSystem_linux.cpp:4177, :4213), so the high-water mark is the number of SIMULTANEOUS
 //    fingers, not the number of touches in the session. The table's hard ceiling is therefore 102
 //    rows in a process that cannot exist, and two or three in one that can -- allocated once, on the
 //    message thread, and reused for the rest of the session. It is not a leak, and it is not worth a

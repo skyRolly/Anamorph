@@ -115,7 +115,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `9.0.2` (immutable commit `7278278…`, ADR-0054; previously
+- **Risk:** JUCE is pinned to exactly `9.0.3` (immutable commit `be29c81…`, ADR-0060 — **Proposed**,
+  awaiting the owner's Architecture Review; previously `9.0.2` = `7278278…`, ADR-0054; previously
   `9.0.1` = `e18f7f5…`, ADR-0026; before that `9.0.0` = `f8f8864…`, ADR-0022; before that
   tag `8.0.14`, ADR-0012). A future bump can silently change DSP behaviour (oversampling,
   Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state ABI, and the
@@ -216,7 +217,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   rested on *"the bytes come from the host's own project file rather than from a file the user
   opens"*. In the pinned VST3 SDK, `PresetFile::restoreComponentState` reads the `Comp` chunk and
   calls `component->setState` (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE
-  forwards to `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`): **a `.vstpreset` the
+  forwards to `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2821`): **a `.vstpreset` the
   user picks in the host's browser is a file the user opens and it reaches this parser**, as does an
   `.aupreset` through AU `ClassInfo`. `SERIALIZATION_REGISTRY.md` now records the classification.
 - **Compatibility, measured** (`--risk014-probe census`, asserted by State test 116 leg F): every
@@ -273,7 +274,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   the parser rather than from noise". All three were stored **zlib-framed** — `56 43 32 21` (the
   correct magic) followed by `78 9c` — but no JUCE this project has ever pinned compresses that
   container: `AudioProcessor::copyXmlToBinary` writes magic, length, plain single-line XML and a NUL
-  at 8.0.14, 9.0.0 (`f8f8864`), 9.0.1 (`e18f7f5`) and 9.0.2 (`7278278`) alike, and `getXmlFromBinary`
+  at 8.0.14, 9.0.0 (`f8f8864`), 9.0.1 (`e18f7f5`), 9.0.2 (`7278278`) and 9.0.3 (`be29c81`) alike, and `getXmlFromBinary`
   is `parseXML (String::fromUTF8 (data + 8, ...))`. A zlib body therefore decoded to nothing:
   `decodeRestore` returned false at its first branch, and no migration, no `repairSerializedValues`
   and no A/B decode was reachable from any seed.
@@ -1113,7 +1114,7 @@ mitigation. Do not invent risks to fill the template.
   the AGPLv3 arm — the commercial JUCE tier must be in place before commercial distribution. A
   third strand —
   the Steinberg VST 3 trademark/distribution review — is separate again (the SDK *code* is MIT in
-  JUCE 9.0.2; the VST name and plug-in distribution terms are not covered by that grant).
+  JUCE 9.0.3; the VST name and plug-in distribution terms are not covered by that grant).
 - **Impact:** Blocks a commercial release outright, and leaves even a free release legally
   ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
   is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md`

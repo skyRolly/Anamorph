@@ -38,11 +38,11 @@ public:
     // default implementation does nothing -- so without this override the request
     // reached no state at all. It is not a theoretical entry point: the pinned
     // JUCE VST3 wrapper calls `getPluginInstance().reset()` from
-    // `setProcessing(false)` (juce_audio_plugin_client_VST3.cpp:3475-3479), which
+    // `setProcessing(false)` (juce_audio_plugin_client_VST3.cpp:3474-3478), which
     // a host issues whenever it stops processing, and the AU wrapper calls
     // `juceFilter->reset()` from `Reset()` (juce_audio_plugin_client_AU_1.mm:255-263).
     // Neither is followed by a `prepareToPlay`: the VST3 side re-prepares through
-    // `setupProcessing` with `CallPrepareToPlay::no` (:3470), and the AU side calls
+    // `setupProcessing` with `CallPrepareToPlay::no` (:3468), and the AU side calls
     // `prepareToPlay()` BEFORE the reset and only when not already prepared. So a
     // transport stop left the delay lines, crossover banks, oversamplers, dry rings
     // and any in-flight duck exactly as the last block left them.
@@ -75,9 +75,9 @@ public:
         // That edge only exists if the plug-in SAW a non-playing block -- and the
         // host class this override was added for is precisely the one that does not
         // send any: VST3 `setProcessing(false)` calls this and then stops calling
-        // `process` (juce_audio_plugin_client_VST3.cpp:3475-3479), `setProcessing(true)`
+        // `process` (juce_audio_plugin_client_VST3.cpp:3474-3478), `setProcessing(true)`
         // simply resumes, and NEITHER side re-prepares (`CallPrepareToPlay::no` at
-        // :3469). AU `Reset()` is the same shape (juce_audio_plugin_client_AU_1.mm:255-263).
+        // :3468). AU `Reset()` is the same shape (juce_audio_plugin_client_AU_1.mm:255-263).
         // So `prevPlaying` was still true when playback came back, the edge never
         // occurred, and the held peak survived a restart it is supposed to be cleared by.
         //
@@ -128,7 +128,7 @@ public:
     // REPORTED TAIL (F3). This is not latency -- it is how long the chain keeps
     // producing audio after its input goes silent, and the VST3 wrapper hands it
     // straight to the host as `getTailSamples()`
-    // (juce_audio_plugin_client_VST3.cpp:3482-3493), which is what decides how long
+    // (juce_audio_plugin_client_VST3.cpp:3481-3492), which is what decides how long
     // the host keeps calling `processBlock` after a source stops. UNDER-reporting
     // therefore truncates an audible decay; over-reporting only costs a little
     // processing after the source has stopped. The contract is a bound, so the safe

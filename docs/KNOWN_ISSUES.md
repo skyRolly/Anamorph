@@ -605,10 +605,10 @@ Mechanism, traced end to end in the pinned JUCE source. A focused `juce::TextEdi
 `NSViewComponentPeer::sendEventToInputContextOrComponent`, whose **first** act is
 `[inputContext handleEvent: ev]` (`juce_NSViewComponentPeer_mac.mm:1655-1662`); JUCE's own
 `redirectKeyDown` / `TextEditor::keyPressed` runs only if the input context declines the event
-(`:1667-1668`). Printable characters therefore arrive through AppKit's `insertText:` (`:2396-2435`),
+(`:1667-1668`). Printable characters therefore arrive through AppKit's `insertText:` (`:2442-2481`),
 which is exactly where macOS implements **press-and-hold** — JUCE supports it deliberately (its
-comments at `:2409-2412` and `:2580` describe the accent popup). "Special" keys take the other
-branch — `doCommandBySelector:` (`:2437-2467`) → `redirectKeyDown` → `TextEditor::keyPressed` — and
+comments at `:2455-2458` and `:2626` describe the accent popup). "Special" keys take the other
+branch — `doCommandBySelector:` (`:2483-2513`) → `redirectKeyDown` → `TextEditor::keyPressed` — and
 are therefore re-delivered on every OS repeat. Neither JUCE nor Anamorph contains any repeat logic
 to compensate: for printable characters, auto-repeat is owned entirely by the OS.
 
@@ -653,7 +653,7 @@ keys fine":
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
   src/PluginEditor.cpp:385-395 (the field), src/PluginEditor.cpp:2344-2414 (show + focus);
-  `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
+  `juce_NSViewComponentPeer_mac.mm:1655-1668, 2442-2481`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
   symbols unaffected) and has **not** been observed on hardware. Steps 1–2 above are what move it
@@ -678,7 +678,7 @@ no control — that part works. What it cannot do is un-count that click. If the
 sees `getNumberOfMultipleClicks() == 2` and JUCE calls its `mouseDoubleClick`. On a knob that means a
 reset-to-default or the numeric entry box, from what the user experienced as a first click.
 
-**Mechanism, from the pinned JUCE 9.0.2.** The multi-click run lives on the *input source*, not on a
+**Mechanism, from the pinned JUCE 9.0.3.** The multi-click run lives on the *input source*, not on a
 component. `MouseInputSourceImpl::registerMouseDown` records only position, time, buttons, touch flag
 and peer id (`juce_MouseInputSourceImpl.h:581-599`), and `canBePartOfMultipleClickWith` (`:565`)
 compares exactly those — the **target component is not part of the comparison**. Registration happens
@@ -716,7 +716,7 @@ Since 0.9.3 the editor cancels an open drop-down or right-click menu when the pl
 hidden, when the editor is destroyed, or when the user switches to another application. **The third
 of those does not happen on Linux.** The first two work normally there.
 
-**Mechanism, from the pinned JUCE 9.0.2.** The app-switch branch asks
+**Mechanism, from the pinned JUCE 9.0.3.** The app-switch branch asks
 `juce::Process::isForegroundProcess()`. On Linux that is
 `LinuxComponentPeer::isActiveApplication` (`juce_Windowing_linux.cpp:687`), a static initialised to
 `false` (`:678`) and assigned **only** `true`, from `grabFocus()` on a successful X11 focus grab
@@ -907,7 +907,7 @@ a single output bit.
 
 **Filed 2026-08-31 (engineering-review round 1, finding ER-RT-01; confirmed by two independent
 adversarial verifications against the then-pinned JUCE 9.0.1 tree; `juce_MouseInputSource.cpp` and
-`juce_Desktop.cpp` are byte-identical at the 9.0.2 pin — ADR-0054).**
+`juce_Desktop.cpp` are byte-identical at the 9.0.2 pin — ADR-0054 — and at the 9.0.3 pin — ADR-0060).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
 (`src/PluginProcessor.cpp:35-36`), and `parameterChanged` → `updateLatency()` →
@@ -930,7 +930,10 @@ APVTS `LockedListeners` mutex).
   Algorithm lane switching between the linear and Chorus/Dimensional classes, triggers the
   wrapper's `audioProcessorChanged` → `ComponentRestarter`: on the audio thread that is
   `triggerAsyncUpdate` → (Linux) `InternalMessageQueue::postMessage` = a `ScopedLock`, a
-  `ReferenceCountedArray::add` (heap), and a `write()` syscall — inside `process()`. The
+  `ReferenceCountedArray::add` (heap), and a `write()` syscall whenever the message pipe is not
+  already signalled — inside `process()`. (JUCE 9.0.3 replaced the per-message byte count with a
+  `socketSignalled` flag, so a burst of posts before the message thread drains the pipe now costs
+  one `write()` rather than one each; the lock and the heap `add` are unchanged — ADR-0060.) The
   AsyncUpdater CAS collapses repeats *within one message-loop period*, so the typical rate is once per engage/disengage crossing and the worst-case BOUND is once per block for a lane chattering across the threshold. VST3 delivers at most one listener dispatch per parameter per block, so nothing is faster than that.
 - **The worse variant:** a message-thread edit of the same parameter holds the parameter's
   `listenerLock` while synchronously calling the host's `restartComponent(kLatencyChanged)`
@@ -949,7 +952,7 @@ APVTS `LockedListeners` mutex).
   (`src/PluginEditor.cpp` `startTimerHz (24)`) and does not exist with the editor closed, so a
   closed-editor render would never tell the host about a latency change at all — a worse,
   user-visible defect. An `AsyncUpdater` is not a fix either: its trigger reproduces the very
-  `postMessage` (lock + possible reallocation + `write()`) that is the cost, removing only the
+  `postMessage` (lock + possible reallocation + a `write()` unless the pipe is already signalled) that is the cost, removing only the
   inversion. The surviving design, and what D-1 now asks the maintainer to approve, is: keep the
   synchronous call when `juce::MessageManager::existsAndIsCurrentThread()`, and otherwise set one
   relaxed atomic flag consumed by a processor-owned ~20 Hz `juce::Timer`. See
@@ -965,9 +968,9 @@ APVTS `LockedListeners` mutex).
   (with self-test liveness), closing the static half; RTSan still enforces only from the
   `process` annotation down.
 - **Evidence [Verified]:** src/PluginProcessor.cpp:35-36, :117-134; pinned JUCE
-  `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
+  `juce_audio_plugin_client_VST3.cpp:3562/:3590/:3536`, `juce_AudioProcessorParameter.cpp:110-121`,
   `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
-  `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.
+  `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-92`.
 
 ## KI-028 — a lost mouse release during a value-box drag leaves the host gesture open
 

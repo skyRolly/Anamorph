@@ -19,6 +19,17 @@ and 0.9.9 each change audible behaviour. So the 0.9.9 audition needed its own sc
 `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries (§Scope for 0.9.9). The owner has performed it
 (§Recorded auditions, 0.9.9).
 
+**The 0.9.9 audition of 2026-09-28 does not carry over to the 0.9.9 build that will now ship** — the
+rule applied a third time, on 2026-09-29. The owner folded the JUCE 9.0.2 → 9.0.3 bump into 0.9.9 that
+day (ADR-0060), and on 2026-09-28 the pin was 9.0.2, so the build auditioned then was a 9.0.2 build. The
+bump changes the machine code of the framework under the editor and the Standalone app — the OpenGL
+framebuffer on macOS and Windows, the Windows, X11 and macOS window peers, and the Standalone's audio-device
+layer — and no automated gate can audition those. The twin dump proves the **engine** output bit-identical
+between the two builds, which is why the re-audition adds one group (§Scope for 0.9.9, G) rather than a new
+scope; it is not a reason to skip A–F on the new build. The 2026-09-28 record is not withdrawn; it simply
+does not cover this build. `DEPENDENCY_POLICY.md` rule 2 asks for the same audition independently: a JUCE
+bump is not accepted until one is recorded.
+
 **The 0.9.6 audition of 2026-09-01 does not carry over to 0.9.7** — the release this rule
 blocked when it was applied the second time (2026-09-03). **ADR-0034** changed what the plug-in reports to the host and added a delay
 element to the chain, and it changed one audible behaviour beyond latency: a forced A/B, preset or
@@ -37,7 +48,9 @@ example the rule was first written from:
 
 ## Scope for 0.9.9
 
-**Performed by the owner; completion reported 2026-09-28** (§Recorded auditions, 0.9.9). This scope was
+**REOPENED 2026-09-29 for the JUCE 9.0.3 build (ADR-0060): to be performed again, on that build, over
+groups A–G.** The completion reported 2026-09-28 (§Recorded auditions, 0.9.9) was of the 9.0.2 build.
+This scope was
 written first, and the environment that wrote it has no DAW, no audio device and no listener. It is
 derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries, because the last recorded
 audition before it was 0.9.6's. Which of A–F the owner exercised was not supplied, and the record
@@ -93,6 +106,19 @@ result, naming which of A–F were exercised.
 Checklist items 5 and 7 are separate attestations for 0.9.9 (`RELEASE_COMPATIBILITY_CHECKLIST.md`).
 They may be performed in the same sitting, but they are recorded there, each on its own. This audition
 record does not tick them.
+
+### G. The JUCE 9.0.3 framework paths (ADR-0060)
+Added 2026-09-29. These are the paths 9.0.3 changed that no headless gate reaches:
+- **Editor under OpenGL, macOS and Windows.** Open, resize and close the editor; switch the host's
+  window between displays of different scaling. The editor draws completely, with no black or offset
+  band and no stale region.
+- **Window placement and focus, Windows.** Open the editor, click into the host and back, open a pop-up
+  menu and the preset field, and close the editor. The Standalone window opens where it was and takes
+  keyboard focus.
+- **Closing, Linux (X11).** Close the editor from the host while a pop-up menu is open, and close the
+  Standalone window while its settings dialog is open.
+- **Standalone audio device, Linux (ALSA) and Windows.** Open the Standalone's audio settings, choose a
+  device and a sample rate, and play through it. It opens at the rate chosen, on the channels chosen.
 
 ## Scope for 0.9.6
 
@@ -172,7 +198,11 @@ covered. Partial is a legitimate and useful record; a partial audition described
 
 Newest first. A row here is a human's account of listening to a build; nothing else may create one.
 
-### 0.9.9 — **COMPLETED, signed off by the owner**
+### 0.9.9 — **COMPLETED, signed off by the owner** (JUCE 9.0.2 build — does not cover the 9.0.3 build)
+
+> **2026-09-29:** on 2026-09-28 the pin was JUCE 9.0.2 (ADR-0054; still so on `main` @ `756a5c2`), so this audition
+> was of a 9.0.2 build. 0.9.9 now ships on JUCE 9.0.3 (ADR-0060), and this record does not cover that build
+> (§When a previous audition stops counting). It is left exactly as reported.
 
 **Recorded 2026-09-28** from the repository owner's report that the 0.9.9 Level-5 audition has been
 completed. The owner performed it. The report is the owner's attestation, and it is the Level-5

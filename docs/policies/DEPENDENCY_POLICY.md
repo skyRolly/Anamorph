@@ -6,7 +6,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.2**, pinned by **immutable commit SHA** `72782788ce18c2d4d760b28e0921d6ffc6431102` — CMakeLists.txt:71 (`72782788ce18c2d4d760b28e0921d6ffc6431102`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.2`) |
+| **JUCE** | **9.0.3**, pinned by **immutable commit SHA** `be29c81492b6151c8ea8d14c840e1311963b3a83` — CMakeLists.txt:71 (`be29c81492b6151c8ea8d14c840e1311963b3a83`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.3`) |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:475-482 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable and **asserted to be the release build**: `setup-llvm-apt.sh` carries the `llvmorg-<version>` tag commit per major and refuses both an unrecorded major and a build from any other commit (ADR-0028 sets the rule; **ADR-0033** adds the assertion and records why 23 is not yet adoptable) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:120-122 |
@@ -17,7 +17,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 ## Version-lock reasoning
 
-- **JUCE is pinned to an exact IMMUTABLE commit** (`7278278…` = tag 9.0.2; `ANAMORPH_JUCE_VERSION`
+- **JUCE is pinned to an exact IMMUTABLE commit** (`be29c81…` = tag 9.0.3; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
   0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
   the framework for the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`),
@@ -26,12 +26,18 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
   behaviour stable. Evidence [Verified]: CMakeLists.txt:70-72, 81-89; the X11 dependency is
   documented in ADR-0011.
-- **One `JUCE_*` module default is pinned because upstream changed it under the product.**
+- **Three `JUCE_*` module defaults are pinned because upstream changed them under the product.**
   `JUCE_USE_MP3AUDIOFORMAT` defaulted to 0 through 9.0.1 and defaults to **1** from 9.0.2. Anamorph
   pins it to **0** on all six targets that carry the `JUCE_*` contract, which keeps the shipped
   binary's content and `THIRD_PARTY_LICENSES.md`'s "ships no MP3 decoder" claim as they were: the
   flag is the no-op, the omission would have been the change. Rule 5 governs it from here.
-  Evidence [Verified]: CMakeLists.txt:505, 536, 579, 619, 660, 701; ADR-0054.
+  Evidence [Verified]: CMakeLists.txt:506, 547, 592, 634, 677, 720; ADR-0054.
+  **9.0.3 added two more by adding codecs rather than flipping one:** `JUCE_USE_OPUS` (vendored opus,
+  opusfile and libopusenc) and `JUCE_USE_WEBP` (vendored libwebp) both arrive defaulting to **1**.
+  Anamorph pins both to **0** on the same six targets for the same reason — the product reads and
+  writes neither format, and two more third-party libraries in every binary would be dead code that
+  `THIRD_PARTY_LICENSES.md` and `NOTICE` do not carry. Evidence [Verified]: CMakeLists.txt:515-516;
+  ADR-0060.
 
 ## Update mechanisms
 
@@ -73,7 +79,8 @@ repository ever grows a real package manifest.
    harness checks itself for exactly that before printing anything (`docs/procedures/TESTING.md`
    §Proving a dependency bump is bit-identical). **And re-verify ADR-0057's store-side precondition**
    (precondition 2): `AudioProcessorValueTreeState`'s `ParameterAdapter` must still store
-   `unnormalisedValue` release-or-stronger (at 9.0.2, a `seq_cst` assignment in `parameterValueChanged`).
+   `unnormalisedValue` release-or-stronger (at 9.0.2, a `seq_cst` assignment in `parameterValueChanged`;
+   unchanged at 9.0.3, where `juce_AudioProcessorValueTreeState.cpp` is byte-identical — ADR-0060).
    A relaxed store there lets the bulk-swap handshake trust a mixed snapshot on ARMv8, and no x86-64 test
    and no lint can see it.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump —
@@ -85,13 +92,43 @@ repository ever grows a real package manifest.
    `docs/procedures/BUILD.md`, `docs/procedures/TROUBLESHOOTING.md`, `.github/dependabot.yml`,
    `TRADEMARKS.md` and `docs/COMMERCIAL_STATUS.md`. `grep -rn "JUCE 9\.0\." --include='*.md'` finds
    the set; a measurement dated against an older tree keeps its date and gains the re-verification,
-   it is not rewritten.
+   it is not rewritten. **The 9.0.2 → 9.0.3 bump found the other half: citations INTO JUCE move.**
+   The pin homes are found by version string and checked by `scripts/check-citations.py`; a
+   `juce_*.cpp:NNN` citation in a comment or document is checked by nothing, and 9.0.3 moved lines in
+   six cited files (the VST3 wrapper by −1 past its line 2498, the macOS peer by +46, the X11 and
+   Windows peers, the posix file stream, the Linux message queue). Map every cited file between the
+   two trees, re-aim the live citations, and record the map in the bump's ADR (ADR-0060 §Citation
+   map); accepted ADRs keep the line numbers of the tree they were written against.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:496-509` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:496-520` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log
 
+- **JUCE 9.0.2 → 9.0.3** — recorded in **ADR-0060** (0.9.9 cycle, on the owner's instruction of
+  2026-09-29 to ship it inside 0.9.9; **`Proposed`** — the human Architecture Review and the rule-2
+  **Level-5 audition of the 9.0.3 build** are both still owed, and the 0.9.9 audition of 2026-09-28 was
+  of the 9.0.2 build, so it does not discharge the second). **Zero C++ source changes** (comments that
+  cite JUCE line numbers aside), and **two build changes**: `JUCE_USE_OPUS=0` and `JUCE_USE_WEBP=0` pinned
+  on all six targets, because 9.0.3 adds Opus (opus, opusfile, libopusenc) and WebP (libwebp) ON by
+  default, which would otherwise have compiled two unused third-party libraries into every shipped
+  binary, outside `THIRD_PARTY_LICENSES.md` and `NOTICE`. Pinned, the new translation units compile to a
+  hidden placeholder (Opus) or nothing (WebP), and the shipped Linux binaries carry no codec symbol.
+  No build-**dependency** change: all fifteen module declarations moved only their `version:` field.
+  Exposure: `SystemStats::isOperatingSystem64Bit()` and the retroactive 9.0.2 `ThreadPool::addJob`
+  entry, each checked by name — neither is used. Rule-2 verification: the committed twin dump, one frozen
+  source tree against both checkouts, **32 scenarios bit-identical including reported latencies**,
+  `--self-check` green on both sides, run with the new flags at JUCE's defaults and pinned; DSP suite
+  944 checks and state suite 5600 checks green on the 9.0.3 build; pluginval strictness 10 green in both
+  modes ×3 on its VST3. **ADR-0057 precondition 2 re-verified**: `juce_AudioProcessorValueTreeState.cpp` is
+  byte-identical, the store still `seq_cst` at `:155`. Rule-3 re-verification: the checklist's six
+  measured items re-run on the 9.0.3 build (items 5 and 7 reopened for the owner); every cited licence file
+  byte-identical except Ogg Vorbis, whose identical text moved to `codecs/vorbis/COPYING` +
+  `codecs/ogg/COPYING` with libogg upgraded 1.3.4 → 1.3.6; `JUCE.spdx.json` re-read. **New for this
+  bump:** six cited JUCE files moved lines, so citations into JUCE were mapped between the trees and
+  re-aimed (ADR-0060 §Citation map) — rule 3 now names that step. Rule 5: the two new flags join
+  `JUCE_USE_MP3AUDIOFORMAT` in the contract. `CHANGELOG.md` `[0.9.9]` carries a **Changed** entry (rule 3
+  admits it: upstream fixes reach the editor and the Standalone app).
 - **JUCE 9.0.1 → 9.0.2** — recorded in **ADR-0054** (0.9.8 cycle; **`Accepted`** — the human
   Architecture Review and the rule-2 **Level-5 manual audition** were both completed and signed off
   by the owner on **2026-09-17**, on top of the headless evidence below. No audition observation is

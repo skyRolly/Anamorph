@@ -21,7 +21,7 @@ Framework
 --------------------------------------------------------------------------
 
 Anamorph is built with the JUCE framework (Raw Material Software Limited),
-pinned to JUCE 9.0.2 (commit 72782788ce18c2d4d760b28e0921d6ffc6431102).
+pinned to JUCE 9.0.3 (commit be29c81492b6151c8ea8d14c840e1311963b3a83).
 The JUCE Framework modules are dual-licensed under the AGPLv3 and the
 commercial JUCE 9 licence. Anamorph is a closed-source commercial product,
 which cannot satisfy the AGPLv3 arm; obtaining the commercial JUCE licence
