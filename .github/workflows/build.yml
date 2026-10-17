@@ -853,7 +853,7 @@ jobs:
       # premise that "the DSP suite holds no processors". That is true only of
       # `AnamorphAudioProcessor` -- which `AnamorphTests` genuinely cannot construct,
       # since it compiles `tests/dsp_tests.cpp` alone and never the plugin sources
-      # (CMakeLists.txt:531-533) -- and it is the wrong test. What overflows a frame is
+      # (CMakeLists.txt:542-544) -- and it is the wrong test. What overflows a frame is
       # a large object, not that particular one, and `dsp_tests.cpp` declares
       # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
       # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact
@@ -3556,7 +3556,7 @@ jobs:
       # SCOPED TO ONE TU, NOT THE BUILD. Enabling the flag over
       # `AnamorphEngine.cpp` produces 52 warnings, essentially all JUCE calls
       # whose definitions that TU cannot see; JUCE carries no annotations of its
-      # own (measured at 9.0.1, re-verified at 9.0.2), so those are warnings about correct code (ADR-0029 records
+      # own (measured at 9.0.1, re-verified at 9.0.2 and 9.0.3), so those are warnings about correct code (ADR-0029 records
       # the decision not to enable it build-wide). `tests/realtime_effects.cpp`
       # includes only the JUCE-free first-party leaves, where the signal is
       # clean: measured 0 diagnostics on this tree, and the seeded

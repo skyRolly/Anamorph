@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **only a tag push drafts a release, and a corrupted capture fails at its hash alone** (2026-09-29; two review findings: a `workflow_dispatch` rehearsal started from a tag took `release.yml`'s release path and drafted a release, and State test 25 ran its restore checks on a capture whose hash had already failed), whose entry is the **101st pass**; before it **the release line is this repository's `main` alone, and one release-tag grammar** (2026-09-29; three review findings: a fork's `origin/main` was united with the repository's `main`, a branch's own tag counted as a release, and `release.yml` accepted a leading-zero tag the checker refuses), whose entry is the **100th pass**; before it **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **JUCE 9.0.3, folded into 0.9.9, and 0.9.9 re-dated 2026-10-01** (2026-09-29; the owner's instruction: the pin moves 9.0.2 → 9.0.3 by commit SHA with `JUCE_USE_OPUS=0` / `JUCE_USE_WEBP=0` pinned, ADR-0060 `Proposed`; the Level-5 audition and checklist items 5 and 7 reopened for the new build), whose entry is the **102nd pass**; before it **only a tag push drafts a release, and a corrupted capture fails at its hash alone** (2026-09-29; two review findings: a `workflow_dispatch` rehearsal started from a tag took `release.yml`'s release path and drafted a release, and State test 25 ran its restore checks on a capture whose hash had already failed), whose entry is the **101st pass**; before it **the release line is this repository's `main` alone, and one release-tag grammar** (2026-09-29; three review findings: a fork's `origin/main` was united with the repository's `main`, a branch's own tag counted as a release, and `release.yml` accepted a leading-zero tag the checker refuses), whose entry is the **100th pass**; before it **the missing-release finding closed at a pull request's tip** (2026-09-29; a release tagged on `main` after a branch forked was still hidden at the branch's tip, where CI checks a same-repo PR: the release line is now `main`'s history for a branch headed there), whose entry is the **99th pass**; before it **every release tag needs its entry, and the snapshot header reviewed** (2026-09-29; two review findings: the changelog check took its comparison bases from the tags that had an entry, so a pushed release with no entry could be compared past, and the registry snapshot's header changed with its generator — justified and kept), whose entry is the **98th pass**; before it **the 0.9.5 capture restored, and the 0.9.6 first-tag plan described as a plan** (2026-09-29; two review findings: the version sweep had rewritten the field capture's `emitter` label, and the retained 0.9.6 compatibility record still predicted 0.9.6 as the first tag), whose entry is the **97th pass**; before it **"tagged" read from git** (2026-09-28; `check-docs.py` reads which versions were tagged from the repository's git tag refs instead of from `CHANGELOG.md`, so `[Unreleased]` is refused until the `0.9.9` tag actually exists, and the `docs` job fetches the tags), whose entry is the **96th pass**; before it **`[Unreleased]` refused before the first tag** (2026-09-28; `check-docs.py` no longer accepts an `[Unreleased]` section by the shape of its URL when no version is tagged, cases A–G), whose entry is the **95th pass**; before it **bare versions, skipped tags and the completed release records** (2026-09-28; ADR-0059 makes every version reference and the release tag the bare `x.y.z`, `check-docs.py` compares each tagged version against the most recent TAGGED one, the owner-completed Level-5 audition and checklist items 5 and 7 recorded), whose entry is the **94th pass**; before it the **release-tag blocker resolved** (2026-09-28; ADR-0058 makes `0.9.9` the first tag, the Chorus L/R phase described as the code has it, the compatibility checklist re-run for 0.9.9, the 0.9.9 audition scope written, the licence's scope against the tag stated), whose entry is the **93rd pass**; before it the **release cleanup on merged main** (2026-09-28; post-merge verification, three documentation corrections, current-state consistency, the release-policy audit), whose entry is the **92nd pass**; before it the **Dimensional rename** (2026-09-27; the fourth widening algorithm renamed **Dimensional** and every repository reference to its former name removed; the 0.9.9 release date set to 2026-09-29), whose entry is the **91st pass**; before it **PR #156** (2026-09-24 – 2026-09-27), non-finite parameter state, the Devin review, and F13 — Level Match engaging at the level it measured (owner ruling O4g), F13(2) decided and implemented (the A/B re-arm and the same-rate re-prepare keep), the Devin review's quiet-resume finding (a kept result is the applied gain from the first block), its live-edit finding (a same-rate re-prepare keeps only a result that is current), its A/B finding (an A/B slot's remembered gain carries the validity of the result it was taken from), its stale-engage finding (a gain-only engage lands on the published value, current or not: decided, not a defect), its re-prepare finding (a duck's bottom retires the live measurement change it reports, so a measured A/B gain restored there survives a re-prepare in the fade-in), the A/B residuals O8(1)/(2) closed (an A/B record carries the measure's post-change evidence) with O8(3) investigated and the 0.9.9 release date set to 2026-09-27, its Velvet finding (a non-finite Velvet Density is compared as the density the Velvet plays), and its incomplete-slot finding (a bulk swap under burst processing can adopt a partly written sound: confirmed, recorded as KI-032 and the Proposed ADR-0057, not fixed — the fix is a threading-model change gated on Architecture Review), then the O8(3) architecture decision (ADR-0057 completed as the proposed decision — the protocol, its proof and its prototype evidence — still gated and not implemented), then ADR-0057 accepted on the repository owner's approval and implemented, KI-032 fixed, then the pre-merge audit (no production defect; State test 141; the store-side precondition made binding; stale current-state statements corrected) — whose entries are the **76th** to **90th passes** (the 73rd–75th passes, PR #155, did not update this line); before it **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -1894,7 +1894,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:613-632`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:628-649`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2209,7 +2209,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:496-497, 535-537, 578-580`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:496-497, 546-550, 591-595`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2965,7 +2965,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:540-549`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:553-562`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2990,7 +2990,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:540-549`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:553-562`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -9978,7 +9978,7 @@ allocator/deallocator pair closed. Tests are not edited for a dashboard.
 **One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
 stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
 holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` alone (CMakeLists.txt:531-533) — and the wrong test: `dsp_tests.cpp` declares
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:542-544) — and the wrong test: `dsp_tests.cpp` declares
 `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
 28% of the reserve. The step now runs both binaries; both were verified green under
 `ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
@@ -13004,6 +13004,56 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_0.9.8.md` §74. [Verified]
+
+## 102nd pass — 2026-09-29, JUCE 9.0.3 folded into 0.9.9; 0.9.9 dated 2026-10-01
+
+**Scope.** The owner's instruction: *update JUCE to 9.0.3; change into 0.9.9; change the 0.9.9 release date to
+Oct 1*. A JUCE pin is a gated Build System change (`ARCHITECTURE_REVIEW_GATE.md`, `DEPENDENCY_POLICY.md`
+rule 1), so this pass implements it with **ADR-0060 `Proposed`** and does not clear the gate: the owner's
+Architecture Review and the Level-5 audition of the 9.0.3 build are owed, and the change must not be merged on
+a green build alone.
+
+This pass changes:
+- `CMakeLists.txt`: the pin (`:67-72`), `JUCE_USE_OPUS=0` / `JUCE_USE_WEBP=0` on all six targets, and the
+  MP3 comment's JUCE line citation (9.0.2's `:110-112` is 9.0.3's `:134-136`);
+- comments that cite JUCE line numbers, re-aimed at 9.0.3 (`src/PluginProcessor.h`, `src/PresetManager.cpp`,
+  `src/gui/LookAndFeel.{h,cpp}`, `src/gui/PhysicalMouseButtons.h`, `src/dsp/RealtimeAnnotations.h`,
+  `tests/state_tests.cpp`, `.github/workflows/build.yml`) — comments only, no code;
+- the pin homes rule 3 names (`THIRD_PARTY_LICENSES.md` — pin, Ogg Vorbis row, VST 3 SDK sentence, MP3 row,
+  new Opus and libwebp rows in §4 —, `NOTICE`, `README.md`, `BUILD.md`, `TROUBLESHOOTING.md`,
+  `dependabot.yml`, `TRADEMARKS.md`, `COMMERCIAL_STATUS.md`) and the glossed pin citations
+  (`HANDOVER.md`, `COMPATIBILITY_MATRIX.md`, `DEPENDENCY_POLICY.md`, `REPOSITORY_MAP.md`, `FUTURE_RISKS.md`,
+  `CI_CD.md`);
+- dated measurements keep their dates and gain the 9.0.3 re-verification (`LATENCY_MODEL.md`,
+  `REALTIME_SAFETY_AUDIT.md`, `SERIALIZATION_REGISTRY.md`, `THREADING_POLICY.md`, `TESTING.md`,
+  `KNOWN_ISSUES.md` KI-017, KI-018, KI-019 and KI-027);
+- `KNOWN_ISSUES.md` KI-027's cost description: 9.0.3's Linux `postMessage` writes to its pipe once per drain;
+- new: ADR-0060, `worklogs/JUCE903_UPGRADE_0.9.9.md`; `ADR_INDEX.md` row; `DEPENDENCY_POLICY.md` table,
+  lock reasoning (three pinned defaults), rule 2 (precondition 2 at 9.0.3), rule 3 (citations into JUCE now
+  a named step) and compliance log;
+- 0.9.9 records: `CHANGELOG.md` `[0.9.9]` dated **2026-10-01** with a second **Changed** entry;
+  `HANDOVER.md` (version row, Release Status, Known Blockers — three preconditions reopened);
+  `COMMERCIAL_STATUS.md` (date); `LEVEL5_AUDITION.md` (the 2026-09-28 audition was of the 9.0.2 build;
+  scope reopened as A–G, group G new); `RELEASE_COMPATIBILITY_CHECKLIST.md` (reopened: six boxes re-run on
+  9.0.3, items 5 and 7 open);
+- 17 citations re-anchored by `check-citations.py --fix` (all into `CMakeLists.txt`, moved by the new flag
+  lines), plus the bare `:NNN` continuations in `BUILD.md` the tool does not see.
+
+No parameter, serialization, state-schema, DSP, threading or latency change: the twin dump is bit-identical
+including the latency column. No tag or release was created.
+
+**Evidence.** ADR-0060 §Verification and the worklog carry it: 32/32 twin dump identical (flags at JUCE's
+defaults and pinned); DSP 944 / state 5600 checks green on the 9.0.3 build; pluginval strictness 10 ×3 in both
+modes on its VST3; no codec symbol in the shipped Linux binaries; ADR-0057 precondition 2 holds
+(byte-identical file); 55 cited JUCE files byte-identical, twelve changed, six with moved cited lines, each
+mapped line compared by content (ADR-0060 §Citation map).
+
+**Drift found and corrected.** `src/PluginProcessor.h` cited `CallPrepareToPlay::no` at `:3470`, a blank line
+already at 9.0.2 (the call was at 3469); it now cites 9.0.3's `:3468`.
+
+**Deliberately unchanged.** Accepted ADRs keep the JUCE line numbers of the tree they were written against
+(ADR-0036, ADR-0053, ADR-0054, ADR-0056 — mapped in ADR-0060); earlier passes of this file, worklogs, and the
+synthetic `9.0.2` fixtures in `check-citations.py`'s self-test are history. [Verified]
 
 ## 101st pass — 2026-09-29, only a tag push drafts a release; a corrupted capture fails at its hash alone (PR #159)
 

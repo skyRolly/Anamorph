@@ -396,17 +396,17 @@ struct DragGestureOwner : WheelDragOwner
 //
 //  That is reachable where Anamorph ships, and the envelope is exact:
 //    * macOS -- NOT reachable. `MouseInputSourceList::canUseTouch()` is `false` and `addSource()`
-//      refuses every index past 0 (juce_NSViewComponentPeer_mac.mm:2986-2999), so the process has
+//      refuses every index past 0 (juce_NSViewComponentPeer_mac.mm:3032-3045), so the process has
 //      exactly one source for its whole life.
 //    * Linux/BSD -- REACHABLE, with no opt-out. `XWindowSystem::canUseMultiTouch()` is true
 //      whenever XI2 sets up (juce_XWindowSystem_linux.cpp:2299-2306, and `JUCE_USE_XINPUT`
 //      defaults to 1), every window JUCE creates masks XI_TouchBegin/Update/End unconditionally
 //      (:676-678), and a touch dispatches as `InputSourceType::touch` with a per-finger index
-//      (:4176-4189) alongside the live `mouse` source. A finger on one control while the mouse
+//      (:4177-4195) alongside the live `mouse` source. A finger on one control while the mouse
 //      holds another is an ordinary state there.
 //    * Windows -- a second source is created (a synthesised touch or pen message is still typed
 //      from `GetMessageExtraInfo()`, and `doMouseDown`'s early return is gated on
-//      `canUseMultiTouch()`, juce_Windowing_windows.cpp:2606-2613), but the editor never opts into
+//      `canUseMultiTouch()`, juce_Windowing_windows.cpp:2612-2619), but the editor never opts into
 //      real multi-touch: `AudioProcessorEditor::usesWindowsMultiTouch()` returns false
 //      (juce_AudioProcessorEditor.cpp:260-263) and nothing here overrides it, so `RegisterTouchWindow`
 //      is never called and the OS synthesises ONE cursor. Concurrency is not established there;

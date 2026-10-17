@@ -171,7 +171,8 @@ node keeps its `SerializedNumber.h` fallback. State test 34 pins all three cases
 ### ...and since 0.9.9 it must also be ONE well-formed document (ADR-0055)
 
 The root test above answers *is this one of ours*. It never answered *is this ONE document, and is
-it safe to hand to a parser at all* — and measured on `0e32e65` against the pinned JUCE 9.0.2, it
+it safe to hand to a parser at all* — and measured on `0e32e65` against the then-pinned JUCE 9.0.2 (JUCE's `xml/` sources are
+byte-identical at 9.0.3, and the State suite that pins these cases passes there — ADR-0060), it
 had to. A file containing **two complete presets loaded and applied the first**, because
 `XmlDocument::parseDocumentElement` reads one element and never looks at the rest; so did a valid
 preset followed by prose, by a stray element or by raw binary. Three further shapes never reached
@@ -438,7 +439,7 @@ of fact about the call paths rather than a change of posture:**
   `component->setState (readOnlyBStream)`
   (`…/format_types/VST3_SDK/public.sdk/source/vst/vstpresetfile.cpp:470-475`), and JUCE's
   `JuceVST3Component::setState` forwards it to `pluginInstance->setStateInformation`
-  (`juce_audio_plugin_client_VST3.cpp:2822`). **A `.vstpreset` the user picks in the host's preset
+  (`juce_audio_plugin_client_VST3.cpp:2821`). **A `.vstpreset` the user picks in the host's preset
   browser, or drags onto the plug-in, reaches this parser** — the same door a project open uses. The
   AU (`ClassInfo`) and Standalone paths reach it the same way.
 * A project file is itself an exchanged document: it travels between machines and collaborators, is

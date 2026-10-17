@@ -474,7 +474,7 @@ namespace
 //
 // ADR-0055 (0.9.9) ADDED A BOUNDARY IN FRONT OF THAT RULE AND LEFT THE RULE ITSELF ALONE.
 // The root test above answers "is this one of ours"; it never answered "is this ONE document,
-// and is it safe to hand to a parser at all". Measured on 0e32e65 against the pinned JUCE 9.0.2,
+// and is it safe to hand to a parser at all". Measured on 0e32e65 against the then-pinned JUCE 9.0.2,
 // three things went wrong before this function ever held a tree, and one after it:
 //
 //   * TWO COMPLETE DOCUMENTS IN ONE FILE LOADED, AND THE FIRST WON. `parseDocumentElement` reads
@@ -1173,7 +1173,7 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 //  A preset write that is only reported as successful when the bytes are on disk.
 //
 //  WHY THIS EXISTS instead of `File::replaceWithText`. That function's write is
-//  UNCHECKED, in the pinned JUCE (9.0.2, 72782788ce) at juce_File.cpp:798-803:
+//  UNCHECKED, in the pinned JUCE (9.0.3, be29c81492) at juce_File.cpp:798-803:
 //
 //      TemporaryFile tempFile (*this, useHiddenFile);
 //      tempFile.getFile().appendText (...);          // <-- bool result DISCARDED
@@ -1202,7 +1202,7 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 //
 //  WHY A SIZE CHECK AND NOT ONLY `getStatus()`. A short write is not an error the
 //  stream records: `FileOutputStream::writeInternal` sets `status` only when
-//  ::write returns -1 (juce_SharedCode_posix.h:527-538), so a write that stores
+//  ::write returns -1 (juce_SharedCode_posix.h:532-543), so a write that stores
 //  4096 of 8000 bytes returns a positive count, leaves the status OK, and is
 //  visible ONLY as a file shorter than the bytes the stream accepted. Both checks
 //  are therefore load-bearing and neither subsumes the other.

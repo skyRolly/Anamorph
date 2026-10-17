@@ -14327,7 +14327,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         // THE SEEDS MUST REACH THE PARSER, and until 2026-09-21 they did not. All three were
         // stored zlib-framed -- `56 43 32 21` then `78 9c` -- but no JUCE this project has ever
         // pinned compresses that container: `AudioProcessor::copyXmlToBinary` writes magic,
-        // length, PLAIN single-line XML and a NUL at 8.0.14, 9.0.0, 9.0.1 and 9.0.2 alike, and
+        // length, PLAIN single-line XML and a NUL at 8.0.14, 9.0.0, 9.0.1, 9.0.2 and 9.0.3 alike, and
         // `getXmlFromBinary` is `parseXML (String::fromUTF8 (data + 8, ...))`. A zlib body
         // therefore decoded to nothing, `decodeRestore` returned false at its first branch, and
         // the 90 s `fuzz` budget started from three inputs that reached no migration, no repair
@@ -35508,7 +35508,7 @@ static void testADeferredPresetOperationReportsItsRealResult()
 //
 //  What the round measured with it is in `docs/FUTURE_RISKS.md` (RISK-014) and
 //  `docs/architecture/design-decisions/ADR-0056-...md`. The numbers there were
-//  taken on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2.
+//  taken on `de89b1a`, x86-64 Linux, Release, then-pinned JUCE 9.0.2.
 // ============================================================================
 namespace
 {
@@ -35840,7 +35840,7 @@ namespace
 //
 //  HOW THIS TEST FAILS THE WRITE, and why this injector and not another. The
 //  failure has to arrive at the same syscall the real one does --
-//  `FileOutputStream::writeInternal`'s `::write` (juce_SharedCode_posix.h:527-538)
+//  `FileOutputStream::writeInternal`'s `::write` (juce_SharedCode_posix.h:532-543)
 //  -- or it tests a different contract. `RLIMIT_FSIZE` does exactly that: the
 //  write is cut off at the limit by the kernel, in the same call, with no root
 //  and no mount. It also reproduces the WORST version of the defect, the one a
@@ -35955,7 +35955,7 @@ static void testAFailedPresetWriteReportsFailure()
 //
 //  It is a live entry point, not a formality: the pinned JUCE VST3 wrapper calls
 //  `getPluginInstance().reset()` from `setProcessing(false)`
-//  (juce_audio_plugin_client_VST3.cpp:3475-3479) and the AU wrapper from
+//  (juce_audio_plugin_client_VST3.cpp:3474-3478) and the AU wrapper from
 //  `Reset()` (juce_audio_plugin_client_AU_1.mm:255-263), and neither is followed
 //  by a `prepareToPlay` -- the VST3 side re-prepares with `CallPrepareToPlay::no`.
 //
@@ -36107,7 +36107,7 @@ static void testAHostResetReachesTheEngine()
 //  State test 119 -- THE REPORTED TAIL IS NEVER SHORTER THAN THE REAL ONE (R5 / F3)
 //
 //  `getTailLengthSeconds()` is handed straight to the host: the VST3 wrapper
-//  converts it in `getTailSamples()` (juce_audio_plugin_client_VST3.cpp:3482-3493),
+//  converts it in `getTailSamples()` (juce_audio_plugin_client_VST3.cpp:3481-3492),
 //  and that is what decides how long a host keeps calling `processBlock` after a
 //  source stops. Under-reporting truncates an audible decay.
 //
@@ -36548,9 +36548,9 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
 //
 //  THE HOST CLASS THIS OVERRIDE EXISTS FOR IS THE ONE THAT SENDS NONE. VST3
 //  `setProcessing(false)` calls `reset()` and then stops calling `process`
-//  (juce_audio_plugin_client_VST3.cpp:3475-3479); `setProcessing(true)` simply
+//  (juce_audio_plugin_client_VST3.cpp:3474-3478); `setProcessing(true)` simply
 //  resumes, and neither side re-prepares -- `preparePlugin` is called with
-//  `CallPrepareToPlay::no` (:3469). AU `Reset()` is the same shape
+//  `CallPrepareToPlay::no` (:3468). AU `Reset()` is the same shape
 //  (juce_audio_plugin_client_AU_1.mm:255-263). So `prevPlaying` was still true when
 //  playback returned, the edge never happened, and the held peak survived a restart
 //  it is supposed to be cleared by.
@@ -36785,7 +36785,7 @@ static void testAHostResetArmsTheNextRestart()
 //  `process()` / `publish()`, on the audio thread, and the GUI applies no ballistics of
 //  its own -- gui/LevelMeter.h: "ballistics are all audio-side"; it draws the published
 //  atomics. So a host that calls `reset()` and then STOPS calling `processBlock` --
-//  VST3 `setProcessing(false)`, juce_audio_plugin_client_VST3.cpp:3475-3479 -- froze
+//  VST3 `setProcessing(false)`, juce_audio_plugin_client_VST3.cpp:3474-3478 -- froze
 //  every readout at the last active frame for as long as it stayed stopped.
 //
 //  MEASURED through the wrapper before the fix, -6 dBFS noise with one 0.9 transient:

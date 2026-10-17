@@ -4,10 +4,19 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).
 
-## Completion record — 0.9.9 (2026-09-28)
+## Completion record — 0.9.9 (2026-09-28; REOPENED 2026-09-29 by the JUCE 9.0.3 bump)
 
-**Eight of eight boxes are checked for 0.9.9: six re-run with measured evidence, and two, items 5 and 7,
-on the owner's attestation.** The owner reported both verifications complete on 2026-09-28; the hosts,
+**REOPENED — six of eight boxes are checked for the 0.9.9 build that will ship; items 5 and 7 are open.**
+On 2026-09-29 the owner folded the JUCE 9.0.2 → 9.0.3 bump into 0.9.9 (ADR-0060, `Proposed`). A JUCE bump
+changes the plug-in wrappers and framework code every host loads, so the record below — measured and
+attested on the **9.0.2** build — does not carry to the 9.0.3 one, by the rule box 6 set: a touched box is
+re-run, not carried. The six measured boxes were re-run on the 9.0.3 build the same day (§Re-verification on
+JUCE 9.0.3, below) and pass. Items 5 (host matrix) and 7 (automation playback) are the owner's to
+re-attest on the 9.0.3 build, alongside the Level-5 audition (`LEVEL5_AUDITION.md`). Until then
+`RELEASE_POLICY.md` precondition 2 is not met for 0.9.9.
+
+**As recorded 2026-09-28, on the 9.0.2 build: eight of eight boxes were checked for 0.9.9 — six re-run with
+measured evidence, and two, items 5 and 7, on the owner's attestation.** The owner reported both verifications complete on 2026-09-28; the hosts,
 operating systems, plug-in formats and automation lanes were not supplied and are NOT RECORDED. The
 0.9.6 boxes did not carry forward, because 0.9.7–0.9.9 touched every area this checklist covers:
 - 0.9.7 changed the reported latency (ADR-0034).
@@ -19,16 +28,16 @@ Box 6 set the precedent: a touched box is re-run, not carried. The 0.9.6 record 
 except that its note on scope now describes the first-tag plan it recorded as a plan, which was not carried
 out (ADR-0058).
 
-| # | Item | 0.9.9 |
-|---|---|---|
-| 1 | Parameter IDs unchanged | **PASS** — two display names changed, which is allowed; no ID renamed or removed |
-| 2 | Serialization schema verified | **PASS** |
-| 3 | Presets migrated | **PASS** — including a user preset written by 0.9.8. The audible half belongs to the 0.9.9 audition, which the owner completed (`LEVEL5_AUDITION.md` §Recorded auditions) |
-| 4 | Pluginval passed (both modes) | **PASS** — run here, not inferred from CI |
-| 5 | Host matrix verified | **PASS** — attested by the owner, 2026-09-28 (hosts NOT RECORDED) |
-| 6 | Latency reporting verified | **PASS** — re-run for 0.9.9 |
-| 7 | Automation playback verified | **PASS** — attested by the owner, 2026-09-28 (host and lanes NOT RECORDED) |
-| 8 | Session reload verified | **PASS** — a real session written by a rebuilt 0.9.8 binary |
+| # | Item | 0.9.9 on JUCE 9.0.2 (2026-09-28) | 0.9.9 on JUCE 9.0.3 (2026-09-29) |
+|---|---|---|---|
+| 1 | Parameter IDs unchanged | **PASS** — two display names changed, which is allowed; no ID renamed or removed | **PASS** — re-run |
+| 2 | Serialization schema verified | **PASS** | **PASS** — re-run |
+| 3 | Presets migrated | **PASS** — including a user preset written by 0.9.8. The audible half belongs to the 0.9.9 audition, which the owner completed (`LEVEL5_AUDITION.md` §Recorded auditions) | **PASS** (headless half) — re-run; the audible half belongs to the 9.0.3 audition, **open** |
+| 4 | Pluginval passed (both modes) | **PASS** — run here, not inferred from CI | **PASS** — re-run here on the 9.0.3 VST3 |
+| 5 | Host matrix verified | **PASS** — attested by the owner, 2026-09-28 (hosts NOT RECORDED) | **OPEN** — owner re-attestation on the 9.0.3 build |
+| 6 | Latency reporting verified | **PASS** — re-run for 0.9.9 | **PASS** — re-run; the twin dump hashes the latency |
+| 7 | Automation playback verified | **PASS** — attested by the owner, 2026-09-28 (host and lanes NOT RECORDED) | **OPEN** — owner re-attestation on the 9.0.3 build |
+| 8 | Session reload verified | **PASS** — a real session written by a rebuilt 0.9.8 binary | **PASS** — the reader side re-verified (see below) |
 
 ## Completion record — 0.9.6 (2026-09-01)
 
@@ -117,6 +126,39 @@ CHANGELOG.
   reload** require manual validation — they cannot be fully proven headlessly.
 - The reference precedent for a compatible surface change *with migration* is the 0.8.4 move of
   view params out of the APVTS (`InternalState::migrateFromLegacyApvts`, ADR-0010).
+
+## Re-verification on JUCE 9.0.3 (2026-09-29)
+
+Recorded against the working tree of `claude/anamorph-comprehensive-review-90tpty` on `main` @ `756a5c2` with the
+JUCE pin moved to 9.0.3 (`be29c81`) and `JUCE_USE_OPUS=0` / `JUCE_USE_WEBP=0` pinned (ADR-0060). Everything
+here was measured on the 9.0.3 build; nothing is carried from the 9.0.2 record below.
+
+1. **Parameter IDs — PASS.** State test 2 (the registry snapshot) passes on the 9.0.3 build, unchanged from
+   the 9.0.2 snapshot. `juce_audio_processors` differs between the tags only in its `version:` field.
+2. **Serialization schema — PASS.** State tests 1, 3, 4/5/6, 25 and 114 pass on the 9.0.3 build. The whole
+   state suite: **5600 checks, 0 failures**.
+3. **Presets migrated — PASS (headless).** State tests 8, 10, 11 and 114 pass. JUCE's `xml/` sources are
+   byte-identical between the tags, and `juce_File.cpp` changed only inside its `JUCE_UNIT_TESTS` block.
+4. **Pluginval (both modes) — PASS.** pluginval 1.0.4, strictness 10, under `xvfb`, against the 9.0.3 VST3
+   built from this tree: `scripts/run-pluginval.sh 10 deterministic vst3` — *ALL 3 deterministic pass(es)
+   succeeded*, seed `0x1`; `scripts/run-pluginval.sh 10 randomise vst3` — *ALL 3 randomise pass(es)
+   succeeded*. Both on the first attempt, both exit 0.
+5. **Host matrix — OPEN.** The owner's 2026-09-28 attestation was of the 9.0.2 build. 9.0.3 changes the AU
+   wrapper's `SetBusCount` (unreachable for Anamorph) and removes one compiled-out ARA line from the VST3
+   wrapper, and it changes the Windows, X11 and macOS window peers every host embeds the editor in. The
+   automated evidence (item 4, and the CI gates on all three platforms) is not a substitute for loading the
+   plug-in in a host.
+6. **Latency reporting — PASS.** DSP Test 3+4 and Test 52 and State tests 22 and 24 pass. The rule-2 twin
+   dump is bit-identical between 9.0.2 and 9.0.3 **including the reported-latency column**, for all 32
+   scenarios (ADR-0060).
+7. **Automation playback — OPEN.** The owner's 2026-09-28 attestation was of the 9.0.2 build.
+8. **Session reload — PASS (reader side).** The item-8 capture below was a scratch artefact and is not
+   retained, so it was not replayed. What the bump can change is the **reader**, and on that side: the state
+   suite's committed cross-version sessions — the three legacy fixtures (State tests 4/5/6) and the real 0.9.5
+   field capture (State test 25) — load and reproduce on the 9.0.3 build; and every JUCE source on the
+   session path is unchanged in function (`juce_AudioProcessor.cpp`'s `copyXmlToBinary` / `getXmlFromBinary`
+   byte-identical, `xml/` byte-identical, `juce_data_structures` changed only in `version:`). The writer side
+   is the 0.9.8 binary on JUCE 9.0.2 in both builds, so the 0.9.8 → 0.9.9 comparison below stands.
 
 ## Evidence for the 0.9.9 completion
 

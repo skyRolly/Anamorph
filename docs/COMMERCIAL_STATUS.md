@@ -11,7 +11,7 @@ Last reviewed: **2026-07-26**. One change of substance since: on 2026-09-27 deci
 the trademark status of the product and company names, when the fourth widening algorithm was renamed
 **Dimensional**. The release then in preparation was
 0.9.0; no release has been tagged since (the repository has no release tag), and the release in preparation is now
-**0.9.9** (`CMakeLists.txt:14`; `CHANGELOG.md` `[0.9.9]`, dated 2026-09-29). Nothing in this document — the product model, the
+**0.9.9** (`CMakeLists.txt:14`; `CHANGELOG.md` `[0.9.9]`, dated 2026-10-01). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
 
@@ -86,7 +86,7 @@ None of these is an engineering task; no code change can close any of them.
 | 1 | **Commercial JUCE 9 licence.** JUCE modules are dual-licensed AGPLv3 *or* commercial. A closed-source distribution cannot satisfy the AGPLv3 arm, so the commercial tier must be in place before commercial distribution. Which tier, and its purchase, are unrecorded. | commercial release | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #1; `KI-015`; `RISK-006`; `RH-R11`/`RH-F1` |
 | 2 | **Anamorph's own `LICENSE`.** The repository declares no terms for its own source or binaries. | commercial release | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #2; `KI-015`; `RISK-006`; `RH-R11`/`RH-F1` |
 | 3 | **EULA** for the distributed binaries. A draft exists ([`EULA.md`](../EULA.md)) with 10 marked open decisions; no installer presents it. | commercial sale | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #3; `EULA.md` §"Open decisions" |
-| 4 | **Steinberg VST 3 review.** The SDK code bundled with JUCE 9.0.2 is MIT, but the VST name/logo and the plug-in development/distribution terms are governed separately. | commercial VST3 distribution | `THIRD_PARTY_LICENSES.md` §3; `RH-R10`/`RH-F2`; `TRADEMARKS.md` §4 |
+| 4 | **Steinberg VST 3 review.** The SDK code bundled with JUCE 9.0.3 is MIT, but the VST name/logo and the plug-in development/distribution terms are governed separately. | commercial VST3 distribution | `THIRD_PARTY_LICENSES.md` §3; `RH-R10`/`RH-F2`; `TRADEMARKS.md` §4 |
 | 5 | **Repository visibility.** The GitHub repository `skyRolly/Anamorph` is **public**, with forking enabled and no `LICENSE` file, while the product model is closed-source commercial. Whether the source stays publicly readable is an owner decision with a direct bearing on decisions 1–3. Stated as a fact; no determination is made here. | should be settled alongside 1–3 | *this document* |
 | 6 | **Trademark status** of "Anamorph" and "RollyTech". | any ™/® use; commercial release | `TRADEMARKS.md` §1, §4 |
 | 7 | **Privacy/controller identity** and any statutory disclosure required in a market of sale. Anamorph collects nothing, so the factual position is simple; the formal disclosure is not written. | commercial sale in regulated markets | `PRIVACY.md` §7 |
