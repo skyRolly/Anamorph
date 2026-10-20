@@ -146,7 +146,7 @@ The documentation falls into **four classes**, kept deliberately separate:
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
 | **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
 | **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
-| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), plus [`CLAUDE.md`](CLAUDE.md) and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as
@@ -182,8 +182,8 @@ The open owner/legal decisions are indexed in
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) §"Open licensing decisions" and
 [`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md).
 
-Contributors and AI agents: read **[`CLAUDE.md`](CLAUDE.md)** and `docs/policies/AI_AGENT_POLICY.md`
-before changing code — some changes (parameter IDs, serialization, threading, DSP order, latency)
+Contributors and AI agents: read **[`AGENTS.md`](AGENTS.md)** and `docs/policies/AI_AGENT_POLICY.md`
+before changing code. `CLAUDE.md` is a Claude-compatible import of `AGENTS.md`. — some changes (parameter IDs, serialization, threading, DSP order, latency)
 are hard-stop, human-review-required.
 
 ## Simple vs. Advanced mode
