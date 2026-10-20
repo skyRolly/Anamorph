@@ -47,7 +47,8 @@ of:
 These map one-to-one to the `ARCHITECTURE_REVIEW_GATE.md` items. A passing build/test/pluginval
 does **not** clear a Hard Stop — only human review does.
 
-## Inherited operational constraints (from `AGENTS.md`) `CLAUDE.md` imports `AGENTS.md` for Claude-aware tooling; contributors should read `AGENTS.md` directly.
+## Inherited operational constraints (from `AGENTS.md`)
 
-The repository's `CLAUDE.md` operational constraints (no background tasks / no PR-webhook
-monitoring; output discipline) remain in force and are not overridden by this policy.
+The repository's `AGENTS.md` operational constraints (no background tasks / no PR-webhook
+monitoring; output discipline) remain in force and are not overridden by this policy. `CLAUDE.md`
+imports `AGENTS.md` for Claude-aware tooling; contributors should read `AGENTS.md` directly.
