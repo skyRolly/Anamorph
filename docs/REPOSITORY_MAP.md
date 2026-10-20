@@ -12,7 +12,8 @@ Anamorph/
 │                           (VST3 [+AU on macOS] [+Standalone]), tests app.
 ├── README.md               Project façade (features, status, quick start, docs nav).
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
-├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
+├── AGENTS.md               Primary contributor/agent entry point: mandatory policy pre-read + repo constraints.
+├── CLAUDE.md               Claude-compatible import of AGENTS.md.
 ├── NOTICE                  Third-party attribution that must accompany a binary distribution
 │                           (published as a version-named asset on every GitHub release — the
 │                           sole carrier of the mandatory IJG acknowledgement).
