@@ -2348,7 +2348,7 @@ namespace
         // `juce_AudioProcessor.cpp:975-976`'s own expression on its own range, so the scan and the
         // parse cannot disagree about where the document ends. It matters: `String::fromUTF8`
         // builds through `createFromCharPointer`, whose `while (e < end && ! e.isEmpty())`
-        // (`juce_String.cpp:132`) STOPS AT THE FIRST NUL, so the text the parser gets is a prefix
+        // (`juce_String.cpp:99`) STOPS AT THE FIRST NUL, so the text the parser gets is a prefix
         // of the byte range. Scanning the bytes instead would scan past that NUL and refuse
         // documents the parser never sees. The cost is one extra decode of at most 256 KB, once
         // per project open.

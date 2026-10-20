@@ -13434,7 +13434,7 @@ static void testAPresetFileIsOneWellFormedDocument()
     //
     // Devin review finding. The boundary validated the DECODED TEXT, and the decode is not
     // lossless: `String::createStringFromData` asks whether the bytes are valid UTF-8 and, when
-    // they are not, reads them as Windows-1252 instead (juce_String.cpp:2030-2034) -- a codepage
+    // they are not, reads them as Windows-1252 instead (juce_String.cpp:2017-2021) -- a codepage
     // in which every byte means something. So a file no conforming XML parser would accept was
     // silently transcoded into one that parsed. Measured on `7076359` through the real `loadFile`:
     // `raw="\xC3\x28"` decoded from 63 bytes to 64 and LOADED, and so did a truncated sequence,
