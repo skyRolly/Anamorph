@@ -5,6 +5,11 @@ Continuous integration / delivery. Source of truth: `.github/workflows/build.yml
 skeleton, RH-PR-8) and the security-scanning workflows listed in
 [Security scanning](#security-scanning).
 
+The `linux` and `merge-check` Configure steps first run `python3 tests/juce_cache_tests.py`.
+These dependency-boundary probes check fresh/reused caches, refusal of a cached 9.0.2 pin,
+the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
+They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
+
 ## Triggers
 
 `build.yml`: `push` to any branch (`"**"`), `pull_request`, `workflow_dispatch`, and
@@ -313,7 +318,7 @@ edge above must not be read as release non-blocking.
   `applyWidth`, which this page named until 2026-08-19: its definition is visible in that TU, so
   Clang infers its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
   from JUCE calls whose definitions the TU cannot see — JUCE carries no annotations of its own
-  (measured at 9.0.1; re-verified at the 9.0.2 pin, ADR-0054).
+  (measured at 9.0.1; re-verified at the 9.0.2 pin, ADR-0054, and at the 9.0.3 pin, ADR-0060).
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.
   That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
@@ -1382,7 +1387,7 @@ The consequence is concrete and must not be re-forgotten: the JUCE tree **is** e
 the results, and **is** uploaded, so those alerts stand on the dashboard.
 
 **The triage rule for both scanners.** An alert whose path begins with `build/_deps/` is
-third-party JUCE. JUCE is pin-locked to 9.0.2 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
+third-party JUCE. JUCE is pin-locked to 9.0.3 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
 so such an alert is **accepted, not fixed here** — a JUCE change is an ADR-scoped dependency bump,
 never an alert-driven edit. Genuinely removing them from the dashboard would mean relocating the
 FetchContent tree outside the workspace, or post-filtering the SARIF before upload. Both are Build
@@ -1430,7 +1435,7 @@ processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally 
 
 **Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
 suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:531-533), so it cannot construct one — and it
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:542-544), so it cannot construct one — and it
 is the wrong test: what overflows a frame is a large automatic, not that particular class, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
@@ -1542,7 +1547,7 @@ across its scenario scopes — 16 `Rig`s at 768 bytes (GCC's `sizeof`), 17 talli
 snapshots sum to about 14.4 KB at GCC's type sizes, and MSVC's own type sizes and the temporaries make up
 the rest; GCC lets the disjoint scopes share their slots. Re-audited before merge (2026-09-27): the test runs on
 the main thread and starts no thread, `tests/state_tests.cpp` is compiled into `AnamorphStateTests` only
-(`CMakeLists.txt:569`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
+(`CMakeLists.txt:582`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
 main thread's 1 MiB, where the `windows` job runs the suite natively. Every claim that
 moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
 `state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;

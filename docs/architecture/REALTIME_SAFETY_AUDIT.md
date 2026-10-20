@@ -82,7 +82,7 @@ Source for the OS init: src/dsp/AnamorphEngine.cpp:88-90 (`initProcessing` at pr
 
 **Partially measured since 2026-08-18** (this entry does not close the TODO above): a dynamic
 allocation-interposition probe over the real engine + JUCE 9.0.1 (`juce_dsp` is byte-identical at
-the pinned 9.0.2 apart from its module `version:` field — ADR-0054) — 32 configurations
+9.0.2 and at the pinned 9.0.3 apart from its module `version:` field — ADR-0054, ADR-0060) — 32 configurations
 (4 algorithms × 4 oversampling factors × 2 M/S variants), 7,680 armed `process()` calls with
 mid-stream algorithm swaps, bypass crossfades and crossover drags — counted **zero** `operator
 new`/`malloc`-family calls on the audio path, *including through

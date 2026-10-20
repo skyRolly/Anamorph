@@ -15,6 +15,12 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
+`python3 tests/juce_cache_tests.py` runs six CMake cache regression tests (CMake, Ninja and a C/C++
+compiler required). They exercise the real top-level build file, stopping at a local JUCE stand-in:
+fresh/repeated configuration, a cached 9.0.2 pair and its reset, either partial reset, retained custom
+overrides, and an intentional local 9.0.2 checkout. No JUCE download or plugin compilation occurs.
+The `linux` and `merge-check` CI jobs run them before their normal configuration.
+
 `tests/dsp_tests.cpp` has **75 DSP tests** (Test 1 to Test 75; Tests 3 and 4 run as one) and the A/B
 active-slot clamp guard, using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
@@ -1024,8 +1030,8 @@ each fail it: the early return removed (gate legs b and c, 2 failures), the inte
 State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
 It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
 `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
-(pinned JUCE 9.0.2, `juce_AudioProcessor.cpp:415-436` — that file is byte-identical across the
-9.0.1 → 9.0.2 bump, ADR-0054), and the listener lock is released before
+(pinned JUCE 9.0.3, `juce_AudioProcessor.cpp:415-436` — that file is byte-identical across the
+9.0.1 → 9.0.2 and 9.0.2 → 9.0.3 bumps, ADR-0054, ADR-0060), and the listener lock is released before
 each callback — so a test listener can hold a delivery open while a real off-message thread makes
 a second request *inside* it, with no test hook in production code and no timing race. A build that
 clears the request flag AFTER delivering fails it (measured in round 12: `next tick -> 4, expected
@@ -1310,7 +1316,7 @@ two XML parser paths ADR-0055 left outside the preset boundary — `setStateInfo
 `parseXML (slotPayload)` one level further in. One shape per invocation, the verdict being the exit
 status rather than an assertion; `drive` is the witness in the printed line, default `0.0` and
 carried as `0.9` plain (`0.0375` normalised), so the value says whether the chunk was refused or
-accepted **and applied**. Measured on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2, with the
+accepted **and applied**. Measured on `de89b1a`, x86-64 Linux, Release, then-pinned JUCE 9.0.2, with the
 1 MB rows under `ulimit -s 1024` for Windows main-thread parity: SIGSEGV between 2 500 and 3 000
 levels of nesting on 1 MB and between 20 000 and 30 000 on 8 MB, **on both paths**; a two-level
 recursive-entity `DOCTYPE` of ~230 bytes SIGSEGVs on both while a one-level one of ~150 bytes had
@@ -2531,7 +2537,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   file the user opens"* — does not hold: in the pinned VST3 SDK
   `PresetFile::restoreComponentState` calls `component->setState`
   (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE forwards to
-  `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`), so **a `.vstpreset` the user
+  `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2821`), so **a `.vstpreset` the user
   picks in the host's browser reaches this parser**. **The A/B path is a separate question, not the
   same one one level down:** its payload amplifies depth rather than inheriting it — the 3 000
   levels sit inside one attribute value of a well-formed 3-deep session — so a depth cap on the
@@ -5408,6 +5414,13 @@ latency column moving is its own finding — a reported-latency change is an AI-
 Scenario names are `<algorithm>-<factor>-<lr|ms>`. The fourth algorithm's name is `dimensional` from
 0.9.9, when the algorithm was renamed, so a dump from an older tree differs from a newer one in those
 eight names alone; compare such a pair on the hash and latency columns.
+
+**Runs on record.** 9.0.1 → 9.0.2 (ADR-0054) and 9.0.2 → 9.0.3 (ADR-0060, 2026-09-29, one frozen
+source tree at `756a5c2` against both checkouts): 32 of 32 identical, latency column included, and
+`--self-check` green on both sides. The 9.0.3 run was taken twice because the bump also adds two
+`JUCE_*` flags — once with `JUCE_USE_OPUS` / `JUCE_USE_WEBP` at JUCE's defaults and once pinned to 0
+as shipped — and all four tables match the 9.0.2 one. A bump that adds or changes a `JUCE_*` flag
+runs the harness under the shipped flag set, not only the default one.
 
 **The tool checks itself before it reports, every run, not on request.** Two properties, because
 they fail independently: every scenario must be **repeatable** (the same scenario run twice hashes

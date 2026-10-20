@@ -260,7 +260,11 @@ replacement on one thread passes through it (ADR-0036 §24 records that residual
 One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
 calls** (never two at once). Rounds 4–6 verified it against every wrapper this repository builds at the
 then-pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11); every one of those wrapper files is
-byte-identical at the 9.0.2 pin, so the evidence carries across unchanged (ADR-0054). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
+byte-identical at the 9.0.2 pin, so the evidence carries across unchanged (ADR-0054). At the 9.0.3 pin the
+Standalone wrapper is still byte-identical; the VST3 wrapper loses one line (an ARA factory destructor
+compiled out under `JucePlugin_Enable_ARA` 0) and the AU wrapper rewrites `SetBusCount`'s loop, which
+Anamorph cannot reach — it overrides neither `canAddBus` nor `canRemoveBus`, so the property is not writable.
+Neither change touches a state or threading entry point (ADR-0060). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
 either state function, no `std::thread` / `juce::Thread` / `callAsync` / thread pool anywhere in
 `src/` (the only schedulers are the editor's 24 Hz and the processor's 20 Hz message-thread timers),
 the host-side members touched at exactly four sites inside the two off-thread branches, and the
