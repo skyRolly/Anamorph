@@ -50,6 +50,8 @@ Build the `AnamorphDspDump` target, run `--self-check`, then compare ordinary ou
 | Output comparison | empty diff: **32/32 hashes and reported latencies identical** |
 
 The first-party C++ changes in this upgrade are comments only, not a different engine tree.
+The final citation audit also refreshed unchanged File, macOS-modifier and AudioProcessor evidence
+and the realtime-annotation commentary against the 9.0.4 checkout.
 
 ## 3. Existing-cache regression
 

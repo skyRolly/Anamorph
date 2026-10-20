@@ -1173,7 +1173,7 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 //  A preset write that is only reported as successful when the bytes are on disk.
 //
 //  WHY THIS EXISTS instead of `File::replaceWithText`. That function's write is
-//  UNCHECKED, in the pinned JUCE (9.0.3, be29c81492) at juce_File.cpp:798-803:
+//  UNCHECKED, in the pinned JUCE (9.0.4, 3fb5cbc034) at juce_File.cpp:798-803:
 //
 //      TemporaryFile tempFile (*this, useHiddenFile);
 //      tempFile.getFile().appendText (...);          // <-- bool result DISCARDED

@@ -318,7 +318,7 @@ edge above must not be read as release non-blocking.
   `applyWidth`, which this page named until 2026-08-19: its definition is visible in that TU, so
   Clang infers its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
   from JUCE calls whose definitions the TU cannot see — JUCE carries no annotations of its own
-  (measured at 9.0.1; re-verified at the 9.0.2 pin, ADR-0054, and at the 9.0.3 pin, ADR-0060).
+  (measured at 9.0.1; absence of annotations re-verified at the 9.0.2–9.0.4 pins, ADR-0054/0060/0061).
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.
   That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
