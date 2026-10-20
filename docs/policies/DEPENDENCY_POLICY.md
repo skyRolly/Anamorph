@@ -26,6 +26,11 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
   behaviour stable. Evidence [Verified]: CMakeLists.txt:70-72, 81-89; the X11 dependency is
   documented in ADR-0011.
+- **A cached 9.0.2 pin cannot silently survive the 9.0.3 upgrade.** Without a local JUCE path,
+  configuration fails before FetchContent if either cached pin field still identifies 9.0.2,
+  and prints the command to reset both. Other overrides are retained; an intentional 9.0.2
+  comparison uses `ANAMORPH_JUCE_PATH`. Evidence [Verified]: `cmake/CheckJuceCache.cmake`,
+  `tests/juce_cache_tests.py` (fresh/reused caches, partial resets, overrides and local checkouts).
 - **Three `JUCE_*` module defaults are pinned because upstream changed them under the product.**
   `JUCE_USE_MP3AUDIOFORMAT` defaulted to 0 through 9.0.1 and defaults to **1** from 9.0.2. Anamorph
   pins it to **0** on all six targets that carry the `JUCE_*` contract, which keeps the shipped

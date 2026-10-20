@@ -381,6 +381,7 @@ jobs:
 
       - name: Configure
         run: |
+          python3 tests/juce_cache_tests.py
           ccache --zero-stats || true
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }} \
@@ -682,6 +683,7 @@ jobs:
 
       - name: Configure
         run: |
+          python3 tests/juce_cache_tests.py
           ccache --zero-stats || true
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }} \

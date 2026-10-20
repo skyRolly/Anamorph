@@ -5,6 +5,11 @@ Continuous integration / delivery. Source of truth: `.github/workflows/build.yml
 skeleton, RH-PR-8) and the security-scanning workflows listed in
 [Security scanning](#security-scanning).
 
+The `linux` and `merge-check` Configure steps first run `python3 tests/juce_cache_tests.py`.
+These dependency-boundary probes check fresh/reused caches, refusal of a cached 9.0.2 pin,
+the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
+They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
+
 ## Triggers
 
 `build.yml`: `push` to any branch (`"**"`), `pull_request`, `workflow_dispatch`, and

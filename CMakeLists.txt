@@ -70,7 +70,7 @@ set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)
 set(ANAMORPH_JUCE_VERSION "9.0.3" CACHE STRING "Human-readable JUCE version of the pinned commit")
 set(ANAMORPH_JUCE_TAG  "be29c81492b6151c8ea8d14c840e1311963b3a83" CACHE STRING
     "JUCE git rev to fetch when no local path is given (commit SHA of tag ${ANAMORPH_JUCE_VERSION})")
-
+include(cmake/CheckJuceCache.cmake)
 # ----------------------------------------------------------------------------
 #  Bring in JUCE
 # ----------------------------------------------------------------------------

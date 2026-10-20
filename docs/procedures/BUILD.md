@@ -53,6 +53,19 @@ scripts/build.sh            # scripts/build.sh [Release|Debug]
 
 Evidence [Verified]: scripts/build.sh:14-15.
 
+An existing `build/` configured on JUCE 9.0.2 now fails configuration before fetching:
+CMake retains the cached pin despite the updated defaults. From the repository root, reset
+**both** values once, then use the normal wrapper:
+
+```bash
+cmake -S . -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION
+scripts/build.sh
+```
+
+The check does not rewrite cache overrides. A deliberate 9.0.2 comparison uses
+`-DANAMORPH_JUCE_PATH=/path/to/JUCE`; other custom pin/version pairs remain cached as supplied.
+Evidence [Verified]: `cmake/CheckJuceCache.cmake`, included before FetchContent by `CMakeLists.txt`.
+
 ## Build options (CMakeLists.txt)
 
 | Option | Default | Effect |

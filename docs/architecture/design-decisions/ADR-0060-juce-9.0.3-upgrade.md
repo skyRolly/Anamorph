@@ -37,11 +37,14 @@ keep the pin immutable.
 - `ANAMORPH_JUCE_TAG` → **`be29c81492b6151c8ea8d14c840e1311963b3a83`** (the commit of upstream tag
   `9.0.3`); `ANAMORPH_JUCE_VERSION` → **`9.0.3`** (`CMakeLists.txt:67-72`). The fetched tree's own
   headers carry `version: 9.0.3` in every module declaration. `GIT_SHALLOW` is retained.
+- **Existing 9.0.2 caches fail configuration before fetching** (PR #160 review follow-up, 2026-10-21).
+  Either old cached field is sufficient; the error prints the exact command to reset both. Cache
+  overrides are not rewritten. An intentional 9.0.2 comparison uses `ANAMORPH_JUCE_PATH`.
+  `tests/juce_cache_tests.py` exercises this boundary without downloading JUCE.
 - **`JUCE_USE_OPUS=0` and `JUCE_USE_WEBP=0` are pinned explicitly** on all six targets that carry the
   `JUCE_*` contract (`CMakeLists.txt:515-516`, and the two lines after `JUCE_USE_MP3AUDIOFORMAT=0` in
   `AnamorphTests`, `AnamorphStateTests`, `AnamorphBench`, `AnamorphDspDump` and `AnamorphFuzzState`) —
-  see *The two flags that had to be pinned*. These are the only build changes the bump requires, and
-  both **preserve** the shipped configuration rather than alter it.
+  see *The two flags that had to be pinned*. Both flags **preserve** the shipped configuration.
 - **No C++ source change.** Neither 9.0.3 breaking change reaches Anamorph — see *Breaking-change
   exposure*. The source edits in this change are comments that cite JUCE line numbers (§Citation map).
 - **No build-dependency change.** The declaration blocks of all fifteen modules Anamorph builds moved

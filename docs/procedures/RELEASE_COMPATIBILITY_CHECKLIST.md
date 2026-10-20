@@ -89,7 +89,7 @@ human sign-off the item is defined as.
       `<n>` is `ANAMORPH_PLUGINVAL_STRICTNESS` from `.github/workflows/build.yml` — read it there
       rather than from this line, so a raise cannot leave this checklist certifying the old bar.
       Ref: `docs/procedures/TESTING.md`.
-- [x] **Host matrix verified** — **PASS (0.9.9, 2026-09-28, attested by the owner; hosts NOT RECORDED; 0.9.6, 2026-09-01, attested by the maintainer; hosts NOT RECORDED).** — load in the target hosts and confirm load + automation + state.
+- [ ] **Host matrix verified** — **OPEN (0.9.9 on JUCE 9.0.3; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (hosts NOT RECORDED); see the completion records above for historical attestations. Load in the target hosts and confirm load + automation + state.
       (Currently Unverified in-repo; this requires manual DAW testing —
       `docs/architecture/COMPATIBILITY_MATRIX.md`.)
 - [x] **Latency reporting verified** — **PASS (0.9.9, 2026-09-28; 0.9.7, 2026-09-03, re-run because ADR-0034 changed the
@@ -102,7 +102,7 @@ human sign-off the item is defined as.
       reopens in 0.9.7 with the host compensating a few samples where it previously compensated none.
       Nothing in the session file changed — the schema is untouched and item 2 is unaffected — and the
       audio is the same audio, arriving at the position the plug-in now correctly declares.
-- [x] **Automation playback verified** — **PASS (0.9.9, 2026-09-28, attested by the owner; host and lanes NOT RECORDED; 0.9.6, 2026-09-01, attested by the maintainer; host and lanes NOT RECORDED).** — recorded automation on host-visible parameters plays back
+- [ ] **Automation playback verified** — **OPEN (0.9.9 on JUCE 9.0.3; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (host and lanes NOT RECORDED); see the completion records above for historical attestations. Recorded automation on host-visible parameters must play back
       with unchanged meaning. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
 - [x] **Session reload verified** — **PASS (0.9.9, 2026-09-28, a 0.9.8-written session; 0.9.6, 2026-09-01).** — save a session in the previous version, load it in the new
       version: sound, preset name, dirty-star, and both A/B slots reproduce exactly.

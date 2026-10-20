@@ -15,6 +15,12 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
+`python3 tests/juce_cache_tests.py` runs six CMake cache regression tests (CMake, Ninja and a C/C++
+compiler required). They exercise the real top-level build file, stopping at a local JUCE stand-in:
+fresh/repeated configuration, a cached 9.0.2 pair and its reset, either partial reset, retained custom
+overrides, and an intentional local 9.0.2 checkout. No JUCE download or plugin compilation occurs.
+The `linux` and `merge-check` CI jobs run them before their normal configuration.
+
 `tests/dsp_tests.cpp` has **75 DSP tests** (Test 1 to Test 75; Tests 3 and 4 run as one) and the A/B
 active-slot clamp guard, using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
