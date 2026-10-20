@@ -183,8 +183,8 @@ The open owner/legal decisions are indexed in
 [`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md).
 
 Contributors and AI agents: read **[`AGENTS.md`](AGENTS.md)** and `docs/policies/AI_AGENT_POLICY.md`
-before changing code. `CLAUDE.md` is a Claude-compatible import of `AGENTS.md`. — some changes (parameter IDs, serialization, threading, DSP order, latency)
-are hard-stop, human-review-required.
+before changing code — some changes (parameter IDs, serialization, threading, DSP order, latency)
+are hard-stop, human-review-required. `CLAUDE.md` is a Claude-compatible import of `AGENTS.md`.
 
 ## Simple vs. Advanced mode
 **Simple** (default) is the Widen core around the vectorscope (algorithm, Drive, Amount, Width).
