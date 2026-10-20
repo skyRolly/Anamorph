@@ -12,7 +12,7 @@ The short attribution notices that must accompany a binary distribution are repr
 ## How this inventory was produced
 
 Anamorph has exactly one declared dependency: **JUCE**, fetched by CMake `FetchContent` and
-pinned to an immutable commit (`CMakeLists.txt:70-72` (`9.0.3`); ADR-0022, ADR-0026, ADR-0054, ADR-0060). Every third-party component
+pinned to an immutable commit (`CMakeLists.txt:70-72` (`9.0.4`); ADR-0022, ADR-0026, ADR-0054, ADR-0060, ADR-0061). Every third-party component
 below therefore arrives *inside the JUCE source tree* — nothing else is vendored, and no
 package manager is used.
 
@@ -29,8 +29,8 @@ To re-verify after a JUCE bump, repeat exactly that: read the new `JUCE.spdx.jso
 the list inside `LICENSE.md`), then re-run the symbol probes against a fresh Release build. See
 [`docs/policies/DEPENDENCY_POLICY.md`](docs/policies/DEPENDENCY_POLICY.md).
 
-Pinned version at the time of writing: **JUCE 9.0.3**, commit
-`be29c81492b6151c8ea8d14c840e1311963b3a83` — CMakeLists.txt:71 (`be29c81492b6151c8ea8d14c840e1311963b3a83`). Paths below are relative to that checkout
+Pinned version at the time of writing: **JUCE 9.0.4**, commit
+`3fb5cbc0340758596dac39f7c8de47d562b4896e` — CMakeLists.txt:71 (`3fb5cbc0340758596dac39f7c8de47d562b4896e`). Paths below are relative to that checkout
 (`build/_deps/juce-src/` in a local build) unless stated otherwise.
 
 ---
@@ -131,7 +131,7 @@ zlib and libpng ask for acknowledgement but explicitly do *not* require it; it i
 
 ## 3. Steinberg VST 3 — separate review required
 
-The VST 3 SDK **source code** bundled with JUCE 9.0.3 (byte-identical to the copy in 9.0.2) is under the **MIT licence**
+The VST 3 SDK **source code** bundled with JUCE 9.0.4 (byte-identical to the copies in 9.0.3 and 9.0.2) is under the **MIT licence**
 (`.../VST3_SDK/LICENSE.txt`, "Copyright (c) 2025, Steinberg Media Technologies GmbH"). That is a
 change from older SDK releases, which were dual-licensed GPLv3 / proprietary agreement — earlier
 Anamorph documentation described that older arrangement and has been corrected.

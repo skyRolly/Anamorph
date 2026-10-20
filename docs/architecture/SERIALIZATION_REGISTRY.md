@@ -173,7 +173,9 @@ node keeps its `SerializedNumber.h` fallback. State test 34 pins all three cases
 The root test above answers *is this one of ours*. It never answered *is this ONE document, and is
 it safe to hand to a parser at all* — and measured on `0e32e65` against the then-pinned JUCE 9.0.2 (JUCE's `xml/` sources are
 byte-identical at 9.0.3, and the State suite that pins these cases passes there — ADR-0060), it
-had to. A file containing **two complete presets loaded and applied the first**, because
+had to. At 9.0.4 `XmlDocument` remains unchanged, while `XmlElement` rewrites formatted
+whitespace; the attribute-only state/preset trees and cross-framework session probe are audited
+in ADR-0061 and `worklogs/JUCE904_UPGRADE_0.9.9.md`. A file containing **two complete presets loaded and applied the first**, because
 `XmlDocument::parseDocumentElement` reads one element and never looks at the rest; so did a valid
 preset followed by prose, by a stray element or by raw binary. Three further shapes never reached
 this function at all: ~3 000 levels of nesting (a **21 KB** file) crashed the parser on a 1 MB
@@ -185,7 +187,7 @@ A preset file must therefore now satisfy, in this order:
 
 | Stage | Rule | Why it is where it is |
 |---|---|---|
-| Bytes | **valid UTF-8**, or valid UTF-16 under a byte-order mark | the decode does not fail on invalid bytes -- it reads them as Windows-1252 instead (`juce_String.cpp:2030-2034`), so a file no XML parser would accept became one that parsed. The check is the decoder's own `isValidString`, so the fallback is unreachable by construction. Valid multi-byte UTF-8 and correctly paired surrogates are untouched |
+| Bytes | **valid UTF-8**, or valid UTF-16 under a byte-order mark | the decode does not fail on invalid bytes -- it reads them as Windows-1252 instead (`juce_String.cpp:2017-2021`), so a file no XML parser would accept became one that parsed. The check is the decoder's own `isValidString`, so the fallback is unreachable by construction. Valid multi-byte UTF-8 and correctly paired surrogates are untouched |
 | Bytes | **no embedded NUL** — no zero byte in UTF-8, no zero code unit or trailing half unit in UTF-16 | a `juce::String` ends at the first one, so every byte after it would be read by neither this scan nor the parser; measured on `f03aa06`, a 263-byte file holding a preset, a NUL and a second complete preset decoded to 131 bytes and loaded |
 | Bytes | at most **256 KB** (`PresetManager::maxPresetBytes`), measured BEFORE the read and again on what the read produced | 172× the 1525 bytes a real preset takes; the parse reads the whole file into memory first, with no cap of its own — and the pre-read check alone was decided on a file a concurrent replacement could already have changed |
 | Bytes | **no `DOCTYPE`** | closes the hang and the arbitrary file read together; the writer never emits one |
@@ -490,7 +492,7 @@ ADR-0056's ruling named three limits. These shapes are ones a `.anamorph` file n
 chunk still accepts, measured and pinned by State test 116 leg E so that narrowing them later has to
 be a decision: **two complete documents in one chunk** (the first wins), **a document followed by
 prose, a stray element or raw binary**, **a document followed by one NUL and a second complete
-document** (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:132`), **invalid UTF-8 in an
+document** (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:99`), **invalid UTF-8 in an
 attribute value**, and **a chunk truncated to half its length** (half-applied). Refused as before:
 mismatched tags, a stated length far larger than the chunk, UTF-16 text under the UTF-8 frame, and a
 foreign-typed slot root.

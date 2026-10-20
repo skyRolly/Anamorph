@@ -1,6 +1,10 @@
 # ADR-0060 — JUCE dependency upgrade 9.0.2 → 9.0.3
 
-**Status:** **Proposed** — implemented on `claude/anamorph-comprehensive-review-90tpty` with the
+**Status:** **Superseded** by [ADR-0061](ADR-0061-juce-9.0.4-upgrade.md) (2026-10-21).
+PR #160 merged this pin; the owner then requested 9.0.4 in 0.9.9. The original proposal and
+verification below are retained; no 9.0.3 audition is inferred from the merge.
+
+**Original status (2026-09-29):** **Proposed** — implemented on `claude/anamorph-comprehensive-review-90tpty` with the
 headless verification recorded below, and **awaiting the two human acts no gate can produce**: the
 owner's Architecture Review (`ARCHITECTURE_REVIEW_GATE.md` — a JUCE pin is a gated Build System
 change, and detecting one is an AI-agent hard stop, so this change must not be merged on a green build

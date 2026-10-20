@@ -7,7 +7,7 @@ Directory and file map with per-component responsibilities. Architecture rationa
 
 ```
 Anamorph/
-├── CMakeLists.txt          Build: JUCE FetchContent (9.0.3, pinned by commit SHA), AnamorphDSP INTERFACE lib,
+├── CMakeLists.txt          Build: JUCE FetchContent (9.0.4, pinned by commit SHA), AnamorphDSP INTERFACE lib,
 │                           AnamorphHardening flags (ADR-0021), plugin target
 │                           (VST3 [+AU on macOS] [+Standalone]), tests app.
 ├── README.md               Project façade (features, status, quick start, docs nav).
@@ -28,7 +28,7 @@ Anamorph/
 │                           the naming obligations the dependency licences impose.
 ├── SUPPORT.md              Internal-testing guide: what a tester may do with a build, what to
 │                           check first, and what a test report must contain.
-├── cmake/CheckJuceCache.cmake  Refuse stale 9.0.2 cache entries before fetching; preserve overrides.
+├── cmake/CheckJuceCache.cmake  Refuse stale 9.0.2/9.0.3 cache entries before fetching; preserve overrides.
 ├── src/                    Source (wrapper + GUI + DSP core).
 ├── tests/                  Headless self-tests (DSP + state compatibility), fixtures, and the
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
@@ -106,7 +106,7 @@ Anamorph/
 
 | Path | Responsibility |
 |---|---|
-| `tests/juce_cache_tests.py` | Six dependency-boundary probes of the real CMake file: reused 9.0.2 caches fail with the two-field reset command; fresh/repeated configurations, custom overrides and local comparisons remain supported. Runs before Configure in `linux` and `merge-check`; no JUCE download. |
+| `tests/juce_cache_tests.py` | Seven dependency-boundary probes of the real CMake file: reused 9.0.3 caches and legacy 9.0.2 fields fail with the two-field reset command; fresh/repeated configurations, custom overrides and local comparisons remain supported. Runs before Configure in `linux` and `merge-check`; no JUCE download. |
 | `tests/dsp_tests.cpp` | 75 headless DSP acceptance tests (Test 1 to Test 75; Tests 3 and 4 run as one) + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). Also carries four opt-in probes that assert nothing and print: `--match-inject-probe`, `--os-latency-probe`, `--forced-swap-probe` and `--os-off-probe`. |
 | `tests/AllocationGuard.h` | The audio-path allocation guard (Test 38, ADR-0029): replaceable `operator new`/`delete` plus glibc malloc-family interposition, armed only around `process()`. The tier that reaches **MSVC**, where RTSan does not run. Covers the plain, nothrow **and C++17 over-aligned** `operator new`/`delete` forms (the over-aligned pair uses `posix_memalign`, not C11 `aligned_alloc`, which libc++ withholds below a macOS 10.15 deployment target — this header compiles on both macOS jobs). Self-checks its counters before reporting a zero; stands down entirely under **RTSan** (self-detected — its interposers would otherwise shadow RTSan's allocation interceptors and blind that lane) and for the valgrind build (`ANAMORPH_NO_ALLOC_GUARD`), and drops its malloc half under ASan — each disclosed with a `::warning::`. |
 | `tests/realtime_canary.cpp` | Liveness proof for the `realtime` job: an annotated function commits a real, *escaping* heap allocation, so the job can assert the lane is able to fail. Compiled directly by the workflow step (no CMake target — a liveness probe should not be a Build System change). The escape sink matters: at `-O2` Clang deletes a non-escaping `malloc`/`free` pair before the sanitizer pass sees it. |
@@ -152,6 +152,9 @@ Anamorph/
 | `.github/ISSUE_TEMPLATE/` | `bug_report.yml` — the "Test report — bug" form (version+build, OS, DAW, format, install route, repro — the fields triage actually needs; carries the closed-source/public-tracker notice) + `config.yml` (links to the install guide, FAQ, known issues and the internal testing guide). |
 
 ## `docs/` — documentation library
+
+The current JUCE upgrade decision is `docs/architecture/design-decisions/ADR-0061-juce-9.0.4-upgrade.md`;
+its measurement record is `worklogs/JUCE904_UPGRADE_0.9.9.md`. ADR-0060 remains as the superseded 9.0.3 record.
 
 ```
 docs/

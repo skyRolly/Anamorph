@@ -9,6 +9,15 @@ structurally cannot supply — a green build plus a pluginval pass means *"ready
 > audio output and ears. An audition record that was not produced by a person listening is not a
 > Level-5 record, whatever it contains.
 
+## Current build — 0.9.9 / JUCE 9.0.4 (planned 2026-10-22)
+
+**OPEN.** Re-run groups A–G on the final 9.0.4 artifact (ADR-0061). The 2026-09-28 owner
+record was on 9.0.2; no 9.0.3 or 9.0.4 human audition is inferred from PR #160's merge.
+9.0.4 additionally changes MessageManagerLock, Windows mixed-DPI placement, X11/Xwayland
+pointer grabs and drag/drop, popup behavior and OpenGL function checks. Exercise editor open,
+resize, display/scale changes, popups and dragging under X11/Xwayland, host save/reload, and
+Standalone audio-device settings. Record host, OS, format and the exact artifact tested.
+
 ## When a previous audition stops counting
 
 An audition is **per-build**, not per-feature. It is invalidated by anything that changes the
@@ -19,7 +28,7 @@ and 0.9.9 each change audible behaviour. So the 0.9.9 audition needed its own sc
 `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries (§Scope for 0.9.9). The owner has performed it
 (§Recorded auditions, 0.9.9).
 
-**The 0.9.9 audition of 2026-09-28 does not carry over to the 0.9.9 build that will now ship** — the
+**The 0.9.9 audition of 2026-09-28 did not carry over to the JUCE 9.0.3 build** — the
 rule applied a third time, on 2026-09-29. The owner folded the JUCE 9.0.2 → 9.0.3 bump into 0.9.9 that
 day (ADR-0060), and on 2026-09-28 the pin was 9.0.2, so the build auditioned then was a 9.0.2 build. The
 bump changes the machine code of the framework under the editor and the Standalone app — the OpenGL
@@ -28,7 +37,8 @@ layer — and no automated gate can audition those. The twin dump proves the **e
 between the two builds, which is why the re-audition adds one group (§Scope for 0.9.9, G) rather than a new
 scope; it is not a reason to skip A–F on the new build. The 2026-09-28 record is not withdrawn; it simply
 does not cover this build. `DEPENDENCY_POLICY.md` rule 2 asks for the same audition independently: a JUCE
-bump is not accepted until one is recorded.
+bump is not accepted until one is recorded. The same rule now applies to 9.0.4 (ADR-0061);
+no newer human audition has been recorded.
 
 **The 0.9.6 audition of 2026-09-01 does not carry over to 0.9.7** — the release this rule
 blocked when it was applied the second time (2026-09-03). **ADR-0034** changed what the plug-in reports to the host and added a delay
@@ -48,8 +58,8 @@ example the rule was first written from:
 
 ## Scope for 0.9.9
 
-**REOPENED 2026-09-29 for the JUCE 9.0.3 build (ADR-0060): to be performed again, on that build, over
-groups A–G.** The completion reported 2026-09-28 (§Recorded auditions, 0.9.9) was of the 9.0.2 build.
+**REOPENED for the JUCE 9.0.4 build (ADR-0061, 2026-10-21): perform it on that build over
+groups A–G.** The 9.0.3 reopening of 2026-09-29 is superseded. The completion reported 2026-09-28 (§Recorded auditions, 0.9.9) was of the 9.0.2 build.
 This scope was
 written first, and the environment that wrote it has no DAW, no audio device and no listener. It is
 derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries, because the last recorded
@@ -58,7 +68,7 @@ does not infer it.
 
 The instruction the scope was written with: audition the final 0.9.9 build in at least one DAW. That
 build is the CI artifact of the commit to be tagged `0.9.9`. Record the result per §Recording the
-result, naming which of A–F were exercised.
+result, naming which of A–G were exercised.
 
 ### A. Oversampling, Drive and latency (0.9.7, ADR-0034/0035)
 - With Oversampling at 2×, 4× or 8×, sweep Drive through zero and change algorithm while playing.
@@ -107,14 +117,17 @@ Checklist items 5 and 7 are separate attestations for 0.9.9 (`RELEASE_COMPATIBIL
 They may be performed in the same sitting, but they are recorded there, each on its own. This audition
 record does not tick them.
 
-### G. The JUCE 9.0.3 framework paths (ADR-0060)
-Added 2026-09-29. These are the paths 9.0.3 changed that no headless gate reaches:
+### G. The JUCE 9.0.3–9.0.4 framework paths (ADR-0060 / ADR-0061)
+Added 2026-09-29; extended 2026-10-21 for 9.0.4. These paths need real displays, hosts and devices:
 - **Editor under OpenGL, macOS and Windows.** Open, resize and close the editor; switch the host's
   window between displays of different scaling. The editor draws completely, with no black or offset
-  band and no stale region.
+  band and no stale region. Include a mixed-DPI move on Windows.
 - **Window placement and focus, Windows.** Open the editor, click into the host and back, open a pop-up
   menu and the preset field, and close the editor. The Standalone window opens where it was and takes
   keyboard focus.
+- **Input and closing, Linux (X11/Xwayland).** Drag controls and resize under both display paths
+  available on the test system; motion must continue after pressing, including outside the original
+  window. Record which path was exercised.
 - **Closing, Linux (X11).** Close the editor from the host while a pop-up menu is open, and close the
   Standalone window while its settings dialog is open.
 - **Standalone audio device, Linux (ALSA) and Windows.** Open the Standalone's audio settings, choose a
@@ -198,7 +211,7 @@ covered. Partial is a legitimate and useful record; a partial audition described
 
 Newest first. A row here is a human's account of listening to a build; nothing else may create one.
 
-### 0.9.9 — **COMPLETED, signed off by the owner** (JUCE 9.0.2 build — does not cover the 9.0.3 build)
+### 0.9.9 — **COMPLETED, signed off by the owner** (JUCE 9.0.2 build — does not cover the 9.0.3/9.0.4 builds)
 
 > **2026-09-29:** on 2026-09-28 the pin was JUCE 9.0.2 (ADR-0054; still so on `main` @ `756a5c2`), so this audition
 > was of a 9.0.2 build. 0.9.9 now ships on JUCE 9.0.3 (ADR-0060), and this record does not cover that build

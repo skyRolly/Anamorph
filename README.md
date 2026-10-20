@@ -79,7 +79,7 @@ only — it configures and builds entirely from the command line on a headless L
   Below that floor the failure is an illegal-instruction fault inside the host (`SIGILL`;
   `STATUS_ILLEGAL_INSTRUCTION` on Windows). Only Apple Silicon carries no ISA floor.
   `docs/policies/COMPATIBILITY_POLICY.md`.
-- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.3** is fetched
+- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.4** is fetched
   automatically (pinned to an immutable commit via CMake `FetchContent`) or pointed at a local
   checkout.
 - Linux build deps install via `scripts/setup-linux.sh`. See `docs/procedures/BUILD.md`.
@@ -146,7 +146,7 @@ The documentation falls into **four classes**, kept deliberately separate:
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
 | **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
 | **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
-| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement records under [`worklogs/`](worklogs/), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as

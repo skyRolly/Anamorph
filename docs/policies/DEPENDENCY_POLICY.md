@@ -6,7 +6,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.3**, pinned by **immutable commit SHA** `be29c81492b6151c8ea8d14c840e1311963b3a83` — CMakeLists.txt:71 (`be29c81492b6151c8ea8d14c840e1311963b3a83`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.3`) |
+| **JUCE** | **9.0.4**, pinned by **immutable commit SHA** `3fb5cbc0340758596dac39f7c8de47d562b4896e` — CMakeLists.txt:71 (`3fb5cbc0340758596dac39f7c8de47d562b4896e`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.4`) |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:475-482 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable and **asserted to be the release build**: `setup-llvm-apt.sh` carries the `llvmorg-<version>` tag commit per major and refuses both an unrecorded major and a build from any other commit (ADR-0028 sets the rule; **ADR-0033** adds the assertion and records why 23 is not yet adoptable) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:120-122 |
@@ -17,7 +17,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 ## Version-lock reasoning
 
-- **JUCE is pinned to an exact IMMUTABLE commit** (`be29c81…` = tag 9.0.3; `ANAMORPH_JUCE_VERSION`
+- **JUCE is pinned to an exact IMMUTABLE commit** (`3fb5cbc…` = tag 9.0.4; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
   0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
   the framework for the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`),
@@ -26,9 +26,9 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
   behaviour stable. Evidence [Verified]: CMakeLists.txt:70-72, 81-89; the X11 dependency is
   documented in ADR-0011.
-- **A cached 9.0.2 pin cannot silently survive the 9.0.3 upgrade.** Without a local JUCE path,
-  configuration fails before FetchContent if either cached pin field still identifies 9.0.2,
-  and prints the command to reset both. Other overrides are retained; an intentional 9.0.2
+- **Cached 9.0.2/9.0.3 pins cannot silently survive the 9.0.4 upgrade.** Without a local JUCE path,
+  configuration fails before FetchContent if either cached pin field still identifies 9.0.2 or 9.0.3,
+  and prints the command to reset both. Other overrides are retained; an intentional older-JUCE
   comparison uses `ANAMORPH_JUCE_PATH`. Evidence [Verified]: `cmake/CheckJuceCache.cmake`,
   `tests/juce_cache_tests.py` (fresh/reused caches, partial resets, overrides and local checkouts).
 - **Three `JUCE_*` module defaults are pinned because upstream changed them under the product.**
@@ -85,7 +85,7 @@ repository ever grows a real package manifest.
    §Proving a dependency bump is bit-identical). **And re-verify ADR-0057's store-side precondition**
    (precondition 2): `AudioProcessorValueTreeState`'s `ParameterAdapter` must still store
    `unnormalisedValue` release-or-stronger (at 9.0.2, a `seq_cst` assignment in `parameterValueChanged`;
-   unchanged at 9.0.3, where `juce_AudioProcessorValueTreeState.cpp` is byte-identical — ADR-0060).
+   unchanged at 9.0.3 and 9.0.4, where `juce_AudioProcessorValueTreeState.cpp` is byte-identical — ADR-0060 / ADR-0061).
    A relaxed store there lets the bulk-swap handshake trust a mixed snapshot on ARMv8, and no x86-64 test
    and no lint can see it.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump —
@@ -110,10 +110,20 @@ repository ever grows a real package manifest.
 
 ## Compliance log
 
+- **JUCE 9.0.3 → 9.0.4** — **ADR-0061, Proposed**, requested 2026-10-21 inside **0.9.9**, planned
+  **2026-10-22**. Immutable commit `3fb5cbc0340758596dac39f7c8de47d562b4896e`; codec flags unchanged,
+  all fifteen module declarations change version only, and no third-party package or licence moves.
+  **32/32 twin-dump scenarios bit-identical**, latency included, from one frozen `e0532bc` tree;
+  both self-checks pass. APVTS's implementation/store is unchanged. XML parser and built-format
+  wrappers are unchanged; String/XML output, MessageManagerLock and platform GUI/device changes are
+  audited. Seven cache tests and the actual wrapper cover refusal/reset of an existing 9.0.3 pin,
+  with legacy 9.0.2 protection retained. Runtime measurements and the local GCC 14 ABI limitation:
+  `worklogs/JUCE904_UPGRADE_0.9.9.md`. Architecture Review, a 9.0.4 Level-5 audition and host/automation
+  attestations remain open. ADR-0060 is superseded; no 9.0.3 human result is inferred from its merge.
+
 - **JUCE 9.0.2 → 9.0.3** — recorded in **ADR-0060** (0.9.9 cycle, on the owner's instruction of
-  2026-09-29 to ship it inside 0.9.9; **`Proposed`** — the human Architecture Review and the rule-2
-  **Level-5 audition of the 9.0.3 build** are both still owed, and the 0.9.9 audition of 2026-09-28 was
-  of the 9.0.2 build, so it does not discharge the second). **Zero C++ source changes** (comments that
+  2026-09-29 to ship it inside 0.9.9; originally **`Proposed`**, now **Superseded by ADR-0061** before
+  the tag. The 9.0.3 human review/audition were not recorded; the 2026-09-28 audition was of 9.0.2). **Zero C++ source changes** (comments that
   cite JUCE line numbers aside), and **two build changes**: `JUCE_USE_OPUS=0` and `JUCE_USE_WEBP=0` pinned
   on all six targets, because 9.0.3 adds Opus (opus, opusfile, libopusenc) and WebP (libwebp) ON by
   default, which would otherwise have compiled two unused third-party libraries into every shipped

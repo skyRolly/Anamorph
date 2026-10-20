@@ -4,16 +4,39 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).
 
-## Completion record — 0.9.9 (2026-09-28; REOPENED 2026-09-29 by the JUCE 9.0.3 bump)
+## Current gate — 0.9.9 / JUCE 9.0.4 (2026-10-21)
 
-**REOPENED — six of eight boxes are checked for the 0.9.9 build that will ship; items 5 and 7 are open.**
+The planned release is **2026-10-22**, using ADR-0061's 9.0.4 pin. The checklist below is the
+live checklist for that build. Older records are retained as history. Six headless checks
+have been re-run and pass; host-matrix and automation-playback checks require fresh owner attestations.
+The audible half of preset compatibility also remains part of the open Level-5 audition.
+
+| # | Item | 0.9.9 on JUCE 9.0.4 |
+|---|---|---|
+| 1 | Parameter IDs unchanged | **PASS** — registry snapshot, all 36 IDs unchanged |
+| 2 | Serialization schema verified | **PASS** — state suite and byte-exact cross-framework session probe |
+| 3 | Presets migrated | **PASS (headless)** — state/preset checks; audible half stays in Level 5 |
+| 4 | Pluginval passed (both modes) | **PASS** — strictness 10, deterministic ×3 and randomise ×3, first attempts |
+| 5 | Host matrix verified | **OPEN** — owner attestation on 9.0.4 |
+| 6 | Latency reporting verified | **PASS** — 32-scenario twin dump identical, reported latency included |
+| 7 | Automation playback verified | **OPEN** — owner attestation on 9.0.4 |
+| 8 | Session reload verified | **PASS** — 9.0.3-written session re-saves byte-exactly; render and latency identical |
+
+Evidence: `worklogs/JUCE904_UPGRADE_0.9.9.md`. No 9.0.3/9.0.4 human verification is inferred
+from PR #160's merge. `RELEASE_POLICY.md` preconditions 2, 5 and 7 remain open.
+
+## Historical completion record — 0.9.9 / JUCE 9.0.3 (2026-09-29)
+
+
+**As recorded for 9.0.3: six of eight boxes were checked; items 5 and 7 were open.** This
+record is superseded by the current 9.0.4 gate above.
 On 2026-09-29 the owner folded the JUCE 9.0.2 → 9.0.3 bump into 0.9.9 (ADR-0060, `Proposed`). A JUCE bump
 changes the plug-in wrappers and framework code every host loads, so the record below — measured and
 attested on the **9.0.2** build — does not carry to the 9.0.3 one, by the rule box 6 set: a touched box is
 re-run, not carried. The six measured boxes were re-run on the 9.0.3 build the same day (§Re-verification on
 JUCE 9.0.3, below) and pass. Items 5 (host matrix) and 7 (automation playback) are the owner's to
-re-attest on the 9.0.3 build, alongside the Level-5 audition (`LEVEL5_AUDITION.md`). Until then
-`RELEASE_POLICY.md` precondition 2 is not met for 0.9.9.
+re-attest on the 9.0.3 build, alongside the Level-5 audition (`LEVEL5_AUDITION.md`). Those
+attestations were not recorded and do not certify the now-current 9.0.4 build.
 
 **As recorded 2026-09-28, on the 9.0.2 build: eight of eight boxes were checked for 0.9.9 — six re-run with
 measured evidence, and two, items 5 and 7, on the owner's attestation.** The owner reported both verifications complete on 2026-09-28; the hosts,
@@ -69,31 +92,32 @@ human sign-off the item is defined as.
 
 ## Checklist
 
-- [x] **Parameter IDs unchanged** — **PASS (0.9.9, 2026-09-28; 0.9.6, 2026-09-01).** — diff the parameter set against the previous release; no `pid::`
+These boxes describe the current **JUCE 9.0.4** build; historical passes are recorded above.
+
+- [x] **Parameter IDs unchanged** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — diff the parameter set against the previous release; no `pid::`
       ID renamed or removed. (Display-name changes are allowed; record in CHANGELOG.)
       Ref: `docs/architecture/PARAMETER_REGISTRY.md`, `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
       *Automated since the 0.8.13 cycle:* the registry-snapshot test in `tests/state_tests.cpp`
       (`AnamorphStateTests`, CI-blocking on all three platforms) fails on any ID/name/order/
       range/automation-flag change vs `tests/fixtures/parameter_registry.snapshot`.
-- [x] **Serialization schema verified** — **PASS (0.9.9, 2026-09-28; 0.9.6, 2026-09-01).** — no field removed or semantically changed in
+- [x] **Serialization schema verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — no field removed or semantically changed in
       `AnamorphRoot` / `ANAMORPH` (APVTS) / `ANAMORPH_INTERNAL` / `AB`; additions tolerate absence.
       Ref: `docs/architecture/SERIALIZATION_REGISTRY.md`, `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
       *Automated since the 0.8.13 cycle:* schema-shape + raw-exact round-trip + the three
       legacy-format fixtures in `tests/state_tests.cpp`. The cross-version step below stays manual.
-- [x] **Presets migrated** — **PASS (0.9.9, 2026-09-28; 0.9.6, 2026-09-01).** — factory presets and a representative user `.anamorph` still load and
+- [x] **Presets migrated** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21; headless, audible half stays in Level 5).** — factory presets and a representative user `.anamorph` still load and
       sound identical. Ref: `src/PresetManager.cpp`.
       *Partially automated:* `tests/state_tests.cpp` proves save→reload structural equality +
       exclusion rules + factory loadability; "sound identical" remains a Level-5 (audition) check.
-- [x] **Pluginval passed (both modes)** — **PASS (0.9.9, 2026-09-28; 0.9.6, 2026-09-01).** — `scripts/run-pluginval.sh <n> deterministic` **and**
+- [x] **Pluginval passed (both modes)** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — `scripts/run-pluginval.sh <n> deterministic` **and**
       `scripts/run-pluginval.sh <n> randomise` (`--randomise` ×3) pass on the Linux gate, where
       `<n>` is `ANAMORPH_PLUGINVAL_STRICTNESS` from `.github/workflows/build.yml` — read it there
       rather than from this line, so a raise cannot leave this checklist certifying the old bar.
       Ref: `docs/procedures/TESTING.md`.
-- [ ] **Host matrix verified** — **OPEN (0.9.9 on JUCE 9.0.3; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (hosts NOT RECORDED); see the completion records above for historical attestations. Load in the target hosts and confirm load + automation + state.
+- [ ] **Host matrix verified** — **OPEN (0.9.9 on JUCE 9.0.4; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (hosts NOT RECORDED); see the completion records above for historical attestations. Load in the target hosts and confirm load + automation + state.
       (Currently Unverified in-repo; this requires manual DAW testing —
       `docs/architecture/COMPATIBILITY_MATRIX.md`.)
-- [x] **Latency reporting verified** — **PASS (0.9.9, 2026-09-28; 0.9.7, 2026-09-03, re-run because ADR-0034 changed the
-      reported value, so 0.9.6's PASS does not carry).** — reported PDC matches the actual chain
+- [x] **Latency reporting verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — reported PDC matches the actual chain
       delay across the oversampling settings; OS-off reports 0; and the number is now a function of
       the Oversampling setting alone, so no parameter move can change it. Ref:
       `docs/architecture/LATENCY_MODEL.md`; tests `testBypassNullAndLatency` (Test 3+4) and
@@ -102,9 +126,9 @@ human sign-off the item is defined as.
       reopens in 0.9.7 with the host compensating a few samples where it previously compensated none.
       Nothing in the session file changed — the schema is untouched and item 2 is unaffected — and the
       audio is the same audio, arriving at the position the plug-in now correctly declares.
-- [ ] **Automation playback verified** — **OPEN (0.9.9 on JUCE 9.0.3; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (host and lanes NOT RECORDED); see the completion records above for historical attestations. Recorded automation on host-visible parameters must play back
+- [ ] **Automation playback verified** — **OPEN (0.9.9 on JUCE 9.0.4; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (host and lanes NOT RECORDED); see the completion records above for historical attestations. Recorded automation on host-visible parameters must play back
       with unchanged meaning. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
-- [x] **Session reload verified** — **PASS (0.9.9, 2026-09-28, a 0.9.8-written session; 0.9.6, 2026-09-01).** — save a session in the previous version, load it in the new
+- [x] **Session reload verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — save a session in the previous version, load it in the new
       version: sound, preset name, dirty-star, and both A/B slots reproduce exactly.
       Ref: `docs/architecture/STATE_SERIALIZATION.md`.
       *Partially automated:* the round-trip + legacy-fixture tests prove the CURRENT binary reads

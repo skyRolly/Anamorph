@@ -115,8 +115,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `9.0.3` (immutable commit `be29c81…`, ADR-0060 — **Proposed**,
-  awaiting the owner's Architecture Review; previously `9.0.2` = `7278278…`, ADR-0054; previously
+- **Risk:** JUCE is pinned to exactly `9.0.4` (immutable commit `3fb5cbc…`, ADR-0061 — **Proposed**,
+  awaiting the owner's Architecture Review; previously `9.0.3` = `be29c81…`, ADR-0060; previously `9.0.2` = `7278278…`, ADR-0054; previously
   `9.0.1` = `e18f7f5…`, ADR-0026; before that `9.0.0` = `f8f8864…`, ADR-0022; before that
   tag `8.0.14`, ADR-0012). A future bump can silently change DSP behaviour (oversampling,
   Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state ABI, and the
@@ -220,11 +220,12 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   forwards to `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2821`): **a `.vstpreset` the
   user picks in the host's browser is a file the user opens and it reaches this parser**, as does an
   `.aupreset` through AU `ClassInfo`. `SERIALIZATION_REGISTRY.md` now records the classification.
-- **Compatibility, measured** (`--risk014-probe census`, asserted by State test 116 leg F): every
-  session this product has written is nested at most **3** deep and at most **10 629** bytes — this
-  build 10 438 B, the 0.9.5 field capture 10 629 B, and the three legacy roots
-  `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2–3. A slot payload
-  is at most **2 051** bytes at depth **2**. None carries a `DOCTYPE`:
+- **Compatibility, measured** (`--risk014-probe census`, asserted by State test 116 leg F): the
+  original census measured sessions up to **10 629** bytes at depth **3** (that build 10 438 B,
+  the 0.9.5 field capture 10 629 B), with slot payloads up to **2 051** bytes at depth **2**.
+  The 2026-10-21 9.0.4 audit additionally captured a real 9.0.3-written session of **12 157** bytes
+  at depth **3**, with a **2 632**-byte slot at depth **2** (`worklogs/JUCE904_UPGRADE_0.9.9.md`).
+  The three legacy roots rule 3 keeps alive are 268 / 590 / 740 B at depth 2–3. None carries a `DOCTYPE`:
   `XmlElement::TextFormat::dtd` defaults empty (`juce_XmlElement.h:207`).
 - **Evidence [Verified]:** [ADR-0056](architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md)
   (Accepted) carries the full matrix, the shared/not-shared split and the validation; State test 116
@@ -233,7 +234,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **What this did NOT close, and it is a residual rather than a gap in the boundary.** ADR-0056's
   ruling named three limits, so host state still accepts shapes a `.anamorph` file refuses: two
   complete documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a
-  second complete document (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:132`),
+  second complete document (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:99`),
   invalid UTF-8 in an attribute value, and a chunk truncated to half its length. None is a crash, a
   hang or an unbounded read; each is an acceptance question, pinned by State test 116 leg E so that
   changing it later is a decision rather than a drift. **RISK-015** carries them.
@@ -247,7 +248,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   complete documents in one chunk** (the first wins, as `XmlDocument::parseDocumentElement` reads one
   element and never looks at the rest); **a document followed by prose, a stray element or raw
   binary**; **a document, one NUL, and a second complete document** (`String::fromUTF8` builds
-  through `createFromCharPointer`, whose `while (e < end && ! e.isEmpty())`, `juce_String.cpp:132`,
+  through `createFromCharPointer`, whose `while (shouldContinueFn (pos, numChars) && ! pos.isEmpty())`, `juce_String.cpp:99`,
   stops at the first NUL, so the tail is examined by nobody); **invalid UTF-8 in an attribute
   value**; and **a chunk truncated to half its length**, which is half-applied.
 - **Impact:** a corrupt or hand-edited session restores a partial or wrong sound instead of being
@@ -274,7 +275,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   the parser rather than from noise". All three were stored **zlib-framed** — `56 43 32 21` (the
   correct magic) followed by `78 9c` — but no JUCE this project has ever pinned compresses that
   container: `AudioProcessor::copyXmlToBinary` writes magic, length, plain single-line XML and a NUL
-  at 8.0.14, 9.0.0 (`f8f8864`), 9.0.1 (`e18f7f5`), 9.0.2 (`7278278`) and 9.0.3 (`be29c81`) alike, and `getXmlFromBinary`
+  at 8.0.14, 9.0.0 (`f8f8864`), 9.0.1 (`e18f7f5`), 9.0.2 (`7278278`) 9.0.3 (`be29c81`) and 9.0.4 (`3fb5cbc`) alike, and `getXmlFromBinary`
   is `parseXML (String::fromUTF8 (data + 8, ...))`. A zlib body therefore decoded to nothing:
   `decodeRestore` returned false at its first branch, and no migration, no `repairSerializedValues`
   and no A/B decode was reachable from any seed.
@@ -1114,7 +1115,7 @@ mitigation. Do not invent risks to fill the template.
   the AGPLv3 arm — the commercial JUCE tier must be in place before commercial distribution. A
   third strand —
   the Steinberg VST 3 trademark/distribution review — is separate again (the SDK *code* is MIT in
-  JUCE 9.0.3; the VST name and plug-in distribution terms are not covered by that grant).
+  JUCE 9.0.4; the VST name and plug-in distribution terms are not covered by that grant).
 - **Impact:** Blocks a commercial release outright, and leaves even a free release legally
   ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
   is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md`
