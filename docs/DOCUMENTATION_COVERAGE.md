@@ -2,7 +2,7 @@
 
 Persistent documentation-coverage audit, updated on every documentation-affecting change per `docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`.
 
-**Last updated (2026-10-21):** Migrated the contributor/agent entry point to `AGENTS.md`. The README, repository map and source-of-truth classification now identify `AGENTS.md` as the primary developer guide and `CLAUDE.md` as its Claude-compatible import.
+**Last updated (2026-10-21):** Migrated the contributor/agent entry point to `AGENTS.md`. README, repository map, source-of-truth classification and `AI_AGENT_POLICY.md` now identify `AGENTS.md` as the primary developer guide and `CLAUDE.md` as its Claude-compatible import.
 
 ## Documentation-set self-coverage
 
