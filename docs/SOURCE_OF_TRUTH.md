@@ -25,6 +25,10 @@ source must be corrected to match.
 > `docs/policies/ADR_POLICY.md`). Policy weight is higher than general descriptive
 > Architecture because a Policy is a hard rule, not a description.
 
+## Root-level contributor instructions
+
+`AGENTS.md` is the primary root-level contributor/agent guide and belongs to the developer documentation class. It points readers to binding policies and does not override the authority order above. `CLAUDE.md` is retained as a Claude-compatible import of `AGENTS.md`; it is a compatibility pointer, not a separate source of rules.
+
 ## Scope: the other three documentation classes
 
 The numbered order above governs the **developer documentation** chain. The README's other
