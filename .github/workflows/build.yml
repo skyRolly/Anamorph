@@ -1108,7 +1108,7 @@ jobs:
       # pluginval-only failure still yields beta artifacts as before.
       - name: Upload Linux artifacts
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux
@@ -1119,7 +1119,7 @@ jobs:
       # step itself completed, which is what actually produced the .debug files.
       - name: Upload Linux debug symbols (crash symbolication)
         if: ${{ !cancelled() && steps.strip.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Linux-debug
           path: dist/Anamorph-Linux-debug
@@ -1839,7 +1839,7 @@ jobs:
       # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload Windows artifacts
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outputs.public_ok == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows
@@ -1848,7 +1848,7 @@ jobs:
       # Same fail-closed gate as the customer artifact (tests + its own step).
       - name: Upload Windows installer
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Windows-installer
           path: dist/Anamorph-*-Windows-Installer.exe
@@ -1859,7 +1859,7 @@ jobs:
       # retention never completed -- see the checkpoint note in the staging step.
       - name: Upload Windows debug symbols (crash symbolication)
         if: ${{ !cancelled() && steps.stage_windows.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Windows-debug
           path: dist/Anamorph-Windows-debug
@@ -2460,7 +2460,7 @@ jobs:
       # every Intel user off a run that proved the Intel slice misbehaves.
       - name: Upload macOS plugins (VST3 + AU + Standalone)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
@@ -2470,7 +2470,7 @@ jobs:
       # own step) -- the .pkg installs the same universal bundles.
       - name: Upload macOS installer
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS-installer
           path: dist/Anamorph-*-macOS.pkg
@@ -2486,7 +2486,7 @@ jobs:
       # failure are still preserved.
       - name: Upload macOS debug symbols (dSYMs, crash symbolication)
         if: ${{ !cancelled() && steps.package.outcome != 'skipped' && steps.package.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS-debug
           path: dist/Anamorph-macOS-debug
@@ -3943,7 +3943,7 @@ jobs:
       # a host chunk that reproduces the failure by being handed back.
       - name: Upload fuzz findings
         if: ${{ failure() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-fuzz-findings
           path: fuzz-findings/
