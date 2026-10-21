@@ -69,7 +69,7 @@ artificially scarce before release.
 | Change | ADR | Condition 2 satisfied by | Status |
 |---|---|---|---|
 | View params moved out of the APVTS (0.8.4) | ADR-0010 | **Migration plan** — `InternalState::migrateFromLegacyApvts`; old sessions read the legacy form | Accepted |
-| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag exists. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the manufacturer code. | Decision **Accepted** (2026-07-30); **condition 3 still open** — the Release Compatibility Checklist has not been completed for this release. It gates the tag, not the merge. |
+| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out, at the 0.9.1 decision.** 2a: no annotated tag existed. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the manufacturer code. | Decision **Accepted** (2026-07-30); **condition 3 COMPLETE**, owner attestation 2026-10-21 UTC: final 0.9.9 / JUCE 9.0.4 compatibility **8/8 PASS**. The exception is fully satisfied for the first official release. |
 
 Note that "Accepted" in this table refers to the ADR, i.e. the *decision*. An exception is only
 **fully satisfied** when all four conditions are met, and condition 3 is a **release-time** check

@@ -110,7 +110,7 @@ repository ever grows a real package manifest.
 
 ## Compliance log
 
-- **JUCE 9.0.3 → 9.0.4** — **ADR-0061, Proposed**, requested 2026-10-21 inside **0.9.9**, planned
+- **JUCE 9.0.3 → 9.0.4** — **ADR-0061, Accepted (owner approval 2026-10-21 UTC)**, requested 2026-10-21 inside **0.9.9**, planned
   **2026-10-22**. Immutable commit `3fb5cbc0340758596dac39f7c8de47d562b4896e`; codec flags unchanged,
   all fifteen module declarations change version only, and no third-party package or licence moves.
   **32/32 twin-dump scenarios bit-identical**, latency included, from one frozen `e0532bc` tree;
@@ -118,8 +118,11 @@ repository ever grows a real package manifest.
   wrappers are unchanged; String/XML output, MessageManagerLock and platform GUI/device changes are
   audited. Seven cache tests and the actual wrapper cover refusal/reset of an existing 9.0.3 pin,
   with legacy 9.0.2 protection retained. Runtime measurements and the local GCC 14 ABI limitation:
-  `worklogs/JUCE904_UPGRADE_0.9.9.md`. Architecture Review, a 9.0.4 Level-5 audition and host/automation
-  attestations remain open. ADR-0060 is superseded; no 9.0.3 human result is inferred from its merge.
+  `worklogs/JUCE904_UPGRADE_0.9.9.md`. **Architecture Review APPROVED**, final 9.0.4 **Level-5 PASS
+  (A–G)** and compatibility **8/8 PASS**, including host matrix and automation playback: final
+  owner attestation **2026-10-21 UTC**, recorded in the standing engineering worklog. Required
+  human gates are **COMPLETE**. Exact artifact, environments and actual human test dates are
+  **NOT RECORDED**. ADR-0060 stays Superseded; no separate 9.0.3 audition is inferred.
 
 - **JUCE 9.0.2 → 9.0.3** — recorded in **ADR-0060** (0.9.9 cycle, on the owner's instruction of
   2026-09-29 to ship it inside 0.9.9; originally **`Proposed`**, now **Superseded by ADR-0061** before

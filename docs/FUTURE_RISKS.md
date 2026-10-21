@@ -115,8 +115,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `9.0.4` (immutable commit `3fb5cbc…`, ADR-0061 — **Proposed**,
-  awaiting the owner's Architecture Review; previously `9.0.3` = `be29c81…`, ADR-0060; previously `9.0.2` = `7278278…`, ADR-0054; previously
+- **Risk:** JUCE is pinned to exactly `9.0.4` (immutable commit `3fb5cbc…`, ADR-0061 — **Accepted**,
+  owner Architecture Review APPROVED 2026-10-21 UTC; previously `9.0.3` = `be29c81…`, ADR-0060; previously `9.0.2` = `7278278…`, ADR-0054; previously
   `9.0.1` = `e18f7f5…`, ADR-0026; before that `9.0.0` = `f8f8864…`, ADR-0022; before that
   tag `8.0.14`, ADR-0012). A future bump can silently change DSP behaviour (oversampling,
   Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state ABI, and the

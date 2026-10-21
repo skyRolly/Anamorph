@@ -11,12 +11,10 @@ structurally cannot supply — a green build plus a pluginval pass means *"ready
 
 ## Current build — 0.9.9 / JUCE 9.0.4 (planned 2026-10-22)
 
-**OPEN.** Re-run groups A–G on the final 9.0.4 artifact (ADR-0061). The 2026-09-28 owner
-record was on 9.0.2; no 9.0.3 or 9.0.4 human audition is inferred from PR #160's merge.
-9.0.4 additionally changes MessageManagerLock, Windows mixed-DPI placement, X11/Xwayland
-pointer grabs and drag/drop, popup behavior and OpenGL function checks. Exercise editor open,
-resize, display/scale changes, popups and dragging under X11/Xwayland, host save/reload, and
-Standalone audio-device settings. Record host, OS, format and the exact artifact tested.
+**PASS — COMPLETE**, final owner attestation recorded **2026-10-21 UTC** for
+**0.9.9 / JUCE 9.0.4**, complete scope **A–G**. The reopened gate is closed. Actual audition
+date, exact artifact, DAW, OS, device, session and individual observations: **NOT RECORDED**.
+See §Recorded auditions and the standing engineering worklog's final owner release attestation.
 
 ## When a previous audition stops counting
 
@@ -38,7 +36,7 @@ between the two builds, which is why the re-audition adds one group (§Scope for
 scope; it is not a reason to skip A–F on the new build. The 2026-09-28 record is not withdrawn; it simply
 does not cover this build. `DEPENDENCY_POLICY.md` rule 2 asks for the same audition independently: a JUCE
 bump is not accepted until one is recorded. The same rule now applies to 9.0.4 (ADR-0061);
-no newer human audition has been recorded.
+the owner has now confirmed its complete A–G audition PASS on 2026-10-21 UTC (current record below).
 
 **The 0.9.6 audition of 2026-09-01 does not carry over to 0.9.7** — the release this rule
 blocked when it was applied the second time (2026-09-03). **ADR-0034** changed what the plug-in reports to the host and added a delay
@@ -58,13 +56,12 @@ example the rule was first written from:
 
 ## Scope for 0.9.9
 
-**REOPENED for the JUCE 9.0.4 build (ADR-0061, 2026-10-21): perform it on that build over
-groups A–G.** The 9.0.3 reopening of 2026-09-29 is superseded. The completion reported 2026-09-28 (§Recorded auditions, 0.9.9) was of the 9.0.2 build.
+**COMPLETE for final JUCE 9.0.4 (owner attestation, 2026-10-21 UTC): PASS over groups A–G.** The 9.0.3 reopening of 2026-09-29 is superseded. The completion reported 2026-09-28 (§Recorded auditions, 0.9.9) was of the 9.0.2 build.
 This scope was
 written first, and the environment that wrote it has no DAW, no audio device and no listener. It is
 derived from the `[0.9.7]`, `[0.9.8]` and `[0.9.9]` CHANGELOG entries, because the last recorded
-audition before it was 0.9.6's. Which of A–F the owner exercised was not supplied, and the record
-does not infer it.
+audition before it was 0.9.6's. The older 9.0.2 record did not supply group coverage; the current 9.0.4
+attestation explicitly closes A–G. Individual observations remain NOT RECORDED.
 
 The instruction the scope was written with: audition the final 0.9.9 build in at least one DAW. That
 build is the CI artifact of the commit to be tagged `0.9.9`. Record the result per §Recording the
@@ -210,6 +207,32 @@ covered. Partial is a legitimate and useful record; a partial audition described
 ## Recorded auditions
 
 Newest first. A row here is a human's account of listening to a build; nothing else may create one.
+
+### 0.9.9 / JUCE 9.0.4 — **PASS, COMPLETE (A–G)**
+
+Source: the repository owner's explicit instruction “Anamorph — Record Final Owner Approvals
+and Tag 0.9.9”, attested and recorded **2026-10-21 UTC**. The owner confirms the final build
+passed all required human listening and functional acceptance. This is the human sign-off;
+Codex records it without repeating the audition or substituting automated evidence.
+
+| Field | Record |
+|---|---|
+| Verdict / scope | **PASS — COMPLETE (A–G)** |
+| Build | **Final 0.9.9 / JUCE 9.0.4**, as stated by the owner |
+| Planned release date | **2026-10-22** |
+| Approver | **Repository owner** |
+| Human audition performer | **NOT RECORDED** |
+| Attested / recorded | **2026-10-21 UTC** |
+| Actual audition date | **NOT RECORDED** |
+| Exact artifact / commit | **NOT RECORDED** |
+| DAW/version, OS/CPU, plugin format | **NOT RECORDED** |
+| Audio device, session | **NOT RECORDED** |
+| Individual observations / measurements | **NOT RECORDED** |
+
+Groups A, B, C, D, E, F and G are each **PASS by the owner's complete-scope attestation**;
+no particular per-item measurement or environment is inferred. Architecture Review is APPROVED
+and compatibility is 8/8 PASS; see ADR-0061, `RELEASE_COMPATIBILITY_CHECKLIST.md` and the
+standing engineering worklog's final owner release attestation. Earlier records remain historical.
 
 ### 0.9.9 — **COMPLETED, signed off by the owner** (JUCE 9.0.2 build — does not cover the 9.0.3/9.0.4 builds)
 

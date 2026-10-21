@@ -29,6 +29,49 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Final owner release attestation — 2026-10-21 UTC
+
+Source: the repository owner's explicit instruction in this task, **“Anamorph — Record Final
+Owner Approvals and Tag 0.9.9”**. The owner approves **all pending ADR approvals**, particularly
+ADR-0061, confirms the final **0.9.9 / JUCE 9.0.4** build's Level-5 listening and functional
+acceptance **PASS over A–G**, and confirms the compatibility checklist **8/8 PASS**, explicitly
+including item 5 (host matrix) and item 7 (automation playback). These are final owner approvals,
+recorded by Codex; no new audition, architectural investigation or compatibility run is claimed.
+
+| Field | Record |
+|---|---|
+| Attested / recorded | **2026-10-21 UTC** |
+| Approver | **Repository owner** |
+| Human test / audition performer | **NOT RECORDED** |
+| Final version / framework | **0.9.9 / JUCE 9.0.4** |
+| Planned release date | **2026-10-22** |
+| Architecture Review | **APPROVED** — all pending ADR approvals |
+| Level-5 | **PASS — COMPLETE (A–G)** |
+| Compatibility | **8/8 PASS**, including host matrix and automation playback |
+| Required human release gates | **COMPLETE** |
+| Actual human test / audition date | **NOT RECORDED** |
+| Exact tested artifact / commit | **NOT RECORDED** |
+| DAW/version, OS/CPU, plugin format | **NOT RECORDED** |
+| Audio device, session, automation lanes | **NOT RECORDED** |
+| Individual observations / measurements | **NOT RECORDED** |
+
+ADR-0061 is the only currently Proposed ADR and becomes **Accepted**. ADR-0060's pending review
+is approved while its **Superseded** lifecycle status remains. Existing Accepted, Deprecated,
+Superseded or Rejected states are preserved; no engineering decision is reopened. The old
+9.0.2/9.0.3 records remain historical, not retroactively invented tests.
+
+The owner authorizes a sign-off-only PR and its integration, then the first annotated tag
+**`0.9.9`** on the actual final `main` commit after mandatory gates, followed by the tag-triggered
+release workflow and a **DRAFT** release only. Publication and commercial distribution are not
+authorized. **KI-015 and commercial/licensing decisions remain OPEN**, separately from tag/draft.
+
+Existing engineering evidence is green main `dcc8bc1`
+([CI run 39530569058](https://github.com/skyRolly/Anamorph/actions/runs/39530569058)), PR #166 and
+`worklogs/JUCE904_UPGRADE_0.9.9.md`. This integration changes documentation/status records only.
+Normal CI and the full tag-triggered release gates remain in force, with no checker changes.
+
+---
+
 ## D-2 / RISK-007 — 2026-09-03 — program state becomes message-thread-owned; host threads exchange immutable snapshots (ADR-0036)
 
 > *"State race remains outside latency fields. Atomic latency values do not synchronize concurrent

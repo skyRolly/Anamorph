@@ -13,6 +13,12 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
+
+**0.9.9 / JUCE 9.0.4**, planned **2026-10-22**: the final owner attestation **2026-10-21 UTC**
+records Architecture Review **APPROVED**, [Level-5 **PASS (A–G)**](docs/procedures/LEVEL5_AUDITION.md)
+and [compatibility **8/8 PASS**](docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md).
+Required human release gates are **COMPLETE**; first annotated tag `0.9.9` and a **draft** release
+are authorized. Publication and commercial/licensing decisions remain separate.
 - **Version 0.9.9** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
