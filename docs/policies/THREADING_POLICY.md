@@ -264,7 +264,10 @@ byte-identical at the 9.0.2 pin, so the evidence carries across unchanged (ADR-0
 Standalone wrapper is still byte-identical; the VST3 wrapper loses one line (an ARA factory destructor
 compiled out under `JucePlugin_Enable_ARA` 0) and the AU wrapper rewrites `SetBusCount`'s loop, which
 Anamorph cannot reach — it overrides neither `canAddBus` nor `canRemoveBus`, so the property is not writable.
-Neither change touches a state or threading entry point (ADR-0060). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
+Neither change touches a state or threading entry point (ADR-0060). At 9.0.4 those built-format
+wrappers remain byte-identical to 9.0.3 (ADR-0061). The framework rewrites MessageManagerLock
+internals and makes message-thread identity checks atomic; Anamorph adds no lock, thread or
+publication path, and APVTS still satisfies ADR-0057 precondition 2. **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
 either state function, no `std::thread` / `juce::Thread` / `callAsync` / thread pool anywhere in
 `src/` (the only schedulers are the editor's 24 Hz and the processor's 20 Hz message-thread timers),
 the host-side members touched at exactly four sites inside the two off-thread branches, and the

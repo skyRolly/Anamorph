@@ -62,7 +62,8 @@ sample counts depend on JUCE's half-band filter orders (1/2/3 for 2×/4×/8×), 
 (measured 2026-09-22: the same three numbers at 44.1, 48, 88.2, 96 and 192 kHz — this line said
 "and the sample rate" until then); they are computed at `prepare()` time, not hard-coded. Measured at 48 kHz on JUCE 9.0.1 and proven
 unchanged at 9.0.2 by ADR-0054's twin dump, which hashes the reported latency beside the
-output, and again at the pinned 9.0.3 by ADR-0060's (2026-09-29, 32/32 scenarios identical):
+output, at 9.0.3 by ADR-0060's (2026-09-29), and at the pinned 9.0.4 by ADR-0061's
+(2026-10-21; both comparisons have 32/32 identical scenarios and latencies):
 **2× = 4, 4× = 6, 8× = 6** samples (Test 52 prints the row; Test 38's landing census records the
 same three numbers and notes that 4× and 8× are equal, so an x4 → x8 switch moves no latency).
 

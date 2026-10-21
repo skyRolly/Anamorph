@@ -10,14 +10,14 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
   figure moved with the CI runner: the C++23 migration was verified on the then-current
   `macos-14` image, whose AppleClang identifies as 15.0.0.15000309 (Xcode 15.4) — the compiler
   version, not the Xcode version, is what `CMAKE_CXX_COMPILER_VERSION` reports.
-- **JUCE 9.0.3** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
-  commit SHA `be29c81…`) — or pointed at a local checkout. See
+- **JUCE 9.0.4** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
+  commit SHA `3fb5cbc…`) — or pointed at a local checkout. See
   `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning, ADR-0022 for the move to
   the 9.0 line and the SHA pin, ADR-0026 for the 9.0.1 bump, ADR-0054 for the 9.0.2 bump and
-  ADR-0060 for the 9.0.3 bump.
+  ADR-0060 for the 9.0.3 bump and ADR-0061 for the 9.0.4 bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++23),
-:67-72 (JUCE 9.0.3 commit pin), :81-89 (FetchContent).
+:67-72 (JUCE 9.0.4 commit pin), :81-89 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -53,7 +53,7 @@ scripts/build.sh            # scripts/build.sh [Release|Debug]
 
 Evidence [Verified]: scripts/build.sh:14-15.
 
-An existing `build/` configured on JUCE 9.0.2 now fails configuration before fetching:
+An existing `build/` configured on JUCE 9.0.2 or 9.0.3 now fails configuration before fetching:
 CMake retains the cached pin despite the updated defaults. From the repository root, reset
 **both** values once, then use the normal wrapper:
 
@@ -62,7 +62,7 @@ cmake -S . -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION
 scripts/build.sh
 ```
 
-The check does not rewrite cache overrides. A deliberate 9.0.2 comparison uses
+The check does not rewrite cache overrides. A deliberate older-JUCE comparison uses
 `-DANAMORPH_JUCE_PATH=/path/to/JUCE`; other custom pin/version pairs remain cached as supplied.
 Evidence [Verified]: `cmake/CheckJuceCache.cmake`, included before FetchContent by `CMakeLists.txt`.
 
@@ -73,7 +73,7 @@ Evidence [Verified]: `cmake/CheckJuceCache.cmake`, included before FetchContent 
 | `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 541) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 417-419) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:66, 77-79) |
-| `ANAMORPH_JUCE_TAG` | `be29c81…` (= tag 9.0.3) — CMakeLists.txt:71 (`be29c81`) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version — CMakeLists.txt:70-72 (`9.0.3`) |
+| `ANAMORPH_JUCE_TAG` | `3fb5cbc…` (= tag 9.0.4) — CMakeLists.txt:71 (`3fb5cbc`) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version — CMakeLists.txt:70-72 (`9.0.4`) |
 | `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:469) |
 
 Offline build (no network) with a local JUCE:

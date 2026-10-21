@@ -13,10 +13,10 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OLD_VERSION = "9.0.2"
-OLD_TAG = "72782788ce18c2d4d760b28e0921d6ffc6431102"
-VERSION = "9.0.3"
-TAG = "be29c81492b6151c8ea8d14c840e1311963b3a83"
+OLD_VERSION = "9.0.3"
+OLD_TAG = "be29c81492b6151c8ea8d14c840e1311963b3a83"
+VERSION = "9.0.4"
+TAG = "3fb5cbc0340758596dac39f7c8de47d562b4896e"
 MARKER = "ANAMORPH_JUCE_CACHE_PROBE_REACHED"
 
 
@@ -62,7 +62,8 @@ class JuceCacheTests(unittest.TestCase):
     def assert_stale(self, result):
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertNotIn(MARKER, result.stdout)
-        self.assertIn("stale JUCE 9.0.2 cache", result.stdout)
+        self.assertIn("stale JUCE cache", result.stdout)
+        self.assertIn("this tree pins JUCE 9.0.4", result.stdout)
         self.assertIn(
             "-UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION",
             " ".join(result.stdout.split()),
@@ -73,7 +74,7 @@ class JuceCacheTests(unittest.TestCase):
         self.assert_selected(self.configure())
         self.assert_selected(self.configure())
 
-    def test_existing_902_cache_fails_until_both_values_are_reset(self):
+    def test_existing_903_cache_fails_until_both_values_are_reset(self):
         self.seed_cache(OLD_VERSION, OLD_TAG)
         self.assert_stale(self.configure())
         self.assert_stale(self.configure())
@@ -97,10 +98,20 @@ class JuceCacheTests(unittest.TestCase):
         self.assert_selected(self.configure(*args), "custom-version", "custom-pin")
         self.assert_selected(self.configure(), "custom-version", "custom-pin")
 
-    def test_local_checkout_allows_intentional_902_comparison(self):
+    def test_local_checkout_allows_intentional_903_comparison(self):
         self.seed_cache(OLD_VERSION, OLD_TAG)
         self.assert_selected(self.configure(f"-DANAMORPH_JUCE_PATH={self.juce}"),
                              OLD_VERSION, OLD_TAG)
+
+    def test_legacy_902_fields_are_also_refused(self):
+        legacy_tag = "72782788ce18c2d4d760b28e0921d6ffc6431102"
+        for i, (version, tag) in enumerate([
+            ("9.0.2", legacy_tag), (VERSION, legacy_tag), ("9.0.2", TAG),
+        ]):
+            with self.subTest(version=version, tag=tag):
+                self.build = self.base / f"legacy-{i}"
+                self.seed_cache(version, tag)
+                self.assert_stale(self.configure())
 
 
 if __name__ == "__main__":

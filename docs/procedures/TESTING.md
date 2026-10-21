@@ -15,10 +15,10 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`python3 tests/juce_cache_tests.py` runs six CMake cache regression tests (CMake, Ninja and a C/C++
+`python3 tests/juce_cache_tests.py` runs seven CMake cache regression tests (CMake, Ninja and a C/C++
 compiler required). They exercise the real top-level build file, stopping at a local JUCE stand-in:
-fresh/repeated configuration, a cached 9.0.2 pair and its reset, either partial reset, retained custom
-overrides, and an intentional local 9.0.2 checkout. No JUCE download or plugin compilation occurs.
+fresh/repeated configuration, a cached 9.0.3 pair and its reset, either partial reset, retained custom
+overrides, an intentional local 9.0.3 checkout, and legacy 9.0.2 fields. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
 `tests/dsp_tests.cpp` has **75 DSP tests** (Test 1 to Test 75; Tests 3 and 4 run as one) and the A/B
@@ -1030,8 +1030,8 @@ each fail it: the early return removed (gate legs b and c, 2 failures), the inte
 State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
 It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
 `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
-(pinned JUCE 9.0.3, `juce_AudioProcessor.cpp:415-436` — that file is byte-identical across the
-9.0.1 → 9.0.2 and 9.0.2 → 9.0.3 bumps, ADR-0054, ADR-0060), and the listener lock is released before
+(pinned JUCE 9.0.4, `juce_AudioProcessor.cpp:415-436` — that file is byte-identical across the
+9.0.1 → 9.0.4 bumps, ADR-0054, ADR-0060, ADR-0061), and the listener lock is released before
 each callback — so a test listener can hold a delivery open while a real off-message thread makes
 a second request *inside* it, with no test hook in production code and no timing race. A build that
 clears the request flag AFTER delivering fails it (measured in round 12: `next tick -> 4, expected
@@ -2440,7 +2440,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
 
   **M209 IS EQUIVALENT, with the proof in JUCE's source.** It removes the text-element check.
   `XmlElement::createTextElement` builds its element with an EMPTY tag name
-  (`juce_XmlElement.cpp:966-971`, and `isTextElement()` at `:914-917` is exactly
+  (`juce_XmlElement.cpp:970-975`, and `isTextElement()` at `:918-921` is exactly
   `tagName.isEmpty()`) and gives it one attribute, `getJuceXmlTextContentAttributeName()`. So every
   text element is refused twice over without that line: `hasTagName ("PARAM")` is false, and its
   one attribute is named neither `id`, `value` nor `raw`. The check stays because it names the
@@ -2492,7 +2492,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   chunk is decoded by `String::fromUTF8` and an A/B payload has no bytes of its own. **The session
   scan runs on the parser's own string**, not a reconstruction — `juce_AudioProcessor.cpp:975-976`'s
   expression on its own range — because `String::fromUTF8` stops at the first NUL
-  (`juce_String.cpp:132`) and a raw byte scan would refuse documents the parser never sees. **Each
+  (`juce_String.cpp:99`) and a raw byte scan would refuse documents the parser never sees. **Each
   document is bounded separately**, which the round-50 amplification measurement is the reason for.
   **Refusal semantics are the ones each path already had**: `decodeRestore` returns false and
   touches nothing; a refused payload leaves the slot invalid for `abEnsureInit()` to re-seed
@@ -2711,7 +2711,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
 
   **State test 114 leg K -- invalid encodings.** The boundary validated the DECODED TEXT, and the
   decode is not lossless: `String::createStringFromData` asks whether the bytes are valid UTF-8 and,
-  when they are not, reads them as **Windows-1252** instead (`juce_String.cpp:2030-2034`). Measured
+  when they are not, reads them as **Windows-1252** instead (`juce_String.cpp:2017-2021`). Measured
   on `7076359` through the real `loadFile`, `raw="\xC3\x28"` decoded from 63 bytes to 64 and
   LOADED, and so did a truncated sequence, bare continuation bytes, an overlong encoding, a
   surrogate encoded in UTF-8 and a UTF-16 file with an unpaired surrogate.
@@ -5796,7 +5796,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      pinned tree for the shield, and the mismatch between `getIdealPopupMenuItemSize` and
      `drawPopupMenuItem`'s own layout for the width. Where a GUI test would normally be the evidence,
      the shield's riskiest property is instead **proved from the source**: it cannot be raised in
-     front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:365`) and
+     front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:380`) and
      `Component::toFront` on a non-always-on-top component inserts behind every always-on-top sibling
      (`juce_Component.cpp:914-922`). Conditions and reasoning in
      `worklogs/GUI_INTERACTION_FIXES_0.9.3.md`, plus a manual check per platform. That check was

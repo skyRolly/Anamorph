@@ -6,7 +6,7 @@ skeleton, RH-PR-8) and the security-scanning workflows listed in
 [Security scanning](#security-scanning).
 
 The `linux` and `merge-check` Configure steps first run `python3 tests/juce_cache_tests.py`.
-These dependency-boundary probes check fresh/reused caches, refusal of a cached 9.0.2 pin,
+These dependency-boundary probes check fresh/reused caches, refusal of cached 9.0.2 and 9.0.3 pins,
 the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
@@ -318,7 +318,7 @@ edge above must not be read as release non-blocking.
   `applyWidth`, which this page named until 2026-08-19: its definition is visible in that TU, so
   Clang infers its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
   from JUCE calls whose definitions the TU cannot see — JUCE carries no annotations of its own
-  (measured at 9.0.1; re-verified at the 9.0.2 pin, ADR-0054, and at the 9.0.3 pin, ADR-0060).
+  (measured at 9.0.1; absence of annotations re-verified at the 9.0.2–9.0.4 pins, ADR-0054/0060/0061).
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.
   That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
@@ -1387,7 +1387,7 @@ The consequence is concrete and must not be re-forgotten: the JUCE tree **is** e
 the results, and **is** uploaded, so those alerts stand on the dashboard.
 
 **The triage rule for both scanners.** An alert whose path begins with `build/_deps/` is
-third-party JUCE. JUCE is pin-locked to 9.0.3 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
+third-party JUCE. JUCE is pin-locked to 9.0.4 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
 so such an alert is **accepted, not fixed here** — a JUCE change is an ADR-scoped dependency bump,
 never an alert-driven edit. Genuinely removing them from the dashboard would mean relocating the
 FetchContent tree outside the workspace, or post-filtering the SARIF before upload. Both are Build

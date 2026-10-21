@@ -20,9 +20,9 @@
 //      void process (juce::AudioBuffer<float>& b) noexcept ANAMORPH_NONBLOCKING;
 //
 //  WHY THE GUARD IS `__has_cpp_attribute` AND NOT A COMPILER-VERSION TEST.
-//  Three of this project's four shipped toolchains are not the pinned Clang:
-//  GCC builds the shipped Linux binary, MSVC the Windows one, AppleClang the
-//  macOS one. `__has_cpp_attribute` is the C++20-mandated feature test, so
+//  Shipping uses pinned Clang on Linux, MSVC on Windows and AppleClang on
+//  macOS; GCC is a compatibility checker. `__has_cpp_attribute` is the
+//  C++20-mandated feature test, so
 //  each of them answers for itself instead of this header guessing from a
 //  version number. GCC 13 accepts the guarded macro and warns
 //  `-Wattributes: scoped attribute directive ignored` on the RAW spelling,
@@ -38,9 +38,9 @@
 //  ANNOTATE DELIBERATELY, NOT BROADLY. `-Wfunction-effects` verifies the
 //  contract at COMPILE time, but only for callees whose definitions the
 //  translation unit can see; every JUCE call is opaque to it and warns. JUCE
-//  9.0.3 carries no annotations of its own (measured: zero occurrences in the
-//  pinned checkout), so annotating the call tree transitively produces dozens
-//  of warnings about correct code -- 52 from the engine TU alone. ADR-0029
+//  9.0.4 carries no annotations of its own (zero occurrences in the pinned
+//  checkout), so annotating the call tree transitively produces warnings about
+//  correct code -- 52 from the engine TU in ADR-0029's measurement. That ADR
 //  records the resulting rule: the annotation marks ENTRY POINTS for the
 //  runtime tool, and `-Wfunction-effects` stays off wherever JUCE is in the
 //  call graph. It is NOT off everywhere: over the JUCE-free leaf layer the same

@@ -360,7 +360,7 @@ namespace
 
         // ...AND THE BYTES MUST ACTUALLY BE UTF-8, which is a second question and was not being
         // asked. `String::createStringFromData` validates the bytes and, WHEN THEY ARE NOT VALID
-        // UTF-8, falls back to reading them as Windows-1252 (juce_String.cpp:2030-2034) -- a
+        // UTF-8, falls back to reading them as Windows-1252 (juce_String.cpp:2017-2021) -- a
         // codepage in which every byte means something, so a file that no conforming XML parser
         // would accept was silently transcoded into one that parsed. Measured on `7076359` through
         // the real `loadFile`: `<PARAM ... raw="\xC3\x28"/>` -- `C3` opens a two-byte sequence and
@@ -1173,7 +1173,7 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 //  A preset write that is only reported as successful when the bytes are on disk.
 //
 //  WHY THIS EXISTS instead of `File::replaceWithText`. That function's write is
-//  UNCHECKED, in the pinned JUCE (9.0.3, be29c81492) at juce_File.cpp:798-803:
+//  UNCHECKED, in the pinned JUCE (9.0.4, 3fb5cbc034) at juce_File.cpp:798-803:
 //
 //      TemporaryFile tempFile (*this, useHiddenFile);
 //      tempFile.getFile().appendText (...);          // <-- bool result DISCARDED

@@ -48,8 +48,9 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
    that RESTORE is unchanged. This NARROWS what `setStateInformation` accepts, which rule 1 governs
    and the Architecture Review Gate gates; the owner ruled it on 2026-09-19 against measured crash,
    hang and unbounded-read behaviour reachable on both paths. It is compatible with every session
-   this product has written by a wide margin — the largest is 10 629 bytes at depth 3, a slot payload
-   2 051 bytes at depth 2, and none carries a `DOCTYPE` — and the three legacy root formats rule 3
+   this product has written by a wide margin — measured chunks include 10 629 bytes at depth 3
+   and the 12 157-byte 9.0.3 capture used by the 9.0.4 audit (also depth 3); its largest slot is
+   2 632 bytes at depth 2 (`worklogs/JUCE904_UPGRADE_0.9.9.md`). None carries a `DOCTYPE`, and the three legacy root formats rule 3
    keeps alive are 268 / 590 / 740 bytes at depth 2–3. A refusal is the outcome each path already
    had: `decodeRestore` returns false and touches nothing; a refused payload leaves the slot invalid
    for `abEnsureInit()` to re-seed. Nothing else about acceptance changed — see

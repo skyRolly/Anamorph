@@ -454,7 +454,7 @@ private:
     // It never covers the pop-up itself, and that is structural rather than a matter of ordering.
     // A ComboBox / TextEditor menu is its own desktop window, so the shield (an editor child) is not
     // even in the same hierarchy. The preset menu IS an editor child -- but PopupMenu::MenuWindow
-    // sets setAlwaysOnTop (true) in its constructor (juce_PopupMenu.cpp:365), and Component::toFront
+    // sets setAlwaysOnTop (true) in its constructor (juce_PopupMenu.cpp:380), and Component::toFront
     // on a NON-always-on-top component walks its insert index back past every always-on-top sibling
     // (juce_Component.cpp:914-922). The shield does not set that flag, so it cannot be raised in
     // front of a menu even if it is raised while one is already open. Nothing else in src/ sets
@@ -473,7 +473,7 @@ private:
     // Every fake mouse move in play here is ASYNCHRONOUS: Component::sendFakeMouseMove ->
     // MouseInputSource::triggerFakeMove -> triggerAsyncUpdate (juce_MouseInputSourceImpl.h:449-451).
     // It is dispatched a message-loop pass later, so it lands after showWithOptionalCallback has run
-    // setVisible(true), enterModalState AND toFront on the menu (juce_PopupMenu.cpp:2290-2294) and
+    // setVisible(true), enterModalState AND toFront on the menu (juce_PopupMenu.cpp:2308-2312) and
     // returned -- our own toFront, and the one JUCE fires from the menu's setVisible, are the same
     // deferred move. Two independent properties make that dispatch a no-op for hover:
     //   1. The menu is modal by then, and Component::internalMouseEnter/internalMouseExit BOTH

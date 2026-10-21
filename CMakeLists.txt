@@ -64,11 +64,11 @@ option(ANAMORPH_BUILD_DSPDUMP "Build AnamorphDspDump, the DSP bit-identity harne
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
 set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)")
-# JUCE 9.0.3 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
+# JUCE 9.0.4 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
 # name, so the dependency cannot silently change under a re-pointed tag
 # (dependency hardening; the human-readable version lives in ANAMORPH_JUCE_VERSION).
-set(ANAMORPH_JUCE_VERSION "9.0.3" CACHE STRING "Human-readable JUCE version of the pinned commit")
-set(ANAMORPH_JUCE_TAG  "be29c81492b6151c8ea8d14c840e1311963b3a83" CACHE STRING
+set(ANAMORPH_JUCE_VERSION "9.0.4" CACHE STRING "Human-readable JUCE version of the pinned commit")
+set(ANAMORPH_JUCE_TAG  "3fb5cbc0340758596dac39f7c8de47d562b4896e" CACHE STRING
     "JUCE git rev to fetch when no local path is given (commit SHA of tag ${ANAMORPH_JUCE_VERSION})")
 include(cmake/CheckJuceCache.cmake)
 # ----------------------------------------------------------------------------

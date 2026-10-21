@@ -1129,7 +1129,7 @@ void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, co
 }
 
 // A PopupMenu window has just been constructed through one of our look-and-feels. Track it and
-// raise the shield. The window reports here from its own constructor (juce_PopupMenu.cpp:500), i.e.
+// raise the shield. The window reports here from its own constructor (juce_PopupMenu.cpp:515), i.e.
 // before any click can reach it, so the shield is always up first.
 void AnamorphAudioProcessorEditor::notePopupMenuOpened (juce::Component& menuWindow)
 {
@@ -1292,7 +1292,7 @@ juce::Component* AnamorphAudioProcessorEditor::cursorOverlay() const
 // common, so the watcher only ever sees the menu's own visibility, which a host hiding the editor
 // does not touch; MenuWindow::windowIsStillValid does not help either, since it compares two
 // WeakReferences to the target control that both stay valid across a hide
-// (juce_PopupMenu.cpp:806-816). The menu is then stranded: still modal, still a floating always-on-
+// (juce_PopupMenu.cpp:824-834). The menu is then stranded: still modal, still a floating always-on-
 // top window over a plug-in view that is gone (INC-010's reported symptom, fixed there only for the
 // preset menu), still blocking every JUCE component in the process, and holding the shield up so
 // that a re-shown editor spends its first click dismissing it.
@@ -1366,15 +1366,15 @@ void AnamorphAudioProcessorEditor::cancelInlineTextEdits()
 //    free-standing DESKTOP window with no ancestor in common with us, so the watcher only ever sees
 //    the menu's own visibility, which hiding the editor does not touch. MenuWindow::windowIsStillValid
 //    is no backstop either: it compares two WeakReferences to the still-alive target control
-//    (juce_PopupMenu.cpp:806-816).
+//    (juce_PopupMenu.cpp:824-834).
 //  * BACKGROUND APPLICATION. JUCE does dismiss a menu on an app switch, but only with the cursor OFF
 //    it: MouseSourceState::checkButtonState gates that branch on `! reallyContained`
-//    (juce_PopupMenu.cpp:1565-1572). Cmd-Tab / Alt-Tab away with the pointer resting on a menu item
+//    (juce_PopupMenu.cpp:1583-1590). Cmd-Tab / Alt-Tab away with the pointer resting on a menu item
 //    and the menu simply stays -- a live, always-on-top, still-modal strip belonging to a plug-in
 //    that is no longer in front, and clicking an item pulls that window back to the foreground.
 //
 // Process::isForegroundProcess() is only HALF of JUCE's own test for that
-// (doesAnyJuceCompHaveFocus, juce_PopupMenu.cpp:894-897); the other half,
+// (doesAnyJuceCompHaveFocus, juce_PopupMenu.cpp:912-915); the other half,
 // detail::WindowingHelpers::isEmbeddedInForegroundProcess, is what covers a plug-in whose editor
 // lives in a window owned by a DIFFERENT process -- and it is internal to the module, so we cannot
 // call it. That case is not exotic and it is not about the format: whether a plug-in runs inside the
@@ -1402,7 +1402,7 @@ void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
     // The focus work is for the APPLICATION SWITCH only; the hidden-editor branch skips it on
     // purpose. What it answers is PopupMenuCompletionCallback::modalStateFinished restoring the
     // pre-menu focus when the modal state ends -- `topLevel->toFront (true)` on whatever holds the
-    // focus, then grabKeyboardFocus (juce_PopupMenu.cpp:2247-2268). In a plug-in that top level is
+    // focus, then grabKeyboardFocus (juce_PopupMenu.cpp:2265-2286). In a plug-in that top level is
     // the host's own window, so after the user has Cmd-Tabbed away it hauls the DAW in front of the
     // application they switched to and takes their next keystrokes with it: the exact symptom this
     // dismissal exists to prevent, happening without a click. JUCE suppresses the restore for its
@@ -2197,7 +2197,7 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     //
     // Dropping setLookAndFeel (&lnf) is part of the same move, not a separate fix. The
     // MenuWindow COPIES the menu's look-and-feel into its own Component::lookAndFeel
-    // slot (juce_PopupMenu.cpp:366) -- that slot is a WeakReference (juce_Component.h),
+    // slot (juce_PopupMenu.cpp:381) -- that slot is a WeakReference (juce_Component.h),
     // so it NULLED rather than dangled when the editor died, and a null slot falls back
     // to the default LookAndFeel_V4: exactly the "hovering loses the custom styling"
     // symptom. (The `PopupMenu m` below is a stack local and is long gone by then; the
@@ -2207,9 +2207,9 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // nothing stored anywhere to go stale.
     //
     // Do NOT "restore" setLookAndFeel here as a measurement fix -- measurement already
-    // uses ours. The MenuWindow ctor parents at juce_PopupMenu.cpp:370-372 and only
-    // then builds the items (:457), and ItemComponent calls parent.addAndMakeVisible
-    // BEFORE getIdealSize (:139-146), which resolves through getLookAndFeel(). Setting
+    // uses ours. The MenuWindow ctor parents at juce_PopupMenu.cpp:385-387 and only
+    // then builds the items (:472), and ItemComponent calls parent.addAndMakeVisible
+    // BEFORE getIdealSize (:146-153), which resolves through getLookAndFeel(). Setting
     // it back would instead re-arm the ~LookAndFeel assertion (it fires on any live
     // WeakReference), because `lnf` is a member and so is destroyed BEFORE this
     // editor's Component base -- i.e. before the menu is asynchronously cancelled, so
@@ -2259,11 +2259,11 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // This menu does NOT reach AnamorphLookAndFeel::onPopupMenuWindowCreated, so it is tracked here
     // instead. Re-verified against the pinned tree, because "the menu is parented to the editor, so
     // it must inherit our look-and-feel" is the natural guess and it is wrong: MenuWindow binds
-    // `auto& lf = getLookAndFeel()` at juce_PopupMenu.cpp:368, BEFORE pc->addChildComponent (this)
-    // at :372, and preparePopupMenuWindow is called through that same bound REFERENCE at :500 (its
+    // `auto& lf = getLookAndFeel()` at juce_PopupMenu.cpp:383, BEFORE pc->addChildComponent (this)
+    // at :387, and preparePopupMenuWindow is called through that same bound REFERENCE at :515 (its
     // only call site in the file). Parenting afterwards cannot rebind a reference. With this menu's
-    // own look-and-feel null -- findLookAndFeel returns menu.lookAndFeel.get() at :1422-1425 -- what
-    // :368 resolves is the process DEFAULT look-and-feel, so our override never runs for it.
+    // own look-and-feel null -- findLookAndFeel returns menu.lookAndFeel.get() at :1440-1443 -- what
+    // :383 resolves is the process DEFAULT look-and-feel, so our override never runs for it.
     //
     // Raising the shield BEFORE showMenuAsync also settles the z-order: the menu is parented to this
     // editor, and JUCE appends a new child in front of the existing ones, so a shield raised first
@@ -2371,8 +2371,8 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
 // menu's teardown + focus restoration run AFTER the user callback; against the pinned
 // JUCE they run BEFORE it. ModalComponentManager::handleAsyncUpdate walks a modal
 // item's callbacks in REVERSE attach order, and the user lambda is attached first
-// (enterModalState, juce_PopupMenu.cpp:2291) with PopupMenuCompletionCallback second
-// (:2292) -- so the completion callback runs first, destroying the menu window and
+// (enterModalState, juce_PopupMenu.cpp:2309) with PopupMenuCompletionCallback second
+// (:2310) -- so the completion callback runs first, destroying the menu window and
 // calling toFront(true)/grabKeyboardFocus on the way out, and only then do we get
 // called. What defeats the immediate grab is that OS focus transfer being
 // asynchronous, not the menu still owning focus. (Since 0.9.2 the menu is PARENTED to

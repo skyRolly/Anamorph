@@ -13434,7 +13434,7 @@ static void testAPresetFileIsOneWellFormedDocument()
     //
     // Devin review finding. The boundary validated the DECODED TEXT, and the decode is not
     // lossless: `String::createStringFromData` asks whether the bytes are valid UTF-8 and, when
-    // they are not, reads them as Windows-1252 instead (juce_String.cpp:2030-2034) -- a codepage
+    // they are not, reads them as Windows-1252 instead (juce_String.cpp:2017-2021) -- a codepage
     // in which every byte means something. So a file no conforming XML parser would accept was
     // silently transcoded into one that parsed. Measured on `7076359` through the real `loadFile`:
     // `raw="\xC3\x28"` decoded from 63 bytes to 64 and LOADED, and so did a truncated sequence,
@@ -14327,7 +14327,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         // THE SEEDS MUST REACH THE PARSER, and until 2026-09-21 they did not. All three were
         // stored zlib-framed -- `56 43 32 21` then `78 9c` -- but no JUCE this project has ever
         // pinned compresses that container: `AudioProcessor::copyXmlToBinary` writes magic,
-        // length, PLAIN single-line XML and a NUL at 8.0.14, 9.0.0, 9.0.1, 9.0.2 and 9.0.3 alike, and
+        // length, PLAIN single-line XML and a NUL at 8.0.14, 9.0.0, 9.0.1, 9.0.2, 9.0.3 and 9.0.4 alike, and
         // `getXmlFromBinary` is `parseXML (String::fromUTF8 (data + 8, ...))`. A zlib body
         // therefore decoded to nothing, `decodeRestore` returned false at its first branch, and
         // the 90 s `fuzz` budget started from three inputs that reached no migration, no repair
