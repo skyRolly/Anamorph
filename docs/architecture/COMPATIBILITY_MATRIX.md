@@ -4,6 +4,15 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 (README/CI claim, not fully provable here) · **Unverified** (could work, no evidence in repo) ·
 **Not Supported** (deliberate, evidence-backed exclusion).
 
+## Current release attestation — 0.9.9 / JUCE 9.0.4
+
+**Host matrix PASS**, explicitly attested by the repository owner **2026-10-21 UTC**;
+compatibility **8/8 PASS**, Level-5 **PASS (A–G)**. Planned release: **2026-10-22**.
+Specific DAWs, OS/CPU combinations, formats, devices, sessions and actual test dates are
+**NOT RECORDED**. Per-host rows below describe separately recorded evidence, not named-DAW
+test reports or an open release gate. See `procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`
+and `procedures/LEVEL5_AUDITION.md`.
+
 ## Plugin formats
 
 | Format | Status | Evidence |

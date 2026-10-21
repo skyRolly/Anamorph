@@ -1,6 +1,8 @@
 # JUCE 9.0.3 → 9.0.4 upgrade — measurement record (0.9.9)
 
-Companion evidence for **ADR-0061** (`Proposed`). Requested 2026-10-21: upgrade safely to
+Companion evidence for **ADR-0061** (now **Accepted**, owner approval recorded 2026-10-21 UTC).
+The measurements below predate the final owner attestation; their dates and results are retained.
+Requested 2026-10-21: upgrade safely to
 9.0.4, fix resulting issues, synchronize documentation, retain 0.9.9 and date it **2026-10-22**.
 PR #160 is already on main (`e0532bc`). No tag or release is created by this work.
 
@@ -110,5 +112,9 @@ Current pin homes and the planned release date move together. Historical measure
 ADRs keep their dates/versions. ADR-0060 is superseded; ADR-0061 records the new decision and citation map.
 Live JUCE references move to the actual 9.0.4 code, including the rewritten first-NUL loop and XI2 masks.
 
-Architecture Review, Level-5 audition groups A–G, host-matrix attestation and automation-playback
-attestation remain **open** for the 9.0.4 build. Historical 9.0.2/9.0.3 records do not certify it.
+At measurement time, Architecture Review, Level-5 groups A–G, host-matrix and automation-playback
+attestations were open. The final owner attestation recorded **2026-10-21 UTC** now closes them:
+**Architecture Review APPROVED, Level-5 PASS (A–G), compatibility 8/8 PASS; human gates COMPLETE**.
+See `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Final owner release attestation.
+Specific human test dates, artifact and environments remain **NOT RECORDED**. Historical
+9.0.2/9.0.3 records are preserved without being used to infer this final 9.0.4 approval.

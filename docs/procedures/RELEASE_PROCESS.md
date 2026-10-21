@@ -28,15 +28,12 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    `docs/policies/ARCHITECTURE_REVIEW_GATE.md` change, confirm human sign-off + an ADR.
 6. **Docs synced** — apply `docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md` triggers; refresh
    `docs/HANDOVER.md` status fields.
-7. **Manual audition** — Level 5 (audio/visual) signed off in a DAW; a green build is "ready to
-   audition," not final. **Scope, per-item checks and the record format are in
-   `LEVEL5_AUDITION.md`**, which also states when a previous audition stops counting (a machine-code
-   or audible-behaviour change invalidates it — the **0.9.6 audition of 2026-09-01**, the most
-   recent PASS on record, did not carry over to 0.9.7, because ADR-0034 changed the reported
-   latency and the Drive-crossing swap behaviour, so 0.9.9 needed its own (`LEVEL5_AUDITION.md`
-   §Scope for 0.9.9); the owner reported that audition completed on 2026-09-28 (§Recorded auditions,
-   0.9.9 — per-item results, DAW, OS and format NOT RECORDED)). It requires a human; no CI job and no automated
-   agent can supply it.
+7. **Manual audition** — Level 5 is the required human sign-off. The owner explicitly attests
+   final **0.9.9 / JUCE 9.0.4 PASS (A–G)**, recorded **2026-10-21 UTC** in `LEVEL5_AUDITION.md`
+   and the standing engineering worklog. Architecture Review is APPROVED, compatibility is
+   **8/8 PASS**; required human release gates are **COMPLETE**. Actual human test date, exact
+   artifact and environments are **NOT RECORDED**. Planned release: **2026-10-22**. Earlier
+   audition records remain historical; no automated agent supplies the human result.
 
 ## Build the release artifacts
 
@@ -72,7 +69,7 @@ compile definitions).
 version** `MAJOR.MINOR.PATCH` — no prefix (ADR-0059) — created AFTER pre-release steps 1–7 above
 are complete. The tag must equal the `CMakeLists.txt` `project VERSION` exactly — `release.yml`
 triggers only on a bare `x.y.z` tag and fails closed on any mismatch; a prefixed tag starts no
-release at all. **The next tag is `0.9.9`, and it is the line's FIRST** (ADR-0058: none of 0.9.0
+release at all. **The line's first official tag is `0.9.9`** (ADR-0058: none of 0.9.0
 through 0.9.8 was tagged; each was written up and closed before a tag was cut, and none is tagged
 retroactively):
 
@@ -214,9 +211,11 @@ takes the release path only for a tag **push**, so a rehearsal started from an e
 `is-release=false` and `draft-release` does not run (ADR-0059). A release is cut only by pushing the
 annotated tag.
 
-No release tag exists yet — the first will be cut at the **0.9.9** release (ADR-0058; none of 0.9.0 through 0.9.8 was tagged). Historical
-CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
-tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
+The owner authorizes the first annotated tag **`0.9.9`** and its **draft-only** release execution
+(2026-10-21 UTC), after the sign-off records are integrated on final `main` and mandatory gates
+pass. No version from 0.9.0 through 0.9.8 was tagged (ADR-0058). The remote tag and release manifest
+record execution; historical CHANGELOG entries retain commit-SHA evidence permanently.
+Publishing remains a separate maintainer action and is not authorized by this execution request.
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).
 
 ## After release

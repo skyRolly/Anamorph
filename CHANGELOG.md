@@ -6,9 +6,10 @@ per release; versions are `MAJOR.MINOR.PATCH` per [Semantic Versioning] (pre-1.0
 including `[0.8.12]` predate git tags, so a release tag was never available as evidence for them
 (`docs/policies/CHANGELOG_POLICY.md` rule 2).
 The annotated-tag convention and the tag-triggered release pipeline exist
-(`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
+(`docs/procedures/RELEASE_PROCESS.md` §Tagging). The first official annotated tag is **0.9.9**,
+authorized by the owner on 2026-10-21 after the completed human release gates. `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, and so in turn was every
-version through `[0.9.8]`, so the first annotated tag will be **0.9.9** (ADR-0058:
+version through `[0.9.8]` (ADR-0058:
 0.9.0 through 0.9.8 were each written up and closed before tagging, and their headings carry no
 link). A tag is the bare version, `x.y.z` (ADR-0059). From that tag onward the tag is also a citable Evidence
 Source. Until then an entry cites a PR or a commit SHA — with one historical

@@ -4,18 +4,20 @@
 maintainer on **2026-07-30**, together with the Level-5 identity check (see *Verification
 performed*).
 
-**The `COMPATIBILITY_POLICY` exception is NOT yet fully satisfied.** It needs all four conditions,
-and only three are met:
+**The `COMPATIBILITY_POLICY` exception is fully satisfied for first official release 0.9.9.**
+The owner confirms final **0.9.9 / JUCE 9.0.4** compatibility **8/8 PASS** on **2026-10-21 UTC**.
+All four conditions are met; the original 0.9.1 release was never tagged.
 
 | Condition | State |
 |---|---|
 | 1 — an ADR records the decision | ✅ this document |
 | 2 — migration plan, or the identity carve-out | ✅ carve-out 2a/2b/2c (below) |
-| 3 — the **Release Compatibility Checklist** passes | ❌ **OPEN** — never completed for this release (`HANDOVER.md`, Release Status). It is a **release-time** gate, not a merge-time one, so it does not block landing this change; it does block cutting `0.9.1`. |
+| 3 — the **Release Compatibility Checklist** passes | ✅ **PASS for 0.9.9 / JUCE 9.0.4**, owner attestation 2026-10-21 UTC; `RELEASE_COMPATIBILITY_CHECKLIST.md` (8/8). |
 | 4 — Architecture Review Gate cleared | ✅ 2026-07-30 |
 
-Condition 3 is deliberately left open rather than waved through: this ADR states below that it
-"must not claim a green gate it did not observe", and the release checklist is exactly such a gate.
+Condition 3 was originally left open for the release-time checklist. Its closure now rests on
+the explicit owner attestation, not an inferred test result. Unsupplied test details remain
+NOT RECORDED in the checklist. The manufacturer-code decision stays Accepted.
 
 ## Context
 

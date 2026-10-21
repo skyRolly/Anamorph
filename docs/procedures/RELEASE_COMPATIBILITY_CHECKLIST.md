@@ -7,23 +7,28 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 ## Current gate — 0.9.9 / JUCE 9.0.4 (2026-10-21)
 
 The planned release is **2026-10-22**, using ADR-0061's 9.0.4 pin. The checklist below is the
-live checklist for that build. Older records are retained as history. Six headless checks
-have been re-run and pass; host-matrix and automation-playback checks require fresh owner attestations.
-The audible half of preset compatibility also remains part of the open Level-5 audition.
+live checklist for that build. **8/8 PASS — COMPLETE**, explicitly confirmed by the owner
+on **2026-10-21 UTC**, including host matrix (item 5), automation playback (item 7) and the
+audible preset checks through Level-5 **PASS (A–G)**. Existing engineering evidence is retained;
+this update records final owner approval, not a new test run. Actual human test dates, exact
+artifact, DAW/version, OS/CPU, format, device, session, automation lanes and individual
+measurements are **NOT RECORDED**. Earlier records remain historical.
 
 | # | Item | 0.9.9 on JUCE 9.0.4 |
 |---|---|---|
 | 1 | Parameter IDs unchanged | **PASS** — registry snapshot, all 36 IDs unchanged |
 | 2 | Serialization schema verified | **PASS** — state suite and byte-exact cross-framework session probe |
-| 3 | Presets migrated | **PASS (headless)** — state/preset checks; audible half stays in Level 5 |
+| 3 | Presets migrated | **PASS** — existing state/preset evidence plus owner Level-5 PASS (A–G), attested 2026-10-21 |
 | 4 | Pluginval passed (both modes) | **PASS** — strictness 10, deterministic ×3 and randomise ×3, first attempts |
-| 5 | Host matrix verified | **OPEN** — owner attestation on 9.0.4 |
+| 5 | Host matrix verified | **PASS** — owner attestation, 2026-10-21 UTC; hosts / environments NOT RECORDED |
 | 6 | Latency reporting verified | **PASS** — 32-scenario twin dump identical, reported latency included |
-| 7 | Automation playback verified | **OPEN** — owner attestation on 9.0.4 |
+| 7 | Automation playback verified | **PASS** — owner attestation, 2026-10-21 UTC; environments / lanes NOT RECORDED |
 | 8 | Session reload verified | **PASS** — 9.0.3-written session re-saves byte-exactly; render and latency identical |
 
-Evidence: `worklogs/JUCE904_UPGRADE_0.9.9.md`. No 9.0.3/9.0.4 human verification is inferred
-from PR #160's merge. `RELEASE_POLICY.md` preconditions 2, 5 and 7 remain open.
+Engineering evidence: `worklogs/JUCE904_UPGRADE_0.9.9.md` and existing green CI. Human evidence:
+the final owner instruction recorded in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`.
+`RELEASE_POLICY.md` preconditions **2, 5 and 7 are COMPLETE**: checklist **8/8 PASS**,
+Architecture Review **APPROVED**, Level-5 **PASS (A–G)**. No human result is inferred from a merge.
 
 ## Historical completion record — 0.9.9 / JUCE 9.0.3 (2026-09-29)
 
@@ -105,7 +110,7 @@ These boxes describe the current **JUCE 9.0.4** build; historical passes are rec
       Ref: `docs/architecture/SERIALIZATION_REGISTRY.md`, `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
       *Automated since the 0.8.13 cycle:* schema-shape + raw-exact round-trip + the three
       legacy-format fixtures in `tests/state_tests.cpp`. The cross-version step below stays manual.
-- [x] **Presets migrated** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21; headless, audible half stays in Level 5).** — factory presets and a representative user `.anamorph` still load and
+- [x] **Presets migrated** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21; existing headless evidence plus owner Level-5 PASS).** — factory presets and a representative user `.anamorph` still load and
       sound identical. Ref: `src/PresetManager.cpp`.
       *Partially automated:* `tests/state_tests.cpp` proves save→reload structural equality +
       exclusion rules + factory loadability; "sound identical" remains a Level-5 (audition) check.
@@ -114,9 +119,7 @@ These boxes describe the current **JUCE 9.0.4** build; historical passes are rec
       `<n>` is `ANAMORPH_PLUGINVAL_STRICTNESS` from `.github/workflows/build.yml` — read it there
       rather than from this line, so a raise cannot leave this checklist certifying the old bar.
       Ref: `docs/procedures/TESTING.md`.
-- [ ] **Host matrix verified** — **OPEN (0.9.9 on JUCE 9.0.4; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (hosts NOT RECORDED); see the completion records above for historical attestations. Load in the target hosts and confirm load + automation + state.
-      (Currently Unverified in-repo; this requires manual DAW testing —
-      `docs/architecture/COMPATIBILITY_MATRIX.md`.)
+- [x] **Host matrix verified** — **PASS (final 0.9.9 / JUCE 9.0.4; owner attestation, 2026-10-21 UTC).** Specific DAWs, OSes, formats, devices, sessions and actual test dates are **NOT RECORDED**. Separately qualified per-host evidence in `docs/architecture/COMPATIBILITY_MATRIX.md` does not reopen this completed release gate.
 - [x] **Latency reporting verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — reported PDC matches the actual chain
       delay across the oversampling settings; OS-off reports 0; and the number is now a function of
       the Oversampling setting alone, so no parameter move can change it. Ref:
@@ -126,8 +129,7 @@ These boxes describe the current **JUCE 9.0.4** build; historical passes are rec
       reopens in 0.9.7 with the host compensating a few samples where it previously compensated none.
       Nothing in the session file changed — the schema is untouched and item 2 is unaffected — and the
       audio is the same audio, arriving at the position the plug-in now correctly declares.
-- [ ] **Automation playback verified** — **OPEN (0.9.9 on JUCE 9.0.4; owner re-attestation required).** The 2026-09-28 PASS covered the 9.0.2 build only (host and lanes NOT RECORDED); see the completion records above for historical attestations. Recorded automation on host-visible parameters must play back
-      with unchanged meaning. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
+- [x] **Automation playback verified** — **PASS (final 0.9.9 / JUCE 9.0.4; owner attestation, 2026-10-21 UTC).** Host, lanes, session and actual test date are **NOT RECORDED**. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
 - [x] **Session reload verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — save a session in the previous version, load it in the new
       version: sound, preset name, dirty-star, and both A/B slots reproduce exactly.
       Ref: `docs/architecture/STATE_SERIALIZATION.md`.

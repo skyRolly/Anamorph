@@ -4,6 +4,11 @@
 PR #160 merged this pin; the owner then requested 9.0.4 in 0.9.9. The original proposal and
 verification below are retained; no 9.0.3 audition is inferred from the merge.
 
+**Owner approval recorded 2026-10-21 UTC:** all pending ADR approvals, including this decision's
+outstanding Architecture Review, are granted. Its lifecycle status remains **Superseded**.
+The final Level-5 and compatibility PASS cover **9.0.4**, not an invented separate 9.0.3 test.
+See ADR-0061 and the standing engineering worklog's final owner release attestation.
+
 **Original status (2026-09-29):** **Proposed** — implemented on `claude/anamorph-comprehensive-review-90tpty` with the
 headless verification recorded below, and **awaiting the two human acts no gate can produce**: the
 owner's Architecture Review (`ARCHITECTURE_REVIEW_GATE.md` — a JUCE pin is a gated Build System

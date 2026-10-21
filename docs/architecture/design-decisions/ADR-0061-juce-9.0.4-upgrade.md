@@ -1,10 +1,11 @@
 # ADR-0061 — JUCE dependency upgrade 9.0.3 → 9.0.4
 
-**Status:** **Proposed** — implemented for the owner's requested 0.9.9 release, dated
-**2026-10-22**. This is a gated Build System change (`ARCHITECTURE_REVIEW_GATE.md`).
-The headless evidence below does not substitute for Architecture Review or a human Level-5
-audition of the 9.0.4 build. Host-matrix and automation-playback attestations remain open.
-Supersedes ADR-0060's 9.0.3 pin; its historical measurements are retained.
+**Status:** **Accepted** — **Architecture Review APPROVED by the repository owner,
+2026-10-21 UTC**, in the explicit final owner release attestation. All pending ADR approvals
+are granted. Final **0.9.9 / JUCE 9.0.4**: Level-5 **PASS (A–G)**, compatibility **8/8 PASS**,
+required human gates **COMPLETE**; planned release **2026-10-22**. The full attestation and
+NOT RECORDED details are in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Final owner release attestation. Supersedes ADR-0060; its historical evidence is retained.
 
 ## Context
 
@@ -51,7 +52,7 @@ is not the compatibility proof; the relevant implementation changes are audited 
 | Engine output and latency | One frozen first-party tree, `e0532bc`, built against both clean JUCE checkouts: **32/32 scenarios bit-identical**, reported latency included; both `--self-check` runs pass. |
 | XML and strings | `XmlDocument` is unchanged; `XmlElement` changes formatted mixed-content output. Anamorph's state uses attribute-only ValueTrees. String construction now bounds allocation/copy consistently for malformed UTF-8; embedded NUL still terminates decoding, so the existing state/preset boundaries remain necessary. A real 9.0.3 session re-saves byte-exactly and renders identically under 9.0.4. Focused String/MemoryBlock probes pass ASan + UBSan; full suite and XML differential results are in the worklog. |
 | Threading / wrappers | VST3, AU and Standalone wrappers are byte-identical to 9.0.3. MessageManagerLock internals change; message-thread identity reads now use an atomic instead of a mutex. Anamorph adds no thread, callback path, or atomic ordering. State/concurrency tests and pluginval both modes ×3 pass on Linux. |
-| GUI / devices | Windows DPI/placement, X11/Xwayland input, popup menus, OpenGL function checks and Standalone audio-device setup change. Real display, host and device validation belongs to the reopened Level-5 protocol. The MIDI disconnection API is not used by Anamorph. |
+| GUI / devices | Windows DPI/placement, X11/Xwayland input, popup menus, OpenGL function checks and Standalone audio-device setup change. The owner attests the complete Level-5 scope PASS; specific display, host and device observations are NOT RECORDED. The MIDI disconnection API is not used by Anamorph. |
 | Licences / contents | All **66** licence/readme files checked are byte-identical. SPDX changes only JUCE version/namespace metadata; third-party packages and licence facts do not move. `NOTICE` and the inventory follow the new pin. |
 | Cached builds | Seven regression tests cover new/reused caches, both partial resets, retained custom overrides, local comparisons and legacy 9.0.2 fields. The real build wrapper refuses an existing 9.0.3 cache before fetching. |
 
@@ -78,8 +79,10 @@ The normal configure/build path now rejects a stale 9.0.3 pin instead of produci
 against it. One reset of both cache entries selects the new default; no override is rewritten.
 Saved-session formats, parameter IDs and latency rules remain the same.
 
-**Human gates remain open:** Architecture Review of this decision, the 9.0.4 Level-5 audition
-(groups A–G), and checklist items 5 and 7 on that build. A green build is not release approval.
+**Required human gates COMPLETE (owner attestation, 2026-10-21 UTC):** Architecture Review
+**APPROVED**, final 9.0.4 Level-5 **PASS (A–G)**, compatibility **8/8 PASS** including items 5/7.
+This is the owner's explicit approval, not an inference from CI or a merge. Actual human test
+date, exact artifact, DAW, OS, device, session and individual measurements are **NOT RECORDED**.
 
 ## Related code
 
@@ -90,5 +93,5 @@ Saved-session formats, parameter IDs and latency rules remain the same.
 
 **Verified:** upstream tags/source comparison, immutable pin in commit `5fcf153`, module metadata,
 licence files, APVTS store, cache regression tests and the twin dump. Full build, DSP/state suites, the cross-version session, the XML differential, focused sanitizer
-probes and pluginval both modes ×3 are recorded in the worklog. **Unverified:** real DAW, audio-device and display behavior until the
-human checks above are recorded. No such result is inferred from PR #160's merge.
+probes and pluginval both modes ×3 are recorded in the worklog. **Owner-attested PASS:** final 0.9.9 / JUCE 9.0.4 human acceptance, recorded 2026-10-21 UTC.
+Specific host/device/display observations are **NOT RECORDED**; no result is inferred from PR #160's merge.
