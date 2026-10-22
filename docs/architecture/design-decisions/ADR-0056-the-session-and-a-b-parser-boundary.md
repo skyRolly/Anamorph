@@ -472,3 +472,20 @@ with the 1 MB rows under `ulimit -s 1024` for Windows main-thread parity and pea
 **Two things remain judgements rather than measurements**: the size cap is bounded by the largest
 session ever *measured*, not by a proof; and the payload's own size cap is unreachable while the
 outer cap holds, so it is argued by containment rather than tested.
+
+
+## 2026-10-22 evidence correction — no new acceptance decision
+
+The 0.9.10 investigation on pinned JUCE 9.0.4 corrects the unconditional containment statement
+above. For **valid UTF-8**, outer containment still follows from unescaping and DOCTYPE refusal.
+For retained **invalid native UTF-8 bytes**, `String::getNumBytesAsUTF8()` can count U+FFFD as three
+bytes per one stored byte. State test 144 constructs an under-cap outer chunk whose decoded A/B
+payload exceeds the existing inner byte-count cap. The inner guard already rejects it while the
+outer restore applies. The inner size check is therefore independently reachable; it must remain.
+
+Also, a positive declared XML length larger than actual bytes is clamped by `getXmlFromBinary`;
+a complete supplied XML prefix can still apply. State test 144 distinguishes that case, shorter
+declared lengths, NUL-hidden tails, invalid UTF-8 and parseable truncation from rejection.
+This corrects evidence, not this ADR's accepted boundary or its preserved malformed-input semantics.
+`worklogs/STATE_HOST_HARDENING_0.9.10.md` contains the owner decision package for any further
+restrictions. No additional acceptance restriction or owner approval is inferred here.

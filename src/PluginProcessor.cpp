@@ -4,7 +4,7 @@
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
 #include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
 #include "XmlBoundary.h"        // ADR-0056: the parser-safety scan both host-state paths run
-
+#include "SerializedXml.h"      // NaN-safe formatting on private XML copies; parameter policy unchanged
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
 AnamorphAudioProcessor::AnamorphAudioProcessor()
@@ -2346,12 +2346,12 @@ namespace
 
         // THE STRING THE PARSER WILL SEE -- not a reconstruction of it. This is
         // `juce_AudioProcessor.cpp:975-976`'s own expression on its own range, so the scan and the
-        // parse cannot disagree about where the document ends. It matters: `String::fromUTF8`
-        // builds through `createFromCharPointer`, whose `while (e < end && ! e.isEmpty())`
-        // (`juce_String.cpp:99`) STOPS AT THE FIRST NUL, so the text the parser gets is a prefix
-        // of the byte range. Scanning the bytes instead would scan past that NUL and refuse
-        // documents the parser never sees. The cost is one extra decode of at most 256 KB, once
-        // per project open.
+        // parse cannot disagree about where the document ends. The pinned native UTF-8 String
+        // copies the sized byte range, including any invisible tail. String/XML walks still
+        // STOP AT THE FIRST NUL: only the prefix is visible to this scan and to the parser.
+        // Scanning the original bytes instead would refuse documents the parser never sees.
+        // Invalid UTF-8 is retained here, not validated. The cost is one extra bounded byte
+        // copy per project open; the ORIGINAL chunk size was capped above.
         const auto text = juce::String::fromUTF8 (static_cast<const char*> (data) + 8,
                                                   juce::jmin (sizeInBytes - 8, stated));
         return anamorph::xmlBoundary::textIsAdmissible (
@@ -2362,12 +2362,12 @@ namespace
     // One A/B slot payload, scanned before its OWN `juce::parseXML`.
     bool slotPayloadIsAdmissible (const juce::String& payload)
     {
-        // The size cap is REDUNDANT BY CONTAINMENT TODAY, and stated anyway because the rule is
-        // "every independently parsed document carries its own boundary". The payload arrives as
-        // an attribute value of a session chunk already capped at 256 KB, and XML unescaping only
-        // ever shrinks (`&lt;` -> `<`); the one mechanism that could have grown it -- entity
-        // expansion from a `DOCTYPE` in the OUTER document -- is refused above. If either of those
-        // two facts ever changes, this line is what keeps the payload bounded.
+        // For valid UTF-8, containment holds: XML unescaping shrinks and DOCTYPE is refused.
+        // Invalid UTF-8 makes this cap independently reachable: the pinned String can retain
+        // one invalid native byte while getNumBytesAsUTF8 counts its U+FFFD as THREE bytes.
+        // State test 144 carries 90,000 such bytes in an under-cap outer chunk; its payload
+        // exceeds this cap and is refused HERE, while the outer session still applies.
+        // Keep the existing byte-count rule on each independently parsed payload (ADR-0056).
         if ((juce::int64) payload.getNumBytesAsUTF8() > anamorph::xmlBoundary::maxDocumentBytes)
             return false;
 
@@ -2763,17 +2763,17 @@ void AnamorphAudioProcessor::writeState (const ProgramSnapshot& s, const juce::V
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", s.abActive, nullptr);
     // Each slot carries its params AND its preset name + baseline (#6) + its indicator identity.
-    ab.setProperty ("slotAParams", slotA.params.toXmlString(), nullptr);
+    ab.setProperty ("slotAParams", anamorph::toXmlStringWithSafeNumbers (slotA.params), nullptr);
     ab.setProperty ("slotAName",   slotA.name, nullptr);
     ab.setProperty ("slotABase",   slotA.baseline, nullptr);
     writeSelection (ab, slotA.selection, "slotASource", "slotAFactoryId", "slotAUserFile");
-    ab.setProperty ("slotBParams", slotB.params.toXmlString(), nullptr);
+    ab.setProperty ("slotBParams", anamorph::toXmlStringWithSafeNumbers (slotB.params), nullptr);
     ab.setProperty ("slotBName",   slotB.name, nullptr);
     ab.setProperty ("slotBBase",   slotB.baseline, nullptr);
     writeSelection (ab, slotB.selection, "slotBSource", "slotBFactoryId", "slotBUserFile");
     root.appendChild (ab, nullptr);
 
-    if (auto xml = root.createXml())
+    if (auto xml = anamorph::createXmlWithSafeNumbers (root))
         copyXmlToBinary (*xml, destData);
 }
 

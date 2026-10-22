@@ -93,7 +93,10 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
 4. Append `internal.copyState()` ("ANAMORPH_INTERNAL").
 5. Append the "AB" child with both slots' params (as XML strings) + name + baseline + each
    slot's own identity trio, through the same `writeSelection` helper.
-6. `copyXmlToBinary`.
+6. `copyXmlToBinary`. The root, both slot payloads and preset saves use `SerializedXml.h` to
+   spell numeric NaNs on a private XML serialization copy, bypassing JUCE 9.0.4's undefined
+   NaN-to-int formatter conversion. The existing textual spelling and restore/default behavior
+   remain; finite formatting and the captured numeric state are unchanged (State test 142).
 
 ## `setStateInformation` logic
 
@@ -109,12 +112,16 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
    own and nests on its own.
 1. `getXmlFromBinary` → root tree.
 2. **If `AnamorphRoot`:**
-   - **`repairSerializedValues`** on a private copy of the `ANAMORPH` child — every malformed
-     serialized value (`nan`, `inf`, `abc`, `""`, `0x10`, `1e39`, a usable number outside the
-     parameter's range) is rewritten in that copy to the parameter default or the nearest range
-     endpoint, `value` and `raw` both, BEFORE the tree is handed to JUCE (since D-2: the live tree is
+   - **`repairSerializedValues`** on a private copy of the `ANAMORPH` child — the shared resolver
+     prefers a usable `raw`, otherwise `value`, otherwise the default. When that resolution needs
+     repair (`nan`, `inf`, `abc`, `""`, `0x10`, `1e39`, or an out-of-range number), it rewrites
+     `value` and any present `raw` BEFORE the tree is handed to JUCE (since D-2: the live tree is
      only ever written under JUCE's lock, and the host is told the repaired value during
-     `replaceState` rather than the clamped garbage first); then `apvts.replaceState` of that copy,
+     `replaceState` rather than the clamped garbage first). **Limitation:** a usable `raw` marks the
+     resolution unrepaired even if `value="nan"`; JUCE can notify NaN during the initial replace,
+     before reassertion installs the finite raw. The next save can retain the textual `nan`.
+     KI-029 and `--nonfinite-ingress-probe` record this preserved window; no ingress policy is
+     chosen here. Then `apvts.replaceState` of that copy,
      **then `reassertParameters(copy)`** — synchronously re-apply each parameter from the restored
      tree, preferring the exact `raw` attribute (falling back to the denormalised `value` for legacy
      sessions). This makes a wholesale `replaceState` deterministic + idempotent and round-trips

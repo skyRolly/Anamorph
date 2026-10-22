@@ -198,7 +198,9 @@ delayed BY that number. Its 0.35 fs control is also the only check in either sui
 engages the wrap at all. **Test 61** (`testScopeRingHandsTheNewestFramesOldestFirst`) drives
 `ScopeBuffer` single-threaded at 441-frame blocks across 2.7 laps: `readLatest` returns exactly the
 newest frames, oldest first, including through the second copy segment a straddling block takes;
-the cross-thread half is deliberately not tested (the worklog says why). Tests 55–58, from the same
+on failure it prints the first mismatched frame's write count, read length, index and exact
+hexadecimal expected/actual samples (Build & Validate #1777's Rosetta investigation).
+The cross-thread half is deliberately not tested (the worklog says why). Tests 55–58, from the same
 PR's earlier rounds, have no entry here yet; their evidence is in CHANGELOG `[0.9.9]` and the ADR
 corrections those entries cite.
 
@@ -4757,10 +4759,41 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**138 tests**, State tests 1–141 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
+### 0.9.10 focused state and host interaction coverage
+
+`tests/state_hardening_tests.h` is included by the existing state target (no new target or private
+production access). Its four numbered tests run in the ordinary suite:
+
+- **142:** safe NaN formatting through real session/preset writers, both host threads and A/B
+  slots; finite XML identity, unchanged live readback, existing invalid-value restore rules.
+- **143:** a host gesture listener delivers the only `mouseUp` during drag/wheel band-move
+  startup, with cached button state already up. No second release or cancellation supplies the
+  expected closes. Both pins balance, Solo stays unchanged and the next user edit has its own
+  Undo boundary. Stale-state and gesture-close reentry legs cover cancellation and duplicate
+  closes; a nested no-op wheel event during a store must not drain the release before its caller.
+  Failure-only cleanup runs after the assertions; it cannot make a broken leg pass.
+- **144:** original bytes versus decoded text at the outer and inner parser surfaces: all five
+  RISK-015 classes, declared-length controls, refusal/application witnesses, repeated restores and
+  invalid UTF-8 that makes the inner 256 KB check independently reachable.
+- **145:** host advancedMode writes with closed/open editor, background update/coalescing,
+  resize reentry, pending-update destruction and restore overlapping construction. Runs last
+  because it starts/stops JUCE's event loop; Linux/BSD editor cases use Xvfb and no native peer.
+
+Each can run alone via `--nonfinite-save-probe`, `--nested-release-probe`,
+`--host-acceptance-probe`, `--advanced-mode-probe`. `--nonfinite-ingress-probe` prints current
+host/text/restore semantics. `--restore-lock-probe` measures F9's outer-held-lock edge;
+`--restore-reentry-probe` is an **opt-in unresolved diagnostic**, expected to fail the final
+metadata checks on current production code. It also checks saves inside the latency callback so
+an adoption guard cannot hide a mixed snapshot. It is not part of the passing regression suite.
+Run state processes serially: these probes share the real preset folder, just like the full suite.
+Evidence, negative controls, commands and environment limits:
+`worklogs/STATE_HOST_HARDENING_0.9.10.md`.
+
+`tests/state_tests.cpp` (**142 tests**, State tests 1–145 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
-and without ever showing it — no peer, no message loop, no interaction):
+and without ever showing it. Later interaction fixtures drive real components; State test 145
+runs the real message queue on Linux/BSD, still without a native host peer):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
 snapshot** (IDs/names/order/automation flags/step texts exact + range mappings probed at 5
 normalised points, vs `tests/fixtures/parameter_registry.snapshot`), a raw-exact
@@ -5549,6 +5582,13 @@ stand-in validator, over recorded strings — 22 cases, no build tree, no plugin
 (`classify_pass_exit`, `run_one_pass`, `self_test`); scripts/run-pluginval.ps1 (verdict block).
 
 ## CI integration
+
+The Linux composite action runs `scripts/configure-ci-apt-mirrors.sh --self-test` before applying
+its mirror correction. Eight fixture checks cover HTTP/HTTPS Azure entries, whitespace and priority
+metadata, comments/custom/ports/security mirrors, exact URL matching, an already configured list,
+empty input and an absent list. A no-op mutation of the rewrite fails three checks. The fixtures
+exercise the actual helper without root access or downloads; throughput is evidenced separately
+by Build & Validate #1777's logs (`CI_CD.md`, "Job timeouts").
 
 All three build jobs run the self-tests + pluginval in **both** modes (deterministic ×3 + randomise
 ×3), and **all three are blocking** — Windows/macOS do not use `continue-on-error`, so a non-zero

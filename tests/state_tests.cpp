@@ -45832,6 +45832,8 @@ static int runBulkSwapStress (int trials, int stallUs)
 }
 
 
+#include "state_hardening_tests.h"
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -45845,6 +45847,41 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--nonfinite-save-probe") == 0)
+    {
+        testANaNSessionSavePreservesTheExistingEncoding();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--nested-release-probe") == 0)
+    {
+        testAReleaseCannotClearABandMoveDuringItsStartup();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--host-acceptance-probe") == 0)
+    {
+        testTheCurrentHostStateAcceptanceAtBothParserSurfaces();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--advanced-mode-probe") == 0)
+    {
+        testHostAdvancedModeWritesWithTheRealEditor();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--restore-lock-probe") == 0)
+        return runRestoreAdoptionLockProbe();
+    if (argc > 1 && std::strcmp (argv[1], "--restore-reentry-probe") == 0)
+    {
+        probeRestoreTailReentry();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--nonfinite-ingress-probe") == 0)
+        return runNonFiniteIngressProbe();
 
     if (argc > 1 && std::strcmp (argv[1], "--risk014-probe") == 0)
         return runRisk014Probe (argc > 2 ? argv[2] : "", argc > 3 ? std::atoi (argv[3]) : 1);
@@ -46069,6 +46106,10 @@ int main (int argc, char* argv[])
     testHostStateIsBoundedBeforeTheParser();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
+    testANaNSessionSavePreservesTheExistingEncoding();
+    testAReleaseCannotClearABandMoveDuringItsStartup();
+    testTheCurrentHostStateAcceptanceAtBothParserSurfaces();
+    testHostAdvancedModeWritesWithTheRealEditor();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

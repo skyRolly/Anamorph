@@ -81,6 +81,11 @@ Footnotes:
   use-after-free in the **host's** JUCE `XEmbedComponent` on Linux/X11 during rapid open/close
   (reproduced locally; core dump lands in `XEmbedComponent` — KI-003/KI-007). It is still host-**visible**
   and serialized, excluded from **presets**, and travels with A/B + Undo (0.8.2 "ADV travels with A/B").
+  **Host-write boundary (0.9.10 investigation):** the flag does not reject host writes or restore.
+  JUCE's ButtonAttachment marshals off-thread writes to the message thread; there the editor can
+  resize synchronously. State test 145 exercises open/closed editor writes, resize reentry,
+  queued-update destruction and restore/construction overlap without establishing a plug-in defect.
+  Native host window-grant behavior remains outside that headless fixture.
   This is a recorded automation-flag change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the
   ID/range/default are unchanged, so sessions and existing state are unaffected. Source:
   src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:85-88.

@@ -5,10 +5,10 @@
 #include "../dsp/ScopeBuffer.h"
 #include "FrameClock.h"
 #include "LookAndFeel.h"   // anamorph::gui::WheelDragOwner (ADR-0053 round 29)
+#include <optional>
 
 namespace anamorph::gui
 {
-
 // ============================================================================
 //  SpectrumImager  (Advanced Mode -- the "Multiband" display)
 //
@@ -452,22 +452,22 @@ private:
     juce::uint32 soloPressMs = 0;
     bool  soloPressAlt    = false;   // Alt/Option held at press -> all-bands action on release
     bool  soloHoldActive  = false;   // momentary audition engaged
-    // ADR-0050, THE PART THE ADR STATED AND NOTHING ENFORCED. Its Decision is that "a gesture's
-    // ownership lasts as long as the on-release actions that depend on it". `mouseUp` honours that
-    // for its OWN exits -- it drops the snapshot after the action on every path. What nothing
-    // enforced is that something ELSE must not drop it first, and `cancelActiveDrag` does exactly
-    // that on its very first line, before the cheap exit that is meant to make a re-entrant call a
-    // no-op.
+    // ADR-0050: an action owns its record until it finishes opening/closing gestures.
+    // A depth keeps a nested action from ending its caller's claim. Cancellation
+    // still declines inside an action; its caller re-proves ownership before writing.
     //
-    // A DEPTH, NOT A FLAG, AND THE SECOND SITE IS WHY. This began as a `bool` with `mouseUp` as its
-    // only user and a note saying a nested `mouseUp` would drop the claim early. `beginBandMove` is
-    // now the second user, and it is reached from `mouseDrag` -- so a host that pumps the message
-    // loop from the first pin's gesture open CAN deliver a queued mouse-up into `mouseUp` while the
-    // startup's claim is still standing, and a `bool` would have had that inner scope's exit clear
-    // the outer one's. Counting costs the same instruction and removes the hazard this second site
-    // would otherwise have created. Held for the duration of an action that has published its
-    // identifiers and is still establishing its gestures; read by `cancelActiveDrag`.
-    int   gestureActionDepth = 0;
+    // A delivered mouse-up cannot be dropped: JUCE has already cleared cached-down
+    // state, so the editor's stuck-down/OS-up reconcile will not run. Keep the FIRST
+    // release, including its coordinates/source, until the enclosing drag, wheel or
+    // release handler finishes all work that consumes the action's identifiers.
+    // Replay through mouseUp so valid release actions run and stale gestures cancel.
+    // Only the outer event scope flushes, after every nested event/action unwinds.
+    // This state is used only on the message thread: no posted event or timer retry.
+    // Ending beginBandMove's scope alone is too early: its caller still uses the pins.
+    int   gestureActionDepth = 0, gestureEventDepth = 0;
+    std::optional<juce::MouseEvent> deferredMouseUp;
+    void finishGestureEvent();
+
     bool  soloMovedBand   = false;   // turned into a sideways band move
     int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
     int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)

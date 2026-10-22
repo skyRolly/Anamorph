@@ -688,6 +688,22 @@ for that long too. The ceiling is real rather than theoretical: `scripts/run-plu
 their own. Each value is roughly double the measured runtime, which leaves room for a cold cache and
 a slow runner while still failing inside the hour.
 
+**Dependency mirror correction (2026-10-22, Build & Validate #1777).** The `linux` and
+`sanitizers` cancellations were their 40/60-minute job limits, independent of the macOS failure.
+Dependency installation alone took 35:21 and 45:36: Azure's Ubuntu mirror delivered 79.1/80.8 MB
+in 34:25/33:17, and the sanitizer job's valgrind download took another 11:26. The Linux composite
+action now runs `scripts/configure-ci-apt-mirrors.sh --self-test`, then applies that helper before
+the first apt transaction. It replaces only the exact Azure archive entry in the runner's
+`/etc/apt/apt-mirrors.txt` with Ubuntu's official HTTPS archive, preserving priorities and other
+entries. An absent list, as in the Debian GCC container, stays absent. The package lists, signing
+checks, compiler pins and job limits are unchanged. The regression rejects the previous mirror
+selection; it does not simulate Internet throughput.
+
+Evidence [Verified]: `.github/actions/setup-linux-build/action.yml`,
+`scripts/configure-ci-apt-mirrors.sh`,
+[run #1777](https://github.com/skyRolly/Anamorph/actions/runs/39846676802) (attempt 1 job logs),
+`worklogs/STATE_HOST_HARDENING_0.9.10.md` (CI follow-up).
+
 **`sanitizers`: 45 → 60 minutes (2026-09-26, PR #156).** Its valgrind half grows with every test the
 suites gain, and it had outgrown the rule above: green runs on this PR's heads took 29:08, 31:07, 33:55,
 36:25, 34:13 and 42:28 (`3a779f5`: setup, the builds and the ASan run 8 min, memcheck 12:38 on the DSP
@@ -1515,7 +1531,7 @@ The probe is opt-in, so the guard step never runs it; `--risk014-probe census` w
 **Re-measured for PR #156's one new claim, and DISPOSED `DO NOT FIX`.** Diffed by *byte value* across
 the `prefast-sarif-*` artifacts: `main` at `659ca0a` carries 179 `C6262`, and every head of this PR
 from `f155978` on carries 180 — **one added, none removed**: `Function uses '20528' bytes of stack` at
-`tests/dsp_tests.cpp:7509`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
+`tests/dsp_tests.cpp:7519`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
 It is absent on `5f28e2b`, the commit before the test landed, and unchanged on every later head. The
 other 127 claims in `state_tests.cpp` each moved by an exact multiple of **64 bytes** — one
 `std::function` (MSVC's size) per stack-allocated `AnamorphAudioProcessor`, the State-test-129 seam
