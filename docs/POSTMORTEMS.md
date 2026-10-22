@@ -2,8 +2,8 @@
 
 Incident review library. Every incident is reconstructed from **repository evidence only**
 (commits, the CHANGELOG, tests, current code) — no invented events. Dates are the **fix commit**
-dates (Verified from git); affected versions are from the CHANGELOG / commit history (Partially
-Verified, as the repository has **no git tags**).
+dates (Verified from git); affected versions before the first annotated **0.9.9** tag are from
+the CHANGELOG / commit history (Partially Verified). Tag 0.9.9 peels to `c4f390f`.
 
 Template per incident: Problem · Symptom · Root cause · Defect-formation mechanism (evidence
 required) · Fix · Why this fix · Prevention.
@@ -207,6 +207,42 @@ means the 0.9.7 one.)
   (both `load` and `loadFile`), walks every factory preset for exact cleanliness, and measures the
   load-side equality against the save-side one over 3000 random round trips so the reason the two
   flavours exist is a number. A read-back baseline fails 4 checks; the save-side formula fails 3.
+
+## INC-014 — A NaN parameter reached an undefined conversion while saving
+
+- **Date:** 2026-10-22 (fix commit `104d680`); 0.9.10 development. **Affected:** verified on tagged
+  0.9.9 / pinned JUCE 9.0.4. **Severity:** High (undefined behavior during host session saving).
+- **Evidence [Verified]:** State test 142; `--nonfinite-save-probe` under ASan/UBSan;
+  `worklogs/STATE_HOST_HARDENING_0.9.10.md`; `src/SerializedXml.h` and the three session/one preset
+  XML writer call sites. Audible policy context: ADR-0009 and KI-029.
+- **Problem / symptom:** host/text writes can leave numeric NaN in APVTS or cached A/B trees.
+  Saving reaches JUCE's `serialiseDouble`, which converts NaN to int before its eventual text path;
+  UBSan aborts even though the unsanitized writer commonly emits `nan`.
+- **Root cause / formation:** accepted non-finite parameter behavior flowed into a general numeric
+  formatter with an unsafe integer fast-path predicate. The earlier review coupled serialization
+  safety to the still-open audible policy; a narrower text-preserving repair is possible.
+- **Fix / why:** spell numeric NaNs with JUCE's floating String constructor on a private XML copy.
+  The XML text, finite encoding, live readback and restore rules stay unchanged. No default/last-value
+  policy is selected at ingress or in DSP.
+- **Prevention:** test both state-call threads, root/slots/preset writers, signed NaN and repeated
+  finite/invalid cycles; compare finite XML bytes and check unchanged live values. The original
+  sanitizer reproducer is the negative control. KI-029's audible behavior remains an owner decision.
+
+## INC-015 — A nested release cleared a band move before its gestures finished opening
+
+- **Date:** 2026-10-22 (fix commit `104d680`); 0.9.10 development. **Affected:** verified on tagged
+  0.9.9. **Severity:** Medium (unbalanced host gestures and an unintended Solo change).
+- **Evidence [Verified]:** State test 143; `--nested-release-probe`; the current worklog;
+  `SpectrumImager::mouseUp`. Existing action-lifetime decision: ADR-0050.
+- **Problem / symptom:** a host listener reenters mouseUp from the first pin's beginChangeGesture
+  during a band move (drag or in-press wheel). Both pin gestures can remain open and release can
+  toggle Solo unexpectedly; the original test fails eight checks.
+- **Root cause / formation:** mouseUp cleared the identifiers owned by an in-progress scoped
+  gesture action. Cancellation already respected that ownership; this release door did not.
+- **Fix / why:** apply the existing `gestureActionDepth` guard before touching release state.
+  Ordinary release or the existing lost-release reconciliation closes the completed move.
+- **Prevention:** nested/control cycles cover drag and wheel startup with exact gesture counts and
+  a Solo witness. The original implementation is a negative control; no broader input model changes.
 
 ## Adding an incident
 

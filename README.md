@@ -14,12 +14,12 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 
-**0.9.9 / JUCE 9.0.4**, planned **2026-10-22**: the final owner attestation **2026-10-21 UTC**
-records Architecture Review **APPROVED**, [Level-5 **PASS (A–G)**](docs/procedures/LEVEL5_AUDITION.md)
-and [compatibility **8/8 PASS**](docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md).
-Required human release gates are **COMPLETE**; first annotated tag `0.9.9` and a **draft** release
-are authorized. Publication and commercial/licensing decisions remain separate.
-- **Version 0.9.9** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+**0.9.10 development / JUCE 9.0.4.** The last annotated release tag is
+[`0.9.9`](https://github.com/skyRolly/Anamorph/releases/tag/0.9.9), at `c4f390f`.
+The [state/host hardening record](worklogs/STATE_HOST_HARDENING_0.9.10.md) separates implemented
+corrections from the open non-finite parameter and malformed-session decisions. Release validation
+and owner sign-off for 0.9.10 are still required; the 0.9.9 approvals apply to that release.
+- **Version 0.9.10 in development** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - **0.9.5 is a performance release, and it changes nothing you can hear.** With Velvet Noise
@@ -67,7 +67,7 @@ are authorized. Publication and commercial/licensing decisions remain separate.
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **75 DSP self-tests** + the **138-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **75 DSP self-tests** + the **142-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -152,7 +152,7 @@ The documentation falls into **four classes**, kept deliberately separate:
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
 | **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
 | **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
-| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement records under [`worklogs/`](worklogs/), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement records under [`worklogs/`](worklogs/) (including the [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as

@@ -12,6 +12,15 @@ Field-level ledger of everything written to session state. Companion to
 Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:2921-2924 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (0.2 bare APVTS);
 src/InternalState.h:198-433.
 
+## Numeric XML formatting (0.9.10)
+
+Session root, each separately serialized A/B slot and preset files use `SerializedXml.h` to spell
+numeric NaN on a private tree copy before JUCE's XML writer. This avoids JUCE 9.0.4's undefined
+NaN-to-int conversion in `serialiseDouble`, while retaining the same XML text and existing readers.
+Finite values and fields are unchanged; live APVTS and cached slot trees are not sanitized.
+This chooses no new invalid-parameter policy. Evidence: State test 142 and
+`worklogs/STATE_HOST_HARDENING_0.9.10.md`.
+
 ## `AnamorphRoot` properties
 
 | Field | Type | Introduced | Migration Required | Required | Default if absent |
@@ -476,9 +485,10 @@ Since 0.9.9 each document must therefore satisfy, before the parser sees it:
 | Text | nesting at most **8** (`maxDocumentDepth`) | `readNextElement`/`readChildElements` are mutually recursive with no bound. 2.7x the depth any session has ever had |
 | Text | **no `DOCTYPE`** — no `<!` that is not `<!--` or `<![CDATA[` | the entity expansion that hangs and crashes. No session this product has written carries one: `XmlElement::TextFormat::dtd` defaults empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor `ValueTree::toXmlString` sets it |
 
-**Applied to each document separately.** The payload's size cap is redundant by containment while the
-outer cap holds, and is stated anyway so that the rule is "every independently parsed document
-carries its own boundary" rather than "the outer one is enough".
+**Applied to each document separately.** Containment holds for valid UTF-8, where unescaping
+shrinks and outer DOCTYPE expansion is refused. It is not unconditional: the pinned native UTF-8
+String can retain invalid bytes while `getNumBytesAsUTF8()` counts U+FFFD's three bytes per invalid
+byte. State test 144 reaches the inner size refusal from an under-cap outer chunk. Keep both caps.
 
 **A refusal is the outcome each path already had.** A refused chunk is `decodeRestore` returning
 `false` — *"a chunk of neither recognised shape is not a restore at all"*, above — so not one
@@ -489,13 +499,20 @@ foreign-typed payload already got (ER-STATE-02). No new state, no new user-facin
 ### What host state still accepts, and that is deliberate
 
 ADR-0056's ruling named three limits. These shapes are ones a `.anamorph` file now refuses and a host
-chunk still accepts, measured and pinned by State test 116 leg E so that narrowing them later has to
+chunk still accepts, measured in ADR-0056 and covered by State tests 116 leg E and 144 so that narrowing them later has to
 be a decision: **two complete documents in one chunk** (the first wins), **a document followed by
 prose, a stray element or raw binary**, **a document followed by one NUL and a second complete
-document** (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:99`), **invalid UTF-8 in an
-attribute value**, and **a chunk truncated to half its length** (half-applied). Refused as before:
-mismatched tags, a stated length far larger than the chunk, UTF-16 text under the UTF-8 frame, and a
-foreign-typed slot root.
+document** (String/XML walks see only the prefix before NUL, even when the sized UTF-8 String
+retains the allocated tail), **invalid UTF-8 in a small attribute value**, and **a chunk truncated
+to half its length** when its prefix remains parseable (missing fields take the existing defaults).
+A positive declared length larger than the chunk is clamped to the available bytes, and a complete
+document still applies; bytes beyond a shorter declared length are invisible. Refused as before:
+mismatched tags, nonpositive declared lengths, UTF-16 text under the UTF-8 frame, and a foreign-typed
+slot root. A partial closing tag can parse where an entirely absent closing tag or open quote does
+not. Refusing an inner payload invalidates only that slot; refusing the outer document applies
+nothing. The owner decision package in `worklogs/STATE_HOST_HARDENING_0.9.10.md` preserves these
+semantics pending explicit approval; changing two document-rule arguments would not validate the
+original bytes, embedded NUL or framing.
 
 **Not reachable on either path, and structurally so:** the `SYSTEM`-`DOCTYPE` arbitrary file read.
 `XmlDocument::getFileContents` opens nothing unless an `InputSource` is set

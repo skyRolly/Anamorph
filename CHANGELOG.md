@@ -21,6 +21,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
+## [Unreleased]
+
+Development toward **0.9.10**. Parameter IDs, ranges, automation flags, valid state/preset formats
+and existing invalid-value restore behavior are unchanged. KI-029's audible NaN behavior and
+additional malformed host-state restrictions remain open owner decisions.
+
+### Fixed
+- **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The
+  XML writer spells NaN on a private copy, preserving the existing text and finite encoding without
+  changing the live parameter or choosing a new audible NaN policy (KI-029; ADR-0009).
+  Regression: State test 142, including both session threads and A/B slots.
+  Evidence: commit `104d680`. [Verified]
+- **A nested mouse release during a Multiband band move no longer loses host gesture ownership.**
+  If a host callback delivers the release while the two edge gestures are still opening, the
+  existing action guard retains their identifiers until the move can finish. This prevents open
+  gestures and an unintended Solo change for drag and in-press wheel moves (ADR-0050).
+  Regression: State test 143. Evidence: commit `104d680`. [Verified]
+
 ## [0.9.9] — 2026-10-22
 
 ### Changed
@@ -2929,6 +2947,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.9.9...HEAD
 [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/

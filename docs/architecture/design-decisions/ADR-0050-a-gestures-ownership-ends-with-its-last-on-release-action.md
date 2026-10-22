@@ -457,3 +457,16 @@ The first three are the orthogonality proof: each claiming site is measured on i
 subsumes the other, and the shared decline is measured by both. Leg F is the positive control — an
 uninterrupted band move still opens both pins exactly once and closes both exactly once, so a "fix"
 that simply stopped opening the second pin would fail it.
+
+
+## Implementation correction — 2026-10-22 (F10, 0.9.10)
+
+The action-lifetime rule also applies while a band move opens its two pin gestures. A host listener
+can deliver `mouseUp` from the first `beginChangeGesture`; clearing the press/band identifiers there
+leaves the resumed action unable to close either gesture and can run the click-only Solo action.
+`mouseUp` now checks the existing `gestureActionDepth` before clearing any release state, as the
+existing cancellation path already does. Ordinary release or lost-release reconciliation finishes
+the established move. This applies the accepted ownership rule; it adds no thread or gesture model.
+State test 143 covers drag and in-press wheel startup, nested/control cycles, exact gesture closes
+and Solo. Original implementation: eight failed checks; focused sanitizer and full-suite evidence:
+`worklogs/STATE_HOST_HARDENING_0.9.10.md`.

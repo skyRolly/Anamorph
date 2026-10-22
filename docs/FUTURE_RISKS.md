@@ -1,5 +1,10 @@
 # FUTURE_RISKS.md
 
+**Current sync: 0.9.10 development, 2026-10-22.** RISK-003 closed when annotated `0.9.9` was
+created. RISK-015's acceptance remains unchanged; its owner decision and corrected conditional
+payload-containment argument are in `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
+The dated sync notes below retain the earlier state of the repository.
+
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
@@ -99,17 +104,19 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 |---|---|---|---|
 | RISK-001 | JUCE version bump silently changes DSP/latency/editor behaviour | High | Medium |
 | RISK-002 | Always-on monitor/crossover banks + per-sample coeff recompute → CPU | Medium | Medium |
-| RISK-003 | No git release tags → fragile version/CHANGELOG attribution | Low | High (already true) |
+| RISK-003 | **RESOLVED 2026-10-21** — annotated `0.9.9` tags commit `c4f390f`; older untagged versions retain their historical SHA evidence | — | — |
 | RISK-004 | pluginval crash-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
-| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closed the two doors whose dispatch the PLUG-IN starts, and round 28's admission (§31) closes every remaining door by construction — no state-replacing command WAITS for `soundReplacement`, whoever started the dispatch. The risk stays OPEN on what is left, which contains no Anamorph lock: JUCE's own APVTS 10 Hz timer blocking on `valueTreeChanging`, and the two-parameter nesting above |
+| RISK-009 | Host reentry can nest JUCE listener locks; the focused F9 probe also establishes an outer-held `soundReplacement` edge during restore adoption | High if an opposing host lock is reached | No supported-host deadlock established. Prior admission fixes remain; 0.9.10 evidence below qualifies the old “no Anamorph lock remains” claim. A synthetic nested restore tail also leaves stale metadata; a simple guard breaks callback saves. Preserve pending the specified host/support evidence and compatible design. |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 | RISK-011 | **RESOLVED 2026-09-15 (rounds 24 and 25, ADR-0008)** — a gesture count that returned to zero mid-transaction let a poll record an undo step for a layout the user never had (the 0.9.8 rounds' residuals U1-U3) | — | — |
+| RISK-012 | **RESOLVED for shipped formats, 2026-09-13** — user-edit entries carry owned parameter endpoints (ADR-0008); preset/Copy entries remain whole-state. The detailed section retains a harness-only live-read residual | — | — |
+| RISK-013 | **ACCEPTED RESIDUAL 2026-09-13** — raw stores that do not change the rendered sound may split a scroll batch | Low — undo grouping only | Mechanism verified; field incidence unmeasured |
 | RISK-014 | **RESOLVED 2026-09-19 (round 51, ADR-0056), COMPLETED 2026-09-21 (round 53)** — both host-state XML parser surfaces (the session chunk and each A/B slot payload) are bounded at 256 KB / depth 8 / no `DOCTYPE` before `juce::parseXML`, each on its own. Round 51's closure claim was overstated: the boundary admitted an opening tag whose quote never closes, and a 12 KB chunk still SIGSEGV'd until round 53 refused it. Valid and legacy sessions are unchanged in both rounds | — | — |
-| RISK-015 | Host state still accepts five shapes a `.anamorph` file now refuses — two documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its length | Low — a corrupt session is half-applied or silently truncated rather than refused; no crash, hang or unbounded read | **Certain** as a mechanism: it is the acceptance ADR-0056 deliberately left alone, measured and pinned by State test 116 leg E |
+| RISK-015 | Host state accepts first-document/trailing-content, NUL-hidden tail, invalid UTF-8 and some parseable truncated chunks that preset files refuse | Low for the tested bounded cases — silent recovery or defaulting rather than refusal | Mechanism verified on JUCE 9.0.4 by State 116 E and State 144 on both outer/inner surfaces; truncation is not uniformly accepted. Additional restrictions need an owner ruling; see the 0.9.10 decision package. |
 | RISK-016 | **RESOLVED 2026-09-21 (round 53)** — the three `fuzz` corpus seeds were stored in a container no pinned JUCE writes, so they decoded to nothing and the release-blocking fuzz budget started from inputs that reached no parser | Medium (were it reached) | — |
 
 ---
@@ -250,23 +257,27 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   binary**; **a document, one NUL, and a second complete document** (`String::fromUTF8` builds
   through `createFromCharPointer`, whose `while (shouldContinueFn (pos, numChars) && ! pos.isEmpty())`, `juce_String.cpp:99`,
   stops at the first NUL, so the tail is examined by nobody); **invalid UTF-8 in an attribute
-  value**; and **a chunk truncated to half its length**, which is half-applied.
+  value**; and **a chunk truncated to half its length** whose prefix is still parseable, which is applied.
 - **Impact:** a corrupt or hand-edited session restores a partial or wrong sound instead of being
   refused whole. Bounded: every one of these is a *correctness* outcome inside the parser-safety
   boundary — none crashes, hangs, or reads unboundedly, and none of them reaches a file.
 - **Likelihood (evidence-based):** **Certain as a mechanism, unmeasured in the field.** All five were
-  measured through the real `setStateInformation` on `de89b1a` and are re-asserted every build by
-  State test 116 leg E, which exists so that a later round changing them does so on purpose.
+  measured through the real `setStateInformation` on `de89b1a`. State test 116 leg E pins the visible
+  multiple-document, trailing-content and half-chunk cases; State test 144 adds original-byte NUL,
+  invalid UTF-8, declared-length and separately parsed A/B cases on JUCE 9.0.4.
 - **Evidence [Verified]:** [ADR-0056](architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md)
   §Consequences and §"What was NOT done"; `docs/architecture/SERIALIZATION_REGISTRY.md`
   §"What host state still accepts".
 - **Mitigation:** not taken, and it is a decision rather than an omission: extending the
   single-document rule to host state would narrow serialization acceptance further than the ruling
   covered, which `SESSION_COMPATIBILITY_POLICY.md` rule 1 makes an Architecture Review Gate item in
-  its own right. The mechanism is ready — `anamorph::xmlBoundary::DocumentRule::oneWellFormedDocument`
-  already exists and is what the preset path asks for — so the change, if it is ever ruled, is one
-  enum value at two call sites plus the compatibility case for the truncated and multi-document
-  shapes.
+  its own right. The 0.9.10 owner decision package is in
+  `worklogs/STATE_HOST_HARDENING_0.9.10.md`: preserve / harden all five / narrow the proposal / defer
+  are assessed separately. This round defers the decision and preserves acceptance. A complete
+  hardening proposal needs original-byte UTF-8/NUL/framing rules as well as complete-document
+  checks on both surfaces; two enum changes cannot implement all five. Exact declared-length
+  agreement is currently not required. Reopen on an explicit owner acceptance ruling or a new
+  measured safety defect, with historical host padding/framing evidence if that tolerance is removed.
 
 ## RISK-016 — **RESOLVED 2026-09-21** (round 53): the fuzz corpus reached no parser
 
@@ -329,18 +340,17 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   (`testSoloColdThroughDrag`) — the settled passthrough now goes fully cold. Correctness is
   unaffected either way.
 
-## RISK-003 — No git release tags
-- **Risk:** The repository has no tags, so version/CHANGELOG attribution relies on commit messages.
-  Reconstruction is error-prone and cannot be Verified to a release artifact.
-- **Impact:** CHANGELOG entries for older versions stay Partially Verified / reconstructed; harder to
-  reproduce a specific shipped build.
-- **Likelihood (evidence-based):** High — already the case (`git tag` is empty).
-- **Evidence [Verified]:** `git tag` empty; `docs/policies/CHANGELOG_POLICY.md`; `docs/procedures/RELEASE_PROCESS.md`.
-- **Mitigation:** **Infrastructure shipped (RH-PR-8, 0.8.13 cycle):** annotated tag
+## RISK-003 — **RESOLVED 2026-10-21**: the first annotated release tag exists
+- **Current evidence [Verified]:** `git cat-file -t 0.9.9` returns `tag`;
+  `git rev-parse 0.9.9^{}` is `c4f390f9cccaa9551d680cb1305fa4a669b24587`.
+  Tag object `12d6fabcd121f62cb9eeaf32ae94bc8d32447984` records 2026-10-21 13:52:47 UTC.
+- **Historical limitation:** versions before 0.9.9 were not tagged. Their CHANGELOG entries keep
+  their SHA evidence and existing confidence classifications; the new tag does not certify old artifacts.
+- **Mitigation delivered:** **Infrastructure shipped (RH-PR-8, 0.8.13 cycle):** annotated tag
   convention (the bare version `x.y.z` since ADR-0059) + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **0.9.9**, ADR-0058 — 0.9.0 through 0.9.8 were each written up but never tagged); until
-  then, cite commit SHAs. Historical entries keep SHA evidence permanently.
+  manifest). The `0.9.9` tag closes the missing-tag risk (ADR-0058); publication and commercial
+  distribution remain separate owner actions. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval crash-only retry masking a real crash
 - **Risk:** `run-pluginval.sh` retries on a crash to absorb the external X11 flake
@@ -680,6 +690,21 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   (bypass the guard/defer) and M221 (reintroduce the blocking acquisition) are killed by legs B and
   D. Two source comments written before §31 existed, which still described this door as half of an
   open cycle, are corrected.
+
+### 2026-10-22 F9 qualification (0.9.10)
+
+The earlier “no Anamorph lock remains” disposition does not cover every restore adoption.
+`--restore-lock-probe` reaches the preset callback's adoption after the admission gate has taken
+`soundReplacement`; the inner scoped acquisition ending does not release that outer ownership.
+A non-blocking witness establishes the edge without inventing a deadlock. The opposing host lock
+and a supported-host failure remain unverified.
+
+`--restore-reentry-probe` also demonstrates a synthetic stale-tail failure: a synchronous latency
+listener pumps a newer background restore's adoption; the old tail then overwrites its preset name.
+A simple adoption guard was rejected because a save inside the callback mixed old metadata with
+new sound. Existing production ordering is preserved. Full reproduction, rejected mitigation and
+concrete reopen/approval requirements: `worklogs/STATE_HOST_HARDENING_0.9.10.md` §Focused remaining
+risks. This qualifies earlier current-state claims; it does not undo the measured admission fixes.
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from

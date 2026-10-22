@@ -4757,10 +4757,37 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**138 tests**, State tests 1–141 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
+### 0.9.10 focused state and host interaction coverage
+
+`tests/state_hardening_tests.h` is included by the existing state target (no new target or private
+production access). Its four numbered tests run in the ordinary suite:
+
+- **142:** safe NaN formatting through real session/preset writers, both host threads and A/B
+  slots; finite XML identity, unchanged live readback, existing invalid-value restore rules.
+- **143:** a host gesture listener reenters `mouseUp` during drag/wheel band-move startup. Both
+  pins close exactly once and Solo stays unchanged across nested/control cycles.
+- **144:** original bytes versus decoded text at the outer and inner parser surfaces: all five
+  RISK-015 classes, declared-length controls, refusal/application witnesses, repeated restores and
+  invalid UTF-8 that makes the inner 256 KB check independently reachable.
+- **145:** host advancedMode writes with closed/open editor, background update/coalescing,
+  resize reentry, pending-update destruction and restore overlapping construction. Runs last
+  because it starts/stops JUCE's event loop; Linux/BSD editor cases use Xvfb and no native peer.
+
+Each can run alone via `--nonfinite-save-probe`, `--nested-release-probe`,
+`--host-acceptance-probe`, `--advanced-mode-probe`. `--nonfinite-ingress-probe` prints current
+host/text/restore semantics. `--restore-lock-probe` measures F9's outer-held-lock edge;
+`--restore-reentry-probe` is an **opt-in unresolved diagnostic**, expected to fail the final
+metadata checks on current production code. It also checks saves inside the latency callback so
+an adoption guard cannot hide a mixed snapshot. It is not part of the passing regression suite.
+Run state processes serially: these probes share the real preset folder, just like the full suite.
+Evidence, negative controls, commands and environment limits:
+`worklogs/STATE_HOST_HARDENING_0.9.10.md`.
+
+`tests/state_tests.cpp` (**142 tests**, State tests 1–145 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
-and without ever showing it — no peer, no message loop, no interaction):
+and without ever showing it. Later interaction fixtures drive real components; State test 145
+runs the real message queue on Linux/BSD, still without a native host peer):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
 snapshot** (IDs/names/order/automation flags/step texts exact + range mappings probed at 5
 normalised points, vs `tests/fixtures/parameter_registry.snapshot`), a raw-exact
