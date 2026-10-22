@@ -4764,8 +4764,12 @@ production access). Its four numbered tests run in the ordinary suite:
 
 - **142:** safe NaN formatting through real session/preset writers, both host threads and A/B
   slots; finite XML identity, unchanged live readback, existing invalid-value restore rules.
-- **143:** a host gesture listener reenters `mouseUp` during drag/wheel band-move startup. Both
-  pins close exactly once and Solo stays unchanged across nested/control cycles.
+- **143:** a host gesture listener delivers the only `mouseUp` during drag/wheel band-move
+  startup, with cached button state already up. No second release or cancellation supplies the
+  expected closes. Both pins balance, Solo stays unchanged and the next user edit has its own
+  Undo boundary. Stale-state and gesture-close reentry legs cover cancellation and duplicate
+  closes; a nested no-op wheel event during a store must not drain the release before its caller.
+  Failure-only cleanup runs after the assertions; it cannot make a broken leg pass.
 - **144:** original bytes versus decoded text at the outer and inner parser surfaces: all five
   RISK-015 classes, declared-length controls, refusal/application witnesses, repeated restores and
   invalid UTF-8 that makes the inner 256 KB check independently reachable.

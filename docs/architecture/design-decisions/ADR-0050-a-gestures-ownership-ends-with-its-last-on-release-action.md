@@ -459,7 +459,7 @@ uninterrupted band move still opens both pins exactly once and closes both exact
 that simply stopped opening the second pin would fail it.
 
 
-## Implementation correction — 2026-10-22 (F10, 0.9.10)
+## Initial implementation correction — 2026-10-22 (F10, 0.9.10; incomplete, corrected below)
 
 The action-lifetime rule also applies while a band move opens its two pin gestures. A host listener
 can deliver `mouseUp` from the first `beginChangeGesture`; clearing the press/band identifiers there
@@ -470,3 +470,22 @@ the established move. This applies the accepted ownership rule; it adds no threa
 State test 143 covers drag and in-press wheel startup, nested/control cycles, exact gesture closes
 and Solo. Original implementation: eight failed checks; focused sanitizer and full-suite evidence:
 `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
+
+
+## Review correction — 2026-10-22, retain the sole delivered release (PR #168)
+
+The initial guard preserved the record but discarded the actual mouse-up. The initial test's extra
+mouse-up and cancellation hid the missing completion. A normally delivered release clears JUCE's
+cached button state, so the editor's `cachedDown && ! physicalDown` reconciliation is inapplicable.
+The corrected single-release test fails on the initial PR head, including a later edit's Undo.
+
+Keep the first release event while an action owns the record. Replay it through normal `mouseUp`
+processing after the enclosing drag, routed wheel or release handler finishes all remaining work;
+ending `beginBandMove` alone is too early because its caller still uses the identifiers. Count event
+nesting as well as action nesting so a no-op nested event cannot drain before that caller returns.
+Clear the saved event before replay, since closing a gesture can call back into mouseUp again.
+The existing owner and staleness gates determine whether to run normal release actions or cancel.
+Completion callbacks use safe component pointers and run on the same message-thread call stack:
+no timer, posted event, thread handoff or new parameter/Undo model. This completes the accepted
+ownership rule; it is not a new architecture decision. State test 143 and the current hardening
+worklog record the reproduction, negative control and executed validation.

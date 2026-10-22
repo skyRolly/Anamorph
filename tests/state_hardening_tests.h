@@ -130,27 +130,44 @@ static void testAReleaseCannotClearABandMoveDuringItsStartup()
         inRun = hit;
     }
     check (x >= 0.0f, "a two-pin band-move handle is found");
+    enum class ReleaseAt { none, open, close, staleOpen };
     if (x >= 0.0f)
         for (bool wheel : { false, true })
-            for (bool nested : { false, true, false, true })
+            for (auto at : { ReleaseAt::none, ReleaseAt::open, ReleaseAt::close,
+                             ReleaseAt::staleOpen, ReleaseAt::open, ReleaseAt::none })
             {
+                const bool nested = at != ReleaseAt::none;
                 setPlain (*p, pid::mbFreqLow, 200.0f);
                 setPlain (*p, pid::mbFreqMid, 2000.0f);
                 setPlain (*p, pid::mbFreqHigh, 10000.0f);
                 setPlain (*p, pid::mbSolo, 0.0f);
-                struct ReleaseOnOpen final : juce::AudioProcessorParameter::Listener
+                setRaw (*p, pid::width, 0.5f);
+                struct ReleaseOnEdge final : juce::AudioProcessorParameter::Listener
                 {
-                    std::function<void()> release;
-                    bool fired = false;
-                    void parameterValueChanged (int, float) override {}
+                    std::function<void()> release, duringStore;
+                    bool fired = false, onStart = true, polled = false;
+                    void parameterValueChanged (int, float) override
+                    { if (fired && ! polled && duringStore) { polled = true; duringStore(); } }
                     void parameterGestureChanged (int, bool start) override
-                    { if (start && ! fired && release) { fired = true; release(); } }
+                    { if (start == onStart && ! fired && release) { fired = true; release(); } }
                 } host;
                 CountBothWays left, right;
                 auto* lo = p->getAPVTS().getParameter (pid::mbFreqLow);
                 auto* mid = p->getAPVTS().getParameter (pid::mbFreqMid);
                 lo->addListener (&left); mid->addListener (&right);
-                if (nested) host.release = [&] { im->mouseUp (event (x + 8.0f, x, true)); };
+                host.onStart = at != ReleaseAt::close;
+                if (nested) host.release = [&]
+                {
+                    if (at == ReleaseAt::staleOpen) setRaw (*p, pid::width, 0.63f);
+                    im->mouseUp (event (x + 8.0f, x, true));
+                };
+                if (at == ReleaseAt::open) host.duringStore = [&]
+                {
+                    juce::MouseWheelDetails noChange {};
+                    im->mouseWheelMove (event (x + 8.0f, x, true), noChange);
+                    check (left.closes == 0 && right.closes == 0,
+                           "a nested no-op event cannot drain before the outer move finishes");
+                };
                 lo->addListener (&host);
                 im->mouseDown (event (x, x, false));
                 if (wheel)
@@ -159,15 +176,38 @@ static void testAReleaseCannotClearABandMoveDuringItsStartup()
                     im->mouseWheelMove (event (x, x, false), notch);
                 }
                 else im->mouseDrag (event (x + 8.0f, x, true));
-                check (! nested || host.fired, "the host delivered the nested release from the first pin open");
-                im->mouseUp (event (x + 8.0f, x, true));
-                im->cancelActiveDrag(); // Also exercises the existing lost-release reconcile.
+                // In both open legs the nested event is the ONLY release. JUCE's cached button
+                // is already up; cached-down/OS-up reconciliation cannot rescue it. The close
+                // leg separately reenters from the first pin's close during the normal release.
+                if (! nested || at == ReleaseAt::close) im->mouseUp (event (x + 8.0f, x, true));
+                check (host.fired == nested, "the host delivered the release at the requested gesture edge");
+                if (at == ReleaseAt::open)
+                    check (host.polled, "the probe entered the remaining post-startup store dispatch");
+                check (! juce::Component::isMouseButtonDownAnywhere(),
+                       "the delivered release needs no cached-down reconciliation");
                 check (left.opens == 1 && right.opens == 1, "both move pins are opened exactly once");
                 check (left.closes == 1 && right.closes == 1, "both move pins are closed exactly once");
                 check (left.closesWithNoOpen == 0 && right.closesWithNoOpen == 0,
                        "no close precedes the corresponding open");
-                lo->removeListener (&host); lo->removeListener (&left); mid->removeListener (&right);
                 checkNear (plainOf (*p, pid::mbSolo), 0.0, 1e-6, "a move never turns into a solo click");
+                if (at == ReleaseAt::staleOpen)
+                    checkNear (rawOf (*p, pid::width), 0.63, 1e-6,
+                               "a deferred stale release cancels without changing the host's width");
+                p->pollUndoCoalesce();
+                auto* width = p->getAPVTS().getParameter (pid::width);
+                const float before = width->getValue();
+                width->beginChangeGesture();
+                width->setValueNotifyingHost (0.83f);
+                p->noteOwnedParamWrite (width, before, width->getValue());
+                width->endChangeGesture();
+                p->pollUndoCoalesce();
+                check (p->canUndo(), "the next user edit has an undo boundary");
+                p->undo();
+                checkNear (width->getValue(), before, 1e-6, "Undo restores that edit's own starting value");
+                // Failure-only cleanup, AFTER the assertions. A passing leg gets no extra release
+                // or cancellation; this only keeps a negative control from poisoning the next leg.
+                if (left.closes != 1 || right.closes != 1) im->cancelActiveDrag();
+                lo->removeListener (&host); lo->removeListener (&left); mid->removeListener (&right);
             }
     p->editorBeingDeleted (ed); delete ed;
 #else

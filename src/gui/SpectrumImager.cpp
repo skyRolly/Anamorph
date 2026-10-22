@@ -2929,12 +2929,12 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 {
-    // A REFUSED PRESS DRAGS NOTHING (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`). Every
-    // identifier this handler consumes -- `soloPressBand`, `dragBand`, `dragHandle`, `bandAnchorX`,
-    // `gestureBands` -- was latched by the press that owns the display, and the stores below are
-    // that gesture's. Refusing the rival's `mouseDown` stopped it LATCHING them; this stops it
-    // driving them. Asked before `gestureIsStale()`, because that branch calls `cancelActiveDrag`,
-    // which would end the owner's gesture on the rival's behalf.
+    const juce::ScopeGuard finishEvent { [safeThis = juce::Component::SafePointer<SpectrumImager> (this)]
+    {
+        if (safeThis != nullptr) safeThis->finishGestureEvent();
+    } };
+    ++gestureEventDepth;
+    // F10: replay AFTER the preview/stores that still consume the startup's identifiers.
     if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
         return;
     // ADR-0038. A gesture is defined against the topology it began in; once that has moved
@@ -3012,19 +3012,19 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
-    // ADR-0050/F10: an action owns its identifiers while it opens/closes gestures.
-    // A nested release leaves them for that action and the existing lost-release reconcile.
-    if (gestureActionDepth > 0) return;
-    // ADR-0053 round 33: only the owner's release may run its on-release actions.
     if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
         return;
-    // ADR-0053 round 29: the press is over -- and round 32: this DISPLAY's drag is over, which is
-    // a statement about the display and not about the device that ended it. It holds one gesture
-    // (`dragBand`, `bandAnchorX`, `gestureBands`), so nothing may still be claiming it.
+    if (gestureActionDepth > 0 || (gestureEventDepth > 0 && deferredMouseUp))
+    {
+        if (! deferredMouseUp) deferredMouseUp.emplace (e);
+        return;
+    }
+    const juce::ScopeGuard finishEvent { [safeThis = juce::Component::SafePointer<SpectrumImager> (this)]
+    {
+        if (safeThis != nullptr) safeThis->finishGestureEvent();
+    } };
+    ++gestureEventDepth;
     anamorph::gui::releaseDragWheel (*this);
-    // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
-    // remove a band, toggle a solo bit, commit a band move. A gesture whose topology moved
-    // must fire none of them, exactly as a release lost outside the window fires none.
     if (gestureIsStale()) { cancelActiveDrag(); updateHover (e.position); return; }
     // The press is over on EVERY path out of this handler, so the snapshot is dropped on each of
     // them. It is KEPT in a local first: the two removal paths below still need to name the
@@ -3343,11 +3343,11 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
 // holder's own coordinates either way, which is what every anchor below is expressed in.
 bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
-    // AN EVENT THAT PERFORMS NO EDIT IS NOT A WHEEL EDIT (ADR-0052), and it is still the first
-    // question this handler asks. A sub-threshold delta, or a host that delivers a zero-delta wheel
-    // event, has nothing to contribute -- and so must cost nothing: no press change, no gesture, no
-    // undo step.
-    //
+    const juce::ScopeGuard finishEvent { [safeThis = juce::Component::SafePointer<SpectrumImager> (this)]
+    {
+        if (safeThis != nullptr) safeThis->finishGestureEvent();
+    } };
+    ++gestureEventDepth;
     // ...AND BOTH AXES ARE READ NOW (ADR-0053 round 29, Devin `src/gui/SpectrumImager.cpp:R3293`).
     // This line used to be `wheel.deltaY` alone, with a comment saying so, which meant a horizontal
     // two-finger trackpad gesture -- the whole of a trackpad's sideways scroll, delivered in
@@ -3848,6 +3848,17 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
         gestureBands = -1;
     }
     repaint();
+}
+
+// Called at the drag, routed-wheel and release event boundaries, after scoped actions unwind.
+// Clear first: closing a gesture may itself deliver a release through a host callback.
+void SpectrumImager::finishGestureEvent()
+{
+    jassert (gestureEventDepth > 0);
+    if (--gestureEventDepth > 0 || gestureActionDepth > 0 || ! deferredMouseUp) return;
+    const auto release = *deferredMouseUp;
+    deferredMouseUp.reset();
+    mouseUp (release);
 }
 
 } // namespace anamorph::gui

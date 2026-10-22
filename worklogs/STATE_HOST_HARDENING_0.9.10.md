@@ -6,7 +6,7 @@
   `main` and tags. Branch: `codex/0.9.10-state-host-hardening`.
 - The annotated `0.9.9` tag peels to that commit. Tag object
   `12d6fabcd121f62cb9eeaf32ae94bc8d32447984` records 2026-10-21 13:52:47 UTC.
-- Implementation commit: `104d680fd4d36a93792f69f388cc07ea3f31e9f5` (formatter, release guard, tests
+- Initial implementation commit: `104d680fd4d36a93792f69f388cc07ea3f31e9f5` (formatter, release guard, tests
   and development version). Documentation/validation follow on the same feature branch.
 - Production baseline is current main, including PRs #155, #156, #166 and #167. Their DSP
   self-heal, Level Match, bulk-apply protocol, JUCE upgrade and owner approvals are not reopened.
@@ -240,16 +240,18 @@ entity expansion or payload framing that invalidates the remaining conditional a
   A release from the first pin's `beginChangeGesture` clears `soloPressBand`, `soloMovedBand` and
   `gestureBands` before the second pin is opened. The resumed handler loses the identifiers needed
   to close either pin and can form an audition mask from −1. `mouseUp` now honors the existing
-  `gestureActionDepth` claim before touching any identifiers or wheel ownership. This implements
-  ADR-0050's existing action-lifetime rule; no new threading or parameter model is chosen. Ordinary
-  release or the existing lost-release reconcile closes the completed move. Other hypothetical
-  reentrant input types require their own concrete reproduction; no broad gesture rewrite is made.
+  `gestureActionDepth` claim before touching identifiers. That initial repair was incomplete:
+  PR #168 review proved it discarded the only actual release; the 42-check fixture supplied a
+  second release and cancellation. A real delivered release disables the cached-down reconcile.
+  The correction retains the release until the outer event returns, then uses normal mouseUp
+  processing (including stale cancellation). The review follow-up below records the stronger
+  reproduction and final validation. No new threading or parameter model is chosen.
 - **RISK-010:** unchanged. The ten independent `seq_cst` loads, GUI count-last store order, DSP
   clamps and ADR-0057 bulk-completion protocol remain. No new writer, weakened repair, changed
   store order or measured whole-state-restore audio artifact was found in this scope. Those remain
   the concrete reopen conditions; no snapshot-system replacement is proposed.
 
-## Validation and delivery record
+## Initial validation and delivery record (superseded F10 fixture; review follow-up below)
 
 Local x86-64 Linux only, using the actual pinned JUCE source. GCC 14.2 Release and Debian
 Clang **22.1.8** RelWithDebInfo. The local LLVM package matches the CI major/version; its embedded
@@ -318,7 +320,7 @@ xvfb-run -a build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateT
 ```
 
 Sanitizer negative control: restore the four XML writer calls from starting `c4f390f`, rebuild the
-state target with those flags, run `--nonfinite-save-probe` with UBSan halt enabled. F10 negative
+state target with those flags, run `--nonfinite-save-probe` with UBSan halt enabled. Initial F10 negative
 control: remove only the new `gestureActionDepth` return at `mouseUp`, rebuild, run
 `--nested-release-probe`. The controls were actually executed on the original production calls;
 those instructions make them repeatable without depending on a historical binary.
@@ -356,7 +358,7 @@ worklog counts, release measurements and dated baseline narratives remain histor
 
 ## Delivery and release disposition
 
-Implementation commit `104d680fd4d36a93792f69f388cc07ea3f31e9f5` has the exact tree tested locally.
+Initial implementation commit `104d680fd4d36a93792f69f388cc07ea3f31e9f5` has the exact tree tested in that delivery. The single-release review correction is recorded below.
 The connected GitHub tool publishes the feature branch/PR because the shell's token is invalid and
 CLI push has no usable credential. GitHub blob/tree SHAs are compared to local Git before moving
 the feature ref. No main update, merge, 0.9.10 tag or release is performed.
@@ -374,7 +376,7 @@ CI/platform/pluginval/ABI/static-analysis lanes and native-host/manual release v
 before claiming it closed or approving support for that shape. KI-029 and RISK-015 remain open
 owner decisions; preserving their existing behavior is the disposition of this implementation round.
 
-Changed files (26):
+Changed files in the initial delivery (26):
 
 - `CHANGELOG.md`
 - `CMakeLists.txt`
@@ -402,3 +404,68 @@ Changed files (26):
 - `tests/state_hardening_tests.h`
 - `tests/state_tests.cpp`
 - `worklogs/STATE_HOST_HARDENING_0.9.10.md`
+
+
+## PR #168 review follow-up — 2026-10-22, sole nested mouse-up
+
+Starting head: `32033f61030b9c07bf7505fefd3958b8c5195e1d`. Scope is the F10 release completion
+reported in review; serialization, advancedMode, F9 and all outstanding owner decisions are unchanged.
+
+**Verified failure:** removing the extra mouse-up/cancellation before assertions produces **66
+checks / 8 failures** on that head: both pins stay open, and the next Width edit loses its Undo
+boundary. The real processor/editor fixture runs with JUCE's cached button already up, so the
+editor's cached-down/OS-up safety net cannot run. The earlier 42/0 measurements above were real
+executions of an insufficient fixture; they are not evidence that the sole-release case was fixed.
+
+**Correction:** retain the first owner release event without clearing the in-progress action's
+identifiers. The drag, routed-wheel and normal-release boundaries count event nesting and replay
+only after the outer event and its actions finish. A callback at `beginBandMove` exit would be too
+early: the enclosing drag/wheel still uses the band identifiers for preview and stores. Likewise,
+a nested no-op event during a store must not drain the pending release while its caller is active.
+The deferred event is cleared before replay, preventing a closing callback from replaying it twice.
+Replay uses the normal mouseUp owner/staleness gates, preserving release actions and cancelling
+stale gestures. Completion uses safe component pointers; it is synchronous on the message thread.
+There is no timer retry, posted event, cross-thread path, parameter contract or Undo-model change.
+
+**Regression:** State test 143 uses only the nested release in its opening legs, then asserts exact
+open/close counts, no early close, unchanged Solo and the next edit's Undo before any cleanup.
+Additional legs cover a release during the first close, a host write making the gesture stale,
+and a nested zero-delta wheel event in the remaining store. Passing legs get neither a second
+release nor cancellation. Failure-only cleanup comes after all assertions so mutations can repeat
+on the same processor without hiding a failed leg.
+
+**Executed validation (this follow-up, local Linux):**
+
+| Check | Actual result |
+|---|---|
+| Sole-release reproducer on starting PR head | **66 / 8 failures**, exit 1, including unclosed edge gestures and lost later Undo. |
+| Final State test 143, GCC Release | **108 / 0**, exit 0: 12 drag/wheel schedules, with no second release/cancellation in passing opening legs. |
+| Final State test 143, Clang 22 ASan/extended UBSan | **108 / 0**, exit 0, leak detection enabled. |
+| Negative control: discard only the queued release | **108 / 12 failures**, exit 1. Both missing closes and later Undo assertions detect the initial PR behavior. |
+| Negative control: ignore event depth while draining | **108 / 4 failures**, exit 1. Each nested no-op event closes the gestures before its outer store finishes. |
+| Full state suite, GCC Release with `MALLOC_PERTURB_=1` | **5,896 / 0**, exit 0. |
+| Full state suite, Clang 22 ASan/extended UBSan | **5,896 / 0**, exit 0, same strict ASan/UBSan options and 64 MB stack recorded above. |
+| Full DSP suite, GCC Release / Clang ASan/UBSan | **944 / 0** and **940 / 0**, each exit 0. The existing ASan malloc-guard limitation remains. |
+| Focused valgrind 3.24 memcheck | State 143 **108 / 0**, exit 0; **0 errors / 0 contexts**, no suppressions; `--track-origins=yes --leak-check=no --error-exitcode=1`. ASan supplies separate leak coverage. |
+| Static source checks and their self-tests | Portability, real-time, dispatch and state coverage all exit 0. |
+| Documentation / citation / Clang checker self-tests | All exit 0. Documentation check: 160 files clean. Citations: 612 anchors unchanged against the starting PR head. |
+| Clang 22 warning comparison | Exit 0, no new first-party warnings. Missing baseline-site notices are from the incremental build, not new suppressions or a re-baseline. |
+
+The two final negative controls use a separate `SpectrumImager.cpp` object, compiled at `-O0`
+with the same compiler flags/current header, linked with the unchanged Release test and other
+production objects. No production source or object is replaced. To repeat the mutations on a
+private copy: remove only `deferredMouseUp.emplace(e)` for the first; for the second still decrement
+`gestureEventDepth` but omit its positive-depth early return in `finishGestureEvent`. Both use
+`--nested-release-probe`. The normal/sanitized binaries and full suites run the unmutated code.
+
+The 142 numbered tests are unchanged; the state assertion count rises from 5,830 to 5,896 because
+State 143 expands from 42 to 108 checks. Legacy state/preset and NaN writer coverage are part of
+both full runs. No claim is made for new-head CI, native host mouse delivery, Windows/macOS,
+pluginval, full valgrind, RTSan/TSan or manual release sign-off. GCC 16's warning gate remains
+unavailable locally (GCC 14 here); the repository's compiler pins/baselines are unchanged.
+
+This follow-up changes nine files: `src/gui/SpectrumImager.cpp`, `src/gui/SpectrumImager.h`,
+`tests/state_hardening_tests.h`, `CHANGELOG.md`, `docs/POSTMORTEMS.md`, `docs/procedures/TESTING.md`,
+`docs/architecture/design-decisions/ADR-0050-a-gestures-ownership-ends-with-its-last-on-release-action.md`,
+`docs/DOCUMENTATION_COVERAGE.md` and this worklog. The PR now has 27 changed files: the initial 26
+plus `SpectrumImager.h`. No release tag or publication is created.

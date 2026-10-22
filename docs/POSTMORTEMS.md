@@ -230,7 +230,7 @@ means the 0.9.7 one.)
 
 ## INC-015 — A nested release cleared a band move before its gestures finished opening
 
-- **Date:** 2026-10-22 (fix commit `104d680`); 0.9.10 development. **Affected:** verified on tagged
+- **Date:** 2026-10-22 (PR #168, including its review correction); 0.9.10 development. **Affected:** verified on tagged
   0.9.9. **Severity:** Medium (unbalanced host gestures and an unintended Solo change).
 - **Evidence [Verified]:** State test 143; `--nested-release-probe`; the current worklog;
   `SpectrumImager::mouseUp`. Existing action-lifetime decision: ADR-0050.
@@ -238,11 +238,18 @@ means the 0.9.7 one.)
   during a band move (drag or in-press wheel). Both pin gestures can remain open and release can
   toggle Solo unexpectedly; the original test fails eight checks.
 - **Root cause / formation:** mouseUp cleared the identifiers owned by an in-progress scoped
-  gesture action. Cancellation already respected that ownership; this release door did not.
-- **Fix / why:** apply the existing `gestureActionDepth` guard before touching release state.
-  Ordinary release or the existing lost-release reconciliation closes the completed move.
-- **Prevention:** nested/control cycles cover drag and wheel startup with exact gesture counts and
-  a Solo witness. The original implementation is a negative control; no broader input model changes.
+  gesture action. The initial guard then discarded the only delivered release. Its test supplied
+  a second release and cancellation before checking closes, concealing that incomplete repair.
+  JUCE's cached button is up after a real release, so the editor's cached-down/OS-up reconcile
+  cannot recover it.
+- **Fix / why:** retain the first release and replay it after the outer drag, routed-wheel or
+  release event has finished consuming the identifiers. Normal mouseUp processing keeps release
+  actions distinct from stale-state cancellation. Event-depth accounting prevents a nested event
+  from draining early; safe component pointers guard the completion callbacks. This stays on the
+  same message-thread call stack (PR #168 review correction, 2026-10-22).
+- **Prevention:** sole-release/control cycles cover drag and wheel startup, exact gesture counts,
+  Solo, subsequent Undo, close reentry, stale cancellation and a nested event during a store.
+  The initial PR guard fails the sole-release reproducer; no broader input model changes.
 
 ## Adding an incident
 

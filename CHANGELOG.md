@@ -34,10 +34,11 @@ additional malformed host-state restrictions remain open owner decisions.
   Regression: State test 142, including both session threads and A/B slots.
   Evidence: commit `104d680`. [Verified]
 - **A nested mouse release during a Multiband band move no longer loses host gesture ownership.**
-  If a host callback delivers the release while the two edge gestures are still opening, the
-  existing action guard retains their identifiers until the move can finish. This prevents open
-  gestures and an unintended Solo change for drag and in-press wheel moves (ADR-0050).
-  Regression: State test 143. Evidence: commit `104d680`. [Verified]
+  If a host callback delivers the release while the two edge gestures are still opening, it is
+  retained until the enclosing event finishes, then processed through the normal release path.
+  Both gestures close with that single release, preserving Solo and later Undo boundaries for
+  drag and in-press wheel moves (ADR-0050). Regression: State test 143.
+  Evidence: PR #168 (including its single-release review correction). [Verified]
 
 ## [0.9.9] — 2026-10-22
 
