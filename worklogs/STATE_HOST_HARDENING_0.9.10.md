@@ -497,8 +497,9 @@ exact Azure archive URL in `/etc/apt/apt-mirrors.txt`, before apt starts. It pre
 priorities and other entries; the absent-list/container path is a no-op. Package lists, signing
 checks, compiler pins, job budgets and test strictness stay as they were. This is CI setup, not a
 dependency-set or shipping-toolchain decision. A local HTTP probe independently read the official
-archive's signed-release metadata URL (200, 254,968 bytes, 4.81 s); Azure's equivalent returned
-503 through this workspace's proxy. That probe is not a measurement of the hosted runners.
+archive's release-metadata URL (200, 254,968 bytes, 4.81 s); Azure's equivalent returned
+503 through this workspace's proxy. That HTTP probe did not verify a signature and is not a
+measurement of the hosted runners; apt's existing signing verification is unchanged.
 
 Test 61 now reports the first mismatch's write count, read length, frame index and hexadecimal
 expected/actual samples. Its exact assertion and production ring are unchanged. The old output
@@ -515,6 +516,9 @@ No changelog entry is warranted for CI setup and test diagnostics alone.
 - Unmodified Test 61's body extracted into a standalone probe against the real `ScopeBuffer.h`,
   Clang 22 `-O3 -march=haswell -ffp-contract=off`, repeated 1,000 times with heap perturbation:
   **6,000 checks / 0 failures**. This is native Linux, not a Rosetta reproducer.
+- The original standalone ring probe also ran 100 repetitions under valgrind 3.24: **600/0**,
+  zero errors/contexts, zero suppressions and no heap blocks left at exit; leak checking and
+  origin tracking enabled. This does not execute Rosetta or the full processor.
 - An isolated ring mutation returning one older frame after wrap fails **3/6** Test 61 checks
   and prints the first mismatch (`written=16758`, one-frame read, expected 16757, actual 16756).
   The diagnostic preserves the existing gate's ability to fail; it is not a repair of the still
@@ -534,3 +538,14 @@ dependency setup for over ten minutes. Publishing this correction uses the exist
 concurrency rule, which automatically supersedes the active retry with the new-head run. Remote
 verification is reported separately on PR #168 for the final head. The current evidence does not
 authorize a speculative ring/threading change.
+
+
+**Original-head retry evidence (attempt 2, before the correction superseded it).** The macOS job's
+completed logs show native arm64 DSP **940/0**, state **5,741/0**, then Rosetta x86_64 DSP **940/0**
+and state **5,741/0** (Rosetta suites finished at 21:41:44 UTC). Test 61 reports the frames newest
+and in order. The first failure did not reproduce on the identical source revision; no evidence
+supports choosing a speculative ring or threading repair. The new failure diagnostic remains
+useful because the original log cannot identify which frame differed. Publishing `b63cccb`
+automatically superseded this retry during pluginval, as announced; that is a separate, expected
+cancellation from attempt 1's timeouts. The new push validation is #1779 and the separate PR path
+#1780. This documentation correction also uses the normal branch/concurrency workflow.
