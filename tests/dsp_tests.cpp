@@ -6627,6 +6627,7 @@ static void testScopeRingHandsTheNewestFramesOldestFirst()
     std::vector<float> srcL (2 * (size_t) cap), srcR (2 * (size_t) cap);
     std::vector<float> dstL ((size_t) cap), dstR ((size_t) cap);
     std::uint64_t written = 0;
+    bool reportedMismatch = false;
 
     auto fill = [&] (int n)
     {
@@ -6643,7 +6644,16 @@ static void testScopeRingHandsTheNewestFramesOldestFirst()
         {
             const float k = (float) (written - (std::uint64_t) got + (std::uint64_t) i);
             if (! juce::exactlyEqual (dstL[(size_t) i], k) || ! juce::exactlyEqual (dstR[(size_t) i], -k))
+            {
+                if (! reportedMismatch)
+                {
+                    std::printf ("  scope mismatch: written=%llu got=%d index=%d expected=(%a,%a) actual=(%a,%a)\n",
+                                 (unsigned long long) written, got, i, (double) k, (double) -k,
+                                 (double) dstL[(size_t) i], (double) dstR[(size_t) i]);
+                    reportedMismatch = true;
+                }
                 return false;
+            }
         }
         return true;
     };

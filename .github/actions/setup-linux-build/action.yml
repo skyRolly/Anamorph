@@ -80,6 +80,12 @@ runs:
       run: |
         set -euo pipefail
         chmod +x scripts/*.sh
+        # A slow Azure mirror consumed 35/46 minutes in run #1777. Keep the
+        # runner's mirror-list format and package sources; prefer Ubuntu's
+        # official HTTPS archive before the first dependency transaction.
+        ./scripts/configure-ci-apt-mirrors.sh --self-test
+        SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+        $SUDO ./scripts/configure-ci-apt-mirrors.sh
         ./scripts/setup-linux.sh "$DEPENDENCY_PROFILE"
 
         if [ -n "$CLANG_VERSION" ]; then

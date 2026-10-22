@@ -251,6 +251,26 @@ means the 0.9.7 one.)
   Solo, subsequent Undo, close reentry, stale cancellation and a nested event during a store.
   The initial PR guard fails the sole-release reproducer; no broader input model changes.
 
+## INC-016 — Slow dependency downloads exhausted validation job budgets
+
+- **Date:** 2026-10-22, Build & Validate #1777, attempt 1.
+- **Symptom:** `linux` and `sanitizers` reported cancellation during stack-parity tests and
+  memcheck, although the owner had not cancelled them.
+- **Cause:** the configured 40/60-minute job limits expired. Dependency setup consumed 35:21 and
+  45:36; Azure's Ubuntu mirror fetched packages at about 33–41 kB/s. The independent macOS
+  Rosetta assertion did not cancel these jobs; there is no matrix fail-fast or `needs` edge.
+- **Correction:** the CI composite action selects Ubuntu's official HTTPS archive for the exact
+  Azure entry in the hosted runner's mirror list before dependency installation. Priorities and
+  other entries survive; containers with no list are unaffected.
+- **Regression:** the helper's eight fixture checks execute before use in the same composite
+  step. Restoring the old preference with a no-op rewrite fails three checks. No test gate or
+  timeout was relaxed. The Rosetta assertion has its own investigation in the worklog.
+
+Evidence [Verified]: `.github/workflows/build.yml` (`linux`/`sanitizers` timeout values),
+`.github/actions/setup-linux-build/action.yml`, `scripts/configure-ci-apt-mirrors.sh`,
+[run #1777](https://github.com/skyRolly/Anamorph/actions/runs/39846676802) (attempt 1 logs),
+`worklogs/STATE_HOST_HARDENING_0.9.10.md` (CI follow-up).
+
 ## Adding an incident
 
 Create the next `INC-NNN` only when backed by a commit/PR/test/README. Use the template above;

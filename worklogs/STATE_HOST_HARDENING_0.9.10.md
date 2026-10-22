@@ -469,3 +469,68 @@ This follow-up changes nine files: `src/gui/SpectrumImager.cpp`, `src/gui/Spectr
 `docs/architecture/design-decisions/ADR-0050-a-gestures-ownership-ends-with-its-last-on-release-action.md`,
 `docs/DOCUMENTATION_COVERAGE.md` and this worklog. The PR now has 27 changed files: the initial 26
 plus `SpectrumImager.h`. No release tag or publication is created.
+
+## Build & Validate #1777 — 2026-10-22, cancellation and Rosetta investigation
+
+Starting commit: `a73c345d1a55c8dd5f1f2088b34def7ee5662977`, PR #168's published head.
+Evidence: [run 39846676802](https://github.com/skyRolly/Anamorph/actions/runs/39846676802),
+attempt 1 job logs and check annotations, compared with successful push run #1775
+([39764585678](https://github.com/skyRolly/Anamorph/actions/runs/39764585678)). The green #1778
+was the separate same-repository PR/merge-check path; it did not replace the failed push matrix.
+
+| Job / initial outcome | Verified cause and timing |
+|---|---|
+| `linux`, cancelled | Annotation: "The job has exceeded the maximum execution time of 40m0s". Setup took **35:21**. Azure's Ubuntu mirror fetched 79.1 MB in **34:25**, 38.3 kB/s. The job expired during the 1 MB-stack re-run, after the regular suites passed. |
+| `sanitizers`, cancelled | Annotation: "The job has exceeded the maximum execution time of 1h0m0s". Setup took **45:36**: 80.8 MB in **33:17**, then 22.5 MB for valgrind in **11:26**. ASan/UBSan passed; the job expired about seven minutes into DSP memcheck. |
+| `macos`, failed | Rosetta's x86_64 DSP run: **940 checks, 1 failure**, Test 61's exact scope-frame-order assertion. Counts were exact; the oldest-first frame check failed. The x86_64 state run was consequently not reached. Native arm64 suites and the four pluginval gates completed. |
+
+The cancellation annotations establish timeout, not owner cancellation or a macOS failure's
+fail-fast cascade. These are independent jobs with no matrix or `needs` edge. The runner's image,
+macOS 26.6.2 / image `20261013.0424.1`, and AppleClang `21.0.0.21000101` also match the earlier
+green #1775, including its executed Rosetta DSP **940/0**. `ScopeBuffer.h`, Test 61, the workflow
+and dependency setup are unchanged from the 0.9.9/main baseline. This does not establish a
+Rosetta, compiler or production-ring root cause.
+
+**Selected repairs.** The Linux CI composite action runs the new
+`configure-ci-apt-mirrors.sh` self-test and then selects Ubuntu's official HTTPS archive for the
+exact Azure archive URL in `/etc/apt/apt-mirrors.txt`, before apt starts. It preserves the mirror
+priorities and other entries; the absent-list/container path is a no-op. Package lists, signing
+checks, compiler pins, job budgets and test strictness stay as they were. This is CI setup, not a
+dependency-set or shipping-toolchain decision. A local HTTP probe independently read the official
+archive's signed-release metadata URL (200, 254,968 bytes, 4.81 s); Azure's equivalent returned
+503 through this workspace's proxy. That probe is not a measurement of the hosted runners.
+
+Test 61 now reports the first mismatch's write count, read length, frame index and hexadecimal
+expected/actual samples. Its exact assertion and production ring are unchanged. The old output
+only said `frames WRONG`, so it did not distinguish an input, expected-value, copy or read defect.
+The added diagnostic moves one live citation in `CI_CD.md` by ten lines; that reference is updated.
+No changelog entry is warranted for CI setup and test diagnostics alone.
+
+**Verification executed locally.**
+
+- Mirror helper: **8 checks / 0 failures**, including metadata, exact URL boundaries, unchanged
+  custom/ports/security/comment entries, already-configured/empty/absent lists; Bash syntax and
+  the composite action's YAML parse also completed. Replacing the rewrite with a no-op (the old
+  selection) makes **3/8 checks fail**, exit 1. The fixture test needs no root or network.
+- Unmodified Test 61's body extracted into a standalone probe against the real `ScopeBuffer.h`,
+  Clang 22 `-O3 -march=haswell -ffp-contract=off`, repeated 1,000 times with heap perturbation:
+  **6,000 checks / 0 failures**. This is native Linux, not a Rosetta reproducer.
+- An isolated ring mutation returning one older frame after wrap fails **3/6** Test 61 checks
+  and prints the first mismatch (`written=16758`, one-frame read, expected 16757, actual 16756).
+  The diagnostic preserves the existing gate's ability to fail; it is not a repair of the still
+  unexplained Rosetta assertion.
+- Rebuilt full DSP suites: native GCC Release **944/0** with heap perturbation; Clang 22
+  ASan/extended UBSan **940/0**, leak detection and the existing strict options enabled.
+- Real-editor sole-release regression re-run: **108/0**. Production sources and state fixtures
+  are untouched in this follow-up.
+- Portability and realtime checks and their self-tests completed; the Clang checker self-test
+  and incremental comparison report no new first-party warnings. Documentation self-test and
+  lint completed (160 files clean); the citation self-test and check preserve 612 anchors
+  against the starting head after updating the one moved reference.
+
+An explicit re-run of the failed/cancelled jobs was requested for the original head (attempt 2).
+Its sanitizer dependency setup completed in **52 seconds**; the Linux retry again stayed in
+dependency setup for over ten minutes. Publishing this correction uses the existing per-ref
+concurrency rule, which automatically supersedes the active retry with the new-head run. Remote
+verification is reported separately on PR #168 for the final head. The current evidence does not
+authorize a speculative ring/threading change.

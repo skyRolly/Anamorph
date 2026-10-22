@@ -198,7 +198,9 @@ delayed BY that number. Its 0.35 fs control is also the only check in either sui
 engages the wrap at all. **Test 61** (`testScopeRingHandsTheNewestFramesOldestFirst`) drives
 `ScopeBuffer` single-threaded at 441-frame blocks across 2.7 laps: `readLatest` returns exactly the
 newest frames, oldest first, including through the second copy segment a straddling block takes;
-the cross-thread half is deliberately not tested (the worklog says why). Tests 55–58, from the same
+on failure it prints the first mismatched frame's write count, read length, index and exact
+hexadecimal expected/actual samples (Build & Validate #1777's Rosetta investigation).
+The cross-thread half is deliberately not tested (the worklog says why). Tests 55–58, from the same
 PR's earlier rounds, have no entry here yet; their evidence is in CHANGELOG `[0.9.9]` and the ADR
 corrections those entries cite.
 
@@ -5580,6 +5582,13 @@ stand-in validator, over recorded strings — 22 cases, no build tree, no plugin
 (`classify_pass_exit`, `run_one_pass`, `self_test`); scripts/run-pluginval.ps1 (verdict block).
 
 ## CI integration
+
+The Linux composite action runs `scripts/configure-ci-apt-mirrors.sh --self-test` before applying
+its mirror correction. Eight fixture checks cover HTTP/HTTPS Azure entries, whitespace and priority
+metadata, comments/custom/ports/security mirrors, exact URL matching, an already configured list,
+empty input and an absent list. A no-op mutation of the rewrite fails three checks. The fixtures
+exercise the actual helper without root access or downloads; throughput is evidenced separately
+by Build & Validate #1777's logs (`CI_CD.md`, "Job timeouts").
 
 All three build jobs run the self-tests + pluginval in **both** modes (deterministic ×3 + randomise
 ×3), and **all three are blocking** — Windows/macOS do not use `continue-on-error`, so a non-zero
