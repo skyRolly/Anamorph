@@ -3012,10 +3012,10 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
-    // A RELEASE ENDS ONLY THE GESTURE IT BELONGS TO (round 33). This handler is where the
-    // ON-RELEASE ACTIONS live -- remove a band, toggle a solo bit, commit a band move -- and they
-    // act on identifiers the OWNER's press latched. A rival's release used to fire the owner's
-    // pending delete, hand back the owner's claim and drop the owner's topology snapshot.
+    // ADR-0050/F10: an action owns its identifiers while it opens/closes gestures.
+    // A nested release leaves them for that action and the existing lost-release reconcile.
+    if (gestureActionDepth > 0) return;
+    // ADR-0053 round 33: only the owner's release may run its on-release actions.
     if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
         return;
     // ADR-0053 round 29: the press is over -- and round 32: this DISPLAY's drag is over, which is

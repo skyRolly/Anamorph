@@ -1,5 +1,5 @@
 #include "PresetManager.h"
-
+#include "SerializedXml.h"      // Safe numeric NaN spelling without changing preset resolution
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
 #include "XmlBoundary.h"        // ADR-0055/ADR-0056: one parser-safety walk, two rule sets
 #include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
@@ -1301,7 +1301,7 @@ bool PresetManager::writeUserPreset (const juce::String& name)
     if (beforeStateCapture) beforeStateCapture();
 
     const auto savedSound = apvts.copyState();
-    const auto xml = savedSound.createXml();
+    const auto xml = createXmlWithSafeNumbers (savedSound);
     if (xml == nullptr || ! writeTextVerified (file, xml->toString())) return false;
 
     refresh();
