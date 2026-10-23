@@ -19,7 +19,8 @@ class IconPreflightTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         for name in ("scripts/preflight.sh", "scripts/check-icons.py", "scripts/check-product-identity.py",
-                     "packaging/windows/Anamorph.iss", "packaging/macos/build-pkg.sh", "CMakeLists.txt",
+                     "scripts/check-installer-icon.py", "resources/icons/windows/Anamorph.ico",
+                     "resources/icons/windows/PROVENANCE.json", "packaging/windows/Anamorph.iss", "packaging/macos/build-pkg.sh", "CMakeLists.txt",
                      "resources/icons/PROVENANCE.json", "resources/icons/anamorph-32.png",
                      "resources/icons/anamorph-1024.png"):
             destination = self.root / name

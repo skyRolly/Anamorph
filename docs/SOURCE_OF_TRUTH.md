@@ -94,3 +94,6 @@ known-issue claim.
 
 The namespace inventory `worklogs/2026-10-23-product-namespace.md` supports Proposed ADR-0063.
 Its owner implementation/testing permission is distinct from independent human ADR acceptance.
+
+`worklogs/2026-10-23-windows-installer-icon.md` is measurement evidence supporting Proposed
+ADR-0064, separate from namespace ADR-0063 and original icon ADR-0062.

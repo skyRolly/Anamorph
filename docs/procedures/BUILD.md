@@ -211,3 +211,8 @@ CMake uses `tech.rolly.anamorph`; JUCE writes that base to Standalone/VST3/AU
 CFBundleIdentifier. Receipt suffixes `.app/.vst3/.au` are a different namespace. RTec/Anmr,
 RollyTech/Anamorph and Windows AppId remain unchanged. Run the identity checker self-test and
 `python3 scripts/check-product-identity.py --build-dir build` after a native Release build.
+
+Windows installer packaging (Proposed ADR-0064) uses the checked-in independent approved ICO
+at `resources/icons/windows/Anamorph.ico`, with no build-time download. It is distinct from
+JUCE's generated four-frame resource container. Source/native installer gates reject missing
+or altered inputs; ordinary plugin CMake/PNG inputs and compiled runtime behavior are unchanged.

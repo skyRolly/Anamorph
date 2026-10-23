@@ -331,3 +331,13 @@ destinations in `packaging/windows/Anamorph.iss` / `packaging/macos/build-pkg.sh
   unsigned until RH-PR-3 (macOS) / RH-PR-5 (Windows); the user-facing consequences
   (SmartScreen / Gatekeeper prompts) are documented in the per-platform `INSTALL.txt`
   files and `docs/user/INSTALLATION.md`.
+
+## Windows installer icon ownership (ADR-0064)
+
+SetupIconFile uses the vendored approved ICO through the script's SourcePath, independent of
+the build working directory. The installer always owns `{app}\resources\Anamorph.ico`;
+UninstallDisplayIcon references it for VST3-only, Standalone-only and combined installs. No
+optional EXE is required. Reinstall overwrites this icon; Inno removes only owned files and
+empty directories on uninstall. AppId/destinations remain unchanged. The VST3 component's
+bundle directory receives System attribution for its existing Plugin.ico/desktop.ini.
+No wildcard deletion, extra wizard graphics, signing or release change is introduced.

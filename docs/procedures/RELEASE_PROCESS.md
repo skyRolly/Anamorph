@@ -230,3 +230,8 @@ Base `tech.rolly.anamorph`; macOS receipts below it use `.vst3/.au/.app`. Expand
 is checked by `build-pkg.sh`. Windows AppId stays `{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}`.
 The owner accepts the pre-release receipt break; there is no old-receipt alias or fallback.
 ADR-0063 remains Proposed pending independent human review before merge; no release is authorized.
+
+The Windows installer icon gate (Proposed ADR-0064) verifies the exact checked-in B0 ICO before
+ISCC and the generated Setup MAINICON afterward. Installer artifact upload also requires the
+isolated component/install/reinstall/uninstall tests. No icon download or generic fallback
+is allowed; normal signing/release authorization remains unchanged.

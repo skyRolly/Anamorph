@@ -6060,3 +6060,17 @@ source, generated Linux/Windows/macOS, AU/VST3 and expanded-package fixtures run
 selection/parsing functions. Only Windows VERSIONINFO access is stubbed. Native CI checks the
 actual artifacts independently. DAW recall/rescan after CFBundleIdentifier changes remains a
 human validation gap; preserved independent codes do not certify every host.
+
+## Windows installer resource/ownership tests (ADR-0064)
+
+Run `python3 scripts/check-installer-icon.py --self-test` and its source check, plus
+`pwsh -NoProfile -File scripts/test-windows-installer.ps1 -SelfTest`. MAINICON fixtures use
+the production validator with only the resource API stubbed; source/hash, optional-component,
+missing/altered resource cases must fail. The snapshot suite checks 3 valid choices and 32
+seeded failures through the same decision function used by native installation tests.
+
+Native CI validates actual Setup/uninstaller resources and VST3-only, Standalone-only and both
+installs, same-version reinstall, registry icon paths, native copies, shortcuts, System
+attribution, safe uninstall and unrelated sentinel preservation. Only a fresh GitHub-hosted
+Windows VM is permitted. The existing GetVst3Dir/custom destination UI is unchanged; chooser
+interaction, shell DPI/cache display and real DAW appearance remain manual validation gaps.

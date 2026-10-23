@@ -41,6 +41,10 @@ additional malformed host-state restrictions remain open owner decisions.
   Evidence: [namespace migration diff](https://github.com/skyRolly/Anamorph/compare/feature/native-product-icons-round1...codex/namespace-tech-rolly-anamorph); ADR-0063. [Verified — source; native gates reported separately]
 
 ### Fixed
+- **Windows installer and uninstaller use the approved product icon in every component configuration.**
+  VST3-only installs now register a stable installed icon instead of an absent optional app;
+  component choices, install destinations and the installer AppId are unchanged.
+  Evidence: [installer integration diff](https://github.com/skyRolly/Anamorph/compare/codex/namespace-tech-rolly-anamorph...codex/windows-installer-native-icon); ADR-0064. [Verified — source; native CI reported separately]
 - **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The
   XML writer spells NaN on a private copy, preserving the existing text and finite encoding without
   changing the live parameter or choosing a new audible NaN policy (KI-029; ADR-0009).

@@ -45,7 +45,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; {commoncf64}\VST3 requires elevation.
 PrivilegesRequired=admin
-UninstallDisplayIcon={app}\Anamorph.exe
+UninstallDisplayIcon={app}\resources\Anamorph.ico
+SetupIconFile={#SourcePath}..\..\resources\icons\windows\Anamorph.ico
 WizardStyle=modern
 
 [Types]
@@ -56,7 +57,13 @@ Name: "custom"; Description: "Custom installation"; Flags: iscustom
 Name: "vst3"; Description: "Install VST3"; Types: full custom
 Name: "standalone"; Description: "Install Standalone"; Types: full custom
 
+[Dirs]
+; JUCE VST3 desktop.ini/Plugin.ico require the bundle directory System attribute.
+Name: "{code:GetVst3Dir}\Anamorph.vst3"; Components: vst3; Attribs: system
+
 [Files]
+; Installer-owned resource exists for every component choice, including VST3 only.
+Source: "{#SourcePath}..\..\resources\icons\windows\Anamorph.ico"; DestDir: "{app}\resources"; Flags: ignoreversion
 Source: "{#StagingDir}\Anamorph.vst3\*"; DestDir: "{code:GetVst3Dir}\Anamorph.vst3"; Components: vst3; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#StagingDir}\Anamorph.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
 ; The installer payload is deliberately lean: only what the user needs to run
