@@ -79,7 +79,7 @@ def windows_version(path):
     require(length >= 4, 'missing VERSIONINFO translation')
     language, encoding = struct.unpack('<HH', ctypes.string_at(pointer, 4))
     result = {}
-    for field in ('CompanyName', 'ProductName', 'FileDescription', 'InternalName', 'OriginalFilename'):
+    for field in ('CompanyName', 'ProductName', 'FileDescription', 'FileVersion', 'ProductVersion'):
         pointer, length = query(f'\\StringFileInfo\\{language:04x}{encoding:04x}\\{field}')
         result[field] = ctypes.wstring_at(pointer, max(0, length - 1))
     return result
@@ -272,6 +272,39 @@ def self_test():
                         rejects(build_metadata, build, platform)
                     module.unlink()
                     rejects(build_metadata, build, platform)
+    # Use the real VERSIONINFO reader with a stub only at the Win32 API. The
+    # pinned juce_ResourceRc.cpp emits these five keys, not InternalName or
+    # OriginalFilename. Requiring invented keys rejected valid native binaries.
+    from ctypes import wintypes
+    version_values = {'CompanyName': 'RollyTech', 'ProductName': PRODUCT,
+                      'FileDescription': PRODUCT, 'FileVersion': '1.2.3', 'ProductVersion': '1.2.3'}
+    buffers = [ctypes.create_string_buffer(struct.pack('<HH', 0x409, 1252))]
+    class ApiCall:
+        def __init__(self, function):
+            self.function = function
+        def __call__(self, *args):
+            return self.function(*args)
+    def query_version(data, key, pointer, length):
+        if key == '\\VarFileInfo\\Translation':
+            buffer, count = buffers[0], 4
+        else:
+            field = key.rsplit('\\', 1)[-1]
+            if field not in version_values:
+                return 0
+            buffer = ctypes.create_unicode_buffer(version_values[field])
+            buffers.append(buffer)
+            count = len(version_values[field]) + 1
+        ctypes.cast(pointer, ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.addressof(buffer)
+        ctypes.cast(length, ctypes.POINTER(wintypes.UINT))[0] = count
+        return 1
+    class VersionApi:
+        GetFileVersionInfoSizeW = ApiCall(lambda *args: 1)
+        GetFileVersionInfoW = ApiCall(lambda *args: 1)
+        VerQueryValueW = ApiCall(query_version)
+    with patch.object(ctypes, 'WinDLL', return_value=VersionApi(), create=True):
+        assert windows_version(Path('synthetic-version.exe')) == version_values
+    print('product identity VERSIONINFO API-boundary fixture passed')
+
     print('product identity self-test passed (source, generated Linux/Windows/macOS, AU, VST3, packages; good/bad fixtures)')
 
 
