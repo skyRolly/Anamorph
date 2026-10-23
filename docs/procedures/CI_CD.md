@@ -13,7 +13,10 @@ They use the real top-level CMake file and a local stand-in; they download and c
 ## Icon resource checks
 
 Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
-job before each use. `source-lint` and `merge-check` verify the two vendored B0 hashes and CMake bindings;
+job before each use. The self-test includes 42 matching-platform good/bad native fixtures
+(only native API/utility boundaries are stubbed). `source-lint` also runs the five actual-shell
+preflight regressions in `scripts/test-icon-preflight.py`. `source-lint` and `merge-check`
+verify the two vendored B0 hashes and CMake bindings;
 `linux` checks native ELF outputs and absence of stale generated ICO/ICNS. Windows enumerates
 actual EXE and VST3 PE icon groups through Windows resource APIs, checks generated ICO and
 VST3 sidecars, and repeats against staged outputs. Both macOS jobs inspect their built
@@ -1735,7 +1738,9 @@ has already been re-anchored relative to `main` (a differing citation *count* fo
 a document makes the tool fall back to ordinal pairing, which only judges base spellings still
 present verbatim). Check **both** before concluding the gate is green.
 
-**`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
+**`scripts/preflight.sh`** (added 2026-08-18) first validates the icon source contract and self-tests unconditionally,
+then checks existing native Release outputs or reports exact skipped checks and build commands.
+It runs the whole lint block above in one command — all
 **seven** checkers with their self-tests, the two shell self-tests beside them
 (`setup-llvm-apt.sh` and, since 2026-09-06, `run-pluginval.sh`, whose crash-vs-failure verdict a
 green local pluginval run would not exercise), the citation gate against **all three** bases that

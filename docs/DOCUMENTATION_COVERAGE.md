@@ -1859,7 +1859,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3562` and `.github/workflows/build.yml:3647`, this round being
+`.github/workflows/build.yml:3565` and `.github/workflows/build.yml:3650`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1893,7 +1893,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:724` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:727` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17148,3 +17148,22 @@ the failed step, comparison of #1781/#1782 with merge `34baa50`, root cause and 
 Five source citations shifted by the test insertion are re-anchored to the same source text,
 including the workflow comment and its CI procedure. This test-only correction changes no
 architecture or compatibility decision.
+
+
+## PR #170 review follow-up — native gate liveness and local preflight (2026-10-23)
+
+The earlier self-test rejected platform mismatches but did not exercise matching-platform native
+inspection. Reproduced: preserve mismatch rejection and return success on the local platform;
+the old self-test passes. `check-icons.py` now runs 42 native positive/negative fixtures through
+production dispatch, with only loader/utility boundaries stubbed. No native-platform result is
+inferred from a synthetic fixture. Six seeded mutants are rejected, including disabled Windows
+resource inspection and acceptance of missing/altered Plugin.ico. TESTING documents the fixtures
+and their limits; CI_CD documents the same-job self-tests and five shell preflight regressions.
+
+The old shell preflight also returned 0 with a corrupted source PNG and no build. The corrected
+entry point checks approved digests, provenance, CMake paths and PNG integrity before the existing
+gates, regardless of build availability. Native outputs are inspected when present; absent builds
+produce explicit skip/path/command output. The source checker no longer treats an editable
+provenance digest as authority to approve changed pixels. REPOSITORY_MAP lists the shell regression
+script. No CMake, packaging, namespace, runtime, DSP/state or artwork change belongs to this fix.
+Exact validation and limitations are appended to `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`.

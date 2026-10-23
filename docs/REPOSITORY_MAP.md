@@ -106,7 +106,8 @@ Anamorph/
 ## `tests/`, `scripts/`, `packaging/`, `.github/`
 
 Native-icon integration evidence is in `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`;
-`scripts/check-icons.py` validates sources and actual native resources (with a live self-test),
+`scripts/check-icons.py` validates sources and actual native resources (with matching-platform
+good/bad fixtures); `scripts/test-icon-preflight.py` guards the actual local shell entry point,
 and ADR-0062 records the approved conventional JUCE build decision.
 
 | Path | Responsibility |

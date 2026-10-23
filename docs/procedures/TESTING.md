@@ -6,8 +6,12 @@ How to run and interpret the validation suite. Acceptance levels and the hard ga
 ## Build-time icon resource checks
 
 Run `python3 scripts/check-icons.py --self-test` before `python3 scripts/check-icons.py`.
-The self-test drives real PNG/ICO/ICNS/PE-group parsers and source verification with valid and
-corrupt synthetic inputs, without artwork, network or a build tree. The source check pins B0
+The self-test drives real PNG/ICO/ICNS/PE-group parsers, source verification and 42
+matching-platform native fixtures, without artwork, network or a build tree. It exercises
+production `check_native()` on valid/invalid Windows layouts and embedded groups/frames,
+macOS bundles/plists/resources and extraction failures, and Linux ELF layouts with Standalone
+enabled/disabled and staged output. Only the Windows loader API and macOS native utilities
+are stubbed; resource selection and validation remain production code. The source check pins B0
 file hashes/dimensions and the CMake consumers. It adds no third-party Python dependency.
 
 After a native build, use `--platform linux`, `--platform windows` or `--platform macos` and
@@ -16,6 +20,14 @@ checks actual RT_GROUP_ICON/RT_ICON payloads in the EXE/VST3 through native reso
 macOS checks actual bundle plists/resource copies and uses iconutil/sips; Linux checks only
 its ELF outputs. `--staged-dir dist/Anamorph-Windows` or `dist/Anamorph-macOS` repeats the
 native check on staged output. CI runs the self-test before use in every consuming job.
+
+`scripts/preflight.sh` always runs that self-test and source/provenance validation first,
+including immutable approved digests independent of the editable provenance. Existing native
+Release outputs trigger the matching check. When none exists it explicitly reports the native
+skip, candidate paths and configure/build/check commands; no product rebuild is attempted.
+`python3 scripts/test-icon-preflight.py` runs five shell-entry regressions in `source-lint`: a
+missing build still reaches the next existing gate; corrupt PNGs, coordinated provenance edits,
+wrong CMake paths and wrong source commits fail before that gate, without any build tree.
 
 Native utility/resource checks do not prove shell display, DPI, cache or DAW artwork behavior.
 Those remain manual tests. No global Linux icon files are installed. Exact paths, optical

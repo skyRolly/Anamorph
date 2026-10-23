@@ -49,6 +49,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+echo "== preflight: approved icon sources + native resources =="
+python3 scripts/check-icons.py --self-test
+# Source/provenance validation is unconditional and needs no build. Native
+# checks inspect existing matching-platform Release outputs, never rebuild.
+python3 scripts/check-icons.py --preflight
+
 echo "== preflight: documentation + source lints =="
 python3 scripts/check-docs.py --self-test
 python3 scripts/check-docs.py

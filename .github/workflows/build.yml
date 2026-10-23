@@ -531,6 +531,9 @@ jobs:
       - name: Icon checker self-test
         run: python3 scripts/check-icons.py --self-test
 
+      - name: Local icon preflight regression
+        run: python3 scripts/test-icon-preflight.py
+
       - name: Verify approved icon inputs and CMake paths
         run: python3 scripts/check-icons.py
 

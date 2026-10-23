@@ -214,3 +214,42 @@ using existing policy. Keep ADR-0062 and the dated evidence append-only; if the 
 is reversed, record its replacement/deprecation per ADR_POLICY instead of deleting the ADR.
 Do not patch signed bundles, rewrite main, change IDs, remove presets or alter sessions.
 A source-design rollback is not needed in the icon repository.
+
+
+## Review findings A1/A2 — 2026-10-23 follow-up
+
+The pre-fix head was `feebf066f1da86689be9a868a2ffc637a0f503d0`. Reproduced both defects:
+(1) preserve platform-mismatch rejection but return success on matching platforms: the old
+self-test still passes; (2) append corrupt bytes to the 32px PNG in an isolated checkout
+with no build: the old full preflight exits 0. No source input was changed in the shared tree.
+
+The corrected self-test runs 42 matching-platform native fixtures through production
+`check_native`: 12 positive build/staged + Standalone on/off cases and 30 required negative
+cases. Windows stubs only the loader API boundary; production group parsing/frame comparisons
+and target selection run. macOS stubs only plutil/iconutil/sips while production bundle/plist/
+ICNS selection and validation run. Linux uses synthetic x86-64 ELF headers and real filesystem
+selection. These are portable liveness tests, not native build or visual certification.
+
+Six source mutants are killed: matching-platform inspection bypassed, Windows resource validation
+disabled, missing Plugin.ico accepted, altered Plugin.ico accepted, macOS resource comparison
+skipped and Linux ELF validation skipped. Missing and altered fixtures fail for their expected
+resource-specific reason, not platform mismatch. The PNG/provenance guard also rejects a changed
+PNG with a coordinated digest edit, using an independent approved digest and source commit.
+
+The shell preflight now runs source/provenance/CMake/PNG validation and self-tests before other
+gates, regardless of build availability. Existing compiled Release outputs trigger native
+inspection without a rebuild; otherwise it prints exactly the native skip, candidate paths and
+build/check commands. Five committed shell-entry regressions run in source-lint. Manual isolated
+full-preflight controls: old corrupt-source 0; new corrupt-source 1; new wrong CMake path 1;
+new valid no-build 0 with explicit native and suite skips.
+
+Local Ubuntu managed container / GCC 14.2 / pinned JUCE 9.0.4: checker/source/42 native fixtures,
+five shell regressions, six mutants, docs and citation checks pass. Fresh unchanged application
+sources pass 944 DSP and 5942 state checks. The native build, full built preflight, pluginval
+and new cross-platform CI are recorded separately on the PR head; no unobserved result is
+upgraded from Round 1. The local GCC ABI is not the shipping Clang ABI; preflight may report
+the known floor difference, and that must not be called a green full preflight.
+
+No CMake, namespace, packaging/installer, DSP/UI/state/parameter/latency/version or artwork
+change is included in this review fix. Prior native reports remain historical evidence for
+their recorded heads.
