@@ -545,7 +545,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
           python3 scripts/check-linux-desktop.py --self-test
           python3 scripts/check-linux-desktop.py
-          python3 tests/linux_desktop_install_tests.py
+          python3 tests/linux_desktop_install_tests.py --hosted-namespace-permission
 
       - name: Product identity self-test and source contract
         run: |
@@ -1158,7 +1158,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
           python3 scripts/check-linux-desktop.py --self-test
           python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux
-          python3 tests/linux_desktop_install_tests.py --staged-dir dist/Anamorph-Linux --report build/linux-desktop-install.json
+          python3 tests/linux_desktop_install_tests.py --hosted-namespace-permission --staged-dir dist/Anamorph-Linux --report build/linux-desktop-install.json
 
       - name: Retain Linux desktop install evidence
         if: ${{ always() && steps.desktop_install.outcome != 'skipped' }}

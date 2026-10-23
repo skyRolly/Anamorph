@@ -1857,3 +1857,12 @@ is retained as `Anamorph-Linux-desktop-validation`. Unavailable isolation is a f
 not a skipped pass. Existing compiler/audio/state/pluginval/ABI gates remain intact.
 GTK/Bubblewrap/Python are test dependencies only; the customer helper uses shell and
 base Linux utilities. No assets are downloaded or rendered during builds.
+
+Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
+before any installation. `--hosted-namespace-permission` now first proves its
+strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
+kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
+and restores its exact original value in finally. Local tests never change kernel
+settings; self-hosted/developer/wrong-repository contexts are refused. Installation
+still runs in real private filesystem/user namespaces and fails if isolation cannot
+start. This enables the sandbox rather than replacing native tests or their gates.

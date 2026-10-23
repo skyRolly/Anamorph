@@ -19,6 +19,35 @@ PNG = f'icons/hicolor/32x32/apps/{NAME}.png'
 DESKTOP = f'applications/{NAME}.desktop'
 
 
+def hosted_namespace_guard(platform, environment):
+    if not (platform.startswith('linux') and environment.get('GITHUB_ACTIONS') == 'true'
+            and environment.get('RUNNER_ENVIRONMENT') == 'github-hosted'
+            and environment.get('RUNNER_OS') == 'Linux'
+            and environment.get('GITHUB_REPOSITORY') == 'skyRolly/Anamorph'):
+        raise ValueError('namespace permission changes require this repository\'s disposable hosted Linux VM')
+
+
+def namespace_guard_self_test():
+    good = {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+            'RUNNER_OS': 'Linux', 'GITHUB_REPOSITORY': 'skyRolly/Anamorph'}
+    hosted_namespace_guard('linux', good)
+    for key in good:
+        bad = dict(good); bad[key] = 'untrusted'
+        try:
+            hosted_namespace_guard('linux', bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('hosted namespace guard accepted ' + key)
+    try:
+        hosted_namespace_guard('darwin', good)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('hosted namespace guard accepted wrong OS')
+    print('Namespace guard self-test: valid hosted context and five unsafe contexts rejected')
+
+
 class InstallCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='anamorph-desktop-')
@@ -333,16 +362,38 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--staged-dir', type=Path)
     parser.add_argument('--report', type=Path)
+    parser.add_argument('--hosted-namespace-permission', action='store_true',
+                        help='temporarily enable unprivileged namespaces on this disposable GitHub VM only')
     args, extra = parser.parse_known_args()
     STAGED = args.staged_dir.resolve() if args.staged_dir else None
     if not shutil.which('bwrap'):
         raise SystemExit('Bubblewrap required: tests must never run installation on live host paths')
-    suite = unittest.defaultTestLoader.loadTestsFromNames(extra, module=sys.modules[__name__]) if extra else unittest.defaultTestLoader.loadTestsFromTestCase(InstallCase)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    namespace_guard_self_test()
+    permission_key = 'kernel.apparmor_restrict_unprivileged_userns'
+    permission_path = Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')
+    original_permission = None
+    if args.hosted_namespace_permission:
+        hosted_namespace_guard(sys.platform, os.environ)
+        if permission_path.exists():
+            original_permission = permission_path.read_text().strip()
+            if original_permission not in ('0', '1'):
+                raise ValueError('unknown namespace restriction value')
+    try:
+        if original_permission is not None:
+            subprocess.run(['sudo', '-n', 'sysctl', '-q', '-w', permission_key + '=0'], check=True)
+        suite = unittest.defaultTestLoader.loadTestsFromNames(extra, module=sys.modules[__name__]) if extra else unittest.defaultTestLoader.loadTestsFromTestCase(InstallCase)
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
+    finally:
+        if original_permission is not None:
+            subprocess.run(['sudo', '-n', 'sysctl', '-q', '-w', permission_key + '=' + original_permission], check=True)
+            if permission_path.read_text().strip() != original_permission:
+                raise ValueError('namespace restriction was not restored')
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps({'tests_run': result.testsRun,'failures': len(result.failures),
             'errors': len(result.errors),'real_customer_tree': str(STAGED) if STAGED else None,
+            'hosted_namespace_permission': args.hosted_namespace_permission,
+            'original_namespace_restriction': original_permission, 'namespace_restriction_restored': True,
             'GUI_desktop_certification': False,'isolation': 'actual shell entry points under Bubblewrap private filesystem roots'},indent=2)+'\n')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 

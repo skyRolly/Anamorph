@@ -6116,3 +6116,12 @@ case launches a harmless fixture executable from a path containing spaces, %%/qu
 backtick/backslash and checks GTK hicolor lookup at eight sizes × two scales, including SVG.
 It does not launch the product GUI or certify GNOME/KDE appearance. Serialize operations
 against the same data root. See the worklog for exact results, mutations and limits.
+
+Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
+before any installation. `--hosted-namespace-permission` now first proves its
+strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
+kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
+and restores its exact original value in finally. Local tests never change kernel
+settings; self-hosted/developer/wrong-repository contexts are refused. Installation
+still runs in real private filesystem/user namespaces and fails if isolation cannot
+start. This enables the sandbox rather than replacing native tests or their gates.

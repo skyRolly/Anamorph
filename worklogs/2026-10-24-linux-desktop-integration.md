@@ -115,3 +115,12 @@ remain manual. Current CI outcomes are scoped to exact PR heads, recorded separa
 
 No merge, ADR acceptance, release/tag, version bump, product deployment, icon redesign,
 parameter/state/latency behavior or independent identity change was performed.
+
+Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
+before any installation. `--hosted-namespace-permission` now first proves its
+strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
+kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
+and restores its exact original value in finally. Local tests never change kernel
+settings; self-hosted/developer/wrong-repository contexts are refused. Installation
+still runs in real private filesystem/user namespaces and fails if isolation cannot
+start. This enables the sandbox rather than replacing native tests or their gates.
