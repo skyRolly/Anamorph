@@ -42,3 +42,21 @@ Native installation is pending until current-head CI completes; no Linux runtime
 is implied. The same job runs the self-test before installation. No audio/GUI/state,
 existing tests, version, artwork, namespace, AppId or AU/VST3 identity changes.
 No release/tag, merge, deployment or ADR acceptance is performed.
+
+## Native result and citation correction
+
+At `fd1941a4dd4e9e31af2c31aaf8c3505f97d24360`, macOS job 120707087674 in
+run 40039366516 passed actual default-full installation. Artifact 12539936807,
+ZIP SHA-256 `427ec934e9813a771e707b4c51af25a7ee325a69ad975d45e1d12b91ee62cc8c`,
+records failure=null, exact tech.rolly.anamorph.vst3/au/app receipts, version 0.9.10,
+root volume and correct relative pkgutil locations, installed bundle/AU identities
+and payload equality. Existing receipts survive; sibling count is zero, so this
+is not a both-products co-installation result.
+
+The first implementation commit shifted four build-workflow citations; they were
+corrected against main in the next commit. That push's citation job compared with
+the intermediate uncorrected commit and correctly remained red. This follow-up
+records the failure and actual native evidence; no checker/gate is weakened or
+exception added. Local checks against both main and the immediate good predecessor
+pass. The receipt script/workflow/native implementation is unchanged by this follow-up;
+new combined-head CI must still complete before it is called green.
