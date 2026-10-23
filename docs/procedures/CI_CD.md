@@ -10,6 +10,29 @@ These dependency-boundary probes check fresh/reused caches, refusal of cached 9.
 the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
+## Icon resource checks
+
+Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
+job before each use. The self-test includes 42 matching-platform good/bad native fixtures
+(only native API/utility boundaries are stubbed). `source-lint` also runs the five actual-shell
+preflight regressions in `scripts/test-icon-preflight.py`. `source-lint` and `merge-check`
+verify the two vendored B0 hashes and CMake bindings;
+`linux` checks native ELF outputs and absence of stale generated ICO/ICNS. Windows enumerates
+actual EXE and VST3 PE icon groups through Windows resource APIs, checks generated ICO and
+VST3 sidecars, and repeats against staged outputs. Both macOS jobs inspect their built
+bundles/plists/ICNS using native plutil, iconutil and sips; the universal job repeats against
+the signed staging tree. Native reports/raw containers are retained in the
+`Anamorph-Windows-icon-validation` and `Anamorph-macOS-icon-validation` artifacts.
+These checks add no runtime dependency, installer customization, signing-policy change or
+Finder/Dock/Explorer/DAW display claim. See [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md).
+
+The Windows job runs `scripts/find-windows-vst3.ps1 -SelfTest` before pluginval/staging.
+Both consumers use its shared selector for an actual `Contents/x86_64-win/Anamorph.vst3`
+module, rather than counting JUCE's configure-time `desktop.ini`-only directories. The
+self-test reproduces four configuration shells, accepts one built bundle (including the
+Windows System attribute), and refuses zero or multiple built modules. Validation strictness,
+pass counts and the existing PE/PDB staging checks remain unchanged.
+
 ## Triggers
 
 `build.yml`: `push` to any branch (`"**"`), `pull_request`, `workflow_dispatch`, and
@@ -1451,7 +1474,7 @@ processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally 
 
 **Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
 suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:542-544), so it cannot construct one — and it
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:544-546), so it cannot construct one — and it
 is the wrong test: what overflows a frame is a large automatic, not that particular class, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
@@ -1563,7 +1586,7 @@ across its scenario scopes — 16 `Rig`s at 768 bytes (GCC's `sizeof`), 17 talli
 snapshots sum to about 14.4 KB at GCC's type sizes, and MSVC's own type sizes and the temporaries make up
 the rest; GCC lets the disjoint scopes share their slots. Re-audited before merge (2026-09-27): the test runs on
 the main thread and starts no thread, `tests/state_tests.cpp` is compiled into `AnamorphStateTests` only
-(`CMakeLists.txt:582`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
+(`CMakeLists.txt:584`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
 main thread's 1 MiB, where the `windows` job runs the suite natively. Every claim that
 moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
 `state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;
@@ -1715,7 +1738,9 @@ has already been re-anchored relative to `main` (a differing citation *count* fo
 a document makes the tool fall back to ordinal pairing, which only judges base spellings still
 present verbatim). Check **both** before concluding the gate is green.
 
-**`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
+**`scripts/preflight.sh`** (added 2026-08-18) first validates the icon source contract and self-tests unconditionally,
+then checks existing native Release outputs or reports exact skipped checks and build commands.
+It runs the whole lint block above in one command — all
 **seven** checkers with their self-tests, the two shell self-tests beside them
 (`setup-llvm-apt.sh` and, since 2026-09-06, `run-pluginval.sh`, whose crash-vs-failure verdict a
 green local pluginval run would not exercise), the citation gate against **all three** bases that

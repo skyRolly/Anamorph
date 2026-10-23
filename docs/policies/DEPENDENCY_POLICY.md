@@ -17,6 +17,12 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 ## Version-lock reasoning
 
+- **Product icon inputs are vendored and content-pinned**, not fetched during a build.
+  `resources/icons/PROVENANCE.json` records approved B0 source commit `35cf982` and SHA-256
+  values; `scripts/check-icons.py` verifies both files and their ICON_BIG/ICON_SMALL bindings.
+  This adds no code dependency and changes no JUCE/toolchain pin. Future artwork or source
+  changes require owner approval and refreshed provenance. Decision and scope: ADR-0062.
+
 - **JUCE is pinned to an exact IMMUTABLE commit** (`3fb5cbc…` = tag 9.0.4; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
   0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
@@ -36,12 +42,12 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   pins it to **0** on all six targets that carry the `JUCE_*` contract, which keeps the shipped
   binary's content and `THIRD_PARTY_LICENSES.md`'s "ships no MP3 decoder" claim as they were: the
   flag is the no-op, the omission would have been the change. Rule 5 governs it from here.
-  Evidence [Verified]: CMakeLists.txt:506, 547, 592, 634, 677, 720; ADR-0054.
+  Evidence [Verified]: CMakeLists.txt:508, 549, 594, 636, 679, 722; ADR-0054.
   **9.0.3 added two more by adding codecs rather than flipping one:** `JUCE_USE_OPUS` (vendored opus,
   opusfile and libopusenc) and `JUCE_USE_WEBP` (vendored libwebp) both arrive defaulting to **1**.
   Anamorph pins both to **0** on the same six targets for the same reason — the product reads and
   writes neither format, and two more third-party libraries in every binary would be dead code that
-  `THIRD_PARTY_LICENSES.md` and `NOTICE` do not carry. Evidence [Verified]: CMakeLists.txt:515-516;
+  `THIRD_PARTY_LICENSES.md` and `NOTICE` do not carry. Evidence [Verified]: CMakeLists.txt:517-518;
   ADR-0060.
 
 ## Update mechanisms
@@ -105,7 +111,7 @@ repository ever grows a real package manifest.
    two trees, re-aim the live citations, and record the map in the bump's ADR (ADR-0060 §Citation
    map); accepted ADRs keep the line numbers of the tree they were written against.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:496-520` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:498-522` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

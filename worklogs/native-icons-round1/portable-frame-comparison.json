@@ -1,0 +1,243 @@
+{
+  "scope": "portable JUCE encoder study only; native PE/bundle and shell validation separate",
+  "source_commit": "35cf982f9d2e33bde5c4a1bf84b17205ce1e6b80",
+  "metrics": [
+    {
+      "size": 16,
+      "rgba_mae": [
+        1.98046875,
+        2.08984375,
+        2.3359375,
+        9.40625
+      ],
+      "rgba_max": [
+        [
+          0,
+          15
+        ],
+        [
+          0,
+          14
+        ],
+        [
+          0,
+          28
+        ],
+        [
+          0,
+          64
+        ]
+      ],
+      "alpha_bounds_juce": [
+        0,
+        0,
+        16,
+        16
+      ],
+      "alpha_bounds_approved": [
+        0,
+        0,
+        16,
+        16
+      ],
+      "composited_rgb_mae": {
+        "#080c12": [
+          1.296875,
+          1.58984375,
+          1.67578125
+        ],
+        "#edf0f4": [
+          9.55859375,
+          9.6015625,
+          9.28515625
+        ]
+      }
+    },
+    {
+      "size": 32,
+      "rgba_mae": [
+        1.03125,
+        1.0234375,
+        1.0185546875,
+        0.015625
+      ],
+      "rgba_max": [
+        [
+          0,
+          128
+        ],
+        [
+          0,
+          128
+        ],
+        [
+          0,
+          128
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "alpha_bounds_juce": [
+        1,
+        1,
+        31,
+        31
+      ],
+      "alpha_bounds_approved": [
+        1,
+        1,
+        31,
+        31
+      ],
+      "composited_rgb_mae": {
+        "#080c12": [
+          0.0244140625,
+          0.0107421875,
+          0.015625
+        ],
+        "#edf0f4": [
+          0.017578125,
+          0.0166015625,
+          0.0185546875
+        ]
+      }
+    },
+    {
+      "size": 48,
+      "rgba_mae": [
+        1.6245659722222223,
+        2.142361111111111,
+        2.265625,
+        4.294704861111111
+      ],
+      "rgba_max": [
+        [
+          0,
+          117
+        ],
+        [
+          0,
+          106
+        ],
+        [
+          0,
+          95
+        ],
+        [
+          0,
+          85
+        ]
+      ],
+      "alpha_bounds_juce": [
+        1,
+        1,
+        47,
+        47
+      ],
+      "alpha_bounds_approved": [
+        1,
+        1,
+        47,
+        47
+      ],
+      "composited_rgb_mae": {
+        "#080c12": [
+          0.7608506944444444,
+          1.1436631944444444,
+          1.2395833333333333
+        ],
+        "#edf0f4": [
+          4.528645833333333,
+          4.82421875,
+          4.751736111111111
+        ]
+      }
+    },
+    {
+      "size": 256,
+      "rgba_mae": [
+        0.236175537109375,
+        0.3650665283203125,
+        0.3925323486328125,
+        0.2755584716796875
+      ],
+      "rgba_max": [
+        [
+          0,
+          127
+        ],
+        [
+          0,
+          255
+        ],
+        [
+          0,
+          255
+        ],
+        [
+          0,
+          78
+        ]
+      ],
+      "alpha_bounds_juce": [
+        8,
+        8,
+        248,
+        248
+      ],
+      "alpha_bounds_approved": [
+        8,
+        8,
+        248,
+        248
+      ],
+      "composited_rgb_mae": {
+        "#080c12": [
+          0.130096435546875,
+          0.2413177490234375,
+          0.258392333984375
+        ],
+        "#edf0f4": [
+          0.358856201171875,
+          0.4567718505859375,
+          0.46173095703125
+        ]
+      }
+    }
+  ],
+  "icns": {
+    "ic10": {
+      "size": 1024,
+      "alpha_bounds": [
+        32,
+        32,
+        992,
+        992
+      ],
+      "rgba_mae": [
+        0.000782012939453125,
+        0.0008144378662109375,
+        0.0009479522705078125,
+        0.0
+      ]
+    },
+    "icp5": {
+      "size": 32,
+      "alpha_bounds": [
+        1,
+        1,
+        31,
+        31
+      ],
+      "rgba_mae": [
+        0.0390625,
+        0.03125,
+        0.0263671875,
+        0.0
+      ]
+    }
+  },
+  "interpretation": "Resampling/encoding measurements, not a product-design score. Alpha bounds match at each Windows size. Both curves and compact interaction remain readable at native size; 16 px is slightly softer. No material portable-encoder defect found; native output and OS display checks remain separate."
+}

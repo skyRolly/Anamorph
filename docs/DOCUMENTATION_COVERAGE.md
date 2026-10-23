@@ -1,5 +1,22 @@
 # DOCUMENTATION_COVERAGE.md
 
+Latest audit (2026-10-23): native icon Round 1 adds two pinned B0 PNGs, JUCE arguments and
+`scripts/check-icons.py` with same-job liveness checks/native resource inspection. ADR-0062
+records the owner's explicit Architecture Review approval; the
+[integration record](../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) holds provenance, validation
+scope, pending native session checks and rollback. BUILD, CI_CD, DEPENDENCY_POLICY, TESTING,
+ADR_INDEX, REPOSITORY_MAP, SOURCE_OF_TRUTH and README navigation/classification are synchronized.
+Audio/state sources, compatibility policy, product identity and installer/release configuration
+remain unchanged. The state suite has 142 cases with labels through 145 (13–15 unassigned);
+current testing-summary counts are preserved. Existing audit history below is retained.
+
+Native CI follow-up: the actual EXE/VST3 icon groups and macOS bundle resources are recorded in
+`worklogs/native-icons-round1/native-platform-audit.json`. Adding icons exposed configure-only
+Windows bundle directories in JUCE. `scripts/find-windows-vst3.ps1` now gives pluginval and
+staging one shared, regression-tested compiled-module selector, retaining missing/multiple-build
+failures. BUILD, CI_CD, TESTING and REPOSITORY_MAP describe this boundary; no installer,
+audio/state or product-identity behavior changed. Native interactive shell tests remain pending.
+
 Permanent documentation-coverage audit. **Future contributors/AI must update this on every
 documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`).
 
@@ -1842,7 +1859,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3495` and `.github/workflows/build.yml:3580`, this round being
+`.github/workflows/build.yml:3565` and `.github/workflows/build.yml:3650`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1876,7 +1893,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:716` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:727` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1887,14 +1904,14 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:475` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:477` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:628-649`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:630-651`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2209,7 +2226,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:496-497, 546-550, 591-595`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:498-499, 548-552, 593-597`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2965,7 +2982,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:553-562`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:555-564`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2990,7 +3007,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:553-562`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:555-564`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -9978,7 +9995,7 @@ allocator/deallocator pair closed. Tests are not edited for a dashboard.
 **One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
 stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
 holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` alone (CMakeLists.txt:542-544) — and the wrong test: `dsp_tests.cpp` declares
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:544-546) — and the wrong test: `dsp_tests.cpp` declares
 `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
 28% of the reserve. The step now runs both binaries; both were verified green under
 `ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
@@ -17059,7 +17076,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:523-528` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:525-530` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -17131,3 +17148,22 @@ the failed step, comparison of #1781/#1782 with merge `34baa50`, root cause and 
 Five source citations shifted by the test insertion are re-anchored to the same source text,
 including the workflow comment and its CI procedure. This test-only correction changes no
 architecture or compatibility decision.
+
+
+## PR #170 review follow-up — native gate liveness and local preflight (2026-10-23)
+
+The earlier self-test rejected platform mismatches but did not exercise matching-platform native
+inspection. Reproduced: preserve mismatch rejection and return success on the local platform;
+the old self-test passes. `check-icons.py` now runs 42 native positive/negative fixtures through
+production dispatch, with only loader/utility boundaries stubbed. No native-platform result is
+inferred from a synthetic fixture. Six seeded mutants are rejected, including disabled Windows
+resource inspection and acceptance of missing/altered Plugin.ico. TESTING documents the fixtures
+and their limits; CI_CD documents the same-job self-tests and five shell preflight regressions.
+
+The old shell preflight also returned 0 with a corrupted source PNG and no build. The corrected
+entry point checks approved digests, provenance, CMake paths and PNG integrity before the existing
+gates, regardless of build availability. Native outputs are inspected when present; absent builds
+produce explicit skip/path/command output. The source checker no longer treats an editable
+provenance digest as authority to approve changed pixels. REPOSITORY_MAP lists the shell regression
+script. No CMake, packaging, namespace, runtime, DSP/state or artwork change belongs to this fix.
+Exact validation and limitations are appended to `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`.

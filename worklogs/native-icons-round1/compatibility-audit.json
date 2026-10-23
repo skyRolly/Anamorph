@@ -1,0 +1,114 @@
+{
+  "Anamorph_starting_main": "098884e7fe12049010f2eaf8379e1514efdad0ab",
+  "implementation_commit": "4d9655939505d8715c43e1d6261ea150f9cd0511",
+  "environment": "Ubuntu 24.04, x86-64, Clang 22.1.8, Release; JUCE 9.0.4 unchanged",
+  "dsp_dump": {
+    "scenarios": 32,
+    "self_check": "all repeatable and distinct",
+    "byte_identical": true,
+    "sha256": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+    "latencies": [
+      0,
+      4,
+      6
+    ]
+  },
+  "self_tests": {
+    "baseline": {
+      "dsp_checks": 944,
+      "state_checks": 5942,
+      "failures": 0
+    },
+    "integration": {
+      "dsp_checks": 944,
+      "state_checks": 5942,
+      "failures": 0
+    },
+    "state_cases": 142,
+    "highest_state_label": 145,
+    "unassigned_state_labels": [
+      13,
+      14,
+      15
+    ]
+  },
+  "pluginval": {
+    "platform": "Linux VST3",
+    "strictness": 10,
+    "deterministic_passes": 3,
+    "randomise_passes": 3,
+    "all_passed": true
+  },
+  "clang_warning_gate": "no new first-party warnings",
+  "linux_abi_gate": "within declared floor",
+  "protected_git_objects": {
+    "src": {
+      "baseline": "75d25bb65ec134b601b2811d4ade0cfe4408cefb",
+      "integrated": "75d25bb65ec134b601b2811d4ade0cfe4408cefb"
+    },
+    "tests": {
+      "baseline": "ff6e20669b4ad6cef69e86606e6974056183ad5b",
+      "integrated": "ff6e20669b4ad6cef69e86606e6974056183ad5b"
+    },
+    "packaging": {
+      "baseline": "8be112b66e421067f157ebe9976171c4f933b4d9",
+      "integrated": "8be112b66e421067f157ebe9976171c4f933b4d9"
+    },
+    ".github/workflows/release.yml": {
+      "baseline": "b15bc3ef77dfd8b3bcf89e6ee2df6862e567bd47",
+      "integrated": "b15bc3ef77dfd8b3bcf89e6ee2df6862e567bd47"
+    }
+  },
+  "vst3_moduleinfo_byte_identical": true,
+  "vst3_moduleinfo_sha256": "57d6566db6fea49e1e1ffd7ba80a4b71240147cfbcc610c734c4f2c2c05c51eb",
+  "vst3_moduleinfo_normalized_for_audit": {
+    "Name": "Anamorph",
+    "Version": "0.9.10",
+    "Factory Info": {
+      "Vendor": "RollyTech",
+      "URL": "",
+      "E-Mail": "",
+      "Flags": {
+        "Unicode": true,
+        "Classes Discardable": false,
+        "Component Non Discardable": false
+      }
+    },
+    "Classes": [
+      {
+        "CID": "ABCDEF019182FAEB52546563416E6D72",
+        "Category": "Audio Module Class",
+        "Name": "Anamorph",
+        "Vendor": "RollyTech",
+        "Version": "0.9.10",
+        "SDKVersion": "VST 3.8.0",
+        "Sub Categories": [
+          "Fx",
+          "Spatial",
+          "Stereo"
+        ],
+        "Class Flags": 0,
+        "Cardinality": 2147483647,
+        "Snapshots": []
+      },
+      {
+        "CID": "ABCDEF011234ABCD52546563416E6D72",
+        "Category": "Component Controller Class",
+        "Name": "Anamorph",
+        "Vendor": "RollyTech",
+        "Version": "0.9.10",
+        "SDKVersion": "VST 3.8.0",
+        "Sub Categories": [
+          "Fx",
+          "Spatial",
+          "Stereo"
+        ],
+        "Class Flags": 0,
+        "Cardinality": 2147483647,
+        "Snapshots": []
+      }
+    ]
+  },
+  "source_assets_match_provenance": true,
+  "native_other_platforms": "CI evidence required; no native PE/macOS claim from Linux"
+}

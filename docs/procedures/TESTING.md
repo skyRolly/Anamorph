@@ -3,6 +3,45 @@
 How to run and interpret the validation suite. Acceptance levels and the hard gate are defined in
 `docs/policies/TESTING_POLICY.md`.
 
+## Build-time icon resource checks
+
+Run `python3 scripts/check-icons.py --self-test` before `python3 scripts/check-icons.py`.
+The self-test drives real PNG/ICO/ICNS/PE-group parsers, source verification and 42
+matching-platform native fixtures, without artwork, network or a build tree. It exercises
+production `check_native()` on valid/invalid Windows layouts and embedded groups/frames,
+macOS bundles/plists/resources and extraction failures, and Linux ELF layouts with Standalone
+enabled/disabled and staged output. Only the Windows loader API and macOS native utilities
+are stubbed; resource selection and validation remain production code. The source check pins B0
+file hashes/dimensions and the CMake consumers. It adds no third-party Python dependency.
+
+After a native build, use `--platform linux`, `--platform windows` or `--platform macos` and
+optionally `--report build/icon-validation.json`; another OS is explicitly rejected. Windows
+checks actual RT_GROUP_ICON/RT_ICON payloads in the EXE/VST3 through native resource APIs.
+macOS checks actual bundle plists/resource copies and uses iconutil/sips; Linux checks only
+its ELF outputs. `--staged-dir dist/Anamorph-Windows` or `dist/Anamorph-macOS` repeats the
+native check on staged output. CI runs the self-test before use in every consuming job.
+
+`scripts/preflight.sh` always runs that self-test and source/provenance validation first,
+including immutable approved digests independent of the editable provenance. Existing native
+Release outputs trigger the matching check. When none exists it explicitly reports the native
+skip, candidate paths and configure/build/check commands; no product rebuild is attempted.
+`python3 scripts/test-icon-preflight.py` runs five shell-entry regressions in `source-lint`: a
+missing build still reaches the next existing gate; corrupt PNGs, coordinated provenance edits,
+wrong CMake paths and wrong source commits fail before that gate, without any build tree.
+
+Native utility/resource checks do not prove shell display, DPI, cache or DAW artwork behavior.
+Those remain manual tests. No global Linux icon files are installed. Exact paths, optical
+frame policy, baseline comparison and pending session tests are in
+[the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) (ADR-0062).
+
+Windows artifact discovery has a separate regression test:
+`pwsh -NoProfile -File scripts/find-windows-vst3.ps1 -SelfTest`. Synthetic filesystem fixtures
+reproduce JUCE's four configure-only icon directories, then require exactly one actual module;
+missing modules and two built configurations must fail. The Windows job also tests a System
+attribute on the bundle. This fixture checks selection, not native PE validity; the native icon
+resource check and pluginval remain separate gates. The filesystem portion can also run in
+PowerShell on another OS, without claiming Windows resource or shell validation.
+
 ## Headless self-tests (DSP + state)
 
 ```bash
