@@ -17192,3 +17192,12 @@ unconditional uninstall-icon ownership, primary resource checks and disposable-V
 Repository map/source-of-truth/README include the two checkers, provenance and measurement
 worklog. Existing destination/UI/AppId/runtime/version/art decisions are unchanged; no prior
 release/native evidence is rewritten. The local shell regression fixture includes the new gate.
+
+
+### Installer native menu selection correction — 2026-10-23
+
+Native job 120499631704 exposed the test's incorrect /GROUP premise. Inno 6.7.1 ignores it
+when DisableProgramGroupPage=yes. The native selector now reads/guards DefaultGroupName and
+that directive (one good/two bad fixtures), refuses an existing product menu directory, and
+checks the actual common Start Menu group. The installer script and all resource/ownership
+assertions are unchanged. Failure diagnostics retain exact targets/menu entries and setup logs.

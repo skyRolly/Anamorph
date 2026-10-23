@@ -6078,3 +6078,9 @@ installs, same-version reinstall, registry icon paths, native copies, shortcuts,
 attribution, safe uninstall and unrelated sentinel preservation. Only a fresh GitHub-hosted
 Windows VM is permitted. The existing GetVst3Dir/custom destination UI is unchanged; chooser
 interaction, shell DPI/cache display and real DAW appearance remain manual validation gaps.
+
+The native harness reads the existing disabled-page/default-group directives: Inno 6.7.1
+ignores /GROUP with DisableProgramGroupPage=yes. It requires the product menu group to be
+absent before use on the disposable VM, then inspects its real shortcut targets. One good/two
+bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
+setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.

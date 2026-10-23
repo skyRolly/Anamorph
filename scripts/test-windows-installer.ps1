@@ -34,6 +34,15 @@ function Registered-UninstallerPath([string]$Command, [string]$AppDirectory) {
     return $path
 }
 
+function Installer-GroupName([string]$ScriptText) {
+    # Inno 6.7.1 Setup.WizardForm ignores /GROUP when this page is disabled.
+    if ($ScriptText -notmatch '(?im)^DisableProgramGroupPage=yes\r?$' -or
+        $ScriptText -notmatch '(?im)^DefaultGroupName=(Anamorph)\r?$') {
+        throw 'installer menu configuration changed; review native shortcut test selection'
+    }
+    return $Matches[1]
+}
+
 function Test-SnapshotLiveness {
     $fixtureApp = Join-Path ([IO.Path]::GetTempPath()) 'Anamorph-parser-fixture'
     $fixtureExe = Join-Path $fixtureApp 'unins000.exe'
@@ -44,6 +53,14 @@ function Test-SnapshotLiveness {
         $rejected = $false
         try { Registered-UninstallerPath $command $fixtureApp | Out-Null } catch { $rejected = $true }
         if (-not $rejected) { throw 'registered uninstaller parser accepted unsafe path' }
+    }
+    $menuFixture = "[Setup]`nDefaultGroupName=Anamorph`nDisableProgramGroupPage=yes`n"
+    if ((Installer-GroupName $menuFixture) -ne 'Anamorph') { throw 'menu selector rejected the disabled-page default' }
+    foreach ($badMenu in @($menuFixture.Replace('DefaultGroupName=Anamorph', 'DefaultGroupName=OtherProduct'),
+                           $menuFixture.Replace('DisableProgramGroupPage=yes', 'DisableProgramGroupPage=no'))) {
+        $rejected = $false
+        try { Installer-GroupName $badMenu | Out-Null } catch { $rejected = $true }
+        if (-not $rejected) { throw 'menu selector accepted changed installer configuration' }
     }
     $count = 0
     foreach ($components in @(@('vst3'), @('standalone'), @('vst3', 'standalone'))) {
@@ -66,7 +83,7 @@ function Test-SnapshotLiveness {
             $count++
         }
     }
-    Write-Host "Windows installer snapshot self-test: 3 valid component choices, $count seeded failures rejected"
+    Write-Host "Windows installer snapshot self-test: 3 valid component choices, $count seeded failures rejected; menu source fixtures passed"
 }
 
 Test-SnapshotLiveness
@@ -80,12 +97,14 @@ if (-not $Installer -or -not $StagingDir) { throw '-Installer and -StagingDir ar
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
 $StagingDir = (Resolve-Path -LiteralPath $StagingDir).Path
 $repo = Split-Path -Parent $PSScriptRoot
+$groupName = Installer-GroupName (Get-Content -LiteralPath (Join-Path $repo 'packaging/windows/Anamorph.iss') -Raw)
+$group = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $groupName
 $reg = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppId"
 $reg32 = "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$AppId"
 $vstParent = Join-Path ${env:CommonProgramW6432} 'VST3'
 $vst = Join-Path $vstParent 'Anamorph.vst3'
-if ((Test-Path -LiteralPath $reg) -or (Test-Path -LiteralPath $reg32) -or (Test-Path -LiteralPath $vst) -or (Test-Path -LiteralPath (Join-Path $env:ProgramW6432 'Anamorph'))) {
-    throw 'existing Anamorph registration/payload detected; refusing to modify an existing installation'
+if ((Test-Path -LiteralPath $group) -or (Test-Path -LiteralPath $reg) -or (Test-Path -LiteralPath $reg32) -or (Test-Path -LiteralPath $vst) -or (Test-Path -LiteralPath (Join-Path $env:ProgramW6432 'Anamorph'))) {
+    throw 'existing Anamorph registration/payload/menu detected; refusing to modify an existing installation'
 }
 & python (Join-Path $repo 'scripts/check-installer-icon.py') --self-test
 if ($LASTEXITCODE -ne 0) { throw 'installer icon self-test failed' }
@@ -125,11 +144,9 @@ try {
         $app = Join-Path $testRoot $label
         $icon = Join-Path $app 'resources\Anamorph.ico'
         $exe = Join-Path $app 'Anamorph.exe'
-        $groupName = "Anamorph-CI-$runId-$label"
-        $group = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $groupName
         if (Test-Path -LiteralPath $group) { throw 'test menu group already exists' }
         $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TYPE=custom',
-                       "/COMPONENTS=`"$($components -join ',')`"", "/DIR=`"$app`"", "/GROUP=`"$groupName`"")
+                       "/COMPONENTS=`"$($components -join ',')`"", "/DIR=`"$app`"")
         for ($lap = 1; $lap -le 2; $lap++) {
             if ($lap -eq 2) {
                 # Prove ignoreversion overwrites an obsolete icon on reinstall.
@@ -197,7 +214,7 @@ try {
 } finally {
     $reportPath = [IO.Path]::GetFullPath($Report)
     New-Item -ItemType Directory -Path (Split-Path -Parent $reportPath) -Force | Out-Null
-    @{ installer = $Installer; AppId = $AppId; source_ICO_sha256 = $ApprovedHash; tests = @($results.ToArray()); failure = $failure; last_snapshot = $snapshot; isolated_logs = $testRoot } |
+    @{ installer = $Installer; AppId = $AppId; source_ICO_sha256 = $ApprovedHash; menu_group = $group; tests = @($results.ToArray()); failure = $failure; last_snapshot = $snapshot; isolated_logs = $testRoot } |
         ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $reportPath -Encoding utf8
     if (Test-Path -LiteralPath $otherFile -PathType Leaf) { Remove-Item -LiteralPath $otherFile }
     if ((Test-Path -LiteralPath $otherVst) -and @(Get-ChildItem -LiteralPath $otherVst -Force).Count -eq 0) { Remove-Item -LiteralPath $otherVst }

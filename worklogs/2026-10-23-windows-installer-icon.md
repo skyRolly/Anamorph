@@ -37,7 +37,7 @@ format and compares native primary-group bytes; #170's pinned-JUCE parser is not
 
 After ISCC, inspect the actual Setup EXE MAINICON. On a fresh GitHub-hosted VM, the behavior
 script first rejects any existing Anamorph registration, default payload or VST3 bundle. It
-then tests VST3-only, Standalone-only and both, each with an isolated /DIR and /GROUP. Each is
+then tests VST3-only, Standalone-only and both, each with an isolated /DIR and the product's guarded Start Menu group. Each is
 reinstalled after corrupting the installed ICO to prove replacement. Registry DisplayIcon,
 uninstaller MAINICON, optional app shortcut, unconditional uninstall shortcut, installed native
 payload hashes, VST3 sidecars/System attribute and registered AppId are checked. Uninstall
@@ -57,11 +57,15 @@ requiring an `unins<digits>.exe` inside the isolated app directory. Portable pos
 parser fixtures guard that safety boundary before any native installation runs.
 
 
-## Native shortcut diagnosis
+## Native shortcut selection correction
 
-The first isolated native run passed the Setup MAINICON, installed ICO and registry DisplayIcon
-checks, then rejected the VST3-only uninstall-shortcut assertion. The gate remains enforced.
-The behavior report now retains the exact expected/observed shortcut targets, menu directory
-entries and the last snapshot, and prints the installer log on failure so a missing shortcut
-can be distinguished from a path-comparison defect. This diagnostic change is not a passing
-native installation result.
+Native job 120499631704 passed Setup MAINICON, installed ICO and registry DisplayIcon, then
+rejected the VST3-only uninstall shortcut because the harness expected its requested /GROUP.
+Pinned [Inno 6.7.1 Setup.WizardForm](https://github.com/jrsoftware/issrc/blob/is-6_7_1/Projects/Src/Setup.WizardForm.pas)
+explicitly ignores InitProgramGroup when DisableProgramGroupPage is set. The existing installer
+has that setting, so its actual group remains Anamorph. The harness now reads and guards that
+exact configuration, refuses a pre-existing product menu group before installing, and checks
+both shortcut targets in the actual group. One good/two bad menu-source fixtures require review
+if either directive changes. The ISS/UI/destinations are unchanged and all native assertions
+remain enforced. Diagnostic snapshots and the last 100 setup log lines are retained on failure.
+Native success is pending a new-head run; this source finding alone is not an install result.
