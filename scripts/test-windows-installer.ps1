@@ -23,7 +23,28 @@ function Assert-InstalledSnapshot($Snapshot, [string[]]$Components) {
     if ($vst -and -not $Snapshot.VstSystemAttribute) { throw 'VST3 System attribute missing' }
 }
 
+function Registered-UninstallerPath([string]$Command, [string]$AppDirectory) {
+    # Inno AddQuotes quotes only paths containing spaces.
+    if ($Command -match '^"([^"\r\n]+\.exe)"(?:\s.*)?$') { $path = $Matches[1] }
+    elseif ($Command -match '^([^"\r\n]+?\.exe)(?:\s.*)?$') { $path = $Matches[1] }
+    else { throw 'unexpected uninstall command syntax' }
+    if ([IO.Path]::GetDirectoryName($path) -ne $AppDirectory -or [IO.Path]::GetFileName($path) -notmatch '^unins[0-9]+\.exe$') {
+        throw 'uninstaller is outside the isolated app directory or has an unexpected name'
+    }
+    return $path
+}
+
 function Test-SnapshotLiveness {
+    $fixtureApp = Join-Path ([IO.Path]::GetTempPath()) 'Anamorph-parser-fixture'
+    $fixtureExe = Join-Path $fixtureApp 'unins000.exe'
+    foreach ($command in @($fixtureExe, ('"' + $fixtureExe + '"'), ('"' + $fixtureExe + '" /SILENT'))) {
+        if ((Registered-UninstallerPath $command $fixtureApp) -ne $fixtureExe) { throw 'registered uninstaller parser rejected valid path' }
+    }
+    foreach ($command in @('malformed', (Join-Path ([IO.Path]::GetTempPath()) 'unins000.exe'), (Join-Path $fixtureApp 'unrelated.exe'))) {
+        $rejected = $false
+        try { Registered-UninstallerPath $command $fixtureApp | Out-Null } catch { $rejected = $true }
+        if (-not $rejected) { throw 'registered uninstaller parser accepted unsafe path' }
+    }
     $count = 0
     foreach ($components in @(@('vst3'), @('standalone'), @('vst3', 'standalone'))) {
         $valid = @{
@@ -117,9 +138,7 @@ try {
             $log = Join-Path $testRoot "$label-install-$lap.log"
             Invoke-CheckedProcess $Installer ($arguments + "/LOG=`"$log`"")
             $registration = Get-ItemProperty -LiteralPath $reg
-            if ($registration.UninstallString -notmatch '^"([^"]+)"') { throw 'unexpected uninstall command syntax' }
-            $uninstaller = $Matches[1]
-            if ([IO.Path]::GetDirectoryName($uninstaller) -ne $app -or -not ([IO.Path]::GetFileName($uninstaller) -like 'unins*.exe')) { throw 'uninstaller is outside the isolated app directory' }
+            $uninstaller = Registered-UninstallerPath $registration.UninstallString $app
             $displayIcon = ($registration.DisplayIcon -replace ',0$', '').Trim('"')
             $copies = $true
             if ($components -contains 'standalone') { $copies = $copies -and (Equal-File $exe (Join-Path $StagingDir 'Anamorph.exe')) }

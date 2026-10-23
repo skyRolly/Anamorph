@@ -50,3 +50,8 @@ The upload of the installer requires these checks. Setup and behavior JSON evide
 as a CI artifact. Native results are pending until the current-head job executes; synthetic
 fixtures do not certify a Windows install. Custom VST3 chooser UI, shell icon caches/DPI and real
 DAW appearance remain manual. User-selectable destination code is unchanged.
+
+The inspected Inno `AddQuotes` helper quotes paths only when they contain spaces. The
+registered-uninstaller parser therefore accepts quoted and unquoted native commands, while
+requiring an `unins<digits>.exe` inside the isolated app directory. Portable positive/negative
+parser fixtures guard that safety boundary before any native installation runs.
