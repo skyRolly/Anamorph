@@ -7,9 +7,8 @@ records the owner's explicit Architecture Review approval; the
 scope, pending native session checks and rollback. BUILD, CI_CD, DEPENDENCY_POLICY, TESTING,
 ADR_INDEX, REPOSITORY_MAP, SOURCE_OF_TRUTH and README navigation/classification are synchronized.
 Audio/state sources, compatibility policy, product identity and installer/release configuration
-remain unchanged. Current testing summaries were corrected from 142 to 145 state tests, matching
-the baseline's executed tests 142–145 in `tests/state_hardening_tests.h`; no test changed. Existing
-audit history below is retained.
+remain unchanged. The state suite has 142 cases with labels through 145 (13–15 unassigned);
+current testing-summary counts are preserved. Existing audit history below is retained.
 
 Permanent documentation-coverage audit. **Future contributors/AI must update this on every
 documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`).

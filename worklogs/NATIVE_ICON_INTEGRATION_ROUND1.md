@@ -128,12 +128,20 @@ Folder system attributes/caches and archive transport remain separate shell-disp
 ### Local result snapshot
 
 - Clean no-icon baseline, Ubuntu 24.04 / Clang 22.1.8 / Release: **944 DSP checks, zero
-  failures; 5,942 state checks, zero failures** (75 DSP tests plus the clamp guard, 145 state
+  failures; 5,942 state checks, zero failures** (75 DSP tests plus the clamp guard, 142 state
   tests). The committed DSP dump self-check passed all 32 repeatable/distinct scenarios.
-- Current README/TESTING_POLICY/TESTING summaries still said 142 state tests; baseline source
-  includes and runs State tests 142–145 from `tests/state_hardening_tests.h`. Their current
-  summary counts were corrected to 145; no test or contract was changed.
-- Integration build/bit-identity comparison is pending completion before submission.
+- State-test labels reach 145, with 13–15 unassigned: **142 cases**, as the existing testing
+  procedure states. No test or compatibility contract changed.
+- The fresh integration build passes the same **944 DSP + 5,942 state checks**, and all **32
+  DSP dump scenarios match the baseline byte for byte**, including reported latency. Linux
+  VST3/Standalone ELF and icon source/resource checks pass. Both builds use the same pinned
+  JUCE revision and Clang 22.1.8; the integration build uses the documented local JUCE path.
+- Seven existing JUCE-cache tests pass. Source/resource checker liveness and existing doc,
+  portability, realtime, dispatch and citation checks pass. Linux VST3 pluginval passes **strictness 10**, deterministic **3/3** and randomise **3/3**.
+  The existing Clang warning gate finds no new first-party diagnostics and the ABI gate passes.
+  [The compatibility audit](native-icons-round1/compatibility-audit.json) records protected Git
+  objects, identical raw VST3 metadata and the shared DSP-dump digest/latency set. Native CI
+  and manual shell display remain separate evidence.
 - [Portable frame comparison](native-icons-round1/portable-frame-comparison.png) uses original
   approved direct renders and the **pinned portable juceaide encoder**, at actual 16/32/48/256
   pixels on dark/light backgrounds. It is **not** a Windows shell screenshot, PE validation or

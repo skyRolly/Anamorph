@@ -27,6 +27,12 @@ Development toward **0.9.10**. Parameter IDs, ranges, automation flags, valid st
 and existing invalid-value restore behavior are unchanged. KI-029's audible NaN behavior and
 additional malformed host-state restrictions remain open owner decisions.
 
+### Added
+- **Approved Anamorph product icon in conventional macOS and Windows build resources.**
+  App/plug-in bundles on macOS and executable/VST3 resources on Windows use the unchanged B0
+  artwork through JUCE. Installer branding and Linux desktop-launcher integration remain separate work.
+  Evidence: commit `4d96559`; ADR-0062. [Verified — build configuration; native shell display unverified]
+
 ### Fixed
 - **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The
   XML writer spells NaN on a private copy, preserving the existing text and finite encoding without
