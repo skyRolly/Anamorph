@@ -30,6 +30,7 @@ Anamorph/
 │                           check first, and what a test report must contain.
 ├── cmake/CheckJuceCache.cmake  Refuse stale 9.0.2/9.0.3 cache entries before fetching; preserve overrides.
 ├── src/                    Source (wrapper + GUI + DSP core).
+├── resources/icons/        Approved B0 1024/32 PNG inputs and immutable provenance for JUCE icons.
 ├── tests/                  Headless self-tests (DSP + state compatibility), fixtures, and the
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
 ├── worklogs/               Session-local investigation records for future agents (NOT
@@ -103,6 +104,10 @@ Anamorph/
 | `RealtimeAnnotations.h` | `ANAMORPH_NONBLOCKING` — the guarded spelling of Clang's `[[clang::nonblocking]]` **type** attribute (it goes after the parameter list; the prefix form is a hard error). Declares the `REALTIME_AUDIO_POLICY` contract on the audio entry point for the `realtime` job to enforce; `__has_cpp_attribute`-guarded, so it is inert on GCC/MSVC/AppleClang and changes no object code anywhere (ADR-0029). |
 
 ## `tests/`, `scripts/`, `packaging/`, `.github/`
+
+Native-icon integration evidence is in `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`;
+`scripts/check-icons.py` validates sources and actual native resources (with a live self-test),
+and ADR-0062 records the approved conventional JUCE build decision.
 
 | Path | Responsibility |
 |---|---|

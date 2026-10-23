@@ -67,7 +67,7 @@ and owner sign-off for 0.9.10 are still required; the 0.9.9 approvals apply to t
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **75 DSP self-tests** + the **142-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **75 DSP self-tests** + the **145-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -152,7 +152,7 @@ The documentation falls into **four classes**, kept deliberately separate:
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
 | **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
 | **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
-| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement records under [`worklogs/`](worklogs/) (including the [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement records under [`worklogs/`](worklogs/) (including the [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md) and [native icon integration](worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as

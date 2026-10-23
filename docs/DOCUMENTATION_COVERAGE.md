@@ -1,5 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
+Latest audit (2026-10-23): native icon Round 1 adds two pinned B0 PNGs, JUCE arguments and
+`scripts/check-icons.py` with same-job liveness checks/native resource inspection. ADR-0062
+records the owner's explicit Architecture Review approval; the
+[integration record](../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) holds provenance, validation
+scope, pending native session checks and rollback. BUILD, CI_CD, DEPENDENCY_POLICY, TESTING,
+ADR_INDEX, REPOSITORY_MAP, SOURCE_OF_TRUTH and README navigation/classification are synchronized.
+Audio/state sources, compatibility policy, product identity and installer/release configuration
+remain unchanged. Current testing summaries were corrected from 142 to 145 state tests, matching
+the baseline's executed tests 142–145 in `tests/state_hardening_tests.h`; no test changed. Existing
+audit history below is retained.
+
 Permanent documentation-coverage audit. **Future contributors/AI must update this on every
 documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`).
 
@@ -1842,7 +1853,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3495` and `.github/workflows/build.yml:3580`, this round being
+`.github/workflows/build.yml:3553` and `.github/workflows/build.yml:3638`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1876,7 +1887,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:716` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:722` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1894,7 +1905,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:628-649`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:630-651`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2209,7 +2220,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:496-497, 546-550, 591-595`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:498-499, 548-552, 593-597`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2965,7 +2976,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:553-562`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:555-564`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2990,7 +3001,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:553-562`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:555-564`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -9978,7 +9989,7 @@ allocator/deallocator pair closed. Tests are not edited for a dashboard.
 **One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
 stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
 holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` alone (CMakeLists.txt:542-544) — and the wrong test: `dsp_tests.cpp` declares
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:544-546) — and the wrong test: `dsp_tests.cpp` declares
 `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
 28% of the reserve. The step now runs both binaries; both were verified green under
 `ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.

@@ -425,6 +425,8 @@ juce_add_plugin(Anamorph
     PLUGIN_CODE             Anmr
     FORMATS                 ${ANAMORPH_FORMATS}
     PRODUCT_NAME            "Anamorph"
+    ICON_BIG                "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/anamorph-1024.png"
+    ICON_SMALL              "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/anamorph-32.png"
     IS_SYNTH                FALSE
     NEEDS_MIDI_INPUT        FALSE
     NEEDS_MIDI_OUTPUT       FALSE

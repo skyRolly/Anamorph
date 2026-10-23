@@ -382,6 +382,8 @@ jobs:
       - name: Configure
         run: |
           python3 tests/juce_cache_tests.py
+          python3 scripts/check-icons.py --self-test
+          python3 scripts/check-icons.py
           ccache --zero-stats || true
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }} \
@@ -525,6 +527,12 @@ jobs:
 
       - name: Lint parameter dispatches (every write raises the extent depth, ADR-0036 §30)
         run: python3 scripts/check-dispatch.py
+
+      - name: Icon checker self-test
+        run: python3 scripts/check-icons.py --self-test
+
+      - name: Verify approved icon inputs and CMake paths
+        run: python3 scripts/check-icons.py
 
       # THE COVERAGE GATE FOR HAND-MAINTAINED STATE LISTS (round 54). This repository's dominant
       # recurring defect is an invariant held by a list that nothing compares to its subject: a
@@ -725,6 +733,12 @@ jobs:
           set -o pipefail
           cmake --build build --config Release 2>&1 | tee clang-build.log
 
+      - name: Icon checker self-test
+        run: python3 scripts/check-icons.py --self-test
+
+      - name: Verify Linux outputs (no embedded ELF icon)
+        run: python3 scripts/check-icons.py --platform linux --report build/icon-validation-linux.json
+
       # A cache hit changes where the .o files came from, never what they
       # contain, so the link is fed identical input and the `strip` step below
       # is unaffected. Note what that step actually reads: `objcopy
@@ -855,7 +869,7 @@ jobs:
       # premise that "the DSP suite holds no processors". That is true only of
       # `AnamorphAudioProcessor` -- which `AnamorphTests` genuinely cannot construct,
       # since it compiles `tests/dsp_tests.cpp` alone and never the plugin sources
-      # (CMakeLists.txt:542-544) -- and it is the wrong test. What overflows a frame is
+      # (CMakeLists.txt:544-546) -- and it is the wrong test. What overflows a frame is
       # a large object, not that particular one, and `dsp_tests.cpp` declares
       # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
       # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact
@@ -1515,6 +1529,23 @@ jobs:
         id: build
         run: cmake --build build --config Release
 
+      - name: Icon checker self-test
+        run: python scripts/check-icons.py --self-test
+
+      - name: Inspect native Windows icon resources
+        id: icon_resources
+        run: python scripts/check-icons.py --platform windows --report build/icon-validation-windows.json
+
+      - name: Upload Windows icon resource evidence
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Windows-icon-validation
+          path: |
+            build/icon-validation-windows.json
+            build/Anamorph_artefacts/JuceLibraryCode/icon.ico
+          if-no-files-found: error
+
       - name: DSP + state self-tests
         id: tests
         shell: pwsh
@@ -1839,8 +1870,13 @@ jobs:
 
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
+      - name: Inspect staged Windows icon resources
+        id: icon_staged
+        if: ${{ !cancelled() && steps.stage_windows.outputs.public_ok == 'true' }}
+        run: python scripts/check-icons.py --platform windows --staged-dir dist/Anamorph-Windows --report build/icon-validation-windows-staged.json
+
       - name: Upload Windows artifacts
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outputs.public_ok == 'true' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outputs.public_ok == 'true' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Windows
@@ -1849,7 +1885,7 @@ jobs:
 
       # Same fail-closed gate as the customer artifact (tests + its own step).
       - name: Upload Windows installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Windows-installer
@@ -2026,6 +2062,23 @@ jobs:
       - name: Build (VST3 + AU + Standalone + tests)
         id: build
         run: cmake --build build --config Release
+
+      - name: Icon checker self-test
+        run: python3 scripts/check-icons.py --self-test
+
+      - name: Inspect native macOS bundle icons
+        id: icon_resources
+        run: python3 scripts/check-icons.py --platform macos --report build/icon-validation-macos.json
+
+      - name: Upload macOS icon resource evidence
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-macOS-icon-validation
+          path: |
+            build/icon-validation-macos.json
+            build/Anamorph_artefacts/JuceLibraryCode/AppIcon.icns
+          if-no-files-found: error
 
       # LTO IS STILL LTO, ASSERTED RATHER THAN ASSUMED. `-object_path_lto`
       # (CMakeLists.txt, AnamorphHardening) tells ld64 to keep the object it
@@ -2460,8 +2513,13 @@ jobs:
       # (Rosetta) is the other half, and an Intel failure is a product failure, not
       # an environment one. Gating on the arm64 run alone would ship a package to
       # every Intel user off a run that proved the Intel slice misbehaves.
+      - name: Inspect staged macOS bundle icons
+        id: icon_staged
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: python3 scripts/check-icons.py --platform macos --staged-dir dist/Anamorph-macOS --report build/icon-validation-macos-staged.json
+
       - name: Upload macOS plugins (VST3 + AU + Standalone)
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS
@@ -2471,7 +2529,7 @@ jobs:
       # Same fail-closed gate as the customer artifact (both slices' tests + its
       # own step) -- the .pkg installs the same universal bundles.
       - name: Upload macOS installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS-installer
@@ -2876,6 +2934,12 @@ jobs:
 
       - name: Build (VST3 + AU + tests)
         run: cmake --build build --config Release
+
+      - name: Icon checker self-test
+        run: python3 scripts/check-icons.py --self-test
+
+      - name: Inspect native Intel macOS bundle icons
+        run: python3 scripts/check-icons.py --platform macos --report build/icon-validation-macos-intel.json
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}

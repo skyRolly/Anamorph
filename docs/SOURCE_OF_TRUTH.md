@@ -13,7 +13,8 @@ source must be corrected to match.
 3. **ADR** (`docs/architecture/design-decisions/`) — the final, dated record of a
    design decision. An ADR records *why* a constraint exists and supersedes any
    descriptive document about the same topic. Measurement records in `worklogs/` (including
-   `worklogs/JUCE904_UPGRADE_0.9.9.md` and `worklogs/STATE_HOST_HARDENING_0.9.10.md`) support an ADR;
+   `worklogs/JUCE904_UPGRADE_0.9.9.md`, `worklogs/STATE_HOST_HARDENING_0.9.10.md` and
+   `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`) support an ADR;
    they do not replace its decision or confer owner approval.
 4. **Policies** (`docs/policies/`) — invariant constraints (what may not change). A
    Policy outranks descriptive Architecture: where Architecture *describes* and Policy

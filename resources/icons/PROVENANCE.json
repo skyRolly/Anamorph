@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "selected_design": "B0",
+  "source_repository": "https://github.com/skyRolly/icon-vector-reconstruction",
+  "source_commit": "35cf982f9d2e33bde5c4a1bf84b17205ce1e6b80",
+  "accepted_design_merge": "30349f34973366b7824700f2c212037780b9cdad",
+  "source_manifest_sha256": "c50ea635cc464a212a83d5740e9e479fe226ef94ec9338e5273dd0f6f154ac99",
+  "canonical_svg_sha256": "9d944b2b04abeb92dddc6840cf949d126162169159e937f23a384160d0db56b4",
+  "Anamorph_starting_main": "098884e7fe12049010f2eaf8379e1514efdad0ab",
+  "architecture_review": {
+    "date": "2026-10-23",
+    "authority": "repository owner",
+    "decision": "Approve architecture review for the proposed Round 1 change",
+    "scope": "Two unchanged B0 PNG inputs through JUCE ICON_BIG/ICON_SMALL; implementation, validation and unmerged PR only"
+  },
+  "assets": [
+    {
+      "source_path": "assets/anamorph/master/anamorph-rounded-1024.png",
+      "destination": "resources/icons/anamorph-1024.png",
+      "sha256": "b7dd6efd377125a08360f1ce2bf5c82450bf05932d70a7c957f329b73bc29b0e",
+      "bytes": 225615,
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "consumer": "ICON_BIG"
+    },
+    {
+      "source_path": "assets/anamorph/portable/png/anamorph-32.png",
+      "destination": "resources/icons/anamorph-32.png",
+      "sha256": "f2a80389e5f47c23b69a0e8956f0492c5f1194a6970df0726c172bf633fb2002",
+      "bytes": 1519,
+      "dimensions": [
+        32,
+        32
+      ],
+      "consumer": "ICON_SMALL"
+    }
+  ]
+}

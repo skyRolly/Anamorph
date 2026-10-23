@@ -10,6 +10,19 @@ These dependency-boundary probes check fresh/reused caches, refusal of cached 9.
 the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
+## Icon resource checks
+
+Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
+job before each use. `source-lint` and `merge-check` verify the two vendored B0 hashes and CMake bindings;
+`linux` checks native ELF outputs and absence of stale generated ICO/ICNS. Windows enumerates
+actual EXE and VST3 PE icon groups through Windows resource APIs, checks generated ICO and
+VST3 sidecars, and repeats against staged outputs. Both macOS jobs inspect their built
+bundles/plists/ICNS using native plutil, iconutil and sips; the universal job repeats against
+the signed staging tree. Native reports/raw containers are retained in the
+`Anamorph-Windows-icon-validation` and `Anamorph-macOS-icon-validation` artifacts.
+These checks add no runtime dependency, installer customization, signing-policy change or
+Finder/Dock/Explorer/DAW display claim. See [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md).
+
 ## Triggers
 
 `build.yml`: `push` to any branch (`"**"`), `pull_request`, `workflow_dispatch`, and
@@ -1451,7 +1464,7 @@ processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally 
 
 **Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
 suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:542-544), so it cannot construct one — and it
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:544-546), so it cannot construct one — and it
 is the wrong test: what overflows a frame is a large automatic, not that particular class, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
@@ -1563,7 +1576,7 @@ across its scenario scopes — 16 `Rig`s at 768 bytes (GCC's `sizeof`), 17 talli
 snapshots sum to about 14.4 KB at GCC's type sizes, and MSVC's own type sizes and the temporaries make up
 the rest; GCC lets the disjoint scopes share their slots. Re-audited before merge (2026-09-27): the test runs on
 the main thread and starts no thread, `tests/state_tests.cpp` is compiled into `AnamorphStateTests` only
-(`CMakeLists.txt:582`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
+(`CMakeLists.txt:584`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
 main thread's 1 MiB, where the `windows` job runs the suite natively. Every claim that
 moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
 `state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;

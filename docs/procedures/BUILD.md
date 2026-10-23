@@ -2,6 +2,23 @@
 
 How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; no IDE/Projucer).
 
+## Product icon inputs
+
+The conventional JUCE build uses the approved B0 PNGs vendored under `resources/icons/`:
+1024 px via ICON_BIG and the dedicated 32 px optical input via ICON_SMALL. CMake paths are
+anchored to the source tree; no icon checkout or asset download is required. Provenance and
+SHA-256 values are in `resources/icons/PROVENANCE.json` and
+[the Round 1 record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) (ADR-0062).
+
+JUCE generates AppIcon.icns for macOS app/VST3/AU bundles and ICO/RC/PE resources plus VST3
+sidecars on Windows. This pinned version writes macOS entries at 32/1024 and Windows frames
+at 16/32/48/256; it does not reproduce every independently rendered source size. Linux builds
+remain valid but gain no portable embedded ELF icon. Native shell display and later installer,
+Linux launcher and Icon Composer work are separate validation/integration steps.
+
+Evidence [Verified]: `CMakeLists.txt` (`juce_add_plugin`), `resources/icons/PROVENANCE.json`,
+`scripts/check-icons.py`; pinned JUCE `juce_Icons.cpp` and `JUCEUtils.cmake` (ADR-0062).
+
 ## Toolchain
 
 - **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended generator). Verified on Clang 22 (which builds the Linux release artifact, ADR-0030), GCC 16.2,
@@ -70,11 +87,11 @@ Evidence [Verified]: `cmake/CheckJuceCache.cmake`, included before FetchContent 
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 541) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 543) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 417-419) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:66, 77-79) |
 | `ANAMORPH_JUCE_TAG` | `3fb5cbc…` (= tag 9.0.4) — CMakeLists.txt:71 (`3fb5cbc`) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version — CMakeLists.txt:70-72 (`9.0.4`) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:469) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:471) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -170,7 +187,7 @@ through 9.0.1 and defaults it to 1 from 9.0.2, so without the pin every shipped 
 an MP3 decoder the product never calls. ADR-0054 carries the reasoning; the five other targets
 (`AnamorphTests`, `AnamorphStateTests`, `AnamorphBench`, `AnamorphDspDump`, `AnamorphFuzzState`)
 carry the same definition so no build configuration disagrees with the shipped one.
-Evidence [Verified]: CMakeLists.txt:491-520 (the `Anamorph` block, `JUCE_USE_MP3AUDIOFORMAT=0` at
+Evidence [Verified]: CMakeLists.txt:493-522 (the `Anamorph` block, `JUCE_USE_MP3AUDIOFORMAT=0` at
 :506), :547, :592, :634, :677, :720 (the other five targets).
 
 `JUCE_USE_OPUS=0` and `JUCE_USE_WEBP=0` joined at the JUCE 9.0.3 bump for the same reason from the
@@ -180,5 +197,5 @@ Without the pins every shipped binary would compile both, and neither is read or
 in the product. The new `juce_audio_formats_opus*.c` and `juce_graphics_libwebp_*.c` translation
 units are still compiled (JUCE's module build globs every top-level source) but emit no code: one
 hidden placeholder symbol per Opus unit, none at all per WebP unit. ADR-0060 carries the reasoning;
-the same five targets carry both definitions. Evidence [Verified]: CMakeLists.txt:515-516 and the
+the same five targets carry both definitions. Evidence [Verified]: CMakeLists.txt:517-518 and the
 two lines after `JUCE_USE_MP3AUDIOFORMAT=0` in each of the other five targets.

@@ -3,6 +3,25 @@
 How to run and interpret the validation suite. Acceptance levels and the hard gate are defined in
 `docs/policies/TESTING_POLICY.md`.
 
+## Build-time icon resource checks
+
+Run `python3 scripts/check-icons.py --self-test` before `python3 scripts/check-icons.py`.
+The self-test drives real PNG/ICO/ICNS/PE-group parsers and source verification with valid and
+corrupt synthetic inputs, without artwork, network or a build tree. The source check pins B0
+file hashes/dimensions and the CMake consumers. It adds no third-party Python dependency.
+
+After a native build, use `--platform linux`, `--platform windows` or `--platform macos` and
+optionally `--report build/icon-validation.json`; another OS is explicitly rejected. Windows
+checks actual RT_GROUP_ICON/RT_ICON payloads in the EXE/VST3 through native resource APIs.
+macOS checks actual bundle plists/resource copies and uses iconutil/sips; Linux checks only
+its ELF outputs. `--staged-dir dist/Anamorph-Windows` or `dist/Anamorph-macOS` repeats the
+native check on staged output. CI runs the self-test before use in every consuming job.
+
+Native utility/resource checks do not prove shell display, DPI, cache or DAW artwork behavior.
+Those remain manual tests. No global Linux icon files are installed. Exact paths, optical
+frame policy, baseline comparison and pending session tests are in
+[the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) (ADR-0062).
+
 ## Headless self-tests (DSP + state)
 
 ```bash
