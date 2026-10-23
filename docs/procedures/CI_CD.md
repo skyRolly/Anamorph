@@ -1832,3 +1832,14 @@ reads VERSIONINFO without executing code. `build-pkg.sh` checks expanded Package
 Distribution IDs after its same-job self-test. Reports are under build/.
 Named component ownership, choice references and payload filenames are checked together; an
 unordered receipt-ID set is insufficient. Six-/nine-reference normalization stays supported.
+
+## Windows installer icon and ownership gate
+
+`check-installer-icon.py --self-test` precedes source/Setup MAINICON checks. Source-lint and
+local preflight validate the approved ICO hash/provenance and unconditional installed-file
+contract. The Windows job uses actual ISCC, checks primary PE icon resources, runs the native
+behavior gate's self-test, then tests all three component combinations in its disposable VM.
+A same-version reinstall replaces a deliberately obsolete icon. Actual registry/shortcuts,
+uninstaller icon, installed payload/sidecars, System attribute and safe owned-file cleanup
+are checked. Developer/self-hosted targets and existing installs are refused. Installer upload
+requires behavior success; `Anamorph-Windows-installer-validation` retains JSON evidence.

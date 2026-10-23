@@ -1,0 +1,9 @@
+{
+  "source_repository": "https://github.com/skyRolly/icon-vector-reconstruction",
+  "source_commit": "35cf982f9d2e33bde5c4a1bf84b17205ce1e6b80",
+  "source_path": "assets/anamorph/windows/Anamorph.ico",
+  "selected_design": "B0",
+  "sha256": "17c2f958e07de4d0e1bcfd8d6e67f1e254368b7ea11764e12eca8da2742fbdf1",
+  "bytes": 60131,
+  "consumer": "Inno Setup SetupIconFile and unconditional installed uninstall icon"
+}

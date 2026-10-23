@@ -200,3 +200,6 @@ tooltips, animations) are host-hidden session state.
 
 Namespace inventory/validation: [worklog](worklogs/2026-10-23-product-namespace.md);
 ADR-0063 is Proposed pending independent human review before merge.
+
+Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-installer-icon.md),
+Proposed ADR-0064; independent human review before merge.

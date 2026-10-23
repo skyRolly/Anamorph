@@ -1867,7 +1867,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3590` and `.github/workflows/build.yml:3675`, this round being
+`.github/workflows/build.yml:3625` and `.github/workflows/build.yml:3710`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1901,7 +1901,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:732` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:737` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17191,3 +17191,21 @@ version or art changes are included.
 Native package fixture correction (2026-10-23): productbuild may add metadata-only references.
 The identity gate now checks unique receipts and choice/archive/bundle namespaces separately;
 TESTING and the namespace worklog record the observed nine-reference shape and regression.
+
+## Windows installer native icon — 2026-10-23
+
+Proposed ADR-0064 records separate owner implementation/testing permission and pending human
+acceptance. PACKAGING/RELEASE_PROCESS/BUILD/CI_CD/TESTING describe approved source bytes,
+unconditional uninstall-icon ownership, primary resource checks and disposable-VM test limits.
+Repository map/source-of-truth/README include the two checkers, provenance and measurement
+worklog. Existing destination/UI/AppId/runtime/version/art decisions are unchanged; no prior
+release/native evidence is rewritten. The local shell regression fixture includes the new gate.
+
+
+### Installer native menu selection correction — 2026-10-23
+
+Native job 120499631704 exposed the test's incorrect /GROUP premise. Inno 6.7.1 ignores it
+when DisableProgramGroupPage=yes. The native selector now reads/guards DefaultGroupName and
+that directive (one good/two bad fixtures), refuses an existing product menu directory, and
+checks the actual common Start Menu group. The installer script and all resource/ownership
+assertions are unchanged. Failure diagnostics retain exact targets/menu entries and setup logs.

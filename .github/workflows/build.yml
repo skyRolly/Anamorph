@@ -534,6 +534,11 @@ jobs:
       - name: Local icon preflight regression
         run: python3 scripts/test-icon-preflight.py
 
+      - name: Installer icon source contract and liveness
+        run: |
+          python3 scripts/check-installer-icon.py --self-test
+          python3 scripts/check-installer-icon.py
+
       - name: Product identity self-test and source contract
         run: |
           python3 scripts/check-product-identity.py --self-test
@@ -1884,10 +1889,40 @@ jobs:
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { Write-Error "Inno Setup 6 not found at $iscc (expected preinstalled on windows-latest)" }
           $staging = (Resolve-Path 'dist/Anamorph-Windows').Path
+          python scripts/check-installer-icon.py --self-test
+          if ($LASTEXITCODE -ne 0) { Write-Error "Installer icon self-test failed" }
+          python scripts/check-installer-icon.py
+          if ($LASTEXITCODE -ne 0) { Write-Error "Installer icon source contract failed" }
           & $iscc "/DAppVersion=$version" "/DStagingDir=$staging" "/Odist" 'packaging/windows/Anamorph.iss'
           if ($LASTEXITCODE -ne 0) { Write-Error "ISCC failed with exit code $LASTEXITCODE" }
           $out = "dist/Anamorph-$version-Windows-Installer.exe"
           if (-not (Test-Path $out)) { Write-Error "expected installer output missing: $out" }
+          python scripts/check-installer-icon.py --setup-exe $out --report build/installer-icon-setup.json
+          if ($LASTEXITCODE -ne 0) { Write-Error "Setup executable MAINICON validation failed" }
+
+      - name: Installer behavior gate self-test
+        if: ${{ !cancelled() && steps.package_windows.outcome == 'success' }}
+        run: ./scripts/test-windows-installer.ps1 -SelfTest
+
+      - name: Isolated Windows install, reinstall and uninstall combinations
+        id: installer_behavior
+        if: ${{ !cancelled() && steps.package_windows.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = @(Get-ChildItem -Path dist -Filter 'Anamorph-*-Windows-Installer.exe' -File)
+          if ($setup.Count -ne 1) { throw 'expected exactly one built installer' }
+          ./scripts/test-windows-installer.ps1 -Installer $setup[0].FullName -StagingDir dist/Anamorph-Windows -Report build/windows-installer-behavior.json
+
+      - name: Retain installer validation evidence
+        if: ${{ !cancelled() && steps.package_windows.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Windows-installer-validation
+          path: |
+            build/installer-icon-setup.json
+            build/windows-installer-behavior.json
+          if-no-files-found: error
+
 
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
@@ -1906,7 +1941,7 @@ jobs:
 
       # Same fail-closed gate as the customer artifact (tests + its own step).
       - name: Upload Windows installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' && steps.installer_behavior.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Windows-installer

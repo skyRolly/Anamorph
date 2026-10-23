@@ -6069,3 +6069,23 @@ components, wrong payloads/choices/outlines and malformed namespaces are rejecte
 real component names, not numeric enumeration. A mutation disabling receipt ownership must fail
 the self-test specifically on a swapped receipt. Native `build-pkg.sh` validates freshly expanded
 metadata; retained CI metadata supplies a separate read-only check without installing receipts.
+
+## Windows installer resource/ownership tests (ADR-0064)
+
+Run `python3 scripts/check-installer-icon.py --self-test` and its source check, plus
+`pwsh -NoProfile -File scripts/test-windows-installer.ps1 -SelfTest`. MAINICON fixtures use
+the production validator with only the resource API stubbed; source/hash, optional-component,
+missing/altered resource cases must fail. The snapshot suite checks 3 valid choices and 32
+seeded failures through the same decision function used by native installation tests.
+
+Native CI validates actual Setup/uninstaller resources and VST3-only, Standalone-only and both
+installs, same-version reinstall, registry icon paths, native copies, shortcuts, System
+attribution, safe uninstall and unrelated sentinel preservation. Only a fresh GitHub-hosted
+Windows VM is permitted. The existing GetVst3Dir/custom destination UI is unchanged; chooser
+interaction, shell DPI/cache display and real DAW appearance remain manual validation gaps.
+
+The native harness reads the existing disabled-page/default-group directives: Inno 6.7.1
+ignores /GROUP with DisableProgramGroupPage=yes. It requires the product menu group to be
+absent before use on the disposable VM, then inspects its real shortcut targets. One good/two
+bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
+setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
