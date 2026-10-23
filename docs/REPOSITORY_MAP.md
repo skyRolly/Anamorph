@@ -189,7 +189,7 @@ Evidence [Verified]: file tree from the repository; CMakeLists.txt:114-384 (hard
 
 `scripts/check-product-identity.py` verifies source and generated bundle/package namespaces
 and independent plugin/GUID identities. `worklogs/2026-10-23-product-namespace.md` records
-the inventory, stack dependencies, comparisons and native limitations for Proposed ADR-0063.
+the inventory, stack dependencies, comparisons and native limitations for Accepted ADR-0063, with final owner approval and merge evidence.
 
 `resources/icons/windows/` contains the exact approved installer ICO/provenance.
 `scripts/check-installer-icon.py` checks source ownership and actual primary PE groups;

@@ -1,8 +1,12 @@
 # ADR-0064 — Approved native installer icon and unconditional uninstall resource
 
-**Status:** Proposed — owner approved the concrete B/C/E proposal for implementation/testing
-on 2026-10-23. Independent human architecture review/ADR acceptance is required before merge.
-No release, merge or deployment is authorized.
+**Status:** Accepted — explicit final owner approval of ADR-0064 and the installer
+arrangement merged through PR #172, including the stable uninstall icon for VST3-only
+installations. **Architecture Review Gate: CLEARED; owner decision: APPROVED.**
+See [ADR_INDEX.md](ADR_INDEX.md#owner-approval-reconciliation--record-updated-2026-10-24)
+for provenance/ancestry. The original final-approval date is not recorded; the record update
+is 2026-10-24 (Asia/Shanghai). The 2026-10-23 B/C/E implementation/testing permission
+remains historical provenance. Release/deployment and future architecture are separate.
 
 ## Context
 
@@ -21,7 +25,7 @@ all legal component combinations, without changing installer identity, destinati
 - Attach an ICO to the Standalone component: the same liveness defect.
 - Use only the generated uninstaller EXE as the registered icon: its filename is installer-managed;
   an explicit stable resource is easier to inspect independently of optional components.
-- **Install one unconditional product-owned ICO and reference it: chosen for implementation.**
+- **Install one unconditional product-owned ICO and reference it: accepted.**
 - Generate a new AppId, add fake app payloads, broad delete rules or wizard art: rejected as
   unnecessary identity/safety/UI changes outside the task.
 
@@ -51,11 +55,12 @@ MAINICON from the supplied ICO bytes; the independent approved ICO has nine PNG 
 planes=1. A separate validator handles the approved container without weakening #170's checker.
 No wizard image, Composer artifact, DSP/UI/state/parameter/latency or format change.
 
-## Stack and review
+## Merged implementation and original review order
 
-PR base is `codex/namespace-tech-rolly-anamorph` (#171), which itself depends on #170.
-Merge #170 → #171 → this PR only with owner authorization. Reconcile/retarget after each parent
-merge; no duplicate namespace diff, cherry-pick into main or force-push is needed.
+The original stack was #170 → #171 → #172. After ordinary prerequisite merges, #172
+merged as `1e17f5845a90919949435c60d6ddf2bf2bd3fde1`, the inspected main. The owner
+approves that existing arrangement unchanged; architecture/acceptance blockers are closed.
+The implementation's exact native evidence and remaining manual limits are recorded below.
 
 ## Related code
 
@@ -72,4 +77,11 @@ it uses only a disposable GitHub-hosted Windows VM and isolated app/menu destina
 All three choices are installed, reinstalled over a deliberately obsolete icon, then uninstalled,
 checking native payload copies, registry icon, shortcuts, System attribute, owned cleanup and
 unmanaged sentinels. GUI destination selection, shell display/DPI and user DAWs remain manual.
-The [worklog](../../../worklogs/2026-10-23-windows-installer-icon.md) records exact results/limits.
+Native Windows [run 40011141822](https://github.com/skyRolly/Anamorph/actions/runs/40011141822)
+at `cac80161f578dbd570631b3e5c2647f690a0c1ff` passed Setup/uninstaller resources,
+six install/reinstall snapshots and three safe uninstalls across all component choices.
+Artifact 12526403791 records failure=null; its ZIP SHA-256 is
+`520af953866654edf046cf9a2cba7d96c8598758d07a0365b4167b495348f28c`.
+This disposable-VM evidence does not verify Explorer/DPI, chooser UI, user DAWs or broader
+older-installer upgrades. The [worklog](../../../worklogs/2026-10-23-windows-installer-icon.md)
+preserves the earlier results and limits.

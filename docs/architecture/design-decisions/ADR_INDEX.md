@@ -65,8 +65,49 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0060](ADR-0060-juce-9.0.3-upgrade.md) | JUCE dependency upgrade 9.0.2 → 9.0.3, an intermediate pin for unreleased 0.9.9 on the owner's instruction (immutable-commit pin `be29c81` retained; no C++ source change and no build-dependency change; two codec-default pins — `JUCE_USE_OPUS=0` and `JUCE_USE_WEBP=0` pinned on all six targets, because 9.0.3 adds Opus and WebP ON by default and taking them would compile two unused third-party libraries into every binary; libogg inside the shipped Ogg Vorbis component moves 1.3.4 → 1.3.6; twin dump bit-identical including latency, suites and pluginval green on the 9.0.3 build; six cited JUCE files moved lines, mapped in §Citation map) | **Superseded** by ADR-0061 (9.0.4 before the 0.9.9 tag) | Verified (headless); outstanding Architecture Review approved by owner 2026-10-21; lifecycle stays Superseded |
 | [ADR-0061](ADR-0061-juce-9.0.4-upgrade.md) | JUCE 9.0.3 → 9.0.4 in 0.9.9 (2026-10-22): immutable pin `3fb5cbc`, unchanged codec flags and package set; XML/String and MessageManagerLock audited; 32-scenario twin dump identical; existing 9.0.3 caches refused; actual runtime measurements in the worklog | **Accepted** — owner Architecture Review APPROVED, 2026-10-21 UTC | Engineering evidence retained; owner Level-5 PASS (A–G), compatibility 8/8 PASS |
 | [ADR-0062](ADR-0062-native-juce-icon-resources.md) | Approved B0 PNGs through conventional JUCE ICON_BIG/ICON_SMALL; source provenance and native resource checks; installer/launcher/Composer work deferred | **Accepted** — explicit owner Architecture Review approval, 2026-10-23 | Verified source/pinned-JUCE behavior; native results scoped to CI reports; real shell/DAW display unverified |
-| [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Proposed** — implementation/testing approved 2026-10-23; independent human review before merge | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
-| [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Proposed** — implementation/testing approved 2026-10-23; independent human review before merge | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
+| [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
+| [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
+
+## Owner approval reconciliation — record updated 2026-10-24
+
+The owner explicitly confirmed that all five predecessor PRs were merged and that
+their human architecture reviews, ADR decisions and associated owner-decision items
+were approved, in **“Priority P0 — Record Final Owner Approvals and Close Outstanding
+Governance Decisions.”** This is final approval of the completed scope, including the
+pre-release namespace/package-identifier break without legacy compatibility code.
+The original final-approval date is **NOT RECORDED**; **2026-10-24 (Asia/Shanghai)** is
+the record-update date, not an invented date of the earlier approval. Implementation/
+testing permission recorded on 2026-10-23 remains historical provenance.
+
+| Decision | Previous status | Current status | Merged implementation / evidence |
+|---|---|---|---|
+| ADR-0062 / native JUCE B0 resources | Accepted | Accepted; final owner approval confirmed | [#170](https://github.com/skyRolly/Anamorph/pull/170), `b4a95b3a6d86acf222de523c6fb04de23ad8e602` |
+| ADR-0063 / namespace and pre-release package break | Proposed | Accepted; Architecture Review cleared | [#171](https://github.com/skyRolly/Anamorph/pull/171), `b4ea7a2ac25b89b943d350a6bb0d42ccc6273727` |
+| ADR-0064 / Windows Setup and stable uninstall icon | Proposed | Accepted; Architecture Review cleared | [#172](https://github.com/skyRolly/Anamorph/pull/172), `1e17f5845a90919949435c60d6ddf2bf2bd3fde1` |
+
+Fetched main is `1e17f5845a90919949435c60d6ddf2bf2bd3fde1`. Its first-parent ancestry is
+`098884e7fe12049010f2eaf8379e1514efdad0ab` → #170 merge `b4a95b3…` → #171 merge
+`b4ea7a2…` → #172 merge `1e17f58…`; all three are completed main-branch changes.
+ADR-0063's partial amendment of ADR-0023 is effective; ADR-0023 remains Accepted for
+its other decisions. ADR-0064 fulfills the installer follow-up deferred by ADR-0062,
+without changing ADR-0062's original scope or B0 bytes.
+
+Native implementation evidence: [#170 full matrix 39970834429](https://github.com/skyRolly/Anamorph/actions/runs/39970834429)
+at `84d74b4c332da76abce780d165d1ec57e41a6fce`; [namespace/package matrix 40010306668](https://github.com/skyRolly/Anamorph/actions/runs/40010306668)
+at `12e06949122ceaaa6028064196a8e148fdf26768`; [installer matrix 40011141822](https://github.com/skyRolly/Anamorph/actions/runs/40011141822)
+at `cac80161f578dbd570631b3e5c2647f690a0c1ff`. These passed at those exact heads;
+later reconciled PR merge checks [40022231101](https://github.com/skyRolly/Anamorph/actions/runs/40022231101)
+and [40023692415](https://github.com/skyRolly/Anamorph/actions/runs/40023692415) also passed.
+Worklogs preserve hashes, commands, native artifact evidence and the GCC14 local ABI-floor
+limitation. A running post-merge matrix is not promoted to a pass by this approval.
+
+**Approval and empirical validation are separate.** Real DAW recall, AU/VST3 discovery/cache behavior, human audition, actual macOS
+package installation/receipt registration and native shell appearance remain unverified.
+Finder/Dock, Icon Composer appearances, Explorer/DPI and Linux GNOME/KDE runtime
+appearance are not certified. Native Windows disposable-VM install evidence above
+does not establish those visual/manual results.
+The corresponding architecture/owner-acceptance blockers are closed. Release approval and
+unrelated future architecture decisions are outside this reconciliation.
 
 ## Owner approval record — 2026-10-21 UTC
 

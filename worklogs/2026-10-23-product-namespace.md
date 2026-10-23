@@ -1,5 +1,22 @@
 # Product namespace migration — 2026-10-23
 
+## Current governance status — record updated 2026-10-24 (Asia/Shanghai)
+
+ADR-0063 is **Accepted**; the owner explicitly confirms final architecture/decision approval
+for this completed scope. Architecture review and owner-decision blockers are **Closed**.
+[PR #171](https://github.com/skyRolly/Anamorph/pull/171) is merged as
+`b4ea7a2ac25b89b943d350a6bb0d42ccc6273727`, verified in current main ancestry. The original final-approval date is not
+recorded. [ADR_INDEX.md](../docs/architecture/design-decisions/ADR_INDEX.md#owner-approval-reconciliation--record-updated-2026-10-24)
+holds the approval provenance, merge ancestry, exact CI evidence and remaining validation.
+Approval does not establish an unperformed runtime/manual test result.
+
+## Historical implementation and validation record
+
+The dated entries below preserve the status and evidence at implementation time. Their
+Proposed/unmerged/review-pending statements are superseded by the current governance record
+above; earlier native pending statements must be read with their exact later CI evidence.
+No historical measurements, hashes or release evidence are rewritten.
+
 Starting main: `098884e7fe12049010f2eaf8379e1514efdad0ab`.
 Branch: `codex/namespace-tech-rolly-anamorph`, stacked on corrected PR #170
 (`feature/native-product-icons-round1`, `84d74b4`). PR base must be that branch. Retarget to
