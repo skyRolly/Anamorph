@@ -128,3 +128,12 @@ native runtime verification. Exact current-head CI and local results are reporte
 VERSIONINFO premise: pinned `juce_ResourceRc.cpp` emits CompanyName, ProductName,
 FileDescription, FileVersion and ProductVersion, without InternalName/OriginalFilename.
 An API-boundary fixture now runs the real native reader against those exact keys.
+
+Native productbuild correction (2026-10-23): Anabasis job 120483320088 produced nine
+pkg-ref elements for three unique component receipts; the input distribution has six.
+The checker had incorrectly equated reference count with component count. It now requires
+three unique PackageInfo IDs, one choice and payload URI per component, canonical IDs in
+all references and canonical bundle metadata, while allowing generated metadata references.
+Six-reference input and normalized nine-reference positive fixtures, missing/duplicate payload
+and foreign bundle-ID negatives guard this correction. Existing package-generation behavior
+and identifier values are unchanged; native validation is repeated on the corrective head.

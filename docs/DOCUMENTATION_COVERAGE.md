@@ -17180,6 +17180,10 @@ new checker; the preflight fixture includes its added source inputs. Earlier aud
 raw native reports remain historical. No independent codes/GUID, source/DSP/state/UI/latency,
 version or art changes are included.
 
+Native package fixture correction (2026-10-23): productbuild may add metadata-only references.
+The identity gate now checks unique receipts and choice/archive/bundle namespaces separately;
+TESTING and the namespace worklog record the observed nine-reference shape and regression.
+
 ## Windows installer native icon — 2026-10-23
 
 Proposed ADR-0064 records separate owner implementation/testing permission and pending human

@@ -144,7 +144,22 @@ def package_metadata(expanded):
     require(set(ids) == COMPONENTS and len(set(ids)) == 3, f'incorrect package receipts: {ids}')
     distribution = ET.parse(expanded / 'Distribution').getroot()
     refs = [item.attrib['id'] for item in distribution.findall('.//pkg-ref')]
-    require(set(refs) == COMPONENTS and len(refs) == 6, f'incorrect productbuild references: {refs}')
+    require(set(refs) == COMPONENTS, f'incorrect productbuild references: {refs}')
+    # productbuild may add metadata-only pkg-ref nodes. References are not
+    # components: require one choice and one payload URI per unique receipt.
+    choices = distribution.findall('./choice/pkg-ref')
+    require(len(choices) == 3 and {item.attrib['id'] for item in choices} == COMPONENTS,
+            'incorrect productbuild choice references')
+    payloads = [item for item in distribution.findall('./pkg-ref') if (item.text or '').strip()]
+    filenames = {BASE + '.vst3': PRODUCT + 'VST3.pkg', BASE + '.au': PRODUCT + 'AU.pkg',
+                 BASE + '.app': PRODUCT + 'App.pkg'}
+    require(len(payloads) == 3 and {item.attrib['id'] for item in payloads} == COMPONENTS,
+            'incorrect productbuild payload references')
+    for item in payloads:
+        name = filenames[item.attrib['id']]
+        require(item.text.strip() in (name, '#' + name), 'incorrect productbuild payload URI')
+    require(all(item.attrib.get('id') == BASE for item in distribution.findall('.//bundle')),
+            'incorrect productbuild bundle namespace')
     return {'package_receipts': sorted(ids), 'distribution_refs': refs}
 
 
@@ -155,6 +170,16 @@ def self_test():
         except (ValueError, KeyError, IndexError, OSError, ET.ParseError):
             return
         raise AssertionError('identity checker accepted seeded invalid metadata')
+
+    def distribution_text(metadata=False):
+        names = {BASE + '.vst3': PRODUCT + 'VST3.pkg', BASE + '.au': PRODUCT + 'AU.pkg',
+                 BASE + '.app': PRODUCT + 'App.pkg'}
+        choices = ''.join(f'<choice id="{key.rsplit(".", 1)[-1]}"><pkg-ref id="{key}"/></choice>'
+                          for key in sorted(COMPONENTS))
+        payloads = ''.join(f'<pkg-ref id="{key}">#{names[key]}</pkg-ref>' for key in sorted(COMPONENTS))
+        extra = ''.join(f'<pkg-ref id="{key}"><bundle-version><bundle id="{BASE}"/></bundle-version></pkg-ref>'
+                        for key in sorted(COMPONENTS)) if metadata else ''
+        return '<installer-gui-script>' + choices + payloads + extra + '</installer-gui-script>'
 
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -188,9 +213,25 @@ def self_test():
             path.parent.mkdir(parents=True)
             path.write_text(f'<pkg-info identifier="{identifier}"><bundle id="{BASE}"/></pkg-info>')
         distribution = expanded / 'Distribution'
-        distribution.write_text('<installer-gui-script>' + ''.join(f'<pkg-ref id="{item}"/>' for item in sorted(COMPONENTS) for _ in range(2)) + '</installer-gui-script>')
+        distribution.write_text(distribution_text())
+        package_metadata(expanded)
+        # Native productbuild normalization adds a third reference per component.
+        distribution.write_text(distribution_text(metadata=True))
         package_metadata(expanded)
         valid = distribution.read_text()
+        broken = ET.fromstring(valid)
+        broken.remove(broken.findall('./pkg-ref')[0])
+        distribution.write_bytes(ET.tostring(broken))
+        rejects(package_metadata, expanded)
+        broken = ET.fromstring(valid)
+        broken.append(ET.fromstring(ET.tostring(broken.findall('./pkg-ref')[0])))
+        distribution.write_bytes(ET.tostring(broken))
+        rejects(package_metadata, expanded)
+        broken = ET.fromstring(valid)
+        broken.find('./pkg-ref/bundle-version/bundle').set('id', 'invalid.identity')
+        distribution.write_bytes(ET.tostring(broken))
+        rejects(package_metadata, expanded)
+        distribution.write_text(valid)
         distribution.write_text(valid.replace(BASE, 'invalid.identity'))
         rejects(package_metadata, expanded)
         distribution.write_text(valid)
