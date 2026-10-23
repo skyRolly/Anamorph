@@ -199,7 +199,8 @@ Advanced is off while their values are remembered. Settings (Oversampling, UI Sc
 tooltips, animations) are host-hidden session state.
 
 Namespace inventory/validation: [worklog](worklogs/2026-10-23-product-namespace.md);
-ADR-0063 is Proposed pending independent human review before merge.
+ADR-0063 is Accepted under explicit final owner approval; implementation is merged.
+Native DAW/receipt-installation validation remains unverified.
 
 Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-installer-icon.md),
-Proposed ADR-0064; independent human review before merge.
+Accepted ADR-0064; owner approval and #172 merge are recorded, with native visual limits preserved.

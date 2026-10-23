@@ -92,8 +92,9 @@ Evidence [Verified]:
 At least one source is mandatory for any historical, design-decision, incident, risk, or
 known-issue claim.
 
-The namespace inventory `worklogs/2026-10-23-product-namespace.md` supports Proposed ADR-0063.
-Its owner implementation/testing permission is distinct from independent human ADR acceptance.
-
-`worklogs/2026-10-23-windows-installer-icon.md` is measurement evidence supporting Proposed
-ADR-0064, separate from namespace ADR-0063 and original icon ADR-0062.
+The namespace and Windows installer worklogs (`worklogs/2026-10-23-product-namespace.md`
+and `worklogs/2026-10-23-windows-installer-icon.md`) support Accepted ADR-0063 and ADR-0064.
+ADR-0062 remains Accepted. Final owner approval, cleared architecture blockers and verified
+main ancestry are recorded in `architecture/design-decisions/ADR_INDEX.md` under the
+2026-10-24 reconciliation. The earlier implementation permission and dated evidence remain
+historical; unperformed runtime/manual validation is not converted into a pass.

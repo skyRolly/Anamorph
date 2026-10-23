@@ -1,5 +1,13 @@
 # HANDOVER.md
 
+**Governance reconciliation (record updated 2026-10-24, Asia/Shanghai):** native JUCE
+ADR-0062 remains Accepted; namespace ADR-0063 and Windows installer ADR-0064 are Accepted
+under explicit final owner approval. PR #170 → #171 → #172 are merged into inspected main
+`1e17f5845a90919949435c60d6ddf2bf2bd3fde1`. `architecture/design-decisions/ADR_INDEX.md`
+records provenance, exact merge ancestry and native CI evidence. The corresponding owner/
+architecture blockers are closed; DAW, receipt-installation, shell/Composer and other unperformed
+manual validation remain unverified. Unrelated owner decisions below retain their status.
+
 Operational status snapshot for technical handover. Update on every release
 (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`). Facts are Verified from the repository;
 fields with no repository evidence are marked `TODO` rather than invented (constraint C7).

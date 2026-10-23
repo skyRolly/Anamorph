@@ -325,7 +325,7 @@ repository ever grows a real package manifest.
   It is a human sign-off, not headlessly reproducible. The forward-looking risk for *future* bumps
   stays tracked by RISK-001.
 
-Namespace generation audit (2026-10-23, Proposed ADR-0063): the JUCE pin is unchanged.
+Namespace generation audit (2026-10-23, Accepted ADR-0063; final approval recorded 2026-10-24): the JUCE pin is unchanged.
 BUNDLE_ID governs CFBundleIdentifier and unused framework/AAX/ARA defaults; independent AU
 codes and non-VST2-compatible VST3 CIDs are preserved and checked in generated outputs.
 No dependency or format is added.

@@ -1,5 +1,22 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Current approval reconciliation — record updated 2026-10-24 (Asia/Shanghai)
+
+ADR-0062 remains Accepted; ADR-0063 and ADR-0064 are Accepted, under explicit final owner approval of the completed five-PR scope.
+ADR_INDEX records provenance (original final-approval date not recorded), actual main merge
+ancestry, closed architecture/owner blockers and implementation CI/artifact evidence. ADRs,
+amendment banners/registry, SOURCE_OF_TRUTH, affected navigation/release procedures, HANDOVER and current
+worklog status now agree. Earlier dated audit entries below remain historical snapshots.
+No manual runtime/DAW/audition/receipt/shell/Composer result is inferred from approval. Existing
+identifiers, plugin codes, resource hashes, implementation, tests and policy gates are preserved.
+Validation: repository `bash scripts/preflight.sh` completed with exit 0, including checker
+self-tests, documentation/source lints, citation checks against all three bases, Linux ABI
+inspection and the available existing DSP/state binaries. This is not a fresh build or a
+native desktop/DAW test. The pinned-compiler full warning gates still require build logs;
+only their self-tests ran here (Anamorph also reports the local warning sweep skipped).
+ADR registration/status, effective-amendment, main-ancestry and protected-file audits pass;
+the PR records exact commands/results. No policy gate or repository test was changed.
+
 
 **Review closure (2026-10-24):** the retained native PKG's correct ID set still passed with
 VST3/AU receipt ownership swapped. The identity gate now binds named component directories,

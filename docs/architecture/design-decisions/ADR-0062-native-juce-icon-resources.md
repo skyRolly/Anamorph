@@ -3,12 +3,16 @@
 **Status:** Accepted — the repository owner explicitly approved Architecture Review on
 2026-10-23: **“Approve architecture review for the proposed Round 1 change.”** The reviewed
 proposal was the two-line ICON_BIG/ICON_SMALL addition and the two unchanged B0 PNGs whose
-digests are recorded in `resources/icons/PROVENANCE.json`. Approval permits implementation,
-validation and an unmerged PR; it does not approve a merge, release or subsequent integration.
+digests are recorded in `resources/icons/PROVENANCE.json`. That original approval permitted
+implementation, validation and an unmerged PR. The owner's later final approval confirms the
+completed #170 scope, now merged as `b4a95b3a6d86acf222de523c6fb04de23ad8e602`;
+ADR-0062 remains Accepted. See [ADR_INDEX.md](ADR_INDEX.md#owner-approval-reconciliation--record-updated-2026-10-24)
+for the final-approval provenance (original date not recorded; record updated 2026-10-24).
 
-**2026-10-23 scope pointer:** the later namespace proposal is ADR-0063, with separate owner
-implementation/testing permission and independent review pending. This Round 1 record continues
-to describe the icon-only change; its original no-identity-change claim is historical to #170.
+**Current scope pointer:** Accepted ADR-0063 separately governs the namespace, and Accepted
+ADR-0064 completes the Windows installer follow-up originally deferred here. This Round 1
+record continues to describe the icon-only change; its no-identity-change claim is historical
+to #170. Linux/Composer work and native visual certification remain separate.
 
 ## Context
 

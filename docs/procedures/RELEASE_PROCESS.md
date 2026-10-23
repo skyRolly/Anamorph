@@ -229,9 +229,10 @@ Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml 
 Base `tech.rolly.anamorph`; macOS receipts below it use `.vst3/.au/.app`. Expanded metadata
 is checked by `build-pkg.sh`. Exact named component-to-receipt, choice and payload ownership must agree; a correct ID set alone does not pass. Windows AppId stays `{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}`.
 The owner accepts the pre-release receipt break; there is no old-receipt alias or fallback.
-ADR-0063 remains Proposed pending independent human review before merge; no release is authorized.
+ADR-0063 is Accepted; architecture review and the owner decision are approved, and #171 is merged.
+Actual receipt installation and DAW recall remain unverified; this record grants no new release approval.
 
-The Windows installer icon gate (Proposed ADR-0064) verifies the exact checked-in B0 ICO before
+The Windows installer icon gate (Accepted ADR-0064) verifies the exact checked-in B0 ICO before
 ISCC and the generated Setup MAINICON afterward. Installer artifact upload also requires the
 isolated component/install/reinstall/uninstall tests. No icon download or generic fallback
 is allowed; normal signing/release authorization remains unchanged.

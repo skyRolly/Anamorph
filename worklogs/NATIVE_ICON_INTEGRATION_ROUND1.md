@@ -1,5 +1,22 @@
 # Native icon integration — Round 1
 
+## Current governance status — record updated 2026-10-24 (Asia/Shanghai)
+
+ADR-0062 is **Accepted**; the owner explicitly confirms final architecture/decision approval
+for this completed scope. Architecture review and owner-decision blockers are **Closed**.
+[PR #170](https://github.com/skyRolly/Anamorph/pull/170) is merged as
+`b4a95b3a6d86acf222de523c6fb04de23ad8e602`, verified in current main ancestry. The original final-approval date is not
+recorded. [ADR_INDEX.md](../docs/architecture/design-decisions/ADR_INDEX.md#owner-approval-reconciliation--record-updated-2026-10-24)
+holds the approval provenance, merge ancestry, exact CI evidence and remaining validation.
+Approval does not establish an unperformed runtime/manual test result.
+
+## Historical implementation and validation record
+
+The dated entries below preserve the status and evidence at implementation time. Their
+Proposed/unmerged/review-pending statements are superseded by the current governance record
+above; earlier native pending statements must be read with their exact later CI evidence.
+No historical measurements, hashes or release evidence are rewritten.
+
 2026-10-23 (Asia/Shanghai). Baseline Anamorph main:
 `098884e7fe12049010f2eaf8379e1514efdad0ab`; branch `feature/native-product-icons-round1`.
 Owner Architecture Review explicitly approved the proposed two-input JUCE change before

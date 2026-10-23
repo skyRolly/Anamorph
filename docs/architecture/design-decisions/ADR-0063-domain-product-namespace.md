@@ -1,16 +1,18 @@
 # ADR-0063 — Domain product namespace for pre-release packages
 
-**Status:** Proposed — owner namespace decision and pre-implementation Architecture Review
-permission recorded on 2026-10-23: **“Approve B, C, and E for implementation and testing.”**
-This clears the implementation stop for the concrete proposal, not ADR acceptance or merge.
-Independent human architecture review remains required before merging this PR.
+**Status:** Accepted — explicit final owner approval of ADR-0063 and the completed
+namespace implementation. **Architecture Review Gate: CLEARED; owner decision: APPROVED.**
+Approval provenance and verified merge ancestry are recorded in [ADR_INDEX.md](ADR_INDEX.md#owner-approval-reconciliation--record-updated-2026-10-24).
+The original final-approval date is not recorded; this status update is dated 2026-10-24
+(Asia/Shanghai). The earlier 2026-10-23 permission, **“Approve B, C, and E for
+implementation and testing,”** is retained as implementation-stage history.
 
 ## Context
 
 The owner controls `rolly.tech` and directs all future products to `tech.rolly.<product>`.
 The historical starting tree `098884e7fe12049010f2eaf8379e1514efdad0ab` used
 `com.rollytech.anamorph`. ADR-0023 recorded that bundle/package IDs were unchanged by the manufacturer decision.
-This proposal amends only those namespace statements; its RTec decision and historical evidence
+This accepted decision amends only those namespace statements; its RTec decision and historical evidence
 remain. ADR-0062 still describes the earlier icon-only change, which changed no identity.
 The product is pre-release; the owner explicitly accepts the development package-identity break.
 
@@ -24,7 +26,7 @@ codes. Namespace and independent host identities must be reviewed separately.
 ## Options
 
 - Keep the previous namespace: contradicts the domain decision.
-- **Use `tech.rolly.anamorph` and unique package suffixes: chosen for implementation.**
+- **Use `tech.rolly.anamorph` and unique package suffixes: accepted.**
 - Add legacy aliases/receipt support: explicitly rejected for unpublished development builds.
 - Change manufacturer/plugin codes, product name or Windows AppId: unnecessary independent
   identity breaks and outside the authorized namespace change.
@@ -42,8 +44,8 @@ codes. Namespace and independent host identities must be reviewed separately.
   UI/DSP behavior, parameter IDs, state, serialization and latency.
 - No old-identifier aliases, fallback paths, receipt handling or package migration machinery.
 - Generated unused AAX/ARA/AU-framework defaults inherit the base too; this enables no new format.
-- Amend the namespace statements of ADR-0023 with dated notes; retain ADR-0062 scope. They stay in the
-  record; the new ADR stays Proposed pending independent human review.
+- The partial namespace amendment to ADR-0023 is effective. ADR-0023 remains Accepted
+  for its other decisions and historical evidence; ADR-0062 retains its original icon-only scope.
 
 ## Independent identities and consequences
 
@@ -66,13 +68,14 @@ No old receipt is forgotten or deleted by these scripts. There is no state-forma
 state compatibility exemption. Linux ELF has no CFBundleIdentifier; the base appears in JUCE
 build metadata, and no Linux desktop identifier is installed by the existing packaging.
 
-## Stack and review order
+## Merged implementation and original review order
 
-Based on corrected PR #170 (`feature/native-product-icons-round1`, `84d74b4`). This PR
-targets that branch so the namespace diff is independent of its icon implementation. Merge
-#170 first, then reconcile/retarget this PR to main without duplicating/cherry-picking the
-predecessor or force-pushing a shared branch. Windows installer work stacks on this PR and
-is a third review unit. No merge is authorized by implementation approval.
+PR #170 merged as `b4a95b3a6d86acf222de523c6fb04de23ad8e602`, followed by namespace
+PR #171 as `b4ea7a2ac25b89b943d350a6bb0d42ccc6273727`, then installer PR #172 as
+`1e17f5845a90919949435c60d6ddf2bf2bd3fde1` (inspected main). The original stack kept
+the three review units separate and was reconciled by ordinary merges. Final owner
+approval closes this decision's architecture/acceptance blockers. It does not certify
+unperformed DAW, receipt-installation or shell/cache tests, or authorize future architecture.
 
 ## Related code
 
