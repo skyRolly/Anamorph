@@ -158,6 +158,12 @@ try {
                 NativeCopiesMatch = $copies
                 VstSystemAttribute = ((Test-Path -LiteralPath $vst) -and (((Get-Item -LiteralPath $vst -Force).Attributes -band [IO.FileAttributes]::System) -ne 0))
             }
+            $snapshot.MenuGroup = $group
+            $snapshot.ExpectedUninstaller = $uninstaller
+            $snapshot.AppShortcutTarget = Shortcut-Target (Join-Path $group 'Anamorph.lnk')
+            $snapshot.UninstallShortcutTarget = Shortcut-Target (Join-Path $group 'Uninstall Anamorph.lnk')
+            $snapshot.MenuEntries = @(Get-ChildItem -LiteralPath $group -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+            Write-Host ($snapshot | ConvertTo-Json -Depth 4)
             Assert-InstalledSnapshot $snapshot $components
             & python (Join-Path $repo 'scripts/check-installer-icon.py') --uninstall-exe $uninstaller
             if ($LASTEXITCODE -ne 0) { throw 'installed uninstaller MAINICON differs from approved B0' }
@@ -183,11 +189,15 @@ try {
     }
 } catch {
     $failure = $_.Exception.Message
+    if ($log -and (Test-Path -LiteralPath $log -PathType Leaf)) {
+        Write-Host 'Installer log (last 100 lines):'
+        Get-Content -LiteralPath $log -Tail 100 | ForEach-Object { Write-Host $_ }
+    }
     throw
 } finally {
     $reportPath = [IO.Path]::GetFullPath($Report)
     New-Item -ItemType Directory -Path (Split-Path -Parent $reportPath) -Force | Out-Null
-    @{ installer = $Installer; AppId = $AppId; source_ICO_sha256 = $ApprovedHash; tests = @($results.ToArray()); failure = $failure; isolated_logs = $testRoot } |
+    @{ installer = $Installer; AppId = $AppId; source_ICO_sha256 = $ApprovedHash; tests = @($results.ToArray()); failure = $failure; last_snapshot = $snapshot; isolated_logs = $testRoot } |
         ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $reportPath -Encoding utf8
     if (Test-Path -LiteralPath $otherFile -PathType Leaf) { Remove-Item -LiteralPath $otherFile }
     if ((Test-Path -LiteralPath $otherVst) -and @(Get-ChildItem -LiteralPath $otherVst -Force).Count -eq 0) { Remove-Item -LiteralPath $otherVst }

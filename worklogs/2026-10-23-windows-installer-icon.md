@@ -55,3 +55,13 @@ The inspected Inno `AddQuotes` helper quotes paths only when they contain spaces
 registered-uninstaller parser therefore accepts quoted and unquoted native commands, while
 requiring an `unins<digits>.exe` inside the isolated app directory. Portable positive/negative
 parser fixtures guard that safety boundary before any native installation runs.
+
+
+## Native shortcut diagnosis
+
+The first isolated native run passed the Setup MAINICON, installed ICO and registry DisplayIcon
+checks, then rejected the VST3-only uninstall-shortcut assertion. The gate remains enforced.
+The behavior report now retains the exact expected/observed shortcut targets, menu directory
+entries and the last snapshot, and prints the installer log on failure so a missing shortcut
+can be distinguished from a path-comparison defect. This diagnostic change is not a passing
+native installation result.
