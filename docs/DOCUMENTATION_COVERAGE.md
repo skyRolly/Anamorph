@@ -17226,3 +17226,14 @@ when DisableProgramGroupPage=yes. The native selector now reads/guards DefaultGr
 that directive (one good/two bad fixtures), refuses an existing product menu directory, and
 checks the actual common Start Menu group. The installer script and all resource/ownership
 assertions are unchanged. Failure diagnostics retain exact targets/menu entries and setup logs.
+
+## 2026-10-24 installed macOS receipts
+
+Extended existing package-metadata validation with guarded real installation on the
+packaging job's disposable Mac. Updated CI/testing/packaging/release procedures and
+script map. No active accepted decision, package IDs, source/format/identity/build
+architecture changes; no new architecture gate identified. Previous unperformed
+receipt-installation statements remain dated baseline evidence, not a claimed pass.
+Current native results belong to the exact PR job/report, not the portable fixtures.
+Evidence: `scripts/test-macos-receipts.py`, `.github/workflows/build.yml`,
+`worklogs/2026-10-24-installed-macos-receipts.md`.

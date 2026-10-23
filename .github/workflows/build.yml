@@ -2589,8 +2589,30 @@ jobs:
 
       # Same fail-closed gate as the customer artifact (both slices' tests + its
       # own step) -- the .pkg installs the same universal bundles.
+      - name: Installed macOS receipt liveness
+        if: ${{ !cancelled() && steps.package_macos_pkg.outcome == 'success' }}
+        run: python3 scripts/test-macos-receipts.py --self-test
+
+      - name: Install the real macOS package and inspect receipts
+        id: installed_receipts
+        if: ${{ !cancelled() && steps.package_macos_pkg.outcome == 'success' }}
+        run: |
+          PKG=(dist/Anamorph-*-macOS.pkg)
+          test "${#PKG[@]}" -eq 1
+          python3 scripts/test-macos-receipts.py --package "${PKG[0]}" --staged-dir dist/Anamorph-macOS
+
+      - name: Retain installed macOS receipt evidence
+        if: ${{ always() && steps.installed_receipts.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-macOS-installed-receipts
+          path: |
+            build/installed-receipts-macos.json
+            build/anamorph-receipt-logs
+          if-no-files-found: error
+
       - name: Upload macOS installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.installed_receipts.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS-installer
