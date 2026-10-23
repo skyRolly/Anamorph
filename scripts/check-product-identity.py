@@ -19,7 +19,9 @@ CODE = 'Anmr'
 APP_ID = 'D1E3D8F8-C9CE-415C-AC73-A6AA842987BD'
 CIDS = {'Audio Module Class': 'ABCDEF019182FAEB52546563416E6D72',
         'Component Controller Class': 'ABCDEF011234ABCD52546563416E6D72'}
-COMPONENTS = {BASE + '.' + suffix for suffix in ('vst3', 'au', 'app')}
+PACKAGES = {PRODUCT + 'VST3.pkg': BASE + '.vst3', PRODUCT + 'AU.pkg': BASE + '.au',
+            PRODUCT + 'App.pkg': BASE + '.app'}
+COMPONENTS = set(PACKAGES.values())
 
 
 def require(condition, message):
@@ -132,13 +134,28 @@ def build_metadata(build, platform):
     return result
 
 
+def receipt_owner(path, expanded, identifier):
+    # pkgutil --expand preserves productbuild's named component directories.
+    # A correct set of IDs does not prove that each package owns its own ID.
+    require(path.parent.parent == expanded and path.parent.name in PACKAGES,
+            f'unknown package component: {path.relative_to(expanded)}')
+    require(identifier == PACKAGES[path.parent.name],
+            f'incorrect receipt ownership: {path.parent.name} owns {identifier}')
+
+
 def package_metadata(expanded):
     paths = list(expanded.rglob('PackageInfo'))
     require(len(paths) == 3, f'expected three PackageInfo files, found {len(paths)}')
-    ids = []
+    directories = list(expanded.glob('*.pkg'))
+    require({path.name for path in directories} == set(PACKAGES) and all(path.is_dir() for path in directories),
+            f'unknown package component directories: {[path.name for path in directories]}')
+    ids, owners = [], {}
     for path in paths:
         info = ET.parse(path).getroot()
-        ids.append(info.attrib['identifier'])
+        identifier = info.attrib['identifier']
+        receipt_owner(path, expanded, identifier)
+        ids.append(identifier)
+        owners[path.parent.name] = identifier
         bundles = info.findall('.//bundle')
         require(bundles and all(item.attrib.get('id') == BASE for item in bundles), f'package bundle namespace differs: {path}')
     require(set(ids) == COMPONENTS and len(set(ids)) == 3, f'incorrect package receipts: {ids}')
@@ -147,12 +164,19 @@ def package_metadata(expanded):
     require(set(refs) == COMPONENTS, f'incorrect productbuild references: {refs}')
     # productbuild may add metadata-only pkg-ref nodes. References are not
     # components: require one choice and one payload URI per unique receipt.
-    choices = distribution.findall('./choice/pkg-ref')
-    require(len(choices) == 3 and {item.attrib['id'] for item in choices} == COMPONENTS,
-            'incorrect productbuild choice references')
+    choices = distribution.findall('./choice')
+    suffixes = {'vst3', 'au', 'app'}
+    require(len(choices) == 3 and {item.attrib['id'] for item in choices} == suffixes,
+            'incorrect productbuild choices')
+    outline = distribution.findall('./choices-outline/line')
+    require(len(outline) == 3 and {item.attrib['choice'] for item in outline} == suffixes,
+            'incorrect productbuild choice outline')
+    for choice in choices:
+        refs_in_choice = choice.findall('./pkg-ref')
+        require(len(refs_in_choice) == 1 and refs_in_choice[0].attrib['id'] == BASE + '.' + choice.attrib['id'],
+                'incorrect productbuild choice references')
     payloads = [item for item in distribution.findall('./pkg-ref') if (item.text or '').strip()]
-    filenames = {BASE + '.vst3': PRODUCT + 'VST3.pkg', BASE + '.au': PRODUCT + 'AU.pkg',
-                 BASE + '.app': PRODUCT + 'App.pkg'}
+    filenames = {identifier: name for name, identifier in PACKAGES.items()}
     require(len(payloads) == 3 and {item.attrib['id'] for item in payloads} == COMPONENTS,
             'incorrect productbuild payload references')
     for item in payloads:
@@ -160,16 +184,20 @@ def package_metadata(expanded):
         require(item.text.strip() in (name, '#' + name), 'incorrect productbuild payload URI')
     require(all(item.attrib.get('id') == BASE for item in distribution.findall('.//bundle')),
             'incorrect productbuild bundle namespace')
-    return {'package_receipts': sorted(ids), 'distribution_refs': refs}
+    return {'package_receipts': sorted(ids), 'package_owners': dict(sorted(owners.items())),
+            'distribution_refs': refs}
 
 
 def self_test():
-    def rejects(fn, *args):
+    def rejects(fn, *args, match=None):
         try:
             fn(*args)
-        except (ValueError, KeyError, IndexError, OSError, ET.ParseError):
+        except (ValueError, KeyError, IndexError, OSError, ET.ParseError) as error:
+            if match is not None:
+                assert match in str(error), f'wrong rejection reason: {error}'
             return
-        raise AssertionError('identity checker accepted seeded invalid metadata')
+        raise AssertionError('identity checker accepted seeded invalid metadata' +
+                             (f' (expected {match})' if match else ''))
 
     def distribution_text(metadata=False):
         names = {BASE + '.vst3': PRODUCT + 'VST3.pkg', BASE + '.au': PRODUCT + 'AU.pkg',
@@ -179,7 +207,8 @@ def self_test():
         payloads = ''.join(f'<pkg-ref id="{key}">#{names[key]}</pkg-ref>' for key in sorted(COMPONENTS))
         extra = ''.join(f'<pkg-ref id="{key}"><bundle-version><bundle id="{BASE}"/></bundle-version></pkg-ref>'
                         for key in sorted(COMPONENTS)) if metadata else ''
-        return '<installer-gui-script>' + choices + payloads + extra + '</installer-gui-script>'
+        outline = '<choices-outline>' + ''.join(f'<line choice="{suffix}"/>' for suffix in ('vst3', 'au', 'app')) + '</choices-outline>'
+        return '<installer-gui-script>' + outline + choices + payloads + extra + '</installer-gui-script>'
 
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -208,8 +237,12 @@ def self_test():
         module.write_text(json.dumps(original))
         rejects(moduleinfo, module)
         expanded = root / 'expanded'
-        for index, identifier in enumerate(sorted(COMPONENTS)):
-            path = expanded / str(index) / 'PackageInfo'
+        # Expected names are independent of PACKAGES, so an incorrect production
+        # mapping cannot make both the checker and its fixtures agree wrongly.
+        components = [('VST3', 'vst3'), ('AU', 'au'), ('App', 'app')]
+        for label, suffix in components:
+            identifier = BASE + '.' + suffix
+            path = expanded / (PRODUCT + label + '.pkg') / 'PackageInfo'
             path.parent.mkdir(parents=True)
             path.write_text(f'<pkg-info identifier="{identifier}"><bundle id="{BASE}"/></pkg-info>')
         distribution = expanded / 'Distribution'
@@ -218,7 +251,65 @@ def self_test():
         # Native productbuild normalization adds a third reference per component.
         distribution.write_text(distribution_text(metadata=True))
         package_metadata(expanded)
+        # Keep Distribution and all bundle IDs valid while exchanging ONLY the
+        # two owners. Each of the three transpositions must fail for ownership.
+        for left, right in ((0, 1), (0, 2), (1, 2)):
+            paths = [expanded / (PRODUCT + components[i][0] + '.pkg') / 'PackageInfo'
+                     for i in (left, right)]
+            originals = [path.read_bytes() for path in paths]
+            trees = [ET.fromstring(data) for data in originals]
+            identifiers = [tree.attrib['identifier'] for tree in trees]
+            for path, tree, identifier in zip(paths, trees, reversed(identifiers)):
+                tree.set('identifier', identifier)
+                path.write_bytes(ET.tostring(tree))
+            rejects(package_metadata, expanded, match='incorrect receipt ownership')
+            for path, data in zip(paths, originals):
+                path.write_bytes(data)
+        component = expanded / (PRODUCT + 'VST3.pkg') / 'PackageInfo'
+        original = component.read_bytes()
+        tree = ET.fromstring(original)
+        tree.set('identifier', BASE + '.au')
+        component.write_bytes(ET.tostring(tree))
+        rejects(package_metadata, expanded, match='incorrect receipt ownership')
+        component.write_bytes(original)
+        known = component.parent
+        unknown = expanded / 'Unknown.pkg'
+        known.rename(unknown)
+        rejects(package_metadata, expanded, match='unknown package component')
+        unknown.rename(known)
+        unknown.mkdir()
+        rejects(package_metadata, expanded, match='unknown package component directories')
+        unknown.rmdir()
+        nested = expanded / 'nested'
+        nested.mkdir()
+        known.rename(nested / known.name)
+        rejects(package_metadata, expanded, match='unknown package component')
+        (nested / known.name).rename(known)
+        nested.rmdir()
         valid = distribution.read_text()
+        for duplicate in (False, True):
+            broken = ET.fromstring(valid)
+            outline = broken.find('./choices-outline')
+            if duplicate:
+                outline.append(ET.fromstring(ET.tostring(outline[0])))
+            else:
+                outline[0].set('choice', 'unknown')
+            distribution.write_bytes(ET.tostring(broken))
+            rejects(package_metadata, expanded, match='incorrect productbuild choice outline')
+        broken = ET.fromstring(valid)
+        payload = next(item for item in broken.findall('./pkg-ref') if (item.text or '').strip())
+        payload.text = '#Unknown.pkg'
+        distribution.write_bytes(ET.tostring(broken))
+        rejects(package_metadata, expanded, match='incorrect productbuild payload URI')
+        # Even a permutation of the correct choices must not select the wrong
+        # component while preserving the overall receipt-ID set.
+        broken = ET.fromstring(valid)
+        choice_refs = broken.findall('./choice/pkg-ref')
+        first, second = [item.attrib['id'] for item in choice_refs[:2]]
+        choice_refs[0].set('id', second)
+        choice_refs[1].set('id', first)
+        distribution.write_bytes(ET.tostring(broken))
+        rejects(package_metadata, expanded, match='incorrect productbuild choice references')
         broken = ET.fromstring(valid)
         broken.remove(broken.findall('./pkg-ref')[0])
         distribution.write_bytes(ET.tostring(broken))
@@ -235,7 +326,7 @@ def self_test():
         distribution.write_text(valid.replace(BASE, 'invalid.identity'))
         rejects(package_metadata, expanded)
         distribution.write_text(valid)
-        component = expanded / '0/PackageInfo'
+        component = expanded / (PRODUCT + 'VST3.pkg') / 'PackageInfo'
         valid = component.read_text()
         component.write_text(valid.replace(BASE, 'invalid.identity'))
         rejects(package_metadata, expanded)

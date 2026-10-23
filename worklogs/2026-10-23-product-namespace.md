@@ -137,3 +137,30 @@ all references and canonical bundle metadata, while allowing generated metadata 
 Six-reference input and normalized nine-reference positive fixtures, missing/duplicate payload
 and foreign bundle-ID negatives guard this correction. Existing package-generation behavior
 and identifier values are unchanged; native validation is repeated on the corrective head.
+
+
+## Review closure — 2026-10-24 (Asia/Shanghai)
+
+Reported drift: the package gate compared only the receipt-ID set, while Distribution's
+correct mapping could conceal exchanged PackageInfo owners. At inspected head `bb1298b3861cf90c58ef67160e4c7576d2ea7008`,
+retained native artifact **12514052699**, ZIP SHA-256 `6c0dbcf7d8fafc1dbc6fa130dc588a28024ef960aec003a2adbea751820551e7`,
+passes with VST3/AU receipt IDs swapped and Distribution untouched. Read-only XAR extraction
+confirmed the real direct named `.pkg/PackageInfo` layout; no installed receipt was modified.
+
+The corrected production parser binds each named AnamorphVST3/AU/App.pkg to its exact
+`.vst3/.au/.app` receipt and cross-checks Distribution choice IDs, outline and payload URI.
+Unknown/nested/extra component directories fail closed. Committed fixtures use meaningful
+component names, cover all three receipt transpositions, duplicate/missing components,
+wrong payload/choice/outline references and six-/nine-reference valid normalization.
+The original swapped native fixture is now rejected specifically for receipt ownership;
+unmodified retained metadata still passes. New self-tests transplanted onto the old checker
+fail on that swap. Four mutants disabling ownership, directory validation, payload mapping
+or choice ownership are each killed by their own specific negative fixture.
+
+Targeted validation: checker self-test/source, actual generated local Linux metadata,
+retained native PKG metadata, paired old/new and mutation controls, docs/citation/source
+lints. No local DSP rebuild is needed for a metadata-gate correction. Fresh native package
+and all required matrix jobs run on the pushed head; their exact outcome belongs to that
+head's PR/CI report, not to an inherited green claim. Existing local GCC14 ABI-floor limits
+are unchanged and are not described as passing. Audio/state/GUI/latency/parameter sources,
+JUCE pin, version, plugin codes/CIDs/AppId, B0 bytes and installer destinations/UI are unchanged.

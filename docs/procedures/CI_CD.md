@@ -1830,3 +1830,5 @@ CMake/package/Windows GUID declarations; Linux, Windows and both macOS jobs insp
 generated metadata and VST3 class IDs. macOS also checks all built plists/AU triples; Windows
 reads VERSIONINFO without executing code. `build-pkg.sh` checks expanded PackageInfo and
 Distribution IDs after its same-job self-test. Reports are under build/.
+Named component ownership, choice references and payload filenames are checked together; an
+unordered receipt-ID set is insufficient. Six-/nine-reference normalization stays supported.

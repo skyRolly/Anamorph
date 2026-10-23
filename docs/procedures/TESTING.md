@@ -6062,5 +6062,10 @@ actual artifacts independently. DAW recall/rescan after CFBundleIdentifier chang
 human validation gap; preserved independent codes do not certify every host.
 
 The package identity self-test also covers productbuild normalization: six input references
-and nine generated references can name the same three components. Unique receipts, choice/
-payload membership, payload URI and bundle namespace are checked independently of total refs.
+and nine generated references can name the same three components. Named component directories
+must own their exact receipt (VST3/.vst3, AU/.au, App/.app); choice IDs, their receipt references
+and payload filenames must agree. All three receipt transpositions, duplicate/missing/unknown
+components, wrong payloads/choices/outlines and malformed namespaces are rejected. Fixtures use
+real component names, not numeric enumeration. A mutation disabling receipt ownership must fail
+the self-test specifically on a swapped receipt. Native `build-pkg.sh` validates freshly expanded
+metadata; retained CI metadata supplies a separate read-only check without installing receipts.
