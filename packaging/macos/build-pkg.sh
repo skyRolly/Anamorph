@@ -93,7 +93,7 @@ exit 0
 POST
   chmod +x "$scripts/postinstall"
 
-  pkgbuild --root "$root" --identifier "com.rollytech.anamorph.$id" \
+  pkgbuild --root "$root" --identifier "tech.rolly.anamorph.$id" \
            --version "$VERSION" --install-location "$dest" \
            --component-plist "$plist" --scripts "$scripts" "$out"
 }
@@ -121,19 +121,19 @@ cat > "$WORK/distribution.xml" <<EOF
     </choices-outline>
     <choice id="vst3" title="VST3 Plug-in" start_selected="true"
             description="Installs Anamorph.vst3 into /Library/Audio/Plug-Ins/VST3 (REAPER, Ableton Live, Cubase, Bitwig, ...).">
-        <pkg-ref id="com.rollytech.anamorph.vst3"/>
+        <pkg-ref id="tech.rolly.anamorph.vst3"/>
     </choice>
     <choice id="au" title="AU Plug-in" start_selected="true"
             description="Installs Anamorph.component into /Library/Audio/Plug-Ins/Components (Logic Pro, GarageBand, ...).">
-        <pkg-ref id="com.rollytech.anamorph.au"/>
+        <pkg-ref id="tech.rolly.anamorph.au"/>
     </choice>
     <choice id="app" title="Standalone Application" start_selected="true"
             description="Installs Anamorph.app into /Applications.">
-        <pkg-ref id="com.rollytech.anamorph.app"/>
+        <pkg-ref id="tech.rolly.anamorph.app"/>
     </choice>
-    <pkg-ref id="com.rollytech.anamorph.vst3" version="${VERSION}">AnamorphVST3.pkg</pkg-ref>
-    <pkg-ref id="com.rollytech.anamorph.au" version="${VERSION}">AnamorphAU.pkg</pkg-ref>
-    <pkg-ref id="com.rollytech.anamorph.app" version="${VERSION}">AnamorphApp.pkg</pkg-ref>
+    <pkg-ref id="tech.rolly.anamorph.vst3" version="${VERSION}">AnamorphVST3.pkg</pkg-ref>
+    <pkg-ref id="tech.rolly.anamorph.au" version="${VERSION}">AnamorphAU.pkg</pkg-ref>
+    <pkg-ref id="tech.rolly.anamorph.app" version="${VERSION}">AnamorphApp.pkg</pkg-ref>
 </installer-gui-script>
 EOF
 productbuild --distribution "$WORK/distribution.xml" --package-path "$WORK" "$OUT"
@@ -145,9 +145,12 @@ productbuild --distribution "$WORK/distribution.xml" --package-path "$WORK" "$OU
 # 30056361865); installing is what needs sudo, not this.
 installer -pkginfo -pkg "$OUT"
 pkgutil --expand "$OUT" "$WORK/expanded"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+python3 "$SCRIPT_DIR/../../scripts/check-product-identity.py" --self-test
+python3 "$SCRIPT_DIR/../../scripts/check-product-identity.py" --expanded-package "$WORK/expanded"
 for id in vst3 au app; do
-  grep -Rq "com.rollytech.anamorph.$id" "$WORK/expanded" \
-    || { echo "error: component com.rollytech.anamorph.$id missing from $OUT" >&2; exit 1; }
+  grep -Rq "tech.rolly.anamorph.$id" "$WORK/expanded" \
+    || { echo "error: component tech.rolly.anamorph.$id missing from $OUT" >&2; exit 1; }
 done
 grep -q 'customize="allow"' "$WORK/expanded/Distribution" \
   || { echo "error: $OUT lost customize=\"allow\" (component selection disabled)" >&2; exit 1; }
@@ -174,7 +177,7 @@ grep -q 'customize="allow"' "$WORK/expanded/Distribution" \
 # here rather than shipping assertions that cannot fire.
 probe_info() {                  # $1 = tag; remaining args go to pkgbuild
   _tag=$1; shift
-  pkgbuild --root "$WORK/root-app" --identifier com.rollytech.anamorph.probe \
+  pkgbuild --root "$WORK/root-app" --identifier tech.rolly.anamorph.probe \
            --version "$VERSION" --install-location "/Applications" \
            "$@" "$WORK/probe-$_tag.pkg" >/dev/null
   pkgutil --expand "$WORK/probe-$_tag.pkg" "$WORK/probe-$_tag-x"

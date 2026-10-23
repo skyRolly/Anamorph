@@ -197,7 +197,7 @@ Evidence [Verified]: build.yml (stage/upload steps per job).
 | Field | Value | Source |
 |---|---|---|
 | Company | RollyTech | CMakeLists.txt:422 |
-| Bundle ID | `com.rollytech.anamorph` | CMakeLists.txt:423 |
+| Bundle ID | `tech.rolly.anamorph` | CMakeLists.txt:423 |
 | Manufacturer code | `RTec` | CMakeLists.txt:424 — vendor-wide, shared by every RollyTech plug-in; was `Anmf` before 0.9.1 (ADR-0023) |
 | Plugin code | `Anmr` | CMakeLists.txt:425 |
 | Product name | Anamorph | CMakeLists.txt:427 |
@@ -235,9 +235,9 @@ quarantine attribute. Evidence [Verified]: packaging/macos/INSTALL.txt:47-65 (ma
 
 | Component | Identifier | Destination |
 |---|---|---|
-| VST3 | `com.rollytech.anamorph.vst3` | `/Library/Audio/Plug-Ins/VST3/Anamorph.vst3` |
-| AU | `com.rollytech.anamorph.au` | `/Library/Audio/Plug-Ins/Components/Anamorph.component` |
-| Standalone | `com.rollytech.anamorph.app` | `/Applications/Anamorph.app` |
+| VST3 | `tech.rolly.anamorph.vst3` | `/Library/Audio/Plug-Ins/VST3/Anamorph.vst3` |
+| AU | `tech.rolly.anamorph.au` | `/Library/Audio/Plug-Ins/Components/Anamorph.component` |
+| Standalone | `tech.rolly.anamorph.app` | `/Applications/Anamorph.app` |
 
 **Guarantee (0.9.3 onward).** Every selected component copies its payload to the
 destination above on *every* run, with no reference to what a previous install left
@@ -259,7 +259,7 @@ reach `PackageInfo`'s membership lists, and the assertions below would fail the 
 | `BundleIsVersionChecked` | `false` | The default compares the installed bundle's version and **skips** the copy when it is already at or above the package version — the same silent-success failure from the other end, and the reason a repair install of the same version could do nothing. |
 | `BundleOverwriteAction` | `upgrade` | pkgbuild's default, pinned explicitly: the write replaces the bundle rather than merging into it, so no file from an older install survives inside the new one. |
 
-**Receipts.** Receipts are still written (`pkgutil --pkgs | grep com.rollytech.anamorph`)
+**Receipts.** Receipts are still written (`pkgutil --pkgs | grep tech.rolly.anamorph`)
 and remain the record of what was installed — but nothing in the install path *reads* them
 to decide where or whether to copy, which is exactly the assumption being removed. A
 `pkgutil --forget` is therefore never needed to make an install work; it only clears the

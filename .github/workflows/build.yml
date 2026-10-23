@@ -534,6 +534,11 @@ jobs:
       - name: Local icon preflight regression
         run: python3 scripts/test-icon-preflight.py
 
+      - name: Product identity self-test and source contract
+        run: |
+          python3 scripts/check-product-identity.py --self-test
+          python3 scripts/check-product-identity.py
+
       - name: Verify approved icon inputs and CMake paths
         run: python3 scripts/check-icons.py
 
@@ -735,6 +740,11 @@ jobs:
         run: |
           set -o pipefail
           cmake --build build --config Release 2>&1 | tee clang-build.log
+
+      - name: Verify generated product identities
+        run: |
+          python3 scripts/check-product-identity.py --self-test
+          python3 scripts/check-product-identity.py --build-dir build --platform linux --report build/product-identity-linux.json
 
       - name: Icon checker self-test
         run: python3 scripts/check-icons.py --self-test
@@ -1532,6 +1542,11 @@ jobs:
         id: build
         run: cmake --build build --config Release
 
+      - name: Verify generated product identities
+        run: |
+          python scripts/check-product-identity.py --self-test
+          python scripts/check-product-identity.py --build-dir build --platform windows --report build/product-identity-windows.json
+
       - name: Icon checker self-test
         run: python scripts/check-icons.py --self-test
 
@@ -2068,6 +2083,11 @@ jobs:
       - name: Build (VST3 + AU + Standalone + tests)
         id: build
         run: cmake --build build --config Release
+
+      - name: Verify generated product identities
+        run: |
+          python3 scripts/check-product-identity.py --self-test
+          python3 scripts/check-product-identity.py --build-dir build --platform macos --report build/product-identity-macos.json
 
       - name: Icon checker self-test
         run: python3 scripts/check-icons.py --self-test
@@ -2940,6 +2960,11 @@ jobs:
 
       - name: Build (VST3 + AU + tests)
         run: cmake --build build --config Release
+
+      - name: Verify generated product identities
+        run: |
+          python3 scripts/check-product-identity.py --self-test
+          python3 scripts/check-product-identity.py --build-dir build --platform macos --report build/product-identity-macos-intel.json
 
       - name: Icon checker self-test
         run: python3 scripts/check-icons.py --self-test

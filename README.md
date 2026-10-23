@@ -197,3 +197,6 @@ are hard-stop, human-review-required. `CLAUDE.md` is a Claude-compatible import 
 **Advanced** adds the Input, Output, and Multiband modules; Advanced-only modules default-bypass when
 Advanced is off while their values are remembered. Settings (Oversampling, UI Scale, persistence,
 tooltips, animations) are host-hidden session state.
+
+Namespace inventory/validation: [worklog](worklogs/2026-10-23-product-namespace.md);
+ADR-0063 is Proposed pending independent human review before merge.

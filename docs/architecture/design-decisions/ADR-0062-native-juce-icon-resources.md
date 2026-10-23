@@ -6,6 +6,10 @@ proposal was the two-line ICON_BIG/ICON_SMALL addition and the two unchanged B0 
 digests are recorded in `resources/icons/PROVENANCE.json`. Approval permits implementation,
 validation and an unmerged PR; it does not approve a merge, release or subsequent integration.
 
+**2026-10-23 scope pointer:** the later namespace proposal is ADR-0063, with separate owner
+implementation/testing permission and independent review pending. This Round 1 record continues
+to describe the icon-only change; its original no-identity-change claim is historical to #170.
+
 ## Context
 
 Anamorph main `098884e` has no configured product icon. Candidate B0 was accepted in

@@ -223,3 +223,10 @@ Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml 
 - Update `CHANGELOG.md` (repository root) if any post-tag fixes land.
 - Refresh `docs/HANDOVER.md` (Current Version, Build/Test/Release Status).
 - Re-run the compatibility checklist on the next version against the just-shipped one.
+
+## Current package namespace (ADR-0063)
+
+Base `tech.rolly.anamorph`; macOS receipts below it use `.vst3/.au/.app`. Expanded metadata
+is checked by `build-pkg.sh`. Windows AppId stays `{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}`.
+The owner accepts the pre-release receipt break; there is no old-receipt alias or fallback.
+ADR-0063 remains Proposed pending independent human review before merge; no release is authorized.

@@ -1822,3 +1822,11 @@ compiler it describes and the checker refuses to compare against a different one
 local run reports `exit 2` rather than a misleading pass or fail.
 
 See `TESTING.md` for the validation gate and `PACKAGING.md` for the macOS signing/quarantine steps.
+
+## Product namespace and independent identity gates
+
+`scripts/check-product-identity.py --self-test` precedes every use: source-lint checks
+CMake/package/Windows GUID declarations; Linux, Windows and both macOS jobs inspect actual
+generated metadata and VST3 class IDs. macOS also checks all built plists/AU triples; Windows
+reads VERSIONINFO without executing code. `build-pkg.sh` checks expanded PackageInfo and
+Distribution IDs after its same-job self-test. Reports are under build/.
