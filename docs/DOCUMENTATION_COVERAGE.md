@@ -10,6 +10,13 @@ Audio/state sources, compatibility policy, product identity and installer/releas
 remain unchanged. The state suite has 142 cases with labels through 145 (13–15 unassigned);
 current testing-summary counts are preserved. Existing audit history below is retained.
 
+Native CI follow-up: the actual EXE/VST3 icon groups and macOS bundle resources are recorded in
+`worklogs/native-icons-round1/native-platform-audit.json`. Adding icons exposed configure-only
+Windows bundle directories in JUCE. `scripts/find-windows-vst3.ps1` now gives pluginval and
+staging one shared, regression-tested compiled-module selector, retaining missing/multiple-build
+failures. BUILD, CI_CD, TESTING and REPOSITORY_MAP describe this boundary; no installer,
+audio/state or product-identity behavior changed. Native interactive shell tests remain pending.
+
 Permanent documentation-coverage audit. **Future contributors/AI must update this on every
 documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`).
 
@@ -1852,7 +1859,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3559` and `.github/workflows/build.yml:3644`, this round being
+`.github/workflows/build.yml:3562` and `.github/workflows/build.yml:3647`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare

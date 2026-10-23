@@ -23,6 +23,13 @@ the signed staging tree. Native reports/raw containers are retained in the
 These checks add no runtime dependency, installer customization, signing-policy change or
 Finder/Dock/Explorer/DAW display claim. See [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md).
 
+The Windows job runs `scripts/find-windows-vst3.ps1 -SelfTest` before pluginval/staging.
+Both consumers use its shared selector for an actual `Contents/x86_64-win/Anamorph.vst3`
+module, rather than counting JUCE's configure-time `desktop.ini`-only directories. The
+self-test reproduces four configuration shells, accepts one built bundle (including the
+Windows System attribute), and refuses zero or multiple built modules. Validation strictness,
+pass counts and the existing PE/PDB staging checks remain unchanged.
+
 ## Triggers
 
 `build.yml`: `push` to any branch (`"**"`), `pull_request`, `workflow_dispatch`, and

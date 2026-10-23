@@ -1536,6 +1536,9 @@ jobs:
         id: icon_resources
         run: python scripts/check-icons.py --platform windows --report build/icon-validation-windows.json
 
+      - name: Windows VST3 discovery self-test
+        run: ./scripts/find-windows-vst3.ps1 -SelfTest
+
       - name: Upload Windows icon resource evidence
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1752,11 +1755,11 @@ jobs:
           # 1) Locate everything first -- abort here copies NOTHING public.
           #    Each locate demands EXACTLY ONE match: zero is a build-layout
           #    failure, more than one is ambiguity we refuse to guess about.
-          # -ErrorAction SilentlyContinue: see the self-test step -- a missing build/
-          # must produce the diagnostic below, not a terminating .NET error.
-          $vst3 = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory -ErrorAction SilentlyContinue)
-          if ($vst3.Count -ne 1) { Write-Error "expected exactly one Anamorph.vst3 bundle, found $($vst3.Count)" }
-          $vst3 = $vst3[0]
+          # JUCE creates desktop.ini-only bundles for unbuilt VS configurations.
+          # The shared, self-tested selector requires the actual x86-64 module;
+          # two genuinely built bundles still fail instead of guessing Release.
+          . ./scripts/find-windows-vst3.ps1
+          $vst3 = Get-AnamorphVst3Bundle -BuildRoot 'build'
           $vst3Bin = @(Get-ChildItem -Recurse -Path $vst3.FullName -File | Where-Object { $_.Extension -eq '.vst3' })
           if ($vst3Bin.Count -ne 1) { Write-Error "expected exactly one .vst3 image inside $($vst3.FullName), found $($vst3Bin.Count)" }
           $vst3Bin = $vst3Bin[0]

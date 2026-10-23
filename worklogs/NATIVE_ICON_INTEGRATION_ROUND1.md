@@ -155,6 +155,34 @@ Folder system attributes/caches and archive transport remain separate shell-disp
   corresponding source PNGs. Maximum per-channel mean RGB difference is <0.04 at 32 and
   <0.001 at 1024, consistent with pixel rounding. Native output must still be checked by CI.
 
+### Actual native CI evidence and discovery regression
+
+[Build & Validate run 39951551477](https://github.com/skyRolly/Anamorph/actions/runs/39951551477)
+at `46f677c20d068588fe460fc12e994d7d85b470a5` built the actual native resources.
+[The native audit](native-icons-round1/native-platform-audit.json) records artifact digests,
+native reports and decoded-pixel comparisons. Windows resource APIs found IDI_ICON1 and
+IDI_ICON2 in both EXE and VST3, each containing **16/32/48/256**; every embedded payload
+matched the generated ICO. Decoded frames are byte-identical to the portable study already
+visually inspected. macOS app/VST3/AU plists reference AppIcon.icns, with native
+plutil/iconutil/sips checks passing; the native 32/1024 alpha channels match the approved
+inputs exactly. Intel macOS VST3/AU checks also passed. These are resource results, not a
+claim that the entire initial workflow passed.
+
+That run exposed a real Windows discovery regression: JUCE writes `desktop.ini` into all four
+Visual Studio configuration bundle directories during configure, while only Release contains
+a compiled module. The old directory count rejected the tree before pluginval or staging.
+The shared `scripts/find-windows-vst3.ps1` now requires
+`Contents/x86_64-win/Anamorph.vst3` and still refuses zero or multiple built bundles.
+Its `-SelfTest` reproduces all four shells, accepts one compiled configuration, and rejects
+two; Windows additionally checks the System attribute. The filesystem portion passed in
+PowerShell on Linux; only native Windows CI validates the Windows attribute and actual PE.
+No validation retry/strictness/pass-count policy or installer script changed.
+
+The initial push-only source-lint citation gate used an earlier commit with stale anchors as
+its event base. References were corrected against main, without relaxing the checker. The
+discovery correction is checked against both `46f677c` and the starting main before push.
+Current-head native pluginval/staging and the full matrix must pass before review readiness.
+
 Native platform results are scoped to the CI reports above; no Finder/Dock/Explorer/DAW display
 result is inferred. Missing native 20/24/64/128/512 slots are not silently simulated as actual frames.
 

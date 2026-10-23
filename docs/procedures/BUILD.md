@@ -16,6 +16,11 @@ at 16/32/48/256; it does not reproduce every independently rendered source size.
 remain valid but gain no portable embedded ELF icon. Native shell display and later installer,
 Linux launcher and Icon Composer work are separate validation/integration steps.
 
+On multi-config Windows builds, JUCE creates `desktop.ini` directories for configurations
+that have never been built. `scripts/find-windows-vst3.ps1` selects only a bundle containing
+`Contents/x86_64-win/Anamorph.vst3`. Pluginval and staging share this selector; zero built
+bundles or multiple built configurations still fail. No configuration is silently preferred.
+
 Evidence [Verified]: `CMakeLists.txt` (`juce_add_plugin`), `resources/icons/PROVENANCE.json`,
 `scripts/check-icons.py`; pinned JUCE `juce_Icons.cpp` and `JUCEUtils.cmake` (ADR-0062).
 

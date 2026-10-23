@@ -43,7 +43,7 @@ New-Item -ItemType Directory -Force -Path $tools | Out-Null
 # scripts/run-pluginval.sh and the "exactly one match" rule the Windows staging
 # step in build.yml applies. `Select-Object -First 1` was worst HERE of all
 # places: windows-latest uses the multi-config Visual Studio generator, so several
-# configurations of Anamorph.vst3 genuinely coexist in one build tree, and the
+# built configurations of Anamorph.vst3 can coexist in one build tree, and the
 # release gate could pass on a Debug or leftover bundle while the uploaded
 # artifacts come from Release.
 #
@@ -53,22 +53,11 @@ New-Item -ItemType Directory -Force -Path $tools | Out-Null
 # unfiltered -Filter matches a directory and a file and only enumeration order
 # decides which one is validated.
 #
-# -ErrorAction SilentlyContinue is required because $ErrorActionPreference is
-# 'Stop' above: without it a missing build/ makes Get-ChildItem THROW, so the
-# intended "build first" message below is never reached and the operator sees a
-# .NET stack trace instead of the one-line fix.
-$vst3Matches = @(Get-ChildItem -Recurse -Path $build -Filter Anamorph.vst3 -Directory -ErrorAction SilentlyContinue)
-if ($vst3Matches.Count -eq 0) {
-    Write-Host "Anamorph.vst3 not found under $build -- build first (scripts/build.sh)."
-    exit 1
-}
-if ($vst3Matches.Count -ne 1) {
-    Write-Host "Anamorph.vst3 is ambiguous -- found $($vst3Matches.Count) under ${build}:"
-    $vst3Matches | ForEach-Object { Write-Host "  $($_.FullName)" }
-    Write-Host "Refusing to guess which bundle the release gate should validate. Remove the stale build tree."
-    exit 1
-}
-$vst3 = $vst3Matches[0]
+# ICON_BIG/SMALL makes JUCE generate desktop.ini-only bundle directories for
+# unbuilt VS configurations. Require the actual x86-64 module, then retain the
+# exactly-one rule. The same tested helper is used by staging.
+. (Join-Path $PSScriptRoot 'find-windows-vst3.ps1')
+$vst3 = Get-AnamorphVst3Bundle -BuildRoot $build
 
 $pv = Join-Path $tools "pluginval.exe"
 if (-not (Test-Path $pv)) {

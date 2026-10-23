@@ -22,6 +22,14 @@ Those remain manual tests. No global Linux icon files are installed. Exact paths
 frame policy, baseline comparison and pending session tests are in
 [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) (ADR-0062).
 
+Windows artifact discovery has a separate regression test:
+`pwsh -NoProfile -File scripts/find-windows-vst3.ps1 -SelfTest`. Synthetic filesystem fixtures
+reproduce JUCE's four configure-only icon directories, then require exactly one actual module;
+missing modules and two built configurations must fail. The Windows job also tests a System
+attribute on the bundle. This fixture checks selection, not native PE validity; the native icon
+resource check and pluginval remain separate gates. The filesystem portion can also run in
+PowerShell on another OS, without claiming Windows resource or shell validation.
+
 ## Headless self-tests (DSP + state)
 
 ```bash

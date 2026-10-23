@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "validated_head": "46f677c20d068588fe460fc12e994d7d85b470a5",
+  "implementation_commit": "4d9655939505d8715c43e1d6261ea150f9cd0511",
+  "workflow_run": 39951551477,
+  "workflow_url": "https://github.com/skyRolly/Anamorph/actions/runs/39951551477",
+  "scope": "Actual native build resources and decoded pixels; interactive shell display and native appearance certification are separate",
+  "macos": {
+    "job_id": 120407399835,
+    "artifact_id": 12500961706,
+    "artifact_zip_sha256": "64266fdd21dfff4bd79e9f9caac00f26933fb9f13064e3ba00007f7d8ec8eaac",
+    "icns_sha256": "88b9839f2ed351e9e958963476338b1fe474f87a10d5a0aafbc72a3f89bd582d",
+    "native_report": {
+      "platform": "macos",
+      "standalone": true,
+      "staged": null,
+      "bundles": [
+        {
+          "path": "/Users/runner/work/Anamorph/Anamorph/build/Anamorph_artefacts/Release/VST3/Anamorph.vst3",
+          "CFBundleIdentifier": "com.rollytech.anamorph",
+          "CFBundleIconFile": "AppIcon.icns"
+        },
+        {
+          "path": "/Users/runner/work/Anamorph/Anamorph/build/Anamorph_artefacts/Release/AU/Anamorph.component",
+          "CFBundleIdentifier": "com.rollytech.anamorph",
+          "CFBundleIconFile": "AppIcon.icns"
+        },
+        {
+          "path": "/Users/runner/work/Anamorph/Anamorph/build/Anamorph_artefacts/Release/Standalone/Anamorph.app",
+          "CFBundleIdentifier": "com.rollytech.anamorph",
+          "CFBundleIconFile": "AppIcon.icns"
+        }
+      ],
+      "icns_entries": {
+        "ic10": 1024,
+        "icp5": 32
+      },
+      "iconutil": "native extraction passed"
+    },
+    "decoded_comparison": {
+      "ic10": {
+        "size": 1024,
+        "alpha_identical": true,
+        "rgba_mae": [
+          0.0007658004760742188,
+          0.0007829666137695312,
+          0.0008878707885742188,
+          0.0
+        ],
+        "decoded_rgba_sha256": "7d130de6449fe2f0d85585d983857b70cbf6fcd326144712acadd45dc9539379",
+        "alpha_bounds": [
+          32,
+          32,
+          992,
+          992
+        ]
+      },
+      "icp5": {
+        "size": 32,
+        "alpha_identical": true,
+        "rgba_mae": [
+          0.0390625,
+          0.0302734375,
+          0.0263671875,
+          0.0
+        ],
+        "decoded_rgba_sha256": "041d09dadfb8f58e898adc7349d6b25372c4077e430d79f864acb71cb6459ac3",
+        "alpha_bounds": [
+          1,
+          1,
+          31,
+          31
+        ]
+      }
+    },
+    "native_intel_bundle_check": "passed in job 120407399782; Standalone disabled by existing job configuration",
+    "staged_check": "pending at initial evidence capture"
+  },
+  "windows": {
+    "job_id": 120407399759,
+    "artifact_id": 12501915012,
+    "artifact_zip_sha256": "5ab86442942ce43715c93ed344a7050a790973fa2543648ff70fb6c71e80f428",
+    "ico_sha256": "09ba8aef163460c722380c0b93fee4d506dc5d506da46929eabe1009b3f83900",
+    "native_report": {
+      "platform": "windows",
+      "standalone": true,
+      "staged": null,
+      "pe_resources": [
+        {
+          "path": "D:\\a\\Anamorph\\Anamorph\\build\\Anamorph_artefacts\\Release\\VST3\\Anamorph.vst3\\Contents\\x86_64-win\\Anamorph.vst3",
+          "groups": [
+            {
+              "name": "IDI_ICON1",
+              "sizes": [
+                16,
+                32,
+                48,
+                256
+              ]
+            },
+            {
+              "name": "IDI_ICON2",
+              "sizes": [
+                16,
+                32,
+                48,
+                256
+              ]
+            }
+          ]
+        },
+        {
+          "path": "D:\\a\\Anamorph\\Anamorph\\build\\Anamorph_artefacts\\Release\\Standalone\\Anamorph.exe",
+          "groups": [
+            {
+              "name": "IDI_ICON1",
+              "sizes": [
+                16,
+                32,
+                48,
+                256
+              ]
+            },
+            {
+              "name": "IDI_ICON2",
+              "sizes": [
+                16,
+                32,
+                48,
+                256
+              ]
+            }
+          ]
+        }
+      ],
+      "frame_sizes": [
+        16,
+        32,
+        48,
+        256
+      ]
+    },
+    "decoded_comparison": [
+      {
+        "size": 16,
+        "rgba_mae_vs_direct_render": [
+          1.98046875,
+          2.08984375,
+          2.3359375,
+          9.40625
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          16,
+          16
+        ],
+        "decoded_rgba_sha256": "4dc25ce250fb36589e1a6f10e5b04880b693ac5ebf0eb99666e82193013d4b00",
+        "decoded_equal_to_portable_study": true
+      },
+      {
+        "size": 32,
+        "rgba_mae_vs_direct_render": [
+          1.03125,
+          1.0234375,
+          1.0185546875,
+          0.015625
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          31,
+          31
+        ],
+        "decoded_rgba_sha256": "ce84cbd148cf0b7e12016be1bc58ca6cfb4208c4d0f0148d0a8351884dc83bc5",
+        "decoded_equal_to_portable_study": true
+      },
+      {
+        "size": 48,
+        "rgba_mae_vs_direct_render": [
+          1.6245659722222223,
+          2.142361111111111,
+          2.265625,
+          4.294704861111111
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          47,
+          47
+        ],
+        "decoded_rgba_sha256": "b92f64a1588d142ed9daab797e23857d5f10991b0a5230f1c34c833991f74578",
+        "decoded_equal_to_portable_study": true
+      },
+      {
+        "size": 256,
+        "rgba_mae_vs_direct_render": [
+          0.236175537109375,
+          0.3650665283203125,
+          0.3925323486328125,
+          0.2755584716796875
+        ],
+        "alpha_bounds": [
+          8,
+          8,
+          248,
+          248
+        ],
+        "decoded_rgba_sha256": "2da20b85cdf5a55344f90bcae2e60905e71d063bbbcbaaace7212e4df2b23509",
+        "decoded_equal_to_portable_study": true
+      }
+    ],
+    "staged_check": "not reached: initial run counted four configure-time icon-only configuration bundles; selector correction pending native rerun",
+    "discovery_regression": {
+      "observed_directories": 4,
+      "compiled_configuration": "Release",
+      "fix": "Shared selector requires Contents/x86_64-win/Anamorph.vst3 and still rejects zero or multiple compiled bundles",
+      "test": "scripts/find-windows-vst3.ps1 -SelfTest",
+      "filesystem_self_test": "passed in PowerShell on Linux; native Windows System-attribute case pending current-head CI",
+      "gates_relaxed": false
+    }
+  },
+  "linux": "native outputs, existing build/test/pluginval/staging gates passed in job 120407399744",
+  "known_ci_transition": {
+    "check": "source-lint evidence anchors",
+    "event_base": "0cd365a371fa296269e1faca30e2554f3b1c853e",
+    "outcome": "push-only gate rejected intentional correction of stale anchors inherited from that earlier push; current references are verified against starting main; follow-up validation commit checks both current head and main",
+    "gates_relaxed": false
+  },
+  "manual_unverified": [
+    "Finder/Dock and icon caches",
+    "Explorer/Start Menu/taskbar and native DPI",
+    "Linux desktop/theme/WM behavior",
+    "host-controlled DAW artwork",
+    "genuine Icon Composer project and native appearances"
+  ]
+}
