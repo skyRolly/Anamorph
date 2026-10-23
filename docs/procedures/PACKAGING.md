@@ -352,3 +352,31 @@ optional EXE is required. Reinstall overwrites this icon; Inno removes only owne
 empty directories on uninstall. AppId/destinations remain unchanged. The VST3 component's
 bundle directory receives System attribution for its existing Plugin.ico/desktop.ini.
 No wildcard deletion, extra wizard graphics, signing or release change is introduced.
+
+## Linux desktop payload and ownership
+
+The Linux customer tree additionally contains `desktop-integration.sh` (sourced by
+neither binary), `desktop-assets/tech.rolly.anamorph.desktop`, eight hicolor PNGs,
+scalable SVG and their fixed SHA-256/provenance records. Both installer entry points
+call the helper through `sh`; artifact transport need not preserve its executable bit.
+The release ZIP archives that same validated tree and renders/downloads no artwork.
+Extraction and portable Standalone execution change no desktop/system files.
+
+User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
+ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary
+and VST3 destinations are unchanged. Install applications/tech.rolly.anamorph.desktop
+and exact icons/hicolor paths. Generated Exec uses `/usr/bin/env --` plus the escaped
+absolute installed executable to handle GIO's literal-percent path check without a shell.
+Do not guess StartupWMClass or claim embedded ELF/host plug-in-browser artwork.
+
+A private 0700 `.tech.rolly.anamorph` directory owns ten resource hashes and a recovery
+journal. Foreign/modified paths, symlink ancestry and unknown journal entries stop the
+operation while preserving files. Preflight precedes binary writes; resources stage and
+publish atomically per file with rollback after ordinary failures/signals and next-run
+SIGKILL reconciliation. Binary updates remain independent; a resource error is a failed
+install even if valid new binaries are already present. Serialize same-root operations;
+this is process-interruption recovery, not a power-loss guarantee. Uninstall uses the
+same XDG root, checks ownership first, keeps modified/foreign files and never removes
+shared theme directories, other products or presets. Move an intentional edited/foreign
+resource to a safe backup before retrying. Optional cache refresh errors are visible;
+real GNOME/KDE/WM/cache display remains manual. Proposed ADR-0065 remains unaccepted.

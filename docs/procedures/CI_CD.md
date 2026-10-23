@@ -1843,3 +1843,17 @@ A same-version reinstall replaces a deliberately obsolete icon. Actual registry/
 uninstaller icon, installed payload/sidecars, System attribute and safe owned-file cleanup
 are checked. Developer/self-hosted targets and existing installs are refused. Installer upload
 requires behavior success; `Anamorph-Windows-installer-validation` retains JSON evidence.
+
+## Linux desktop/hicolor installation gate
+
+Under Proposed ADR-0065's owner implementation permission, `source-lint` installs only
+CI test tools (Bubblewrap, desktop-file-utils, Python GI/GTK and SVG loader), runs
+`check-linux-desktop.py --self-test` then its source/provenance check, and executes
+`tests/linux_desktop_install_tests.py`. The Linux shipping job stages desktop-assets
+and the shell helper, repeats the checker self-test/check with `--staged-dir`, and runs
+entry-point tests after a clean archive round-trip with the actual compiled payload.
+The Linux customer upload additionally requires `desktop_install` success; its JSON
+is retained as `Anamorph-Linux-desktop-validation`. Unavailable isolation is a failure,
+not a skipped pass. Existing compiler/audio/state/pluginval/ABI gates remain intact.
+GTK/Bubblewrap/Python are test dependencies only; the customer helper uses shell and
+base Linux utilities. No assets are downloaded or rendered during builds.

@@ -232,6 +232,19 @@ arm_traps() {
     trap 'reconcile; exit 129' HUP
 }
 
+# Desktop data follows XDG for the real invoking user, never root's HOME.
+# System-local data belongs beside /usr/local/bin, independent of XDG variables.
+desktop_data_root() {
+    if [ "$mode" = system ]; then printf '%s\n' /usr/local/share; return; fi
+    case "${HOME:-}" in /*) ;; *) echo 'error: HOME must be absolute for a user install' >&2; exit 1 ;; esac
+    case "${XDG_DATA_HOME:-}" in
+        /*) printf '%s\n' "$XDG_DATA_HOME" ;;
+        '') printf '%s\n' "$HOME/.local/share" ;;
+        *) echo 'warning: relative XDG_DATA_HOME ignored; using HOME/.local/share' >&2
+           printf '%s\n' "$HOME/.local/share" ;;
+    esac
+}
+
 # ------------------------------------------------------- 1) current-user mode
 if [ "$mode" = user ]; then
     [ -n "${HOME:-}" ] || {
@@ -243,6 +256,8 @@ if [ "$mode" = user ]; then
     BIN_DIR="$HOME/.local/bin"
     VST3_DEST="$VST3_DIR/Anamorph.vst3"
 
+    DATA_DIR=$(desktop_data_root)
+    sh "$HERE/desktop-integration.sh" preflight "$DATA_DIR" "$BIN_DIR/Anamorph"
     mkdir -p "$VST3_DIR" "$BIN_DIR"
     STAGE_DIR="$(choose_stage_dir "$VST3_DIR")" || {
         stage_dir_advice "$VST3_DIR"
@@ -289,6 +304,7 @@ if [ "$mode" = user ]; then
     rmdir "$STAGE_DIR" 2>/dev/null || true
     trap - EXIT INT TERM HUP
 
+    sh "$HERE/desktop-integration.sh" install "$DATA_DIR" "$BIN_DIR/Anamorph"
     echo "Installed (current user only - no root needed):"
     echo "  VST3       -> $VST3_DEST"
     echo "  Standalone -> $BIN_DIR/Anamorph"
@@ -333,6 +349,8 @@ VST3_DIR="$SYS_VST3_DIR"
 BIN_DIR="$SYS_BIN_DIR"
 VST3_DEST="$VST3_DIR/Anamorph.vst3"
 
+DATA_DIR=$(desktop_data_root)
+priv sh "$HERE/desktop-integration.sh" preflight "$DATA_DIR" "$BIN_DIR/Anamorph"
 priv mkdir -p "$VST3_DIR" "$BIN_DIR"
 STAGE_DIR="$(choose_stage_dir "$VST3_DIR")" || {
     stage_dir_advice "$VST3_DIR"
@@ -375,6 +393,7 @@ $SUDO rm -rf "$PREV_VST3" 2>/dev/null || {
 $SUDO rmdir "$STAGE_DIR" 2>/dev/null || true
 trap - EXIT INT TERM HUP
 
+priv sh "$HERE/desktop-integration.sh" install "$DATA_DIR" "$BIN_DIR/Anamorph"
 echo "Installed (system-wide, all users):"
 echo "  VST3       -> $VST3_DEST"
 echo "  Standalone -> $BIN_DIR/Anamorph"

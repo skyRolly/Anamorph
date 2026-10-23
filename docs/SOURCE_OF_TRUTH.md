@@ -98,3 +98,8 @@ ADR-0062 remains Accepted. Final owner approval, cleared architecture blockers a
 main ancestry are recorded in `architecture/design-decisions/ADR_INDEX.md` under the
 2026-10-24 reconciliation. The earlier implementation permission and dated evidence remain
 historical; unperformed runtime/manual validation is not converted into a pass.
+
+Proposed ADR-0065 records the separately authorized Linux desktop resource contract;
+its worklog is evidence, not formal acceptance. Owner implementation/testing permission
+on 2026-10-24 does not approve merge, future Composer work or native visual certification.
+The existing ADR directory/index and procedures remain the navigation/authority path.

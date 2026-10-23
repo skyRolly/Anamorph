@@ -156,3 +156,19 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    only where JUCE is checked out, so it runs in `linux` rather than beside the lint. Both are
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
+
+## Linux desktop resource gate (Proposed ADR-0065 implementation)
+
+The owner approved implementation/testing before the new CI dependency set was added;
+ADR acceptance and merge review remain pending. Source/provenance checks run universally
+with their self-test ahead of use, including local preflight without any build directory.
+The source-lint job tests actual install/uninstall shell entry points in disposable
+Bubblewrap roots. The shipping Linux job repeats those checks against a clean ZIP
+round-trip of the real staged customer tree; its upload requires success.
+
+Coverage includes user/system/XDG paths, real GIO escaped executable launch, hicolor
+lookup, ownership/ancestor/symlink/journal refusal, failure/SIGKILL recovery, coexistence,
+reinstall and exact safe uninstall. Deliberately disabled ownership/parent/source-hash
+checks must be caught by their negative probes. No live workstation destinations are
+used; inability to create isolated namespaces fails visibly. These tests do not certify
+GNOME/KDE display, icon-cache appearance, actual DAWs or embedded ELF icons.

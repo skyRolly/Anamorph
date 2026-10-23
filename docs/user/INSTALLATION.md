@@ -86,6 +86,22 @@ To remove it later, run `./uninstall.sh` from the same folder — it offers the 
 choices, and removing a per-user install needs no root either (`sudo ./uninstall.sh`
 removes the system-wide one).
 
+### Desktop launcher and icons
+
+The script also installs the approved Anamorph launcher and hicolor icons. Per-user
+data goes to absolute `$XDG_DATA_HOME`, or `~/.local/share`; relative XDG values are
+ignored with a warning. System data goes to `/usr/local/share`, alongside the existing
+`/usr/local/bin` Standalone. The launcher references the actual installed app, so a
+session need not have `~/.local/bin` on PATH. Shared icon-theme folders and presets stay.
+Use the same XDG_DATA_HOME when uninstalling. A foreign/edited desktop or icon file is
+preserved and stops the operation; move it to a safe backup before retrying. Interrupted
+resource work is reconciled by the next install/uninstall. A reported resource failure
+is not successful installation; binary updates may already have completed independently.
+GNOME/KDE appearance and window association still require native desktop validation.
+
+You can run the extracted Standalone directly with `./Anamorph` (restore `chmod +x`
+if needed) without running install.sh. Merely extracting the archive installs nothing.
+
 ### Manual installation (zip)
 
 Per-user, no root — copy `Anamorph.vst3` (the whole folder) into `~/.vst3/` and the

@@ -7,6 +7,8 @@ This package was built by CI for x86_64 Linux. Extracting the zip gives you:
   Anamorph         the Standalone application
   install.sh       installer script (asks: current user, or system-wide)
   uninstall.sh     removes what install.sh installed
+  desktop-integration.sh  managed desktop-resource helper
+  desktop-assets/  approved desktop/hicolor resources and provenance
   INSTALL.txt      this file
 
 本包由 CI 为 x86_64 Linux 构建,解压后即可看到 VST3 插件、独立版程序,
@@ -152,3 +154,21 @@ Copyright / 版权
 --------------------------------------------------------------------
 Anamorph is (c) 2026 RollyTech. All rights reserved.
 Anamorph (c) 2026 RollyTech,保留所有权利。
+
+Desktop launcher / 桌面启动器
+----------------------------
+The installer also installs tech.rolly.anamorph.desktop and approved B0 hicolor icons.
+User data: absolute XDG_DATA_HOME, otherwise ~/.local/share; relative XDG values are
+ignored visibly. System data: /usr/local/share, independent of root HOME/XDG.
+The launcher uses the absolute installed app path, without relying on session PATH.
+Use the same XDG_DATA_HOME when uninstalling. Edited/foreign resources are preserved
+and cause an explicit error; move them to a safe backup before retrying. Re-run the
+installer/uninstaller to reconcile interrupted resource work. A resource error means
+installation failed, even if the independent binary update has already completed.
+Presets, settings and other applications' icons remain untouched. GNOME/KDE display
+and window association are not certified by command-line tests.
+安装脚本还会安装桌面启动器和原始 B0 图标。用户数据目录遵循绝对路径的
+XDG_DATA_HOME(否则使用 ~/.local/share);系统数据放在 /usr/local/share。
+卸载时请使用安装时相同的 XDG_DATA_HOME。被修改或属于其他程序的文件会保留并
+报错;请先移到安全备份位置再重试。中断后重新运行安装或卸载脚本即可进行恢复。
+仅解压 ZIP 不会安装桌面资源;也可以直接运行 ./Anamorph(必要时先 chmod +x)。
