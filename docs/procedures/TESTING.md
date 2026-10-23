@@ -6051,3 +6051,21 @@ Audio **sound quality** and GUI/vectorscope **visual appearance** cannot be judg
 sandbox. Load the built `.vst3` in a DAW (e.g. Reaper) on a machine with audio + display. A green
 build + pluginval pass is "ready to audition," not final sign-off
 (`docs/policies/TESTING_POLICY.md` Level 5).
+
+## Product identity regression (ADR-0063)
+
+Run `python3 scripts/check-product-identity.py --self-test` then the source check; after a
+Release build add `--build-dir build --report build/product-identity.json`. Synthetic good/bad
+source, generated Linux/Windows/macOS, AU/VST3 and expanded-package fixtures run the production
+selection/parsing functions. Only Windows VERSIONINFO access is stubbed. Native CI checks the
+actual artifacts independently. DAW recall/rescan after CFBundleIdentifier changes remains a
+human validation gap; preserved independent codes do not certify every host.
+
+The package identity self-test also covers productbuild normalization: six input references
+and nine generated references can name the same three components. Named component directories
+must own their exact receipt (VST3/.vst3, AU/.au, App/.app); choice IDs, their receipt references
+and payload filenames must agree. All three receipt transpositions, duplicate/missing/unknown
+components, wrong payloads/choices/outlines and malformed namespaces are rejected. Fixtures use
+real component names, not numeric enumeration. A mutation disabling receipt ownership must fail
+the self-test specifically on a swapped receipt. Native `build-pkg.sh` validates freshly expanded
+metadata; retained CI metadata supplies a separate read-only check without installing receipts.

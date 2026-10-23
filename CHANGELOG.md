@@ -33,6 +33,13 @@ additional malformed host-state restrictions remain open owner decisions.
   artwork through JUCE. Installer branding and Linux desktop-launcher integration remain separate work.
   Evidence: commit `4d96559`; ADR-0062. [Verified — build configuration; native shell display unverified]
 
+### Changed
+- **Use `tech.rolly.anamorph` for application bundles and macOS package receipts**, following
+  `rolly.tech`. Development receipt identities intentionally break without aliases; RTec/Anmr,
+  VST3 class IDs, Windows AppId, state and presets remain unchanged. Native host rescan/recall
+  remains a human validation requirement.
+  Evidence: [namespace migration diff](https://github.com/skyRolly/Anamorph/compare/feature/native-product-icons-round1...codex/namespace-tech-rolly-anamorph); ADR-0063. [Verified — source; native gates reported separately]
+
 ### Fixed
 - **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The
   XML writer spells NaN on a private copy, preserving the existing text and finite encoding without

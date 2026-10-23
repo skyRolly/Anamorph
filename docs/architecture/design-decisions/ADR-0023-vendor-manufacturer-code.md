@@ -19,6 +19,13 @@ Condition 3 was originally left open for the release-time checklist. Its closure
 the explicit owner attestation, not an inferred test result. Unsupplied test details remain
 NOT RECORDED in the checklist. The manufacturer-code decision stays Accepted.
 
+**Dated namespace amendment — 2026-10-23:** [ADR-0063](ADR-0063-domain-product-namespace.md)
+implements `tech.rolly.anamorph` under the owner's separate implementation/testing approval.
+This ADR's statements that bundle/package IDs were unchanged describe its historical 0.9.1
+manufacturer-only change; they no longer define the current namespace. RTec/Anmr remain fixed.
+The new ADR stays Proposed pending independent human architecture review before merge.
+The pinned non-VST2-compatible VST3 UID path uses the two codes, as ADR-0063 documents.
+
 ## Context
 
 `PLUGIN_MANUFACTURER_CODE` is a 4-character OSType identifying the **vendor**, not the product.

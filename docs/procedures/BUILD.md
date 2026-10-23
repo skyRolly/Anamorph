@@ -204,3 +204,10 @@ units are still compiled (JUCE's module build globs every top-level source) but 
 hidden placeholder symbol per Opus unit, none at all per WebP unit. ADR-0060 carries the reasoning;
 the same five targets carry both definitions. Evidence [Verified]: CMakeLists.txt:517-518 and the
 two lines after `JUCE_USE_MP3AUDIOFORMAT=0` in each of the other five targets.
+
+## Product namespace (ADR-0063)
+
+CMake uses `tech.rolly.anamorph`; JUCE writes that base to Standalone/VST3/AU
+CFBundleIdentifier. Receipt suffixes `.app/.vst3/.au` are a different namespace. RTec/Anmr,
+RollyTech/Anamorph and Windows AppId remain unchanged. Run the identity checker self-test and
+`python3 scripts/check-product-identity.py --build-dir build` after a native Release build.

@@ -1,5 +1,13 @@
 # DOCUMENTATION_COVERAGE.md
 
+
+**Review closure (2026-10-24):** the retained native PKG's correct ID set still passed with
+VST3/AU receipt ownership swapped. The identity gate now binds named component directories,
+receipts, Distribution choices/outlines and payload filenames, retaining six-/nine-reference
+normalization. All three swaps and malformed membership cases have regressions and an
+ownership-disabled mutant. TESTING, CI_CD, RELEASE_PROCESS and the namespace worklog record
+the correction; no product/audio/installer payload or identity value changes.
+
 Latest audit (2026-10-23): native icon Round 1 adds two pinned B0 PNGs, JUCE arguments and
 `scripts/check-icons.py` with same-job liveness checks/native resource inspection. ADR-0062
 records the owner's explicit Architecture Review approval; the
@@ -1859,7 +1867,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3565` and `.github/workflows/build.yml:3650`, this round being
+`.github/workflows/build.yml:3590` and `.github/workflows/build.yml:3675`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1893,7 +1901,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:727` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:732` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17167,3 +17175,19 @@ produce explicit skip/path/command output. The source checker no longer treats a
 provenance digest as authority to approve changed pixels. REPOSITORY_MAP lists the shell regression
 script. No CMake, packaging, namespace, runtime, DSP/state or artwork change belongs to this fix.
 Exact validation and limitations are appended to `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`.
+
+## Domain namespace migration — 2026-10-23
+
+CMake and package receipts/references/probes use `tech.rolly.anamorph`. Proposed ADR-0063
+records owner implementation/testing permission and the pending independent human review.
+ADR-0023 has a dated partial namespace amendment; ADR-0062 retains its historical Round 1 scope.
+BUILD/PACKAGING/CI_CD/TESTING/RELEASE_PROCESS/dependency policy and the technical trademark
+identity reference are synchronized. The repository map, source-of-truth and README classify
+the new worklog. Source/generated/package good/bad fixtures and same-job self-tests cover the
+new checker; the preflight fixture includes its added source inputs. Earlier audit entries and
+raw native reports remain historical. No independent codes/GUID, source/DSP/state/UI/latency,
+version or art changes are included.
+
+Native package fixture correction (2026-10-23): productbuild may add metadata-only references.
+The identity gate now checks unique receipts and choice/archive/bundle namespaces separately;
+TESTING and the namespace worklog record the observed nine-reference shape and regression.

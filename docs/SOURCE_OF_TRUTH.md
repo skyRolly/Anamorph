@@ -91,3 +91,6 @@ Evidence [Verified]:
 
 At least one source is mandatory for any historical, design-decision, incident, risk, or
 known-issue claim.
+
+The namespace inventory `worklogs/2026-10-23-product-namespace.md` supports Proposed ADR-0063.
+Its owner implementation/testing permission is distinct from independent human ADR acceptance.

@@ -420,7 +420,7 @@ endif()
 
 juce_add_plugin(Anamorph
     COMPANY_NAME            "RollyTech"
-    BUNDLE_ID               "com.rollytech.anamorph"
+    BUNDLE_ID               "tech.rolly.anamorph"
     PLUGIN_MANUFACTURER_CODE RTec   # vendor-wide, was Anmf; host IDENTITY - frozen, ADR-0023
     PLUGIN_CODE             Anmr
     FORMATS                 ${ANAMORPH_FORMATS}

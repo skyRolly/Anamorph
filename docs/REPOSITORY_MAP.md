@@ -186,3 +186,7 @@ docs/
 ```
 
 Evidence [Verified]: file tree from the repository; CMakeLists.txt:114-384 (hardening interface) + :326 (`AnamorphDSP`) / :352 (`juce_add_plugin`); src/ listing.
+
+`scripts/check-product-identity.py` verifies source and generated bundle/package namespaces
+and independent plugin/GUID identities. `worklogs/2026-10-23-product-namespace.md` records
+the inventory, stack dependencies, comparisons and native limitations for Proposed ADR-0063.

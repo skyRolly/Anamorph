@@ -253,3 +253,9 @@ the known floor difference, and that must not be called a green full preflight.
 No CMake, namespace, packaging/installer, DSP/UI/state/parameter/latency/version or artwork
 change is included in this review fix. Prior native reports remain historical evidence for
 their recorded heads.
+
+
+**Namespace scope amendment, 2026-10-23:** the old bundle/package identifier statements in
+this Round 1 worklog and its raw reports describe that historical icon-only head. The separate
+ADR-0063 implementation now uses `tech.rolly.anamorph` under the owner's namespace directive
+and explicit implementation/testing approval. Raw old native measurements remain unchanged.
