@@ -69,3 +69,21 @@ both shortcut targets in the actual group. One good/two bad menu-source fixtures
 if either directive changes. The ISS/UI/destinations are unchanged and all native assertions
 remain enforced. Diagnostic snapshots and the last 100 setup log lines are retained on failure.
 Native success is pending a new-head run; this source finding alone is not an install result.
+
+
+## Review-closure dependency reconciliation — 2026-10-24 (Asia/Shanghai)
+
+The namespace prerequisite advanced to 12e06949122ceaaa6028064196a8e148fdf26768 to fix
+component receipt ownership. A read-only merge preview found two documentation conflicts
+(CI_CD and TESTING); the installer branch is reconciled by an ordinary feature-branch merge,
+not a PR merge/rebase/force-push. Both the corrected namespace-gate paragraphs and the existing
+installer-resource/behavior sections are preserved. The installer scripts, ISS, approved ICO,
+AppId, UI/destinations and all audio/state sources remain byte-identical to tested head
+1565b43d53451c208a5a03cf440163547a96eed1. The identity checker is inherited exactly from
+#171, so that fix is absent from this installer-only review diff.
+
+Targeted identity/icon/resource/PowerShell snapshot and documentation checks are repeated
+for this combined tree. Existing native install/reinstall/uninstall evidence remains scoped
+to 1565b43; the new merged head must pass its own full required CI before it is described as
+validated. ADR-0064 remains Proposed; independent human review/acceptance and owner-authorized
+#170 → #171 → #172 merge order are unchanged. PR bases are not retargeted in this task.

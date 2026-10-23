@@ -1,5 +1,16 @@
 # PACKAGING.md
 
+## macOS component identity validation
+
+`packaging/macos/build-pkg.sh` runs the identity self-test before inspecting the real
+`pkgutil --expand` output. The named `AnamorphVST3.pkg`, `AnamorphAU.pkg` and
+`AnamorphApp.pkg` must own `.vst3`, `.au` and `.app` receipts respectively under
+`tech.rolly.anamorph`; Distribution choices and payload filenames must agree with those
+owners. Unknown/nested/extra component mappings fail closed. Six-reference input and genuine
+nine-reference productbuild output remain valid. Recheck retained metadata with
+`python3 scripts/check-product-identity.py --expanded-package <expanded-dir>` after its
+`--self-test`. This query does not install or alter any host receipts.
+
 Build-artifact structure, installers, code-signing, and install layout. Source:
 `.github/workflows/build.yml` and `packaging/` (per-platform assets: `linux/`, `windows/`,
 `macos/`). End-user instructions live in `docs/user/INSTALLATION.md`.

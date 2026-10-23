@@ -1,5 +1,13 @@
 # DOCUMENTATION_COVERAGE.md
 
+
+**Review closure (2026-10-24):** the retained native PKG's correct ID set still passed with
+VST3/AU receipt ownership swapped. The identity gate now binds named component directories,
+receipts, Distribution choices/outlines and payload filenames, retaining six-/nine-reference
+normalization. All three swaps and malformed membership cases have regressions and an
+ownership-disabled mutant. TESTING, CI_CD, RELEASE_PROCESS and the namespace worklog record
+the correction; no product/audio/installer payload or identity value changes.
+
 Latest audit (2026-10-23): native icon Round 1 adds two pinned B0 PNGs, JUCE arguments and
 `scripts/check-icons.py` with same-job liveness checks/native resource inspection. ADR-0062
 records the owner's explicit Architecture Review approval; the
