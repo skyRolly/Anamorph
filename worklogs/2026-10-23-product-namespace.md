@@ -124,3 +124,7 @@ Round 1's frozen-old-bundle statement no longer governs the namespace. None is a
 package, test-fixture or canonical documentation identifier. Native host recall/rescan, macOS
 receipt installation and shell cache behavior remain human tests. No synthetic test is labeled
 native runtime verification. Exact current-head CI and local results are reported in the PR.
+
+VERSIONINFO premise: pinned `juce_ResourceRc.cpp` emits CompanyName, ProductName,
+FileDescription, FileVersion and ProductVersion, without InternalName/OriginalFilename.
+An API-boundary fixture now runs the real native reader against those exact keys.
