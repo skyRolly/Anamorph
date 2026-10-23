@@ -1471,8 +1471,14 @@ so the same file measures the pre-fix tree with the same instruments:
   the reported latency reaches a message-thread restore's truth, the audio path stays finite, and a
   save after the last restore is byte-identical to the session restored.
 - **39 (preset)** — every factory preset loaded twice round with the audio thread processing and a
-  host thread saving in a loop the whole time: identity by index and name, every parameter equal to a
-  control instance's after the same load, and a sequenced host-thread save equal to the owner's.
+  host thread saving in a loop the whole time. Each load must report success exactly once and its
+  deferred queue must drain within the bounded retry before checking identity by index and name,
+  every parameter against a control instance, and a sequenced host-thread save against the owner's.
+  A real host save is held at `insideDurableCapture` before preset 1 on **both** laps: the load must
+  report `deferred` with no premature completion, then finish after release (ADR-0036 §31).
+  This reproduces #1783's scheduling-dependent failure without weakening any original state check.
+  The focused `--preset-transitions-probe` runs this same test. With the held-save seam and the
+  original immediate assertions, local reproduction exited 1 (12 failures in 86 checks).
 - **40 (prepare / re-prepare)** — restores on one host thread and re-prepares at alternating rates
   and block sizes on another, the editor-shaped main thread reading and draining: no latency report
   from either host thread, and the timer leaves the host holding the final session's truth with the
@@ -2612,7 +2618,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22244`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
     1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and across its 20
@@ -4634,7 +4640,7 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22196`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22244`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for

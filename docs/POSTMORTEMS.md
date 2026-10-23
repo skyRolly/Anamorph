@@ -271,6 +271,34 @@ Evidence [Verified]: `.github/workflows/build.yml` (`linux`/`sanitizers` timeout
 [run #1777](https://github.com/skyRolly/Anamorph/actions/runs/39846676802) (attempt 1 logs),
 `worklogs/STATE_HOST_HARDENING_0.9.10.md` (CI follow-up).
 
+## INC-017 — Preset-transition test inspected a deferred load before completion
+
+- **Date:** 2026-10-23 investigation of Build & Validate #1783 (2026-10-22 UTC), attempt 1.
+- **Symptom:** the macOS Rosetta x86_64 self-test step exited 1: State test 39 failed its preset
+  index, name and parameter checks twice (6 failures in 5741 checks). Both DSP runs and the native
+  arm64 state run passed; the other applicable jobs passed.
+- **Cause:** a concurrent host save's durable capture holds `soundReplacement`, so the approved
+  command gate queues `load(index)` rather than waiting. Test 39 ignored that result and inspected
+  state before the queued load completed. This is a test timing defect, not a merge regression or
+  runner outage: #1781's tip, #1782's tested merge and merge `34baa50` share tree
+  `9982e713a85800a41707ba80659703cbd89cdd2a`; test 39 is also unchanged from 0.9.9. #1781/#1783 used
+  macOS image `20261013.0424.1` and AppleClang `21.0.0.21000101`. #1782 ran the Linux merge check,
+  not the full platform matrix.
+- **Correction:** await the loader's final successful completion exactly once and drain deferred
+  work through the existing retry door before inspecting state. All original identity, parameter,
+  serialized-state and audio-finiteness assertions remain; production code and CI gates are unchanged.
+- **Regression:** hold a real host save at the existing `insideDurableCapture` seam before the
+  second preset on each lap. Assert deferral and no premature completion, release it, then require
+  completion within the existing bounded poll. The original immediate assertions with this seam
+  reproduced the failure locally (exit 1, 12 failures in 86 checks).
+
+Evidence [Verified]: `tests/state_tests.cpp` (`testPresetTransitionsUnderConcurrentSaves`),
+`src/PresetManager.cpp` (`load`), `src/PluginProcessor.cpp` (`copyStateWithRawValues`),
+`src/StateCommandGate.h`, ADR-0036 §31,
+[run #1783](https://github.com/skyRolly/Anamorph/actions/runs/39869995936),
+[run #1781](https://github.com/skyRolly/Anamorph/actions/runs/39860147164),
+[run #1782](https://github.com/skyRolly/Anamorph/actions/runs/39860152760).
+
 ## Adding an incident
 
 Create the next `INC-NNN` only when backed by a commit/PR/test/README. Use the template above;

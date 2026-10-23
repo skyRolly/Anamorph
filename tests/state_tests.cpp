@@ -20198,7 +20198,9 @@ static void testRestoreCyclesUnderRunningAudio()
 //  SEQUENCED host-thread save must equal the owner's save -- the published
 //  snapshot carries the loaded preset's name and identity -- and every
 //  parameter must equal what a control instance holds after the same load, so
-//  no old/new mix survives into the state a host would see.
+//  no old/new mix survives into the state a host would see. A load can defer
+//  behind the save's durable capture (ADR-0036 §31); await its completion
+//  before checking its effect, just as State test 41 awaits contended Undo.
 // ---------------------------------------------------------------------------
 static void testPresetTransitionsUnderConcurrentSaves()
 {
@@ -20219,6 +20221,17 @@ static void testPresetTransitionsUnderConcurrentSaves()
     std::atomic<bool> audioFinite { true };
     std::atomic<int>  hostSaves { 0 };
     std::mutex hostStateLock;   // the HOST's guarantee: its state calls never overlap each other
+    // Force the admission window that CI #1783 hit by chance. Only the autosave
+    // thread parks here; the owner's own durable captures must pass through.
+    const auto ownerThread = std::this_thread::get_id();
+    std::atomic<bool> parkNextSave { false }, saveParked { false }, releaseSave { false };
+    p.seams.insideDurableCapture = [&]
+    {
+        if (std::this_thread::get_id() == ownerThread || ! parkNextSave.exchange (false)) return;
+        saveParked.store (true);
+        for (int i = 0; i < 4000 && ! releaseSave.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    };
     std::thread audio ([&]
     {
         juce::AudioBuffer<float> buf (2, 256);
@@ -20251,9 +20264,43 @@ static void testPresetTransitionsUnderConcurrentSaves()
     for (int round = 0; round < 2 * factoryCount; ++round)
     {
         const int index = round % factoryCount;
-        p.getPresets().load (index);
+        // A non-initial preset on each lap: the held save guarantees that the
+        // load defers, and the previous preset cannot accidentally equal it.
+        const bool forceDeferral = index == 1;
+        if (forceDeferral)
+        {
+            saveParked.store (false);
+            releaseSave.store (false);
+            parkNextSave.store (true);
+            check (d2::waitFor ([&] { return saveParked.load(); }),
+                   "a real host save holds the replacement lock before the preset load");
+        }
+        struct Completion { int calls = 0; bool ok = false; };
+        const auto completion = std::make_shared<Completion>();
+        const auto result = p.getPresets().load (index, [completion] (bool ok)
+        {
+            ++completion->calls;
+            completion->ok = ok;
+        });
         control.getPresets().load (index);
         p.pollUndoCoalesce();
+
+        if (forceDeferral)
+        {
+            check (result == anamorph::PresetManager::OpResult::deferred,
+                   "the held host save deterministically defers the preset load");
+            check (completion->calls == 0, "a queued preset load has not reported completion yet");
+            releaseSave.store (true);
+        }
+        // Same retry door as the editor/processor ticks. An empty queue alone
+        // is insufficient: the load must also report its final successful result.
+        check (d2::waitFor ([&]
+        {
+            p.flushDeferredCommands();
+            return completion->calls != 0 && p.deferredCommandCount() == 0;
+        }), "the preset load and its undo poll finish against the concurrent save");
+        check (completion->calls == 1 && completion->ok,
+               "the preset load reports success exactly once before its state is inspected");
 
         check (p.getPresets().currentIndex() == index, "the loaded preset is the current one");
         check (p.getPresets().currentName() == p.getPresets().entries()[index].name, "...by name");
@@ -20276,6 +20323,7 @@ static void testPresetTransitionsUnderConcurrentSaves()
     stop.store (true, std::memory_order_release);
     audio.join();
     autosave.join();
+    p.seams.insideDurableCapture = nullptr;
     check (audioFinite.load(), "the audio path stayed finite through the preset transitions");
     check (hostSaves.load() > 0, "non-vacuity: the host thread saved while the presets changed");
     std::printf ("  %d concurrent host-thread saves during %d preset loads\n", hostSaves.load(), 2 * factoryCount);
@@ -45848,6 +45896,12 @@ int main (int argc, char* argv[])
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
 
+    if (argc > 1 && std::strcmp (argv[1], "--preset-transitions-probe") == 0)
+    {
+        testPresetTransitionsUnderConcurrentSaves();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
     if (argc > 1 && std::strcmp (argv[1], "--nonfinite-save-probe") == 0)
     {
         testANaNSessionSavePreservesTheExistingEncoding();
