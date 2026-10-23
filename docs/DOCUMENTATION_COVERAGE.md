@@ -17179,3 +17179,7 @@ the new worklog. Source/generated/package good/bad fixtures and same-job self-te
 new checker; the preflight fixture includes its added source inputs. Earlier audit entries and
 raw native reports remain historical. No independent codes/GUID, source/DSP/state/UI/latency,
 version or art changes are included.
+
+Native package fixture correction (2026-10-23): productbuild may add metadata-only references.
+The identity gate now checks unique receipts and choice/archive/bundle namespaces separately;
+TESTING and the namespace worklog record the observed nine-reference shape and regression.

@@ -6060,3 +6060,7 @@ source, generated Linux/Windows/macOS, AU/VST3 and expanded-package fixtures run
 selection/parsing functions. Only Windows VERSIONINFO access is stubbed. Native CI checks the
 actual artifacts independently. DAW recall/rescan after CFBundleIdentifier changes remains a
 human validation gap; preserved independent codes do not certify every host.
+
+The package identity self-test also covers productbuild normalization: six input references
+and nine generated references can name the same three components. Unique receipts, choice/
+payload membership, payload URI and bundle namespace are checked independently of total refs.
