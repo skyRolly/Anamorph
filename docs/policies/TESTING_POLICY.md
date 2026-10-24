@@ -157,7 +157,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
 
-## Native installed macOS receipt gate (Proposed ADR-0066)
+## Native installed macOS receipt gate (Accepted ADR-0066)
 
 - After actual PKG creation, `receipt_liveness` must successfully run both
   `scripts/test-macos-receipts.py --self-test` and

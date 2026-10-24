@@ -206,6 +206,7 @@ Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-i
 Accepted ADR-0064; owner approval and #172 merge are recorded, with native visual limits preserved.
 
 
-Installed-receipt policy proposal: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) remains Proposed.
+Installed-receipt decision: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
+confirmation on 2026-10-25. Human architecture/ADR approval is complete; merge remains pending.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

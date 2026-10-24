@@ -1,8 +1,10 @@
 # ADR-0066 — Installed receipt ownership, liveness and PKG artifact boundary
 
-**Status:** Proposed. The owner explicitly directs implementation/testing and review
-closure in the current task. Formal independent human review/acceptance and merge
-authorization remain pending; no acceptance is inferred from earlier approvals.
+**Status:** Accepted. The owner directly confirmed on 2026-10-25 that human
+architecture review and approval are complete for this existing decision.
+This is the confirmation and record-update date; the original approval date
+was not separately specified. Merge/publication, separately required code
+review and unexecuted tests are not approved or certified by this confirmation.
 
 ## Context
 
@@ -38,8 +40,9 @@ Name `receipt_liveness`; installation and PKG upload require its successful outc
 Same-job self-tests and production-expression fault replay cover failed/skipped
 liveness and failed installation with retained diagnostics. No deliberately invalid
 installer is published. The separate loose bundle ZIP retains its original gate;
-CI artifacts do not constitute a release. Enact the accompanying TESTING_POLICY
-addition only through human acceptance/merge of this Proposed record.
+CI artifacts do not constitute a release. The accompanying TESTING_POLICY
+addition is approved by this Accepted decision; implementation becomes effective
+on main only when this PR is merged. Acceptance does not authorize that merge.
 
 ## Consequences
 

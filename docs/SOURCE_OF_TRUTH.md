@@ -100,6 +100,7 @@ main ancestry are recorded in `architecture/design-decisions/ADR_INDEX.md` under
 historical; unperformed runtime/manual validation is not converted into a pass.
 
 
-Installed-receipt policy proposal: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) remains Proposed.
+Installed-receipt decision: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
+confirmation on 2026-10-25. Human architecture/ADR approval is complete; merge remains pending.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

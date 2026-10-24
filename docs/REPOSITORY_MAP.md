@@ -201,6 +201,7 @@ on the repository's disposable hosted Mac only; `--self-test` needs no native in
 It never forgets receipts or removes installation folders. See the CI/testing procedures.
 
 
-Installed-receipt policy proposal: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) remains Proposed.
+Installed-receipt decision: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
+confirmation on 2026-10-25. Human architecture/ADR approval is complete; merge remains pending.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

@@ -17253,3 +17253,13 @@ CI/testing/release procedures and navigation are synchronized. The ZIP gate stay
 independent. Earlier native results remain dated evidence, not new-head validation.
 See `scripts/test-macos-receipts.py`, `scripts/test-macos-receipt-gates.py` and the
 installed-receipt worklog; no DSP/state/identity/version or release policy change.
+
+## 2026-10-25 platform-review approval reconciliation
+
+Recorded the owner's direct confirmation of completed human architecture/ADR
+approval for ADR-0066 in its status header, ADR_INDEX approval/effectivity
+record, current policy/procedure/navigation statements and dated worklog
+reconciliation. Historical Proposed entries are retained as history; current
+status is Accepted. Confirmation/record-update date is 2026-10-25; the earlier
+approval date was not specified. Acceptance does not approve merge or certify
+unexecuted tests. All prior product/runtime evidence keeps its exact-head scope.
