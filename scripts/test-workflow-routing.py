@@ -102,9 +102,9 @@ def verify(build_path, release_path, root):
         ctx = {'github.repository': 'skyRolly/'+product, 'github.event_name': event,
                'github.ref': ref, 'github.event.pull_request.head.repo.full_name': ('fork/' if fork else 'skyRolly/')+product,
                'github.event.pull_request.base.ref': 'main', 'github.event.pull_request.head.ref': ref.removeprefix('refs/heads/'),
-               'github.event.pull_request.number': number, 'needs.preflight.outputs.ready': 'true'}
+               'github.event.pull_request.number': number, 'needs.preflight.outputs.ready': 'true', 'inputs.integration-review': ''}
         selected = selection(build, ctx)
-        expected = {'merge-check'} if event == 'pull_request' and not fork else set(jobs(build)) - {'merge-check', 'validation-route', 'full-validation-pending'}
+        expected = {'merge-check'} if event == 'pull_request' and not fork else set(jobs(build)) - {'merge-check', 'validation-route', 'full-validation-pending', 'macos-review-selections', 'macos-review-coinstallation'}
         # In the broken implementation, Release dispatch selects the pending
         # marker instead of linux/windows/macos. Keep this assertion first.
         if caller == 'Release':
@@ -126,8 +126,23 @@ def verify(build_path, release_path, root):
     for event in ('push', 'workflow_dispatch'):
         check('release-tag-'+event, event, 'refs/tags/'+tag, caller='Release')
     assert re.search(r'^  workflow_call:\s*(?:#.*)?$', build, re.M), 'no reusable Build trigger'
-    # No invocation inputs/defaults or nested Build calls remain in this design.
-    assert not re.search(r'^    inputs:', build.split('\npermissions:',1)[0], re.M)
+    # Reusable Build has no invocation inputs or nested calls. The optional
+    # direct-dispatch artifact review is independent of normal/Release routing.
+    # Only direct manual Build defines the optional artifact-review input.
+    # Reusable Release calls define/pass no inputs; default manual invocation
+    # leaves it empty and selects exactly the normal gates.
+    assert "        default: ''" in build.split('\npermissions:',1)[0]
+    assert re.search(r'^  workflow_call:\s*(?:#.*)?$', build, re.M)
+    call_block=build.split('  workflow_call:',1)[1].split('\npermissions:',1)[0]
+    assert not re.search(r'^    (inputs|secrets):',call_block,re.M)
+    for branch,_ in branches:
+        ctx={'github.event_name':'workflow_dispatch','github.ref':'refs/heads/'+branch,
+             'inputs.integration-review':'fixture-manifest','needs.preflight.outputs.ready':'true'}
+        selected=selection(build,ctx)
+        assert 'macos-review-selections' in selected
+        assert {'linux','windows','macos'} <= set(selected)
+        if product=='Anamorph': assert 'macos-review-coinstallation' in selected
+
     assert not re.search(r'^    uses:', build, re.M), 'review new nested reusable calls'
     release_jobs = jobs(release)
     assert field(release_jobs['build'], 'uses') == './.github/workflows/build.yml'
@@ -155,7 +170,7 @@ def verify(build_path, release_path, root):
             assert values['is-release'] == 'false', 'rehearsal could reach draft-release'
             rehearsals.append({'ref':ref,'metadata_outputs':values,'draft_release_selected':False})
     return {'context_cases':records, 'real_metadata_body_fixtures':rehearsals,
-            'inputs_or_defaults':None, 'nested_calls':'Release -> local Build only',
+            'inputs_or_defaults':{'direct_dispatch_integration_review_default':'','workflow_call_inputs':None,'release_inputs_passed':None}, 'nested_calls':'Release -> local Build only',
             'workflow_digests':{str(p.relative_to(root)) if p.is_relative_to(root) else str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (build_path,release_path)}}
 
 

@@ -1897,3 +1897,34 @@ including `!cancelled()` overriding implicit success. Failed/skipped liveness ru
 installer and yields no PKG; failed installation yields retained diagnostics and no PKG.
 The separate bundle ZIP keeps its existing independent gate; this changes no release policy.
 Raw native evidence also retains host/head/package digest and actual choice XML.
+
+The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
+existing shadow-memory capability before the unchanged canary and tests. It never
+lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
+image changes no shipping compiler, dependency pin or product artifact.
+
+
+Optional native macOS integration review consumes independently identified finished
+package/staged artifacts through the direct Build manual input `integration-review`.
+The JSON manifest names each product's repository, run ID, exact artifact head and
+independently measured PKG SHA-256. Its default is empty; reusable Build calls define
+no input and Release passes none. Normal validation always retains its full gates.
+Seven selection jobs per product use separate fresh hosted Macs, measured choice
+IDs and a selection-aware expected receipt/bundle set. The production default-full
+exact-three assertion is unchanged. The Anamorph manual review also runs both real
+two-product installation orders on separate clean Macs, requiring all six receipts
+and preservation of the first product's metadata, listings and installed hashes.
+These optional evidence consumers introduce no sibling build dependency, no live
+host guard spoof and no receipt forgetting or pre-existing product deletion.
+`python3 scripts/test-macos-integration-review.py --self-test` exercises pure fixture
+validation only; native installs require the real disposable host guard and actual
+identified artifacts. Archive digests are checked against GitHub metadata, and PKG
+bytes against the independent manifest digest, before native installation.
+
+The test-only TSan job uses Ubuntu 24.04 container userspace on the Ubuntu 22.04
+host so the existing dependency setup and pinned Clang build use the proven package
+set. A read-only host capability check precedes setup and retains its actual value.
+Both the sanitizer canary and all state probes/suppression checks remain mandatory;
+no kernel setting or container security profile is changed. The first Jammy-native
+attempt failed during dependency setup; its exact package error was unavailable
+through the permitted GitHub read tools, so no specific cause is asserted.

@@ -1896,7 +1896,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3655` and `.github/workflows/build.yml:3740`, this round being
+`.github/workflows/build.yml:3664` and `.github/workflows/build.yml:3749`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1930,7 +1930,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:741` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:750` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1941,7 +1941,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:478` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:484` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -17113,7 +17113,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:529-534` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:538-543` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -17275,3 +17275,34 @@ reconciliation. Historical Proposed entries are retained as history; current
 status is Accepted. Confirmation/record-update date is 2026-10-25; the earlier
 approval date was not specified. Acceptance does not approve merge or certify
 unexecuted tests. All prior product/runtime evidence keeps its exact-head scope.
+
+The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
+existing shadow-memory capability before the unchanged canary and tests. It never
+lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
+image changes no shipping compiler, dependency pin or product artifact.
+
+
+Optional native macOS integration review consumes independently identified finished
+package/staged artifacts through the direct Build manual input `integration-review`.
+The JSON manifest names each product's repository, run ID, exact artifact head and
+independently measured PKG SHA-256. Its default is empty; reusable Build calls define
+no input and Release passes none. Normal validation always retains its full gates.
+Seven selection jobs per product use separate fresh hosted Macs, measured choice
+IDs and a selection-aware expected receipt/bundle set. The production default-full
+exact-three assertion is unchanged. The Anamorph manual review also runs both real
+two-product installation orders on separate clean Macs, requiring all six receipts
+and preservation of the first product's metadata, listings and installed hashes.
+These optional evidence consumers introduce no sibling build dependency, no live
+host guard spoof and no receipt forgetting or pre-existing product deletion.
+`python3 scripts/test-macos-integration-review.py --self-test` exercises pure fixture
+validation only; native installs require the real disposable host guard and actual
+identified artifacts. Archive digests are checked against GitHub metadata, and PKG
+bytes against the independent manifest digest, before native installation.
+
+The test-only TSan job uses Ubuntu 24.04 container userspace on the Ubuntu 22.04
+host so the existing dependency setup and pinned Clang build use the proven package
+set. A read-only host capability check precedes setup and retains its actual value.
+Both the sanitizer canary and all state probes/suppression checks remain mandatory;
+no kernel setting or container security profile is changed. The first Jammy-native
+attempt failed during dependency setup; its exact package error was unavailable
+through the permitted GitHub read tools, so no specific cause is asserted.
