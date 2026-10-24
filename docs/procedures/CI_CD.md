@@ -10,6 +10,35 @@ These dependency-boundary probes check fresh/reused caches, refusal of cached 9.
 the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
+
+## Temporary platform-review source publication (2026-10-25)
+
+For `skyRolly/Anamorph` only, `build.yml` routes push/dispatch events for `codex/macos-installed-receipts` (#174), `codex/linux-desktop-native-icon` (#175)
+and matching same-repository PR events into `main` through `validation-route`.
+The feature commit defines the push workflow; the PR merge ref defines the
+`pull_request` workflow. Both run documentation and source lints. The ordinary
+helper-capture recorder also runs in Anamorph #175's `source-lint`; it executes
+no fixture helper and models root metadata rather than proving native protection.
+All existing runtime/build/package jobs, including the PR `merge-check`, are
+excluded by job conditions before their runner or matrix starts. Their commands,
+required contracts and the customer-archive hold remain intact. The explicit
+`full-validation-pending` job fails, keeping incomplete validation visible.
+
+CodeQL retains actions and C++ manual analysis, with unchanged queries/targets.
+For these same contexts only, its manual build uses preinstalled runner dependencies
+and skips `setup-linux.sh` (administrative package provisioning). Missing dependencies
+are an analysis failure, not a success or waiver. MSVC security analysis and dependency
+review remain enabled under their existing event/path filters; their builds compile
+analysis targets without running DSP/state suites or an installer. Existing read-only
+permissions and narrowly scoped security-report permissions are unchanged.
+
+No `pull_request_target`, `workflow_run` or downstream repository workflow is added.
+Release-tag reuse, main and unrelated branches retain their normal job selection.
+Body-only PR edits trigger none of the listed workflow events. This temporary routing
+must be removed and normal applicable merge checks completed before merging these PRs;
+source/static results do not certify native installations, GUI/DAW behavior or artifacts.
+The owner-confirmed ADR acceptance is complete and is independent of this test backlog.
+
 ## Icon resource checks
 
 Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
@@ -46,7 +75,7 @@ pass counts and the existing PE/PDB staging checks remain unchanged.
 minutes previously left three full matrices racing; now the older ones are cancelled — **except on
 a tag**, where a release build must never be cancelled by an unrelated push, so tag refs queue.
 
-**Same-repo pull requests run `merge-check` and nothing else.** The build and lint jobs carry
+**On the normal route, same-repo pull requests run `merge-check` and nothing else.** The build and lint jobs carry
 `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository`.
 `push: ["**"]` already builds the SHA, so the `pull_request` event was a duplicate 3-OS matrix per
 commit for as long as a PR stayed open. **Fork** PRs are not covered by the push trigger (the push
@@ -1846,8 +1875,8 @@ requires behavior success; `Anamorph-Windows-installer-validation` retains JSON 
 
 ## Linux desktop/hicolor installation gate
 
-Under Accepted ADR-0065 (owner confirmation recorded 2026-10-25), `source-lint` installs only
-CI test tools (Bubblewrap, desktop-file-utils, Python GI/GTK and SVG loader), runs
+The normal installed-resource contract under Accepted ADR-0065 (owner confirmation
+recorded 2026-10-25) originally had `source-lint` install only CI test tools (Bubblewrap, desktop-file-utils, Python GI/GTK and SVG loader), runs
 `check-linux-desktop.py --self-test` then its source/provenance check, and executes
 `tests/linux_desktop_install_tests.py`. The Linux shipping job stages desktop-assets
 and the shell helper, repeats the checker self-test/check with `--staged-dir`, and runs
@@ -1881,9 +1910,10 @@ artifacts cannot stand in for this head.
 `.github/workflows/helper-capture-review.yml` is dispatch-only, read-only and
 ordinary-UID: it runs the delivered capture recorder tests, approved asset
 self-test/check and shell syntax checks. It invokes no installer, sudo, kernel
-setting, fuzz or broad fault suite. This prepared route cannot safely be published
-by itself: the existing build workflow starts on every branch push, including
-governance-only changes. No push or dispatch is authorized until every resulting
-push/PR/reusable/downstream event is contained. Body-only PR description edits
-are separately audited against default PR event types. Mandatory installed-resource
-coverage and the customer-archive hold remain; this subset does not satisfy them.
+setting, fuzz or broad fault suite. The dispatch-only workflow alone never
+contained push events. The temporary source-publication route documented above
+now gates the existing build workflow and includes the same capture recorder in
+`source-lint` for push and matching PR events, without depending on dispatch
+availability on the default branch. Body-only description edits remain separately
+audited against default PR event types. Mandatory installed-resource coverage and
+the customer-archive hold remain; this subset does not satisfy them.
