@@ -1896,7 +1896,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3669` and `.github/workflows/build.yml:3754`, this round being
+`.github/workflows/build.yml:3706` and `.github/workflows/build.yml:3791`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1930,7 +1930,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:742` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:779` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1941,7 +1941,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:477` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:506` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -17113,7 +17113,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:525-530` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:554-559` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
