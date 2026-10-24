@@ -280,6 +280,18 @@ exec /usr/bin/mv "$@"
         self.assertEqual(foreign.read_bytes(), b'foreign transaction file')
         self.assertTrue((self.data / '.tech.rolly.anamorph/transaction/ready').is_file())
 
+    def test_unknown_ownership_state_refuses_before_removal(self):
+        self.good()
+        foreign = self.data / '.tech.rolly.anamorph/unrelated.keep'
+        foreign.write_bytes(b'foreign state file')
+        result = self.invoke(script='uninstall.sh')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(foreign.read_bytes(), b'foreign state file')
+        self.assertTrue((self.data / DESKTOP).is_file(), 'uninstall changed owned resources before refusing unknown state')
+        self.assertTrue((self.home / '.local/bin/Anamorph').is_file())
+        self.assertIn('unknown ownership state entries preserved', result.stderr)
+        self.bad(message='unknown ownership state entries preserved')
+
     def test_foreign_change_blocks_interrupted_recovery(self):
         self.good(); self.make_fault(); self.bad(fault='kill')
         desktop = self.data / DESKTOP; desktop.write_bytes(b'foreign change after interruption')
@@ -307,13 +319,19 @@ assert open(marker).read().strip()==os.path.join(os.environ['HOME'],'.local/bin/
 theme=Gtk.IconTheme.new()
 theme.set_search_path([os.path.join(data,'icons'),'/usr/share/icons'])
 theme.set_custom_theme('hicolor')
-for size in [16,24,32,48,64,128,256,512]:
- for scale in [1,2]:
-  info=theme.lookup_icon_for_scale('tech.rolly.anamorph',size,scale,0)
-  assert info is not None,(size,scale)
-  assert info.get_filename().startswith(data+'/icons/hicolor/'),info.get_filename()
-  assert info.load_icon() is not None
-print('GIO launched exact escaped executable; hicolor raster/SVG lookup 8 sizes x 2 scales')
+parent=os.path.join(data,'icons/IntegrationTestParent')
+os.makedirs(parent)
+with open(os.path.join(parent,'index.theme'),'w') as f:
+ f.write('[Icon Theme]\\nName=Integration test\\nInherits=hicolor\\nDirectories=16x16/apps\\n[16x16/apps]\\nSize=16\\nContext=Applications\\nType=Fixed\\n')
+for theme_name in ['hicolor','IntegrationTestParent']:
+ theme.set_custom_theme(theme_name)
+ for size in [16,24,32,48,64,128,256,512]:
+  for scale in [1,2]:
+   info=theme.lookup_icon_for_scale('tech.rolly.anamorph',size,scale,0)
+   assert info is not None,(theme_name,size,scale)
+   assert info.get_filename().startswith(data+'/icons/hicolor/'),info.get_filename()
+   assert info.load_icon() is not None
+print('GIO exact escaped executable; 8 sizes x 2 scales x direct/inherited hicolor fallback')
 ''')
         self.good(command=['/usr/bin/python3', '/package/lookup.py'])
         self.assertFalse((self.sandbox / 'a space').exists())

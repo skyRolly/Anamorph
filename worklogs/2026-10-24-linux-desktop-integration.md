@@ -124,3 +124,11 @@ and restores its exact original value in finally. Local tests never change kerne
 settings; self-hosted/developer/wrong-repository contexts are refused. Installation
 still runs in real private filesystem/user namespaces and fails if isolation cannot
 start. This enables the sandbox rather than replacing native tests or their gates.
+
+Adversarial uninstall follow-up: at 787752f an unexpected file in the private
+ownership root survived, but owned desktop resources had already been removed
+before rmdir failed. Reproduced with actual entry points in isolation. The root
+now admits only format-v1, receipt and transaction before any recovery/removal.
+A regression requires both foreign and owned files/binaries to remain intact
+on refusal. The GTK test also exercises a real parent theme inheriting hicolor,
+in addition to direct lookup, at eight sizes × two scales. The suite has 20 cases.

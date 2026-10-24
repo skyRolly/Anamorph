@@ -224,6 +224,12 @@ refresh_caches() {
 safe_parent "$DATA"
 if present "$STATE"; then
     private_dir "$STATE"
+    known=0
+    for entry in format-v1 receipt transaction; do
+        if present "$STATE/$entry"; then known=$((known + 1)); fi
+    done
+    actual=$(find "$STATE" -mindepth 1 -maxdepth 1 -printf x | wc -c)
+    [ "$actual" -eq "$known" ] || fail 'unknown ownership state entries preserved; operation refused'
     if present "$STATE/format-v1"; then
         private_dir "$STATE/format-v1"
         [ -z "$(ls -A -- "$STATE/format-v1")" ] || fail 'foreign ownership state directory'
