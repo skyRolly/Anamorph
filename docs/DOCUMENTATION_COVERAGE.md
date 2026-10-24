@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Platform-review source-publication routing — 2026-10-25
+
+CI_CD and TESTING now describe the temporary exact-repository/branch/event route
+in the existing build workflow, its retained ordinary/static/security commands,
+administration-free CodeQL build and deliberate full-validation-pending failure.
+Runtime/fuzz/installer jobs are excluded before selection; normal main/release and
+unrelated-branch policy remains unchanged. The existing native/archive/manual
+contracts and owner-confirmed Accepted ADR records remain in force. Local routing
+and command-selection evidence is required before publication; runtime success is
+not inferred from the routing checks. No new architecture decision is introduced.
+
+
 ## Current approval reconciliation — record updated 2026-10-24 (Asia/Shanghai)
 
 ADR-0062 remains Accepted; ADR-0063 and ADR-0064 are Accepted, under explicit final owner approval of the completed five-PR scope.

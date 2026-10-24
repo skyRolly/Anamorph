@@ -318,6 +318,35 @@ env:
 # ---------------------------------------------------------------------------
 
 jobs:
+
+  # Temporary source-publication route for the four owner-authorized review PRs.
+  # This evaluates before runner selection for every existing validation job.
+  # A release-tag call, main, forks and unrelated branches retain the normal route.
+  validation-route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      contained: ${{ steps.route.outputs.contained }}
+    steps:
+      - id: route
+        env:
+          CONTAINED: ${{ github.repository == 'skyRolly/Anamorph' && (((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/codex/macos-installed-receipts' || github.ref == 'refs/heads/codex/linux-desktop-native-icon')) || (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == 'skyRolly/Anamorph' && ((github.event.pull_request.number == 174 && github.event.pull_request.head.ref == 'codex/macos-installed-receipts') || (github.event.pull_request.number == 175 && github.event.pull_request.head.ref == 'codex/linux-desktop-native-icon')))) }}
+        run: printf 'contained=%s\n' "$CONTAINED" >> "$GITHUB_OUTPUT"
+
+  # Deliberately non-success: source publication is not full validation or a
+  # waiver. Do not merge with this temporary route; restore and run normal gates.
+  full-validation-pending:
+    name: Full validation pending (source publication only)
+    needs: validation-route
+    if: needs.validation-route.outputs.contained == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Record the unexecuted validation contract
+        run: |
+          echo "::error::Source-publication route only: native installers, DSP/state runtime, pluginval, sanitizer/fault campaigns and customer artifacts have not been validated here. Restore the normal route and complete applicable gates before merge."
+          exit 1
+
   # -------------------------------------------------------------------------
   # THE MERGE RESULT -- the one tree no push build ever compiles.
   #
@@ -343,11 +372,11 @@ jobs:
   # not "what would we ship".
   # -------------------------------------------------------------------------
   merge-check:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
@@ -418,11 +447,11 @@ jobs:
   # with no dependencies beyond the standard library.
   # -------------------------------------------------------------------------
   docs:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository) || needs.validation-route.outputs.contained == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -462,11 +491,11 @@ jobs:
   # behind a toolchain.
   # -------------------------------------------------------------------------
   source-lint:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository) || needs.validation-route.outputs.contained == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -664,11 +693,11 @@ jobs:
           python3 scripts/check-citations.py --check --base "$BASE"
 
   linux:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
@@ -1354,11 +1383,11 @@ jobs:
   # infer release non-blocking from the absence of a `needs:` edge here.
   # -------------------------------------------------------------------------
   sanitizers:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 60  # 45 until 2026-09-26: the lane outgrew it (CI_CD.md, "Job timeouts")
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # Larger than the single-build jobs: this job compiles the two console
@@ -1528,13 +1557,13 @@ jobs:
           $VG ./build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests
 
   windows:
+    needs: [validation-route]
     runs-on: windows-latest
     # No compiler cache here -- see the compiler-cache block above the jobs for
     # why (/Zi is required for the PDB artifact and ccache's MSVC mode is not).
     timeout-minutes: 45
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2050,6 +2079,7 @@ jobs:
           }
 
   macos:
+    needs: [validation-route]
     # `macos-latest` (Apple Silicon) -- moved off the DEPRECATED `macos-14`
     # image per actions/runner-images. Deliberately the FLOATING label, matching
     # `ubuntu-latest`/`windows-latest` on the other two jobs: a pinned image that
@@ -2061,8 +2091,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # The largest of the lineages, and for one reason: these objects are FAT.
@@ -2750,12 +2779,12 @@ jobs:
   # there an infrastructure failure fails the workflow, fail-closed, with an
   # "INFRASTRUCTURE:" label distinguishing it from a numerical one.
   macos-crossslice:
+    needs: [validation-route]
     runs-on: macos-latest
     timeout-minutes: 30
     continue-on-error: true
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2893,6 +2922,7 @@ jobs:
 
 
   macos-intel:
+    needs: [validation-route]
     # PINNED BY NECESSITY, not by preference -- the one runner label in this
     # workflow that cannot float. Per `actions/runner-images`, `macos-latest`
     # (and `macos-26`, `macos-15`) are the ARM64 images and the Intel ones are
@@ -2939,8 +2969,7 @@ jobs:
     # and is untouched: it builds the merge result on Linux and is deliberately
     # not a four-platform rerun.
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -3219,11 +3248,11 @@ jobs:
   #  deliberately excludes LTO; JUCE is fetched once (build A) and reused via
   #  ANAMORPH_JUCE_PATH, the macos-crossslice pattern.
   windows-avx2-ab:
+    needs: [validation-route]
     runs-on: windows-latest
     timeout-minutes: 60
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -3338,6 +3367,7 @@ jobs:
           exit 0
 
   linux-lto-tests:
+    needs: [validation-route]
     # GCC IS THE COMPATIBILITY COMPILER, NOT THE SHIPPING ONE. Clang builds the
     # artifact (`linux`); this job exists so the tree keeps compiling, and its
     # invariants keep holding, under the other major toolchain -- and so the two
@@ -3363,8 +3393,7 @@ jobs:
       image: gcc:16
     timeout-minutes: 30
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 400M
@@ -3620,11 +3649,11 @@ jobs:
   # and, like them, still release-blocking through `release.yml`'s aggregate
   # dependency on this workflow (see the `sanitizers` comment for the topology).
   realtime:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 400M
@@ -3851,11 +3880,11 @@ jobs:
   # and, like them, still release-blocking through `release.yml`'s aggregate
   # dependency on this workflow.
   tsan:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 400M
@@ -4020,11 +4049,11 @@ jobs:
   # NOT in any `needs:` chain, matching the other validation lanes; like them it
   # is still release-blocking through `release.yml`'s aggregate dependency.
   fuzz:
+    needs: [validation-route]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      needs.validation-route.outputs.contained != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 400M

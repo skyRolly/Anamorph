@@ -115,9 +115,15 @@ jobs:
       - name: Build for analysis (c-cpp manual build mode)
         if: matrix.build-mode == 'manual'
         shell: bash
+        env:
+          SOURCE_PUBLICATION_ONLY: ${{ github.repository == 'skyRolly/Anamorph' && (((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/codex/macos-installed-receipts' || github.ref == 'refs/heads/codex/linux-desktop-native-icon')) || (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == 'skyRolly/Anamorph' && ((github.event.pull_request.number == 174 && github.event.pull_request.head.ref == 'codex/macos-installed-receipts') || (github.event.pull_request.number == 175 && github.event.pull_request.head.ref == 'codex/linux-desktop-native-icon')))) }}
         run: |
           chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
+          if [ "$SOURCE_PUBLICATION_ONLY" = true ]; then
+            echo "::notice::Source-publication analysis uses preinstalled dependencies; no administrative provisioning. Missing dependencies fail this analysis and remain unverified."
+          else
+            ./scripts/setup-linux.sh
+          fi
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF
           cmake --build build --target Anamorph_VST3 AnamorphTests
 
