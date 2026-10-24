@@ -17237,3 +17237,8 @@ receipt-installation statements remain dated baseline evidence, not a claimed pa
 Current native results belong to the exact PR job/report, not the portable fixtures.
 Evidence: `scripts/test-macos-receipts.py`, `.github/workflows/build.yml`,
 `worklogs/2026-10-24-installed-macos-receipts.md`.
+
+Native-result procedure correction: current default-full Mac receipt coverage and
+merged Windows runtime checks replace the old generic “no gate installs” claim;
+component permutations/upgrades/co-installation and GUI/DAW gaps remain explicit.
+Only active descriptions are corrected; the worklog preserves exact native evidence.

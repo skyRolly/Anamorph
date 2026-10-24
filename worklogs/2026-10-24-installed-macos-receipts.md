@@ -60,3 +60,9 @@ records the failure and actual native evidence; no checker/gate is weakened or
 exception added. Local checks against both main and the immediate good predecessor
 pass. The receipt script/workflow/native implementation is unchanged by this follow-up;
 new combined-head CI must still complete before it is called green.
+
+Final procedure sync: narrowed the old active “actual receipt installation unverified”
+release sentence and replaced TESTING's stale blanket “No gate ever installs anything”.
+Default-full Mac receipts and merged Windows installation checks are now distinguished
+from individual component/upgrade/co-installation and GUI/DAW gaps. Linux desktop work
+remains its independent PR. No native script/workflow or product source changes here.

@@ -230,7 +230,10 @@ Base `tech.rolly.anamorph`; macOS receipts below it use `.vst3/.au/.app`. Expand
 is checked by `build-pkg.sh`. Exact named component-to-receipt, choice and payload ownership must agree; a correct ID set alone does not pass. Windows AppId stays `{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}`.
 The owner accepts the pre-release receipt break; there is no old-receipt alias or fallback.
 ADR-0063 is Accepted; architecture review and the owner decision are approved, and #171 is merged.
-Actual receipt installation and DAW recall remain unverified; this record grants no new release approval.
+Default-full actual receipt installation is now checked by the guarded native smoke
+in `scripts/test-macos-receipts.py`; its worklog records exact successful heads/artifacts.
+Selected-component permutations, upgrades, both-product co-installation and DAW recall
+remain separate validation. This record grants no new release approval.
 
 The Windows installer icon gate (Accepted ADR-0064) verifies the exact checked-in B0 ICO before
 ISCC and the generated Setup MAINICON afterward. Installer artifact upload also requires the

@@ -6002,15 +6002,16 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
   matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
 
-- **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
-  exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable
-  components, payload completeness), the staged Linux tree — but never runs an installation,
-  because installing needs elevation and would mutate the runner. Everything that only exists at
-  *install* time is therefore manual. **INC-012** is what that gap costs: bundle relocation is a
+- **Installation coverage is platform-specific (updated 2026-10-24).** Merged #172
+  already runs Windows install/reinstall/uninstall tests on a disposable VM. This branch
+  adds actual default-full Mac installation and receipt/payload verification on its own
+  disposable hosted Mac. Expanded package metadata checks remain in place. Linux desktop
+  integration is a separate PR; no GUI/DAW appearance or Mac component-selection/upgrade
+  certification follows from these automated installation checks. **INC-012** is what that gap costs: bundle relocation is a
   property of Installer.app's behaviour, invisible in the archive, and every manual check until
   then had been a first install onto a machine with no prior copy — the one case it cannot affect.
   The checks that remain owed to a human:
-  - **macOS `.pkg`, per format (VST3 / AU / app), four cases each:** fresh machine · over an
+  - **macOS `.pkg`, each format selected independently (VST3 / AU / app), four cases each:** fresh machine · over an
     existing install · after moving the installed item elsewhere · after deleting it. Each must end
     with the item present at the destination in
     `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour", and a moved copy must be left
