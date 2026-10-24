@@ -1,11 +1,11 @@
 # ADR-0065 — Owned Linux desktop/hicolor resource installation
 
-**Status:** Proposed. On 2026-10-24 (Asia/Shanghai), before implementation, the owner
-reviewed the concrete paths/ownership/recovery/CI-dependency proposal and answered
-**“Approve Linux implementation and testing.”** That clears the implementation-stage
-stop for this proposal, including the new CI test tools. Formal independent human
-architecture review, ADR acceptance and merge authorization remain pending. The
-earlier ADR-0062/0063/0064 approvals do not authorize this decision automatically.
+**Status:** Accepted. The owner directly confirmed on 2026-10-25 that human
+architecture review and approval are complete for this existing decision,
+including the delivered protected-helper snapshot amendment.
+This is the confirmation and record-update date; the original approval date
+was not separately specified. Merge/publication, separately required code
+review and unexecuted tests are not approved or certified by this confirmation.
 
 ## Context
 
@@ -88,9 +88,10 @@ without deleting foreign resources or weakening binary replacement.
 
 ## Defensive helper capture follow-up (2026-10-25)
 
-The current maintenance instruction authorizes this focused implementation and
-ordinary-only checks. Historical engineering reports are evidence, not formal
-approval. This ADR remains **Proposed**. No new runtime dependency, build
+The earlier maintenance instruction authorized focused implementation and
+ordinary-only checks; the delivery did not itself confer architecture approval.
+The owner's direct confirmation on 2026-10-25 now accepts this existing amendment
+as part of ADR-0065. Historical reports remain evidence, not approval records. No new runtime dependency, build
 architecture, archive member or installation mode is introduced.
 
 Previously, system preflight, publication and uninstall interpreted the replaceable
@@ -161,7 +162,7 @@ The worklog records failed alternatives, mutation/recovery controls and actual C
 heads. Full native/GUI claims require their own results. See
 [the worklog](../../../worklogs/2026-10-24-linux-desktop-integration.md).
 
-On 2026-10-25 (Asia/Shanghai), the owner narrowed this review round to ordinary
+Earlier on 2026-10-25 (Asia/Shanghai), the owner narrowed that review round to ordinary
 validation and deferred sudo, privilege-boundary and adversarial testing. The Linux
 customer archive gate remains closed at the follow-up head until isolated installed-
-resource validation can run again. This does not accept this ADR or waive that gate.
+resource validation can run again. The later direct confirmation accepts this ADR; it does not waive that gate.

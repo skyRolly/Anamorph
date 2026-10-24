@@ -99,7 +99,8 @@ main ancestry are recorded in `architecture/design-decisions/ADR_INDEX.md` under
 2026-10-24 reconciliation. The earlier implementation permission and dated evidence remain
 historical; unperformed runtime/manual validation is not converted into a pass.
 
-Proposed ADR-0065 records the separately authorized Linux desktop resource contract;
-its worklog is evidence, not formal acceptance. Owner implementation/testing permission
-on 2026-10-24 does not approve merge, future Composer work or native visual certification.
+Accepted ADR-0065 records the separately authorized Linux desktop resource contract;
+the owner's direct confirmation on 2026-10-25 completes human architecture/ADR
+approval, including the delivered helper snapshot amendment. Worklogs remain evidence.
+Merge, future Composer work and native visual certification are separate.
 The existing ADR directory/index and procedures remain the navigation/authority path.

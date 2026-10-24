@@ -31,7 +31,7 @@ additional malformed host-state restrictions remain open owner decisions.
 - Linux installation adds the approved Anamorph desktop launcher and hicolor icons in
   the selected user/system data directory, with an absolute executable reference and
   owned-resource recovery/uninstall. Portable extraction installs no desktop files.
-  Evidence: [Linux integration diff](https://github.com/skyRolly/Anamorph/compare/main...codex/linux-desktop-native-icon); Proposed ADR-0065;
+  Evidence: [Linux integration diff](https://github.com/skyRolly/Anamorph/compare/main...codex/linux-desktop-native-icon); Accepted ADR-0065;
   `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated resources; GUI unverified]
 - **Approved Anamorph product icon in conventional macOS and Windows build resources.**
   App/plug-in bundles on macOS and executable/VST3 resources on Windows use the unchanged B0
@@ -49,13 +49,13 @@ additional malformed host-state restrictions remain open owner decisions.
 - **System Linux desktop operations verify their helper before interpretation.**
   Install preflight/publication and uninstall use a private snapshot pinned by the
   trusted entry scripts, refusing mismatched archive helper bytes. Evidence:
-  PR #175 maintenance follow-up; Proposed ADR-0065;
+  PR #175 maintenance follow-up; Accepted ADR-0065;
   `tests/linux_desktop_helper_tests.py`. [Verified — source and nonprivileged
   capture tests; privileged runtime unverified; distinct-principal exploit unproven]
 - **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
   cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
   launcher or icon when its receipt is missing, preserving installed binaries for
-  a safe retry. Evidence: PR #175; Proposed ADR-0065;
+  a safe retry. Evidence: PR #175; Accepted ADR-0065;
   `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated entry
   points; revised-head native gate pending]
 - **Windows installer and uninstaller use the approved product icon in every component configuration.**

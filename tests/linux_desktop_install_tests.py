@@ -17,9 +17,13 @@ STAGED = None
 CLEANUP_SMOKE = False
 CLEANUP_RESULTS = []
 ORDINARY_ONLY = False
+USER_RELIABILITY = False
 NAME = 'tech.rolly.anamorph'
 PNG = f'icons/hicolor/32x32/apps/{NAME}.png'
 DESKTOP = f'applications/{NAME}.desktop'
+MANAGED_PATHS = (DESKTOP, *(f'icons/hicolor/{size}x{size}/apps/{NAME}.png'
+                         for size in (16, 24, 32, 48, 64, 128, 256, 512)),
+                 f'icons/hicolor/scalable/apps/{NAME}.svg')
 
 
 def hosted_namespace_guard(platform, environment):
@@ -76,6 +80,8 @@ class InstallCase(unittest.TestCase):
         return self.home / '.local/share'
 
     def invoke(self, script='install.sh', mode='user', xdg=None, root=False, extra=(), command=None, fault=None):
+        if USER_RELIABILITY and (mode != 'user' or root):
+            raise ValueError('user reliability selection cannot run system/root operations')
         uid = '0' if root else str(os.getuid())
         gid = '0' if root else str(os.getgid())
         argv = ['bwrap', '--unshare-user', '--uid', uid, '--gid', gid, '--unshare-pid', '--die-with-parent', '--cap-drop', 'ALL',
@@ -346,6 +352,35 @@ exec /usr/bin/mv "$@"
         self.assertFalse(app.exists()); self.assertFalse(vst.exists())
         self.assertEqual(settings.read_bytes(), b'keep settings')
 
+    def test_user_receiptless_uninstall_all_managed_names(self):
+        for relative in MANAGED_PATHS:
+            for kind in ('regular', 'link', 'dangling-link'):
+                with self.subTest(relative=relative, kind=kind):
+                    case = InstallCase(); case.setUp()
+                    try:
+                        app = case.home / '.local/bin/Anamorph'
+                        vst = case.home / '.vst3/Anamorph.vst3'
+                        app.parent.mkdir(parents=True); app.write_bytes(b'existing app')
+                        vst.mkdir(parents=True); (vst / 'module').write_bytes(b'existing VST3')
+                        settings = case.home / 'settings.keep'; settings.write_bytes(b'preserve')
+                        dest = case.data / relative; dest.parent.mkdir(parents=True)
+                        target = case.home / 'benign-target'; target.write_bytes(b'preserve target')
+                        if kind == 'regular': dest.write_bytes(b'unowned resource')
+                        else: dest.symlink_to('/sandbox/home/' + ('benign-target' if kind == 'link' else 'absent-target'))
+                        case.bad(script='uninstall.sh', message='without ownership receipt')
+                        self.assertEqual(app.read_bytes(), b'existing app')
+                        self.assertEqual((vst / 'module').read_bytes(), b'existing VST3')
+                        self.assertEqual(target.read_bytes(), b'preserve target')
+                        self.assertEqual(settings.read_bytes(), b'preserve')
+                        if kind == 'regular': self.assertEqual(dest.read_bytes(), b'unowned resource')
+                        else: self.assertTrue(dest.is_symlink())
+                        # All ten names absent permits idempotent binary removal.
+                        dest.unlink()
+                        case.good(script='uninstall.sh'); case.good(script='uninstall.sh')
+                        self.assertFalse(app.exists()); self.assertFalse(vst.exists())
+                        self.assertEqual(settings.read_bytes(), b'preserve')
+                    finally: case.doCleanups()
+
     def cleanup_fault(self, phase, target):
         # Fault the actual utility boundary after a reachable deletion, never
         # fabricate a half-journal and call a copied recovery implementation.
@@ -429,6 +464,23 @@ exec /usr/bin/''' + command + ''' "$@"
         for system in (False, True):
             with self.subTest(ordinary_failure=True, system=system):
                 self.cleanup_probe('committed', 'committed', system, True, ordinary_failure=True)
+
+    def test_user_cleanup_restart_contract(self):
+        targets = {
+            'preparation': ['format-v1', 'id', 'inputs/SHA256SUMS',
+                            'inputs/hicolor/16x16/apps/' + NAME + '.png', 'inputs/hicolor/16x16/apps'],
+            'rollback': ['format-v1', 'ready', 'new-receipt',
+                         'new/icons/hicolor/32x32/apps/' + NAME + '.png', 'old'],
+            'committed': ['format-v1', 'ready', 'committed', 'new-receipt',
+                          'new/icons/hicolor/32x32/apps/' + NAME + '.png'],
+        }
+        for phase, deletions in targets.items():
+            for update in (False, True):
+                for index, target in enumerate(deletions):
+                    with self.subTest(phase=phase, update=update, deleted=target):
+                        self.cleanup_probe(phase, target, False, update,
+                                           uninstall=(index + int(update)) % 2 == 0)
+        self.cleanup_probe('committed', 'committed', False, True, ordinary_failure=True)
 
     def test_cleanup_authority_rejects_unknown_entries_and_foreign_state(self):
         for foreign in ('unknown', 'changed-private', 'changed-public', 'mode', 'symlink', 'live-pid'):
@@ -537,22 +589,28 @@ print('GIO exact escaped executable; 8 sizes x 2 scales x direct/inherited hicol
 
 
 def main():
-    global STAGED, CLEANUP_SMOKE, ORDINARY_ONLY
+    global STAGED, CLEANUP_SMOKE, ORDINARY_ONLY, USER_RELIABILITY
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--staged-dir', type=Path)
     parser.add_argument('--report', type=Path)
     parser.add_argument('--smoke', action='store_true', help='retain original suite; sample new cleanup stress cases in source-lint')
-    parser.add_argument('--ordinary-only', action='store_true',
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--ordinary-only', action='store_true',
                         help='run user-mode install, launcher, archive and missing-receipt cases only; defer boundary/fault probes')
+    selection.add_argument('--user-reliability', action='store_true',
+                           help='ordinary user cases plus bounded private-root cleanup/restart and all-ten receiptless checks')
     parser.add_argument('--hosted-namespace-permission', action='store_true',
                         help='temporarily enable unprivileged namespaces on this disposable GitHub VM only')
     args, extra = parser.parse_known_args()
     STAGED = args.staged_dir.resolve() if args.staged_dir else None
     CLEANUP_SMOKE = args.smoke
     ORDINARY_ONLY = args.ordinary_only
+    USER_RELIABILITY = args.user_reliability
     if not shutil.which('bwrap'):
         raise SystemExit('Bubblewrap required: tests must never run installation on live host paths')
-    if not ORDINARY_ONLY:
+    if USER_RELIABILITY and (os.getuid() == 0 or args.hosted_namespace_permission or args.smoke or extra):
+        raise ValueError('user-reliability requires ordinary UID, no namespace permission change, smoke or extra probes')
+    if not ORDINARY_ONLY and not USER_RELIABILITY:
         namespace_guard_self_test()
     if ORDINARY_ONLY and (args.hosted_namespace_permission or extra):
         raise ValueError('ordinary-only cannot change namespace permissions or select extra probes')
@@ -568,11 +626,16 @@ def main():
     try:
         if original_permission is not None:
             subprocess.run(['sudo', '-n', 'sysctl', '-q', '-w', permission_key + '=0'], check=True)
-        if ORDINARY_ONLY:
+        if ORDINARY_ONLY or USER_RELIABILITY:
             ordinary = ('test_fresh_user_reinstall_uninstall',
                         'test_missing_receipt_user_uninstall_preserves_existing_files',
                         'test_gio_exec_escaping_and_hicolor_lookup',
                         'test_clean_archive_and_required_assets')
+            if USER_RELIABILITY:
+                ordinary += ('test_user_receiptless_uninstall_all_managed_names',
+                             'test_user_cleanup_restart_contract',
+                             'test_unknown_journal_file_is_preserved',
+                             'test_unknown_ownership_state_refuses_before_removal')
             suite = unittest.defaultTestLoader.loadTestsFromNames(
                 ['InstallCase.' + name for name in ordinary], module=sys.modules[__name__])
         else:
@@ -591,6 +654,8 @@ def main():
             'original_namespace_restriction': original_permission, 'namespace_restriction_restored': True,
             'cleanup_smoke_only': CLEANUP_SMOKE, 'cleanup_fault_cases': CLEANUP_RESULTS,
             'ordinary_only': ORDINARY_ONLY,
+            'user_reliability_only': USER_RELIABILITY,
+            'deferred_system_and_cross_principal_probes': ORDINARY_ONLY or USER_RELIABILITY,
             'deferred_boundary_and_fault_probes': ORDINARY_ONLY,
             'GUI_desktop_certification': False,'isolation': 'actual shell entry points under Bubblewrap private filesystem roots'},indent=2)+'\n')
     raise SystemExit(0 if result.wasSuccessful() else 1)

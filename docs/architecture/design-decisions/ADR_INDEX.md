@@ -67,7 +67,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0062](ADR-0062-native-juce-icon-resources.md) | Approved B0 PNGs through conventional JUCE ICON_BIG/ICON_SMALL; source provenance and native resource checks; installer/launcher/Composer work deferred | **Accepted** — explicit owner Architecture Review approval, 2026-10-23 | Verified source/pinned-JUCE behavior; native results scoped to CI reports; real shell/DAW display unverified |
 | [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
 | [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
-| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Owned Linux desktop/hicolor installation, process-interruption recovery, verified helper capture and isolated native-resource tests | **Proposed** — owner approved implementation/testing 2026-10-24; formal acceptance and merge review pending | Approved source hashes; historical isolated entry-point/GIO/GTK tests; helper capture has nonprivileged recording tests only; revised privileged/native behavior unverified |
+| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Owned Linux desktop/hicolor installation, process-interruption recovery, verified helper capture and isolated native-resource tests | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation/merge pending | Approved source hashes; historical isolated entry-point/GIO/GTK tests; helper capture has nonprivileged recording tests only; revised privileged/native behavior unverified |
 
 ## Owner approval reconciliation — record updated 2026-10-24
 
@@ -130,3 +130,23 @@ NOT RECORDED fields are in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGR
 3. Assign the next sequential number; add a row here.
 4. If the ADR changes a Policy or another ADR, mark the superseded record `Superseded`/`Deprecated`
    and cross-link. See `docs/policies/ADR_POLICY.md`.
+
+## 2026-10-25 platform-review approval reconciliation
+
+The owner directly confirmed in the platform-review closure task that **“all
+ADRs have received human approval.”** For this branch, ADR-0065 is **Accepted** including its delivered protected-helper snapshot amendment.
+The confirmation also explicitly covers Anamorph ADR-0065/0066 and Anabasis
+ADR-0049/0050 in their respective PRs. Already Accepted predecessor decisions
+remain Accepted; no unrelated or future proposal is approved by implication.
+
+2026-10-25 is the confirmation/record-update date. The original earlier
+approval date, reviewer identity, meeting, signed record and GitHub approval
+submission were not supplied and are not invented. Human architecture/ADR
+approval is complete. This does not certify tests, satisfy a separate code
+review, or authorize merge/release. The decision is Accepted now; its branch
+implementation and associated policy enforcement reach main only after a
+separately authorized merge. Earlier Proposed entries remain historical.
+
+| Record / amendment | Decision status now | Implementation effectivity |
+| --- | --- | --- |
+| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) and its helper snapshot amendment | Accepted; owner confirmation 2026-10-25 | Prepared on PR #175; not effective on main; merge pending |

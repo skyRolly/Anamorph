@@ -157,7 +157,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
 
-## Linux desktop resource gate (Proposed ADR-0065 implementation)
+## Linux desktop resource gate (Accepted ADR-0065 implementation)
 
 The owner approved implementation/testing before the new CI dependency set was added;
 ADR acceptance and merge review remain pending. Source/provenance checks run universally

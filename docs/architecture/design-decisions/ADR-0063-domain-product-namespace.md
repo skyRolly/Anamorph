@@ -97,3 +97,7 @@ Proposed ADR-0065 now records the separately owner-authorized Linux implementati
 `tech.rolly.anamorph` desktop/hicolor names, unchanged host identities and no ELF
 embedded-icon claim. ADR-0063's namespace decision remains Accepted; ADR-0065's
 formal acceptance/merge review is pending and is not inferred from this record.
+
+2026-10-25 current scope reconciliation: the owner directly confirmed ADR-0065
+Accepted, including its delivered helper snapshot amendment. This does not change
+ADR-0063's already Accepted status or certify native/runtime behavior.

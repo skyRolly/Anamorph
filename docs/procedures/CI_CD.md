@@ -1846,7 +1846,7 @@ requires behavior success; `Anamorph-Windows-installer-validation` retains JSON 
 
 ## Linux desktop/hicolor installation gate
 
-Under Proposed ADR-0065's owner implementation permission, `source-lint` installs only
+Under Accepted ADR-0065 (owner confirmation recorded 2026-10-25), `source-lint` installs only
 CI test tools (Bubblewrap, desktop-file-utils, Python GI/GTK and SVG loader), runs
 `check-linux-desktop.py --self-test` then its source/provenance check, and executes
 `tests/linux_desktop_install_tests.py`. The Linux shipping job stages desktop-assets
@@ -1875,3 +1875,15 @@ customer artifact still requires `desktop_install == success`, so no revised cus
 archive is uploaded. Other build/analysis jobs remain available for ordinary CI
 validation. Restore and pass the installed-resource gate before merge; prior-head
 artifacts cannot stand in for this head.
+
+## Restricted Linux helper review route (prepared 2026-10-25)
+
+`.github/workflows/helper-capture-review.yml` is dispatch-only, read-only and
+ordinary-UID: it runs the delivered capture recorder tests, approved asset
+self-test/check and shell syntax checks. It invokes no installer, sudo, kernel
+setting, fuzz or broad fault suite. This prepared route cannot safely be published
+by itself: the existing build workflow starts on every branch push, including
+governance-only changes. No push or dispatch is authorized until every resulting
+push/PR/reusable/downstream event is contained. Body-only PR description edits
+are separately audited against default PR event types. Mandatory installed-resource
+coverage and the customer-archive hold remain; this subset does not satisfy them.

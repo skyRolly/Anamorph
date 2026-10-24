@@ -256,7 +256,7 @@ checks. A mismatched helper fails closed; use matching files from a trusted
 distribution. The entry scripts/distribution and system tools still need independent
 trust/authenticity; this pin protects subsequent helper replacement, not distribution
 authenticity. SIGKILL can leave a private snapshot; no broad cleanup is attempted.
-See Proposed ADR-0065's defensive follow-up for assumptions and unverified runtime.
+See Accepted ADR-0065's defensive follow-up for assumptions and unverified runtime.
 
 User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
 ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary
@@ -275,4 +275,4 @@ this is process-interruption recovery, not a power-loss guarantee. Uninstall use
 same XDG root, checks ownership first, keeps modified/foreign files and never removes
 shared theme directories, other products or presets. Move an intentional edited/foreign
 resource to a safe backup before retrying. Optional cache refresh errors are visible;
-real GNOME/KDE/WM/cache display remains manual. Proposed ADR-0065 remains unaccepted.
+real GNOME/KDE/WM/cache display remains manual. Accepted ADR-0065 is Accepted by owner confirmation 2026-10-25; merge remains pending.

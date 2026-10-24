@@ -17264,3 +17264,20 @@ unverified, the original distinct-principal claim remains unproven, ADR-0065 sta
 Proposed and the customer-archive hold remains. Durable journal cleanup and
 receiptless-uninstall protections remain unchanged. No workflow change or remote
 automation activation is part of this local follow-up.
+
+## 2026-10-25 platform-review approval reconciliation
+
+Recorded the owner's direct confirmation of completed human architecture/ADR
+approval for ADR-0065 in its status header, ADR_INDEX approval/effectivity
+record, current policy/procedure/navigation statements and dated worklog
+reconciliation. Historical Proposed entries are retained as history; current
+status is Accepted. Confirmation/record-update date is 2026-10-25; the earlier
+approval date was not specified. Acceptance does not approve merge or certify
+unexecuted tests. All prior product/runtime evidence keeps its exact-head scope.
+
+The same closure prepares the separate helper capture CI route and explicit
+`--user-reliability` selector. TESTING/CI_CD and the repository map describe its
+nonprivileged scope, all-ten receiptless cases, bounded preparation/rollback/commit
+cleanup cuts, root/system guard and unchanged production archive hold. Results
+are recorded against the final local head in the task evidence; preparation alone
+is not a test pass or installed-resource certification.

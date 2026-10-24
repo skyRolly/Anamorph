@@ -6092,7 +6092,25 @@ absent before use on the disposable VM, then inspects its real shortcut targets.
 bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
 setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
 
-## Linux desktop/hicolor regression (Proposed ADR-0065)
+## Linux desktop/hicolor regression (Accepted ADR-0065)
+
+Current platform-review follow-up (owner confirmation 2026-10-25) also permits
+`python3 tests/linux_desktop_install_tests.py --user-reliability --staged-dir <tree> --report <path>`.
+This explicit selector refuses root, system operations, extra probes, smoke and
+namespace-permission changes. In private Bubblewrap roots it runs the four user
+cases plus all ten receiptless resource names with regular/live-link/dangling-link
+fixtures and absent-name retry; 31 bounded user cleanup cuts across preparation,
+rollback and commit (including missing old markers), retry/uninstall and unknown
+journal/state refusal. Only test-owned subprocesses in private PID roots are killed.
+This is user-mode reliability evidence, not actual sudo/root-snapshot validation or
+the full installed-resource gate. `--ordinary-only` still selects its original four
+cases. Guard-bypass mutations, system/native and excluded campaigns remain omitted.
+
+`.github/workflows/helper-capture-review.yml` provides a separate dispatch-only
+ordinary-UID source/capture route, including the delivered 12-test recorder harness.
+Its commands do not install or interpret fixture bytes. The route is prepared locally;
+publication remains blocked by the existing broad branch-push matrix. It cannot
+replace the mandatory installed-resource gate or remove the customer-archive hold.
 
 For the 2026-10-25 defensive helper maintenance task, the focused check is:
 

@@ -181,3 +181,15 @@ Linux customer archive upload blocked. The earlier green CI artifact is evidence
 for its old head only. Before merge, the complete isolated installed-resource
 gate must be restored and passed on the final head under an authorized disposable
 host. ADR-0065 remains Proposed and independent human review remains pending.
+
+## 2026-10-25 current approval reconciliation
+
+The owner directly confirmed **“all ADRs have received human approval.”**
+ADR-0065 is now **Accepted** including the delivered protected-helper snapshot amendment; human architecture/ADR review is complete.
+This supersedes earlier pending-acceptance statements in this historical
+worklog. 2026-10-25 is the confirmation/record-update date, not an invented
+earlier approval date. No reviewer identity, meeting, signed record or GitHub
+review submission is inferred. Separately required code review, unperformed
+native/manual checks and merge/publication remain separate; no test result is
+upgraded by approval. The associated implementation/policy becomes effective
+on main only after merge. Other existing Accepted decisions remain Accepted.
