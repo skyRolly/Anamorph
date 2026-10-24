@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -30,6 +31,9 @@ OBSERVATIONS = []
 OPERATIONS = []
 STAGED = None
 ARCHIVES = []
+PROGRESS_PATH = None
+STARTED = None
+FAILURES_SO_FAR = []
 
 # Called by a root-owned, read-only /usr/bin/dirname overlay only when the
 # unchanged helper asks dirname($0). The parent is the actual /bin/sh interpreting
@@ -65,6 +69,20 @@ if control.exists() and args[2]=='install':
 '''
 
 
+def write_progress(active=None):
+    if PROGRESS_PATH is None: return
+    data={'status':'in_progress','customer_archive_eligible':False,
+          'elapsed_seconds':round(time.monotonic()-STARTED,3),
+          'active_operation':active,'completed_operations':OPERATIONS,
+          'snapshot_observations':OBSERVATIONS,'cleanup_fault_cases':legacy.CLEANUP_RESULTS,
+          'failure_details':FAILURES_SO_FAR,'kernel_security_settings_changed':False,
+          'ordinary_invoking_uid':UID,'root_metadata_mocked':False,'interpreter_replaced':False}
+    # Atomic checkpoint within the task report directory. Cancellation cannot
+    # turn partial evidence into a completed gate or customer eligibility.
+    pending=PROGRESS_PATH.with_suffix('.pending')
+    pending.write_text(json.dumps(data,indent=2)+'\n'); pending.replace(PROGRESS_PATH)
+
+
 def require_disposable_runner():
     if not (sys.platform.startswith('linux') and os.getuid()==0
             and os.environ.get('GITHUB_ACTIONS')=='true'
@@ -95,7 +113,7 @@ class NativeCase(legacy.InstallCase):
         self.tools=self.root/'trusted-tools'; self.tools.mkdir()
         (self.tools/'observe.py').write_text(OBSERVER)
         wrapper=self.tools/'dirname'
-        wrapper.write_text('#!/bin/sh\nfor last do :; done\n/usr/bin/python3 /native-tools/observe.py "$last" "$PPID" || exit $?\nexec /native-real/dirname "$@"\n')
+        wrapper.write_text('#!/bin/sh\nfor last do :; done\ncase "$last" in /tmp/anamorph-desktop-helper.*/desktop-integration.sh)\n /usr/bin/python3 /native-tools/observe.py "$last" "$PPID" || exit $?;;\nesac\nexec /native-real/dirname "$@"\n')
         wrapper.chmod(0o755)
         self.audit=self.root/'audit'; self.audit.mkdir()
         self.control=self.root/'control'; self.control.mkdir()
@@ -104,7 +122,14 @@ class NativeCase(legacy.InstallCase):
         self.sudoers.write_text('Defaults !requiretty\nDefaults logfile="/native-audit/sudo.log"\n#'+str(UID)+' ALL=(root) NOPASSWD: ALL\n')
         self.sudoers.chmod(0o440)
 
+    def tearDown(self):
+        result=self._outcome.result
+        FAILURES_SO_FAR[:]=[{'test':str(case),'traceback':trace} for case,trace in result.failures+result.errors]
+        write_progress()
+
     def invoke(self, script='install.sh', mode='user', xdg=None, root=False, extra=(), command=None, fault=None, implicit=False):
+        if time.monotonic()-STARTED > 1800:
+            raise RuntimeError('bounded 30-minute native installer budget exhausted; incomplete gate')
         # Preserve real ordinary ownership for fixtures created by this root
         # test supervisor. Private system fixtures and protection metadata remain root.
         for path in self.sandbox.iterdir():
@@ -144,7 +169,13 @@ class NativeCase(legacy.InstallCase):
             argv += [s.replace('/package/','/package with spaces/') for s in command]
         else:
             argv += ['/bin/sh','/package with spaces/'+script,*([] if implicit else ['--'+mode]),*extra]
-        result=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=45)
+        active={'test':self.id(),'entry':script,'mode':mode,'entry_uid':uid,'fault':fault}
+        write_progress(active)
+        try:
+            result=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=45)
+        except subprocess.TimeoutExpired:
+            OPERATIONS.append({**active,'error':'test-owned installer subprocess exceeded 45 seconds'})
+            write_progress(); raise
         recorded=self.audit/'snapshots.jsonl'
         rows=[json.loads(line) for line in recorded.read_text().splitlines()] if recorded.exists() else []
         OBSERVATIONS.extend(rows); recorded.unlink(missing_ok=True)
@@ -153,6 +184,7 @@ class NativeCase(legacy.InstallCase):
         OPERATIONS.append({'test':self.id(),'entry':script,'mode':('system' if implicit and root else mode),'entry_uid':uid,
                            'implicit':implicit,'fault':fault,'exit_code':result.returncode,
                            'protected_snapshots':len(rows),'actual_per_operation_sudo':uid!=0 and mode=='system'})
+        write_progress()
         return result
 
     def test_real_sudo_and_root_selection(self):
@@ -237,7 +269,7 @@ class NativeCase(legacy.InstallCase):
 
 
 def main():
-    global UID,GID,STAGED
+    global UID,GID,STAGED,PROGRESS_PATH,STARTED
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--staged-dir',type=Path,required=True)
     parser.add_argument('--report',type=Path,required=True)
@@ -249,6 +281,7 @@ def main():
                                           'missing_environment_capability':str(error)},indent=2)+'\n')
         raise
     STAGED=args.staged_dir.resolve(); legacy.STAGED=STAGED
+    PROGRESS_PATH=args.report.resolve(); STARTED=time.monotonic(); write_progress()
     # The source/staged gate authenticates every script and approved asset before
     # any native installation. The archive round trip is a separate actual test.
     subprocess.run([sys.executable,str(ROOT/'scripts/check-linux-desktop.py'),'--staged-dir',str(STAGED)],check=True,stdout=subprocess.DEVNULL)

@@ -6231,3 +6231,19 @@ The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
 existing shadow-memory capability before the unchanged canary and tests. It never
 lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
 image changes no shipping compiler, dependency pin or product artifact.
+
+The test-only TSan job uses Ubuntu 24.04 container userspace on the Ubuntu 22.04
+host so the existing dependency setup and pinned Clang build use the proven package
+set. A read-only host capability check precedes setup and retains its actual value.
+Both the sanitizer canary and all state probes/suppression checks remain mandatory;
+no kernel setting or container security profile is changed. The first Jammy-native
+attempt failed during dependency setup; its exact package error was unavailable
+through the permitted GitHub read tools, so no specific cause is asserted.
+
+The first real native-gate attempt exhausted the former 40-minute Linux job
+budget without a completed report or customer upload. Its observer launched Python
+for every dirname call; the test overlay now filters snapshot paths in shell before
+starting observation. Atomic per-operation progress remains explicitly incomplete
+and ineligible until the full suite finishes. Each test-owned subprocess is bounded
+at 45 seconds, the native driver at 30 minutes, and the Linux build/test job at
+60 minutes. No cut or ownership/runtime claim is inferred from the timed-out run.

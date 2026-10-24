@@ -682,7 +682,7 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
@@ -3873,6 +3873,10 @@ jobs:
   # dependency on this workflow.
   tsan:
     runs-on: ubuntu-22.04
+    container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 45
     if: >-
       github.event_name != 'pull_request' ||
@@ -3890,6 +3894,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Check existing sanitizer shadow-memory capability
+        id: tsan_host
+        run: |
+          mkdir -p build
+          bits=$(cat /proc/sys/vm/mmap_rnd_bits)
+          case "$bits" in ''|*[!0-9]*) echo '::error::Cannot determine existing TSan host capability'; exit 1;; esac
+          printf '{"mmap_rnd_bits":%s,"kernel_settings_changed":false,"compatible":%s}\n' \
+            "$bits" "$([ "$bits" -le 28 ] && echo true || echo false)" > build/tsan-host.json
+          if [ "$bits" -gt 28 ]; then
+            echo "::error::ThreadSanitizer requires a disposable runner with vm.mmap_rnd_bits <= 28 already configured; observed $bits. No kernel setting was changed."
+            exit 1
+          fi
+
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
         with:
@@ -3901,14 +3918,6 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-tsan-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
           restore-keys: ccache-ubuntu-tsan-clang${{ env.ANAMORPH_CLANG_VERSION }}-
-
-      - name: Check existing sanitizer shadow-memory capability
-        run: |
-          bits=$(cat /proc/sys/vm/mmap_rnd_bits)
-          if [ "$bits" -gt 28 ]; then
-            echo "::error::ThreadSanitizer requires a disposable runner with vm.mmap_rnd_bits <= 28 already configured; observed $bits. No kernel setting was changed."
-            exit 1
-          fi
 
       - name: ThreadSanitizer liveness canary (the lane must be able to fail)
         run: |
@@ -4017,6 +4026,14 @@ jobs:
             grep -nE '^[a-z_]+:' tests/tsan-suppressions.txt
             exit 1
           fi
+
+      - name: Retain actual TSan host capability
+        if: ${{ !cancelled() && steps.tsan_host.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-TSan-host
+          path: build/tsan-host.json
+          if-no-files-found: error
 
   # -------------------------------------------------------------------------
   # State fuzzing (Linux). libFuzzer over `setStateInformation`, the one entry
