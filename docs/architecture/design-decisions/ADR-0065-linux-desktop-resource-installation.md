@@ -39,8 +39,8 @@ without deleting foreign resources or weakening binary replacement.
   Extraction/portable use installs nothing. The helper uses POSIX shell/text tools and
   Linux core utilities, with no Python/GTK/Bubblewrap product runtime dependency.
 - User data root is absolute XDG_DATA_HOME, otherwise HOME/.local/share. Ignore relative
-  XDG_DATA_HOME with a diagnostic; trim trailing slashes. HOME must be absolute. Dot
-  components/control characters are explicitly refused. Root --user remains refused.
+  XDG_DATA_HOME with a diagnostic; trim trailing slashes. HOME must be absolute. Control characters are refused; dot/redundant path components normalize lexically
+  only after original ancestry has passed the symlink/ownership checks. Root --user remains refused.
   System data root is /usr/local/share, independent of root HOME/XDG environment.
 - Preserve binary destinations, mode/default/privilege semantics and both required
   payloads. Install applications/tech.rolly.anamorph.desktop and nine exact hicolor

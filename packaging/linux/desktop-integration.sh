@@ -30,7 +30,6 @@ present() { [ -e "$1" ] || [ -L "$1" ]; }
 
 absolute_path() {
     case "$1" in /*) ;; *) fail 'an absolute destination is required' ;; esac
-    case "/${1#/}/" in */../*|*/./*|*//*) fail 'dot or empty destination components are unsupported' ;; esac
     if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then fail 'control character in destination'; fi
 }
 absolute_path "$DATA"
@@ -221,6 +220,13 @@ refresh_caches() {
     fi
 }
 
+safe_parent "$DATA"
+# Check the original ancestry BEFORE lexical normalization: resolving a/../b
+# first could conceal a symlink at a. Coreutils -s never follows symlinks.
+DATA=$(realpath -ms -- "$DATA")
+STATE="$DATA/.tech.rolly.anamorph"
+TXN="$STATE/transaction"
+RECEIPT="$STATE/receipt"
 safe_parent "$DATA"
 if present "$STATE"; then
     private_dir "$STATE"

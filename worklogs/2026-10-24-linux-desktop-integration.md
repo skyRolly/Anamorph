@@ -47,7 +47,8 @@ per-operation sudo, stage/park/reconcile, paths and scratch cleanup remain as be
 One shared resource shell helper is shipped beside both scripts. User XDG absolute
 root (relative ignored with warning), fallback HOME/.local/share; system /usr/local/share
 ignores root HOME/XDG. Absolute HOME required; trailing data-root slash supported;
-dot/control path components are explicitly refused rather than ambiguously resolved.
+control characters are refused; dot/redundant components normalize only after the
+original ancestry passes safety checks, so normalization cannot conceal a symlink.
 No GTK/Python/Bubblewrap runtime dependency; use shell/POSIX text and base Linux tools.
 
 Rejected PATH-only Exec: desktop sessions need not expose ~/.local/bin. Escape the
@@ -132,3 +133,8 @@ now admits only format-v1, receipt and transaction before any recovery/removal.
 A regression requires both foreign and owned files/binaries to remain intact
 on refusal. The GTK test also exercises a real parent theme inheriting hicolor,
 in addition to direct lookup, at eight sizes × two scales. The suite has 20 cases.
+
+Absolute XDG coverage also includes redundant separators and dot components. The
+helper checks original ancestry first, then uses coreutils realpath -ms without
+following links. A link hidden behind /.. still fails. Relative XDG remains ignored
+per specification; executable path semantics and binary replacement stay unchanged.

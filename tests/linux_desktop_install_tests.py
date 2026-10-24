@@ -152,6 +152,9 @@ class InstallCase(unittest.TestCase):
         self.good(xdg='/sandbox/custom data/')
         self.assertTrue((self.sandbox / 'custom data' / DESKTOP).is_file()); self.assertFalse(self.data.exists())
         self.good(script='uninstall.sh', xdg='/sandbox/custom data/')
+        self.good(xdg='/sandbox/unused/.././custom data//')
+        self.assertTrue((self.sandbox / 'custom data' / DESKTOP).is_file())
+        self.good(script='uninstall.sh', xdg='/sandbox/custom data')
         result = self.good(xdg='relative/data')
         self.assertIn('relative XDG_DATA_HOME ignored', result.stderr); self.assertTrue((self.data / DESKTOP).is_file())
         self.bad(message='--user cannot', root=True)
@@ -193,6 +196,7 @@ class InstallCase(unittest.TestCase):
         outside = self.home / 'outside'; outside.mkdir()
         (self.data / 'icons').symlink_to('/sandbox/home/outside')
         self.bad(message='symlink in destination ancestry')
+        self.bad(xdg='/sandbox/home/.local/share/icons/../..', message='symlink in destination ancestry')
         self.assertEqual(list(outside.iterdir()), [])
 
     def test_parent_symlink_preserved(self):
