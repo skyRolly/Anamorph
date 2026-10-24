@@ -11,33 +11,24 @@ the two-field reset, partial resets, retained custom overrides and intentional l
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
 
-## Temporary platform-review source publication (2026-10-25)
+## Normal validation restored (2026-10-25)
 
-For `skyRolly/Anamorph` only, `build.yml` routes push/dispatch events for `codex/macos-installed-receipts` (#174), `codex/linux-desktop-native-icon` (#175)
-and matching same-repository PR events into `main` through `validation-route`.
-The feature commit defines the push workflow; the PR merge ref defines the
-`pull_request` workflow. Both run documentation and source lints. The ordinary
-helper-capture recorder also runs in Anamorph #175's `source-lint`; it executes
-no fixture helper and models root metadata rather than proving native protection.
-All existing runtime/build/package jobs, including the PR `merge-check`, are
-excluded by job conditions before their runner or matrix starts. Their commands,
-required contracts and the customer-archive hold remain intact. The explicit
-`full-validation-pending` job fails, keeping incomplete validation visible.
+The temporary source-publication router and deliberate pending marker are retired.
+Build push, PR and manual events use the normal deduplication conditions. Release
+rehearsals reuse the full Build workflow at the caller commit, including on review
+branches; reusable calls inherit the caller's event/ref. No branch exception or
+invocation input remains. `scripts/test-workflow-routing.py` reads the production
+Build/Release files and checks the review-branch dispatch collision, tags, main,
+unrelated branches and fork PRs. Rehearsals retain the non-publishing release guard.
 
-CodeQL retains actions and C++ manual analysis, with unchanged queries/targets.
-For these same contexts only, its manual build uses preinstalled runner dependencies
-and skips `setup-linux.sh` (administrative package provisioning). Missing dependencies
-are an analysis failure, not a success or waiver. MSVC security analysis and dependency
-review remain enabled under their existing event/path filters; their builds compile
-analysis targets without running DSP/state suites or an installer. Existing read-only
-permissions and narrowly scoped security-report permissions are unchanged.
-
-No `pull_request_target`, `workflow_run` or downstream repository workflow is added.
-Release-tag reuse, main and unrelated branches retain their normal job selection.
-Body-only PR edits trigger none of the listed workflow events. This temporary routing
-must be removed and normal applicable merge checks completed before merging these PRs;
-source/static results do not certify native installations, GUI/DAW behavior or artifacts.
-The owner-confirmed ADR acceptance is complete and is independent of this test backlog.
+C++ CodeQL again runs `scripts/setup-linux.sh` before its unchanged manual target
+build, extraction, queries and SARIF upload. The ordinary source checks remain
+independent of native installation evidence. Existing project runtime, sanitizer,
+compatibility and bounded fuzz gates run under their original event conditions.
+Kernel/security settings are never changed: an unsuitable sanitizer or installer
+isolation capability must fail with its precise missing prerequisite. The Accepted
+ADRs, artifact gates and separate manual/GUI/DAW backlog remain in force. Earlier
+publication-only evidence remains historical and does not certify these new runs.
 
 ## Icon resource checks
 
