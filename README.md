@@ -204,3 +204,8 @@ Native DAW/receipt-installation validation remains unverified.
 
 Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-installer-icon.md),
 Accepted ADR-0064; owner approval and #172 merge are recorded, with native visual limits preserved.
+
+
+Installed-receipt policy proposal: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) remains Proposed.
+Native fixtures are in `scripts/fixtures/macos-receipts`;
+`scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

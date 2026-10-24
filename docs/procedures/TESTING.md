@@ -6002,15 +6002,16 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
   matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
 
-- **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
-  exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable
-  components, payload completeness), the staged Linux tree — but never runs an installation,
-  because installing needs elevation and would mutate the runner. Everything that only exists at
-  *install* time is therefore manual. **INC-012** is what that gap costs: bundle relocation is a
+- **Installation coverage is platform-specific (updated 2026-10-24).** Merged #172
+  already runs Windows install/reinstall/uninstall tests on a disposable VM. This branch
+  adds actual default-full Mac installation and receipt/payload verification on its own
+  disposable hosted Mac. Expanded package metadata checks remain in place. Linux desktop
+  integration is a separate PR; no GUI/DAW appearance or Mac component-selection/upgrade
+  certification follows from these automated installation checks. **INC-012** is what that gap costs: bundle relocation is a
   property of Installer.app's behaviour, invisible in the archive, and every manual check until
   then had been a first install onto a machine with no prior copy — the one case it cannot affect.
   The checks that remain owed to a human:
-  - **macOS `.pkg`, per format (VST3 / AU / app), four cases each:** fresh machine · over an
+  - **macOS `.pkg`, each format selected independently (VST3 / AU / app), four cases each:** fresh machine · over an
     existing install · after moving the installed item elsewhere · after deleting it. Each must end
     with the item present at the destination in
     `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour", and a moved copy must be left
@@ -6089,3 +6090,36 @@ ignores /GROUP with DisableProgramGroupPage=yes. It requires the product menu gr
 absent before use on the disposable VM, then inspects its real shortcut targets. One good/two
 bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
 setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
+
+## Native installed-receipt smoke test
+
+`scripts/test-macos-receipts.py --self-test` exercises the installed-metadata parser,
+payload comparison, receipt ownership, separation and environment guards. The macOS
+packaging job runs it before `--package <actual.pkg> --staged-dir <validated tree>`.
+Only this repository's disposable GitHub-hosted macOS VM may install. Existing product
+receipts or system bundles cause refusal; no receipt is forgotten and no plug-in folder
+is deleted. The real installer targets `/`; VM disposal is cleanup.
+
+The gate reads real `pkgutil --pkgs`, `--pkg-info`, `--pkg-info-plist` and `--files`, checks
+the three canonical `.vst3`/`.au`/`.app` IDs, versions, volume, installation locations,
+component-owned file paths, installed bundle IDs/AU codes, and exact installed versus
+staged payload bytes. Pre-existing receipt IDs remain present; sibling receipt metadata/file lists and
+any sibling payload hashes must be unchanged. An empty sibling snapshot does not prove both products were co-installed.
+The installed-receipts artifact retains JSON, installer log and raw receipt metadata.
+PKG upload requires this gate. The smoke test covers default full installation; choice
+combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
+Linux self-tests are parser evidence, never a native installation pass.
+
+
+Review-closure enforcement (2026-10-24): native `install-location` fixtures are
+under `scripts/fixtures/macos-receipts`; the alternative `location` field is rejected.
+Ownership covers all payload files and symlinks, not just plist/executable. Resource,
+signature and symlink omission regressions leave both trees identical; bypass mutants
+must fail specifically on missing receipt ownership. Content equality remains independent.
+
+`receipt_liveness` explicitly gates native installation and PKG upload. Run
+`python3 scripts/test-macos-receipt-gates.py` for production-condition fault replay,
+including `!cancelled()` overriding implicit success. Failed/skipped liveness runs no
+installer and yields no PKG; failed installation yields retained diagnostics and no PKG.
+The separate bundle ZIP keeps its existing independent gate; this changes no release policy.
+Raw native evidence also retains host/head/package digest and actual choice XML.

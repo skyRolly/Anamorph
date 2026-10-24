@@ -195,3 +195,12 @@ the inventory, stack dependencies, comparisons and native limitations for Accept
 `scripts/check-installer-icon.py` checks source ownership and actual primary PE groups;
 `scripts/test-windows-installer.ps1` checks disposable-VM component/reinstall/uninstall behavior
 and exposes a portable snapshot self-test. Evidence: `worklogs/2026-10-23-windows-installer-icon.md`.
+
+`scripts/test-macos-receipts.py` adds installed PackageKit/pkgutil receipt validation
+on the repository's disposable hosted Mac only; `--self-test` needs no native installer.
+It never forgets receipts or removes installation folders. See the CI/testing procedures.
+
+
+Installed-receipt policy proposal: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) remains Proposed.
+Native fixtures are in `scripts/fixtures/macos-receipts`;
+`scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

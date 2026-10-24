@@ -1,0 +1,10 @@
+Anamorph.component
+Anamorph.component/Contents
+Anamorph.component/Contents/Info.plist
+Anamorph.component/Contents/MacOS
+Anamorph.component/Contents/MacOS/Anamorph
+Anamorph.component/Contents/PkgInfo
+Anamorph.component/Contents/Resources
+Anamorph.component/Contents/Resources/AppIcon.icns
+Anamorph.component/Contents/_CodeSignature
+Anamorph.component/Contents/_CodeSignature/CodeResources

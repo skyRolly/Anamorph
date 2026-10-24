@@ -156,3 +156,34 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    only where JUCE is checked out, so it runs in `linux` rather than beside the lint. Both are
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
+
+## Native installed macOS receipt gate (Proposed ADR-0066)
+
+- After actual PKG creation, `receipt_liveness` must successfully run both
+  `scripts/test-macos-receipts.py --self-test` and
+  `scripts/test-macos-receipt-gates.py` in that same macOS job. Native installation
+  and PKG artifact upload explicitly require its successful outcome; `!cancelled()`
+  does not imply `success()` and must never bypass failed/skipped liveness.
+- The production gate remains a default-full fresh install with exactly three
+  canonical component receipts. Only an explicitly authorized disposable hosted Mac
+  may install. Existing product paths/receipts cause refusal; no receipt forgetting.
+- Parse the measured `install-location` key, normalizing its volume-relative value.
+  Missing/wrong metadata and a `location`-only replacement must fail. Retain raw
+  native plists/file lists as provenance-bearing fixtures; do not invent fallbacks.
+- Receipt ownership covers every staged/installed regular file and symlink beneath
+  its named component, including resources/signatures. Accept measured directory
+  entries; reject omitted leaves, foreign/absolute/traversal/malformed/unknown paths.
+  Full content and symlink-target equality remains an independent requirement.
+- Same-job good/bad fixtures must expose omissions while filesystem trees match,
+  and detect an ownership-bypass mutant for that specific reason. Fault injection
+  against the actual workflow conditions must prove failed/skipped liveness schedules
+  neither installation nor PKG upload; installation failure blocks PKG upload while
+  retaining diagnostics from the started installation. A job's red status is insufficient.
+- The loose macOS bundle ZIP has its existing independent build/both-slice/staging
+  gate (and native icon checks where applicable). It is not a PKG receipt and need
+  not be suppressed by a receipt-only failure. CI evidence artifacts are not a
+  published release; release/signing policy is unchanged.
+- Native reports record exact source/run, OS/architecture, package digest, raw
+  installer/pkgutil output and measured choice XML. Selected-component and actual
+  two-product co-installation need separate selection-aware, fresh-VM evidence; an
+  empty sibling snapshot never establishes them. GUI/DAW results remain separate.
