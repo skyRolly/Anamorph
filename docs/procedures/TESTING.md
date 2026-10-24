@@ -6126,6 +6126,16 @@ settings; self-hosted/developer/wrong-repository contexts are refused. Installat
 still runs in real private filesystem/user namespaces and fails if isolation cannot
 start. This enables the sandbox rather than replacing native tests or their gates.
 
+**Restricted follow-up, 2026-10-25:** run
+`python3 tests/linux_desktop_install_tests.py --ordinary-only` for four user-mode
+fresh/reinstall/uninstall, missing-receipt, GIO/hicolor and clean-archive checks in
+local disposable roots. That option forbids hosted namespace permission changes and
+additional selected probes. It excludes system/sudo, fault injection, SIGKILL cleanup
+cuts, hostile private-state cases and mutations. The full staged entry-point gate is
+unverified on the revised head and blocks its customer archive in CI. The earlier
+full run is historical regression evidence, not a substitute for the required
+new-head installed-resource gate before merge.
+
 Adversarial uninstall follow-up: at 787752f an unexpected file in the private
 ownership root survived, but owned desktop resources had already been removed
 before rmdir failed. Reproduced with actual entry points in isolation. The root

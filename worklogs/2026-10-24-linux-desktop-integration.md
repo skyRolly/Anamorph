@@ -138,3 +138,46 @@ Absolute XDG coverage also includes redundant separators and dot components. The
 helper checks original ancestry first, then uses coreutils realpath -ms without
 following links. A link hidden behind /.. still fails. Relative XDG remains ignored
 per specification; executable path semantics and binary replacement stay unchanged.
+
+## 2026-10-25 recovery follow-up and validation limit
+
+Two entry-point defects were reproduced before this follow-up. If cleanup was
+interrupted after removing `transaction/format-v1` and other journal entries, the
+next install refused the otherwise valid transaction and required manual state
+repair. If an uninstall found no receipt, it returned success even when one of the
+ten managed names held an unowned desktop resource; its caller then deleted the
+existing Standalone and VST3 binaries. The old-code reproductions and exact shell
+outputs are retained in the task-local evidence directory.
+
+The helper now writes an exact cleanup plan outside the journal before deletion.
+It binds the public receipt and ten resource hashes, plus the owner/mode/digest of
+every private entry. Retry verifies the surviving plan and public state, accepts
+only the expected partially removed entries, and deletes exact named files and
+directories. The plan is removed last. A committed transaction checks that its
+receipt and all ten public resources still exist before retirement. Missing-receipt
+uninstall scans all ten names, including dangling links, before returning to the
+binary-removal caller; an entirely absent resource set remains idempotent.
+
+Before the owner's narrowed testing direction, the local full isolated entry-point
+run passed 23 cases in 546.365 seconds, including interrupted preparation,
+rollback and committed cleanup cuts. It was run on an uncommitted variant that also
+contained a speculative privileged-helper experiment. That experiment was removed
+from the product branch because its cross-user threat was not established. The
+full run is retained as historical defect evidence, not certified validation of
+the final revised head. The speculative native sudo harness was not executed.
+
+The owner then directed this round to skip security-sensitive, sudo,
+privilege-boundary and adversarial testing. The final local `--ordinary-only` run
+passed four user-mode entry-point cases in 18.923 seconds with no namespace-setting
+change: fresh/repeat/update/uninstall, missing-receipt refusal and safe retry,
+GIO/hicolor launcher, and clean portable archive extraction. Source asset hashes
+remain the exact approved B0 values. New-head system/sudo, fault-injection,
+SIGKILL, mutation, hostile-state and staged native installation checks remain
+**unverified** under that direction.
+
+The revised workflow retains ordinary source/staged-byte validation but emits an
+explicit unverified installation report and fails `desktop_install`, leaving the
+Linux customer archive upload blocked. The earlier green CI artifact is evidence
+for its old head only. Before merge, the complete isolated installed-resource
+gate must be restored and passed on the final head under an authorized disposable
+host. ADR-0065 remains Proposed and independent human review remains pending.

@@ -14,6 +14,7 @@ STATE="$DATA/.tech.rolly.anamorph"
 TXN="$STATE/transaction"
 RECEIPT="$STATE/receipt"
 FORMAT='tech.rolly.anamorph desktop resources v1'
+CLEANUP_FORMAT='tech.rolly.anamorph verified cleanup v1'
 PATHS='applications/tech.rolly.anamorph.desktop
 icons/hicolor/16x16/apps/tech.rolly.anamorph.png
 icons/hicolor/24x24/apps/tech.rolly.anamorph.png
@@ -133,9 +134,7 @@ publish() {
     [ ! -L "$2" ] || fail "symlink substituted at destination: $2"
     mv -fT -- "$scratch" "$2"
 }
-transaction_shape() {
-    private_dir "$TXN/format-v1"
-    [ -z "$(ls -A -- "$TXN/format-v1")" ] || fail 'unknown resource transaction format'
+journal_layout() {
     # Count entries by fixed allowed paths, not line-delimited discovered names.
     # Even an unknown name containing a newline cannot impersonate two entries.
     allowed='pid id ready committed new-receipt old-receipt inputs/SHA256SUMS'
@@ -147,6 +146,11 @@ transaction_shape() {
         part=$(dirname -- "$file")
         while [ "$part" != . ]; do printf '%s\n' "$part"; part=$(dirname -- "$part"); done
     done; } | LC_ALL=C sort -u)
+}
+transaction_shape() {
+    private_dir "$TXN/format-v1"
+    [ -z "$(ls -A -- "$TXN/format-v1")" ] || fail 'unknown resource transaction format'
+    journal_layout
     known=0
     for file in $allowed; do
         if present "$TXN/$file"; then owned_file "$TXN/$file"; known=$((known + 1)); fi
@@ -161,7 +165,157 @@ transaction_shape() {
     actual=$(find "$TXN" -mindepth 1 -printf x | wc -c)
     [ "$actual" -eq "$known" ] || fail 'unknown transaction entries preserved; recovery refused'
 }
+
+# The cleanup authority lives OUTSIDE the tree being deleted. It binds the
+# public state and every remaining journal entry, so losing format-v1, ready,
+# committed or new-receipt during deletion cannot turn cleanup back into rollback.
+cleanup_plan_shape() {
+    owned_file "$CLEANUP"
+    [ "$(stat -c '%a' -- "$CLEANUP")" = 600 ] || fail 'unsafe cleanup plan mode'
+    [ "$(head -n 1 -- "$CLEANUP")" = "$CLEANUP_FORMAT" ] || fail 'unknown cleanup plan format'
+    cleanup_receipt=$(sed -n '2p' "$CLEANUP")
+    case "$cleanup_receipt" in -) ;; *[!0-9a-f]*|'') fail 'invalid cleanup receipt digest' ;; *) [ "${#cleanup_receipt}" -eq 64 ] || fail 'invalid cleanup receipt digest' ;; esac
+    cleanup_pid=$(sed -n '3p' "$CLEANUP")
+    case "$cleanup_pid" in ''|*[!0-9]*|0) fail 'invalid cleanup process ID' ;; esac
+    if [ "$cleanup_pid" != "$$" ] && kill -0 "$cleanup_pid" 2>/dev/null; then fail 'another desktop resource operation is running'; fi
+    journal_layout
+    public_paths=$(tail -n +4 -- "$CLEANUP" | awk '$1 == "p" {print $4}' | LC_ALL=C sort)
+    [ "$public_paths" = "$(printf '%s\n' "$PATHS" | LC_ALL=C sort)" ] || fail 'cleanup public path set differs'
+    duplicates=$(tail -n +4 -- "$CLEANUP" | awk '{print $1, $4}' | LC_ALL=C sort | uniq -d)
+    [ -z "$duplicates" ] || fail 'duplicate cleanup entry'
+    tail -n +4 -- "$CLEANUP" | while read -r entry_kind entry_mode entry_digest entry_path extra; do
+        [ -z "${extra:-}" ] && [ -n "$entry_path" ] || fail 'malformed cleanup entry'
+        case "$entry_kind" in
+            p) case " $PATHS " in *"$entry_path"*) ;; *) fail 'foreign cleanup public path' ;; esac
+               [ "$entry_mode" = - ] || fail 'invalid cleanup public mode' ;;
+            f) case " $allowed " in *" $entry_path "*) ;; *) fail 'foreign cleanup file' ;; esac ;;
+            d) case "
+$directories
+" in *"
+$entry_path
+"*) ;; *) fail 'foreign cleanup directory' ;; esac ;;
+            *) fail 'unknown cleanup entry type' ;;
+        esac
+        if [ "$entry_kind" != p ]; then
+            case "$entry_mode" in ''|*[!0-7]*) fail 'invalid cleanup entry mode' ;; esac
+            [ "${#entry_mode}" -ge 3 ] && [ "${#entry_mode}" -le 4 ] || fail 'invalid cleanup entry mode'
+        fi
+        case "$entry_digest" in
+            -) [ "$entry_kind" != f ] || fail 'missing cleanup file digest' ;;
+            *[!0-9a-f]*|'') fail 'invalid cleanup digest' ;;
+            *) [ "${#entry_digest}" -eq 64 ] && [ "$entry_kind" != d ] || fail 'invalid cleanup digest' ;;
+        esac
+    done
+}
+cleanup_public_state() {
+    if [ "$cleanup_receipt" = - ]; then
+        ! present "$RECEIPT" || fail 'cleanup ownership receipt changed'
+    else
+        receipt_shape "$RECEIPT"
+        [ "$(hash "$RECEIPT")" = "$cleanup_receipt" ] || fail 'cleanup ownership receipt changed'
+    fi
+    tail -n +4 -- "$CLEANUP" | while read -r entry_kind entry_mode entry_digest entry_path; do
+        [ "$entry_kind" = p ] || continue
+        safe_parent "$(dirname -- "$DATA/$entry_path")"
+        if [ "$entry_digest" = - ]; then
+            ! present "$DATA/$entry_path" || fail 'foreign public resource blocks cleanup'
+        else
+            owned_file "$DATA/$entry_path"
+            [ "$(hash "$DATA/$entry_path")" = "$entry_digest" ] || fail 'foreign public resource blocks cleanup'
+        fi
+    done
+}
+cleanup_tree_shape() {
+    private_dir "$1"
+    remaining_count=0
+    # Read without a pipeline: the byte-count comparison needs this shell's count.
+    while read -r entry_kind entry_mode entry_digest entry_path; do
+        case "$entry_kind" in f|d) ;; *) continue ;; esac
+        present "$1/$entry_path" || continue
+        [ ! -L "$1/$entry_path" ] || fail 'linked cleanup entry preserved'
+        [ "$(stat -c '%u %a' -- "$1/$entry_path")" = "$OWNER $entry_mode" ] || fail 'cleanup entry owner/mode changed'
+        if [ "$entry_kind" = f ]; then
+            owned_file "$1/$entry_path"
+            [ "$(hash "$1/$entry_path")" = "$entry_digest" ] || fail 'foreign journal content blocks cleanup'
+        else [ -d "$1/$entry_path" ] || fail 'cleanup directory changed'; fi
+        remaining_count=$((remaining_count + 1))
+    done < "$CLEANUP"
+    [ "$(find "$1" -mindepth 1 -printf x | wc -c)" -eq "$remaining_count" ] || fail 'unknown cleanup entries preserved'
+}
+resume_cleanup() {
+    cleanup_plan_shape
+    cleanup_public_state
+    if present "$TXN"; then
+        ! present "$RETIRED" || fail 'both active and retired journals exist'
+        cleanup_tree_shape "$TXN"
+        mv -T -- "$TXN" "$RETIRED"
+    fi
+    if present "$RETIRED"; then
+        cleanup_tree_shape "$RETIRED"
+        # A deliberately early directory deletion proves cleanup is independent
+        # of the old mandatory marker; all other removals are exact planned names.
+        if present "$RETIRED/format-v1"; then rmdir -- "$RETIRED/format-v1"; fi
+        while read -r entry_kind entry_mode entry_digest entry_path; do
+            [ "$entry_kind" = f ] || continue
+            if present "$RETIRED/$entry_path"; then
+                owned_file "$RETIRED/$entry_path"
+                [ "$(hash "$RETIRED/$entry_path")" = "$entry_digest" ] || fail 'foreign journal content blocks cleanup'
+                rm -- "$RETIRED/$entry_path"
+            fi
+        done < "$CLEANUP"
+        cleanup_dirs=$(awk '$1 == "d" {print length($4), $4}' "$CLEANUP" | LC_ALL=C sort -rn | cut -d ' ' -f 2-)
+        for entry_path in $cleanup_dirs; do
+            if present "$RETIRED/$entry_path"; then rmdir -- "$RETIRED/$entry_path"; fi
+        done
+        rmdir -- "$RETIRED"
+    fi
+    # Last: a killed run with no retired tree still verifies public state, then
+    # removes this regular authority file. It never recursively deletes state.
+    rm -- "$CLEANUP"
+}
+cleanup_document() {
+    printf '%s\n' "$CLEANUP_FORMAT"
+    if present "$RECEIPT"; then hash "$RECEIPT"; else printf '%s\n' -; fi
+    printf '%s\n' "$1"
+    for entry_path in $PATHS; do
+        if present "$DATA/$entry_path"; then entry_digest=$(hash "$DATA/$entry_path"); else entry_digest=-; fi
+        printf 'p - %s %s\n' "$entry_digest" "$entry_path"
+    done
+    for entry_path in $allowed; do
+        if present "$TXN/$entry_path"; then
+            printf 'f %s %s %s\n' "$(stat -c '%a' -- "$TXN/$entry_path")" "$(hash "$TXN/$entry_path")" "$entry_path"
+        fi
+    done
+    for entry_path in $directories; do
+        if present "$TXN/$entry_path"; then
+            printf 'd %s - %s\n' "$(stat -c '%a' -- "$TXN/$entry_path")" "$entry_path"
+        fi
+    done
+}
+retire_transaction() {
+    check_destinations
+    journal_layout
+    if present "$CLEANUP_NEW"; then
+        owned_file "$CLEANUP_NEW"
+        [ "$(stat -c '%a' -- "$CLEANUP_NEW")" = 600 ] || fail 'unsafe cleanup draft mode'
+        draft_pid=$(sed -n '3p' "$CLEANUP_NEW")
+        case "$draft_pid" in ''|*[!0-9]*) draft_pid=$$ ;; esac
+        if [ "$draft_pid" != "$$" ] && kill -0 "$draft_pid" 2>/dev/null; then fail 'another desktop resource operation is running'; fi
+        # An interrupted write may leave only a prefix. Its bytes must match the
+        # document for this still-validated journal; a magic header alone is not
+        # authority to overwrite foreign control content.
+        draft_document=$(cleanup_document "$draft_pid")
+        draft_size=$(stat -c '%s' -- "$CLEANUP_NEW")
+        printf '%s\n' "$draft_document" | head -c "$draft_size" | cmp -s -- "$CLEANUP_NEW" - || fail 'foreign cleanup draft preserved'
+    fi
+    cleanup_document_value=$(cleanup_document "$$")
+    (umask 077; printf '%s\n' "$cleanup_document_value" > "$CLEANUP_NEW")
+    mv -T -- "$CLEANUP_NEW" "$CLEANUP"
+    resume_cleanup
+}
 recover() {
+    if present "$CLEANUP"; then resume_cleanup; return; fi
+    ! present "$RETIRED" || fail 'retired journal lacks verified cleanup authority'
     present "$TXN" || return 0
     private_dir "$TXN"
     if [ ! -e "$TXN/format-v1" ] && [ -z "$(ls -A -- "$TXN")" ]; then rmdir -- "$TXN"; return 0; fi
@@ -175,7 +329,7 @@ recover() {
     fi
     # Until ready exists, no public resource has been written. The entire
     # incomplete preparation is confined to this checked private product tree.
-    if [ ! -f "$TXN/ready" ]; then rm -rf -- "$TXN"; return 0; fi
+    if [ ! -f "$TXN/ready" ]; then retire_transaction; return 0; fi
     transaction_id=$(cat "$TXN/id")
     case "$transaction_id" in ''|*[!0-9-]*) fail 'invalid transaction scratch ID' ;; esac
     receipt_shape "$TXN/new-receipt"
@@ -207,9 +361,12 @@ recover() {
         # discard backups if someone has replaced the current ownership record.
         cmp -s -- "$RECEIPT" "$TXN/new-receipt" || fail 'committed ownership receipt changed'
         check_destinations
+        for relative in $PATHS; do
+            present "$DATA/$relative" || fail 'committed resource is missing'
+        done
     fi
     clean_temps
-    rm -rf -- "$TXN"
+    retire_transaction
 }
 refresh_caches() {
     if command -v update-desktop-database >/dev/null 2>&1 && [ -d "$DATA/applications" ]; then
@@ -227,11 +384,14 @@ DATA=$(realpath -ms -- "$DATA")
 STATE="$DATA/.tech.rolly.anamorph"
 TXN="$STATE/transaction"
 RECEIPT="$STATE/receipt"
+RETIRED="$STATE/retired"
+CLEANUP="$STATE/cleanup-plan"
+CLEANUP_NEW="$STATE/cleanup-plan.new"
 safe_parent "$DATA"
 if present "$STATE"; then
     private_dir "$STATE"
     known=0
-    for entry in format-v1 receipt transaction; do
+    for entry in format-v1 receipt transaction retired cleanup-plan cleanup-plan.new; do
         if present "$STATE/$entry"; then known=$((known + 1)); fi
     done
     actual=$(find "$STATE" -mindepth 1 -maxdepth 1 -printf x | wc -c)
@@ -241,9 +401,14 @@ if present "$STATE"; then
         [ -z "$(ls -A -- "$STATE/format-v1")" ] || fail 'foreign ownership state directory'
     elif [ -n "$(ls -A -- "$STATE")" ]; then fail 'unrecognised nonempty ownership state directory'; fi
     recover
+    ! present "$CLEANUP_NEW" || fail 'orphaned cleanup draft preserved'
 fi
 if [ "$ACTION" = uninstall ]; then
     if ! present "$RECEIPT"; then
+        for relative in $PATHS; do
+            safe_parent "$(dirname -- "$DATA/$relative")"
+            ! present "$DATA/$relative" || fail "resource without ownership receipt preserved: $DATA/$relative"
+        done
         if [ -d "$STATE" ] && [ "$(ls -A -- "$STATE")" = format-v1 ]; then
             rmdir -- "$STATE/format-v1"
             rmdir -- "$STATE"

@@ -172,3 +172,12 @@ reinstall and exact safe uninstall. Deliberately disabled ownership/parent/sourc
 checks must be caught by their negative probes. No live workstation destinations are
 used; inability to create isolated namespaces fails visibly. These tests do not certify
 GNOME/KDE display, icon-cache appearance, actual DAWs or embedded ELF icons.
+
+For the 2026-10-25 review continuation, the owner deferred sudo, privilege-boundary
+and adversarial testing. `--ordinary-only` runs four isolated user-mode entry-point
+cases locally without changing kernel settings. It does not satisfy the complete
+installed-resource gate. On the updated PR head, CI checks approved source and staged
+bytes, records the deferred installation as **unverified**, fails that step, and
+withholds the Linux customer archive. The previous head's green native gate is
+historical evidence, not a pass for new code. Restore and pass the full gate before
+the branch can be considered merge-ready; this paragraph grants no test waiver.

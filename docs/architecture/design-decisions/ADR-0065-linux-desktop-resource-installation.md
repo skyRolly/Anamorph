@@ -64,12 +64,21 @@ without deleting foreign resources or weakening binary replacement.
   on the next install/uninstall. Validate current hashes before rollback; preserve
   foreign changes and backups if recovery cannot safely complete. This is process-
   interruption recovery, not a filesystem power-loss durability claim.
+- Before retiring a committed journal, verify the public receipt and all ten
+  installed resources. Write a private cleanup plan outside the journal that binds
+  the public hashes and exact journal entries. Delete only those entries; a retry
+  verifies the surviving plan and public state even if `format-v1`, `ready`,
+  `committed`, or `new-receipt` was already removed. Unknown or changed contents
+  are preserved rather than swept up.
 - Binary replacement stays independent as before; a resource failure exits nonzero
   and reports no successful integration, while valid newly installed binaries may
   remain. Retry reconciles resources. Same-root operations must be serialized; a live
   transaction PID is refused. User/system resources and receipts remain isolated.
 - Uninstall verifies all resource ownership first and removes only exact owned files;
   retry tolerates already missing owned files. Keep foreign/modified files and presets.
+  If the receipt is absent, inspect all ten destination names (including dangling
+  links) before the caller removes either binary. Any occupied name is a conflict;
+  a fully absent resource set permits an idempotent uninstall.
   Use the same XDG root as installation. Optional desktop/icon cache refresh failures
   are visible warnings; no shared theme directory/cache is deleted to force a pass.
 - Add test-only Bubblewrap, desktop-file-utils, Python GObject/GTK and SVG-loader
@@ -102,3 +111,8 @@ GIO escaped launch and hicolor lookup are Verified within their recorded test sc
 The worklog records failed alternatives, mutation/recovery controls and actual CI
 heads. Full native/GUI claims require their own results. See
 [the worklog](../../../worklogs/2026-10-24-linux-desktop-integration.md).
+
+On 2026-10-25 (Asia/Shanghai), the owner narrowed this review round to ordinary
+validation and deferred sudo, privilege-boundary and adversarial testing. The Linux
+customer archive gate remains closed at the follow-up head until isolated installed-
+resource validation can run again. This does not accept this ADR or waive that gate.

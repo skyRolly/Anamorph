@@ -46,6 +46,12 @@ additional malformed host-state restrictions remain open owner decisions.
   Evidence: [namespace migration diff](https://github.com/skyRolly/Anamorph/compare/feature/native-product-icons-round1...codex/namespace-tech-rolly-anamorph); ADR-0063. [Verified — source; native gates reported separately]
 
 ### Fixed
+- **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
+  cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
+  launcher or icon when its receipt is missing, preserving installed binaries for
+  a safe retry. Evidence: PR #175; Proposed ADR-0065;
+  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated entry
+  points; revised-head native gate pending]
 - **Windows installer and uninstaller use the approved product icon in every component configuration.**
   VST3-only installs now register a stable installed icon instead of an absent optional app;
   component choices, install destinations and the installer AppId are unchanged.

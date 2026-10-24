@@ -1866,3 +1866,12 @@ and restores its exact original value in finally. Local tests never change kerne
 settings; self-hosted/developer/wrong-repository contexts are refused. Installation
 still runs in real private filesystem/user namespaces and fails if isolation cannot
 start. This enables the sandbox rather than replacing native tests or their gates.
+
+**2026-10-25 follow-up hold:** the owner deferred sudo, privilege-boundary and
+adversarial testing for this review round. The follow-up workflow runs approved
+source and staged-tree byte checks, then writes an explicit `unverified` diagnostic
+and fails `desktop_install` without invoking the hosted namespace test. The Linux
+customer artifact still requires `desktop_install == success`, so no revised customer
+archive is uploaded. Other build/analysis jobs remain available for ordinary CI
+validation. Restore and pass the installed-resource gate before merge; prior-head
+artifacts cannot stand in for this head.
