@@ -4,17 +4,19 @@ How to run and interpret the validation suite. Acceptance levels and the hard ga
 `docs/policies/TESTING_POLICY.md`.
 
 
-## Source-publication evidence boundary (2026-10-25)
+## Normal validation evidence boundary (2026-10-25)
 
-The branch-specific route in [CI_CD.md](CI_CD.md#temporary-platform-review-source-publication-2026-10-25)
-permits documentation/source checker self-tests, static contracts and security
-analysis without installer execution, fuzzing or host security-setting changes.
-Anamorph #175 additionally runs the ordinary-UID capture recorder against the
-production bootstrap. Its modeled ownership is not native root evidence.
-`full-validation-pending` deliberately fails: excluded jobs and prior exact-head
-evidence cannot establish newly executed runtime checks. Restore the normal route
-and complete applicable checks before merge; artifact and manual-validation gates
-remain separate. This routing changes no product code, versions, identities or art.
+The temporary publication-only selection and pending marker have been removed.
+Run the production Build/Release routing regression with
+`python3 scripts/test-workflow-routing.py --report <report.json>`; it uses safe
+context fixtures and never dispatches a workflow or runs an installer. A Release
+rehearsal on a review branch must select normal Build gates even though its
+inherited event/ref equals direct Build dispatch. Normal checks must complete on
+the actual candidate; retained native results remain bound to their original inputs.
+The ordinary-user helper recorder, where present, still models root metadata and
+cannot establish real privileged interpretation. Installer artifacts remain gated
+by their actual installed-resource checks. No kernel/security setting changes,
+exploits or unrelated fuzz campaigns are part of these checks.
 
 ## Build-time icon resource checks
 
@@ -6202,3 +6204,30 @@ now admits only format-v1, receipt and transaction before any recovery/removal.
 A regression requires both foreign and owned files/binaries to remain intact
 on refusal. The GTK test also exercises a real parent theme inheriting hicolor,
 in addition to direct lookup, at eight sizes × two scales. The suite has 20 cases.
+
+## Real Linux private-root gate (2026-10-25)
+
+On a fresh disposable GitHub-hosted Linux VM with the normal build dependencies,
+Bubblewrap, sudo, desktop-file-utils and GTK Python introspection, run:
+
+```sh
+sudo -n --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,GITHUB_REPOSITORY \
+  python3 tests/linux_desktop_native_tests.py \
+  --staged-dir dist/Anamorph-Linux --report build/linux-desktop-install.json
+```
+
+The driver refuses other hosts and uses actual UIDs in private mount/PID/network
+roots, rather than user namespaces or modeled ownership. Root-owned read-only test
+utility overlays retain the real utility at `/native-real`, preserving production
+PATH and the pinned helper. The real shell is never replaced. Observation at the
+helper's dirname call measures its protected input and shell argv, including the
+original asset directory as argument four. Failure/SIGKILL cuts assert they were
+reached before retry/uninstall; normal signal cuts verify cleanup and status.
+The source recorder runs separately as an ordinary user. No live host environment
+may be spoofed and no kernel/security settings are changed. A failing native report
+keeps customer eligibility false. See the dated normal-validation worklog.
+
+The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
+existing shadow-memory capability before the unchanged canary and tests. It never
+lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
+image changes no shipping compiler, dependency pin or product artifact.

@@ -67,5 +67,5 @@ attribution & support files".
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
 Evidence [Verified]: CMakeLists.txt:14, 469-494 (the versioning block: the cache variable, then the
 `set_source_files_properties` that attaches it to the one translation unit reading it);
-.github/workflows/build.yml:755, 1625, 2197 (the per-OS Configure steps passing
+.github/workflows/build.yml:731, 1592, 2164 (the per-OS Configure steps passing
 `-DANAMORPH_BUILD_NUMBER`).

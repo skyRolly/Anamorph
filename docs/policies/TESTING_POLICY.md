@@ -160,7 +160,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 ## Linux desktop resource gate (Accepted ADR-0065 implementation)
 
 The owner approved implementation/testing before the new CI dependency set was added;
-ADR acceptance and merge review remain pending. Source/provenance checks run universally
+ADR-0065 is Accepted; merge review remains separate. Source/provenance checks run universally
 with their self-test ahead of use, including local preflight without any build directory.
 The source-lint job tests actual install/uninstall shell entry points in disposable
 Bubblewrap roots. The shipping Linux job repeats those checks against a clean ZIP
@@ -173,11 +173,13 @@ checks must be caught by their negative probes. No live workstation destinations
 used; inability to create isolated namespaces fails visibly. These tests do not certify
 GNOME/KDE display, icon-cache appearance, actual DAWs or embedded ELF icons.
 
-For the 2026-10-25 review continuation, the owner deferred sudo, privilege-boundary
-and adversarial testing. `--ordinary-only` runs four isolated user-mode entry-point
-cases locally without changing kernel settings. It does not satisfy the complete
-installed-resource gate. On the updated PR head, CI checks approved source and staged
-bytes, records the deferred installation as **unverified**, fails that step, and
-withholds the Linux customer archive. The previous head's green native gate is
-historical evidence, not a pass for new code. Restore and pass the full gate before
-the branch can be considered merge-ready; this paragraph grants no test waiver.
+The publication-only phase deferred native testing; that restriction is historical.
+The current owner authorization permits bounded functional/reliability tests inside
+disposable VMs/private roots. The shipping job executes
+`tests/linux_desktop_native_tests.py` via real sudo on a fresh hosted VM. Private
+mount/PID/network roots use real root/ordinary UIDs, real sudo, the normal shell
+and trusted root-owned utility overlays. The helper PATH, bytes and both pins stay
+unchanged. No kernel/security setting is modified; missing capabilities fail.
+Customer upload still requires the real installed-resource step to succeed.
+The ordinary 12-test capture recorder remains separate and models root metadata.
+`--ordinary-only` and `--user-reliability` subsets cannot satisfy the full gate.

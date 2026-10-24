@@ -1,16 +1,26 @@
 # DOCUMENTATION_COVERAGE.md
 
-## Platform-review source-publication routing — 2026-10-25
+## Normal validation restoration — 2026-10-25
 
-CI_CD and TESTING now describe the temporary exact-repository/branch/event route
-in the existing build workflow, its retained ordinary/static/security commands,
-administration-free CodeQL build and deliberate full-validation-pending failure.
-Runtime/fuzz/installer jobs are excluded before selection; normal main/release and
-unrelated-branch policy remains unchanged. The existing native/archive/manual
-contracts and owner-confirmed Accepted ADR records remain in force. Local routing
-and command-selection evidence is required before publication; runtime success is
-not inferred from the routing checks. No new architecture decision is introduced.
+CI_CD and TESTING describe removal of the temporary branch-specific routing and
+pending marker, restoration of normal deduplication and reusable Release calls,
+and the restored CodeQL dependency setup. The production-file routing regression
+covers each review branch's direct/Release dispatch collision, tags, main,
+unrelated branches and forks without invoking installers. Existing target/query,
+artifact, identity and Accepted ADR contracts are preserved. Runtime outcomes are
+recorded separately from source fixtures; unsuitable hosts fail without changing
+kernel/security settings. Historical publication-only evidence is retained. The current restoration is
+recorded in `worklogs/2026-10-25-normal-validation.md`.
 
+## Linux native gate restoration — 2026-10-25
+
+The constant installation placeholder is replaced by the complete native private-root
+driver. It reuses existing entry-point assertions with actual root/ordinary UIDs,
+trusted namespace utility overlays, protected-snapshot/shell observation, real sudo,
+all-ten receiptless cases, bounded cleanup/restart/signal tests and a staged ZIP
+round-trip. TESTING_POLICY, CI_CD, TESTING and the dated worklog distinguish it from
+the ordinary metadata recorder. Customer upload still requires actual gate success;
+no kernel/security change or new helper digest is introduced.
 
 ## Current approval reconciliation — record updated 2026-10-24 (Asia/Shanghai)
 
@@ -1896,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3706` and `.github/workflows/build.yml:3791`, this round being
+`.github/workflows/build.yml:3673` and `.github/workflows/build.yml:3758`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1930,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:779` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:755` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1941,7 +1951,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:506` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:478` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -17113,7 +17123,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:554-559` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:529-534` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -17293,3 +17303,8 @@ nonprivileged scope, all-ten receiptless cases, bounded preparation/rollback/com
 cleanup cuts, root/system guard and unchanged production archive hold. Results
 are recorded against the final local head in the task evidence; preparation alone
 is not a test pass or installed-resource certification.
+
+The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
+existing shadow-memory capability before the unchanged canary and tests. It never
+lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
+image changes no shipping compiler, dependency pin or product artifact.

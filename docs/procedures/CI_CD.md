@@ -11,33 +11,24 @@ the two-field reset, partial resets, retained custom overrides and intentional l
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
 
-## Temporary platform-review source publication (2026-10-25)
+## Normal validation restored (2026-10-25)
 
-For `skyRolly/Anamorph` only, `build.yml` routes push/dispatch events for `codex/macos-installed-receipts` (#174), `codex/linux-desktop-native-icon` (#175)
-and matching same-repository PR events into `main` through `validation-route`.
-The feature commit defines the push workflow; the PR merge ref defines the
-`pull_request` workflow. Both run documentation and source lints. The ordinary
-helper-capture recorder also runs in Anamorph #175's `source-lint`; it executes
-no fixture helper and models root metadata rather than proving native protection.
-All existing runtime/build/package jobs, including the PR `merge-check`, are
-excluded by job conditions before their runner or matrix starts. Their commands,
-required contracts and the customer-archive hold remain intact. The explicit
-`full-validation-pending` job fails, keeping incomplete validation visible.
+The temporary source-publication router and deliberate pending marker are retired.
+Build push, PR and manual events use the normal deduplication conditions. Release
+rehearsals reuse the full Build workflow at the caller commit, including on review
+branches; reusable calls inherit the caller's event/ref. No branch exception or
+invocation input remains. `scripts/test-workflow-routing.py` reads the production
+Build/Release files and checks the review-branch dispatch collision, tags, main,
+unrelated branches and fork PRs. Rehearsals retain the non-publishing release guard.
 
-CodeQL retains actions and C++ manual analysis, with unchanged queries/targets.
-For these same contexts only, its manual build uses preinstalled runner dependencies
-and skips `setup-linux.sh` (administrative package provisioning). Missing dependencies
-are an analysis failure, not a success or waiver. MSVC security analysis and dependency
-review remain enabled under their existing event/path filters; their builds compile
-analysis targets without running DSP/state suites or an installer. Existing read-only
-permissions and narrowly scoped security-report permissions are unchanged.
-
-No `pull_request_target`, `workflow_run` or downstream repository workflow is added.
-Release-tag reuse, main and unrelated branches retain their normal job selection.
-Body-only PR edits trigger none of the listed workflow events. This temporary routing
-must be removed and normal applicable merge checks completed before merging these PRs;
-source/static results do not certify native installations, GUI/DAW behavior or artifacts.
-The owner-confirmed ADR acceptance is complete and is independent of this test backlog.
+C++ CodeQL again runs `scripts/setup-linux.sh` before its unchanged manual target
+build, extraction, queries and SARIF upload. The ordinary source checks remain
+independent of native installation evidence. Existing project runtime, sanitizer,
+compatibility and bounded fuzz gates run under their original event conditions.
+Kernel/security settings are never changed: an unsuitable sanitizer or installer
+isolation capability must fail with its precise missing prerequisite. The Accepted
+ADRs, artifact gates and separate manual/GUI/DAW backlog remain in force. Earlier
+publication-only evidence remains historical and does not certify these new runs.
 
 ## Icon resource checks
 
@@ -1887,23 +1878,21 @@ not a skipped pass. Existing compiler/audio/state/pluginval/ABI gates remain int
 GTK/Bubblewrap/Python are test dependencies only; the customer helper uses shell and
 base Linux utilities. No assets are downloaded or rendered during builds.
 
-Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
-before any installation. `--hosted-namespace-permission` now first proves its
-strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
-kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
-and restores its exact original value in finally. Local tests never change kernel
-settings; self-hosted/developer/wrong-repository contexts are refused. Installation
-still runs in real private filesystem/user namespaces and fails if isolation cannot
-start. This enables the sandbox rather than replacing native tests or their gates.
+The earlier hosted setup changed the unprivileged-user-namespace restriction.
+That historical approach is retired for current CI: no kernel/security setting is
+changed. The real gate uses root-created mount/PID/network namespaces with actual
+UIDs and real sudo on a fresh disposable hosted VM. An unsuitable VM fails visibly.
 
-**2026-10-25 follow-up hold:** the owner deferred sudo, privilege-boundary and
-adversarial testing for this review round. The follow-up workflow runs approved
-source and staged-tree byte checks, then writes an explicit `unverified` diagnostic
-and fails `desktop_install` without invoking the hosted namespace test. The Linux
-customer artifact still requires `desktop_install == success`, so no revised customer
-archive is uploaded. Other build/analysis jobs remain available for ordinary CI
-validation. Restore and pass the installed-resource gate before merge; prior-head
-artifacts cannot stand in for this head.
+**2026-10-25 normal-validation restoration:** the constant deferred/exit-1
+placeholder is replaced by `tests/linux_desktop_native_tests.py` against the real
+staged tree. Trusted root-owned VM-private utility overlays observe actual snapshot
+ownership, modes, link count, digest and shell argv, and inject bounded ordinary
+failure/signal/cleanup cuts without changing production PATH or helper bytes.
+The complete inherited entry-point suite, all-ten receiptless checks and staged ZIP
+round-trip run. Customer upload still depends on `desktop_install` success. The
+ordinary capture recorder stays in source-lint and cannot stand in for this gate.
+No cross-principal attack or exploit demonstration is required or performed.
+
 
 ## Restricted Linux helper review route (prepared 2026-10-25)
 
@@ -1917,3 +1906,8 @@ now gates the existing build workflow and includes the same capture recorder in
 availability on the default branch. Body-only description edits remain separately
 audited against default PR event types. Mandatory installed-resource coverage and
 the customer-archive hold remain; this subset does not satisfy them.
+
+The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
+existing shadow-memory capability before the unchanged canary and tests. It never
+lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
+image changes no shipping compiler, dependency pin or product artifact.
