@@ -28,9 +28,14 @@ and existing invalid-value restore behavior are unchanged. KI-029's audible NaN 
 additional malformed host-state restrictions remain open owner decisions.
 
 ### Added
+- Linux installation adds the approved Anamorph desktop launcher and hicolor icons in
+  the selected user/system data directory, with an absolute executable reference and
+  owned-resource recovery/uninstall. Portable extraction installs no desktop files.
+  Evidence: [Linux integration diff](https://github.com/skyRolly/Anamorph/compare/main...codex/linux-desktop-native-icon); Proposed ADR-0065;
+  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated resources; GUI unverified]
 - **Approved Anamorph product icon in conventional macOS and Windows build resources.**
   App/plug-in bundles on macOS and executable/VST3 resources on Windows use the unchanged B0
-  artwork through JUCE. Installer branding and Linux desktop-launcher integration remain separate work.
+  artwork through JUCE. Windows installer branding is recorded below; Linux desktop integration has its separate entry above.
   Evidence: commit `4d96559`; ADR-0062. [Verified — build configuration; native shell display unverified]
 
 ### Changed
@@ -41,6 +46,12 @@ additional malformed host-state restrictions remain open owner decisions.
   Evidence: [namespace migration diff](https://github.com/skyRolly/Anamorph/compare/feature/native-product-icons-round1...codex/namespace-tech-rolly-anamorph); ADR-0063. [Verified — source; native gates reported separately]
 
 ### Fixed
+- **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
+  cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
+  launcher or icon when its receipt is missing, preserving installed binaries for
+  a safe retry. Evidence: PR #175; Proposed ADR-0065;
+  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated entry
+  points; revised-head native gate pending]
 - **Windows installer and uninstaller use the approved product icon in every component configuration.**
   VST3-only installs now register a stable installed icon instead of an absent optional app;
   component choices, install destinations and the installer AppId are unchanged.

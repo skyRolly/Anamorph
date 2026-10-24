@@ -9,6 +9,7 @@
 # is a plug-in copy parked by an interrupted install unless --discard-parked
 # says otherwise.
 set -eu
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 # --user / --system mirror install.sh, for a run with no terminal to ask on.
 # --discard-parked is the opt-in for the one thing this script keeps by default:
@@ -152,6 +153,19 @@ remove_install_scratch() {          # $1 = plug-in directory, $2 = bin directory
     done
 }
 
+# Desktop data follows XDG for the real invoking user, never root's HOME.
+# System-local data belongs beside /usr/local/bin, independent of XDG variables.
+desktop_data_root() {
+    if [ "$mode" = system ]; then printf '%s\n' /usr/local/share; return; fi
+    case "${HOME:-}" in /*) ;; *) echo 'error: HOME must be absolute for a user install' >&2; exit 1 ;; esac
+    case "${XDG_DATA_HOME:-}" in
+        /*) printf '%s\n' "$XDG_DATA_HOME" ;;
+        '') printf '%s\n' "$HOME/.local/share" ;;
+        *) echo 'warning: relative XDG_DATA_HOME ignored; using HOME/.local/share' >&2
+           printf '%s\n' "$HOME/.local/share" ;;
+    esac
+}
+
 # ------------------------------------------------------- 1) current-user mode
 if [ "$mode" = user ]; then
     [ -n "${HOME:-}" ] || {
@@ -162,6 +176,8 @@ if [ "$mode" = user ]; then
     VST3="$HOME/.vst3/Anamorph.vst3"
     APP="$HOME/.local/bin/Anamorph"
 
+    DATA_DIR=$(desktop_data_root)
+    sh "$HERE/desktop-integration.sh" uninstall "$DATA_DIR" "$APP"
     if [ -d "$VST3" ]; then rm -rf "$VST3"; echo "removed $VST3"; removed=1; fi
     if [ -f "$APP" ];  then rm -f  "$APP";  echo "removed $APP";  removed=1; fi
     remove_install_scratch "$HOME/.vst3" "$HOME/.local/bin"
@@ -192,6 +208,8 @@ priv() {
     }
 }
 
+DATA_DIR=$(desktop_data_root)
+priv sh "$HERE/desktop-integration.sh" uninstall "$DATA_DIR" "$SYS_APP"
 if [ -d "$SYS_VST3" ]; then priv rm -rf "$SYS_VST3"; echo "removed $SYS_VST3"; removed=1; fi
 if [ -f "$SYS_APP" ];  then priv rm -f  "$SYS_APP";  echo "removed $SYS_APP";  removed=1; fi
 remove_install_scratch "$SYS_VST3_DIR" "$SYS_BIN_DIR"

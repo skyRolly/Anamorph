@@ -19,13 +19,14 @@ class IconPreflightTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         for name in ("scripts/preflight.sh", "scripts/check-icons.py", "scripts/check-product-identity.py",
-                     "scripts/check-installer-icon.py", "resources/icons/windows/Anamorph.ico",
+                     "scripts/check-installer-icon.py", "scripts/check-linux-desktop.py", "resources/icons/windows/Anamorph.ico",
                      "resources/icons/windows/PROVENANCE.json", "packaging/windows/Anamorph.iss", "packaging/macos/build-pkg.sh", "CMakeLists.txt",
                      "resources/icons/PROVENANCE.json", "resources/icons/anamorph-32.png",
                      "resources/icons/anamorph-1024.png"):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)
+        shutil.copytree(ROOT / "resources/icons/linux", self.root / "resources/icons/linux")
         # Stop at the first unrelated gate. This also proves it is still reached
         # after the icon gate. The real icon checker and shell entry point run.
         (self.root / "scripts/check-docs.py").write_text("print('NEXT_GATE_REACHED')\nraise SystemExit(73)\n")
@@ -75,6 +76,11 @@ class IconPreflightTests(unittest.TestCase):
         provenance["source_commit"] = "b" * 40
         path.write_text(json.dumps(provenance))
         self.assert_rejected("unapproved source commit")
+
+    def test_corrupt_linux_png_is_rejected_without_a_build(self):
+        path = self.root / "resources/icons/linux/hicolor/32x32/apps/tech.rolly.anamorph.png"
+        path.write_bytes(path.read_bytes() + b"corrupt")
+        self.assert_rejected("altered approved Linux resource")
 
 
 if __name__ == "__main__":

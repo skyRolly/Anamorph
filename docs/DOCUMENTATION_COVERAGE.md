@@ -1884,7 +1884,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3625` and `.github/workflows/build.yml:3710`, this round being
+`.github/workflows/build.yml:3669` and `.github/workflows/build.yml:3754`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1918,7 +1918,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:737` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:742` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17226,3 +17226,25 @@ when DisableProgramGroupPage=yes. The native selector now reads/guards DefaultGr
 that directive (one good/two bad fixtures), refuses an existing product menu directory, and
 checks the actual common Start Menu group. The installer script and all resource/ownership
 assertions are unchanged. Failure diagnostics retain exact targets/menu entries and setup logs.
+
+## 2026-10-24 Linux desktop integration
+
+Registered Proposed ADR-0065 after explicit pre-implementation owner approval of the
+concrete proposal. Synced source-of-truth/map/README navigation, testing policy,
+CI/testing/packaging/release procedures, Linux INSTALL.txt, user instructions and
+Unreleased notes. No DSP/state invariant changes apply. Reported and corrected the
+stale “No gate ever installs anything” statement: merged Windows tests already do;
+Linux now has actual isolated entry-point tests. Mac installed-receipt work remains
+a separate PR. Preserved prior dated Linux transaction evidence and accepted ADRs;
+ADR-0063 has only a dated Linux scope pointer, not rewritten history or acceptance.
+Evidence: the three Linux scripts, source/provenance checker, entry-point tests,
+PROVENANCE.json, ADR-0065 and `worklogs/2026-10-24-linux-desktop-integration.md`.
+
+## 2026-10-25 Linux recovery and restricted validation follow-up
+
+Reconciled the helper's resumable cleanup plan and missing-receipt uninstall with
+Proposed ADR-0065, the Unreleased fix entry, Linux testing policy/procedure, CI
+procedure and the existing integration worklog. The owner deferred sudo,
+privilege-boundary and adversarial testing for this round. CI therefore reports
+the revised installed-resource gate as unverified and blocks its customer archive;
+ordinary user-mode tests do not stand in for native system-mode validation.

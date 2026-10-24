@@ -6002,11 +6002,13 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
   matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
 
-- **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
-  exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable
-  components, payload completeness), the staged Linux tree — but never runs an installation,
-  because installing needs elevation and would mutate the runner. Everything that only exists at
-  *install* time is therefore manual. **INC-012** is what that gap costs: bundle relocation is a
+- **Installation coverage is platform-specific (updated 2026-10-24).** Merged Windows
+  installer tests already install/reinstall/uninstall on disposable hosted VMs. The Linux
+  desktop tests now run actual shell entry points in isolated user/system filesystem roots,
+  with real customer-tree archive coverage. Expanded macOS package metadata is checked on
+  this branch; actual Mac receipts/choice permutations remain a separately scoped validation.
+  None of these certify desktop/DAW appearance. The historical gap below explains the remaining
+  reinstall/relocation cases, rather than claiming CI never installs anything. **INC-012** is what that gap costs: bundle relocation is a
   property of Installer.app's behaviour, invisible in the archive, and every manual check until
   then had been a first install onto a machine with no prior copy — the one case it cannot affect.
   The checks that remain owed to a human:
@@ -6089,3 +6091,55 @@ ignores /GROUP with DisableProgramGroupPage=yes. It requires the product menu gr
 absent before use on the disposable VM, then inspects its real shortcut targets. One good/two
 bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
 setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
+
+## Linux desktop/hicolor regression (Proposed ADR-0065)
+
+```sh
+python3 scripts/check-linux-desktop.py --self-test
+python3 scripts/check-linux-desktop.py
+python3 tests/linux_desktop_install_tests.py
+# After ordinary Linux staging (no product rebuild required):
+python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux
+python3 tests/linux_desktop_install_tests.py --staged-dir dist/Anamorph-Linux
+```
+
+Run with Bubblewrap/user namespaces, desktop-file-validate, Python GI/GTK and a working
+SVG loader. Tests invoke the customer shell commands, never copied helper implementations,
+inside disposable roots and at a working directory outside the archive. No fallback runs
+against real /usr or HOME when isolation is unavailable. The source checker's self-test
+precedes every check; six real preflight regressions include corrupted Linux source input.
+Fixtures cover changed/missing files, foreign paths, symlinks, private-state/receipt/journal
+errors, ordinary failure and killed transactions, discriminating old/new launcher rollback,
+user/system coexistence and reinstall/uninstall. The clean-archive case compares installed
+native payload hashes/ELF headers with the already native-gated customer files. The GIO
+case launches a harmless fixture executable from a path containing spaces, %%/quotes/dollar/
+backtick/backslash and checks GTK hicolor lookup at eight sizes × two scales, including SVG.
+It does not launch the product GUI or certify GNOME/KDE appearance. Serialize operations
+against the same data root. See the worklog for exact results, mutations and limits.
+
+Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
+before any installation. `--hosted-namespace-permission` now first proves its
+strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
+kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
+and restores its exact original value in finally. Local tests never change kernel
+settings; self-hosted/developer/wrong-repository contexts are refused. Installation
+still runs in real private filesystem/user namespaces and fails if isolation cannot
+start. This enables the sandbox rather than replacing native tests or their gates.
+
+**Restricted follow-up, 2026-10-25:** run
+`python3 tests/linux_desktop_install_tests.py --ordinary-only` for four user-mode
+fresh/reinstall/uninstall, missing-receipt, GIO/hicolor and clean-archive checks in
+local disposable roots. That option forbids hosted namespace permission changes and
+additional selected probes. It excludes system/sudo, fault injection, SIGKILL cleanup
+cuts, hostile private-state cases and mutations. The full staged entry-point gate is
+unverified on the revised head and blocks its customer archive in CI. The earlier
+full run is historical regression evidence, not a substitute for the required
+new-head installed-resource gate before merge.
+
+Adversarial uninstall follow-up: at 787752f an unexpected file in the private
+ownership root survived, but owned desktop resources had already been removed
+before rmdir failed. Reproduced with actual entry points in isolation. The root
+now admits only format-v1, receipt and transaction before any recovery/removal.
+A regression requires both foreign and owned files/binaries to remain intact
+on refusal. The GTK test also exercises a real parent theme inheriting hicolor,
+in addition to direct lookup, at eight sizes × two scales. The suite has 20 cases.

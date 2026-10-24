@@ -195,3 +195,10 @@ the inventory, stack dependencies, comparisons and native limitations for Accept
 `scripts/check-installer-icon.py` checks source ownership and actual primary PE groups;
 `scripts/test-windows-installer.ps1` checks disposable-VM component/reinstall/uninstall behavior
 and exposes a portable snapshot self-test. Evidence: `worklogs/2026-10-23-windows-installer-icon.md`.
+
+Linux desktop additions (Proposed ADR-0065): `resources/icons/linux/` contains the
+approved hash-pinned handoff; `packaging/linux/desktop-integration.sh` implements exact
+resource ownership/recovery for both customer entry points; `scripts/check-linux-desktop.py`
+validates sources/staging with a preceding self-test; `tests/linux_desktop_install_tests.py`
+drives actual scripts in disposable filesystem namespaces. Test-only GTK/GIO/Bubblewrap
+are independent of the product runtime. ADR-0065 is registered as Proposed.

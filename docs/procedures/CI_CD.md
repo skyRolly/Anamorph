@@ -1843,3 +1843,35 @@ A same-version reinstall replaces a deliberately obsolete icon. Actual registry/
 uninstaller icon, installed payload/sidecars, System attribute and safe owned-file cleanup
 are checked. Developer/self-hosted targets and existing installs are refused. Installer upload
 requires behavior success; `Anamorph-Windows-installer-validation` retains JSON evidence.
+
+## Linux desktop/hicolor installation gate
+
+Under Proposed ADR-0065's owner implementation permission, `source-lint` installs only
+CI test tools (Bubblewrap, desktop-file-utils, Python GI/GTK and SVG loader), runs
+`check-linux-desktop.py --self-test` then its source/provenance check, and executes
+`tests/linux_desktop_install_tests.py`. The Linux shipping job stages desktop-assets
+and the shell helper, repeats the checker self-test/check with `--staged-dir`, and runs
+entry-point tests after a clean archive round-trip with the actual compiled payload.
+The Linux customer upload additionally requires `desktop_install` success; its JSON
+is retained as `Anamorph-Linux-desktop-validation`. Unavailable isolation is a failure,
+not a skipped pass. Existing compiler/audio/state/pluginval/ABI gates remain intact.
+GTK/Bubblewrap/Python are test dependencies only; the customer helper uses shell and
+base Linux utilities. No assets are downloaded or rendered during builds.
+
+Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
+before any installation. `--hosted-namespace-permission` now first proves its
+strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
+kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
+and restores its exact original value in finally. Local tests never change kernel
+settings; self-hosted/developer/wrong-repository contexts are refused. Installation
+still runs in real private filesystem/user namespaces and fails if isolation cannot
+start. This enables the sandbox rather than replacing native tests or their gates.
+
+**2026-10-25 follow-up hold:** the owner deferred sudo, privilege-boundary and
+adversarial testing for this review round. The follow-up workflow runs approved
+source and staged-tree byte checks, then writes an explicit `unverified` diagnostic
+and fails `desktop_install` without invoking the hosted namespace test. The Linux
+customer artifact still requires `desktop_install == success`, so no revised customer
+archive is uploaded. Other build/analysis jobs remain available for ordinary CI
+validation. Restore and pass the installed-resource gate before merge; prior-head
+artifacts cannot stand in for this head.

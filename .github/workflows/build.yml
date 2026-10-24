@@ -539,6 +539,11 @@ jobs:
           python3 scripts/check-installer-icon.py --self-test
           python3 scripts/check-installer-icon.py
 
+      - name: Linux desktop approved source contract
+        run: |
+          python3 scripts/check-linux-desktop.py --self-test
+          python3 scripts/check-linux-desktop.py
+
       - name: Product identity self-test and source contract
         run: |
           python3 scripts/check-product-identity.py --self-test
@@ -1108,6 +1113,8 @@ jobs:
           cp    packaging/linux/INSTALL.txt "$DIST/INSTALL.txt"
           install -m 755 packaging/linux/install.sh   "$DIST/install.sh"
           install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
+          install -m 644 packaging/linux/desktop-integration.sh "$DIST/desktop-integration.sh"
+          cp -R resources/icons/linux "$DIST/desktop-assets"
           # Attribution/support files (NOTICE, THIRD_PARTY_LICENSES.md,
           # SUPPORT.md) are deliberately NOT staged: the packages carry only
           # what a user needs to install, and INSTALL.txt is installation-only
@@ -1140,8 +1147,45 @@ jobs:
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
       # pluginval-only failure still yields beta artifacts as before.
-      - name: Upload Linux artifacts
+      # Owner deferred all sudo, privilege-boundary and adversarial testing for
+      # this review round. Keep the customer artifact blocked until the existing
+      # isolated entry-point gate can run again; a source check is not installation.
+      - name: Validate staged Linux desktop resource bytes
+        id: desktop_source
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
+        run: |
+          python3 scripts/check-linux-desktop.py --self-test
+          python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux > build/linux-desktop-source.json
+
+      - name: Linux desktop installation gate deferred (blocks customer archive)
+        id: desktop_install
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.desktop_source.outcome == 'success' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          Path('build/linux-desktop-install.json').write_text(json.dumps({
+              'status': 'unverified',
+              'reason': 'Owner deferred sudo, privilege-boundary and adversarial testing',
+              'customer_archive_eligible': False,
+              'source_contract_report': 'build/linux-desktop-source.json',
+          }, indent=2) + '\n')
+          PY
+          echo '::error::Linux desktop installation remains unverified on this head; customer archive upload is blocked.'
+          exit 1
+
+      - name: Retain Linux desktop install evidence
+        if: ${{ always() && steps.desktop_install.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Linux-desktop-validation
+          path: |
+            build/linux-desktop-source.json
+            build/linux-desktop-install.json
+          if-no-files-found: error
+
+      - name: Upload Linux artifacts
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.desktop_install.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Linux

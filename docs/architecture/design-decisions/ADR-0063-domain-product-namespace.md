@@ -89,3 +89,11 @@ See [the worklog](../../../worklogs/2026-10-23-product-namespace.md) for the ind
 collected inventory, exact old/new outputs, commands and limitations. Generated/native claims
 are scoped to the actual checks and CI head that produced them; synthetic self-tests do not
 prove native builds. Native DAW/installation review remains **Unverified** until performed.
+
+## Linux follow-up scope — 2026-10-24
+
+The earlier no-installed-launcher statement describes the namespace-only migration.
+Proposed ADR-0065 now records the separately owner-authorized Linux implementation:
+`tech.rolly.anamorph` desktop/hicolor names, unchanged host identities and no ELF
+embedded-icon claim. ADR-0063's namespace decision remains Accepted; ADR-0065's
+formal acceptance/merge review is pending and is not inferred from this record.

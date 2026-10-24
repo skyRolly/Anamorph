@@ -58,6 +58,9 @@ python3 scripts/check-icons.py --preflight
 python3 scripts/check-installer-icon.py --self-test
 python3 scripts/check-installer-icon.py
 
+python3 scripts/check-linux-desktop.py --self-test
+python3 scripts/check-linux-desktop.py
+
 python3 scripts/check-product-identity.py --self-test
 python3 scripts/check-product-identity.py
 

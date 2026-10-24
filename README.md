@@ -204,3 +204,8 @@ Native DAW/receipt-installation validation remains unverified.
 
 Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-installer-icon.md),
 Accepted ADR-0064; owner approval and #172 merge are recorded, with native visual limits preserved.
+
+Linux installer desktop integration is recorded in Proposed ADR-0065 and the Linux
+installation/packaging/testing procedures: approved hicolor resources, XDG paths and
+owned-resource recovery. Formal architecture acceptance/merge and actual GNOME/KDE
+visual checks remain separate from owner implementation/testing permission.
