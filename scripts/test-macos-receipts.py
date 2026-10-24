@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path, PurePosixPath
 import plistlib
 import re
@@ -48,18 +49,62 @@ def tree(path):
     return result
 
 
+def install_location(value):
+    require(isinstance(value, str) and bool(value), 'missing receipt installation location')
+    require(not any(ord(c) < 32 or ord(c) == 127 for c in value),
+            'malformed receipt installation location')
+    relative = value[1:] if value.startswith('/') else value
+    require(all(part and part not in ('.', '..') for part in relative.split('/')),
+            'malformed receipt installation location')
+    return '/' + relative
+
+
+def receipt_paths(files, name):
+    # pkgutil --files is newline-delimited, with measured directory entries.
+    # Inspect spelling before PurePosixPath can erase empty or dot components.
+    require(isinstance(files, str) and bool(files), 'empty receipt file listing')
+    lines = files.split('\n')
+    if lines[-1] == '':
+        lines.pop()
+    paths = set()
+    for line in lines:
+        require(bool(line) and not any(ord(c) < 32 or ord(c) == 127 for c in line),
+                'malformed receipt entry')
+        relative = line[2:] if line.startswith('./') else line
+        if relative.endswith('/'):
+            relative = relative[:-1]
+        parts = relative.split('/')
+        require(all(part and part not in ('.', '..') for part in parts)
+                and parts[0] == name and not PurePosixPath(relative).is_absolute(),
+                'receipt owns a foreign bundle/path')
+        require(relative not in paths, 'duplicate receipt entry')
+        paths.add(relative)
+    require(bool(paths), 'empty receipt file listing')
+    return paths
+
+
+def validate_ownership(paths, name, installed, staged, bundle, staged_bundle, listing):
+    expected = {name + '/' + path for path in set(installed) | set(staged)}
+    require(expected <= paths, 'receipt misses staged/installed payload ownership')
+    def directories(root):
+        return {name} | {name + '/' + item.relative_to(root).as_posix()
+                         for item in root.rglob('*') if item.is_dir() and not item.is_symlink()}
+    allowed_directories = directories(bundle) & directories(staged_bundle)
+    require(paths <= expected | allowed_directories, 'receipt owns unknown component entries')
+    directory_spellings = {line.removeprefix('./')[:-1] for line in listing.split('\n') if line.endswith('/')}
+    require(directory_spellings <= allowed_directories, 'malformed receipt directory entry')
+
+
 def validate_component(suffix, receipt, files, bundle, staged, version):
     location, name = COMPONENTS[suffix]
     require(receipt.get('pkgid') == BASE + '.' + suffix, 'wrong receipt identity')
     require(receipt.get('pkg-version') == version, 'wrong receipt version')
     require(receipt.get('volume') == '/', 'wrong receipt volume')
-    require('/' + str(receipt.get('install-location', '')).strip('/') == location,
+    require(install_location(receipt.get('install-location')) == location,
             'wrong receipt installation location')
-    paths = [PurePosixPath(line) for line in files.splitlines() if line]
-    require(bool(paths) and all(not p.is_absolute() and '..' not in p.parts
-            and p.parts[0] == name for p in paths), 'receipt owns a foreign bundle/path')
+    paths = receipt_paths(files, name)
     require({f'{name}/Contents/Info.plist', f'{name}/Contents/MacOS/{PRODUCT}'}
-            <= {p.as_posix() for p in paths}, 'receipt misses installed metadata/executable')
+            <= paths, 'receipt misses installed metadata/executable')
     info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
     require(info.get('CFBundleIdentifier') == BASE, 'wrong installed CFBundleIdentifier')
     if suffix == 'au':
@@ -68,7 +113,9 @@ def validate_component(suffix, receipt, files, bundle, staged, version):
                 {'type': 'aufx', 'subtype': CODE, 'manufacturer': 'RTec'}.items()),
                 'installed AU identity changed')
     installed = tree(bundle)
-    require(installed == tree(staged), 'installed bundle differs from staged customer payload')
+    staged_tree = tree(staged)
+    require(installed == staged_tree, 'installed bundle differs from staged customer payload')
+    validate_ownership(paths, name, installed, staged_tree, bundle, staged, files)
     return {'receipt': receipt, 'bundle': str(bundle), 'CFBundleIdentifier': BASE,
             'file_count': len(paths), 'payload_sha256': installed}
 
@@ -96,6 +143,17 @@ def self_test():
         bad = dict(environment); bad[key] = 'untrusted'
         rejects(lambda: disposable_guard('darwin', bad), 'disposable')
     rejects(lambda: disposable_guard('linux', environment), 'disposable')
+    # Retained native pkgutil evidence uses install-location, never location.
+    fixtures = Path(__file__).parent / 'fixtures/macos-receipts'
+    for suffix, (location, name) in COMPONENTS.items():
+        native = plistlib.loads((fixtures / (suffix + '.plist')).read_bytes())
+        require('location' not in native and 'install-location' in native, 'native field-name fixture changed')
+        require(install_location(native['install-location']) == location, 'native location fixture changed')
+        paths = receipt_paths((fixtures / (suffix + '.files.txt')).read_text(), name)
+        require(name in paths and name + '/Contents' in paths, 'native directory entries rejected')
+    rejects(lambda: install_location(None), 'location')
+    for value in ('', '../Applications', 'Applications/..', '//Applications', 'Applications\n'):
+        rejects(lambda: install_location(value), 'location')
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         for suffix, (location, name) in COMPONENTS.items():
@@ -105,14 +163,35 @@ def self_test():
                 info['AudioComponents'] = [{'type': 'aufx', 'subtype': CODE, 'manufacturer': 'RTec'}]
             for path in (bundle, staged):
                 (path / 'Contents/MacOS').mkdir(parents=True)
+                (path / 'Contents/Resources').mkdir()
+                (path / 'Contents/_CodeSignature').mkdir()
                 (path / 'Contents/MacOS' / PRODUCT).write_bytes(b'synthetic payload, not native installation')
                 (path / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+                (path / 'Contents/Resources/asset.dat').write_bytes(b'resource')
+                (path / 'Contents/_CodeSignature/CodeResources').write_bytes(b'signature')
+                (path / 'Contents/resource-link').symlink_to('Resources/asset.dat')
             receipt = {'pkgid': BASE + '.' + suffix, 'pkg-version': '1.2.3',
                        'volume': '/', 'install-location': location}
-            files = f'{name}/Contents/Info.plist\n{name}/Contents/MacOS/{PRODUCT}\n'
+            files = '\n'.join([name, name + '/Contents', name + '/Contents/MacOS',
+                name + '/Contents/Resources', name + '/Contents/_CodeSignature']
+                + [name + '/' + key for key in tree(staged)]) + '\n'
             def check(r=receipt, f=files):
                 return validate_component(suffix, r, f, bundle, staged, '1.2.3')
             check()
+            # Both trees remain identical: only ownership is defective. These
+            # three probes fail against the previous production validator.
+            for missing in ('Contents/Resources/asset.dat', 'Contents/_CodeSignature/CodeResources',
+                            'Contents/resource-link'):
+                incomplete = '\n'.join(p for p in files.splitlines() if p != name + '/' + missing) + '\n'
+                rejects(lambda: check(f=incomplete), 'payload ownership')
+            check(f='\n'.join('./' + p for p in files.splitlines()) + '\n')
+            check(f=files.replace(name + '/Contents\n', name + '/Contents/\n'))
+            rejects(lambda: check(f=files.replace('Contents/Resources/asset.dat\n',
+                                                   'Contents/Resources/asset.dat/\n')), 'malformed')
+            absent_location = dict(receipt); absent_location.pop('install-location')
+            rejects(lambda: check(absent_location), 'location')
+            location_only = dict(absent_location); location_only['location'] = location
+            rejects(lambda: check(location_only), 'location')
             for key, value, message in [('pkgid', BASE + '.other', 'identity'),
                     ('pkg-version', '9.9.9', 'version'), ('volume', '/other', 'volume'),
                     ('install-location', '/Applications/Wrong', 'location')]:
@@ -120,6 +199,13 @@ def self_test():
                 rejects(lambda: check(bad), message)
             for bad in (files + 'Foreign.app/Contents/Info.plist\n', files + '../foreign\n', files + '/absolute\n'):
                 rejects(lambda: check(f=bad), 'foreign')
+            for bad in (files + name + '//Contents/Info.plist\n', files + name + '/./Contents\n',
+                        files + name + '/Contents/../foreign\n'):
+                rejects(lambda: check(f=bad), 'foreign')
+            for bad in (files + '\n', files + name + '/Contents/\tbad\n', files + name + '/Contents\r\n'):
+                rejects(lambda: check(f=bad), 'malformed')
+            rejects(lambda: check(f=files + name + '/Contents\n'), 'duplicate')
+            rejects(lambda: check(f=files + name + '/Contents/unknown\n'), 'unknown')
             rejects(lambda: check(f=name + '/Contents/Info.plist\n'), 'misses')
             payload = bundle / 'Contents/MacOS' / PRODUCT
             payload.write_bytes(b'altered'); rejects(check, 'differs')
@@ -163,9 +249,16 @@ def main():
               'package_sha256': hashlib.sha256(args.package.read_bytes()).hexdigest(),
               'version': version, 'components': {}, 'failure': None, 'installation_started': False,
               'scope': 'real default full installation on disposable GitHub macOS VM; no GUI/DAW certification'}
+    report['host'] = {'macOS': platform.mac_ver()[0], 'architecture': platform.machine(),
+                      'source_head': os.environ.get('GITHUB_SHA'), 'run': os.environ.get('GITHUB_RUN_ID')}
 
     def command(*argv):
-        return subprocess.run(argv, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
+        result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            (evidence / 'failed-query.log').write_bytes(
+                (' '.join(argv) + '\n').encode() + result.stdout + result.stderr)
+            require(False, 'native query failed: ' + ' '.join(argv))
+        return result.stdout
 
     def sibling_snapshot(ids):
         return {identifier: {'info': plistlib.loads(command('/usr/sbin/pkgutil', '--pkg-info-plist', identifier)),
@@ -186,6 +279,10 @@ def main():
                           ('/Library/Audio/Plug-Ins/Components', '.component'), ('/Applications', '.app')]]
         sibling_payload = {str(path): tree(path) for path in sibling_paths if path.exists()}
         (evidence / 'receipts-before.txt').write_text('\n'.join(sorted(before)) + '\n')
+        choices = command('/usr/sbin/installer', '-showChoicesXML', '-pkg', str(args.package.resolve()), '-target', '/')
+        (evidence / 'choices.xml').write_bytes(choices)
+        changes = command('/usr/sbin/installer', '-showChoiceChangesXML', '-pkg', str(args.package.resolve()), '-target', '/')
+        (evidence / 'choice-changes.xml').write_bytes(changes)
         report['installation_started'] = True
         # No receipt forgetting or filesystem cleanup. Discarding the authorized
         # disposable VM is cleanup; a refusal never deletes pre-existing files.

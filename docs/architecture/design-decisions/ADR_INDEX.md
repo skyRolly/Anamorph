@@ -67,6 +67,9 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0062](ADR-0062-native-juce-icon-resources.md) | Approved B0 PNGs through conventional JUCE ICON_BIG/ICON_SMALL; source provenance and native resource checks; installer/launcher/Composer work deferred | **Accepted** — explicit owner Architecture Review approval, 2026-10-23 | Verified source/pinned-JUCE behavior; native results scoped to CI reports; real shell/DAW display unverified |
 | [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
 | [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
+| [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Complete installed-receipt ownership and explicit liveness/PKG artifact boundary | **Proposed** — independent human review pending | Native fixtures, omission/mutation and scheduling-fault regressions |
+
+Number ADR-0065 is reserved by the independent [PR #175](https://github.com/skyRolly/Anamorph/pull/175); this branch does not duplicate its implementation or infer acceptance.
 
 ## Owner approval reconciliation — record updated 2026-10-24
 

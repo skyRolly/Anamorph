@@ -258,3 +258,9 @@ The installed-receipts artifact retains JSON, installer log and raw receipt meta
 PKG upload requires this gate. The smoke test covers default full installation; choice
 combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
 Linux self-tests are parser evidence, never a native installation pass.
+
+
+Installed-receipt review closure: PKG CI artifacts require successful named liveness
+and real installed-receipt verification, including every payload file/symlink. The
+macOS bundle ZIP retains its independent gate; its availability is not evidence of
+registered receipts or permission to publish a release. No release-policy change.

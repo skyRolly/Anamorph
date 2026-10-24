@@ -6103,9 +6103,23 @@ is deleted. The real installer targets `/`; VM disposal is cleanup.
 The gate reads real `pkgutil --pkgs`, `--pkg-info`, `--pkg-info-plist` and `--files`, checks
 the three canonical `.vst3`/`.au`/`.app` IDs, versions, volume, installation locations,
 component-owned file paths, installed bundle IDs/AU codes, and exact installed versus
-staged payload bytes. Pre-existing receipts and any sibling receipts/payloads must be
-unchanged. An empty sibling snapshot does not prove both products were co-installed.
+staged payload bytes. Pre-existing receipt IDs remain present; sibling receipt metadata/file lists and
+any sibling payload hashes must be unchanged. An empty sibling snapshot does not prove both products were co-installed.
 The installed-receipts artifact retains JSON, installer log and raw receipt metadata.
 PKG upload requires this gate. The smoke test covers default full installation; choice
 combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
 Linux self-tests are parser evidence, never a native installation pass.
+
+
+Review-closure enforcement (2026-10-24): native `install-location` fixtures are
+under `scripts/fixtures/macos-receipts`; the alternative `location` field is rejected.
+Ownership covers all payload files and symlinks, not just plist/executable. Resource,
+signature and symlink omission regressions leave both trees identical; bypass mutants
+must fail specifically on missing receipt ownership. Content equality remains independent.
+
+`receipt_liveness` explicitly gates native installation and PKG upload. Run
+`python3 scripts/test-macos-receipt-gates.py` for production-condition fault replay,
+including `!cancelled()` overriding implicit success. Failed/skipped liveness runs no
+installer and yields no PKG; failed installation yields retained diagnostics and no PKG.
+The separate bundle ZIP keeps its existing independent gate; this changes no release policy.
+Raw native evidence also retains host/head/package digest and actual choice XML.
