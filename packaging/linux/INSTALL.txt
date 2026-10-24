@@ -167,6 +167,9 @@ installer/uninstaller to reconcile interrupted resource work. A resource error m
 installation failed, even if the independent binary update has already completed.
 Presets, settings and other applications' icons remain untouched. GNOME/KDE display
 and window association are not certified by command-line tests.
+System installation/removal verifies a private helper snapshot against the trusted
+entry scripts. A helper mismatch requires matching files from a trusted distribution;
+replacement protection does not establish the download's authenticity.
 安装脚本还会安装桌面启动器和原始 B0 图标。用户数据目录遵循绝对路径的
 XDG_DATA_HOME(否则使用 ~/.local/share);系统数据放在 /usr/local/share。
 卸载时请使用安装时相同的 XDG_DATA_HOME。被修改或属于其他程序的文件会保留并

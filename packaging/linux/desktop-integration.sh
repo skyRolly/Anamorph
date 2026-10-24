@@ -8,7 +8,9 @@ DATA=${2:?absolute data root required}
 EXE=${3:?absolute installed executable required}
 while [ "$DATA" != / ] && [ "${DATA%/}" != "$DATA" ]; do DATA=${DATA%/}; done
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-ASSETS="$HERE/desktop-assets"
+# A verified private code snapshot can retain the archive assets as data inputs.
+# Their pinned manifest and private-copy checks below remain the data boundary.
+ASSETS=${4:-"$HERE/desktop-assets"}
 OWNER=$(id -u)
 STATE="$DATA/.tech.rolly.anamorph"
 TXN="$STATE/transaction"

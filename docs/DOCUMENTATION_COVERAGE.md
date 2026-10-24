@@ -17248,3 +17248,19 @@ procedure and the existing integration worklog. The owner deferred sudo,
 privilege-boundary and adversarial testing for this round. CI therefore reports
 the revised installed-resource gate as unverified and blocks its customer archive;
 ordinary user-mode tests do not stand in for native system-mode validation.
+
+## 2026-10-25 defensive Linux helper capture
+
+Updated Proposed ADR-0065 and its index reference, packaging/release/testing
+procedures, user installation instructions, Linux INSTALL.txt and the Unreleased
+fix entry for the literal trusted bootstrap, embedded helper pin and private
+verified snapshot. Corrected the user procedure's stale statement that only copies
+are elevated; source also elevates desktop preflight/publication/uninstall.
+`tests/linux_desktop_helper_tests.py` exercises production capture/verification
+with inert bytes and a recording executor. Filesystem behavior is real, root
+ownership metadata is modelled, and no fixture helper is interpreted. Evidence
+is nonprivileged only; actual system/runtime/installed-resource validation remains
+unverified, the original distinct-principal claim remains unproven, ADR-0065 stays
+Proposed and the customer-archive hold remains. Durable journal cleanup and
+receiptless-uninstall protections remain unchanged. No workflow change or remote
+automation activation is part of this local follow-up.

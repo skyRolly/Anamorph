@@ -73,9 +73,9 @@ which needs no root at all; a system-wide install is offered as the second choic
    Linux folder — REAPER, Bitwig, Ardour and other Linux DAWs scan it by default, so the
    plug-in shows up exactly as a system-wide one would. Anything typed that is not `2` is
    treated as the default. Choosing 2 prints *"System-wide installation requires
-   administrator privileges"* and lets `sudo` ask for your password; only the copy runs
-   elevated, never the whole script. Running `sudo ./install.sh` installs system-wide
-   without asking, as before.
+   administrator privileges"* and lets `sudo` ask for your password; individual file
+   operations and verified desktop-helper snapshots run elevated. Running
+   `sudo ./install.sh` installs system-wide without asking, as before.
 
 3. Rescan plug-ins in your DAW (REAPER: *Options → Preferences → Plug-ins → VST →
    Re-scan*; Bitwig: *Settings → Locations → Plug-in Locations*, then rescan; Ardour:
@@ -98,6 +98,10 @@ preserved and stops the operation; move it to a safe backup before retrying. Int
 resource work is reconciled by the next install/uninstall. A reported resource failure
 is not successful installation; binary updates may already have completed independently.
 GNOME/KDE appearance and window association still require native desktop validation.
+
+System installation and removal reject a desktop helper that does not match the
+trusted entry scripts. If verification fails, use matching files from a trusted
+distribution. This replacement check does not establish a download's authenticity.
 
 You can run the extracted Standalone directly with `./Anamorph` (restore `chmod +x`
 if needed) without running install.sh. Merely extracting the archive installs nothing.

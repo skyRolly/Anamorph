@@ -86,6 +86,54 @@ without deleting foreign resources or weakening binary replacement.
   private user/mount namespaces. Source self-tests precede checker use in every job;
   customer artifact upload requires the installed-resource regression gate.
 
+## Defensive helper capture follow-up (2026-10-25)
+
+The current maintenance instruction authorizes this focused implementation and
+ordinary-only checks. Historical engineering reports are evidence, not formal
+approval. This ADR remains **Proposed**. No new runtime dependency, build
+architecture, archive member or installation mode is introduced.
+
+Previously, system preflight, publication and uninstall interpreted the replaceable
+archive helper through `priv sh`. Its asset hashes could not authenticate code
+already being interpreted. Both entry scripts now contain the same literal
+bootstrap and reviewed SHA-256 of the complete helper. At each system operation,
+including an already-root invocation, the bootstrap rejects missing/nonregular,
+linked or group/other-writable input, creates a fresh root-owned 0700 snapshot
+under checked root-owned `/tmp` (sticky if writable), captures a 0600 single-link
+file, verifies its captured bytes, then interprets only that protected file.
+Source metadata checks are hygiene; the embedded digest and protection through use
+are the code boundary. Changing the source path or bytes after capture cannot
+change the verified input. A later operation captures/verifies again and refuses
+a mismatch, including between preflight and publication.
+
+The snapshot passes the original `desktop-assets` directory as the helper's fourth
+argument. That directory remains data: existing pinned manifest, exact asset hashes
+and private copied-input checks still apply. Direct user invocation retains the
+beside-helper default. Snapshot cleanup removes only its exact helper file and
+fresh directory on exit/error/ordinary signals; it preserves consumer failure.
+SIGKILL may leave a private snapshot; no discovery sweep/adoption is added. Durable
+journal cleanup and receiptless-uninstall refusal are unchanged.
+
+**Distribution authenticity assumption:** the entry scripts (including their literal
+bootstrap/digest), the shell/core utilities, root and the protected system ancestry
+are trusted. Entry code must remain trusted while it is read. This change provides
+no signature or authenticity proof for a downloaded distribution, and cannot defend
+against replacement of the trusted entry scripts or a hostile process with the same
+authority as root. **Replacement protection:** writers of the separate helper or its
+archive ancestry can cause refusal but cannot select different interpreted bytes
+without defeating SHA-256 or the protected snapshot. Source ownership alone is not
+treated as authentication. No demonstrated distinct-principal escalation follows
+from the historical report; that original claim remains unproven.
+
+`tests/linux_desktop_helper_tests.py` exercises the production selection/bootstrap
+through a recording privilege executor using inert bytes, real temporary files,
+links/modes/hashes and exact-path cleanup. Root ownership metadata is modelled; the
+recorder replaces final interpretation and never elevates or executes fixture code.
+These are defensive implementation and nonprivileged regression evidence only.
+Actual root/sudo ownership, shell execution, asset resolution/publication, uninstall,
+signal/interruption recovery and installed-resource validation remain unverified on
+this local revision. The existing Linux customer-archive hold stays in force.
+
 ## Consequences
 
 There are ten new managed desktop/icon paths plus private ownership/recovery state.
@@ -102,7 +150,8 @@ No embedded ELF icon, Icon Composer or native visual certification is implied.
 
 `packaging/linux/{install.sh,uninstall.sh,desktop-integration.sh}`,
 `resources/icons/linux/PROVENANCE.json`, `scripts/check-linux-desktop.py`,
-`tests/linux_desktop_install_tests.py`, `.github/workflows/build.yml`.
+`tests/linux_desktop_install_tests.py`, `tests/linux_desktop_helper_tests.py`,
+`.github/workflows/build.yml`.
 
 ## Evidence and confidence
 

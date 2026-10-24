@@ -6094,6 +6094,34 @@ setup-log tails are retained for diagnosis; missing shortcuts still fail the gat
 
 ## Linux desktop/hicolor regression (Proposed ADR-0065)
 
+For the 2026-10-25 defensive helper maintenance task, the focused check is:
+
+```sh
+python3 tests/linux_desktop_helper_tests.py
+```
+
+Run as an ordinary user. The test extracts the identical production entry-point
+functions, replaces their trusted digest only for inert fixture bytes, and supplies
+a recording `priv()` boundary. It runs the literal capture/verification bootstrap
+without elevation and replaces final `sh` interpretation with a recorder. Temporary
+creation is redirected into task-owned disposable directories; fixture contents are
+never executed. File creation, 0700/0600 modes, single/hard/symbolic links, SHA-256,
+argument quoting and exact-path exit cleanup are real. Root ownership metadata is
+modelled, including directory/file ownership/mode/link-count rejection; this does not
+test cross-account isolation. Cases include each system action, missing/nonregular/
+linked inputs, writable source mode, changed bytes despite a changed sidecar digest,
+stable snapshot consumption after sequential source replacement, and consumer failure
+with unrelated temporary content preserved. A source check requires matching bootstrap
+blocks, the actual helper digest, and routed user/system/implicit-root entry paths.
+
+These checks establish defensive implementation and nonprivileged regression
+evidence. Actual privilege elevation, root ownership, protected interpretation,
+archive asset resolution/publication, system uninstall and interruption/recovery are
+still unverified on this revision. The distinct-principal exploit claim is unproven;
+no race/exploit demonstration or hostile process is part of this check. The commands
+below describe broader existing procedures, not authorization for this task. The
+customer-archive hold and required installed-resource gate remain unchanged.
+
 ```sh
 python3 scripts/check-linux-desktop.py --self-test
 python3 scripts/check-linux-desktop.py

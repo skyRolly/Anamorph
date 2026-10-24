@@ -246,6 +246,18 @@ call the helper through `sh`; artifact transport need not preserve its executabl
 The release ZIP archives that same validated tree and renders/downloads no artwork.
 Extraction and portable Standalone execution change no desktop/system files.
 
+System preflight, publication and uninstall (including already-root runs) execute
+only a private helper snapshot verified against the SHA-256 embedded in both trusted
+entry scripts. Keep the helper and both pins synchronized; run
+`python3 tests/linux_desktop_helper_tests.py` after a helper edit. The root bootstrap
+uses checked `/tmp`, private 0700/0600 single-link capture, and exact-file/directory
+cleanup. It passes the original archive assets as data to the unchanged hash/copy
+checks. A mismatched helper fails closed; use matching files from a trusted
+distribution. The entry scripts/distribution and system tools still need independent
+trust/authenticity; this pin protects subsequent helper replacement, not distribution
+authenticity. SIGKILL can leave a private snapshot; no broad cleanup is attempted.
+See Proposed ADR-0065's defensive follow-up for assumptions and unverified runtime.
+
 User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
 ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary
 and VST3 destinations are unchanged. Install applications/tech.rolly.anamorph.desktop

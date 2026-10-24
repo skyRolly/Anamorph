@@ -46,6 +46,12 @@ additional malformed host-state restrictions remain open owner decisions.
   Evidence: [namespace migration diff](https://github.com/skyRolly/Anamorph/compare/feature/native-product-icons-round1...codex/namespace-tech-rolly-anamorph); ADR-0063. [Verified — source; native gates reported separately]
 
 ### Fixed
+- **System Linux desktop operations verify their helper before interpretation.**
+  Install preflight/publication and uninstall use a private snapshot pinned by the
+  trusted entry scripts, refusing mismatched archive helper bytes. Evidence:
+  PR #175 maintenance follow-up; Proposed ADR-0065;
+  `tests/linux_desktop_helper_tests.py`. [Verified — source and nonprivileged
+  capture tests; privileged runtime unverified; distinct-principal exploit unproven]
 - **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
   cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
   launcher or icon when its receipt is missing, preserving installed binaries for
