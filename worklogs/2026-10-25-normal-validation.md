@@ -130,3 +130,11 @@ This supersedes earlier pending runtime statements for this tested head and boun
 contract only. It is not a distinct-principal exploit demonstration, GUI/DAW
 certification, release approval or evidence for a later changed candidate. The
 final-head normal checks remain required after the separate TSan workspace fix.
+
+
+Release tag fixture reconciliation (2026-10-25): Anamorph's Accepted ADR-0059 uses
+bare version tags. The routing fixture now derives its representative tag from the
+production Release push trigger and CMake version, rather than assuming the sibling
+product's prefix. This corrects the fixture, changes no Release trigger or product
+version, and creates no tag/release. Both review-branch dispatch collisions and the
+actual bare-tag push/manual contexts remain covered by production-file checks.

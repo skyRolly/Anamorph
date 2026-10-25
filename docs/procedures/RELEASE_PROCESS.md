@@ -230,7 +230,10 @@ Base `tech.rolly.anamorph`; macOS receipts below it use `.vst3/.au/.app`. Expand
 is checked by `build-pkg.sh`. Exact named component-to-receipt, choice and payload ownership must agree; a correct ID set alone does not pass. Windows AppId stays `{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}`.
 The owner accepts the pre-release receipt break; there is no old-receipt alias or fallback.
 ADR-0063 is Accepted; architecture review and the owner decision are approved, and #171 is merged.
-Actual receipt installation and DAW recall remain unverified; this record grants no new release approval.
+At that namespace-merge checkpoint, actual receipt installation and DAW recall were
+unverified. Later default-full receipt evidence at `f8e4e7f000db68b40cdea5e1a5c2d43fb4b983ac`
+is recorded in [PR #174](https://github.com/skyRolly/Anamorph/pull/174). DAW recall
+remains manual, and this evidence grants no release approval.
 
 The Windows installer icon gate (Accepted ADR-0064) verifies the exact checked-in B0 ICO before
 ISCC and the generated Setup MAINICON afterward. Installer artifact upload also requires the

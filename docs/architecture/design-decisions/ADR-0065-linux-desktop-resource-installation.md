@@ -135,6 +135,33 @@ Actual root/sudo ownership, shell execution, asset resolution/publication, unins
 signal/interruption recovery and installed-resource validation remain unverified on
 this local revision. The existing Linux customer-archive hold stays in force.
 
+## Runtime validation reconciliation (2026-10-25)
+
+The preceding unverified-runtime statement records the original local delivery
+scope. It is superseded for the bounded tested contract at
+`0a667695aa1684eef07c0bd085dc3d39c3a78c73` by actual disposable-VM evidence:
+[run 40147299614](https://github.com/skyRolly/Anamorph/actions/runs/40147299614),
+native artifact 12582266259 (ZIP SHA-256
+`d16c68c3284ea57e6632bb91d475622a23e2e35c91687dd7f22150ed0b035830`).
+All 29 tests completed with zero failures/errors. The real ordinary UID/sudo/root
+preflight returned 1001/0/0. There were 317 actual root-owned protected snapshots
+(0700 directory, 0600 single-link helper, reviewed pinned bytes and original assets
+argument), 93 reached cleanup cuts (62 user, 31 system) and six signal cases.
+System preflight/publication/uninstall, already-root and real per-operation sudo,
+implicit system selection, root user-mode refusal, coexistence, retry/uninstall,
+receiptless refusal and unknown-state preservation were exercised in private roots.
+
+Customer artifact 12582391207 has ZIP SHA-256
+`c75b84fa50c4bef01ed0a082b54c62dcbb8a2c8f9fd727032ccc3c56e9942103`;
+all 19 entries match that native run's staged hashes and modes. The actual gate
+controls upload and remains fail-closed for an incomplete or failed later run.
+This is functional native evidence at its recorded head, not a release approval or
+automatic certification of a later candidate. The ordinary 12-test recorder still
+models root metadata and does not supply this native proof. Distribution-authenticity
+assumptions and the unproven distinct-principal exploit claim remain unchanged.
+GNOME/KDE appearance and real DAW recall remain separate manual work. The decision
+stays Accepted under the owner's existing confirmation; no new decision is made.
+
 ## Consequences
 
 There are ten new managed desktop/icon paths plus private ownership/recovery state.
