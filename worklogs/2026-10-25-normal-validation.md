@@ -333,3 +333,27 @@ source job's unnecessary namespace dependency while retaining every case and
 the real staged/native/uploaded archive gate. It does not emulate ownership,
 replace the normal interpreter or retry the denied Bubblewrap operation as root.
 Keep TSan's actual canary/probes/full suite and suppression policy unchanged.
+
+
+## Measured modern TSan result (2026-10-25)
+
+At `771c42d90d07338245be0850bb6a5c48c0e5f7bc`, Build run 40238250380,
+TSan job 121304339740 selected `ubuntu-latest`. The job setup log identifies
+Ubuntu 24.04.5/image 20261012.334.1; the container records kernel
+6.17.0-1022-azure, existing mmap entropy 28 and seccomp mode 2. No host security
+setting was changed. Pinned Clang/runtime 22.1.8 reported the seeded data race
+with exit 66, then all four probes ran five times each. The complete state
+suite returned 5942 checks/zero failures and all four declared suppression
+entries matched. Artifact 12615374694 has ZIP SHA-256
+`d972f6dddff51fc95fe18695aa9688524a6b7915a37c2d7f87c313e08d51b32a`.
+The container's image environment fields are null, so image provenance comes
+from the actual job setup log, not an invented value. This measures the
+observed 24.04 host, not the future 26.04 rollout or a 32-bit entropy host.
+
+The current command table no longer instructs an ASLR write, and latest is not
+assumed to stay on noble. Actual canary/probe/suite evidence supports removing
+the old host pin; no temporary legacy exception or new compiler decision is
+needed for this measured environment. Source-lint's namespace denial and the
+separate initial Python ordering error remain recorded above. Native/archive
+and other normal checks still retain their own exact-head outcomes; this TSan
+result cannot substitute for them or diagnose the Rosetta failure.

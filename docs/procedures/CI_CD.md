@@ -1001,7 +1001,7 @@ confirmed to describe this compiler. Bump the pin and re-baseline in the **same*
 
 **The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
 not *newest* and not *whatever Ubuntu packages*. Ubuntu's own archives stop at `clang-20` for noble,
-which is what `ubuntu-latest` resolves to, so the toolchain is installed by
+the userspace retained for the test-only TSan container. The rolling `ubuntu-latest` host label is measured independently. The toolchain is installed by
 `scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel. Ubuntu's
 packaging boundary is a fact about Ubuntu's release process, not about this project, and it is not
 allowed to hold the warning gate, the sanitizer host and — since ADR-0030 — the shipped Linux compiler
@@ -2127,3 +2127,15 @@ to finish 2026-11-19; a measured 24.04 runner does not fix that label forever.
 See https://github.com/actions/runner-images/issues/14254 and
 https://github.com/actions/runner-images/issues/14748. Earlier dated host/native
 observations remain attributed to their own source and environment.
+
+
+## Measured modern TSan result (2026-10-25)
+
+Run 40238250380/job 121304339740 at 771c42d90d07338245be0850bb6a5c48c0e5f7bc
+selected `ubuntu-latest`: Ubuntu 24.04.5/image 20261012.334.1, kernel
+6.17.0-1022-azure, existing entropy 28 and seccomp mode 2. Pinned Clang 22.1.8 reported the seeded race;
+all four probes x5, the complete 5942-check state suite and all four suppression
+entries passed. No security setting changed. Artifact 12615374694 and the exact
+limits are recorded in `worklogs/2026-10-25-normal-validation.md`. The result
+does not certify the future 26.04 rollout, a 32-bit entropy host or other gates.
+No legacy-host exception is needed for this measured environment.

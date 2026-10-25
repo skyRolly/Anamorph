@@ -17599,3 +17599,14 @@ verifier without executing an installer. TESTING_POLICY.md, CI_CD.md and
 TESTING.md record the placement and retain all real native/archive requirements.
 No product code, helper byte/pin, resource hash, namespace permission or normal
 Build/Release routing contract changes. Final results remain pending actual runs.
+
+
+## Measured runner documentation reconciliation (2026-10-25)
+
+CI_CD.md and TESTING.md bind the modern TSan result to run 40238250380 at
+771c42d90d07338245be0850bb6a5c48c0e5f7bc, preserving the first failed probe and
+all runtime/strictness contracts. The current testing table removes the obsolete
+ASLR-write instruction and names the actual suppression policy; the rolling
+host label is measured separately from the retained container userspace.
+No runtime source, workflow operation, pin or security setting is changed by
+this documentation reconciliation. Earlier dated evidence keeps its own scope.
