@@ -203,6 +203,7 @@ validates sources/staging with a preceding self-test; `tests/linux_desktop_insta
 drives actual scripts in disposable filesystem namespaces. Test-only GTK/GIO/Bubblewrap
 are independent of the product runtime. ADR-0065 is registered as Accepted (owner confirmation 2026-10-25).
 
-`helper-capture-review.yml` is a dispatch-only ordinary-UID workflow for the Linux
-capture/hash/syntax checks. Its local preparation does not make the current broad
-push/PR workflows safe to trigger or satisfy the installed-resource gate.
+The ordinary-UID helper recorder runs in normal source-lint. The obsolete separate
+publication-phase review workflow is retired. `tests/linux_desktop_native_tests.py`
+adds real sudo/root selection and protected-snapshot observation in private roots
+on a fresh hosted Linux VM; its successful full gate is required for customer upload.

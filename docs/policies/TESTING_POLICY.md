@@ -162,8 +162,9 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 The owner approved implementation/testing before the new CI dependency set was added;
 ADR-0065 is Accepted; merge review remains separate. Source/provenance checks run universally
 with their self-test ahead of use, including local preflight without any build directory.
-The source-lint job tests actual install/uninstall shell entry points in disposable
-Bubblewrap roots. The shipping Linux job repeats those checks against a clean ZIP
+The source-lint job tests actual ordinary-user install/uninstall entry points with
+`--user-reliability` in disposable Bubblewrap user/mount roots. The shipping job
+requires the complete real-root gate and repeats the checks against a clean ZIP
 round-trip of the real staged customer tree; its upload requires success.
 
 Coverage includes user/system/XDG paths, real GIO escaped executable launch, hicolor

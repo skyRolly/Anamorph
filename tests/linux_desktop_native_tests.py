@@ -28,6 +28,8 @@ legacy = importlib.util.module_from_spec(spec); spec.loader.exec_module(legacy)
 PIN = '3ea641f74a7a04abd2cffeac4298e54022c078655593ad45d226d622ece3c45e'
 UID = GID = None
 OBSERVATIONS = []
+SIGNALS = []
+ENVIRONMENT_PREFLIGHT = {}
 OPERATIONS = []
 STAGED = None
 ARCHIVES = []
@@ -53,19 +55,25 @@ assert args[1]==str(path) and args[2] in ('preflight','install','uninstall'),arg
 assert args[5]=='/package with spaces/desktop-assets',args
 record={'snapshot':str(path),'uid':file.st_uid,'gid':file.st_gid,'mode':oct(file.st_mode & 0o7777),
  'links':file.st_nlink,'directory_mode':oct(directory.st_mode & 0o7777),
- 'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'actual_shell_argv':args,'action':args[2]}
+ 'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'actual_shell_argv':args,'action':args[2],
+ 'user_namespace':os.readlink('/proc/self/ns/user')}
 with open('/native-audit/snapshots.jsonl','a') as stream: stream.write(json.dumps(record)+'\n')
 control=Path('/native-control/signal')
 if control.exists() and args[2]=='install':
- sig=control.read_text().strip(); control.unlink()
- # The real helper's parent is the literal bootstrap. Signal that test-owned
- # process only, then let the real helper return so the bootstrap can trap it.
- stat=Path('/proc/'+str(parent)+'/stat').read_text(); bootstrap=int(stat[stat.rfind(')')+2:].split()[1])
- cmd=Path('/proc/'+str(bootstrap)+'/cmdline').read_bytes()
- assert b'anamorph-desktop-helper' in cmd and b'-c\0' in cmd
- record['bootstrap_signal']=sig
- with open('/native-audit/signals.jsonl','a') as stream: stream.write(json.dumps(record)+'\n')
- os.kill(bootstrap,getattr(signal,'SIG'+sig))
+ sig=control.read_text().strip();target=parent;ancestry=[];bootstrap=None
+ for _ in range(8):
+  stat=Path('/proc/'+str(target)+'/stat').read_text()
+  target=int(stat[stat.rfind(')')+2:].split()[1])
+  if target<=1:break
+  cmd=Path('/proc/'+str(target)+'/cmdline').read_bytes().split(b'\0')
+  ancestry.append([value.decode(errors='replace') for value in cmd if value])
+  if len(cmd)>2 and cmd[1]==b'-c' and b'expected=3ea641f74a7a04abd2cffeac4298e54022c078655593ad45d226d622ece3c45e' in cmd[2] and b'snapshot=$(mktemp' in cmd[2]:
+   assert Path('/proc/'+str(target)).stat().st_uid==0
+   bootstrap=target;break
+ assert bootstrap is not None,ancestry
+ record['bootstrap_signal']=sig;record['bootstrap_ancestry']=ancestry
+ os.kill(bootstrap,getattr(signal,'SIG'+sig));control.unlink()
+ with open('/native-audit/signals.jsonl','a') as stream:stream.write(json.dumps(record)+'\n')
 '''
 
 
@@ -74,7 +82,8 @@ def write_progress(active=None):
     data={'status':'in_progress','customer_archive_eligible':False,
           'elapsed_seconds':round(time.monotonic()-STARTED,3),
           'active_operation':active,'completed_operations':OPERATIONS,
-          'snapshot_observations':OBSERVATIONS,'cleanup_fault_cases':legacy.CLEANUP_RESULTS,
+          'snapshot_observations':OBSERVATIONS,'signal_observations':SIGNALS,
+          'native_environment_preflight':ENVIRONMENT_PREFLIGHT,'cleanup_fault_cases':legacy.CLEANUP_RESULTS,
           'failure_details':FAILURES_SO_FAR,'kernel_security_settings_changed':False,
           'ordinary_invoking_uid':UID,'root_metadata_mocked':False,'interpreter_replaced':False}
     # Atomic checkpoint within the task report directory. Cancellation cannot
@@ -92,8 +101,8 @@ def require_disposable_runner():
         raise RuntimeError('native installer gate requires actual sudo on this repository\'s fresh disposable GitHub-hosted Linux VM')
     uid=int(os.environ.get('SUDO_UID','0')); gid=int(os.environ.get('SUDO_GID','0'))
     if uid==0 or gid==0: raise RuntimeError('an actual ordinary invoking user is required')
-    if not shutil.which('bwrap') or not shutil.which('sudo'):
-        raise RuntimeError('native private-root gate requires Bubblewrap and real sudo')
+    if not all(shutil.which(tool) for tool in ('unshare','mount','setpriv','sudo')):
+        raise RuntimeError('native private-root gate requires unshare, mount, setpriv and real sudo')
     return uid,gid
 
 
@@ -103,6 +112,73 @@ def own_user_fixture(path):
     for directory, dirs, files in os.walk(path,followlinks=False):
         os.chown(directory,UID,GID,follow_symlinks=False)
         for name in dirs+files: os.chown(Path(directory)/name,UID,GID,follow_symlinks=False)
+
+
+def enter_private_namespace(config_path):
+    """Prepare only task-owned mounts in this new namespace, then exec real UID."""
+    require_disposable_runner()
+    config_path=Path(config_path)
+    meta=config_path.stat()
+    if config_path.is_symlink() or meta.st_uid!=0 or meta.st_mode & 0o777!=0o600:
+        raise RuntimeError('unprotected native namespace configuration')
+    config=json.loads(config_path.read_text()); root=Path(config['root'])
+    if os.getpid()!=1 or any(os.readlink('/proc/self/ns/'+name)==config['parent_namespaces'][name] for name in ('mnt','pid','net')):
+        raise RuntimeError('native setup requires distinct task mount/PID/network namespaces')
+    if os.readlink('/proc/self/ns/user')!=config['parent_namespaces']['user']:
+        raise RuntimeError('native ownership must remain in the real user namespace')
+    if root.is_symlink() or root.stat().st_uid!=0 or config_path.parent!=root.parent:
+        raise RuntimeError('namespace root must belong to this task')
+    def checked(*args): subprocess.run(args,check=True,stdout=subprocess.DEVNULL)
+    # This acts only on the new mount namespace; host propagation/settings stay intact.
+    checked('mount','--make-rprivate','/')
+    for directory in ('usr','usr/lib','usr/local','usr/lib/vst3','run','var','root','tmp','proc','dev','native-real'):
+        (root/directory).mkdir(parents=True,exist_ok=True)
+    def bind(source,target,readonly):
+        source=Path(source); relative=Path(target).relative_to('/')
+        if '..' in relative.parts: raise RuntimeError('invalid namespace target')
+        destination=root/relative; destination.parent.mkdir(parents=True,exist_ok=True)
+        if source.is_dir(): destination.mkdir(exist_ok=True)
+        elif not destination.exists(): destination.touch()
+        checked('mount','--bind',str(source),str(destination))
+        if readonly: checked('mount','-o','remount,bind,ro',str(destination))
+    for source,target,readonly in config['bindings']: bind(source,target,readonly)
+    for name,target in (('bin','usr/bin'),('sbin','usr/sbin'),('lib','usr/lib')):
+        path=root/name
+        if not path.is_symlink(): path.symlink_to(target)
+    checked('mount','-t','proc','-o','nosuid,nodev,noexec','proc',str(root/'proc'))
+    for name in ('null','zero','random','urandom'): bind('/dev/'+name,'/dev/'+name,False)
+    (root/'dev/pts').mkdir(exist_ok=True)
+    checked('mount','-t','devpts','-o','newinstance,ptmxmode=0666,mode=0620','devpts',str(root/'dev/pts'))
+    for name,target in (('ptmx','pts/ptmx'),('fd','/proc/self/fd'),('stdin','/proc/self/fd/0'),('stdout','/proc/self/fd/1'),('stderr','/proc/self/fd/2')):
+        path=root/'dev'/name
+        if not path.is_symlink():path.symlink_to(target)
+    # Keep a dedicated namespace init. The customer entry/bootstrap must not be
+    # PID 1, whose signal rules differ; exiting init also reaps/kills its orphans.
+    os.chroot(root); os.chdir('/tmp')
+    child=os.fork()
+    if child:
+        # The live-PID refusal fixture must refer to an init owned by the same
+        # real account as the entry process, as in an ordinary user namespace.
+        os.setgroups([]);os.setgid(config['gid']);os.setuid(config['uid'])
+        _,status=os.waitpid(child,0)
+        code=os.waitstatus_to_exitcode(status)
+        os._exit(code if code>=0 else 128-code)
+    os.environ.pop('XDG_DATA_HOME',None);os.environ.pop('ANAMORPH_FAULT',None)
+    os.environ.update(config['environment'])
+    # No user namespace and no no-new-privs flag: genuine setuid sudo is required.
+    # Drop mount/namespace capabilities before the project installer is started.
+    argv=['/usr/bin/setpriv','--bounding-set=-all,+setuid,+setgid,+dac_override,+chown,+fowner,+audit_write',
+          '--inh-caps=-all','--ambient-caps=-all','--reuid',str(config['uid']),
+          '--regid',str(config['gid']),'--clear-groups','--',*config['command']]
+    os.execv(argv[0],argv)
+
+
+def production_bootstrap():
+    text=(STAGED/'install.sh').read_text()
+    match=re.search(r"    priv /bin/sh -c '([\s\S]*?)' anamorph-desktop-helper",text)
+    if not match or 'expected='+PIN not in match[1]:raise RuntimeError('cannot select reviewed production bootstrap')
+    return match[1]
+
 
 
 class NativeCase(legacy.InstallCase):
@@ -135,41 +211,38 @@ class NativeCase(legacy.InstallCase):
         for path in self.sandbox.iterdir():
             if path.name not in ('system-local','system-vst'): own_user_fixture(path)
         uid=0 if root else UID; gid=0 if root else GID
-        argv=['bwrap','--unshare-pid','--unshare-net','--new-session','--die-with-parent',
-              '--cap-drop','ALL','--cap-add','CAP_SETUID','--cap-add','CAP_SETGID',
-              '--cap-add','CAP_DAC_OVERRIDE','--cap-add','CAP_CHOWN','--cap-add','CAP_FOWNER',
-              '--uid',str(uid),'--gid',str(gid),
-              '--ro-bind','/usr/bin','/usr/bin','--ro-bind','/usr/share','/usr/share',
-              '--ro-bind','/etc','/etc','--ro-bind',str(self.sudoers),'/etc/sudoers',
-              '--symlink','usr/bin','/bin','--symlink','usr/lib','/lib',
-              '--ro-bind','/lib64','/lib64','--proc','/proc','--dev','/dev',
-              '--tmpfs','/run','--dir','/var','--dir','/root',
-              '--bind',str(self.snapshot_tmp),'/tmp','--bind',str(self.sandbox),'/sandbox',
-              '--ro-bind',str(self.package),'/package with spaces',
-              '--ro-bind',str(self.tools),'/native-tools','--bind',str(self.audit),'/native-audit',
-              '--bind',str(self.control),'/native-control','--dir','/native-real',
-              '--ro-bind','/usr/bin/dirname','/native-real/dirname',
-              '--ro-bind',str(self.tools/'dirname'),'/usr/bin/dirname',
-              '--setenv','HOME','/sandbox/'+self.home_name,'--unsetenv','XDG_DATA_HOME',
-              '--setenv','PATH','/usr/bin:/bin','--chdir','/tmp']
+        bindings=[('/usr/bin','/usr/bin',True),('/usr/sbin','/usr/sbin',True),
+                  ('/usr/share','/usr/share',True),('/etc','/etc',True),
+                  (str(self.sudoers),'/etc/sudoers',True),('/lib64','/lib64',True),
+                  (str(self.snapshot_tmp),'/tmp',False),(str(self.sandbox),'/sandbox',False),
+                  (str(self.package),'/package with spaces',True),
+                  (str(self.tools),'/native-tools',True),(str(self.audit),'/native-audit',False),
+                  (str(self.control),'/native-control',False),
+                  ('/usr/bin/dirname','/native-real/dirname',True),
+                  (str(self.tools/'dirname'),'/usr/bin/dirname',True)]
         for item in Path('/usr/lib').iterdir():
-            if item.name!='vst3': argv += ['--ro-bind',str(item),str(item)]
-        argv += ['--bind',str(self.system_vst),'/usr/lib/vst3','--bind',str(self.system_local),'/usr/local']
-        # Fixed production PATH stays intact. Bind reviewed fault utilities over
-        # their exact private namespace paths and keep originals at /native-real.
+            if item.name!='vst3': bindings.append((str(item),str(item),True))
+        bindings += [(str(self.system_vst),'/usr/lib/vst3',False),(str(self.system_local),'/usr/local',False)]
+        environment={'HOME':'/sandbox/'+self.home_name,'PATH':'/usr/bin:/bin'}
         if fault:
             for tool in self.fault.iterdir():
                 text=tool.read_text().replace('/usr/bin/'+tool.name,'/native-real/'+tool.name)
-                prepared=self.tools/('fault-'+tool.name); prepared.write_text(text); prepared.chmod(0o755)
-                argv += ['--ro-bind','/usr/bin/'+tool.name,'/native-real/'+tool.name,
-                         '--ro-bind',str(prepared),'/usr/bin/'+tool.name]
-            argv += ['--setenv','ANAMORPH_FAULT',fault]
-        if xdg is not None: argv += ['--setenv','XDG_DATA_HOME',xdg]
-        if command:
-            argv += [s.replace('/package/','/package with spaces/') for s in command]
-        else:
-            argv += ['/bin/sh','/package with spaces/'+script,*([] if implicit else ['--'+mode]),*extra]
-        active={'test':self.id(),'entry':script,'mode':mode,'entry_uid':uid,'fault':fault}
+                prepared=self.tools/('fault-'+tool.name);prepared.write_text(text);prepared.chmod(0o755)
+                bindings += [('/usr/bin/'+tool.name,'/native-real/'+tool.name,True),
+                             (str(prepared),'/usr/bin/'+tool.name,True)]
+            environment['ANAMORPH_FAULT']=fault
+        if xdg is not None:environment['XDG_DATA_HOME']=xdg
+        payload=([s.replace('/package/','/package with spaces/') for s in command] if command else
+                 ['/bin/sh','/package with spaces/'+script,*([] if implicit else ['--'+mode]),*extra])
+        namespace_root=self.root/'namespace-root';namespace_root.mkdir(exist_ok=True)
+        config=self.root/'namespace-config.json'
+        config.write_text(json.dumps({'root':str(namespace_root),'bindings':bindings,'environment':environment,
+                                      'uid':uid,'gid':gid,'command':payload,
+                                      'parent_namespaces':{name:os.readlink('/proc/self/ns/'+name) for name in ('mnt','pid','net','user')}}));config.chmod(0o600)
+        argv=['unshare','--mount','--pid','--net','--fork','--kill-child',
+              sys.executable,str(Path(__file__).resolve()),'--namespace-config',str(config)]
+        kind=('customer_entry' if command is None else 'embedded_bootstrap' if command[:2]==['/bin/sh','-c'] else 'ordinary_fixture_probe')
+        active={'test':self.id(),'entry':script,'mode':mode,'entry_uid':uid,'fault':fault,'execution_kind':kind}
         write_progress(active)
         try:
             result=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=45)
@@ -178,12 +251,17 @@ class NativeCase(legacy.InstallCase):
             write_progress(); raise
         recorded=self.audit/'snapshots.jsonl'
         rows=[json.loads(line) for line in recorded.read_text().splitlines()] if recorded.exists() else []
+        for row in rows:
+            self.assertEqual(row['user_namespace'],os.readlink('/proc/self/ns/user'))
         OBSERVATIONS.extend(rows); recorded.unlink(missing_ok=True)
+        signals=self.audit/'signals.jsonl'
+        if signals.exists():
+            SIGNALS.extend(json.loads(line) for line in signals.read_text().splitlines());signals.unlink()
         self.assertEqual(list(self.snapshot_tmp.glob('anamorph-desktop-helper.*')),[],
                          'protected snapshot was not cleaned after the test-owned operation')
-        OPERATIONS.append({'test':self.id(),'entry':script,'mode':('system' if implicit and root else mode),'entry_uid':uid,
+        OPERATIONS.append({**active,'mode':('system' if implicit and root else mode),'entry_uid':uid,
                            'implicit':implicit,'fault':fault,'exit_code':result.returncode,
-                           'protected_snapshots':len(rows),'actual_per_operation_sudo':uid!=0 and mode=='system'})
+                           'protected_snapshots':len(rows),'actual_per_operation_sudo':command is None and uid!=0 and mode=='system'})
         write_progress()
         return result
 
@@ -222,14 +300,21 @@ class NativeCase(legacy.InstallCase):
 
     def test_real_snapshot_signal_cleanup_and_status(self):
         for sig,code in [('TERM',143),('HUP',129),('INT',130)]:
-            with self.subTest(signal=sig):
-                (self.control/'signal').write_text(sig)
-                result=self.invoke(mode='system',root=True)
-                self.assertEqual(result.returncode,code,result.stdout+result.stderr)
-                self.assertFalse((self.control/'signal').exists(),'signal cut was not reached')
-                self.assertEqual(list(self.snapshot_tmp.glob('anamorph-desktop-helper.*')),[])
-                self.good(mode='system',root=True)
-                self.good(script='uninstall.sh',mode='system',root=True)
+            for direct in (False,True):
+                with self.subTest(signal=sig,direct_bootstrap=direct):
+                    self.good(mode='system',root=True)
+                    (self.control/'signal').write_text(sig)
+                    command=(['/bin/sh','-c',production_bootstrap(),'anamorph-desktop-helper',
+                              '/package with spaces/desktop-integration.sh','/package with spaces/desktop-assets',
+                              'install','/usr/local/share','/usr/local/bin/Anamorph'] if direct else None)
+                    result=self.invoke(mode='system',root=True,command=command)
+                    # The customer's existing priv() maps errors to 1; the exact
+                    # embedded bootstrap preserves its own signal status.
+                    self.assertEqual(result.returncode,code if direct else 1,result.stdout+result.stderr)
+                    self.assertFalse((self.control/'signal').exists(),'signal cut was not reached')
+                    self.assertEqual(list(self.snapshot_tmp.glob('anamorph-desktop-helper.*')),[])
+                    self.good(mode='system',root=True)
+                    self.good(script='uninstall.sh',mode='system',root=True)
 
     def test_real_system_receiptless_all_ten_paths(self):
         for relative in legacy.MANAGED_PATHS:
@@ -270,6 +355,9 @@ class NativeCase(legacy.InstallCase):
 
 def main():
     global UID,GID,STAGED,PROGRESS_PATH,STARTED
+    if sys.argv[1:2]==['--namespace-config']:
+        if len(sys.argv)!=3: raise RuntimeError('one protected namespace configuration required')
+        enter_private_namespace(sys.argv[2]);return
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--staged-dir',type=Path,required=True)
     parser.add_argument('--report',type=Path,required=True)
@@ -290,6 +378,21 @@ def main():
     assert hashlib.sha256((STAGED/'desktop-integration.sh').read_bytes()).hexdigest()==PIN
     for entry in ('install.sh','uninstall.sh'):
         assert 'expected='+PIN in (STAGED/entry).read_text()
+    preflight=NativeCase();preflight.setUp()
+    try:
+        for label,root_user,command,expected in [
+            ('ordinary_uid',False,['/usr/bin/id','-u'],UID),
+            ('root_uid',True,['/usr/bin/id','-u'],0),
+            ('real_sudo_uid',False,['/usr/bin/sudo','-n','/usr/bin/id','-u'],0)]:
+            result=preflight.invoke(root=root_user,command=command)
+            if result.returncode or result.stdout.strip()!=str(expected):
+                detail={'status':'incomplete','customer_archive_eligible':False,
+                        'missing_environment_capability':label,
+                        'exit_code':result.returncode,'stdout':result.stdout,'stderr':result.stderr}
+                args.report.write_text(json.dumps(detail,indent=2)+'\n')
+                raise RuntimeError('native private-root capability unavailable: '+label)
+            ENVIRONMENT_PREFLIGHT[label]=int(result.stdout.strip())
+    finally:preflight.doCleanups()
     # Inherited methods create additional cases through this module binding.
     legacy.InstallCase=NativeCase
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(NativeCase)
@@ -298,9 +401,11 @@ def main():
             'failure_details':[{'test':str(case),'traceback':trace} for case,trace in result.failures+result.errors],
             'status':'verified' if result.wasSuccessful() else 'failed','customer_archive_eligible':result.wasSuccessful(),
             'ordinary_invoking_uid':UID,'root_metadata_mocked':False,'interpreter_replaced':False,
-            'isolation':'real UIDs in root-created Bubblewrap mount/PID/network namespaces; no user namespace',
+            'isolation':'real UIDs in unshare mount/PID/network namespaces with task-private chroot; no user namespace',
             'kernel_security_settings_changed':False,'cleanup_fault_cases':legacy.CLEANUP_RESULTS,
-            'snapshot_observations':OBSERVATIONS,'operations':OPERATIONS,'archive_round_trips':ARCHIVES,
+            'snapshot_observations':OBSERVATIONS,'signal_observations':SIGNALS,
+            'native_environment_preflight':ENVIRONMENT_PREFLIGHT,
+            'operations':OPERATIONS,'archive_round_trips':ARCHIVES,
             'source_head':subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),
             'staged_files':{str(p.relative_to(STAGED)):{'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'mode':oct(p.stat().st_mode & 0o7777)} for p in STAGED.rglob('*') if p.is_file()},
             'GUI_desktop_certification':False,'distinct_principal_exploit_proven':False}

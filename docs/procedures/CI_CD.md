@@ -1894,36 +1894,50 @@ ordinary capture recorder stays in source-lint and cannot stand in for this gate
 No cross-principal attack or exploit demonstration is required or performed.
 
 
-## Restricted Linux helper review route (prepared 2026-10-25)
+## Ordinary helper regression in normal CI
 
-`.github/workflows/helper-capture-review.yml` is dispatch-only, read-only and
-ordinary-UID: it runs the delivered capture recorder tests, approved asset
-self-test/check and shell syntax checks. It invokes no installer, sudo, kernel
-setting, fuzz or broad fault suite. The dispatch-only workflow alone never
-contained push events. The temporary source-publication route documented above
-now gates the existing build workflow and includes the same capture recorder in
-`source-lint` for push and matching PR events, without depending on dispatch
-availability on the default branch. Body-only description edits remain separately
-audited against default PR event types. Mandatory installed-resource coverage and
-the customer-archive hold remain; this subset does not satisfy them.
+The obsolete separate helper review workflow is retired. Normal source-lint runs
+`tests/linux_desktop_helper_tests.py` as an ordinary UID, plus the approved source
+and shell checks. Its recorder never elevates or interprets fixture helper bytes;
+modeled ownership cannot certify native root behavior. The real installed-resource
+step and customer-upload dependency remain separate and mandatory. Normal Build
+push/PR/dispatch and reusable Release validation no longer require publication
+containment. Body-only description edits retain the default PR event behavior.
 
-The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
-existing shadow-memory capability before the unchanged canary and tests. It never
-lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
-image changes no shipping compiler, dependency pin or product artifact.
 
-The test-only TSan job uses Ubuntu 24.04 container userspace on the Ubuntu 22.04
-host so the existing dependency setup and pinned Clang build use the proven package
-set. A read-only host capability check precedes setup and retains its actual value.
-Both the sanitizer canary and all state probes/suppression checks remain mandatory;
-no kernel setting or container security profile is changed. The first Jammy-native
-attempt failed during dependency setup; its exact package error was unavailable
-through the permitted GitHub read tools, so no specific cause is asserted.
+Normal source-lint also restores the existing ordinary-user entry-point reliability
+selector in private user/mount namespaces on Ubuntu 22.04, with its test-only tools.
+It uses no hosted-namespace-permission flag and changes no kernel/security setting;
+an unavailable namespace capability fails. The four user smoke cases plus all-ten
+receiptless checks and bounded user cleanup cuts remain a subset, separate from the
+mandatory staged real-root gate. The 12-test recorder remains an ordinary process
+and still never elevates or interprets its inert fixture helper bytes.
 
-The first real native-gate attempt exhausted the former 40-minute Linux job
-budget without a completed report or customer upload. Its observer launched Python
-for every dirname call; the test overlay now filters snapshot paths in shell before
-starting observation. Atomic per-operation progress remains explicitly incomplete
-and ineligible until the full suite finishes. Each test-owned subprocess is bounded
-at 45 seconds, the native driver at 30 minutes, and the Linux build/test job at
-60 minutes. No cut or ownership/runtime claim is inferred from the timed-out run.
+The second native attempt completed with diagnostic failures: Bubblewrap rejected
+ordinary UID selection without a user namespace. Already-root observations and
+31 reached system cleanup cuts were retained, but no full gate or customer upload
+was certified. The native driver now creates VM-private mount/PID/network roots
+with unshare/chroot and uses real setpriv UID transitions. It retains a dedicated
+namespace init and real setuid sudo; no user namespace or interpreter recorder is
+used. Host runtime files are read-only, product writes remain task-private, and
+mount capabilities are dropped before the installer runs. Signal targeting walks
+only the bounded test-owned ancestry and verifies the pinned literal bootstrap.
+The existing customer priv() maps errors to 1; separate execution of its exact
+embedded bootstrap verifies 130/143/129 signal status and snapshot cleanup. No
+production helper, digest, PATH or permission/failure contract was changed.
+
+Native namespace setup verifies distinct mount/PID/network namespaces before any
+mount operation and retains the original user namespace. The task-owned root is
+entered before forking the installer; a dedicated init reaps only its descendants.
+A one-time real UID/sudo capability preflight stops the native suite if the VM
+cannot provide this isolation. Trusted project code and test instrumentation run
+inside a disposable VM; the test root is not claimed to contain hostile root code.
+Source-lint's ordinary namespace probe also fails before its unit selection when
+that separate capability is unavailable. Its 20-minute job budget covers the
+bounded existing user reliability cases and dependency setup.
+
+The ordinary native-plan recorder checks production executor selection, real-UID
+plan fields, implicit-root/uninstall arguments, fixed PATH and task-private writable
+mounts. Its four tests execute no namespace, sudo, interpreter or fixture contents.
+Planned UID 0 is data only; these tests cannot replace native filesystem evidence.
+The original 12-test protected-helper recorder remains separate and unchanged.
