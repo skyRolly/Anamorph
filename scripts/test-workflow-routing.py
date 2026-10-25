@@ -2,7 +2,7 @@
 """Check production Build/Release selection with inert event and command fixtures.
 
 This is a small evaluator for the Boolean job-condition subset used here, not an
-Actions emulator. It runs only the Release metadata body in a private fixture;
+Actions emulator. It runs Release metadata and TSan environment bodies in private fixtures;
 no installer, compiler, workflow dispatch, tag or release is executed/created.
 """
 import argparse
@@ -91,6 +91,27 @@ def selection(source, context):
     return selected
 
 
+def verify_tsan_workspace(build):
+    body = jobs(build)['tsan']
+    match = re.search(r'      - name: Resolve TSan suppressions inside the container checkout\n        run: \|\n((?:          [^\n]*\n)+)', body)
+    assert match, 'container TSan must resolve its suppression file from the real checkout'
+    command = '\n'.join(line[10:] for line in match[1].splitlines())+'\n'
+    with tempfile.TemporaryDirectory(prefix='tsan-workspace-') as directory:
+        fixture = Path(directory)/'checkout with spaces'; (fixture/'tests').mkdir(parents=True)
+        suppression = fixture/'tests/tsan-suppressions.txt'
+        suppression.write_text('deadlock:inert_fixture\n')
+        output = fixture/'environment'
+        env = dict(os.environ, GITHUB_ENV=str(output), GITHUB_WORKSPACE='/unavailable/host/checkout',
+                   TSAN_OPTIONS='suppressions=/unavailable/host/checkout/tests/tsan-suppressions.txt')
+        run = subprocess.run(['bash','-e','-o','pipefail','-c',command], cwd=fixture, env=env, capture_output=True, text=True)
+        assert run.returncode == 0, run.stdout+run.stderr
+        expected = 'halt_on_error=1:exitcode=66:report_bugs=1:suppressions='+str(suppression)+':print_suppressions=1'
+        assert output.read_text() == 'TSAN_OPTIONS='+expected+'\n'
+        return {'production_environment_body_executed': True, 'checkout_path_contains_spaces': True,
+                'unavailable_host_path_rejected': True, 'sanitizer_or_compiler_executed': False,
+                'sanitizer_flags_and_suppression_rules_changed': False}
+
+
 def verify(build_path, release_path, root):
     build = build_path.read_text(); release = release_path.read_text()
     product = 'Anabasis' if re.search(r'^name:.*Anabasis', (root/'CMakeLists.txt').read_text(), re.M) else None
@@ -122,7 +143,7 @@ def verify(build_path, release_path, root):
         for event in ('push', 'pull_request', 'workflow_dispatch'):
             check('direct-'+event+'-'+branch, event, 'refs/heads/'+branch)
         check('release-dispatch-'+branch, 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')
-    tag = 'v0.2.17' if product == 'Anabasis' else '0.9.10'
+    tag = 'v0.2.17' if product == 'Anabasis' else 'v0.9.10'
     for event in ('push', 'workflow_dispatch'):
         check('release-tag-'+event, event, 'refs/tags/'+tag, caller='Release')
     assert re.search(r'^  workflow_call:\s*(?:#.*)?$', build, re.M), 'no reusable Build trigger'
@@ -155,6 +176,7 @@ def verify(build_path, release_path, root):
             assert values['is-release'] == 'false', 'rehearsal could reach draft-release'
             rehearsals.append({'ref':ref,'metadata_outputs':values,'draft_release_selected':False})
     return {'context_cases':records, 'real_metadata_body_fixtures':rehearsals,
+            'tsan_container_workspace_fixture': verify_tsan_workspace(build) if product == 'Anamorph' else None,
             'inputs_or_defaults':None, 'nested_calls':'Release -> local Build only',
             'workflow_digests':{str(p.relative_to(root)) if p.is_relative_to(root) else str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (build_path,release_path)}}
 

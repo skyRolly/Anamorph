@@ -3906,6 +3906,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Resolve TSan suppressions inside the container checkout
+        run: |
+          suppression_file="$(pwd -P)/tests/tsan-suppressions.txt"
+          test -r "$suppression_file"
+          printf 'TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_bugs=1:suppressions=%s:print_suppressions=1\n' "$suppression_file" >> "$GITHUB_ENV"
+
       - name: Check existing sanitizer shadow-memory capability
         id: tsan_host
         run: |
@@ -3940,12 +3946,13 @@ jobs:
           canary_status=$?
           set -e
           python3 - "$canary_status" <<'PYCODE'
-          import json, sys
+          import json, os, sys
           from pathlib import Path
           output = Path('tsan-canary.log').read_text(errors='replace')
           status = int(sys.argv[1])
           Path('build/tsan-canary.json').write_text(json.dumps({
               'exit_code': status,
+              'tsan_options': os.environ['TSAN_OPTIONS'],
               'expected_data_race_report': 'WARNING: ThreadSanitizer: data race' in output,
               'liveness_established': status != 0 and 'WARNING: ThreadSanitizer: data race' in output,
               'test_output': output,
