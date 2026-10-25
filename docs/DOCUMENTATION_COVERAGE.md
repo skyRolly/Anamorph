@@ -17316,3 +17316,15 @@ message, probes and suppression checks are unchanged; no failure is suppressed.
 The routing fixtures use the real open/synchronize PR merge ref
 `refs/pull/N/merge`, while retaining the independent head branch field. Direct Build
 and inherited Release manual contexts retain their exact shared branch event/ref.
+
+
+TSan workspace correction (2026-10-25): artifact 12580933816 at head
+632d8917a1c1435e65fd82456fa1c24bebe3719f records exit 66 because the container
+could not read the suppression file at the host workspace path. Resolve the
+suppression file from the checked-out container working directory and export the
+same sanitizer flags before the unchanged canary/probes. The production environment
+body is exercised in an inert private directory containing spaces with an invalid
+host workspace path. It executes no sanitizer, compiler, installer or privileged
+operation. Keep the real canary mandatory and retain its output/options; this
+fixture does not establish sanitizer liveness. No suppression rule, compiler pin,
+container security profile or kernel setting changes.
