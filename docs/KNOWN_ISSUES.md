@@ -1277,3 +1277,20 @@ re-measured makes it measure the new slot's level again, over ~2 s.
   (the threaded probes, TSan clean, the stall, the preset load, the prototype); worklog §U (the
   reproduction on the branch head, the protocol, its proof and its prototype evidence); ADR-0057; ADR-0007
   (A/B provenance, "A slot adopted partly written", reclassified); ADR-0036 §25 (note of 2026-09-27).
+
+## Actual combined-main reconciliation (2026-10-26)
+
+At actual main `14bde706e2d121c9970cf00c757cb12d3178b9a5`, Build 40221042187/macOS job
+121252472086 failed the existing x86_64 Rosetta DSP Test 61 assertion:
+"R7 scope: ...and they are exactly the newest frames, oldest first".
+The suite ended at 940 checks, one failure, exit 1. Counts were exact but the
+frame-order/value check failed at written=17199, got=16384, index=15933.
+The printed expected and actual pairs both display `(0x1.05bp+14,-0x1.05bp+14)`;
+that diagnostic alone does not establish why the assertion failed.
+
+This is a confirmed main validation failure with unconfirmed cause, not a
+diagnosed product/threading defect, timing issue or waived test. The Rosetta
+StateTests command after the failed DSP invocation did not run in that step.
+Native Intel/arm64 and AU/pluginval results do not substitute for the failed
+Rosetta check. Keep it separate from run 40036154695's AU teardown observation.
+No retry or product/test behavior change was made by this documentation audit.

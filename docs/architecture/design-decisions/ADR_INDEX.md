@@ -67,7 +67,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0062](ADR-0062-native-juce-icon-resources.md) | Approved B0 PNGs through conventional JUCE ICON_BIG/ICON_SMALL; source provenance and native resource checks; installer/launcher/Composer work deferred | **Accepted** — explicit owner Architecture Review approval, 2026-10-23 | Verified source/pinned-JUCE behavior; native results scoped to CI reports; real shell/DAW display unverified |
 | [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
 | [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
-| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Owned Linux desktop/hicolor installation, process-interruption recovery, verified helper capture and isolated native-resource tests | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation/merge pending | Ordinary capture recorder remains modeled; actual 29-test native gate passed at `0a667695` with 317 protected snapshots, 93 cleanup cuts and six signal cases; see dated runtime reconciliation in ADR-0065; later candidates require applicable checks |
+| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Owned Linux desktop/hicolor installation, process-interruption recovery, verified helper capture and isolated native-resource tests | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation effective on main via PR #175 (`14bde706e2d121c9970cf00c757cb12d3178b9a5`) | Ordinary capture recorder remains modeled; actual 29-test native gate passed at `0a667695` with 317 protected snapshots, 93 cleanup cuts and six signal cases; see dated runtime reconciliation in ADR-0065; later candidates require applicable checks |
 | [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Complete installed-receipt ownership and explicit liveness/PKG artifact boundary | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation effective on main via PR #174 (`04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`) | Native fixtures, omission/mutation and scheduling-fault regressions |
 
 ## Owner approval reconciliation — record updated 2026-10-24
@@ -145,13 +145,13 @@ approval date, reviewer identity, meeting, signed record and GitHub approval
 submission were not supplied and are not invented. Human architecture/ADR
 approval is complete. This does not certify tests, satisfy a separate code
 review, or authorize merge/release. ADR-0065 and its protected-helper snapshot
-amendment are Accepted; only their implementation and associated policy
-enforcement still await the owner's PR #175 merge. ADR-0066 is already effective
-on main through PR #174, as recorded below. Earlier Proposed entries remain historical.
+amendment are implemented on main through PR #175; ADR-0066 is implemented
+through PR #174. Both remain Accepted. Actual implementation effectivity is
+recorded below; earlier Proposed and pre-merge statements remain historical.
 
 | Record / amendment | Decision status now | Implementation effectivity |
 | --- | --- | --- |
-| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) and its helper snapshot amendment | Accepted; owner confirmation 2026-10-25 | Prepared on PR #175; not effective on main; merge pending |
+| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) and its helper snapshot amendment | Accepted; owner confirmation 2026-10-25 | Effective on main via PR #175; merge `14bde706e2d121c9970cf00c757cb12d3178b9a5` |
 | [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Accepted; owner confirmation 2026-10-25 | Effective on main via PR #174; merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b` |
 
 ## 2026-10-25 actual-main effectivity reconciliation
@@ -161,3 +161,20 @@ ADR-0066 implementation is effective through the owner's actual PR #174 merge
 Accepted; implementation on main still awaits PR #175. The combined feature branch
 contains both feature sets and preserves the original approval provenance. A green
 branch check or local main-to-feature merge is not the remaining GitHub PR merge.
+
+## Actual combined-main reconciliation (2026-10-26)
+
+The owner merged PR #175 as `14bde706e2d121c9970cf00c757cb12d3178b9a5`. Its complete tree
+equals reviewed candidate `373ea2d1ab2b7a7861a215d0040798b5891f696c`. ADR-0065 and
+its protected-helper amendment are implemented on main; ADR-0066 was already
+implemented through PR #174 merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`.
+Both remain Accepted under owner confirmation 2026-10-25. Earlier dated pending
+statements and local-delivery limits remain historical, not current effectivity.
+
+Actual main Build 40221042187 failed DSP Test 61 under x86_64 Rosetta in macOS
+job 121252472086: "R7 scope: ...and they are exactly the newest frames, oldest
+first"; 940 DSP checks, one failure. This prevents a clean actual-main baseline.
+Cause is unconfirmed; it is separate from the retained AU teardown observation.
+No rerun, assertion waiver, runtime/CI change or speculative repair is made here.
+Native receipt/installer/archive results remain separately attributed evidence.
+See `worklogs/2026-10-25-normal-validation.md` for the recorded observation.
