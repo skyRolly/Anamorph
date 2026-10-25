@@ -257,3 +257,43 @@ or repeating unchanged native campaigns to relabel evidence. After the owner
 merges #175, audit the actual merge/squash tree and main baseline separately.
 The original AU teardown observation, GUI/DAW appearance/recall, genuine older
 installer upgrades and native Icon Composer authoring remain separate work.
+
+## Actual combined-main reconciliation (2026-10-26)
+
+The owner merged PR #175 as `14bde706e2d121c9970cf00c757cb12d3178b9a5`. Its complete tree
+equals reviewed candidate `373ea2d1ab2b7a7861a215d0040798b5891f696c`. ADR-0065 and
+its protected-helper amendment are implemented on main; ADR-0066 was already
+implemented through PR #174 merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`.
+Both remain Accepted under owner confirmation 2026-10-25. Earlier dated pending
+statements and local-delivery limits remain historical, not current effectivity.
+
+Actual main Build 40221042187 failed DSP Test 61 under x86_64 Rosetta in macOS
+job 121252472086: "R7 scope: ...and they are exactly the newest frames, oldest
+first"; 940 DSP checks, one failure. This prevents a clean actual-main baseline.
+Cause is unconfirmed; it is separate from the retained AU teardown observation.
+No rerun, assertion waiver, runtime/CI change or speculative repair is made here.
+Native receipt/installer/archive results remain separately attributed evidence.
+See `worklogs/2026-10-25-normal-validation.md` for the recorded observation.
+
+
+The failing ramp check is in `tests/dsp_tests.cpp`, Test 61, against
+`src/dsp/ScopeBuffer.h`. It is a single-threaded synthetic ramp with wraparound
+and counts controls. The source/test bytes equal the reviewed #175 candidate;
+matching printed hexadecimal values are insufficient to choose a cause or
+weaken `juce::exactlyEqual`. Preserve the failed main execution independently
+of later passes and investigate native binary/compiler/translation inputs
+before any separate focused repair. The original AU inventory is retained,
+not repeated, and its validator/trace gaps remain separate.
+
+Anabasis's latest actual main `4c7c05ea5269be80999796b2de768cef6a451caf` completed
+Build 40221030112, sanitizer job 121252461560, including final DSP and StateTests
+Valgrind reports. The original 1afe5730/40213125495 cancellation remains
+unexplained; this later normal main pass supplies validation, not its cause.
+No sanitizer rerun or empty reliability PR is needed for that closed current-main
+gap. No budget, suite, detector flag, product identity/version or workflow changes.
+
+Rejected alternatives: marking implementation pending after the actual owner
+merge; claiming the failed main Build clean from earlier feature results or a
+later nonreproduction; weakening the R7 check or changing lifecycle behavior
+without causal evidence. This correction records facts and keeps the failure
+visible. Coverage is updated; no document class or script inventory is added.

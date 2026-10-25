@@ -7,9 +7,11 @@ This is the confirmation and record-update date; the original approval date
 was not separately specified. Merge/publication, separately required code
 review and unexecuted tests are not approved or certified by this confirmation.
 
-**Implementation effectivity (2026-10-25):** Accepted; the combined PR #175 candidate
-includes actual main `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. This decision's
-implementation is not effective on main until PR #175 is actually merged by the owner.
+**Implementation effectivity (record updated 2026-10-26):** effective on main
+through the owner's actual PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`,
+including the protected-helper snapshot amendment. ADR-0066 is already effective
+through PR #174. Acceptance provenance above is unchanged; this is not a new
+GitHub review submission, a clean-baseline claim or release approval.
 
 ## Context
 

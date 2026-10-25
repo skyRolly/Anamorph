@@ -211,11 +211,13 @@ Accepted ADR-0064; owner approval and #172 merge are recorded, with native visua
 Linux installer desktop integration is recorded in Accepted ADR-0065 and the Linux
 installation/packaging/testing procedures: approved hicolor resources, XDG paths and
 owned-resource recovery and verified helper capture. Human architecture/ADR approval
-is complete by owner confirmation 2026-10-25; merge and actual GNOME/KDE validation
-remain separate requirements.
+is complete by owner confirmation 2026-10-25. PR #175 merged as
+`14bde706e2d121c9970cf00c757cb12d3178b9a5`; implementation is effective on main.
+Actual GNOME/KDE appearance remains separate manual validation.
 
 Installed-receipt decision: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
 confirmation on 2026-10-25. PR #174 merged as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`;
-its installed-receipt implementation is effective on main. ADR-0065/PR #175 remains pending.
+its installed-receipt implementation is effective on main. ADR-0065 and its
+helper amendment are also effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

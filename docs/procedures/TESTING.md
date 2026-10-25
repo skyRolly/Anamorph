@@ -6458,3 +6458,13 @@ Accepted ADR rows were combined. No whole workflow/document was selected with
 ours/theirs. Shared workflow/documentation overlap is now resolved against actual
 main. Product versions, JUCE pins, identities, approved art and DSP/state/GUI are
 unchanged. No GitHub PR merge, tag/release or deployment is performed here.
+
+## Actual combined-main reconciliation (2026-10-26)
+
+ADR-0065 and its helper amendment are effective through actual PR #175 merge
+`14bde706e2d121c9970cf00c757cb12d3178b9a5`; ADR-0066 was already effective
+through #174. Owner acceptance confirmation remains 2026-10-25. Earlier dated
+pending statements are historical. The actual main Build 40221042187 failed
+x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
+no check is waived. Native gate results and the separate old AU teardown keep
+their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.

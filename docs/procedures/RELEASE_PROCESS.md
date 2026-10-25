@@ -285,7 +285,8 @@ this is process-interruption recovery, not a power-loss guarantee. Uninstall use
 same XDG root, checks ownership first, keeps modified/foreign files and never removes
 shared theme directories, other products or presets. Move an intentional edited/foreign
 resource to a safe backup before retrying. Optional cache refresh errors are visible;
-real GNOME/KDE/WM/cache display remains manual. Accepted ADR-0065 is Accepted by owner confirmation 2026-10-25; merge remains pending.
+real GNOME/KDE/WM/cache display remains manual. ADR-0065 remains Accepted under owner confirmation 2026-10-25; its implementation
+is effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
 
 ## Native installed-receipt smoke test
 
