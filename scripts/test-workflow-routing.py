@@ -143,7 +143,12 @@ def verify(build_path, release_path, root):
         for event in ('push', 'pull_request', 'workflow_dispatch'):
             check('direct-'+event+'-'+branch, event, 'refs/heads/'+branch)
         check('release-dispatch-'+branch, 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')
-    tag = 'v0.2.17' if product == 'Anabasis' else 'v0.9.10'
+    # Use the repository's actual release trigger and CMake version. Anamorph
+    # uses bare version tags (ADR-0059); the sibling uses a v prefix.
+    tag_glob = re.search(r'^    tags:\n      - "([^"]+)"', release, re.M)[1]
+    assert tag_glob in ('[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+'), 'review new release tag grammar'
+    version = re.search(r'^project\(\S+ VERSION ([0-9]+\.[0-9]+\.[0-9]+)', (root/'CMakeLists.txt').read_text(), re.M)[1]
+    tag = ('v' if tag_glob.startswith('v') else '') + version
     for event in ('push', 'workflow_dispatch'):
         check('release-tag-'+event, event, 'refs/tags/'+tag, caller='Release')
     assert re.search(r'^  workflow_call:\s*(?:#.*)?$', build, re.M), 'no reusable Build trigger'
@@ -191,6 +196,7 @@ def verify(build_path, release_path, root):
             assert values['is-release'] == 'false', 'rehearsal could reach draft-release'
             rehearsals.append({'ref':ref,'metadata_outputs':values,'draft_release_selected':False})
     return {'context_cases':records, 'real_metadata_body_fixtures':rehearsals,
+            'release_tag_fixture': {'production_trigger_glob': tag_glob, 'CMake_version': version, 'tag': tag},
             'tsan_container_workspace_fixture': verify_tsan_workspace(build) if product == 'Anamorph' else None,
             'inputs_or_defaults':{'direct_dispatch_integration_review_default':'','workflow_call_inputs':None,'release_inputs_passed':None}, 'nested_calls':'Release -> local Build only',
             'workflow_digests':{str(p.relative_to(root)) if p.is_relative_to(root) else str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (build_path,release_path)}}

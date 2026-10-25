@@ -69,3 +69,11 @@ host workspace path. It executes no sanitizer, compiler, installer or privileged
 operation. Keep the real canary mandatory and retain its output/options; this
 fixture does not establish sanitizer liveness. No suppression rule, compiler pin,
 container security profile or kernel setting changes.
+
+
+Release tag fixture reconciliation (2026-10-25): Anamorph's Accepted ADR-0059 uses
+bare version tags. The routing fixture now derives its representative tag from the
+production Release push trigger and CMake version, rather than assuming the sibling
+product's prefix. This corrects the fixture, changes no Release trigger or product
+version, and creates no tag/release. Both review-branch dispatch collisions and the
+actual bare-tag push/manual contexts remain covered by production-file checks.
