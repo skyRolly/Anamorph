@@ -226,3 +226,13 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 | `scripts/test-workflow-routing.py` | Production Build/Release expression and needs selection, with same-run valid and seeded skipped-Release liveness controls before the real check. No dispatch or installer. |
 | `tests/linux_desktop_native_plan_tests.py` | Ordinary recording plans and in-process unittest result lifecycle diagnostics, including cleanup errors and the absent-parent production report writer. No privileged operation or installer. |
 | `scripts/test-macos-integration-review.py` | Optional seven selections and real two-product co-installation from independently identified artifacts; native PackageInfo/Distribution and staged bundle metadata establish artifact-specific receipt versions before installation. Pure metadata/extraction `--self-test`. |
+
+
+### Bounded Rosetta diagnostic inputs
+
+- `.github/workflows/rosetta-scope.yml`: separate nonshipping native characterization;
+  normal Build/Release routing and shipping gates are unchanged.
+- `scripts/diagnose-rosetta-scope.py`: fixed original-source checkout contract,
+  native input inventory, three-run/ten-minute bound and focused debugger record.
+- `tests/scope_ring_diagnostic.cpp`: separately instrumented single-threaded
+  newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.

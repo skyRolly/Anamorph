@@ -2092,3 +2092,22 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Bounded Rosetta characterization (2026-10-26)
+
+`rosetta-scope.yml` is a separate nonshipping diagnostic workflow. Its scoped
+push trigger permits first execution on the diagnostic branch; manual invocation
+is also defined. It has read-only contents permission and never calls Release,
+an installer, a signing step or a customer upload. It checks out original failing
+source `14bde706e2d121c9970cf00c757cb12d3178b9a5` separately and reconstructs the
+universal Release DSP target with deployment target 10.13 and build number 1878.
+The executable is new controlled-reconstruction input, not the original binary.
+
+The fixed characterization is at most three ordinary x86_64/Rosetta DSP runs,
+then one separately instrumented Test 61 debugger session within the same
+ten-minute post-setup bound. Every ordinary status/log, compiler/SDK, JUCE pin,
+compile command, executable SHA-256, architecture and UUID is retained. LLDB
+keeps ASLR enabled; unavailable native debugging is a visible limitation. Normal
+Build/Release jobs and all customer gates remain unchanged. A later pass is
+nonreproduction, not a repair or a retrospective pass of main Build 40221042187.

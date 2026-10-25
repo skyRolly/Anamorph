@@ -297,3 +297,19 @@ merge; claiming the failed main Build clean from earlier feature results or a
 later nonreproduction; weakening the R7 check or changing lifecycle behavior
 without causal evidence. This correction records facts and keeps the failure
 visible. Coverage is updated; no document class or script inventory is added.
+
+
+## Bounded Rosetta reconstruction preparation (2026-10-26)
+
+The owner merged documentation PR #176 as 9cc5b632. Its earlier push Build
+40226154342 completed; that result does not explain the actual-main 14bde706
+Rosetta Test 61 failure. Pinned JUCE 3fb5cbc's `exactlyEqual` is operator== with
+warning suppression. ScopeBuffer/Test 61 are single-threaded in this fixture;
+printed equal hexadecimal pairs do not establish a translation/compiler defect.
+
+Prepare an independent nonshipping native workflow using original source and
+normal universal Release settings. Retain new executable hashes/UUIDs, actual
+compiler/SDK/flags, at most three ordinary outcomes and a separately instrumented
+focused debugger session. All post-setup work is bounded to ten minutes. Keep
+ASLR enabled and every original assertion. This preparation makes no product
+repair and no new architecture decision; results remain exact-run evidence.

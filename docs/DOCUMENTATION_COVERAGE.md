@@ -17570,3 +17570,14 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Bounded Rosetta diagnostic preparation (2026-10-26)
+
+The original actual-main failure remains unresolved: 14bde706, run 40221042187,
+macOS job 121252472086, DSP Test 61 under Rosetta. New nonshipping workflow,
+diagnostic driver and focused fixture are inventoried in REPOSITORY_MAP.md and
+described in CI_CD.md/TESTING.md. The ordinary product fixture and ScopeBuffer
+are unchanged. Reconstructed executable/dSYM/UUID and debugger outputs belong
+to their own source/run; no original binary, causal repair, retrospective main
+pass or release eligibility is asserted. Existing Accepted ADRs stay Accepted.

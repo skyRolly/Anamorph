@@ -6468,3 +6468,22 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Separate Rosetta scope diagnostic (2026-10-26)
+
+`scripts/diagnose-rosetta-scope.py` is a bounded native diagnostic, not a release
+gate or a replacement for `scripts/run-tests.sh`. It requires a real disposable
+hosted Apple Silicon Mac and retained failing source. It records up to three
+ordinary DSP executions, then builds `tests/scope_ring_diagnostic.cpp` only in
+the private reconstruction checkout. That single-threaded Test 61 variant takes
+each operand once and records exact bits, individual equality booleans, indices,
+addresses and FP control state at the first mismatch. LLDB records the relevant
+frames/registers/instructions if the mismatch breakpoint is reached. No epsilon
+comparison, assertion suppression, host security change or product fix is made.
+
+Original failure: main 14bde706, Build 40221042187/job 121252472086, Rosetta DSP
+Test 61, 940 checks/one failure. Subsequent Rosetta StateTests did not execute.
+Three passes of newly built bytes would remain bounded nonreproduction. Exact
+original test executable recovery and causal diagnosis are not implied by UUIDs
+or by the separately retained product/AU symbols.

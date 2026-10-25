@@ -1,0 +1,56 @@
+name: Bounded Rosetta scope characterization
+
+on:
+  push:
+    branches: [codex/rosetta-scope-characterization]
+    paths:
+      - .github/workflows/rosetta-scope.yml
+      - scripts/diagnose-rosetta-scope.py
+      - tests/scope_ring_diagnostic.cpp
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  characterize:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    env:
+      ROSETTA_ADVERTISE_AVX: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout the original failing source separately
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 14bde706e2d121c9970cf00c757cb12d3178b9a5
+          path: original-source
+      - name: Install the normal native build generator
+        run: |
+          brew install ninja || true
+          ninja --version
+      - name: Controlled reconstruction with the original build settings
+        run: |
+          cmake -S original-source -B original-source/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DANAMORPH_BUILD_NUMBER=1878
+          cmake --build original-source/build --target AnamorphTests --verbose > reconstruction-build.log 2>&1
+      - name: At most three ordinary invocations and one focused debugger session
+        run: python3 scripts/diagnose-rosetta-scope.py --source original-source --report-dir rosetta-evidence --ordinary-runs 3
+      - name: Retain bounded diagnostic evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Rosetta-scope-characterization
+          if-no-files-found: error
+          path: |
+            rosetta-evidence/
+            reconstruction-build.log
+            original-source/build/compile_commands.json
+            original-source/build/CMakeCache.txt
+            original-source/build/AnamorphTests_artefacts/Release/AnamorphTests
+            original-source/build/AnamorphScopeDiagnostic_artefacts/Release/AnamorphScopeDiagnostic
+
