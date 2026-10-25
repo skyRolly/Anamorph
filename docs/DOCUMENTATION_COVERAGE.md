@@ -17417,3 +17417,23 @@ production Release push trigger and CMake version, rather than assuming the sibl
 product's prefix. This corrects the fixture, changes no Release trigger or product
 version, and creates no tag/release. Both review-branch dispatch collisions and the
 actual bare-tag push/manual contexts remain covered by production-file checks.
+
+
+### Review regression closure (2026-10-25)
+
+`python3 scripts/test-workflow-routing.py --report <report.json>` now runs its
+bounded self-test before production selection on every invocation. The same
+production assertions accept a valid control and must specifically reject the
+named-review-branch Release dispatch collision. Expression and needs controls
+cover enabled/disabled jobs and failed/skipped prerequisites. A disabled verifier
+cannot satisfy the negative control. No Release dispatch or tag is created.
+
+Native partial diagnostics now use actual unittest result callbacks and stopTest,
+after cleanup callbacks, instead of a tearDown checkpoint. Ordinary in-process
+fixtures cover body failure, setup error, cleanup error and incomplete execution.
+Partial reports remain in_progress and archive-ineligible; only the complete
+suite result determines final counts and eligibility. SIGKILL can prevent a final
+checkpoint. The unchanged source report writer already creates an absent report
+parent, verified by executing only its production writer AST. No redundant
+workflow mkdir or customer helper change is needed. The real complete native gate
+must run on this updated result implementation; recorder evidence cannot replace it.

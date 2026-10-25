@@ -5,7 +5,9 @@ No unshare/mount/setpriv/sudo, interpreter or installer is executed. Planned UID
 is data only; fixture metadata belongs to the ordinary test user. These checks do
 not establish real root ownership, shell interpretation or native gate success.
 """
+import ast
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +17,7 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT=Path(__file__).resolve().parent.parent
 spec=importlib.util.spec_from_file_location('native_plan',ROOT/'tests/linux_desktop_native_tests.py')
@@ -81,6 +84,67 @@ class PlanCase(unittest.TestCase):
         self.assertIn('expected='+native.PIN,native.production_bootstrap())
         for entry in ('install.sh','uninstall.sh'):
             self.assertIn('expected='+native.PIN,(self.stage/entry).read_text())
+
+
+class ResultLifecycleCase(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(prefix='native-result-');self.addCleanup(self.temp.cleanup)
+        self.report=Path(self.temp.name)/'progress.json'
+        native.PROGRESS_PATH=self.report;native.STARTED=time.monotonic()
+        native.FAILURES_SO_FAR[:]=[];native.RESULT_PROGRESS.clear()
+        self.addCleanup(setattr,native,'PROGRESS_PATH',None)
+
+    def run_probe(self, kind):
+        class Probe(unittest.TestCase):
+            def setUp(self):
+                if kind=='setup':raise RuntimeError('inert setup error')
+                if kind=='cleanup':self.addCleanup(self.broken_cleanup)
+            def broken_cleanup(self):raise RuntimeError('inert cleanup error')
+            def runTest(self):
+                if kind=='body':self.fail('inert body failure')
+        result=unittest.TextTestRunner(stream=io.StringIO(),resultclass=native.ProgressResult).run(
+            unittest.TestSuite([Probe()]))
+        report=json.loads(self.report.read_text())
+        self.assertEqual(report['status'],'in_progress')
+        self.assertFalse(report['customer_archive_eligible'])
+        self.assertEqual(report['test_result']['phase'],'stopped_after_cleanups')
+        self.assertEqual(len(report['failure_details']),len(result.failures)+len(result.errors))
+        self.assertEqual(report['test_result']['failures'],len(result.failures))
+        self.assertEqual(report['test_result']['errors'],len(result.errors))
+        self.assertFalse(result.wasSuccessful())
+        return report
+
+    def test_body_failure_checkpoint(self):
+        self.assertEqual(self.run_probe('body')['test_result']['failures'],1)
+
+    def test_setup_error_checkpoint(self):
+        self.assertEqual(self.run_probe('setup')['test_result']['errors'],1)
+
+    def test_cleanup_error_checkpoint(self):
+        self.assertEqual(self.run_probe('cleanup')['test_result']['errors'],1)
+
+    def test_incomplete_execution_remains_ineligible(self):
+        result=native.ProgressResult(unittest.runner._WritelnDecorator(io.StringIO()),True,0)
+        result.startTest(unittest.FunctionTestCase(lambda:None))
+        report=json.loads(self.report.read_text())
+        self.assertEqual(report['test_result']['phase'],'started')
+        self.assertEqual(report['status'],'in_progress')
+        self.assertFalse(report['customer_archive_eligible'])
+
+    def test_unchanged_source_report_writer_creates_absent_parent(self):
+        # Execute only the actual final writer AST, never main's installer path.
+        source=ast.parse((ROOT/'tests/linux_desktop_install_tests.py').read_text())
+        main=next(node for node in source.body if isinstance(node,ast.FunctionDef) and node.name=='main')
+        block=next(node for node in main.body if isinstance(node,ast.If) and ast.unparse(node.test)=='args.report')
+        writer=ast.Module(body=block.body,type_ignores=[])
+        path=Path(self.temp.name)/'absent-build-parent'/'report.json'
+        self.assertFalse(path.parent.exists())
+        scope={'args':SimpleNamespace(report=path,hosted_namespace_permission=False),
+               'json':json,'result':SimpleNamespace(testsRun=8,failures=[],errors=[]),
+               'STAGED':None,'original_permission':None,'CLEANUP_SMOKE':False,'CLEANUP_RESULTS':[],
+               'ORDINARY_ONLY':False,'USER_RELIABILITY':True}
+        exec(compile(ast.fix_missing_locations(writer),'<production-report-writer>','exec'),scope)
+        self.assertEqual(json.loads(path.read_text())['tests_run'],8)
 
 
 if __name__=='__main__':

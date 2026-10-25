@@ -36,6 +36,7 @@ ARCHIVES = []
 PROGRESS_PATH = None
 STARTED = None
 FAILURES_SO_FAR = []
+RESULT_PROGRESS = {}
 
 # Called by a root-owned, read-only /usr/bin/dirname overlay only when the
 # unchanged helper asks dirname($0). The parent is the actual /bin/sh interpreting
@@ -84,12 +85,38 @@ def write_progress(active=None):
           'active_operation':active,'completed_operations':OPERATIONS,
           'snapshot_observations':OBSERVATIONS,'signal_observations':SIGNALS,
           'native_environment_preflight':ENVIRONMENT_PREFLIGHT,'cleanup_fault_cases':legacy.CLEANUP_RESULTS,
-          'failure_details':FAILURES_SO_FAR,'kernel_security_settings_changed':False,
+          'failure_details':FAILURES_SO_FAR,'test_result':RESULT_PROGRESS,
+          'kernel_security_settings_changed':False,
           'ordinary_invoking_uid':UID,'root_metadata_mocked':False,'interpreter_replaced':False}
     # Atomic checkpoint within the task report directory. Cancellation cannot
     # turn partial evidence into a completed gate or customer eligibility.
     pending=PROGRESS_PATH.with_suffix('.pending')
     pending.write_text(json.dumps(data,indent=2)+'\n'); pending.replace(PROGRESS_PATH)
+
+
+class ProgressResult(unittest.TextTestResult):
+    """Checkpoint actual unittest callbacks, including errors after tearDown.
+
+    Partial reports always remain in_progress and ineligible. A final result is
+    authoritative only when the whole suite returns; SIGKILL may lose a checkpoint.
+    """
+    def checkpoint(self, test, phase):
+        FAILURES_SO_FAR[:]=[{'test':str(case),'traceback':trace} for case,trace in self.failures+self.errors]
+        RESULT_PROGRESS.update(tests_run=self.testsRun,failures=len(self.failures),errors=len(self.errors),
+                               test=str(test),phase=phase)
+        write_progress()
+
+    def startTest(self, test):
+        super().startTest(test); self.checkpoint(test,'started')
+
+    def addFailure(self, test, err):
+        super().addFailure(test,err); self.checkpoint(test,'failure')
+
+    def addError(self, test, err):
+        super().addError(test,err); self.checkpoint(test,'error')
+
+    def stopTest(self, test):
+        super().stopTest(test); self.checkpoint(test,'stopped_after_cleanups')
 
 
 def require_disposable_runner():
@@ -197,11 +224,6 @@ class NativeCase(legacy.InstallCase):
         self.sudoers=self.root/'sudoers'
         self.sudoers.write_text('Defaults !requiretty\nDefaults logfile="/native-audit/sudo.log"\n#'+str(UID)+' ALL=(root) NOPASSWD: ALL\n')
         self.sudoers.chmod(0o440)
-
-    def tearDown(self):
-        result=self._outcome.result
-        FAILURES_SO_FAR[:]=[{'test':str(case),'traceback':trace} for case,trace in result.failures+result.errors]
-        write_progress()
 
     def invoke(self, script='install.sh', mode='user', xdg=None, root=False, extra=(), command=None, fault=None, implicit=False):
         if time.monotonic()-STARTED > 1800:
@@ -401,7 +423,7 @@ def main():
     # Inherited methods create additional cases through this module binding.
     legacy.InstallCase=NativeCase
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(NativeCase)
-    result=unittest.TextTestRunner(verbosity=2).run(suite)
+    result=unittest.TextTestRunner(verbosity=2,resultclass=ProgressResult).run(suite)
     report={'tests_run':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),
             'failure_details':[{'test':str(case),'traceback':trace} for case,trace in result.failures+result.errors],
             'status':'verified' if result.wasSuccessful() else 'failed','customer_archive_eligible':result.wasSuccessful(),

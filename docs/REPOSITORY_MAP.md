@@ -207,3 +207,10 @@ The ordinary-UID helper recorder runs in normal source-lint. The obsolete separa
 publication-phase review workflow is retired. `tests/linux_desktop_native_tests.py`
 adds real sudo/root selection and protected-snapshot observation in private roots
 on a fresh hosted Linux VM; its successful full gate is required for customer upload.
+
+### Review checker inventory (2026-10-25)
+
+| Script | Review validation responsibility |
+|---|---|
+| `scripts/test-workflow-routing.py` | Production Build/Release expression and needs selection, with same-run valid and seeded skipped-Release liveness controls before the real check. No dispatch or installer. |
+| `tests/linux_desktop_native_plan_tests.py` | Ordinary recording plans and in-process unittest result lifecycle diagnostics, including cleanup errors and the absent-parent production report writer. No privileged operation or installer. |

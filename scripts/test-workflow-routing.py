@@ -71,24 +71,142 @@ def field(body, name, default=''):
     return match[2].strip() if match[1].strip() in ('>-', '|') else match[1].strip()
 
 
-def selection(source, context):
-    data = jobs(source); ctx = dict(context)
-    # Model the old production router to prove the review-branch Release bug.
-    if 'validation-route' in data:
-        route = re.search(r'CONTAINED: (\$\{\{ .* \}\})', data['validation-route'])[1]
-        ctx['needs.validation-route.outputs.contained'] = str(bool(expression(route, ctx))).lower()
-    selected = []; done = set()
-    while len(done) < len(data):
-        before = len(done)
+class RoutingError(AssertionError):
+    """A production routing assertion failed, rather than fixture parsing."""
+
+
+def dependencies(body):
+    return [value.strip() for value in field(body, 'needs').strip('[]').split(',') if value.strip()]
+
+
+def selection(source, context, outcomes=None):
+    # Only this repository's Boolean conditions and implicit success-of-needs
+    # contract are modeled. Outcomes are inert fixture results, never job runs.
+    data = jobs(source); ctx = dict(context); outcomes = outcomes or {}
+    selected = []; states = {}
+    while len(states) < len(data):
+        before = len(states)
         for name, body in data.items():
-            if name in done: continue
-            need = field(body, 'needs').strip('[]')
-            needs = [v.strip() for v in need.split(',') if v.strip()]
-            if not all(n in done for n in needs): continue
-            done.add(name)
-            if all(n in selected for n in needs) and expression(field(body, 'if', 'true'), ctx): selected.append(name)
-        assert len(done) > before, 'unknown/cyclic dependency'
+            if name in states: continue
+            needs = dependencies(body)
+            if not all(n in states for n in needs): continue
+            for need in needs: ctx['needs.'+need+'.result'] = states[need]
+            permitted = all(states[n] == 'success' for n in needs)
+            enabled = permitted and expression(field(body, 'if', 'true'), ctx)
+            outcome = outcomes.get(name, 'success')
+            assert outcome in ('success', 'failure', 'skipped'), outcome
+            if enabled and outcome != 'skipped':
+                selected.append(name); states[name] = outcome
+            else: states[name] = 'skipped'
+        assert len(states) > before, 'unknown/cyclic dependency'
     return selected
+
+
+def verify_selection(build, product):
+    branches = [('codex/macos-installed-receipts', 174 if product == 'Anamorph' else 54),
+                ('codex/linux-desktop-native-icon', 175) if product == 'Anamorph' else ('codex/windows-uninstall-icon-correctness', 53)]
+    records = []
+    def check(label, event, ref, number=999, fork=False, caller='Build'):
+        ctx = {'github.repository': 'skyRolly/'+product, 'github.event_name': event,
+               'github.ref': ('refs/pull/'+str(number)+'/merge' if event=='pull_request' else ref),
+               'github.event.pull_request.head.repo.full_name': ('fork/' if fork else 'skyRolly/')+product,
+               'github.event.pull_request.base.ref': 'main', 'github.event.pull_request.head.ref': ref.removeprefix('refs/heads/'),
+               'github.event.pull_request.number': number, 'needs.preflight.outputs.ready': 'true', 'inputs.integration-review': ''}
+        selected = selection(build, ctx)
+        expected = {'merge-check'} if event == 'pull_request' and not fork else set(jobs(build)) - {'merge-check', 'validation-route', 'full-validation-pending', 'macos-review-selections', 'macos-review-coinstallation'}
+        if caller == 'Release' and not {'linux', 'windows', 'macos'} <= set(selected):
+            raise RoutingError(label + ': Release rehearsal skipped the build matrix: ' + repr(selected))
+        if set(selected) != expected:
+            raise RoutingError(label + ': incorrect normal job selection: ' + repr(selected))
+        assert not {'validation-route', 'full-validation-pending'} & set(selected), label
+        records.append({'case': label, 'caller': caller, 'event': event, 'ref': ctx['github.ref'], 'head_ref': ctx['github.event.pull_request.head.ref'], 'fork': fork, 'selected_jobs': selected})
+    for branch, number in branches:
+        check('release-review-dispatch-'+str(number), 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')
+        for event in ('push', 'pull_request', 'workflow_dispatch'):
+            check('direct-build-'+event+'-'+str(number), event, 'refs/heads/'+branch, number)
+        check('fork-pr-'+str(number), 'pull_request', 'refs/heads/'+branch, number, True)
+    for branch in ('main', 'codex/unrelated'):
+        for event in ('push', 'pull_request', 'workflow_dispatch'):
+            check('direct-'+event+'-'+branch, event, 'refs/heads/'+branch)
+        check('release-dispatch-'+branch, 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')
+    return records, branches, check
+
+
+def routing_self_test(build, product, verifier=verify_selection):
+    # Use the SAME production assertions. Seed only the exact manual caller/ref
+    # collision, not a parser error or a generic unrelated tag/main failure.
+    verifier(build, product)
+    branch = 'codex/macos-installed-receipts'
+    body = jobs(build)['linux']
+    condition = ' '.join(field(body, 'if', 'true').split())
+    collision = "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/"+branch+"'"
+    changed = re.sub(r'^    if:[^\n]*\n(?:      [^\n]*\n)*', '', body, count=1, flags=re.M)
+    changed = '    if: ${{ !('+collision+') && ('+condition+') }}\n'+changed
+    broken = build.replace('  linux:\n'+body, '  linux:\n'+changed, 1)
+    assert broken != build
+    try: verifier(broken, product)
+    except RoutingError as error:
+        assert str(error).startswith('release-review-dispatch-') and ': Release rehearsal skipped the build matrix:' in str(error), str(error)
+        rejection = str(error)
+    else: raise AssertionError('routing liveness: verifier accepted the seeded skipped Release build')
+    fixture = """name: inert
+jobs:
+  parent:
+    if: github.event_name != 'pull_request' && inputs.enabled == 'yes'
+  child:
+    needs: parent
+    if: needs.parent.outputs.ready == 'true'
+  independent:
+    if: true
+"""
+    ctx = {'github.event_name':'push', 'inputs.enabled':'yes', 'needs.parent.outputs.ready':'true'}
+    assert selection(fixture,ctx) == ['parent','child','independent']
+    for output in ('false',''):
+        assert selection(fixture,dict(ctx, **{'needs.parent.outputs.ready':output})) == ['parent','independent']
+    assert selection(fixture,dict(ctx, **{'github.event_name':'pull_request'})) == ['independent']
+    assert selection(fixture,dict(ctx, **{'inputs.enabled':'no'})) == ['independent']
+    assert selection(fixture,ctx,{'parent':'failure'}) == ['parent','independent']
+    assert selection(fixture,ctx,{'parent':'skipped'}) == ['independent']
+    assert expression("!(false || true && false) && ('yes' != 'no')", {}) is True
+    assert expression("true && (false || 'x' == 'y')", {}) is False
+    return {'valid_control':True, 'seeded_review_branch_release_rejection':rejection,
+            'expression_and_needs_controls':True, 'runs_before_production_check':True}
+
+
+def verify_preflight(build):
+    data = jobs(build)
+    if 'preflight' not in data: return None
+    body = data['preflight']
+    assert 'ready: ${{ steps.check.outputs.ready }}' in body
+    match = re.search(r'      - id: check\n        shell: bash\n        run: \|\n((?:          [^\n]*\n)+)', body)
+    assert match, 'review changed preflight command contract'
+    command = '\n'.join(line[10:] for line in match[1].splitlines())+'\n'
+    records=[]
+    with tempfile.TemporaryDirectory(prefix='preflight-routing-') as directory:
+        root=Path(directory)
+        for present in (True,False):
+            cmake=root/'CMakeLists.txt'; cmake.unlink(missing_ok=True)
+            if present: cmake.write_text('# inert presence fixture\n')
+            output=root/'outputs';output.unlink(missing_ok=True)
+            run=subprocess.run(['bash','-e','-o','pipefail','-c',command],cwd=root,
+                               env=dict(os.environ,GITHUB_OUTPUT=str(output)),capture_output=True,text=True)
+            assert run.returncode==0, run.stderr
+            expected='true' if present else 'false'
+            assert output.read_text()=='ready='+expected+'\n'
+            records.append({'CMakeLists_present':present,'ready':expected,'actual_command_executed':True})
+    ctx={'github.event_name':'push','needs.preflight.outputs.ready':'true','inputs.integration-review':''}
+    normal=set(selection(build,ctx)); gated={name for name,job in data.items() if 'preflight' in dependencies(job)}
+    assert {'linux','windows','macos'} <= gated
+    cases=[]
+    for ready,outcome in [('false','success'),(None,'success'),('true','failure'),('true','skipped')]:
+        changed=dict(ctx); changed.pop('needs.preflight.outputs.ready')
+        if ready is not None:changed['needs.preflight.outputs.ready']=ready
+        selected=set(selection(build,changed,{'preflight':outcome}))
+        assert not selected & gated, (ready,outcome,selected)
+        expected=normal-gated-({'preflight'} if outcome=='skipped' else set())
+        assert selected==expected,(ready,outcome,selected,expected)
+        cases.append({'ready':ready,'preflight_outcome':outcome,'selected_jobs':sorted(selected)})
+    return {'production_command_controls':records,'downstream_withheld_controls':cases}
 
 
 def verify_tsan_workspace(build):
@@ -116,33 +234,7 @@ def verify(build_path, release_path, root):
     build = build_path.read_text(); release = release_path.read_text()
     product = 'Anabasis' if re.search(r'^name:.*Anabasis', (root/'CMakeLists.txt').read_text(), re.M) else None
     product = product or ('Anabasis' if 'ANABASIS_' in build else 'Anamorph')
-    branches = [('codex/macos-installed-receipts', 174 if product == 'Anamorph' else 54),
-                ('codex/linux-desktop-native-icon', 175) if product == 'Anamorph' else ('codex/windows-uninstall-icon-correctness', 53)]
-    records = []
-    def check(label, event, ref, number=999, fork=False, caller='Build'):
-        ctx = {'github.repository': 'skyRolly/'+product, 'github.event_name': event,
-               'github.ref': ('refs/pull/'+str(number)+'/merge' if event=='pull_request' else ref), 'github.event.pull_request.head.repo.full_name': ('fork/' if fork else 'skyRolly/')+product,
-               'github.event.pull_request.base.ref': 'main', 'github.event.pull_request.head.ref': ref.removeprefix('refs/heads/'),
-               'github.event.pull_request.number': number, 'needs.preflight.outputs.ready': 'true'}
-        selected = selection(build, ctx)
-        expected = {'merge-check'} if event == 'pull_request' and not fork else set(jobs(build)) - {'merge-check', 'validation-route', 'full-validation-pending'}
-        # In the broken implementation, Release dispatch selects the pending
-        # marker instead of linux/windows/macos. Keep this assertion first.
-        if caller == 'Release':
-            assert {'linux', 'windows', 'macos'} <= set(selected), label + ': Release rehearsal skipped the build matrix: ' + repr(selected)
-        assert set(selected) == expected, label + ': incorrect normal job selection: ' + repr(selected)
-        assert not {'validation-route', 'full-validation-pending'} & set(selected), label
-        records.append({'case': label, 'caller': caller, 'event': event, 'ref': ctx['github.ref'], 'head_ref': ctx['github.event.pull_request.head.ref'], 'fork': fork, 'selected_jobs': selected})
-    # Test the exact collision before generic main/tag cases.
-    for branch, number in branches:
-        check('release-review-dispatch-'+str(number), 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')
-        for event in ('push', 'pull_request', 'workflow_dispatch'):
-            check('direct-build-'+event+'-'+str(number), event, 'refs/heads/'+branch, number)
-        check('fork-pr-'+str(number), 'pull_request', 'refs/heads/'+branch, number, True)
-    for branch in ('main', 'codex/unrelated'):
-        for event in ('push', 'pull_request', 'workflow_dispatch'):
-            check('direct-'+event+'-'+branch, event, 'refs/heads/'+branch)
-        check('release-dispatch-'+branch, 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')
+    records, branches, check = verify_selection(build, product)
     # Use the repository's actual release trigger and CMake version. Anamorph
     # uses bare version tags (ADR-0059); the sibling uses a v prefix.
     tag_glob = re.search(r'^    tags:\n      - "([^"]+)"', release, re.M)[1]
@@ -152,8 +244,23 @@ def verify(build_path, release_path, root):
     for event in ('push', 'workflow_dispatch'):
         check('release-tag-'+event, event, 'refs/tags/'+tag, caller='Release')
     assert re.search(r'^  workflow_call:\s*(?:#.*)?$', build, re.M), 'no reusable Build trigger'
-    # No invocation inputs/defaults or nested Build calls remain in this design.
-    assert not re.search(r'^    inputs:', build.split('\npermissions:',1)[0], re.M)
+    # Optional artifact consumers exist only on the macOS review branches.
+    # Reusable Release calls declare/pass no inputs on any branch.
+    call_block=build.split('  workflow_call:',1)[1].split('\npermissions:',1)[0]
+    assert not re.search(r'^    (inputs|secrets):',call_block,re.M)
+    optional='macos-review-selections' in jobs(build)
+    if optional:
+        assert "        default: ''" in build.split('\npermissions:',1)[0]
+        for branch,_ in branches:
+            ctx={'github.event_name':'workflow_dispatch','github.ref':'refs/heads/'+branch,
+                 'inputs.integration-review':'fixture-manifest','needs.preflight.outputs.ready':'true'}
+            selected=selection(build,ctx)
+            assert 'macos-review-selections' in selected
+            assert {'linux','windows','macos'} <= set(selected)
+            if product=='Anamorph': assert 'macos-review-coinstallation' in selected
+    else:
+        assert not re.search(r'^    inputs:',build.split('\npermissions:',1)[0],re.M)
+
     assert not re.search(r'^    uses:', build, re.M), 'review new nested reusable calls'
     release_jobs = jobs(release)
     assert field(release_jobs['build'], 'uses') == './.github/workflows/build.yml'
@@ -180,20 +287,26 @@ def verify(build_path, release_path, root):
             values = dict(line.split('=',1) for line in output.read_text().splitlines())
             assert values['is-release'] == 'false', 'rehearsal could reach draft-release'
             rehearsals.append({'ref':ref,'metadata_outputs':values,'draft_release_selected':False})
-    return {'context_cases':records, 'real_metadata_body_fixtures':rehearsals,
+    return {'context_cases':records, 'preflight_contract':verify_preflight(build), 'real_metadata_body_fixtures':rehearsals,
             'release_tag_fixture': {'production_trigger_glob': tag_glob, 'CMake_version': version, 'tag': tag},
             'tsan_container_workspace_fixture': verify_tsan_workspace(build) if product == 'Anamorph' else None,
-            'inputs_or_defaults':None, 'nested_calls':'Release -> local Build only',
+            'inputs_or_defaults':{'direct_dispatch_integration_review_default':'' if optional else None,'workflow_call_inputs':None,'release_inputs_passed':None}, 'nested_calls':'Release -> local Build only',
             'workflow_digests':{str(p.relative_to(root)) if p.is_relative_to(root) else str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (build_path,release_path)}}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--self-test',action='store_true')
     parser.add_argument('--build',type=Path)
     parser.add_argument('--release',type=Path)
     parser.add_argument('--report',type=Path)
     args = parser.parse_args(); root = Path(__file__).resolve().parent.parent
+    build_path=args.build or root/'.github/workflows/build.yml'
+    product='Anabasis' if 'ANABASIS_' in build_path.read_text() else 'Anamorph'
+    liveness=routing_self_test(build_path.read_text(),product)
+    if args.self_test: return
     result = verify(args.build or root/'.github/workflows/build.yml',args.release or root/'.github/workflows/release.yml',root)
+    result['same_run_liveness']=liveness
     if args.report:
         args.report.parent.mkdir(parents=True,exist_ok=True)
         args.report.write_text(json.dumps(result,indent=2)+'\n')
