@@ -6170,8 +6170,9 @@ no kernel setting or container security profile is changed. The first Jammy-nati
 attempt failed during dependency setup; its exact package error was unavailable
 through the permitted GitHub read tools, so no specific cause is asserted.
 
-The containerized TSan run reached the liveness canary, which failed. The gate
-remains red; passing the entropy precheck is not sanitizer certification. Fresh
+The containerized TSan run at head
+ace86aeccf548904aa48bf14dc77d0822b468a6d reached the liveness canary, which
+failed. That retained result is red; passing the entropy precheck is not sanitizer certification. Fresh
 test-owned canary output/exit status is retained as structured diagnostic evidence
 alongside the host capability artifact. The binary, compiler flags, required race
 message, probes and suppression checks are unchanged; no failure is suppressed.
