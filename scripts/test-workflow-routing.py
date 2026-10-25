@@ -98,9 +98,9 @@ def verify(build_path, release_path, root):
     branches = [('codex/macos-installed-receipts', 174 if product == 'Anamorph' else 54),
                 ('codex/linux-desktop-native-icon', 175) if product == 'Anamorph' else ('codex/windows-uninstall-icon-correctness', 53)]
     records = []
-    def check(label, event, ref, number=0, fork=False, caller='Build'):
+    def check(label, event, ref, number=999, fork=False, caller='Build'):
         ctx = {'github.repository': 'skyRolly/'+product, 'github.event_name': event,
-               'github.ref': ref, 'github.event.pull_request.head.repo.full_name': ('fork/' if fork else 'skyRolly/')+product,
+               'github.ref': ('refs/pull/'+str(number)+'/merge' if event=='pull_request' else ref), 'github.event.pull_request.head.repo.full_name': ('fork/' if fork else 'skyRolly/')+product,
                'github.event.pull_request.base.ref': 'main', 'github.event.pull_request.head.ref': ref.removeprefix('refs/heads/'),
                'github.event.pull_request.number': number, 'needs.preflight.outputs.ready': 'true', 'inputs.integration-review': ''}
         selected = selection(build, ctx)
@@ -111,7 +111,7 @@ def verify(build_path, release_path, root):
             assert {'linux', 'windows', 'macos'} <= set(selected), label + ': Release rehearsal skipped the build matrix: ' + repr(selected)
         assert set(selected) == expected, label + ': incorrect normal job selection: ' + repr(selected)
         assert not {'validation-route', 'full-validation-pending'} & set(selected), label
-        records.append({'case': label, 'caller': caller, 'event': event, 'ref': ref, 'fork': fork, 'selected_jobs': selected})
+        records.append({'case': label, 'caller': caller, 'event': event, 'ref': ctx['github.ref'], 'head_ref': ctx['github.event.pull_request.head.ref'], 'fork': fork, 'selected_jobs': selected})
     # Test the exact collision before generic main/tag cases.
     for branch, number in branches:
         check('release-review-dispatch-'+str(number), 'workflow_dispatch', 'refs/heads/'+branch, caller='Release')

@@ -6169,3 +6169,13 @@ Both the sanitizer canary and all state probes/suppression checks remain mandato
 no kernel setting or container security profile is changed. The first Jammy-native
 attempt failed during dependency setup; its exact package error was unavailable
 through the permitted GitHub read tools, so no specific cause is asserted.
+
+The containerized TSan run reached the liveness canary, which failed. The gate
+remains red; passing the entropy precheck is not sanitizer certification. Fresh
+test-owned canary output/exit status is retained as structured diagnostic evidence
+alongside the host capability artifact. The binary, compiler flags, required race
+message, probes and suppression checks are unchanged; no failure is suppressed.
+
+The routing fixtures use the real open/synchronize PR merge ref
+`refs/pull/N/merge`, while retaining the independent head branch field. Direct Build
+and inherited Release manual contexts retain their exact shared branch event/ref.

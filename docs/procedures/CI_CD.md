@@ -16,8 +16,8 @@ They use the real top-level CMake file and a local stand-in; they download and c
 The temporary source-publication router and deliberate pending marker are retired.
 Build push, PR and manual events use the normal deduplication conditions. Release
 rehearsals reuse the full Build workflow at the caller commit, including on review
-branches; reusable calls inherit the caller's event/ref. No branch exception or
-invocation input remains. `scripts/test-workflow-routing.py` reads the production
+branches; reusable calls inherit the caller's event/ref. No publication-only branch exception or
+reusable invocation contract remains. `scripts/test-workflow-routing.py` reads the production
 Build/Release files and checks the review-branch dispatch collision, tags, main,
 unrelated branches and fork PRs. Rehearsals retain the non-publishing release guard.
 
@@ -1928,3 +1928,9 @@ Both the sanitizer canary and all state probes/suppression checks remain mandato
 no kernel setting or container security profile is changed. The first Jammy-native
 attempt failed during dependency setup; its exact package error was unavailable
 through the permitted GitHub read tools, so no specific cause is asserted.
+
+The containerized TSan run reached the liveness canary, which failed. The gate
+remains red; passing the entropy precheck is not sanitizer certification. Fresh
+test-owned canary output/exit status is retained as structured diagnostic evidence
+alongside the host capability artifact. The binary, compiler flags, required race
+message, probes and suppression checks are unchanged; no failure is suppressed.

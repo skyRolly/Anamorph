@@ -3914,7 +3914,24 @@ jobs:
         run: |
           clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O1 -g \
             -fsanitize=thread tests/tsan_canary.cpp -o tsan-canary
-          if ./tsan-canary > tsan-canary.log 2>&1; then
+          set +e
+          ./tsan-canary > tsan-canary.log 2>&1
+          canary_status=$?
+          set -e
+          python3 - "$canary_status" <<'PYCODE'
+          import json, sys
+          from pathlib import Path
+          output = Path('tsan-canary.log').read_text(errors='replace')
+          status = int(sys.argv[1])
+          Path('build/tsan-canary.json').write_text(json.dumps({
+              'exit_code': status,
+              'expected_data_race_report': 'WARNING: ThreadSanitizer: data race' in output,
+              'liveness_established': status != 0 and 'WARNING: ThreadSanitizer: data race' in output,
+              'test_output': output,
+              'kernel_security_settings_changed': False,
+          }, indent=2) + '\n')
+          PYCODE
+          if [ "$canary_status" -eq 0 ]; then
             echo "::error::the ThreadSanitizer canary exited 0 -- this lane is not instrumenting anything"
             cat tsan-canary.log
             exit 1
@@ -4023,7 +4040,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-TSan-host
-          path: build/tsan-host.json
+          path: |
+            build/tsan-host.json
+            build/tsan-canary.json
+            tsan-canary.log
           if-no-files-found: error
 
   # -------------------------------------------------------------------------
