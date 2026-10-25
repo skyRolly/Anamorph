@@ -9,6 +9,7 @@
 # is a plug-in copy parked by an interrupted install unless --discard-parked
 # says otherwise.
 set -eu
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 # --user / --system mirror install.sh, for a run with no terminal to ask on.
 # --discard-parked is the opt-in for the one thing this script keeps by default:
@@ -152,6 +153,92 @@ remove_install_scratch() {          # $1 = plug-in directory, $2 = bin directory
     done
 }
 
+# Desktop data follows XDG for the real invoking user, never root's HOME.
+# System-local data belongs beside /usr/local/bin, independent of XDG variables.
+desktop_data_root() {
+    if [ "$mode" = system ]; then printf '%s\n' /usr/local/share; return; fi
+    case "${HOME:-}" in /*) ;; *) echo 'error: HOME must be absolute for a user install' >&2; exit 1 ;; esac
+    case "${XDG_DATA_HOME:-}" in
+        /*) printf '%s\n' "$XDG_DATA_HOME" ;;
+        '') printf '%s\n' "$HOME/.local/share" ;;
+        *) echo 'warning: relative XDG_DATA_HOME ignored; using HOME/.local/share' >&2
+           printf '%s\n' "$HOME/.local/share" ;;
+    esac
+}
+
+# BEGIN verified desktop helper
+# The entry scripts/distribution and system tools are trusted; the archive helper
+# and its ancestry may be replaced. Keep this bootstrap and digest in BOTH entry
+# scripts, never in a mutable sidecar. Tests require these blocks to agree.
+desktop_integration() {
+    if [ "$mode" = user ]; then
+        sh "$HERE/desktop-integration.sh" "$@"
+        return
+    fi
+    # Only this literal bootstrap is interpreted before the captured code passes
+    # verification. The root-owned snapshot remains private through interpretation.
+    priv /bin/sh -c '
+        set -eu
+        set -f
+        PATH=/usr/bin:/bin
+        export PATH
+        source=$1
+        assets=$2
+        shift 2
+        expected=3ea641f74a7a04abd2cffeac4298e54022c078655593ad45d226d622ece3c45e
+        fail() { printf "error: Anamorph desktop helper: %s\n" "$*" >&2; exit 1; }
+
+        [ -f "$source" ] && [ ! -L "$source" ] || fail "missing/nonregular/linked helper"
+        part=$source
+        while [ "$part" != / ]; do
+            [ ! -L "$part" ] || fail "linked helper ancestry"
+            part=$(dirname -- "$part")
+        done
+        meta=$(stat -c "%h %a" -- "$source") || fail "cannot inspect helper"
+        [ "${meta%% *}" = 1 ] || fail "hard-linked helper"
+        case "${meta#* }" in *[2367][0-7]|*[2367]) fail "writable helper metadata" ;; esac
+
+        # /tmp itself must protect a freshly created root-owned child. Do not
+        # honour TMPDIR, adopt an existing directory, or allow a symlink here.
+        [ -d /tmp ] && [ ! -L /tmp ] || fail "unsafe snapshot parent"
+        meta=$(stat -c "%u %a" -- /tmp) || fail "cannot inspect snapshot parent"
+        [ "${meta%% *}" = 0 ] || fail "foreign snapshot parent"
+        case "${meta#* }" in
+            [1357][0-7][0-7][0-7]) ;;
+            *[2367][0-7]|*[2367]) fail "unprotected snapshot parent" ;;
+        esac
+        umask 077
+        snapshot=$(mktemp -d /tmp/anamorph-desktop-helper.XXXXXXXXXX) || fail "cannot capture helper"
+        cleanup() {
+            result=$?
+            trap - EXIT
+            if ! rm -f -- "$snapshot/desktop-integration.sh"; then
+                printf "warning: cannot remove verified helper in %s\n" "$snapshot" >&2
+                [ "$result" -ne 0 ] || result=1
+            fi
+            if ! rmdir -- "$snapshot"; then
+                printf "warning: cannot remove helper snapshot %s\n" "$snapshot" >&2
+                [ "$result" -ne 0 ] || result=1
+            fi
+            exit "$result"
+        }
+        trap cleanup EXIT
+        trap "exit 130" INT
+        trap "exit 143" TERM
+        trap "exit 129" HUP
+        [ "$(stat -c "%u %a" -- "$snapshot")" = "0 700" ] || fail "unsafe snapshot directory"
+        # Metadata checks above are input hygiene, not authentication. Verify the
+        # bytes actually copied, then consume ONLY this protected pathname.
+        (set -C; cat -- "$source" > "$snapshot/desktop-integration.sh") || fail "helper capture failed"
+        [ -f "$snapshot/desktop-integration.sh" ] && [ ! -L "$snapshot/desktop-integration.sh" ] || fail "nonregular snapshot"
+        [ "$(stat -c "%u %a %h" -- "$snapshot/desktop-integration.sh")" = "0 600 1" ] || fail "unsafe snapshot file"
+        actual=$(sha256sum < "$snapshot/desktop-integration.sh") || fail "cannot hash captured helper"
+        [ "${actual%% *}" = "$expected" ] || fail "helper digest mismatch; use a matching trusted distribution"
+        sh "$snapshot/desktop-integration.sh" "$@" "$assets"
+    ' anamorph-desktop-helper "$HERE/desktop-integration.sh" "$HERE/desktop-assets" "$@"
+}
+# END verified desktop helper
+
 # ------------------------------------------------------- 1) current-user mode
 if [ "$mode" = user ]; then
     [ -n "${HOME:-}" ] || {
@@ -162,6 +249,8 @@ if [ "$mode" = user ]; then
     VST3="$HOME/.vst3/Anamorph.vst3"
     APP="$HOME/.local/bin/Anamorph"
 
+    DATA_DIR=$(desktop_data_root)
+    desktop_integration uninstall "$DATA_DIR" "$APP"
     if [ -d "$VST3" ]; then rm -rf "$VST3"; echo "removed $VST3"; removed=1; fi
     if [ -f "$APP" ];  then rm -f  "$APP";  echo "removed $APP";  removed=1; fi
     remove_install_scratch "$HOME/.vst3" "$HOME/.local/bin"
@@ -192,6 +281,8 @@ priv() {
     }
 }
 
+DATA_DIR=$(desktop_data_root)
+desktop_integration uninstall "$DATA_DIR" "$SYS_APP"
 if [ -d "$SYS_VST3" ]; then priv rm -rf "$SYS_VST3"; echo "removed $SYS_VST3"; removed=1; fi
 if [ -f "$SYS_APP" ];  then priv rm -f  "$SYS_APP";  echo "removed $SYS_APP";  removed=1; fi
 remove_install_scratch "$SYS_VST3_DIR" "$SYS_BIN_DIR"

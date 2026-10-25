@@ -12,6 +12,16 @@ recorded separately from source fixtures; unsuitable hosts fail without changing
 kernel/security settings. Historical publication-only evidence is retained. The current restoration is
 recorded in `worklogs/2026-10-25-normal-validation.md`.
 
+## Linux native gate restoration — 2026-10-25
+
+The constant installation placeholder is replaced by the complete native private-root
+driver. It reuses existing entry-point assertions with actual root/ordinary UIDs,
+trusted namespace utility overlays, protected-snapshot/shell observation, real sudo,
+all-ten receiptless cases, bounded cleanup/restart/signal tests and a staged ZIP
+round-trip. TESTING_POLICY, CI_CD, TESTING and the dated worklog distinguish it from
+the ordinary metadata recorder. Customer upload still requires actual gate success;
+no kernel/security change or new helper digest is introduced.
+
 ## Current approval reconciliation — record updated 2026-10-24 (Asia/Shanghai)
 
 ADR-0062 remains Accepted; ADR-0063 and ADR-0064 are Accepted, under explicit final owner approval of the completed five-PR scope.
@@ -1896,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3664` and `.github/workflows/build.yml:3749`, this round being
+`.github/workflows/build.yml:3720` and `.github/workflows/build.yml:3805`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1930,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:750` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:776` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17239,6 +17249,44 @@ that directive (one good/two bad fixtures), refuses an existing product menu dir
 checks the actual common Start Menu group. The installer script and all resource/ownership
 assertions are unchanged. Failure diagnostics retain exact targets/menu entries and setup logs.
 
+## 2026-10-24 Linux desktop integration
+
+Registered Proposed ADR-0065 after explicit pre-implementation owner approval of the
+concrete proposal. Synced source-of-truth/map/README navigation, testing policy,
+CI/testing/packaging/release procedures, Linux INSTALL.txt, user instructions and
+Unreleased notes. No DSP/state invariant changes apply. Reported and corrected the
+stale “No gate ever installs anything” statement: merged Windows tests already do;
+Linux now has actual isolated entry-point tests. Mac installed-receipt work remains
+a separate PR. Preserved prior dated Linux transaction evidence and accepted ADRs;
+ADR-0063 has only a dated Linux scope pointer, not rewritten history or acceptance.
+Evidence: the three Linux scripts, source/provenance checker, entry-point tests,
+PROVENANCE.json, ADR-0065 and `worklogs/2026-10-24-linux-desktop-integration.md`.
+
+## 2026-10-25 Linux recovery and restricted validation follow-up
+
+Reconciled the helper's resumable cleanup plan and missing-receipt uninstall with
+Proposed ADR-0065, the Unreleased fix entry, Linux testing policy/procedure, CI
+procedure and the existing integration worklog. The owner deferred sudo,
+privilege-boundary and adversarial testing for this round. CI therefore reports
+the revised installed-resource gate as unverified and blocks its customer archive;
+ordinary user-mode tests do not stand in for native system-mode validation.
+
+## 2026-10-25 defensive Linux helper capture
+
+Updated Proposed ADR-0065 and its index reference, packaging/release/testing
+procedures, user installation instructions, Linux INSTALL.txt and the Unreleased
+fix entry for the literal trusted bootstrap, embedded helper pin and private
+verified snapshot. Corrected the user procedure's stale statement that only copies
+are elevated; source also elevates desktop preflight/publication/uninstall.
+`tests/linux_desktop_helper_tests.py` exercises production capture/verification
+with inert bytes and a recording executor. Filesystem behavior is real, root
+ownership metadata is modelled, and no fixture helper is interpreted. Evidence
+is nonprivileged only; actual system/runtime/installed-resource validation remains
+unverified, the original distinct-principal claim remains unproven, ADR-0065 stays
+Proposed and the customer-archive hold remains. Durable journal cleanup and
+receiptless-uninstall protections remain unchanged. No workflow change or remote
+automation activation is part of this local follow-up.
+
 ## 2026-10-24 installed macOS receipts
 
 Extended existing package-metadata validation with guarded real installation on the
@@ -17269,12 +17317,19 @@ installed-receipt worklog; no DSP/state/identity/version or release policy chang
 ## 2026-10-25 platform-review approval reconciliation
 
 Recorded the owner's direct confirmation of completed human architecture/ADR
-approval for ADR-0066 in its status header, ADR_INDEX approval/effectivity
+approval for ADR-0065 and ADR-0066 in their status headers, ADR_INDEX approval/effectivity
 record, current policy/procedure/navigation statements and dated worklog
 reconciliation. Historical Proposed entries are retained as history; current
 status is Accepted. Confirmation/record-update date is 2026-10-25; the earlier
 approval date was not specified. Acceptance does not approve merge or certify
 unexecuted tests. All prior product/runtime evidence keeps its exact-head scope.
+
+The same closure prepares the separate helper capture CI route and explicit
+`--user-reliability` selector. TESTING/CI_CD and the repository map describe its
+nonprivileged scope, all-ten receiptless cases, bounded preparation/rollback/commit
+cleanup cuts, root/system guard and unchanged production archive hold. Results
+are recorded against the final local head in the task evidence; preparation alone
+is not a test pass or installed-resource certification.
 
 The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
 existing shadow-memory capability before the unchanged canary and tests. It never
@@ -17307,6 +17362,17 @@ no kernel setting or container security profile is changed. The first Jammy-nati
 attempt failed during dependency setup; its exact package error was unavailable
 through the permitted GitHub read tools, so no specific cause is asserted.
 
+The first real native-gate attempt exhausted the former 40-minute Linux job
+budget without a completed report or customer upload. Its observer launched Python
+for every dirname call; the test overlay now filters snapshot paths in shell before
+starting observation. Atomic per-operation progress remains explicitly incomplete
+and ineligible until the full suite finishes. Each test-owned subprocess is bounded
+at 45 seconds, the native driver at 30 minutes, and the Linux build/test job at
+60 minutes. No cut or ownership/runtime claim is inferred from the timed-out run.
+
+The containerized TSan run reached the liveness canary, which failed. The gate
+remains red; passing the entropy precheck is not sanitizer certification. Fresh
+
 The containerized TSan run at head
 ace86aeccf548904aa48bf14dc77d0822b468a6d reached the liveness canary, which
 failed. That retained result is red; passing the entropy precheck is not sanitizer certification. Fresh
@@ -17314,9 +17380,54 @@ test-owned canary output/exit status is retained as structured diagnostic eviden
 alongside the host capability artifact. The binary, compiler flags, required race
 message, probes and suppression checks are unchanged; no failure is suppressed.
 
+The obsolete publication-only helper review workflow is retired. The ordinary-UID
+12-test capture harness remains in normal source-lint, separate from real native
+installation evidence. No event-containment prerequisite remains for normal CI.
+
+Normal source-lint also restores the existing ordinary-user entry-point reliability
+selector in private user/mount namespaces on Ubuntu 22.04, with its test-only tools.
+It uses no hosted-namespace-permission flag and changes no kernel/security setting;
+an unavailable namespace capability fails. The four user smoke cases plus all-ten
+receiptless checks and bounded user cleanup cuts remain a subset, separate from the
+mandatory staged real-root gate. The 12-test recorder remains an ordinary process
+and still never elevates or interprets its inert fixture helper bytes.
+
+The second native attempt completed with diagnostic failures: Bubblewrap rejected
+ordinary UID selection without a user namespace. Already-root observations and
+31 reached system cleanup cuts were retained, but no full gate or customer upload
+was certified. The native driver now creates VM-private mount/PID/network roots
+with unshare/chroot and uses real setpriv UID transitions. It retains a dedicated
+namespace init and real setuid sudo; no user namespace or interpreter recorder is
+used. Host runtime files are read-only, product writes remain task-private, and
+mount capabilities are dropped before the installer runs. Signal targeting walks
+only the bounded test-owned ancestry and verifies the pinned literal bootstrap.
+The existing customer priv() maps errors to 1; separate execution of its exact
+embedded bootstrap verifies 130/143/129 signal status and snapshot cleanup. No
+production helper, digest, PATH or permission/failure contract was changed.
+
+Native namespace setup verifies distinct mount/PID/network namespaces before any
+mount operation and retains the original user namespace. The task-owned root is
+entered before forking the installer; a dedicated init reaps only its descendants.
+A one-time real UID/sudo capability preflight stops the native suite if the VM
+cannot provide this isolation. Trusted project code and test instrumentation run
+inside a disposable VM; the test root is not claimed to contain hostile root code.
+Source-lint's ordinary namespace probe also fails before its unit selection when
+that separate capability is unavailable. Its 20-minute job budget covers the
+bounded existing user reliability cases and dependency setup.
+
+The ordinary native-plan recorder checks production executor selection, real-UID
+plan fields, implicit-root/uninstall arguments, fixed PATH and task-private writable
+mounts. Its four tests execute no namespace, sudo, interpreter or fixture contents.
+Planned UID 0 is data only; these tests cannot replace native filesystem evidence.
+The original 12-test protected-helper recorder remains separate and unchanged.
+
 The routing fixtures use the real open/synchronize PR merge ref
 `refs/pull/N/merge`, while retaining the independent head branch field. Direct Build
 and inherited Release manual contexts retain their exact shared branch event/ref.
+
+The native private root preserves the complete read-only /usr runtime, including
+sudo/GIO libexec helpers, while shadowing product destinations with task-owned
+writable mounts. The recording plan regression checks this runtime completeness.
 
 
 TSan workspace correction (2026-10-25): artifact 12580933816 at head
@@ -17329,6 +17440,24 @@ host workspace path. It executes no sanitizer, compiler, installer or privileged
 operation. Keep the real canary mandatory and retain its output/options; this
 fixture does not establish sanitizer liveness. No suppression rule, compiler pin,
 container security profile or kernel setting changes.
+
+
+Native installed-resource evidence (2026-10-25): push run 40147299614 at head
+0a667695aa1684eef07c0bd085dc3d39c3a78c73 completed all 29 native tests with zero
+failures/errors. Artifact 12582266259 has ZIP SHA-256
+d16c68c3284ea57e6632bb91d475622a23e2e35c91687dd7f22150ed0b035830.
+The genuine ordinary UID/sudo/root preflight returned 1001/0/0. There were 317 real
+protected snapshot observations (root UID/GID, 0700 directory, 0600 single-link
+file, pinned helper bytes and original assets argument), 93 reached cleanup cuts
+(62 user, 31 system) and six TERM/HUP/INT signal cases. The exact embedded
+bootstrap preserves signal status; the existing customer priv() maps failures to 1.
+Actual customer artifact 12582391207 has ZIP SHA-256
+c75b84fa50c4bef01ed0a082b54c62dcbb8a2c8f9fd727032ccc3c56e9942103; all 19
+entries match that native run's staged hashes and modes (four 0755, fifteen 0644).
+This supersedes earlier pending runtime statements for this tested head and bounded
+contract only. It is not a distinct-principal exploit demonstration, GUI/DAW
+certification, release approval or evidence for a later changed candidate. The
+final-head normal checks remain required after the separate TSan workspace fix.
 
 
 Release tag fixture reconciliation (2026-10-25): Anamorph's Accepted ADR-0059 uses
@@ -17348,6 +17477,16 @@ named-review-branch Release dispatch collision. Expression and needs controls
 cover enabled/disabled jobs and failed/skipped prerequisites. A disabled verifier
 cannot satisfy the negative control. No Release dispatch or tag is created.
 
+Native partial diagnostics now use actual unittest result callbacks and stopTest,
+after cleanup callbacks, instead of a tearDown checkpoint. Ordinary in-process
+fixtures cover body failure, setup error, cleanup error and incomplete execution.
+Partial reports remain in_progress and archive-ineligible; only the complete
+suite result determines final counts and eligibility. SIGKILL can prevent a final
+checkpoint. The unchanged source report writer already creates an absent report
+parent, verified by executing only its production writer AST. No redundant
+workflow mkdir or customer helper change is needed. The real complete native gate
+must run on this updated result implementation; recorder evidence cannot replace it.
+
 The optional integration consumer authenticates run/head, artifact ZIP and PKG
 bytes as before. Before installation, native `pkgutil --expand` supplies the
 PackageInfo component identities/versions and Distribution references, checked
@@ -17365,3 +17504,59 @@ and tests alternate spellings and archive link behavior. The reported spelling
 escape remains unconfirmed; these fixtures are bounded evidence, not universal
 safety proof. Existing ownership/content/location/selection/co-installation checks
 and the production default-full exact-three gate remain unchanged.
+
+## 2026-10-25 staged-merge reconciliation
+
+The owner merged PR #174 as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. Its complete
+tree matches the reviewed first-PR head; both parent commits and relevant feature
+bytes were checked against actual main. ADR-0066 remains Accepted and its
+implementation is now effective on main. ADR-0065 remains Accepted, but its
+implementation on main still awaits PR #175; importing actual main into this
+feature branch does not perform that second merge. Owner confirmation remains
+2026-10-25 and is distinct from formal GitHub reviews. Earlier Proposed/pending
+entries and exact-head runtime results remain historical evidence.
+
+The combined workflow preserves normal push/PR/manual/reusable caller semantics,
+same-run routing liveness, dependency/security provisioning and both native
+installer gates. Optional artifact-derived package consumers retain their own
+selection/co-installation contracts and independent package inputs. Current normal
+CI and affected installer/archive gates must complete on this combined candidate;
+previous outer-workflow results do not certify its changed workflow.
+
+The Linux helper bytes and both literal pins remain unchanged, with durable
+journal cleanup and refusal of all ten receiptless resource paths preserved.
+The real native gate and staged-to-uploaded archive contract remain mandatory.
+The imported macOS receipt gate retains native install-location, full ownership
+and content equality, explicit liveness and default-full exact-three semantics.
+Anamorph's real TSan environment fixture remains present and accurately described.
+
+Only the relevant conflict hunks were resolved; independent platform sections and
+Accepted ADR rows were combined. No whole workflow/document was selected with
+ours/theirs. Shared workflow/documentation overlap is now resolved against actual
+main. Product versions, JUCE pins, identities, approved art and DSP/state/GUI are
+unchanged. No GitHub PR merge, tag/release or deployment is performed here.
+
+## 2026-10-26 platform main audit
+
+PR #175 remains open at the start of this correction. Actual main is still the
+PR #174 merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. ADR-0066 is effective
+there; only ADR-0065 and its protected-helper amendment await PR #175. Both are
+already Accepted under owner confirmation 2026-10-25. This corrects the ambiguous
+index sentence and deletes the obsolete duplicate Configure citation, using
+actual workflow anchors. It changes no runtime, workflow, pin or policy gate.
+
+The existing 29-test, 317-snapshot, 93-cut and six-signal native report and all
+19 staged/uploaded hashes/modes belong to `d0f7739c0df8e66c2d818969d30ab1863a0a9565`,
+run 40179691961, native artifact 12594337994 and customer artifact 12593663550.
+Current procedure text now distinguishes this completed native evidence from
+the historical local delivery's unverified-runtime statement. Optional macOS
+consumer/jobs/header/package inputs are unchanged; prior native records keep
+their actual consumer/package bindings. No extra native campaign is justified
+solely by these prose corrections. Normal publication checks still apply to the
+new documentation candidate; old outer-workflow checks are not relabeled.
+
+The rejected alternative was treating a prospective PR merge as combined main
+or repeating unchanged native campaigns to relabel evidence. After the owner
+merges #175, audit the actual merge/squash tree and main baseline separately.
+The original AU teardown observation, GUI/DAW appearance/recall, genuine older
+installer upgrades and native Icon Composer authoring remain separate work.

@@ -157,6 +157,34 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
 
+## Linux desktop resource gate (Accepted ADR-0065 implementation)
+
+The owner approved implementation/testing before the new CI dependency set was added;
+ADR-0065 is Accepted; merge review remains separate. Source/provenance checks run universally
+with their self-test ahead of use, including local preflight without any build directory.
+The source-lint job tests actual ordinary-user install/uninstall entry points with
+`--user-reliability` in disposable Bubblewrap user/mount roots. The shipping job
+requires the complete real-root gate and repeats the checks against a clean ZIP
+round-trip of the real staged customer tree; its upload requires success.
+
+Coverage includes user/system/XDG paths, real GIO escaped executable launch, hicolor
+lookup, ownership/ancestor/symlink/journal refusal, failure/SIGKILL recovery, coexistence,
+reinstall and exact safe uninstall. Deliberately disabled ownership/parent/source-hash
+checks must be caught by their negative probes. No live workstation destinations are
+used; inability to create isolated namespaces fails visibly. These tests do not certify
+GNOME/KDE display, icon-cache appearance, actual DAWs or embedded ELF icons.
+
+The publication-only phase deferred native testing; that restriction is historical.
+The current owner authorization permits bounded functional/reliability tests inside
+disposable VMs/private roots. The shipping job executes
+`tests/linux_desktop_native_tests.py` via real sudo on a fresh hosted VM. Private
+mount/PID/network roots use real root/ordinary UIDs, real sudo, the normal shell
+and trusted root-owned utility overlays. The helper PATH, bytes and both pins stay
+unchanged. No kernel/security setting is modified; missing capabilities fail.
+Customer upload still requires the real installed-resource step to succeed.
+The ordinary 12-test capture recorder remains separate and models root metadata.
+`--ordinary-only` and `--user-reliability` subsets cannot satisfy the full gate.
+
 ## Native installed macOS receipt gate (Accepted ADR-0066)
 
 - After actual PKG creation, `receipt_liveness` must successfully run both

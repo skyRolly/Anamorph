@@ -230,15 +230,62 @@ Base `tech.rolly.anamorph`; macOS receipts below it use `.vst3/.au/.app`. Expand
 is checked by `build-pkg.sh`. Exact named component-to-receipt, choice and payload ownership must agree; a correct ID set alone does not pass. Windows AppId stays `{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}`.
 The owner accepts the pre-release receipt break; there is no old-receipt alias or fallback.
 ADR-0063 is Accepted; architecture review and the owner decision are approved, and #171 is merged.
-Default-full actual receipt installation is now checked by the guarded native smoke
-in `scripts/test-macos-receipts.py`; its worklog records exact successful heads/artifacts.
-Selected-component permutations, upgrades, both-product co-installation and DAW recall
-remain separate validation. This record grants no new release approval.
+At that namespace-merge checkpoint, actual receipt installation and DAW recall were
+unverified. Later default-full receipt evidence at `f8e4e7f000db68b40cdea5e1a5c2d43fb4b983ac`
+is recorded in [PR #174](https://github.com/skyRolly/Anamorph/pull/174). DAW recall
+remains manual, and this evidence grants no release approval.
+Current default-full receipt validation uses the guarded native smoke on main;
+optional selections/co-installation retain their own package/consumer provenance.
 
 The Windows installer icon gate (Accepted ADR-0064) verifies the exact checked-in B0 ICO before
 ISCC and the generated Setup MAINICON afterward. Installer artifact upload also requires the
 isolated component/install/reinstall/uninstall tests. No icon download or generic fallback
 is allowed; normal signing/release authorization remains unchanged.
+
+## Linux desktop payload and ownership
+
+The Linux customer tree additionally contains `desktop-integration.sh` (sourced by
+neither binary), `desktop-assets/tech.rolly.anamorph.desktop`, eight hicolor PNGs,
+scalable SVG and their fixed SHA-256/provenance records. Both installer entry points
+call the helper through `sh`; artifact transport need not preserve its executable bit.
+The release ZIP archives that same validated tree and renders/downloads no artwork.
+Extraction and portable Standalone execution change no desktop/system files.
+
+System preflight, publication and uninstall (including already-root runs) execute
+only a private helper snapshot verified against the SHA-256 embedded in both trusted
+entry scripts. Keep the helper and both pins synchronized; run
+`python3 tests/linux_desktop_helper_tests.py` after a helper edit. The root bootstrap
+uses checked `/tmp`, private 0700/0600 single-link capture, and exact-file/directory
+cleanup. It passes the original archive assets as data to the unchanged hash/copy
+checks. A mismatched helper fails closed; use matching files from a trusted
+distribution. The entry scripts/distribution and system tools still need independent
+trust/authenticity; this pin protects subsequent helper replacement, not distribution
+authenticity. SIGKILL can leave a private snapshot; no broad cleanup is attempted.
+See Accepted ADR-0065's defensive follow-up for trust assumptions and the
+historical local-delivery limitation. Later native run 40179691961 at
+`d0f7739c0df8e66c2d818969d30ab1863a0a9565` verified 29 tests and the
+19-entry staged/uploaded archive contract; it is feature-head evidence, not an
+execution at a later main or this documentation-only head. GUI/DAW validation
+and distribution authenticity remain separate.
+
+User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
+ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary
+and VST3 destinations are unchanged. Install applications/tech.rolly.anamorph.desktop
+and exact icons/hicolor paths. Generated Exec uses `/usr/bin/env --` plus the escaped
+absolute installed executable to handle GIO's literal-percent path check without a shell.
+Do not guess StartupWMClass or claim embedded ELF/host plug-in-browser artwork.
+
+A private 0700 `.tech.rolly.anamorph` directory owns ten resource hashes and a recovery
+journal. Foreign/modified paths, symlink ancestry and unknown journal entries stop the
+operation while preserving files. Preflight precedes binary writes; resources stage and
+publish atomically per file with rollback after ordinary failures/signals and next-run
+SIGKILL reconciliation. Binary updates remain independent; a resource error is a failed
+install even if valid new binaries are already present. Serialize same-root operations;
+this is process-interruption recovery, not a power-loss guarantee. Uninstall uses the
+same XDG root, checks ownership first, keeps modified/foreign files and never removes
+shared theme directories, other products or presets. Move an intentional edited/foreign
+resource to a safe backup before retrying. Optional cache refresh errors are visible;
+real GNOME/KDE/WM/cache display remains manual. Accepted ADR-0065 is Accepted by owner confirmation 2026-10-25; merge remains pending.
 
 ## Native installed-receipt smoke test
 

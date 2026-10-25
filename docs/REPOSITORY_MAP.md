@@ -196,13 +196,26 @@ the inventory, stack dependencies, comparisons and native limitations for Accept
 `scripts/test-windows-installer.ps1` checks disposable-VM component/reinstall/uninstall behavior
 and exposes a portable snapshot self-test. Evidence: `worklogs/2026-10-23-windows-installer-icon.md`.
 
+Linux desktop additions (Accepted ADR-0065): `resources/icons/linux/` contains the
+approved hash-pinned handoff; `packaging/linux/desktop-integration.sh` implements exact
+resource ownership/recovery for both customer entry points; `scripts/check-linux-desktop.py`
+validates sources/staging with a preceding self-test; `tests/linux_desktop_install_tests.py`
+drives actual scripts in disposable filesystem namespaces. Test-only GTK/GIO/Bubblewrap
+are independent of the product runtime. ADR-0065 is registered as Accepted (owner confirmation 2026-10-25).
+
+The ordinary-UID helper recorder runs in normal source-lint. The obsolete separate
+publication-phase review workflow is retired. `tests/linux_desktop_native_tests.py`
+adds real sudo/root selection and protected-snapshot observation in private roots
+on a fresh hosted Linux VM; its successful full gate is required for customer upload.
+
 `scripts/test-macos-receipts.py` adds installed PackageKit/pkgutil receipt validation
 on the repository's disposable hosted Mac only; `--self-test` needs no native installer.
 It never forgets receipts or removes installation folders. See the CI/testing procedures.
 
 
 Installed-receipt decision: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
-confirmation on 2026-10-25. Human architecture/ADR approval is complete; merge remains pending.
+confirmation on 2026-10-25. PR #174 merged as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`;
+its installed-receipt implementation is effective on main. ADR-0065/PR #175 remains pending.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.
 
@@ -211,4 +224,5 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 | Script | Review validation responsibility |
 |---|---|
 | `scripts/test-workflow-routing.py` | Production Build/Release expression and needs selection, with same-run valid and seeded skipped-Release liveness controls before the real check. No dispatch or installer. |
+| `tests/linux_desktop_native_plan_tests.py` | Ordinary recording plans and in-process unittest result lifecycle diagnostics, including cleanup errors and the absent-parent production report writer. No privileged operation or installer. |
 | `scripts/test-macos-integration-review.py` | Optional seven selections and real two-product co-installation from independently identified artifacts; native PackageInfo/Distribution and staged bundle metadata establish artifact-specific receipt versions before installation. Pure metadata/extraction `--self-test`. |

@@ -6,6 +6,11 @@ This is the confirmation and record-update date; the original approval date
 was not separately specified. Merge/publication, separately required code
 review and unexecuted tests are not approved or certified by this confirmation.
 
+**Implementation effectivity (2026-10-25):** effective on main through the owner's
+PR #174 merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. The original human
+acceptance provenance is unchanged; this records actual effectivity, not a new
+GitHub review submission or approval of any later branch/release.
+
 ## Context
 
 Anamorph's namespace decision is already Accepted. The current receipt smoke
@@ -41,8 +46,8 @@ Same-job self-tests and production-expression fault replay cover failed/skipped
 liveness and failed installation with retained diagnostics. No deliberately invalid
 installer is published. The separate loose bundle ZIP retains its original gate;
 CI artifacts do not constitute a release. The accompanying TESTING_POLICY
-addition is approved by this Accepted decision; implementation becomes effective
-on main only when this PR is merged. Acceptance does not authorize that merge.
+addition is approved by this Accepted decision and is effective through the
+actual PR #174 merge recorded above. Acceptance alone did not authorize that merge.
 
 ## Consequences
 

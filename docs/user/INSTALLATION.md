@@ -73,9 +73,9 @@ which needs no root at all; a system-wide install is offered as the second choic
    Linux folder — REAPER, Bitwig, Ardour and other Linux DAWs scan it by default, so the
    plug-in shows up exactly as a system-wide one would. Anything typed that is not `2` is
    treated as the default. Choosing 2 prints *"System-wide installation requires
-   administrator privileges"* and lets `sudo` ask for your password; only the copy runs
-   elevated, never the whole script. Running `sudo ./install.sh` installs system-wide
-   without asking, as before.
+   administrator privileges"* and lets `sudo` ask for your password; individual file
+   operations and verified desktop-helper snapshots run elevated. Running
+   `sudo ./install.sh` installs system-wide without asking, as before.
 
 3. Rescan plug-ins in your DAW (REAPER: *Options → Preferences → Plug-ins → VST →
    Re-scan*; Bitwig: *Settings → Locations → Plug-in Locations*, then rescan; Ardour:
@@ -85,6 +85,26 @@ which needs no root at all; a system-wide install is offered as the second choic
 To remove it later, run `./uninstall.sh` from the same folder — it offers the same two
 choices, and removing a per-user install needs no root either (`sudo ./uninstall.sh`
 removes the system-wide one).
+
+### Desktop launcher and icons
+
+The script also installs the approved Anamorph launcher and hicolor icons. Per-user
+data goes to absolute `$XDG_DATA_HOME`, or `~/.local/share`; relative XDG values are
+ignored with a warning. System data goes to `/usr/local/share`, alongside the existing
+`/usr/local/bin` Standalone. The launcher references the actual installed app, so a
+session need not have `~/.local/bin` on PATH. Shared icon-theme folders and presets stay.
+Use the same XDG_DATA_HOME when uninstalling. A foreign/edited desktop or icon file is
+preserved and stops the operation; move it to a safe backup before retrying. Interrupted
+resource work is reconciled by the next install/uninstall. A reported resource failure
+is not successful installation; binary updates may already have completed independently.
+GNOME/KDE appearance and window association still require native desktop validation.
+
+System installation and removal reject a desktop helper that does not match the
+trusted entry scripts. If verification fails, use matching files from a trusted
+distribution. This replacement check does not establish a download's authenticity.
+
+You can run the extracted Standalone directly with `./Anamorph` (restore `chmod +x`
+if needed) without running install.sh. Merely extracting the archive installs nothing.
 
 ### Manual installation (zip)
 

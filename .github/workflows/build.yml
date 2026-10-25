@@ -469,8 +469,8 @@ jobs:
   # behind a toolchain.
   # -------------------------------------------------------------------------
   source-lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
@@ -551,6 +551,31 @@ jobs:
         run: |
           python3 scripts/check-installer-icon.py --self-test
           python3 scripts/check-installer-icon.py
+
+      - name: Install ordinary entry-point test tools on the disposable runner
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
+
+      - name: Ordinary-user installer reliability in private roots
+        run: |
+          test "$(id -u)" -ne 0
+          bwrap --unshare-user --uid "$(id -u)" --gid "$(id -g)" --ro-bind / / /usr/bin/true
+          python3 tests/linux_desktop_install_tests.py --user-reliability --report build/linux-desktop-user-source.json
+
+      - name: Ordinary-user protected-helper capture regression
+        run: |
+          test "$(id -u)" -ne 0
+          python3 tests/linux_desktop_helper_tests.py
+          python3 tests/linux_desktop_native_plan_tests.py
+          /bin/sh -n packaging/linux/install.sh
+          /bin/sh -n packaging/linux/uninstall.sh
+          /bin/sh -n packaging/linux/desktop-integration.sh
+
+      - name: Linux desktop approved source contract
+        run: |
+          python3 scripts/check-linux-desktop.py --self-test
+          python3 scripts/check-linux-desktop.py
 
       - name: Product identity self-test and source contract
         run: |
@@ -678,7 +703,7 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
@@ -698,6 +723,7 @@ jobs:
         uses: ./.github/actions/setup-linux-build
         with:
           clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+          extra-packages: bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
 
       # Shared lineage with `merge-check` -- see that job. This is the writer of
       # the two: it runs on every push, so the cache a PR restores is the one
@@ -1121,6 +1147,8 @@ jobs:
           cp    packaging/linux/INSTALL.txt "$DIST/INSTALL.txt"
           install -m 755 packaging/linux/install.sh   "$DIST/install.sh"
           install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
+          install -m 644 packaging/linux/desktop-integration.sh "$DIST/desktop-integration.sh"
+          cp -R resources/icons/linux "$DIST/desktop-assets"
           # Attribution/support files (NOTICE, THIRD_PARTY_LICENSES.md,
           # SUPPORT.md) are deliberately NOT staged: the packages carry only
           # what a user needs to install, and INSTALL.txt is installation-only
@@ -1153,8 +1181,36 @@ jobs:
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
       # pluginval-only failure still yields beta artifacts as before.
-      - name: Upload Linux artifacts
+      # The complete installed-resource gate runs in fresh hosted VM private
+      # roots with real UIDs/sudo. It changes no host kernel/security settings;
+      # any unavailable isolation capability fails and keeps upload blocked.
+      - name: Validate staged Linux desktop resource bytes
+        id: desktop_source
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
+        run: |
+          python3 scripts/check-linux-desktop.py --self-test
+          python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux > build/linux-desktop-source.json
+
+      - name: Validate real Linux desktop installation in disposable private roots
+        id: desktop_install
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.desktop_source.outcome == 'success' }}
+        run: |
+          sudo -n --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,GITHUB_REPOSITORY \
+            python3 tests/linux_desktop_native_tests.py \
+            --staged-dir dist/Anamorph-Linux --report build/linux-desktop-install.json
+
+      - name: Retain Linux desktop install evidence
+        if: ${{ always() && steps.desktop_install.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Linux-desktop-validation
+          path: |
+            build/linux-desktop-source.json
+            build/linux-desktop-install.json
+          if-no-files-found: error
+
+      - name: Upload Linux artifacts
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.desktop_install.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Linux

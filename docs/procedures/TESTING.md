@@ -6017,12 +6017,12 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
   matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
 
-- **Installation coverage is platform-specific (updated 2026-10-24).** Merged #172
-  already runs Windows install/reinstall/uninstall tests on a disposable VM. This branch
-  adds actual default-full Mac installation and receipt/payload verification on its own
-  disposable hosted Mac. Expanded package metadata checks remain in place. Linux desktop
-  integration is a separate PR; no GUI/DAW appearance or Mac component-selection/upgrade
-  certification follows from these automated installation checks. **INC-012** is what that gap costs: bundle relocation is a
+- **Installation coverage is platform-specific (reconciled 2026-10-25).** Merged Windows
+  installer tests run on disposable hosted VMs. The combined candidate retains actual
+  Linux entry-point/resource tests in private roots and the default-full macOS receipt
+  and payload gate now on main. Optional selections/co-installation remain separately
+  attributed artifact evidence. GUI/DAW appearance and genuine upgrades need their own
+  evidence. **INC-012** is what that historical gap costs: bundle relocation is a
   property of Installer.app's behaviour, invisible in the archive, and every manual check until
   then had been a first install onto a machine with no prior copy — the one case it cannot affect.
   The checks that remain owed to a human:
@@ -6106,6 +6106,124 @@ absent before use on the disposable VM, then inspects its real shortcut targets.
 bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
 setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
 
+## Linux desktop/hicolor regression (Accepted ADR-0065)
+
+Current platform-review follow-up (owner confirmation 2026-10-25) also permits
+`python3 tests/linux_desktop_install_tests.py --user-reliability --staged-dir <tree> --report <path>`.
+This explicit selector refuses root, system operations, extra probes, smoke and
+namespace-permission changes. In private Bubblewrap roots it runs the four user
+cases plus all ten receiptless resource names with regular/live-link/dangling-link
+fixtures and absent-name retry; 31 bounded user cleanup cuts across preparation,
+rollback and commit (including missing old markers), retry/uninstall and unknown
+journal/state refusal. Only test-owned subprocesses in private PID roots are killed.
+This is user-mode reliability evidence, not actual sudo/root-snapshot validation or
+the full installed-resource gate. `--ordinary-only` still selects its original four
+cases. For this user-only selector, mutation controls and system/native cases are omitted.
+
+The ordinary-UID capture recorder is integrated into normal source-lint; the
+obsolete separate publication-phase workflow is retired. It still cannot replace
+the complete real installed-resource gate or authorize customer upload.
+
+For the 2026-10-25 defensive helper maintenance task, the focused check is:
+
+```sh
+python3 tests/linux_desktop_helper_tests.py
+```
+
+Run as an ordinary user. The test extracts the identical production entry-point
+functions, replaces their trusted digest only for inert fixture bytes, and supplies
+a recording `priv()` boundary. It runs the literal capture/verification bootstrap
+without elevation and replaces final `sh` interpretation with a recorder. Temporary
+creation is redirected into task-owned disposable directories; fixture contents are
+never executed. File creation, 0700/0600 modes, single/hard/symbolic links, SHA-256,
+argument quoting and exact-path exit cleanup are real. Root ownership metadata is
+modelled, including directory/file ownership/mode/link-count rejection; this does not
+test cross-account isolation. Cases include each system action, missing/nonregular/
+linked inputs, writable source mode, changed bytes despite a changed sidecar digest,
+stable snapshot consumption after sequential source replacement, and consumer failure
+with unrelated temporary content preserved. A source check requires matching bootstrap
+blocks, the actual helper digest, and routed user/system/implicit-root entry paths.
+
+These checks establish defensive implementation and nonprivileged regression
+evidence. Actual privilege elevation, root ownership, protected interpretation,
+archive asset resolution/publication, system uninstall and interruption/recovery are
+still unverified on this revision. The distinct-principal exploit claim is unproven;
+no race/exploit demonstration or hostile process is part of this check. The commands
+below describe broader existing procedures, not authorization for this task. The
+customer-archive hold and required installed-resource gate remain unchanged.
+
+```sh
+python3 scripts/check-linux-desktop.py --self-test
+python3 scripts/check-linux-desktop.py
+python3 tests/linux_desktop_install_tests.py
+# After ordinary Linux staging (no product rebuild required):
+python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux
+python3 tests/linux_desktop_install_tests.py --staged-dir dist/Anamorph-Linux
+```
+
+Run with Bubblewrap/user namespaces, desktop-file-validate, Python GI/GTK and a working
+SVG loader. Tests invoke the customer shell commands, never copied helper implementations,
+inside disposable roots and at a working directory outside the archive. No fallback runs
+against real /usr or HOME when isolation is unavailable. The source checker's self-test
+precedes every check; six real preflight regressions include corrupted Linux source input.
+Fixtures cover changed/missing files, foreign paths, symlinks, private-state/receipt/journal
+errors, ordinary failure and killed transactions, discriminating old/new launcher rollback,
+user/system coexistence and reinstall/uninstall. The clean-archive case compares installed
+native payload hashes/ELF headers with the already native-gated customer files. The GIO
+case launches a harmless fixture executable from a path containing spaces, %%/quotes/dollar/
+backtick/backslash and checks GTK hicolor lookup at eight sizes × two scales, including SVG.
+It does not launch the product GUI or certify GNOME/KDE appearance. Serialize operations
+against the same data root. See the worklog for exact results, mutations and limits.
+
+Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
+before any installation. `--hosted-namespace-permission` now first proves its
+strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
+kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
+and restores its exact original value in finally. Local tests never change kernel
+settings; self-hosted/developer/wrong-repository contexts are refused. Installation
+still runs in real private filesystem/user namespaces and fails if isolation cannot
+start. This enables the sandbox rather than replacing native tests or their gates.
+
+**Restricted follow-up, 2026-10-25:** run
+`python3 tests/linux_desktop_install_tests.py --ordinary-only` for four user-mode
+fresh/reinstall/uninstall, missing-receipt, GIO/hicolor and clean-archive checks in
+local disposable roots. That option forbids hosted namespace permission changes and
+additional selected probes. It excludes system/sudo, fault injection, SIGKILL cleanup
+cuts, hostile private-state cases and mutations. The full staged entry-point gate is
+unverified on the revised head and blocks its customer archive in CI. The earlier
+full run is historical regression evidence, not a substitute for the required
+new-head installed-resource gate before merge.
+
+Adversarial uninstall follow-up: at 787752f an unexpected file in the private
+ownership root survived, but owned desktop resources had already been removed
+before rmdir failed. Reproduced with actual entry points in isolation. The root
+now admits only format-v1, receipt and transaction before any recovery/removal.
+A regression requires both foreign and owned files/binaries to remain intact
+on refusal. The GTK test also exercises a real parent theme inheriting hicolor,
+in addition to direct lookup, at eight sizes × two scales. The suite has 20 cases.
+
+## Real Linux private-root gate (2026-10-25)
+
+On a fresh disposable GitHub-hosted Linux VM with the normal build dependencies,
+Bubblewrap, sudo, desktop-file-utils and GTK Python introspection, run:
+
+```sh
+sudo -n --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,GITHUB_REPOSITORY \
+  python3 tests/linux_desktop_native_tests.py \
+  --staged-dir dist/Anamorph-Linux --report build/linux-desktop-install.json
+```
+
+The driver refuses other hosts and uses actual UIDs in private mount/PID/network
+roots, rather than user namespaces or modeled ownership. Root-owned read-only test
+utility overlays retain the real utility at `/native-real`, preserving production
+PATH and the pinned helper. The real shell is never replaced. Observation at the
+helper's dirname call measures its protected input and shell argv, including the
+original asset directory as argument four. Failure/SIGKILL cuts assert they were
+reached before retry/uninstall; normal signal cuts verify cleanup and status.
+The source recorder runs separately as an ordinary user. No live host environment
+may be spoofed and no kernel/security settings are changed. A failing native report
+keeps customer eligibility false. See the dated normal-validation worklog.
+
 ## Native installed-receipt smoke test
 
 `scripts/test-macos-receipts.py --self-test` exercises the installed-metadata parser,
@@ -6170,6 +6288,14 @@ no kernel setting or container security profile is changed. The first Jammy-nati
 attempt failed during dependency setup; its exact package error was unavailable
 through the permitted GitHub read tools, so no specific cause is asserted.
 
+The first real native-gate attempt exhausted the former 40-minute Linux job
+budget without a completed report or customer upload. Its observer launched Python
+for every dirname call; the test overlay now filters snapshot paths in shell before
+starting observation. Atomic per-operation progress remains explicitly incomplete
+and ineligible until the full suite finishes. Each test-owned subprocess is bounded
+at 45 seconds, the native driver at 30 minutes, and the Linux build/test job at
+60 minutes. No cut or ownership/runtime claim is inferred from the timed-out run.
+
 The containerized TSan run at head
 ace86aeccf548904aa48bf14dc77d0822b468a6d reached the liveness canary, which
 failed. That retained result is red; passing the entropy precheck is not sanitizer certification. Fresh
@@ -6177,9 +6303,54 @@ test-owned canary output/exit status is retained as structured diagnostic eviden
 alongside the host capability artifact. The binary, compiler flags, required race
 message, probes and suppression checks are unchanged; no failure is suppressed.
 
+The obsolete publication-only helper review workflow is retired. The ordinary-UID
+12-test capture harness remains in normal source-lint, separate from real native
+installation evidence. No event-containment prerequisite remains for normal CI.
+
+Normal source-lint also restores the existing ordinary-user entry-point reliability
+selector in private user/mount namespaces on Ubuntu 22.04, with its test-only tools.
+It uses no hosted-namespace-permission flag and changes no kernel/security setting;
+an unavailable namespace capability fails. The four user smoke cases plus all-ten
+receiptless checks and bounded user cleanup cuts remain a subset, separate from the
+mandatory staged real-root gate. The 12-test recorder remains an ordinary process
+and still never elevates or interprets its inert fixture helper bytes.
+
+The second native attempt completed with diagnostic failures: Bubblewrap rejected
+ordinary UID selection without a user namespace. Already-root observations and
+31 reached system cleanup cuts were retained, but no full gate or customer upload
+was certified. The native driver now creates VM-private mount/PID/network roots
+with unshare/chroot and uses real setpriv UID transitions. It retains a dedicated
+namespace init and real setuid sudo; no user namespace or interpreter recorder is
+used. Host runtime files are read-only, product writes remain task-private, and
+mount capabilities are dropped before the installer runs. Signal targeting walks
+only the bounded test-owned ancestry and verifies the pinned literal bootstrap.
+The existing customer priv() maps errors to 1; separate execution of its exact
+embedded bootstrap verifies 130/143/129 signal status and snapshot cleanup. No
+production helper, digest, PATH or permission/failure contract was changed.
+
+Native namespace setup verifies distinct mount/PID/network namespaces before any
+mount operation and retains the original user namespace. The task-owned root is
+entered before forking the installer; a dedicated init reaps only its descendants.
+A one-time real UID/sudo capability preflight stops the native suite if the VM
+cannot provide this isolation. Trusted project code and test instrumentation run
+inside a disposable VM; the test root is not claimed to contain hostile root code.
+Source-lint's ordinary namespace probe also fails before its unit selection when
+that separate capability is unavailable. Its 20-minute job budget covers the
+bounded existing user reliability cases and dependency setup.
+
+The ordinary native-plan recorder checks production executor selection, real-UID
+plan fields, implicit-root/uninstall arguments, fixed PATH and task-private writable
+mounts. Its four tests execute no namespace, sudo, interpreter or fixture contents.
+Planned UID 0 is data only; these tests cannot replace native filesystem evidence.
+The original 12-test protected-helper recorder remains separate and unchanged.
+
 The routing fixtures use the real open/synchronize PR merge ref
 `refs/pull/N/merge`, while retaining the independent head branch field. Direct Build
 and inherited Release manual contexts retain their exact shared branch event/ref.
+
+The native private root preserves the complete read-only /usr runtime, including
+sudo/GIO libexec helpers, while shadowing product destinations with task-owned
+writable mounts. The recording plan regression checks this runtime completeness.
 
 
 TSan workspace correction (2026-10-25): artifact 12580933816 at head
@@ -6192,6 +6363,24 @@ host workspace path. It executes no sanitizer, compiler, installer or privileged
 operation. Keep the real canary mandatory and retain its output/options; this
 fixture does not establish sanitizer liveness. No suppression rule, compiler pin,
 container security profile or kernel setting changes.
+
+
+Native installed-resource evidence (2026-10-25): push run 40147299614 at head
+0a667695aa1684eef07c0bd085dc3d39c3a78c73 completed all 29 native tests with zero
+failures/errors. Artifact 12582266259 has ZIP SHA-256
+d16c68c3284ea57e6632bb91d475622a23e2e35c91687dd7f22150ed0b035830.
+The genuine ordinary UID/sudo/root preflight returned 1001/0/0. There were 317 real
+protected snapshot observations (root UID/GID, 0700 directory, 0600 single-link
+file, pinned helper bytes and original assets argument), 93 reached cleanup cuts
+(62 user, 31 system) and six TERM/HUP/INT signal cases. The exact embedded
+bootstrap preserves signal status; the existing customer priv() maps failures to 1.
+Actual customer artifact 12582391207 has ZIP SHA-256
+c75b84fa50c4bef01ed0a082b54c62dcbb8a2c8f9fd727032ccc3c56e9942103; all 19
+entries match that native run's staged hashes and modes (four 0755, fifteen 0644).
+This supersedes earlier pending runtime statements for this tested head and bounded
+contract only. It is not a distinct-principal exploit demonstration, GUI/DAW
+certification, release approval or evidence for a later changed candidate. The
+final-head normal checks remain required after the separate TSan workspace fix.
 
 
 Release tag fixture reconciliation (2026-10-25): Anamorph's Accepted ADR-0059 uses
@@ -6211,6 +6400,16 @@ named-review-branch Release dispatch collision. Expression and needs controls
 cover enabled/disabled jobs and failed/skipped prerequisites. A disabled verifier
 cannot satisfy the negative control. No Release dispatch or tag is created.
 
+Native partial diagnostics now use actual unittest result callbacks and stopTest,
+after cleanup callbacks, instead of a tearDown checkpoint. Ordinary in-process
+fixtures cover body failure, setup error, cleanup error and incomplete execution.
+Partial reports remain in_progress and archive-ineligible; only the complete
+suite result determines final counts and eligibility. SIGKILL can prevent a final
+checkpoint. The unchanged source report writer already creates an absent report
+parent, verified by executing only its production writer AST. No redundant
+workflow mkdir or customer helper change is needed. The real complete native gate
+must run on this updated result implementation; recorder evidence cannot replace it.
+
 The optional integration consumer authenticates run/head, artifact ZIP and PKG
 bytes as before. Before installation, native `pkgutil --expand` supplies the
 PackageInfo component identities/versions and Distribution references, checked
@@ -6228,3 +6427,34 @@ and tests alternate spellings and archive link behavior. The reported spelling
 escape remains unconfirmed; these fixtures are bounded evidence, not universal
 safety proof. Existing ownership/content/location/selection/co-installation checks
 and the production default-full exact-three gate remain unchanged.
+
+## 2026-10-25 staged-merge reconciliation
+
+The owner merged PR #174 as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. Its complete
+tree matches the reviewed first-PR head; both parent commits and relevant feature
+bytes were checked against actual main. ADR-0066 remains Accepted and its
+implementation is now effective on main. ADR-0065 remains Accepted, but its
+implementation on main still awaits PR #175; importing actual main into this
+feature branch does not perform that second merge. Owner confirmation remains
+2026-10-25 and is distinct from formal GitHub reviews. Earlier Proposed/pending
+entries and exact-head runtime results remain historical evidence.
+
+The combined workflow preserves normal push/PR/manual/reusable caller semantics,
+same-run routing liveness, dependency/security provisioning and both native
+installer gates. Optional artifact-derived package consumers retain their own
+selection/co-installation contracts and independent package inputs. Current normal
+CI and affected installer/archive gates must complete on this combined candidate;
+previous outer-workflow results do not certify its changed workflow.
+
+The Linux helper bytes and both literal pins remain unchanged, with durable
+journal cleanup and refusal of all ten receiptless resource paths preserved.
+The real native gate and staged-to-uploaded archive contract remain mandatory.
+The imported macOS receipt gate retains native install-location, full ownership
+and content equality, explicit liveness and default-full exact-three semantics.
+Anamorph's real TSan environment fixture remains present and accurately described.
+
+Only the relevant conflict hunks were resolved; independent platform sections and
+Accepted ADR rows were combined. No whole workflow/document was selected with
+ours/theirs. Shared workflow/documentation overlap is now resolved against actual
+main. Product versions, JUCE pins, identities, approved art and DSP/state/GUI are
+unchanged. No GitHub PR merge, tag/release or deployment is performed here.
