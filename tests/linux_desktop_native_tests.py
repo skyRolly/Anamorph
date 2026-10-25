@@ -220,6 +220,11 @@ class NativeCase(legacy.InstallCase):
                   (str(self.control),'/native-control',False),
                   ('/usr/bin/dirname','/native-real/dirname',True),
                   (str(self.tools/'dirname'),'/usr/bin/dirname',True)]
+        # Preserve the complete read-only runtime (including sudo/GIO libexec)
+        # while shadowing only the two product-owned system destinations.
+        for item in Path('/usr').iterdir():
+            if item.name not in ('bin','sbin','share','lib','local'):
+                bindings.append((str(item),str(item),True))
         for item in Path('/usr/lib').iterdir():
             if item.name!='vst3': bindings.append((str(item),str(item),True))
         bindings += [(str(self.system_vst),'/usr/lib/vst3',False),(str(self.system_local),'/usr/local',False)]

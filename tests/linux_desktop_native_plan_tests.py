@@ -46,6 +46,8 @@ class PlanCase(unittest.TestCase):
             self.assertTrue(target.startswith('/'));self.assertNotIn('..',Path(target).parts)
             if not readonly:self.assertTrue(Path(source).is_relative_to(self.case.root),'host write mount: '+source)
         self.assertEqual(config['environment']['PATH'],'/usr/bin:/bin')
+        if Path('/usr/libexec').exists():
+            self.assertIn(['/usr/libexec','/usr/libexec',True],config['bindings'])
         return subprocess.CompletedProcess(argv,0,'','')
 
     def test_entry_roles_use_real_uid_plan_without_user_namespace(self):

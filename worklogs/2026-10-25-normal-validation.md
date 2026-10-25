@@ -96,3 +96,7 @@ plan fields, implicit-root/uninstall arguments, fixed PATH and task-private writ
 mounts. Its four tests execute no namespace, sudo, interpreter or fixture contents.
 Planned UID 0 is data only; these tests cannot replace native filesystem evidence.
 The original 12-test protected-helper recorder remains separate and unchanged.
+
+The native private root preserves the complete read-only /usr runtime, including
+sudo/GIO libexec helpers, while shadowing product destinations with task-owned
+writable mounts. The recording plan regression checks this runtime completeness.

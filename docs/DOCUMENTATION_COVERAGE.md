@@ -17375,3 +17375,7 @@ The original 12-test protected-helper recorder remains separate and unchanged.
 The routing fixtures use the real open/synchronize PR merge ref
 `refs/pull/N/merge`, while retaining the independent head branch field. Direct Build
 and inherited Release manual contexts retain their exact shared branch event/ref.
+
+The native private root preserves the complete read-only /usr runtime, including
+sudo/GIO libexec helpers, while shadowing product destinations with task-owned
+writable mounts. The recording plan regression checks this runtime completeness.
