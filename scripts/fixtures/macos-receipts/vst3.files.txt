@@ -1,0 +1,11 @@
+Anamorph.vst3
+Anamorph.vst3/Contents
+Anamorph.vst3/Contents/Info.plist
+Anamorph.vst3/Contents/MacOS
+Anamorph.vst3/Contents/MacOS/Anamorph
+Anamorph.vst3/Contents/PkgInfo
+Anamorph.vst3/Contents/Resources
+Anamorph.vst3/Contents/Resources/AppIcon.icns
+Anamorph.vst3/Contents/Resources/moduleinfo.json
+Anamorph.vst3/Contents/_CodeSignature
+Anamorph.vst3/Contents/_CodeSignature/CodeResources

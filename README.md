@@ -200,7 +200,16 @@ tooltips, animations) are host-hidden session state.
 
 Namespace inventory/validation: [worklog](worklogs/2026-10-23-product-namespace.md);
 ADR-0063 is Accepted under explicit final owner approval; implementation is merged.
-Native DAW/receipt-installation validation remains unverified.
+The namespace worklog records its original native-validation limits. Later real
+receipt-installation evidence at `f8e4e7f000db68b40cdea5e1a5c2d43fb4b983ac` is
+tracked in [PR #174](https://github.com/skyRolly/Anamorph/pull/174); DAW recall
+and human shell appearance remain separate manual work.
 
 Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-installer-icon.md),
 Accepted ADR-0064; owner approval and #172 merge are recorded, with native visual limits preserved.
+
+
+Installed-receipt decision: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
+confirmation on 2026-10-25. Human architecture/ADR approval is complete; merge remains pending.
+Native fixtures are in `scripts/fixtures/macos-receipts`;
+`scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

@@ -352,3 +352,22 @@ optional EXE is required. Reinstall overwrites this icon; Inno removes only owne
 empty directories on uninstall. AppId/destinations remain unchanged. The VST3 component's
 bundle directory receives System attribution for its existing Plugin.ico/desktop.ini.
 No wildcard deletion, extra wizard graphics, signing or release change is introduced.
+
+## Native installed-receipt smoke test
+
+`scripts/test-macos-receipts.py --self-test` exercises the installed-metadata parser,
+payload comparison, receipt ownership, separation and environment guards. The macOS
+packaging job runs it before `--package <actual.pkg> --staged-dir <validated tree>`.
+Only this repository's disposable GitHub-hosted macOS VM may install. Existing product
+receipts or system bundles cause refusal; no receipt is forgotten and no plug-in folder
+is deleted. The real installer targets `/`; VM disposal is cleanup.
+
+The gate reads real `pkgutil --pkgs`, `--pkg-info`, `--pkg-info-plist` and `--files`, checks
+the three canonical `.vst3`/`.au`/`.app` IDs, versions, volume, installation locations,
+component-owned file paths, installed bundle IDs/AU codes, and exact installed versus
+staged payload bytes. Pre-existing receipts and any sibling receipts/payloads must be
+unchanged. An empty sibling snapshot does not prove both products were co-installed.
+The installed-receipts artifact retains JSON, installer log and raw receipt metadata.
+PKG upload requires this gate. The smoke test covers default full installation; choice
+combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
+Linux self-tests are parser evidence, never a native installation pass.

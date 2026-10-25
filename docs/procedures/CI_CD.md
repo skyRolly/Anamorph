@@ -10,6 +10,26 @@ These dependency-boundary probes check fresh/reused caches, refusal of cached 9.
 the two-field reset, partial resets, retained custom overrides and intentional local checkouts.
 They use the real top-level CMake file and a local stand-in; they download and compile no JUCE.
 
+
+## Normal validation restored (2026-10-25)
+
+The temporary source-publication router and deliberate pending marker are retired.
+Build push, PR and manual events use the normal deduplication conditions. Release
+rehearsals reuse the full Build workflow at the caller commit, including on review
+branches; reusable calls inherit the caller's event/ref. No publication-only branch exception or
+reusable invocation contract remains. `scripts/test-workflow-routing.py` reads the production
+Build/Release files and checks the review-branch dispatch collision, tags, main,
+unrelated branches and fork PRs. Rehearsals retain the non-publishing release guard.
+
+C++ CodeQL again runs `scripts/setup-linux.sh` before its unchanged manual target
+build, extraction, queries and SARIF upload. The ordinary source checks remain
+independent of native installation evidence. Existing project runtime, sanitizer,
+compatibility and bounded fuzz gates run under their original event conditions.
+Kernel/security settings are never changed: an unsuitable sanitizer or installer
+isolation capability must fail with its precise missing prerequisite. The Accepted
+ADRs, artifact gates and separate manual/GUI/DAW backlog remain in force. Earlier
+publication-only evidence remains historical and does not certify these new runs.
+
 ## Icon resource checks
 
 Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
@@ -46,7 +66,7 @@ pass counts and the existing PE/PDB staging checks remain unchanged.
 minutes previously left three full matrices racing; now the older ones are cancelled — **except on
 a tag**, where a release build must never be cancelled by an unrelated push, so tag refs queue.
 
-**Same-repo pull requests run `merge-check` and nothing else.** The build and lint jobs carry
+**On the normal route, same-repo pull requests run `merge-check` and nothing else.** The build and lint jobs carry
 `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository`.
 `push: ["**"]` already builds the SHA, so the `pull_request` event was a duplicate 3-OS matrix per
 commit for as long as a PR stayed open. **Fork** PRs are not covered by the push trigger (the push
@@ -1354,8 +1374,9 @@ Stated here rather than left to be rediscovered. None is a defect; each is a dec
 - **`ANAMORPH_TESTS_NO_FTZ=1` on the valgrind step** relaxes the denormal half of one DSP assertion,
   because valgrind emulates floating point and does not honour the CPU's FTZ/DAZ bits. NaN and Inf
   stay gated there, and every native job asserts the full check. See §Build matrix.
-- **No gate ever installs anything** — CI inspects the packages but never runs an installation
-  (`TESTING.md` §Gaps in the automated coverage).
+- **Native installation has an explicit scope** — merged Windows checks use disposable
+  VMs; the installed-receipt gate uses its guarded disposable Mac. GUI/DAW and
+  unexecuted component/co-installation cases remain separate (`TESTING.md`).
 
 ## Security scanning
 
@@ -1843,3 +1864,94 @@ A same-version reinstall replaces a deliberately obsolete icon. Actual registry/
 uninstaller icon, installed payload/sidecars, System attribute and safe owned-file cleanup
 are checked. Developer/self-hosted targets and existing installs are refused. Installer upload
 requires behavior success; `Anamorph-Windows-installer-validation` retains JSON evidence.
+
+## Native installed-receipt smoke test
+
+`scripts/test-macos-receipts.py --self-test` exercises the installed-metadata parser,
+payload comparison, receipt ownership, separation and environment guards. The macOS
+packaging job runs it before `--package <actual.pkg> --staged-dir <validated tree>`.
+Only this repository's disposable GitHub-hosted macOS VM may install. Existing product
+receipts or system bundles cause refusal; no receipt is forgotten and no plug-in folder
+is deleted. The real installer targets `/`; VM disposal is cleanup.
+
+The gate reads real `pkgutil --pkgs`, `--pkg-info`, `--pkg-info-plist` and `--files`, checks
+the three canonical `.vst3`/`.au`/`.app` IDs, versions, volume, installation locations,
+component-owned file paths, installed bundle IDs/AU codes, and exact installed versus
+staged payload bytes. Pre-existing receipt IDs remain present; sibling receipt metadata/file lists and
+any sibling payload hashes must be unchanged. An empty sibling snapshot does not prove both products were co-installed.
+The installed-receipts artifact retains JSON, installer log and raw receipt metadata.
+PKG upload requires this gate. The smoke test covers default full installation; choice
+combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
+Linux self-tests are parser evidence, never a native installation pass.
+
+
+Review-closure enforcement (2026-10-24): native `install-location` fixtures are
+under `scripts/fixtures/macos-receipts`; the alternative `location` field is rejected.
+Ownership covers all payload files and symlinks, not just plist/executable. Resource,
+signature and symlink omission regressions leave both trees identical; bypass mutants
+must fail specifically on missing receipt ownership. Content equality remains independent.
+
+`receipt_liveness` explicitly gates native installation and PKG upload. Run
+`python3 scripts/test-macos-receipt-gates.py` for production-condition fault replay,
+including `!cancelled()` overriding implicit success. Failed/skipped liveness runs no
+installer and yields no PKG; failed installation yields retained diagnostics and no PKG.
+The separate bundle ZIP keeps its existing independent gate; this changes no release policy.
+Raw native evidence also retains host/head/package digest and actual choice XML.
+
+The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
+existing shadow-memory capability before the unchanged canary and tests. It never
+lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
+image changes no shipping compiler, dependency pin or product artifact.
+
+
+Optional native macOS integration review consumes independently identified finished
+package/staged artifacts through the direct Build manual input `integration-review`.
+The JSON manifest names each product's repository, run ID, exact artifact head and
+independently measured PKG SHA-256. Its default is empty; reusable Build calls define
+no input and Release passes none. Normal validation always retains its full gates.
+Seven selection jobs per product use separate fresh hosted Macs, measured choice
+IDs and a selection-aware expected receipt/bundle set. The production default-full
+exact-three assertion is unchanged. The Anamorph manual review also runs both real
+two-product installation orders on separate clean Macs, requiring all six receipts
+and preservation of the first product's metadata, listings and installed hashes.
+These optional evidence consumers introduce no sibling build dependency, no live
+host guard spoof and no receipt forgetting or pre-existing product deletion.
+`python3 scripts/test-macos-integration-review.py --self-test` exercises pure fixture
+validation only; native installs require the real disposable host guard and actual
+identified artifacts. Archive digests are checked against GitHub metadata, and PKG
+bytes against the independent manifest digest, before native installation.
+
+The test-only TSan job uses Ubuntu 24.04 container userspace on the Ubuntu 22.04
+host so the existing dependency setup and pinned Clang build use the proven package
+set. A read-only host capability check precedes setup and retains its actual value.
+Both the sanitizer canary and all state probes/suppression checks remain mandatory;
+no kernel setting or container security profile is changed. The first Jammy-native
+attempt failed during dependency setup; its exact package error was unavailable
+through the permitted GitHub read tools, so no specific cause is asserted.
+
+The containerized TSan run at head
+ace86aeccf548904aa48bf14dc77d0822b468a6d reached the liveness canary, which
+failed. That retained result is red; passing the entropy precheck is not sanitizer certification. Fresh
+test-owned canary output/exit status is retained as structured diagnostic evidence
+alongside the host capability artifact. The binary, compiler flags, required race
+message, probes and suppression checks are unchanged; no failure is suppressed.
+
+
+TSan workspace correction (2026-10-25): artifact 12580933816 at head
+632d8917a1c1435e65fd82456fa1c24bebe3719f records exit 66 because the container
+could not read the suppression file at the host workspace path. Resolve the
+suppression file from the checked-out container working directory and export the
+same sanitizer flags before the unchanged canary/probes. The production environment
+body is exercised in an inert private directory containing spaces with an invalid
+host workspace path. It executes no sanitizer, compiler, installer or privileged
+operation. Keep the real canary mandatory and retain its output/options; this
+fixture does not establish sanitizer liveness. No suppression rule, compiler pin,
+container security profile or kernel setting changes.
+
+
+Release tag fixture reconciliation (2026-10-25): Anamorph's Accepted ADR-0059 uses
+bare version tags. The routing fixture now derives its representative tag from the
+production Release push trigger and CMake version, rather than assuming the sibling
+product's prefix. This corrects the fixture, changes no Release trigger or product
+version, and creates no tag/release. Both review-branch dispatch collisions and the
+actual bare-tag push/manual contexts remain covered by production-file checks.

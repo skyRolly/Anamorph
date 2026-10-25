@@ -5,6 +5,12 @@ on:
     branches: [ "**" ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      integration-review:
+        description: 'Optional JSON manifest of independently identified finished macOS package artifacts for selection/co-installation review'
+        type: string
+        required: false
+        default: ''
   # RH-PR-8: lets release.yml REUSE this exact build+validation matrix on a
   # release tag (single build, same gates, artifacts land in the caller run).
   # Purely additive -- branch/PR/dispatch behaviour is unchanged, and tag
@@ -318,6 +324,7 @@ env:
 # ---------------------------------------------------------------------------
 
 jobs:
+
   # -------------------------------------------------------------------------
   # THE MERGE RESULT -- the one tree no push build ever compiles.
   #
@@ -489,6 +496,12 @@ jobs:
       # green canary with a broken scanner reports a clean tree; a green
       # self-test with a changed JUCE guards a hazard that has moved. Both are
       # required, and only this one can run beside the lint.
+      - name: Build and Release routing regression
+        run: python3 scripts/test-workflow-routing.py --report workflow-routing.json
+
+      - name: macOS integration review fixture checks
+        run: python3 scripts/test-macos-integration-review.py --self-test
+
       - name: Portability lint self-test (the lint still fires, and still stays quiet)
         run: python3 scripts/check-portability.py --self-test
 
@@ -2589,8 +2602,34 @@ jobs:
 
       # Same fail-closed gate as the customer artifact (both slices' tests + its
       # own step) -- the .pkg installs the same universal bundles.
+      - name: Installed macOS receipt liveness
+        id: receipt_liveness
+        if: ${{ !cancelled() && steps.package_macos_pkg.outcome == 'success' }}
+        run: |
+          python3 scripts/test-macos-receipts.py --self-test
+          python3 scripts/test-macos-receipt-gates.py --report build/receipt-scheduling-faults.json
+
+      - name: Install the real macOS package and inspect receipts
+        id: installed_receipts
+        if: ${{ !cancelled() && steps.package_macos_pkg.outcome == 'success' && steps.receipt_liveness.outcome == 'success' }}
+        run: |
+          PKG=(dist/Anamorph-*-macOS.pkg)
+          test "${#PKG[@]}" -eq 1
+          python3 scripts/test-macos-receipts.py --package "${PKG[0]}" --staged-dir dist/Anamorph-macOS
+
+      - name: Retain installed macOS receipt evidence
+        if: ${{ always() && steps.installed_receipts.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-macOS-installed-receipts
+          path: |
+            build/installed-receipts-macos.json
+            build/anamorph-receipt-logs
+            build/receipt-scheduling-faults.json
+          if-no-files-found: error
+
       - name: Upload macOS installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.receipt_liveness.outcome == 'success' && steps.installed_receipts.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS-installer
@@ -3816,16 +3855,19 @@ jobs:
   # RTSan canary records: a canary that died for some unrelated reason must not
   # pass for a live gate.
   #
-  # `vm.mmap_rnd_bits` is lowered because ThreadSanitizer's shadow-memory layout
-  # cannot cope with the 32-bit ASLR entropy newer Ubuntu images default to
-  # ("FATAL: ThreadSanitizer: unexpected memory mapping"); 28 bits is the value
-  # the sanitizer's own documentation recommends and the runner is ephemeral.
+  # ThreadSanitizer requires a compatible shadow-memory layout. Inspect the
+  # runner capability without changing kernel/security settings; an unsuitable
+  # runner fails this lane and must be replaced, never reported as a pass.
   #
   # NOT in any `needs:` chain, matching `sanitizers`, `realtime` and `fuzz` --
   # and, like them, still release-blocking through `release.yml`'s aggregate
   # dependency on this workflow.
   tsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 45
     if: >-
       github.event_name != 'pull_request' ||
@@ -3843,6 +3885,25 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Resolve TSan suppressions inside the container checkout
+        run: |
+          suppression_file="$(pwd -P)/tests/tsan-suppressions.txt"
+          test -r "$suppression_file"
+          printf 'TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_bugs=1:suppressions=%s:print_suppressions=1\n' "$suppression_file" >> "$GITHUB_ENV"
+
+      - name: Check existing sanitizer shadow-memory capability
+        id: tsan_host
+        run: |
+          mkdir -p build
+          bits=$(cat /proc/sys/vm/mmap_rnd_bits)
+          case "$bits" in ''|*[!0-9]*) echo '::error::Cannot determine existing TSan host capability'; exit 1;; esac
+          printf '{"mmap_rnd_bits":%s,"kernel_settings_changed":false,"compatible":%s}\n' \
+            "$bits" "$([ "$bits" -le 28 ] && echo true || echo false)" > build/tsan-host.json
+          if [ "$bits" -gt 28 ]; then
+            echo "::error::ThreadSanitizer requires a disposable runner with vm.mmap_rnd_bits <= 28 already configured; observed $bits. No kernel setting was changed."
+            exit 1
+          fi
+
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
         with:
@@ -3855,14 +3916,29 @@ jobs:
           key: ccache-ubuntu-tsan-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
           restore-keys: ccache-ubuntu-tsan-clang${{ env.ANAMORPH_CLANG_VERSION }}-
 
-      - name: Lower ASLR entropy for the sanitizer's shadow memory
-        run: sudo sysctl -w vm.mmap_rnd_bits=28
-
       - name: ThreadSanitizer liveness canary (the lane must be able to fail)
         run: |
           clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O1 -g \
             -fsanitize=thread tests/tsan_canary.cpp -o tsan-canary
-          if ./tsan-canary > tsan-canary.log 2>&1; then
+          set +e
+          ./tsan-canary > tsan-canary.log 2>&1
+          canary_status=$?
+          set -e
+          python3 - "$canary_status" <<'PYCODE'
+          import json, os, sys
+          from pathlib import Path
+          output = Path('tsan-canary.log').read_text(errors='replace')
+          status = int(sys.argv[1])
+          Path('build/tsan-canary.json').write_text(json.dumps({
+              'exit_code': status,
+              'tsan_options': os.environ['TSAN_OPTIONS'],
+              'expected_data_race_report': 'WARNING: ThreadSanitizer: data race' in output,
+              'liveness_established': status != 0 and 'WARNING: ThreadSanitizer: data race' in output,
+              'test_output': output,
+              'kernel_security_settings_changed': False,
+          }, indent=2) + '\n')
+          PYCODE
+          if [ "$canary_status" -eq 0 ]; then
             echo "::error::the ThreadSanitizer canary exited 0 -- this lane is not instrumenting anything"
             cat tsan-canary.log
             exit 1
@@ -3965,6 +4041,17 @@ jobs:
             grep -nE '^[a-z_]+:' tests/tsan-suppressions.txt
             exit 1
           fi
+
+      - name: Retain actual TSan host capability
+        if: ${{ !cancelled() && steps.tsan_host.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-TSan-host
+          path: |
+            build/tsan-host.json
+            build/tsan-canary.json
+            tsan-canary.log
+          if-no-files-found: error
 
   # -------------------------------------------------------------------------
   # State fuzzing (Linux). libFuzzer over `setStateInformation`, the one entry
@@ -4085,3 +4172,69 @@ jobs:
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
         run: ccache --show-stats --verbose || true
+
+  # Optional manual integration evidence consumes finished packages; it neither
+  # builds a sibling repository nor gates the independent product build. Every
+  # matrix entry gets a fresh disposable native Mac. Normal and Release reuse
+  # keep their original gates; Release passes no integration-review input.
+  macos-review-selections:
+    if: github.event_name == 'workflow_dispatch' && inputs.integration-review != ''
+    runs-on: macos-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        components: ['vst3', 'au', 'app', 'vst3,au', 'vst3,app', 'au,app', 'vst3,au,app']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Integration review fixture checks
+        run: python3 scripts/test-macos-integration-review.py --self-test
+      - name: Native selected package installation and full receipt validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM_REVIEW_ARTIFACTS: ${{ inputs.integration-review }}
+          SELECTED_COMPONENTS: ${{ matrix.components }}
+        run: >-
+          python3 scripts/test-macos-integration-review.py --product Anamorph
+          --components "$SELECTED_COMPONENTS" --report build/selection-review.json
+      - name: Retain actual selection evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-selection-review-${{ matrix.components }}
+          path: build
+          if-no-files-found: error
+
+  macos-review-coinstallation:
+    if: github.event_name == 'workflow_dispatch' && inputs.integration-review != ''
+    runs-on: macos-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        order: ['Anamorph,Anabasis', 'Anabasis,Anamorph']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Integration review fixture checks
+        run: python3 scripts/test-macos-integration-review.py --self-test
+      - name: Native two-product co-installation and six-receipt preservation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM_REVIEW_ARTIFACTS: ${{ inputs.integration-review }}
+          INSTALL_ORDER: ${{ matrix.order }}
+        run: >-
+          python3 scripts/test-macos-integration-review.py
+          --order "$INSTALL_ORDER" --report build/coinstallation-review.json
+      - name: Retain actual co-installation evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coinstallation-review-${{ matrix.order }}
+          path: build
+          if-no-files-found: error

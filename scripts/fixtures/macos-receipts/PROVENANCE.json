@@ -1,0 +1,8 @@
+{
+  "repository": "skyRolly/Anamorph",
+  "head": "955748351e0a5b51e475da853f9bd24ad4d5342f",
+  "run": 40045126301,
+  "artifact": 12542401667,
+  "zip_sha256": "2df7d05cd93cc95ed65859dd202cc5353b52fa609bf1ae37d00cf1b32ec3c2cb",
+  "scope": "Unedited raw pkgutil --pkg-info-plist and --files from a real default-full installation. Historical fixtures, not approval or a new installation."
+}
