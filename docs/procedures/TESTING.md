@@ -6468,3 +6468,17 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Modern Linux capability measurement (2026-10-26)
+
+The candidate runs source-lint and the existing test-only TSan job on
+`ubuntu-latest`. Actual ordinary UID, Bubblewrap namespace exit/output, kernel
+and userspace are retained before the unchanged user reliability selection.
+The seeded-race canary tests the real pinned TSan runtime and unchanged options,
+then all four cross-thread probes still run five times each, the complete state
+suite runs once and every suppression must match. An entropy read alone is not
+a compatibility result. The canary must fail with its real race report; a runtime
+initialization failure, unavailable namespace or omitted suite is not a pass.
+No host security setting is changed. This is measured CI maintenance, not a
+new product threading decision, shipping compiler change or relaxed gate.

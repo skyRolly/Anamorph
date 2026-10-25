@@ -297,3 +297,21 @@ merge; claiming the failed main Build clean from earlier feature results or a
 later nonreproduction; weakening the R7 check or changing lifecycle behavior
 without causal evidence. This correction records facts and keeps the failure
 visible. Coverage is updated; no document class or script inventory is added.
+
+
+## Modern Linux compatibility candidate (2026-10-26)
+
+History 378a37f2 and ace86aec selected a 22.04 TSan host after retiring kernel
+ASLR writes; ace86aec kept 24.04 container userspace. Commit 776cd621 selected
+22.04 for source-lint when real ordinary Bubblewrap reliability cases returned.
+Those are concrete host constraints, not proof that the current pinned runtime
+or every pure lint still needs 22.04. GitHub is retiring that image on 2027-04-17
+and is rolling latest to 26.04, so record actual capabilities instead of assuming
+an image version or an entropy threshold determines runtime compatibility.
+
+The independent candidate changes only the two host selections, capability
+recording and a bounded seeded-canary execution. Full source/user tests, TSan
+probes/suite/suppression liveness and normal event/deduplication/Release contracts
+remain. No compiler/JUCE pin, user namespace permission, ASLR or container
+security profile changes. Any failed probe remains explicit evidence; no
+shipping or merge-readiness claim precedes actual outcomes.

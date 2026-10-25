@@ -1906,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3720` and `.github/workflows/build.yml:3805`, this round being
+`.github/workflows/build.yml:3747` and `.github/workflows/build.yml:3832`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1940,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:776` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:803` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17570,3 +17570,14 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Modern Linux candidate audit (2026-10-26)
+
+Current source-lint/TSan host selections are proposed as `ubuntu-latest`, with
+actual ordinary namespace and pinned-runtime canary evidence retained before
+functional/complete suite use. CI_CD.md corrects its obsolete current ASLR-write
+claim; the jobs make no kernel/security change. TESTING.md retains all coverage,
+canary and suppression requirements. Earlier dated native and old-host evidence
+remains tied to its actual inputs. Candidate capability and final-head outcomes
+are pending measurement and cannot be replaced by metadata or skipped checks.

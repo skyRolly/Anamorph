@@ -405,8 +405,11 @@ edge above must not be read as release non-blocking.
   code restates the default so a future change to it cannot turn a report into a green step. A
   **liveness canary** (`tests/tsan_canary.cpp`, two threads writing one plain int) runs first and
   the step fails unless it aborts *with* a `ThreadSanitizer: data race` report — both halves, for
-  the reason the RTSan canary records. `vm.mmap_rnd_bits` is lowered to 28 first: the sanitizer's
-  shadow-memory layout cannot cope with the 32-bit ASLR entropy newer runner images default to.
+  the reason the RTSan canary records. The job records the actual kernel and
+  `vm.mmap_rnd_bits` without changing them. Compatibility is decided by the
+  actual pinned-runtime canary, not inferred solely from an entropy threshold.
+  Runtime initialization failure or a missing race report fails closed before
+  the repeated probes and complete suite; no ASLR/security setting is lowered.
   A report from inside JUCE would fail this lane too, deliberately: the boundary being measured is
   the plug-in's, and a JUCE-internal report would be evidence that it is not where ADR-0036 says.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
@@ -2092,3 +2095,24 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Modern Linux capability candidate (2026-10-26)
+
+The source-lint and test-only TSan jobs select `ubuntu-latest`. This candidate
+measures actual ordinary-UID Bubblewrap capability before running the existing
+user reliability selector, and retains status/output even if the capability
+fails. TSan keeps Ubuntu 24.04 container userspace, the existing pinned Clang,
+flags, TSAN_OPTIONS, seeded-race canary, four probes five times each, full state
+suite and suppression liveness. Only the unsupported early inference from an
+entropy value is removed: the actual canary remains fail-closed and has a bounded
+60-second execution. No kernel, ASLR, AppArmor, seccomp or container security
+profile is changed. Actual image/kernel/compiler and capability results belong
+to the resulting run; this source change is not a claim they have passed.
+
+GitHub's image notices name 2026-09-17 deprecation and 2027-04-17 retirement for
+Ubuntu 22.04. The latest-label rollout to 26.04 began 2026-10-19 and is scheduled
+to finish 2026-11-19; do not assume `ubuntu-latest` always names 24.04. See
+https://github.com/actions/runner-images/issues/14254 and
+https://github.com/actions/runner-images/issues/14748. Earlier dated 22.04 and
+container observations remain historical; current outcomes require real probes.
