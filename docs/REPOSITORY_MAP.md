@@ -205,3 +205,10 @@ Installed-receipt decision: [ADR-0066](architecture/design-decisions/ADR-0066-in
 confirmation on 2026-10-25. Human architecture/ADR approval is complete; merge remains pending.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.
+
+### Review checker inventory (2026-10-25)
+
+| Script | Review validation responsibility |
+|---|---|
+| `scripts/test-workflow-routing.py` | Production Build/Release expression and needs selection, with same-run valid and seeded skipped-Release liveness controls before the real check. No dispatch or installer. |
+| `scripts/test-macos-integration-review.py` | Optional seven selections and real two-product co-installation from independently identified artifacts; native PackageInfo/Distribution and staged bundle metadata establish artifact-specific receipt versions before installation. Pure metadata/extraction `--self-test`. |

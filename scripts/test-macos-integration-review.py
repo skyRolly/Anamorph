@@ -9,6 +9,8 @@ import argparse
 import hashlib
 import importlib.util
 import itertools
+import io
+import copy
 import json
 import os
 import platform
@@ -19,9 +21,10 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parent.parent
-PRODUCTS={'Anamorph':('0.9.10','Anmr'),'Anabasis':('0.2.17','Anbs')}
+PRODUCTS={'Anamorph':'Anmr','Anabasis':'Anbs'}
 CHOICES=('vst3','au','app')
 COMBINATIONS=tuple(','.join(c) for size in (1,2,3) for c in itertools.combinations(CHOICES,size))
 
@@ -53,7 +56,7 @@ def validator(product):
     spec=importlib.util.spec_from_file_location('receipt_'+product,ROOT/'scripts/test-macos-receipts.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     module.PRODUCT=product;module.BASE='tech.rolly.'+product.lower()
-    module.CODE=PRODUCTS[product][1]
+    module.CODE=PRODUCTS[product]
     module.COMPONENTS={key:(location,product+extension) for key,location,extension in
                        [('vst3','/Library/Audio/Plug-Ins/VST3','.vst3'),('au','/Library/Audio/Plug-Ins/Components','.component'),('app','/Applications','.app')]}
     return module
@@ -74,6 +77,95 @@ def snapshot(product):
     return records
 
 
+def extract_artifact(archive, target):
+    # Downloads always use a newly created private, empty destination. Do not
+    # permit callers to reuse a tree containing link parents. ZipFile currently
+    # extracts archive-encoded symlinks as regular files; verify containment too.
+    require(target.is_dir() and not target.is_symlink() and not any(target.iterdir()),
+            'artifact extraction requires a fresh empty directory')
+    root=target.resolve()
+    with zipfile.ZipFile(archive) as zipped:
+        for info in zipped.infolist():
+            path=Path(info.filename)
+            require(not path.is_absolute() and '..' not in path.parts,'unsafe artifact entry')
+            require((root/path).resolve().is_relative_to(root),'artifact entry escapes extraction root')
+        zipped.extractall(root)
+    require(all(item.resolve().is_relative_to(root) for item in root.rglob('*')),
+            'extracted artifact escapes extraction root')
+
+
+def bundle_metadata(declaration, info, name, base):
+    require(declaration.get('id')==base and info.get('CFBundleIdentifier')==base,
+            'wrong package/staged bundle identity')
+    require(declaration.get('path','').removeprefix('./')==name,'wrong package bundle path')
+    for key in ('CFBundleShortVersionString','CFBundleVersion'):
+        require(isinstance(info.get(key),str) and bool(info[key]) and
+                not any(ord(c)<32 for c in info[key]),'missing staged bundle version: '+key)
+        require(declaration.get(key)==info[key],'package/staged bundle version differs: '+key)
+    # Apple defines ShortVersionString as the marketing release and BundleVersion
+    # as its build iteration. Compare like fields; the two need not be identical.
+    return {'marketing_version':info['CFBundleShortVersionString'],'build_version':info['CFBundleVersion']}
+
+
+def validate_package_metadata(product, distribution, components, staged):
+    """Pure pre-install contract over native pkgutil-expanded XML and staged plists."""
+    module=validator(product); expected={module.BASE+'.'+key:key for key in CHOICES}
+    dist=ET.fromstring(distribution)
+    require(dist.tag=='installer-gui-script','missing native Distribution')
+    records={}
+    for folder,xml in components:
+        info=ET.fromstring(xml);identifier=info.get('identifier')
+        require(info.tag=='pkg-info' and identifier in expected,'wrong component identity')
+        require(identifier not in records,'duplicate component identity')
+        key=expected[identifier];location,name=module.COMPONENTS[key]
+        require(module.install_location(info.get('install-location'))==location,'wrong component install-location')
+        bundles=info.findall('bundle');require(len(bundles)==1,'one component bundle required')
+        plist=plistlib.loads((staged/name/'Contents/Info.plist').read_bytes())
+        versions=bundle_metadata(bundles[0],plist,name,module.BASE)
+        if key=='au':
+            au=plist.get('AudioComponents',[])
+            require(len(au)==1 and all(au[0].get(k)==v for k,v in
+                    {'type':'aufx','subtype':PRODUCTS[product],'manufacturer':'RTec'}.items()),'wrong staged AU identity')
+        version=info.get('version')
+        # build-pkg.sh supplies the product marketing VERSION to pkgbuild.
+        # CFBundleVersion may independently identify a build of that release.
+        require(version==versions['marketing_version'],'component/marketing version differs')
+        records[identifier]={'component':key,'package_version':version,'package_reference':folder,
+                             'bundle_name':name,**versions}
+    require(set(records)==set(expected),'missing component identity')
+    references={}
+    for ref in dist.findall('pkg-ref'):
+        identifier=ref.get('id');require(identifier in expected,'wrong Distribution component identity')
+        text=(ref.text or '').strip()
+        if text:
+            require(identifier not in references,'duplicate Distribution reference')
+            record=records[identifier]
+            require(text.removeprefix('#')==record['package_reference'] and
+                    ref.get('version')==record['package_version'],'inconsistent Distribution reference')
+            references[identifier]=text
+        for bundle in ref.findall('bundle-version/bundle'):
+            key=expected[identifier];name=module.COMPONENTS[key][1]
+            bundle_metadata(bundle,plistlib.loads((staged/name/'Contents/Info.plist').read_bytes()),name,module.BASE)
+    require(set(references)==set(expected),'missing Distribution reference')
+    choices=dist.findall('choice')
+    require(len(choices)==len(CHOICES) and {choice.get('id') for choice in choices}==set(CHOICES),'wrong Distribution choice identities')
+    for choice in choices:
+        refs=choice.findall('pkg-ref')
+        require(len(refs)==1 and refs[0].get('id')==module.BASE+'.'+choice.get('id'),
+                'inconsistent Distribution choice reference')
+    return {record['component']:record for record in records.values()}
+
+
+def inspect_package(product, package, staged, destination):
+    expanded=destination/'expanded-package'
+    command('/usr/sbin/pkgutil','--expand',str(package),str(expanded))
+    components=[(str(path.parent.relative_to(expanded)),path.read_bytes())
+                for path in sorted(expanded.rglob('PackageInfo'))]
+    metadata=validate_package_metadata(product,(expanded/'Distribution').read_bytes(),components,staged)
+    return {'components':metadata,'filename_hint':package.name,
+            'metadata_source':'pkgutil --expand: PackageInfo and Distribution, checked against staged Info.plist'}
+
+
 def download(product,item,destination):
     repo=item['repository']; run=json.loads(command('gh','api',f'repos/{repo}/actions/runs/{item["run_id"]}'))
     require(run['head_sha']==item['head_sha'],'artifact run source head differs')
@@ -89,10 +181,7 @@ def download(product,item,destination):
         digest=hashlib.sha256(archive.read_bytes()).hexdigest()
         require(artifact.get('digest')=='sha256:'+digest,'artifact archive digest differs from GitHub metadata')
         target=destination/folder;target.mkdir()
-        with zipfile.ZipFile(archive) as zipped:
-            for info in zipped.infolist():
-                require(not Path(info.filename).is_absolute() and '..' not in Path(info.filename).parts,'unsafe artifact entry')
-            zipped.extractall(target)
+        extract_artifact(archive,target)
         selected[name]={'id':artifact['id'],'archive_sha256':digest,'run_id':item['run_id'],'head_sha':item['head_sha']}
     packages=list((destination/'package').glob(product+'-*-macOS.pkg'))
     require(len(packages)==1,'one actual package required')
@@ -101,7 +190,7 @@ def download(product,item,destination):
     return package,destination/'staged',selected
 
 
-def validate_installed(product,selected,staged,evidence):
+def validate_installed(product,selected,staged,evidence,metadata):
     module=validator(product); records={}; ids=receipt_set()
     for key,(location,name) in module.COMPONENTS.items():
         identifier=module.BASE+'.'+key;bundle=Path(location)/name
@@ -112,11 +201,11 @@ def validate_installed(product,selected,staged,evidence):
         files=command('/usr/sbin/pkgutil','--files',identifier).decode()
         (evidence/(product+'-'+key+'.plist')).write_bytes(raw)
         (evidence/(product+'-'+key+'.files.txt')).write_text(files)
-        records[key]=module.validate_component(key,plistlib.loads(raw),files,bundle,staged/name,PRODUCTS[product][0])
+        records[key]=module.validate_component(key,plistlib.loads(raw),files,bundle,staged/name,metadata['components'][key]['package_version'])
     return records
 
 
-def install(product,selected,package,staged,evidence):
+def install(product,selected,package,staged,evidence,metadata):
     require(set(selected)<=set(CHOICES) and selected,'nonempty selection required')
     before=receipt_set(); before_products={name:snapshot(name) for name in PRODUCTS}
     require(not before_products[product],'existing product installation: refusing')
@@ -138,7 +227,7 @@ def install(product,selected,package,staged,evidence):
     require(result.returncode==0,'native selected installation failed')
     after=receipt_set();require(after-before=={base+'.'+key for key in selected},'selection receipt additions differ')
     require(before<=after,'existing receipt disappeared')
-    records=validate_installed(product,selected,staged,evidence)
+    records=validate_installed(product,selected,staged,evidence,metadata)
     for sibling in set(PRODUCTS)-{product}: require(snapshot(sibling)==before_products[sibling],'sibling receipts/listings/payload changed')
     return {'selected':list(selected),'receipts_before':sorted(before),'receipts_after':sorted(after),
             'products_before':before_products,'products_after':{name:snapshot(name) for name in PRODUCTS},
@@ -146,18 +235,95 @@ def install(product,selected,package,staged,evidence):
 
 
 def self_test():
+    records=[]
+    def rejects(call, reason):
+        try:call()
+        except ValueError as error:
+            require(reason in str(error),'wrong rejection: '+str(error))
+            records.append({'rejected':reason});return
+        raise AssertionError('accepted invalid fixture: '+reason)
     require(len(COMBINATIONS)==7 and len(set(COMBINATIONS))==7,'selection inventory')
     value={'Anamorph':{'repository':'skyRolly/Anamorph','run_id':1,'head_sha':'a'*40,'pkg_sha256':'b'*64}}
     validate_manifest(value)
     for key,bad in [('repository','skyRolly/Anabasis'),('run_id',0),('head_sha','main'),('pkg_sha256','unidentified')]:
-        altered=json.loads(json.dumps(value));altered['Anamorph'][key]=bad
-        try:validate_manifest(altered)
-        except ValueError:pass
-        else:raise AssertionError('accepted bad '+key)
-    for product in PRODUCTS:
-        module=validator(product)
-        require(module.BASE=='tech.rolly.'+product.lower() and module.CODE==PRODUCTS[product][1],'independent identity')
-    # These fixtures cannot invoke installer/gh or authorize a live host.
+        altered=copy.deepcopy(value);altered['Anamorph'][key]=bad
+        rejects(lambda:validate_manifest(altered),{'repository':'repository','run_id':'run ID','head_sha':'source head','pkg_sha256':'digest'}[key])
+    # Inert XML/plist/file fixtures only. No installer, pkgutil or network call.
+    with tempfile.TemporaryDirectory(prefix='integration-metadata-') as directory:
+        root=Path(directory)
+        for product,versions in [('Anamorph',('0.9.10','0.9.9')),('Anabasis',('0.2.17','0.2.18'))]:
+            module=validator(product)
+            for version in versions:
+                staged=root/(product+'-'+version);staged.mkdir()
+                dist=ET.Element('installer-gui-script');components=[]
+                for key,(location,name) in module.COMPONENTS.items():
+                    bundle=staged/name; (bundle/'Contents/MacOS').mkdir(parents=True)
+                    info={'CFBundleIdentifier':module.BASE,'CFBundleShortVersionString':version,'CFBundleVersion':'123.4'}
+                    if key=='au':info['AudioComponents']=[{'type':'aufx','subtype':PRODUCTS[product],'manufacturer':'RTec'}]
+                    (bundle/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+                    (bundle/'Contents/MacOS'/product).write_bytes(b'inert metadata fixture; never executed')
+                    identifier=module.BASE+'.'+key;folder=product+key+'.pkg'
+                    pkg=ET.Element('pkg-info',{'identifier':identifier,'version':version,'install-location':location})
+                    decl={'id':module.BASE,'path':'./'+name,'CFBundleShortVersionString':version,'CFBundleVersion':'123.4'}
+                    ET.SubElement(pkg,'bundle',decl)
+                    components.append((folder,ET.tostring(pkg)))
+                    ET.SubElement(ET.SubElement(dist,'choice',{'id':key}),'pkg-ref',{'id':identifier})
+                    ET.SubElement(dist,'pkg-ref',{'id':identifier,'version':version}).text='#'+folder
+                    ref=ET.SubElement(dist,'pkg-ref',{'id':identifier})
+                    ET.SubElement(ET.SubElement(ref,'bundle-version'),'bundle',dict(decl,path=name))
+                xml=ET.tostring(dist)
+                def check(c=components,d=xml):return validate_package_metadata(product,d,c,staged)
+                metadata=check()
+                require(all(record['package_version']==version and record['build_version']=='123.4' for record in metadata.values()),'artifact-specific versions lost')
+                records.append({'product':product,'package_version':version,'distinct_build_version':'123.4','valid':True})
+                rejects(lambda:check(c=components[:-1]),'missing component identity')
+                rejects(lambda:check(c=components+[components[0]]),'duplicate component identity')
+                for field,bad,reason in [('identifier','tech.rolly.foreign.app','wrong component identity'),
+                                         ('version','9.9.9','component/marketing version differs')]:
+                    changed=ET.fromstring(components[0][1]);changed.set(field,bad)
+                    rejects(lambda:check(c=[(components[0][0],ET.tostring(changed)),*components[1:]]),reason)
+                for field in ('CFBundleShortVersionString','CFBundleVersion'):
+                    changed=ET.fromstring(components[0][1]);changed.find('bundle').set(field,'9.9.9')
+                    rejects(lambda:check(c=[(components[0][0],ET.tostring(changed)),*components[1:]]),'package/staged bundle version differs')
+                changed=copy.deepcopy(dist);changed.find('pkg-ref').set('version','9.9.9')
+                rejects(lambda:check(d=ET.tostring(changed)),'inconsistent Distribution reference')
+                changed=copy.deepcopy(dist);changed.find('pkg-ref').text='#wrong.pkg'
+                rejects(lambda:check(d=ET.tostring(changed)),'inconsistent Distribution reference')
+                changed=copy.deepcopy(dist);changed.remove(changed.find('pkg-ref'))
+                rejects(lambda:check(d=ET.tostring(changed)),'missing Distribution reference')
+                changed=copy.deepcopy(dist);changed.append(copy.deepcopy(changed.find('pkg-ref')))
+                rejects(lambda:check(d=ET.tostring(changed)),'duplicate Distribution reference')
+                changed=copy.deepcopy(dist);changed.find('choice/pkg-ref').set('id',module.BASE+'.wrong')
+                rejects(lambda:check(d=ET.tostring(changed)),'inconsistent Distribution choice reference')
+                # Validate a real pure receipt function against expectations from
+                # PackageInfo, never from the receipt being checked.
+                key='app';location,name=module.COMPONENTS[key];bundle=staged/name
+                receipt={'pkgid':module.BASE+'.'+key,'pkg-version':version,'volume':'/','install-location':location}
+                listing='\n'.join(name+'/'+leaf for leaf in module.tree(bundle))+'\n'
+                expected=metadata[key]['package_version']
+                module.validate_component(key,receipt,listing,bundle,bundle,expected)
+                rejects(lambda:module.validate_component(key,dict(receipt,**{'pkg-version':'9.9.9'}),listing,bundle,bundle,expected),'wrong receipt version')
+        extraction=[]
+        for index,spelling in enumerate(('../marker','inside/../marker','/marker',r'..\marker',r'C:\marker',r'\\server\share\marker','bundle/Contents/marker')):
+            archive=io.BytesIO()
+            with zipfile.ZipFile(archive,'w') as zipped:zipped.writestr(spelling,b'benign marker')
+            target=root/('extract-'+str(index));target.mkdir();archive.seek(0)
+            if spelling in ('../marker','inside/../marker','/marker'):
+                rejects(lambda:extract_artifact(archive,target),'unsafe artifact entry');accepted=False
+            else:extract_artifact(archive,target);accepted=True
+            require(all(path.resolve().is_relative_to(target.resolve()) for path in target.rglob('*')),'fixture escaped')
+            extraction.append({'spelling':spelling,'accepted':accepted,'resolved_inside_owned_root':True})
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,'w') as zipped:
+            link=zipfile.ZipInfo('encoded-link');link.create_system=3;link.external_attr=0o120777<<16
+            zipped.writestr(link,'../outside-marker');zipped.writestr('normal-marker',b'benign')
+        target=root/'encoded-link';target.mkdir();archive.seek(0);extract_artifact(archive,target)
+        require((target/'encoded-link').is_file() and not (target/'encoded-link').is_symlink(),'review changed ZipFile link behavior')
+        target=root/'link-parent';target.mkdir();(target/'parent').symlink_to(root,target_is_directory=True)
+        archive.seek(0);rejects(lambda:extract_artifact(archive,target),'fresh empty directory')
+    return {'metadata_cases':records,'extraction_cases':extraction,
+            'archive_links_extracted_as_regular_files':True,'preexisting_link_parent_rejected':True,
+            'installer_or_network_executed':False}
 
 
 def main():
@@ -168,7 +334,12 @@ def main():
     parser.add_argument('--order',choices=('Anamorph,Anabasis','Anabasis,Anamorph'))
     parser.add_argument('--report',type=Path)
     args=parser.parse_args()
-    if args.self_test:self_test();return
+    if args.self_test:
+        result=self_test()
+        if args.report:
+            args.report.parent.mkdir(parents=True,exist_ok=True)
+            args.report.write_text(json.dumps(result,indent=2)+'\n')
+        return
     require(sys.platform=='darwin' and os.environ.get('GITHUB_ACTIONS')=='true'
             and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted'
             and os.environ.get('RUNNER_OS')=='macOS'
@@ -191,9 +362,10 @@ def main():
             for product in order:
                 destination=Path(tmp)/product;destination.mkdir()
                 package,staged,artifacts=download(product,manifest[product],destination)
+                metadata=inspect_package(product,package,staged,destination)
                 selected=CHOICES if args.order else tuple(args.components.split(','))
                 report['installs'][product]={'artifacts':artifacts,'pkg_sha256':hashlib.sha256(package.read_bytes()).hexdigest(),
-                                             **install(product,selected,package,staged,evidence)}
+                                             'verified_package_metadata':metadata, **install(product,selected,package,staged,evidence,metadata)}
             if args.order:
                 ids=receipt_set(); expected={'tech.rolly.'+p.lower()+'.'+c for p in PRODUCTS for c in CHOICES}
                 require(expected<=ids,'missing co-installed receipts')
