@@ -68,6 +68,4 @@ attribution & support files".
 Evidence [Verified]: CMakeLists.txt:14, 469-494 (the versioning block: the cache variable, then the
 `set_source_files_properties` that attaches it to the one translation unit reading it);
 .github/workflows/build.yml:752, 1613, 2185 (the per-OS Configure steps passing
-
-.github/workflows/build.yml:726, 1557, 2129 (the per-OS Configure steps passing
 `-DANAMORPH_BUILD_NUMBER`).

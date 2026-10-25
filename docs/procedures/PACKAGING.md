@@ -372,7 +372,12 @@ checks. A mismatched helper fails closed; use matching files from a trusted
 distribution. The entry scripts/distribution and system tools still need independent
 trust/authenticity; this pin protects subsequent helper replacement, not distribution
 authenticity. SIGKILL can leave a private snapshot; no broad cleanup is attempted.
-See Accepted ADR-0065's defensive follow-up for assumptions and unverified runtime.
+See Accepted ADR-0065's defensive follow-up for trust assumptions and the
+historical local-delivery limitation. Later native run 40179691961 at
+`d0f7739c0df8e66c2d818969d30ab1863a0a9565` verified 29 tests and the
+19-entry staged/uploaded archive contract; it is feature-head evidence, not an
+execution at a later main or this documentation-only head. GUI/DAW validation
+and distribution authenticity remain separate.
 
 User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
 ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary

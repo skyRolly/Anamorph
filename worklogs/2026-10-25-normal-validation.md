@@ -232,3 +232,28 @@ Accepted ADR rows were combined. No whole workflow/document was selected with
 ours/theirs. Shared workflow/documentation overlap is now resolved against actual
 main. Product versions, JUCE pins, identities, approved art and DSP/state/GUI are
 unchanged. No GitHub PR merge, tag/release or deployment is performed here.
+
+## 2026-10-26 platform main audit
+
+PR #175 remains open at the start of this correction. Actual main is still the
+PR #174 merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. ADR-0066 is effective
+there; only ADR-0065 and its protected-helper amendment await PR #175. Both are
+already Accepted under owner confirmation 2026-10-25. This corrects the ambiguous
+index sentence and deletes the obsolete duplicate Configure citation, using
+actual workflow anchors. It changes no runtime, workflow, pin or policy gate.
+
+The existing 29-test, 317-snapshot, 93-cut and six-signal native report and all
+19 staged/uploaded hashes/modes belong to `d0f7739c0df8e66c2d818969d30ab1863a0a9565`,
+run 40179691961, native artifact 12594337994 and customer artifact 12593663550.
+Current procedure text now distinguishes this completed native evidence from
+the historical local delivery's unverified-runtime statement. Optional macOS
+consumer/jobs/header/package inputs are unchanged; prior native records keep
+their actual consumer/package bindings. No extra native campaign is justified
+solely by these prose corrections. Normal publication checks still apply to the
+new documentation candidate; old outer-workflow checks are not relabeled.
+
+The rejected alternative was treating a prospective PR merge as combined main
+or repeating unchanged native campaigns to relabel evidence. After the owner
+merges #175, audit the actual merge/squash tree and main baseline separately.
+The original AU teardown observation, GUI/DAW appearance/recall, genuine older
+installer upgrades and native Icon Composer authoring remain separate work.

@@ -144,9 +144,10 @@ remain Accepted; no unrelated or future proposal is approved by implication.
 approval date, reviewer identity, meeting, signed record and GitHub approval
 submission were not supplied and are not invented. Human architecture/ADR
 approval is complete. This does not certify tests, satisfy a separate code
-review, or authorize merge/release. The decision is Accepted now; its branch
-implementation and associated policy enforcement reach main only after a
-separately authorized merge. Earlier Proposed entries remain historical.
+review, or authorize merge/release. ADR-0065 and its protected-helper snapshot
+amendment are Accepted; only their implementation and associated policy
+enforcement still await the owner's PR #175 merge. ADR-0066 is already effective
+on main through PR #174, as recorded below. Earlier Proposed entries remain historical.
 
 | Record / amendment | Decision status now | Implementation effectivity |
 | --- | --- | --- |
