@@ -417,3 +417,17 @@ The installed-receipts artifact retains JSON, installer log and raw receipt meta
 PKG upload requires this gate. The smoke test covers default full installation; choice
 combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
 Linux self-tests are parser evidence, never a native installation pass.
+
+
+## Customer instruction wording (2026-10-26)
+
+Linux INSTALL.txt describes application icons without internal artwork/approval
+codes and names the support files by their purpose. The macOS introduction
+states its universal architecture without build chronology. Existing languages,
+signing/quarantine instructions, recovery, ownership/refusal and distribution
+authenticity cautions remain. Windows wording and both entry scripts are already
+concise enough and are unchanged. The helper's necessary security/recovery
+comments are retained: its bytes and all four active pin/observer references
+remain SHA-256 3ea641f74a7a04abd2cffeac4298e54022c078655593ad45d226d622ece3c45e.
+No approved icon manifest or artwork hash is regenerated. Newly staged archive
+bytes still require the real native-to-uploaded hash/mode gate.

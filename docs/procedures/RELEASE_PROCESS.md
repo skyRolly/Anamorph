@@ -312,3 +312,14 @@ Installed-receipt review closure: PKG CI artifacts require successful named live
 and real installed-receipt verification, including every payload file/symlink. The
 macOS bundle ZIP retains its independent gate; its availability is not evidence of
 registered receipts or permission to publish a release. No release-policy change.
+
+
+## Customer installation text maintenance (2026-10-26)
+
+The shipped installation instructions are user guidance. Keep mode/destination,
+permission, recovery/uninstall, component-retention, signing and attribution
+information; internal project codes and development chronology add no install
+step. This maintenance preserves existing translations and synchronizes changed
+wording. It does not alter a command, payload, identity, signing policy or
+installer behavior. Normal applicable native/archive gates remain required for
+each newly produced CI artifact; older artifacts retain their own source hashes.
