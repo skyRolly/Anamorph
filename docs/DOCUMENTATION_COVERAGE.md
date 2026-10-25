@@ -1906,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3685` and `.github/workflows/build.yml:3770`, this round being
+`.github/workflows/build.yml:3720` and `.github/workflows/build.yml:3805`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1940,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:767` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:776` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1951,7 +1951,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:478` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:484` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -17123,7 +17123,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:529-534` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:538-543` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -17287,10 +17287,37 @@ Proposed and the customer-archive hold remains. Durable journal cleanup and
 receiptless-uninstall protections remain unchanged. No workflow change or remote
 automation activation is part of this local follow-up.
 
+## 2026-10-24 installed macOS receipts
+
+Extended existing package-metadata validation with guarded real installation on the
+packaging job's disposable Mac. Updated CI/testing/packaging/release procedures and
+script map. No active accepted decision, package IDs, source/format/identity/build
+architecture changes; no new architecture gate identified. Previous unperformed
+receipt-installation statements remain dated baseline evidence, not a claimed pass.
+Current native results belong to the exact PR job/report, not the portable fixtures.
+Evidence: `scripts/test-macos-receipts.py`, `.github/workflows/build.yml`,
+`worklogs/2026-10-24-installed-macos-receipts.md`.
+
+Native-result procedure correction: current default-full Mac receipt coverage and
+merged Windows runtime checks replace the old generic “no gate installs” claim;
+component permutations/upgrades/co-installation and GUI/DAW gaps remain explicit.
+Only active descriptions are corrected; the worklog preserves exact native evidence.
+
+
+## 2026-10-24 installed-receipt review closure
+
+Proposed ADR-0066 records the TESTING_POLICY addition; independent human acceptance
+remains pending. Raw native fixtures, complete payload ownership, explicit liveness
+dependency and production-condition fault replay replace the incomplete check.
+CI/testing/release procedures and navigation are synchronized. The ZIP gate stays
+independent. Earlier native results remain dated evidence, not new-head validation.
+See `scripts/test-macos-receipts.py`, `scripts/test-macos-receipt-gates.py` and the
+installed-receipt worklog; no DSP/state/identity/version or release policy change.
+
 ## 2026-10-25 platform-review approval reconciliation
 
 Recorded the owner's direct confirmation of completed human architecture/ADR
-approval for ADR-0065 in its status header, ADR_INDEX approval/effectivity
+approval for ADR-0065 and ADR-0066 in their status headers, ADR_INDEX approval/effectivity
 record, current policy/procedure/navigation statements and dated worklog
 reconciliation. Historical Proposed entries are retained as history; current
 status is Accepted. Confirmation/record-update date is 2026-10-25; the earlier
@@ -17308,6 +17335,24 @@ The TSan lane uses the disposable `ubuntu-22.04` runner image and checks its
 existing shadow-memory capability before the unchanged canary and tests. It never
 lowers ASLR entropy. An incompatible runner fails visibly; selecting this test-only
 image changes no shipping compiler, dependency pin or product artifact.
+
+
+Optional native macOS integration review consumes independently identified finished
+package/staged artifacts through the direct Build manual input `integration-review`.
+The JSON manifest names each product's repository, run ID, exact artifact head and
+independently measured PKG SHA-256. Its default is empty; reusable Build calls define
+no input and Release passes none. Normal validation always retains its full gates.
+Seven selection jobs per product use separate fresh hosted Macs, measured choice
+IDs and a selection-aware expected receipt/bundle set. The production default-full
+exact-three assertion is unchanged. The Anamorph manual review also runs both real
+two-product installation orders on separate clean Macs, requiring all six receipts
+and preservation of the first product's metadata, listings and installed hashes.
+These optional evidence consumers introduce no sibling build dependency, no live
+host guard spoof and no receipt forgetting or pre-existing product deletion.
+`python3 scripts/test-macos-integration-review.py --self-test` exercises pure fixture
+validation only; native installs require the real disposable host guard and actual
+identified artifacts. Archive digests are checked against GitHub metadata, and PKG
+bytes against the independent manifest digest, before native installation.
 
 The test-only TSan job uses Ubuntu 24.04 container userspace on the Ubuntu 22.04
 host so the existing dependency setup and pinned Clang build use the proven package
@@ -17327,6 +17372,10 @@ at 45 seconds, the native driver at 30 minutes, and the Linux build/test job at
 
 The containerized TSan run reached the liveness canary, which failed. The gate
 remains red; passing the entropy precheck is not sanitizer certification. Fresh
+
+The containerized TSan run at head
+ace86aeccf548904aa48bf14dc77d0822b468a6d reached the liveness canary, which
+failed. That retained result is red; passing the entropy precheck is not sanitizer certification. Fresh
 test-owned canary output/exit status is retained as structured diagnostic evidence
 alongside the host capability artifact. The binary, compiler flags, required race
 message, probes and suppression checks are unchanged; no failure is suppressed.
@@ -17437,3 +17486,52 @@ checkpoint. The unchanged source report writer already creates an absent report
 parent, verified by executing only its production writer AST. No redundant
 workflow mkdir or customer helper change is needed. The real complete native gate
 must run on this updated result implementation; recorder evidence cannot replace it.
+
+The optional integration consumer authenticates run/head, artifact ZIP and PKG
+bytes as before. Before installation, native `pkgutil --expand` supplies the
+PackageInfo component identities/versions and Distribution references, checked
+against staged Info.plist metadata. Receipt expectations come from that verified
+component mapping, never installed receipts or a fixed current product version.
+CFBundleShortVersionString identifies the marketing release used by build-pkg.sh;
+CFBundleVersion identifies its build and can differ. Both fields must agree with
+their corresponding native package declarations; they are not required to equal
+each other. See Apple's [bundle version keys](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html).
+The supported `--self-test` covers current/alternate versions, metadata/receipt
+mismatches, missing/duplicate/foreign components, Distribution reference failures
+and distinct marketing/build strings, using inert files with no native/network call.
+ZIP extraction requires a fresh empty private root, checks resolved containment,
+and tests alternate spellings and archive link behavior. The reported spelling
+escape remains unconfirmed; these fixtures are bounded evidence, not universal
+safety proof. Existing ownership/content/location/selection/co-installation checks
+and the production default-full exact-three gate remain unchanged.
+
+## 2026-10-25 staged-merge reconciliation
+
+The owner merged PR #174 as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. Its complete
+tree matches the reviewed first-PR head; both parent commits and relevant feature
+bytes were checked against actual main. ADR-0066 remains Accepted and its
+implementation is now effective on main. ADR-0065 remains Accepted, but its
+implementation on main still awaits PR #175; importing actual main into this
+feature branch does not perform that second merge. Owner confirmation remains
+2026-10-25 and is distinct from formal GitHub reviews. Earlier Proposed/pending
+entries and exact-head runtime results remain historical evidence.
+
+The combined workflow preserves normal push/PR/manual/reusable caller semantics,
+same-run routing liveness, dependency/security provisioning and both native
+installer gates. Optional artifact-derived package consumers retain their own
+selection/co-installation contracts and independent package inputs. Current normal
+CI and affected installer/archive gates must complete on this combined candidate;
+previous outer-workflow results do not certify its changed workflow.
+
+The Linux helper bytes and both literal pins remain unchanged, with durable
+journal cleanup and refusal of all ten receiptless resource paths preserved.
+The real native gate and staged-to-uploaded archive contract remain mandatory.
+The imported macOS receipt gate retains native install-location, full ownership
+and content equality, explicit liveness and default-full exact-three semantics.
+Anamorph's real TSan environment fixture remains present and accurately described.
+
+Only the relevant conflict hunks were resolved; independent platform sections and
+Accepted ADR rows were combined. No whole workflow/document was selected with
+ours/theirs. Shared workflow/documentation overlap is now resolved against actual
+main. Product versions, JUCE pins, identities, approved art and DSP/state/GUI are
+unchanged. No GitHub PR merge, tag/release or deployment is performed here.

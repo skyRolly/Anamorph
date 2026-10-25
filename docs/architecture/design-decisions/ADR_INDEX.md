@@ -68,6 +68,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
 | [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
 | [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Owned Linux desktop/hicolor installation, process-interruption recovery, verified helper capture and isolated native-resource tests | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation/merge pending | Ordinary capture recorder remains modeled; actual 29-test native gate passed at `0a667695` with 317 protected snapshots, 93 cleanup cuts and six signal cases; see dated runtime reconciliation in ADR-0065; later candidates require applicable checks |
+| [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Complete installed-receipt ownership and explicit liveness/PKG artifact boundary | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation effective on main via PR #174 (`04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`) | Native fixtures, omission/mutation and scheduling-fault regressions |
 
 ## Owner approval reconciliation — record updated 2026-10-24
 
@@ -133,8 +134,8 @@ NOT RECORDED fields are in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGR
 
 ## 2026-10-25 platform-review approval reconciliation
 
-The owner directly confirmed in the platform-review closure task that **“all
-ADRs have received human approval.”** For this branch, ADR-0065 is **Accepted** including its delivered protected-helper snapshot amendment.
+The owner directly confirmed in the platform-review closure task that **"all
+ADRs have received human approval."** For this combined branch, ADR-0065 (including its delivered protected-helper snapshot amendment) and ADR-0066 are **Accepted**.
 The confirmation also explicitly covers Anamorph ADR-0065/0066 and Anabasis
 ADR-0049/0050 in their respective PRs. Already Accepted predecessor decisions
 remain Accepted; no unrelated or future proposal is approved by implication.
@@ -150,3 +151,12 @@ separately authorized merge. Earlier Proposed entries remain historical.
 | Record / amendment | Decision status now | Implementation effectivity |
 | --- | --- | --- |
 | [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) and its helper snapshot amendment | Accepted; owner confirmation 2026-10-25 | Prepared on PR #175; not effective on main; merge pending |
+| [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Accepted; owner confirmation 2026-10-25 | Effective on main via PR #174; merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b` |
+
+## 2026-10-25 actual-main effectivity reconciliation
+
+ADR-0066 implementation is effective through the owner's actual PR #174 merge
+`04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. ADR-0065 and its existing amendments remain
+Accepted; implementation on main still awaits PR #175. The combined feature branch
+contains both feature sets and preserves the original approval provenance. A green
+branch check or local main-to-feature merge is not the remaining GitHub PR merge.

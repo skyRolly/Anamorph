@@ -5,6 +5,12 @@ on:
     branches: [ "**" ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      integration-review:
+        description: 'Optional JSON manifest of independently identified finished macOS package artifacts for selection/co-installation review'
+        type: string
+        required: false
+        default: ''
   # RH-PR-8: lets release.yml REUSE this exact build+validation matrix on a
   # release tag (single build, same gates, artifacts land in the caller run).
   # Purely additive -- branch/PR/dispatch behaviour is unchanged, and tag
@@ -492,6 +498,9 @@ jobs:
       # required, and only this one can run beside the lint.
       - name: Build and Release routing regression
         run: python3 scripts/test-workflow-routing.py --report workflow-routing.json
+
+      - name: macOS integration review fixture checks
+        run: python3 scripts/test-macos-integration-review.py --self-test
 
       - name: Portability lint self-test (the lint still fires, and still stays quiet)
         run: python3 scripts/check-portability.py --self-test
@@ -2649,8 +2658,34 @@ jobs:
 
       # Same fail-closed gate as the customer artifact (both slices' tests + its
       # own step) -- the .pkg installs the same universal bundles.
+      - name: Installed macOS receipt liveness
+        id: receipt_liveness
+        if: ${{ !cancelled() && steps.package_macos_pkg.outcome == 'success' }}
+        run: |
+          python3 scripts/test-macos-receipts.py --self-test
+          python3 scripts/test-macos-receipt-gates.py --report build/receipt-scheduling-faults.json
+
+      - name: Install the real macOS package and inspect receipts
+        id: installed_receipts
+        if: ${{ !cancelled() && steps.package_macos_pkg.outcome == 'success' && steps.receipt_liveness.outcome == 'success' }}
+        run: |
+          PKG=(dist/Anamorph-*-macOS.pkg)
+          test "${#PKG[@]}" -eq 1
+          python3 scripts/test-macos-receipts.py --package "${PKG[0]}" --staged-dir dist/Anamorph-macOS
+
+      - name: Retain installed macOS receipt evidence
+        if: ${{ always() && steps.installed_receipts.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-macOS-installed-receipts
+          path: |
+            build/installed-receipts-macos.json
+            build/anamorph-receipt-logs
+            build/receipt-scheduling-faults.json
+          if-no-files-found: error
+
       - name: Upload macOS installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' && steps.receipt_liveness.outcome == 'success' && steps.installed_receipts.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-macOS-installer
@@ -4193,3 +4228,69 @@ jobs:
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
         run: ccache --show-stats --verbose || true
+
+  # Optional manual integration evidence consumes finished packages; it neither
+  # builds a sibling repository nor gates the independent product build. Every
+  # matrix entry gets a fresh disposable native Mac. Normal and Release reuse
+  # keep their original gates; Release passes no integration-review input.
+  macos-review-selections:
+    if: github.event_name == 'workflow_dispatch' && inputs.integration-review != ''
+    runs-on: macos-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        components: ['vst3', 'au', 'app', 'vst3,au', 'vst3,app', 'au,app', 'vst3,au,app']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Integration review fixture checks
+        run: python3 scripts/test-macos-integration-review.py --self-test
+      - name: Native selected package installation and full receipt validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM_REVIEW_ARTIFACTS: ${{ inputs.integration-review }}
+          SELECTED_COMPONENTS: ${{ matrix.components }}
+        run: >-
+          python3 scripts/test-macos-integration-review.py --product Anamorph
+          --components "$SELECTED_COMPONENTS" --report build/selection-review.json
+      - name: Retain actual selection evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-selection-review-${{ matrix.components }}
+          path: build
+          if-no-files-found: error
+
+  macos-review-coinstallation:
+    if: github.event_name == 'workflow_dispatch' && inputs.integration-review != ''
+    runs-on: macos-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        order: ['Anamorph,Anabasis', 'Anabasis,Anamorph']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Integration review fixture checks
+        run: python3 scripts/test-macos-integration-review.py --self-test
+      - name: Native two-product co-installation and six-receipt preservation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM_REVIEW_ARTIFACTS: ${{ inputs.integration-review }}
+          INSTALL_ORDER: ${{ matrix.order }}
+        run: >-
+          python3 scripts/test-macos-integration-review.py
+          --order "$INSTALL_ORDER" --report build/coinstallation-review.json
+      - name: Retain actual co-installation evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coinstallation-review-${{ matrix.order }}
+          path: build
+          if-no-files-found: error

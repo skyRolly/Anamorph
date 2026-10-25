@@ -234,6 +234,8 @@ At that namespace-merge checkpoint, actual receipt installation and DAW recall w
 unverified. Later default-full receipt evidence at `f8e4e7f000db68b40cdea5e1a5c2d43fb4b983ac`
 is recorded in [PR #174](https://github.com/skyRolly/Anamorph/pull/174). DAW recall
 remains manual, and this evidence grants no release approval.
+Current default-full receipt validation uses the guarded native smoke on main;
+optional selections/co-installation retain their own package/consumer provenance.
 
 The Windows installer icon gate (Accepted ADR-0064) verifies the exact checked-in B0 ICO before
 ISCC and the generated Setup MAINICON afterward. Installer artifact upload also requires the
@@ -279,3 +281,28 @@ same XDG root, checks ownership first, keeps modified/foreign files and never re
 shared theme directories, other products or presets. Move an intentional edited/foreign
 resource to a safe backup before retrying. Optional cache refresh errors are visible;
 real GNOME/KDE/WM/cache display remains manual. Accepted ADR-0065 is Accepted by owner confirmation 2026-10-25; merge remains pending.
+
+## Native installed-receipt smoke test
+
+`scripts/test-macos-receipts.py --self-test` exercises the installed-metadata parser,
+payload comparison, receipt ownership, separation and environment guards. The macOS
+packaging job runs it before `--package <actual.pkg> --staged-dir <validated tree>`.
+Only this repository's disposable GitHub-hosted macOS VM may install. Existing product
+receipts or system bundles cause refusal; no receipt is forgotten and no plug-in folder
+is deleted. The real installer targets `/`; VM disposal is cleanup.
+
+The gate reads real `pkgutil --pkgs`, `--pkg-info`, `--pkg-info-plist` and `--files`, checks
+the three canonical `.vst3`/`.au`/`.app` IDs, versions, volume, installation locations,
+component-owned file paths, installed bundle IDs/AU codes, and exact installed versus
+staged payload bytes. Pre-existing receipts and any sibling receipts/payloads must be
+unchanged. An empty sibling snapshot does not prove both products were co-installed.
+The installed-receipts artifact retains JSON, installer log and raw receipt metadata.
+PKG upload requires this gate. The smoke test covers default full installation; choice
+combinations, broader upgrades, Finder/Dock and real DAW recall remain separate tests.
+Linux self-tests are parser evidence, never a native installation pass.
+
+
+Installed-receipt review closure: PKG CI artifacts require successful named liveness
+and real installed-receipt verification, including every payload file/symlink. The
+macOS bundle ZIP retains its independent gate; its availability is not evidence of
+registered receipts or permission to publish a release. No release-policy change.

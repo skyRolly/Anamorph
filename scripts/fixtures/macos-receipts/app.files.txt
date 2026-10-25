@@ -1,0 +1,11 @@
+Anamorph.app
+Anamorph.app/Contents
+Anamorph.app/Contents/Info.plist
+Anamorph.app/Contents/MacOS
+Anamorph.app/Contents/MacOS/Anamorph
+Anamorph.app/Contents/PkgInfo
+Anamorph.app/Contents/Resources
+Anamorph.app/Contents/Resources/AppIcon.icns
+Anamorph.app/Contents/Resources/RecentFilesMenuTemplate.nib
+Anamorph.app/Contents/_CodeSignature
+Anamorph.app/Contents/_CodeSignature/CodeResources

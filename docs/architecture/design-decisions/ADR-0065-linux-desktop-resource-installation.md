@@ -7,6 +7,10 @@ This is the confirmation and record-update date; the original approval date
 was not separately specified. Merge/publication, separately required code
 review and unexecuted tests are not approved or certified by this confirmation.
 
+**Implementation effectivity (2026-10-25):** Accepted; the combined PR #175 candidate
+includes actual main `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`. This decision's
+implementation is not effective on main until PR #175 is actually merged by the owner.
+
 ## Context
 
 Main `e76a4a66e6ed50f3ade53be9717c2c002865e3c4` includes merged native icons,

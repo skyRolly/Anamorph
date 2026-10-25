@@ -213,3 +213,9 @@ installation/packaging/testing procedures: approved hicolor resources, XDG paths
 owned-resource recovery and verified helper capture. Human architecture/ADR approval
 is complete by owner confirmation 2026-10-25; merge and actual GNOME/KDE validation
 remain separate requirements.
+
+Installed-receipt decision: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
+confirmation on 2026-10-25. PR #174 merged as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`;
+its installed-receipt implementation is effective on main. ADR-0065/PR #175 remains pending.
+Native fixtures are in `scripts/fixtures/macos-receipts`;
+`scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

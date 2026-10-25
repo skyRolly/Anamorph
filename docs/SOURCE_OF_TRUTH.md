@@ -104,3 +104,9 @@ the owner's direct confirmation on 2026-10-25 completes human architecture/ADR
 approval, including the delivered helper snapshot amendment. Worklogs remain evidence.
 Merge, future Composer work and native visual certification are separate.
 The existing ADR directory/index and procedures remain the navigation/authority path.
+
+Installed-receipt decision: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
+confirmation on 2026-10-25. PR #174 merged as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`;
+its installed-receipt implementation is effective on main. ADR-0065/PR #175 remains pending.
+Native fixtures are in `scripts/fixtures/macos-receipts`;
+`scripts/test-macos-receipt-gates.py` checks the production scheduling contract.
