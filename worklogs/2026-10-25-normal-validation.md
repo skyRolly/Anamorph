@@ -315,3 +315,21 @@ probes/suite/suppression liveness and normal event/deduplication/Release contrac
 remain. No compiler/JUCE pin, user namespace permission, ASLR or container
 security profile changes. Any failed probe remains explicit evidence; no
 shipping or merge-readiness claim precedes actual outcomes.
+
+
+## First modern probe disposition (2026-10-26)
+
+Run 40234406160 at cf261315: source-lint job121292773997 measured ordinary UID1001,
+Ubuntu24.04.5/image20261023.334.3/kernel6.17.0-1022-azure, then failed the actual
+Bubblewrap UID-map operation with Permission denied. Stop that operation; do not
+change restrictions. TSan job121292774013 failed metadata with Python missing
+before setup; its canary did not run. Move metadata after the existing complete
+setup before drawing any runtime conclusion. These original failures remain.
+
+The same eight user functional methods already run in NativeCase. Preserve them
+in that existing real-UID/private-root lane, with a shared selector, same-run
+coverage rejection and ordinary no-op/omission fixtures. This removes the pure
+source job's unnecessary namespace dependency while retaining every case and
+the real staged/native/uploaded archive gate. It does not emulate ownership,
+replace the normal interpreter or retry the denied Bubblewrap operation as root.
+Keep TSan's actual canary/probes/full suite and suppression policy unchanged.

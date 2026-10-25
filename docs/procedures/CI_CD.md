@@ -1909,13 +1909,11 @@ push/PR/dispatch and reusable Release validation no longer require publication
 containment. Body-only description edits retain the default PR event behavior.
 
 
-Normal source-lint also restores the existing ordinary-user entry-point reliability
-selector in private user/mount namespaces on Ubuntu 22.04, with its test-only tools.
-It uses no hosted-namespace-permission flag and changes no kernel/security setting;
-an unavailable namespace capability fails. The four user smoke cases plus all-ten
-receiptless checks and bounded user cleanup cuts remain a subset, separate from the
-mandatory staged real-root gate. The 12-test recorder remains an ordinary process
-and still never elevates or interprets its inert fixture helper bytes.
+The 2026-10-25 restoration ran the ordinary-user entry-point reliability selector
+in private user/mount namespaces on Ubuntu 22.04 without a host setting change.
+The measured modern-host placement is recorded below: all eight same cases are
+mandatory in the existing staged real-UID native gate. The 12-test recorder stays
+an ordinary source-lint process and never elevates or interprets fixture bytes.
 
 The second native attempt completed with diagnostic failures: Bubblewrap rejected
 ordinary UID selection without a user namespace. Already-root observations and
@@ -2097,22 +2095,35 @@ no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 
-## Modern Linux capability candidate (2026-10-26)
+## Modern Linux capability measurement (2026-10-26)
 
-The source-lint and test-only TSan jobs select `ubuntu-latest`. This candidate
-measures actual ordinary-UID Bubblewrap capability before running the existing
-user reliability selector, and retains status/output even if the capability
-fails. TSan keeps Ubuntu 24.04 container userspace, the existing pinned Clang,
-flags, TSAN_OPTIONS, seeded-race canary, four probes five times each, full state
-suite and suppression liveness. Only the unsupported early inference from an
-entropy value is removed: the actual canary remains fail-closed and has a bounded
-60-second execution. No kernel, ASLR, AppArmor, seccomp or container security
-profile is changed. Actual image/kernel/compiler and capability results belong
-to the resulting run; this source change is not a claim they have passed.
+The first candidate cf261315 measured ordinary UID 1001 on Ubuntu 24.04.5,
+image 20261023.334.3, kernel 6.17.0-1022-azure. The real Bubblewrap probe failed:
+`bwrap: setting up uid map: Permission denied`. Its failure/report is retained;
+no namespace permission, ASLR, AppArmor, seccomp or container profile changed.
+The TSan metadata step also failed with `python3: command not found` before
+normal setup. That was an ordering error, not runtime incompatibility evidence.
+Metadata now follows the existing complete dependency setup before the actual
+pinned-runtime canary. The read entropy value is recorded without inferring
+compatibility from it; the bounded real canary still must report its seeded race.
+
+Source-lint uses `ubuntu-latest` for pure checks and ordinary inert capture/plan
+fixtures. Its eight existing user functional cases were already inherited by
+NativeCase; they now have a shared selector and a same-invocation omission
+control in the genuine native gate. No case was removed or replaced by modeled
+metadata. The existing full staged gate executes them with actual ordinary UID,
+protected private mount/PID/network roots, and real project artifacts before
+customer upload. New coverage metadata lists selected methods; only the real
+suite result can certify completion and archive eligibility.
+
+TSan retains Ubuntu 24.04 container userspace, pinned Clang, all flags/options,
+canary, four repeated probes, complete state suite and suppression liveness.
+Actual modern runtime and final-head outcomes remain required. No retired
+source-publication route, job exclusion or skipped-success marker is added.
 
 GitHub's image notices name 2026-09-17 deprecation and 2027-04-17 retirement for
 Ubuntu 22.04. The latest-label rollout to 26.04 began 2026-10-19 and is scheduled
-to finish 2026-11-19; do not assume `ubuntu-latest` always names 24.04. See
-https://github.com/actions/runner-images/issues/14254 and
-https://github.com/actions/runner-images/issues/14748. Earlier dated 22.04 and
-container observations remain historical; current outcomes require real probes.
+to finish 2026-11-19; a measured 24.04 runner does not fix that label forever.
+See https://github.com/actions/runner-images/issues/14254 and
+https://github.com/actions/runner-images/issues/14748. Earlier dated host/native
+observations remain attributed to their own source and environment.

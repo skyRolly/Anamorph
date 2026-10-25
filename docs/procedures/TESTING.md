@@ -6472,13 +6472,20 @@ their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 ## Modern Linux capability measurement (2026-10-26)
 
-The candidate runs source-lint and the existing test-only TSan job on
-`ubuntu-latest`. Actual ordinary UID, Bubblewrap namespace exit/output, kernel
-and userspace are retained before the unchanged user reliability selection.
-The seeded-race canary tests the real pinned TSan runtime and unchanged options,
-then all four cross-thread probes still run five times each, the complete state
-suite runs once and every suppression must match. An entropy read alone is not
-a compatibility result. The canary must fail with its real race report; a runtime
-initialization failure, unavailable namespace or omitted suite is not a pass.
-No host security setting is changed. This is measured CI maintenance, not a
-new product threading decision, shipping compiler change or relaxed gate.
+The actual modern ordinary-user Bubblewrap probe failed to set its UID map.
+Do not change host restrictions or report that capability as working. Pure
+source checks and ordinary capture/plan fixtures run on `ubuntu-latest`; all
+eight existing user reliability methods remain required in the existing real-UID
+staged native gate, with its protected mount/PID/network roots. The shared legacy
+selector is also checked against the real NativeCase suite. The same native
+invocation proves an empty/omitted suite is rejected before running any case;
+ordinary plan fixtures additionally reject a disabled/no-op coverage verifier.
+These data-only plan controls do not certify root ownership or installation.
+
+The first TSan probe did not reach the runtime because metadata needed Python
+before setup installed it. The candidate fixes ordering, preserves complete
+provisioning and records actual entropy/kernel/userspace before the pinned-runtime
+seeded-race canary. A canary without a real race report fails before all four
+probes x5, the full state suite and suppression liveness. No host security change,
+compiler/JUCE pin change, assertion reduction or skipped success is permitted.
+Native final-head and modern runtime outcomes remain separately required.

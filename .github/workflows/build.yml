@@ -552,44 +552,8 @@ jobs:
           python3 scripts/check-installer-icon.py --self-test
           python3 scripts/check-installer-icon.py
 
-      - name: Install ordinary entry-point test tools on the disposable runner
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
-
-      - name: Ordinary-user installer reliability in private roots
-        run: |
-          test "$(id -u)" -ne 0
-          python3 - <<'PYCODE'
-          import json, os, platform, subprocess
-          from pathlib import Path
-          Path('build').mkdir(exist_ok=True)
-          command = ['bwrap', '--unshare-user', '--uid', str(os.getuid()),
-                     '--gid', str(os.getgid()), '--ro-bind', '/', '/', '/usr/bin/true']
-          result = subprocess.run(command, text=True, capture_output=True, timeout=30)
-          Path('build/ordinary-namespace-capability.json').write_text(json.dumps({
-              'requested_runner': 'ubuntu-latest', 'uid': os.getuid(), 'gid': os.getgid(),
-              'kernel': platform.release(), 'userspace': Path('/etc/os-release').read_text(),
-              'image': os.environ.get('ImageOS'), 'image_version': os.environ.get('ImageVersion'),
-              'command': command, 'exit_code': result.returncode,
-              'stdout': result.stdout, 'stderr': result.stderr,
-              'kernel_security_settings_changed': False,
-          }, indent=2) + '\n')
-          print(result.stdout, end=''); print(result.stderr, end='')
-          raise SystemExit(result.returncode)
-          PYCODE
-          python3 tests/linux_desktop_install_tests.py --user-reliability --report build/linux-desktop-user-source.json
-
-      - name: Retain actual ordinary namespace capability
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: Anamorph-ordinary-namespace-capability
-          path: |
-            build/ordinary-namespace-capability.json
-            build/linux-desktop-user-source.json
-          if-no-files-found: error
-
+      # The same eight user cases are mandatory in the existing real-UID native
+      # gate. Pure source checks do not require unprivileged user namespaces.
       - name: Ordinary-user protected-helper capture regression
         run: |
           test "$(id -u)" -ne 0
@@ -3974,6 +3938,11 @@ jobs:
           test -r "$suppression_file"
           printf 'TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_bugs=1:suppressions=%s:print_suppressions=1\n' "$suppression_file" >> "$GITHUB_ENV"
 
+      - name: Install build dependencies
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+
       - name: Check existing sanitizer shadow-memory capability
         id: tsan_host
         run: |
@@ -3981,8 +3950,10 @@ jobs:
           bits=$(cat /proc/sys/vm/mmap_rnd_bits)
           case "$bits" in ''|*[!0-9]*) echo '::error::Cannot determine existing TSan host capability'; exit 1;; esac
           python3 - "$bits" <<'PYCODE'
-          import json, os, platform, sys
+          import json, os, platform, subprocess, sys
           from pathlib import Path
+          compiler = 'clang++-' + os.environ['ANAMORPH_CLANG_VERSION']
+          status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
           Path('build/tsan-host.json').write_text(json.dumps({
               'requested_runner': 'ubuntu-latest',
               'runner_image': os.environ.get('ImageOS'),
@@ -3990,16 +3961,15 @@ jobs:
               'kernel': platform.release(),
               'container_userspace': Path('/etc/os-release').read_text(),
               'mmap_rnd_bits': int(sys.argv[1]),
+              'seccomp_mode': status.get('Seccomp', '').strip(),
+              'compiler_version': subprocess.check_output([compiler, '--version'], text=True),
+              'runtime_package': subprocess.check_output(['dpkg-query', '-W', 'libclang-rt-' + os.environ['ANAMORPH_CLANG_VERSION'] + '-dev'], text=True),
+              'tsan_options': os.environ['TSAN_OPTIONS'],
               'kernel_settings_changed': False,
               'compatibility_basis': 'actual pinned-runtime seeded-race canary below',
               'runtime_compatibility': 'not_yet_tested',
           }, indent=2) + '\n')
           PYCODE
-
-      - name: Install build dependencies
-        uses: ./.github/actions/setup-linux-build
-        with:
-          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
 
       - name: Restore the compiler cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
