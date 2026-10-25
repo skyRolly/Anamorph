@@ -6312,3 +6312,21 @@ host workspace path. It executes no sanitizer, compiler, installer or privileged
 operation. Keep the real canary mandatory and retain its output/options; this
 fixture does not establish sanitizer liveness. No suppression rule, compiler pin,
 container security profile or kernel setting changes.
+
+
+Native installed-resource evidence (2026-10-25): push run 40147299614 at head
+0a667695aa1684eef07c0bd085dc3d39c3a78c73 completed all 29 native tests with zero
+failures/errors. Artifact 12582266259 has ZIP SHA-256
+d16c68c3284ea57e6632bb91d475622a23e2e35c91687dd7f22150ed0b035830.
+The genuine ordinary UID/sudo/root preflight returned 1001/0/0. There were 317 real
+protected snapshot observations (root UID/GID, 0700 directory, 0600 single-link
+file, pinned helper bytes and original assets argument), 93 reached cleanup cuts
+(62 user, 31 system) and six TERM/HUP/INT signal cases. The exact embedded
+bootstrap preserves signal status; the existing customer priv() maps failures to 1.
+Actual customer artifact 12582391207 has ZIP SHA-256
+c75b84fa50c4bef01ed0a082b54c62dcbb8a2c8f9fd727032ccc3c56e9942103; all 19
+entries match that native run's staged hashes and modes (four 0755, fifteen 0644).
+This supersedes earlier pending runtime statements for this tested head and bounded
+contract only. It is not a distinct-principal exploit demonstration, GUI/DAW
+certification, release approval or evidence for a later changed candidate. The
+final-head normal checks remain required after the separate TSan workspace fix.
