@@ -2206,3 +2206,57 @@ killing, host-policy changes or claim escaped-service cleanup from these tests.
 The workflow stays dispatch-only with ordinary-runs zero; this correction
 performs no new Rosetta/AVX2/DSP/focused/LLDB diagnostic session. Normal automatic
 Build remains separate and unchanged except these source-gate regressions.
+
+
+## Minimal debugger launch controls (2026-10-26)
+
+The existing dispatch-only `rosetta-scope.yml` accepts an explicit `mode`.
+Its default `scope` preserves the original pinned-source reconstruction and
+zero-ordinary contract. `launch-control` selects only the new tiny control job;
+publication, wrong repository/ref/event or an invalid mode selects neither native
+route. The modes are mutually exclusive. Normal Build/Release semantics and
+all shipping gates remain unchanged. `scripts/diagnose-rosetta-launch.py
+--self-test` evaluates production job selection, rejects a seeded missing route
+and a no-op verifier, and checks real parser/control order using inert results.
+Source-lint retains its report with the existing cleanup validation artifact.
+No additional local live cleanup suite is needed for this routing extension.
+
+The separately authorized launch session uses a genuine disposable Apple Silicon
+host. An existing named Xcode 26.6 bundle is preferred through command-scoped
+DEVELOPER_DIR; otherwise the runner current selection is measured as a variant.
+Actual tool output is authoritative; no global selector or installation changes.
+One 120-second driver deadline includes selected-tool/SDK metadata, tiny C
+compilation, all controls, observations and cleanup. The job has a ten-minute
+outer limit for checkout/artifact handling. Baseline thin arm64 and x86_64 hello
+binaries use the same selected compiler with `-g -O0`, no JUCE or Haswell/AVX2
+flags. They are not product binaries or an AVX2 prerequisite test. The ordered
+maximum is one direct x86_64 invocation (10 seconds), one arm64 LLDB session
+(30 seconds), then one x86_64 LLDB session (30 seconds). A failure, timeout,
+denial, exhausted deadline or incomplete cleanup withholds later controls.
+There are no ordinary/focused DSP runs or automatic native triggers.
+
+Both debugger controls use identical minimal commands, `--no-lldbinit`, and
+`target.disable-aslr false`, with actual help/setting output retained. This init
+choice differs from the historical scope invocation. Success requires the real
+inferior marker and zero inferior exit as well as debugger completion; echoed
+commands or wrapper zero alone are insufficient. Source/binary/command hashes,
+UUIDs, raw logs and the selected compiler/LLDB and on-disk debugserver candidates
+are recorded. Candidate presence is not proof of an executing debugserver image.
+See https://lldb.llvm.org/man/lldb.html and https://lldb.llvm.org/use/settings.html .
+
+Bounded read-only observations retain only the invocation group, observed owned
+descendants or matching previously observed identities, plus the controller's
+prelaunch record. PID/PPID/PGID, platform session field, start label and executable
+label are retained when supported. The repaired group cleanup is reused unchanged;
+no fixture subreaper, process-name kill, outside-group signal or host-policy
+workaround is introduced. Unseen/reparented services remain an explicit limit;
+compare the runner's final cleanup log with captured identities. Empty group
+census or absent runner orphan messages do not certify every service or host.
+
+The source change prepares one minimal session, not a completed native result.
+Exact consumer/run/tool/binary outcomes belong to the external handoff and PR
+record. Historical de31f2c0/run 40285821331 remains direct completion followed
+by LLDB timeout and an unconfirmed orphan debugserver. The original single-thread
+Test 61 cause and original executable remain unresolved. A tiny control pass
+would not certify the old focused binary, symbols or breakpoint command path.
+No shipping assertion, FP policy, helper/pin, product identity or artwork changes.

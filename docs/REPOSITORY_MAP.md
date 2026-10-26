@@ -238,6 +238,11 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   runs in source-lint and rejects malformed results and disabled verification.
   Its production command/cleanup controls inject census, signal and reap faults
   without spawning processes; real POSIX cases are a separate entry below.
+- `scripts/diagnose-rosetta-launch.py`: dispatch-only tiny baseline hello control;
+  one shared 120-second deadline, direct x86_64 then arm64/x86_64 LLDB, explicit
+  no-init/ASLR setting, owned identity observations and existing group cleanup.
+  Inert parser/route controls run in normal source-lint; this is not the scope
+  campaign, AVX2 certification or a shipping analysis target.
 - `tests/rosetta_cleanup_process_tests.py`: three harmless ordinary-user Linux
   process cases, with a shared 20-second limit, known PID/PGID reporting and
   independent finally cleanup. Tests census failures and a same-group child

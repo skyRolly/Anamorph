@@ -3,6 +3,12 @@ name: Bounded Rosetta scope characterization
 # Explicit diagnostic authorization only; publication never replays the campaign.
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Explicitly authorized diagnostic mode
+        type: choice
+        options: [scope, launch-control]
+        default: scope
 
 permissions:
   contents: read
@@ -12,7 +18,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'skyRolly/Anamorph' &&
-      github.ref == 'refs/heads/codex/rosetta-scope-characterization'
+      github.ref == 'refs/heads/codex/rosetta-scope-characterization' &&
+      (inputs.mode == '' || inputs.mode == 'scope')
     runs-on: macos-latest
     timeout-minutes: 35
     env:
@@ -54,4 +61,26 @@ jobs:
             original-source/build/CMakeCache.txt
             original-source/build/AnamorphTests_artefacts/Release/AnamorphTests
             original-source/build/AnamorphScopeDiagnostic_artefacts/Release/AnamorphScopeDiagnostic
+
+  launch-control:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'skyRolly/Anamorph' &&
+      github.ref == 'refs/heads/codex/rosetta-scope-characterization' &&
+      inputs.mode == 'launch-control'
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Inert launch route and result controls
+        run: python3 scripts/diagnose-rosetta-launch.py --self-test
+      - name: One tiny direct and native/translated debugger launch comparison
+        run: python3 scripts/diagnose-rosetta-launch.py --report-dir launch-evidence
+      - name: Retain tiny launch controls and partial evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Rosetta-launch-control
+          if-no-files-found: error
+          path: launch-evidence/
 

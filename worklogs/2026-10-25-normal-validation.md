@@ -427,3 +427,15 @@ debugserver cause and retained LLDB timeout. Source-lint retains both reports.
 The original DSP/focused assertions, helper bytes/four pins, approved artwork,
 product versions/identities, normal gates and existing Accepted ADRs are intact.
 No new Rosetta/LLDB dispatch or ordinary diagnostic replay is performed here.
+
+
+## Minimal debugger launch-control preparation (2026-10-26)
+
+Parent diagnostic head 9c512272 contains the completed census-error repair and
+actual owner #179 main af63db958. One new explicitly authorized hello-only
+session is prepared under a separate dispatch mode, with no original-source
+checkout, reconstruction, DSP/focused execution or scope breakpoint commands.
+Source checks evaluate actual routing and result parsers with rejecting controls;
+normal Build keeps its existing budgets and complete gates. New native outcomes
+are recorded externally at their real consumer/run/tool/binary inputs. This
+entry does not claim a native pass, historical replay or original DSP repair.
