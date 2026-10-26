@@ -2170,3 +2170,39 @@ entries passed. No security setting changed. Artifact 12615374694 and the exact
 limits are recorded in `worklogs/2026-10-25-normal-validation.md`. The result
 does not certify the future 26.04 rollout, a 32-bit entropy host or other gates.
 No legacy-host exception is needed for this measured environment.
+
+
+## Diagnostic process cleanup correction (2026-10-26)
+
+`scripts/diagnose-rosetta-scope.py::cleanup_process` uses the PGID captured from
+its own `Popen(start_new_session=True)`. TERM does not depend on a successful
+census. An unconfirmed group/direct child after the bounded grace requires a
+best-effort KILL even if another census fails. Reaping the leader alone cannot
+prove the group empty. Signals, waits and each observation have isolated error
+records; a disappeared target does not skip bounded reaping or final reporting.
+A single cleanup deadline is reserved before launch and clamped to the existing
+execution deadline. No observation can consume the time reserved for escalation.
+Unknown group state or inspection/signal/reaping errors remain visible and
+conservatively fail verification, even when the direct child was reaped.
+
+The existing inert `--self-test` includes the real production command/cleanup
+path with fake dependencies and a rejecting no-op cleanup control. The separate
+`python3 tests/rosetta_cleanup_process_tests.py --report <private-report-path>`
+runs at most three harmless standard-Python fixture cases under an ordinary
+Linux UID, within 20 seconds total. Only recorded fixture PIDs and their owned
+new-session PGID are eligible targets. A process-local subreaper role in the
+fixture harness adopts/reaps its own known orphan child and is restored; no
+host security/permission setting changes. Independent bounded finally cleanup
+protects against a broken tested implementation. Source-lint retains both
+inert and process reports as Anamorph-POSIX-cleanup-validation. These tests
+establish measured Linux same-group behavior, not complete macOS LLDB cleanup.
+
+Recorded native run 40285821331/job 121449104663 at de31f2c0 remains failed:
+direct focused completion, then a 120-second LLDB timeout. Its driver reported
+an empty invocation group, but runner cleanup terminated orphan debugserver
+PID 4809. No ps failure was recorded; the census-error defect does not establish
+that orphan's cause. Its PGID/ancestry are unknown. Do not add process-name
+killing, host-policy changes or claim escaped-service cleanup from these tests.
+The workflow stays dispatch-only with ordinary-runs zero; this correction
+performs no new Rosetta/AVX2/DSP/focused/LLDB diagnostic session. Normal automatic
+Build remains separate and unchanged except these source-gate regressions.

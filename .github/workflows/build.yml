@@ -500,7 +500,20 @@ jobs:
         run: python3 scripts/test-workflow-routing.py --report workflow-routing.json
 
       - name: Rosetta diagnostic inert orchestration controls
-        run: python3 scripts/diagnose-rosetta-scope.py --self-test
+        run: python3 scripts/diagnose-rosetta-scope.py --self-test --self-test-report rosetta-cleanup-inert.json
+
+      - name: Bounded ordinary-user POSIX cleanup cases
+        run: python3 tests/rosetta_cleanup_process_tests.py --report rosetta-cleanup-processes.json
+
+      - name: Retain POSIX cleanup control evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-POSIX-cleanup-validation
+          if-no-files-found: error
+          path: |
+            rosetta-cleanup-inert.json
+            rosetta-cleanup-processes.json
 
       - name: macOS integration review fixture checks
         run: python3 scripts/test-macos-integration-review.py --self-test

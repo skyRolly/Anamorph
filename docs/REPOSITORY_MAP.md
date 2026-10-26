@@ -236,5 +236,12 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   native input inventory, executable AVX2 prerequisite, one direct focused run,
   one debugger session and a shared ten-minute deadline. Its inert `--self-test`
   runs in source-lint and rejects malformed results and disabled verification.
+  Its production command/cleanup controls inject census, signal and reap faults
+  without spawning processes; real POSIX cases are a separate entry below.
+- `tests/rosetta_cleanup_process_tests.py`: three harmless ordinary-user Linux
+  process cases, with a shared 20-second limit, known PID/PGID reporting and
+  independent finally cleanup. Tests census failures and a same-group child
+  after leader exit; fixture-local child adoption/reaping prevents orphan leaks.
+  This does not execute Rosetta, DSP, an installer or a debugger.
 - `tests/scope_ring_diagnostic.cpp`: separately instrumented single-threaded
   newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.

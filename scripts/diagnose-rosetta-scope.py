@@ -35,7 +35,9 @@ class PrerequisiteError(RuntimeError):
 def process_ok(result):
     return (result.get('exit_code') == 0 and not result.get('timed_out')
             and not result.get('launch_error') and not result.get('budget_exhausted')
-            and not result.get('surviving_processes') and not result.get('cleanup_error'))
+            and not result.get('execution_wait_error')
+            and not result.get('surviving_processes') and not result.get('cleanup_error')
+            and result.get('cleanup_complete', True))
 
 
 def focused_outcome(result, output):
@@ -147,12 +149,292 @@ def verify_dispatch_route(workflow, selector):
             raise AssertionError('diagnostic event/ref selection rejected: ' + event + '/' + branch)
 
 
+CLEANUP_SECONDS = 6
+
+
+def group_members(pgid, timeout):
+    """Observe only the already-owned invocation group; failure is unknown state."""
+    table = subprocess.run(['ps', '-axo', 'pid=,pgid=,stat=,command='],
+                           capture_output=True, text=True, timeout=timeout, check=False)
+    if table.returncode:
+        raise RuntimeError('ps could not inspect the owned group: exit ' + str(table.returncode))
+    return [line.strip() for line in table.stdout.splitlines()
+            if len(line.split(None, 3)) >= 3 and line.split(None, 3)[1] == str(pgid)]
+
+
+def cleanup_process(process, pgid, deadline):
+    """Bounded cleanup of a Popen created with start_new_session=True, only."""
+    started = time.monotonic()
+    result = {'invocation_pgid': pgid, 'signal_attempts': [], 'reaping': [],
+              'observations': [], 'surviving_processes': None, 'group_state': 'unknown',
+              'child_reaped': False, 'cleanup_complete': False}
+    errors = []
+
+    def remaining(reserve=0):
+        return max(0, deadline - time.monotonic() - reserve)
+
+    def observe(stage, reserve):
+        limit = min(1, remaining(reserve))
+        entry = {'stage': stage, 'timeout_seconds': limit, 'members': None}
+        if limit <= 0:
+            entry.update(status='not_observed', error='cleanup observation deadline exhausted')
+        else:
+            try:
+                entry.update(status='observed', members=group_members(pgid, limit))
+            except Exception as error:
+                entry.update(status='error', error=type(error).__name__ + ': ' + str(error))
+        result['observations'].append(entry)
+        if 'error' in entry:
+            errors.append(stage + ': ' + entry['error'])
+        return entry['members']
+
+    def send(sig):
+        entry = {'target': 'invocation_group', 'pgid': pgid, 'signal': signal.Signals(sig).name}
+        try:
+            os.killpg(pgid, sig)
+            entry['outcome'] = 'sent'
+        except ProcessLookupError:
+            entry['outcome'] = 'disappeared'
+        except Exception as error:
+            entry.update(outcome='error', error=type(error).__name__ + ': ' + str(error))
+            errors.append(entry['signal'] + ': ' + entry['error'])
+        result['signal_attempts'].append(entry)
+
+    def reap(stage, cap, reserve):
+        limit = min(cap, remaining(reserve))
+        entry = {'stage': stage, 'timeout_seconds': limit}
+        try:
+            code = process.wait(timeout=limit)
+            entry.update(outcome='reaped', exit_code=code)
+            result['child_reaped'] = True
+        except subprocess.TimeoutExpired:
+            entry['outcome'] = 'timeout'
+        except Exception as error:
+            entry.update(outcome='error', error=type(error).__name__ + ': ' + str(error))
+            errors.append(stage + ': ' + entry['error'])
+        result['reaping'].append(entry)
+
+    # pid is captured immediately after our new-session Popen. Do not look up
+    # an exited leader's PGID again, or ever signal zero/the caller's group.
+    if (not isinstance(pgid, int) or pgid <= 1 or pgid != process.pid
+            or pgid == os.getpgrp()):
+        result['cleanup_error'] = 'invalid task-owned invocation PGID; no group was signaled'
+        return result
+
+    initial = observe('initial', 4)
+    # Enumeration is observational, never a precondition for either signal.
+    send(signal.SIGTERM)
+    term_started = time.monotonic()
+    reap('after_term', 2, 2)
+    if initial is None or initial:
+        # Reaping a wrapper is not a grace period for its in-group child.
+        grace = min(max(0, 2 - (time.monotonic() - term_started)), remaining(2))
+        if grace > 0:
+            try:
+                time.sleep(grace)
+            except Exception as error:
+                errors.append('TERM grace: ' + type(error).__name__ + ': ' + str(error))
+    after_term = observe('after_term', 1)
+    if not result['child_reaped'] or after_term is None or after_term:
+        send(signal.SIGKILL)
+        reap('after_kill', 1, 0.2)
+    final = observe('final', 0.05)
+    result['surviving_processes'] = final
+    result['group_state'] = 'unknown' if final is None else ('members' if final else 'empty')
+    try:
+        result['exit_code'] = process.poll()
+    except Exception as error:
+        result['exit_code'] = None
+        errors.append('final poll: ' + type(error).__name__ + ': ' + str(error))
+    code = result['exit_code']
+    result['signal'] = -code if code is not None and code < 0 else None
+    if not result['child_reaped']:
+        errors.append('direct-child reaping unconfirmed')
+    if final is None:
+        errors.append('final invocation-group state unknown')
+    elif final:
+        errors.append('invocation-group members remain')
+    result['cleanup_elapsed_seconds'] = round(time.monotonic() - started, 6)
+    result['cleanup_complete'] = not errors
+    if errors:
+        result['cleanup_error'] = '; '.join(errors)
+    return result
+
+
 def command_timeout(timeout, remaining):
     # Reserve bounded termination/observation time inside the same deadline.
-    return timeout if remaining is None else min(timeout, max(0, remaining - 6))
+    return timeout if remaining is None else min(timeout, max(0, remaining - CLEANUP_SECONDS))
 
 
-def self_test():
+def cleanup_tests(records):
+    """Fault injection reaches the production command and cleanup, without Popen."""
+    import ast
+    from unittest import mock
+    main_node = next(n for n in ast.parse(Path(__file__).read_text()).body
+                     if isinstance(n, ast.FunctionDef) and n.name == 'main')
+    command_node = next(n for n in main_node.body
+                        if isinstance(n, ast.FunctionDef) and n.name == 'command')
+    command_ast = ast.Module(body=[command_node], type_ignores=[])
+
+    class CleanupControls(unittest.TestCase):
+        def exercise(self, mode='resistant', replacement=None):
+            clock = [0.0]; signals = []; probes = []; waits = []
+            state = {'code': 0 if mode.startswith('leader_exit') else None,
+                     'group_alive': True, 'execution_wait': True}
+
+            class Process:
+                pid = 424242
+                def poll(self):
+                    return state['code']
+                def wait(self, timeout):
+                    waits.append(timeout)
+                    if state['code'] is not None:
+                        return state['code']
+                    clock[0] += timeout
+                    if state['execution_wait'] and mode == 'exhausted':
+                        clock[0] += 10
+                    state['execution_wait'] = False
+                    raise subprocess.TimeoutExpired(['inert'], timeout)
+
+            def inspect_group(pgid, timeout):
+                probes.append({'pgid': pgid, 'timeout': timeout, 'at': clock[0]})
+                index = len(probes)
+                if mode in ('first_nonzero', 'leader_exit_first_failure') and index == 1:
+                    raise RuntimeError('ps exit 1')
+                if (mode == 'first_timeout' and index == 1) or (mode == 'second_timeout' and index == 2):
+                    clock[0] += timeout
+                    raise subprocess.TimeoutExpired(['ps'], timeout)
+                if mode == 'second_nonzero' and index == 2:
+                    raise RuntimeError('ps exit 2')
+                if mode == 'final_failure' and index == 3:
+                    raise RuntimeError('final ps failed')
+                return ['424243 424242 S inert-child'] if state['group_alive'] else []
+
+            def send(pgid, sig):
+                self.assertEqual(pgid, Process.pid)
+                signals.append(signal.Signals(sig).name)
+                if mode == 'signal_error' and sig == signal.SIGTERM:
+                    raise PermissionError('inert TERM denial')
+                if mode == 'disappeared':
+                    state.update(code=-15, group_alive=False)
+                    raise ProcessLookupError('inert disappeared group')
+                if sig == signal.SIGKILL:
+                    state['group_alive'] = False
+                    if mode != 'reap_timeout' and not mode.startswith('leader_exit'):
+                        state['code'] = -9
+
+            def launch(*argv, **kwargs):
+                self.assertIs(kwargs['start_new_session'], True)
+                return Process()
+
+            with tempfile.TemporaryDirectory() as private:
+                env = dict(globals(), deadline=None, report_dir=Path(private), record={}, save=lambda: None)
+                exec(compile(command_ast, __file__, 'exec'), env)
+                with mock.patch.object(sys.modules[__name__], 'group_members', inspect_group), \
+                     mock.patch.object(os, 'killpg', send), \
+                     mock.patch.object(subprocess, 'Popen', launch), \
+                     mock.patch.object(time, 'monotonic', lambda: clock[0]), \
+                     mock.patch.object(time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+                    if replacement is not None:
+                        env['cleanup_process'] = replacement
+                    result = env['command']('inert', ['inert'], timeout=0.1)
+                self.assertEqual(env['record']['inert'], result)
+            record = {'case': mode, 'result': result, 'signals': signals,
+                      'censuses': probes, 'wait_timeouts': waits,
+                      'real_processes_spawned': 0, 'real_signals_sent': 0}
+            records.append(record)
+            return record
+
+        def required_actions(self, record):
+            self.assertEqual(record['signals'], ['SIGTERM', 'SIGKILL'])
+            self.assertIn('reaping', record['result'])
+            self.assertEqual(record['result']['invocation_pgid'], 424242)
+
+        def test_first_census_nonzero_still_terminates(self):
+            r = self.exercise('first_nonzero'); self.required_actions(r)
+            self.assertIn('ps exit 1', r['result']['cleanup_error'])
+            self.assertFalse(process_ok(r['result']))
+
+        def test_first_census_timeout_still_terminates(self):
+            r = self.exercise('first_timeout'); self.required_actions(r)
+            self.assertIn('TimeoutExpired', r['result']['cleanup_error'])
+            self.assertTrue(r['result']['timed_out'])
+
+        def test_second_census_failure_cannot_skip_kill(self):
+            for mode in ['second_nonzero', 'second_timeout']:
+                r = self.exercise(mode); self.required_actions(r)
+                self.assertFalse(r['result']['cleanup_complete'])
+                self.assertEqual(r['result']['exit_code'], -9)
+
+        def test_term_resistant_child_requires_kill_and_reap(self):
+            r = self.exercise(); self.required_actions(r)
+            self.assertTrue(r['result']['child_reaped'])
+            self.assertTrue(r['result']['cleanup_complete'])
+            self.assertEqual(r['result']['signal'], 9)
+            self.assertTrue(r['result']['timed_out'])
+            self.assertFalse(process_ok(r['result']))
+
+        def test_exited_leader_does_not_hide_in_group_child(self):
+            r = self.exercise('leader_exit'); self.required_actions(r)
+            self.assertEqual(r['result']['exit_code'], 0)
+            self.assertEqual(r['result']['group_state'], 'empty')
+            self.assertFalse(r['result']['timed_out'])
+
+        def test_zero_exit_and_reaped_child_do_not_hide_observation_error(self):
+            r = self.exercise('leader_exit_first_failure'); self.required_actions(r)
+            self.assertEqual(r['result']['exit_code'], 0)
+            self.assertTrue(r['result']['child_reaped'])
+            self.assertFalse(r['result']['timed_out'])
+            self.assertFalse(process_ok(r['result']))
+
+        def test_process_lookup_still_reaps_and_observes(self):
+            r = self.exercise('disappeared')
+            self.assertEqual(r['result']['signal_attempts'][0]['outcome'], 'disappeared')
+            self.assertTrue(r['result']['child_reaped'])
+            self.assertEqual(len(r['result']['observations']), 3)
+
+        def test_term_signal_error_does_not_skip_kill(self):
+            r = self.exercise('signal_error'); self.required_actions(r)
+            self.assertIn('PermissionError', r['result']['cleanup_error'])
+            self.assertFalse(r['result']['cleanup_complete'])
+
+        def test_final_census_failure_keeps_command_record(self):
+            r = self.exercise('final_failure'); self.required_actions(r)
+            self.assertIsNone(r['result']['surviving_processes'])
+            self.assertEqual(r['result']['group_state'], 'unknown')
+            self.assertFalse(process_ok(r['result']))
+
+        def test_bounded_reaping_timeout_is_not_success(self):
+            r = self.exercise('reap_timeout'); self.required_actions(r)
+            self.assertFalse(r['result']['child_reaped'])
+            self.assertIsNone(r['result']['exit_code'])
+            self.assertIn('reaping unconfirmed', r['result']['cleanup_error'])
+            self.assertLessEqual(max(r['wait_timeouts'][1:]), 2)
+
+        def test_exhausted_observation_budget_cannot_skip_signals(self):
+            r = self.exercise('exhausted'); self.required_actions(r)
+            self.assertEqual(r['censuses'], [])
+            self.assertEqual(r['result']['group_state'], 'unknown')
+            self.assertFalse(process_ok(r['result']))
+
+        def test_no_op_cleanup_fails_control(self):
+            r = self.exercise(replacement=lambda *args: {'cleanup_error': 'inert no-op'})
+            with self.assertRaises(AssertionError):
+                self.required_actions(r)
+
+        def test_invalid_or_runner_groups_are_never_signaled(self):
+            from unittest import mock
+            process = type('InertProcess', (), {'pid': 424242})()
+            with mock.patch.object(os, 'killpg') as send:
+                for pgid in [0, 1, os.getpgrp(), 424241]:
+                    result = cleanup_process(process, pgid, time.monotonic() + 6)
+                    self.assertIn('invalid task-owned', result['cleanup_error'])
+                send.assert_not_called()
+
+    return unittest.defaultTestLoader.loadTestsFromTestCase(CleanupControls)
+
+
+def self_test(report=None):
     """No compiler, fixture executable, installer, network or native guard runs."""
     complete = 'SCOPE_DIAGNOSTIC_COMPLETE counts=1 frames=1 straddles=2 clamp=1 oversized=1\n'
     okay = {'exit_code': 0, 'timed_out': False}
@@ -284,18 +566,27 @@ def self_test():
             self.assertIn("printf '" + literal + "'", workflow)
             self.assertIn('cc -arch x86_64 -march=haswell -O0', workflow)
 
-    return unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(Controls)).wasSuccessful()
+    records = []
+    suite = unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromTestCase(Controls), cleanup_tests(records)])
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if report is not None:
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(json.dumps({'kind': 'inert production command/cleanup controls',
+            'tests_run': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
+            'real_processes_spawned': 0, 'real_signals_sent': 0, 'cases': records}, indent=2) + '\n')
+    return result.wasSuccessful()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--self-test', action='store_true')
+    parser.add_argument('--self-test-report', type=Path)
     parser.add_argument('--source', type=Path)
     parser.add_argument('--report-dir', type=Path)
     parser.add_argument('--ordinary-runs', type=int, choices=[0], default=0)
     args = parser.parse_args()
     if args.self_test:
-        return 0 if self_test() else 1
+        return 0 if self_test(args.self_test_report) else 1
     if args.source is None or args.report_dir is None:
         parser.error('--source and --report-dir are required for native characterization')
     source = args.source.resolve(); report_dir = args.report_dir.resolve()
@@ -314,21 +605,19 @@ def main():
     def save():
         (report_dir / 'characterization.json').write_text(json.dumps(record, indent=2) + '\n')
 
-    def group_members(pgid):
-        # Read-only bounded observation of this invocation's process group.
-        table = subprocess.run(['ps', '-axo', 'pid=,pgid=,stat=,command='],
-                               capture_output=True, text=True, timeout=1, check=False)
-        if table.returncode:
-            raise RuntimeError('could not inspect the test-owned process group')
-        return [line.strip() for line in table.stdout.splitlines()
-                if len(line.split(None, 3)) >= 3 and line.split(None, 3)[1] == str(pgid)]
-
     def command(label, argv, timeout=60, cwd=None):
-        remaining = None if deadline is None else deadline - time.monotonic()
+        started = time.monotonic()
+        remaining = None if deadline is None else deadline - started
         limit = command_timeout(timeout, remaining)
+        # Reserve cleanup before launch. One fixed monotonic deadline covers all
+        # observation, TERM/grace, KILL/reaping and final-report operations.
+        cleanup_deadline = started + limit + CLEANUP_SECONDS
+        if deadline is not None:
+            cleanup_deadline = min(cleanup_deadline, deadline)
         result = {'argv': argv, 'exit_code': None, 'signal': None, 'timed_out': False,
-                  'timeout_seconds': round(limit, 3), 'surviving_processes': []}
-        started = time.monotonic(); log = report_dir / (label + '.log')
+                  'timeout_seconds': round(limit, 3), 'surviving_processes': None,
+                  'cleanup_complete': False}
+        log = report_dir / (label + '.log')
         with log.open('wb') as output:
             if limit <= 0:
                 result['budget_exhausted'] = True
@@ -336,36 +625,19 @@ def main():
                 try:
                     process = subprocess.Popen(argv, cwd=cwd, stdout=output, stderr=subprocess.STDOUT,
                                                start_new_session=True)
+                    pgid = process.pid
                     try:
                         process.wait(timeout=limit)
                     except subprocess.TimeoutExpired:
                         result['timed_out'] = True
-                    # Terminate only this task-owned process group, including children
-                    # left behind by an exited wrapper. Preserve errors/survivors.
-                    try:
-                        members = group_members(process.pid)
-                        if process.poll() is None or members:
-                            os.killpg(process.pid, signal.SIGTERM)
-                            try:
-                                process.wait(timeout=2)
-                            except subprocess.TimeoutExpired:
-                                pass
-                            members = group_members(process.pid)
-                            if process.poll() is None or members:
-                                os.killpg(process.pid, signal.SIGKILL)
-                                try:
-                                    process.wait(timeout=1)
-                                except subprocess.TimeoutExpired:
-                                    pass
-                        result['surviving_processes'] = group_members(process.pid)
-                    except ProcessLookupError:
-                        result['surviving_processes'] = group_members(process.pid)
                     except Exception as error:
-                        result['cleanup_error'] = str(error)
-                    result['exit_code'] = process.poll()
-                    result['signal'] = -process.returncode if process.returncode is not None and process.returncode < 0 else None
+                        result['execution_wait_error'] = str(error)
+                    finally:
+                        result.update(cleanup_process(process, pgid, cleanup_deadline))
                 except OSError as error:
                     result['launch_error'] = str(error)
+                except Exception as error:
+                    result['cleanup_error'] = type(error).__name__ + ': ' + str(error)
         result.update(elapsed_seconds=round(time.monotonic() - started, 3), log=log.name, log_sha256=sha(log))
         record[label.replace('-', '_')] = result
         save()

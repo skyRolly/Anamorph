@@ -411,3 +411,19 @@ CI_CD.md and TESTING.md document the commands, bounds and limitations.
 No product/helper/asset/pin/FP/architecture contract changes. Existing Accepted
 ADR provenance remains intact. Original failure and prior debugger timeout are
 retained; new native results belong only to their actual consumer/source/run.
+
+
+## Diagnostic cleanup control and actual customer-text merge (2026-10-26)
+
+The owner merged #179 as af63db9582644615d5606b142ea4c3d6fe5ffb23; the
+reviewed d2d2961f tree is identical. The additive main-to-#177 merge preserves
+both coverage/worklog append records. The cleanup correction separates census
+failures from required TERM/KILL/reaping actions, reserves one monotonic deadline
+and keeps unknown state/error records conservative. Existing inert controls now
+cover the actual production command/cleanup path; three bounded ordinary-user
+Linux process cases are separate and inventoried in REPOSITORY_MAP.md. CI_CD.md,
+TESTING.md and KNOWN_ISSUES.md distinguish this fix from the unproven detached
+debugserver cause and retained LLDB timeout. Source-lint retains both reports.
+The original DSP/focused assertions, helper bytes/four pins, approved artwork,
+product versions/identities, normal gates and existing Accepted ADRs are intact.
+No new Rosetta/LLDB dispatch or ordinary diagnostic replay is performed here.

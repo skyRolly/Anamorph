@@ -190,7 +190,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2442-2444 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2455-2457 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -1294,3 +1294,17 @@ StateTests command after the failed DSP invocation did not run in that step.
 Native Intel/arm64 and AU/pluginval results do not substitute for the failed
 Rosetta check. Keep it separate from run 40036154695's AU teardown observation.
 No retry or product/test behavior change was made by this documentation audit.
+
+
+## Nonshipping Rosetta debugger cleanup limit (2026-10-26)
+
+The census-error control-flow defect in the draft diagnostic tool has a bounded
+TERM/KILL correction and inert/Linux process regressions. That correction does
+not explain native job 121449104663's orphan debugserver PID 4809: run
+40285821331 recorded no ps failure and did not capture its PGID/ancestry. LLDB
+still timed out while the direct fixture completed. Complete cleanup of an
+escaped debugger service, a permission denial and the original DSP failure's
+cause remain unestablished. No product repair or new native session is claimed.
+Evidence: `scripts/diagnose-rosetta-scope.py::cleanup_process`,
+`tests/rosetta_cleanup_process_tests.py`, and
+https://github.com/skyRolly/Anamorph/actions/runs/40285821331.
