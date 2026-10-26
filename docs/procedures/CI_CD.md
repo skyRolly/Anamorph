@@ -2322,3 +2322,10 @@ exact-head external handoff and PR record. A tiny trace does not certify the
 original focused debugger route or explain single-threaded Test 61. No shipping
 gate, query target, sanitizer strictness, installer/archive contract or budget
 changes. Existing Linux process tests remain distinct from native macOS evidence.
+
+The traced 919c7bd3 session exposed a sampler boundary error: its final extra
+census started just after the target execution deadline. The sampler now schedules
+that observation before the deadline, clamps the entire snapshot to 0.35 seconds
+and remaining execution time, and omits it when no time remains. Cleanup signals
+do not wait for an extra late snapshot. The correction has an inert production-
+runner regression; it is not a new native execution or a repair of the attach stall.

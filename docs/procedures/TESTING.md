@@ -6684,3 +6684,10 @@ exact-head external handoff and PR record. A tiny trace does not certify the
 original focused debugger route or explain single-threaded Test 61. No shipping
 gate, query target, sanitizer strictness, installer/archive contract or budget
 changes. Existing Linux process tests remain distinct from native macOS evidence.
+
+The production-runner fixture also rejects live/pre-termination observations
+whose deadline exceeds the target execution deadline. It fails on traced consumer
+919c7bd3's extra cleanup-phase snapshot and passes after pre-deadline scheduling
+and the per-snapshot 0.35-second clamp. Final cleanup observation stays within the
+single driver deadline. A consumed native allowance is not renewed by this repair;
+the corrected sampling path remains without another native run.

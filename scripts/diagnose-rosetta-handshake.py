@@ -281,7 +281,8 @@ class Driver:
         known = {}; inspection_errors = []
         def sample(stage, process, end):
             entry = {'stage': stage, 'offset_seconds': round(time.monotonic()-self.started, 6)}
-            try: entry.update(self.observe(process.pid, process.pid, known, min(end, self.deadline)))
+            try: entry.update(self.observe(process.pid, process.pid, known,
+                                         min(end, self.deadline, time.monotonic()+0.35)))
             except Exception as error:
                 entry['error'] = type(error).__name__ + ': ' + str(error)
                 inspection_errors.append(entry['error'])
@@ -300,6 +301,7 @@ class Driver:
                         start_new_session=True, env=self.env, preexec_fn=child_file_limit if traced else None)
                     try:
                         schedule = iter((2, 8, 18)); next_sample = next(schedule, None)
+                        pre_sampled = False
                         if observe: sample('after_spawn', process, execution_end)
                         while process.poll() is None:
                             now = time.monotonic()
@@ -309,15 +311,24 @@ class Driver:
                                 partial = current.read(8192).decode(errors='replace')
                             if launch.outcome({}, partial)['outcome'] == 'explicit_denial':
                                 result['explicit_denial_observed'] = True; break
+                            now = time.monotonic()
                             if now >= execution_end: result['timed_out'] = True; break
                             if observe and next_sample is not None and now-began >= next_sample:
                                 sample('live_' + str(next_sample), process, execution_end)
                                 next_sample = next(schedule, None)
+                            now = time.monotonic()
+                            if observe and not pre_sampled and execution_end-0.4 <= now < execution_end:
+                                sample('before_termination', process, execution_end)
+                                pre_sampled = True
                             time.sleep(min(0.05, max(0, execution_end-time.monotonic())))
                     except Exception as error:
                         result['execution_wait_error'] = type(error).__name__ + ': ' + str(error)
                     finally:
-                        if observe: sample('before_termination', process, min(cleanup_end-4, time.monotonic()+0.35))
+                        if observe and not pre_sampled:
+                            if time.monotonic() < execution_end:
+                                sample('before_termination', process, execution_end)
+                            else:
+                                result['pre_termination_observation_limit'] = 'execution deadline exhausted; no extra census before termination'
                         result.update(cleanup.cleanup_process(process, process.pid, cleanup_end))
                         if observe:
                             final = sample('after_cleanup', process, min(self.deadline, time.monotonic()+0.35))
@@ -495,9 +506,10 @@ def self_test(report):
                     class Process:
                         pid=4321
                         def poll(self): return None
-                    snapshots=[]; cleanup_calls=[]
+                    snapshots=[]; observation_deadlines=[]; cleanup_calls=[]
                     def observe(*args):
                         snapshots.append(tick[0])
+                        observation_deadlines.append(args[-1])
                         if fault=='observation': raise RuntimeError('inert ps failure')
                         return {'owned':[],'unmatched_backend_candidates':[{'pid':999,'association':'unknown'}] if fault=='unknown_backend' else []}
                     def clean(process,pgid,deadline):
@@ -515,6 +527,9 @@ def self_test(report):
                     self.assertEqual(cleanup_calls[0][0],4321)
                     self.assertLessEqual(cleanup_calls[0][1],220)
                     self.assertLessEqual(len(snapshots),6)
+                    for entry,end in zip(result['identity_observations'],observation_deadlines):
+                        if entry['stage']!='after_cleanup':
+                            self.assertLessEqual(end,130,'live/pre-termination observation exceeded target execution deadline')
                     if fault=='timeout':
                         self.assertTrue(result['timed_out']);self.assertTrue(any(t>=118 for t in snapshots))
                     elif fault=='output': self.assertTrue(result['output_limit'])

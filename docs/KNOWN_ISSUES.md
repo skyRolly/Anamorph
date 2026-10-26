@@ -1318,3 +1318,13 @@ broader signal boundary. Its exact result belongs to its own consumer/run,
 not a relabeling of either historical timeout or original DSP operands.
 Evidence: `scripts/diagnose-rosetta-handshake.py` and
 https://github.com/skyRolly/Anamorph/actions/runs/40338130238.
+
+The traced comparison at 919c7bd3/run 40349275028 narrows the current measured
+stall: initial remote capability exchange completed, then vAttach for observed
+hello PID 1368 had no logged reply before timeout. Live ancestry identifies
+OAH debugserver 1369 in a separate group; it survived client cleanup and the
+runner terminated it. The observation does not retroactively identify old orphan
+4809 or 1372, establish a permission denial or explain the original DSP assertion.
+A small late-snapshot deadline defect in this new sampler is corrected with an
+inert regression; no new native session validates that correction here.
+Evidence: https://github.com/skyRolly/Anamorph/actions/runs/40349275028 .

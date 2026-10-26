@@ -17706,3 +17706,19 @@ and analysis/installer/sanitizer contracts remain intact. REPOSITORY_MAP.md,
 CI_CD.md and TESTING.md inventory the script, commands and actual coverage.
 The worklog preserves prior native outcomes; this preparation entry claims no
 new native trace result, original DSP cause or product repair.
+
+### Traced sampler deadline correction (2026-10-26)
+
+The one traced session at 919c7bd3/run 40349275028 reached translated remote
+capability exchange and sent vAttach for observed hello PID 1368, without a reply
+or completion before timeout. Later snapshots associated OAH debugserver 1369
+through verified ancestry; it survived the client group and was reaped by the
+runner. No broad signal or product repair follows. Exact native evidence remains
+bound to 919c7bd3, not a later source head.
+
+It also measured a pre-termination snapshot starting 5.409 ms after execution
+expiry. An inert production-runner assertion reproduces this boundary defect.
+The narrow correction schedules that sample inside execution time, bounds the
+entire observation and omits it after expiry; existing group cleanup is unchanged.
+CI_CD/TESTING and the worklog distinguish this source regression evidence from
+the consumed native session. No second native dispatch or project replay occurs.

@@ -475,3 +475,24 @@ identity observations and unchanged group-only cleanup. Inert source-gate
 controls and the script inventory/procedures are updated. This dated preparation
 records no new native pass, ordinary replay, full reconstruction or shipping
 repair. Actual native results belong to the external exact-head handoff and PR.
+
+### Traced launch result and sampling boundary (2026-10-26)
+
+Consumer 919c7bd3/run 40349275028/job 121664571225 used the exact retained hello
+and dSYM bytes. Direct x86 and native ARM debugger controls completed. Translated
+LLDB exchanged initial protocol/capabilities, then sent vAttach for PID 1368 with
+no reply/completion before 30 seconds. Live observations associate debugserver
+1369 at /Library/Apple/usr/libexec/oah/debugserver with LLDB parent 1365; its
+separate group survived client cleanup, then runner cleanup terminated it.
+The image changed to 20261021.0445.8; measured Clang/LLDB bytes match the retained
+session. No general toolchain defect, permission denial or original DSP cause is
+established. This is a terminal bounded trace, not another campaign.
+
+The sampler's extra pre-termination observation began 5.409 ms after the target
+deadline. A new assertion on the actual mocked production runner fails on that
+implementation. The sample is now scheduled before execution expiry, clipped to
+0.35 seconds/remaining execution time and omitted after expiry. No group cleanup
+primitive, signal boundary or product behavior changes. The one native allowance
+is consumed; corrected sampling has inert/normal-source evidence only and no new
+native result. Raw trace, original failure and earlier incomplete sessions remain
+separate. No further dispatch or native rerun is performed.
