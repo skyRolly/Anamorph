@@ -297,3 +297,63 @@ merge; claiming the failed main Build clean from earlier feature results or a
 later nonreproduction; weakening the R7 check or changing lifecycle behavior
 without causal evidence. This correction records facts and keeps the failure
 visible. Coverage is updated; no document class or script inventory is added.
+
+
+## Modern Linux compatibility candidate (2026-10-26)
+
+History 378a37f2 and ace86aec selected a 22.04 TSan host after retiring kernel
+ASLR writes; ace86aec kept 24.04 container userspace. Commit 776cd621 selected
+22.04 for source-lint when real ordinary Bubblewrap reliability cases returned.
+Those are concrete host constraints, not proof that the current pinned runtime
+or every pure lint still needs 22.04. GitHub is retiring that image on 2027-04-17
+and is rolling latest to 26.04, so record actual capabilities instead of assuming
+an image version or an entropy threshold determines runtime compatibility.
+
+The independent candidate changes only the two host selections, capability
+recording and a bounded seeded-canary execution. Full source/user tests, TSan
+probes/suite/suppression liveness and normal event/deduplication/Release contracts
+remain. No compiler/JUCE pin, user namespace permission, ASLR or container
+security profile changes. Any failed probe remains explicit evidence; no
+shipping or merge-readiness claim precedes actual outcomes.
+
+
+## First modern probe disposition (2026-10-26)
+
+Run 40234406160 at cf261315: source-lint job121292773997 measured ordinary UID1001,
+Ubuntu24.04.5/image20261023.334.3/kernel6.17.0-1022-azure, then failed the actual
+Bubblewrap UID-map operation with Permission denied. Stop that operation; do not
+change restrictions. TSan job121292774013 failed metadata with Python missing
+before setup; its canary did not run. Move metadata after the existing complete
+setup before drawing any runtime conclusion. These original failures remain.
+
+The same eight user functional methods already run in NativeCase. Preserve them
+in that existing real-UID/private-root lane, with a shared selector, same-run
+coverage rejection and ordinary no-op/omission fixtures. This removes the pure
+source job's unnecessary namespace dependency while retaining every case and
+the real staged/native/uploaded archive gate. It does not emulate ownership,
+replace the normal interpreter or retry the denied Bubblewrap operation as root.
+Keep TSan's actual canary/probes/full suite and suppression policy unchanged.
+
+
+## Measured modern TSan result (2026-10-25)
+
+At `771c42d90d07338245be0850bb6a5c48c0e5f7bc`, Build run 40238250380,
+TSan job 121304339740 selected `ubuntu-latest`. The job setup log identifies
+Ubuntu 24.04.5/image 20261012.334.1; the container records kernel
+6.17.0-1022-azure, existing mmap entropy 28 and seccomp mode 2. No host security
+setting was changed. Pinned Clang/runtime 22.1.8 reported the seeded data race
+with exit 66, then all four probes ran five times each. The complete state
+suite returned 5942 checks/zero failures and all four declared suppression
+entries matched. Artifact 12615374694 has ZIP SHA-256
+`d972f6dddff51fc95fe18695aa9688524a6b7915a37c2d7f87c313e08d51b32a`.
+The container's image environment fields are null, so image provenance comes
+from the actual job setup log, not an invented value. This measures the
+observed 24.04 host, not the future 26.04 rollout or a 32-bit entropy host.
+
+The current command table no longer instructs an ASLR write, and latest is not
+assumed to stay on noble. Actual canary/probe/suite evidence supports removing
+the old host pin; no temporary legacy exception or new compiler decision is
+needed for this measured environment. Source-lint's namespace denial and the
+separate initial Python ordering error remain recorded above. Native/archive
+and other normal checks still retain their own exact-head outcomes; this TSan
+result cannot substitute for them or diagnose the Rosetta failure.

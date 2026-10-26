@@ -1906,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3720` and `.github/workflows/build.yml:3805`, this round being
+`.github/workflows/build.yml:3711` and `.github/workflows/build.yml:3796`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1940,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:776` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:767` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17570,3 +17570,43 @@ pending statements are historical. The actual main Build 40221042187 failed
 x86_64 Rosetta DSP Test 61 (940 checks, one failure); cause is unconfirmed and
 no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
+
+
+## Modern Linux candidate audit (2026-10-26)
+
+Current source-lint/TSan host selections are proposed as `ubuntu-latest`, with
+actual ordinary namespace and pinned-runtime canary evidence retained before
+functional/complete suite use. CI_CD.md corrects its obsolete current ASLR-write
+claim; the jobs make no kernel/security change. TESTING.md retains all coverage,
+canary and suppression requirements. Earlier dated native and old-host evidence
+remains tied to its actual inputs. Candidate capability and final-head outcomes
+are pending measurement and cannot be replaced by metadata or skipped checks.
+
+
+## Modern probe disposition and coverage placement (2026-10-26)
+
+Candidate cf261315 measured a real ordinary UID-map refusal on Ubuntu24 image
+20261023.334.3/kernel6.17.0-1022-azure. Keep that failure; no privileged retry of
+the failed Bubblewrap operation or security-setting change is performed. The
+first TSan metadata error occurred before Python provisioning, so it proves no
+runtime incompatibility. The dependency ordering is corrected before measurement.
+
+Pure source-lint moves to latest. All eight unchanged user reliability methods
+are required in the existing full native suite, using real UID/private roots.
+A shared selector and same-invocation negative coverage control make omission
+fail closed; ordinary plan fixtures reject every omitted method and a no-op
+verifier without executing an installer. TESTING_POLICY.md, CI_CD.md and
+TESTING.md record the placement and retain all real native/archive requirements.
+No product code, helper byte/pin, resource hash, namespace permission or normal
+Build/Release routing contract changes. Final results remain pending actual runs.
+
+
+## Measured runner documentation reconciliation (2026-10-25)
+
+CI_CD.md and TESTING.md bind the modern TSan result to run 40238250380 at
+771c42d90d07338245be0850bb6a5c48c0e5f7bc, preserving the first failed probe and
+all runtime/strictness contracts. The current testing table removes the obsolete
+ASLR-write instruction and names the actual suppression policy; the rolling
+host label is measured separately from the retained container userspace.
+No runtime source, workflow operation, pin or security setting is changed by
+this documentation reconciliation. Earlier dated evidence keeps its own scope.

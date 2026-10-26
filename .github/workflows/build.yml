@@ -469,7 +469,7 @@ jobs:
   # behind a toolchain.
   # -------------------------------------------------------------------------
   source-lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     if: >-
       github.event_name != 'pull_request' ||
@@ -552,17 +552,8 @@ jobs:
           python3 scripts/check-installer-icon.py --self-test
           python3 scripts/check-installer-icon.py
 
-      - name: Install ordinary entry-point test tools on the disposable runner
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
-
-      - name: Ordinary-user installer reliability in private roots
-        run: |
-          test "$(id -u)" -ne 0
-          bwrap --unshare-user --uid "$(id -u)" --gid "$(id -g)" --ro-bind / / /usr/bin/true
-          python3 tests/linux_desktop_install_tests.py --user-reliability --report build/linux-desktop-user-source.json
-
+      # The same eight user cases are mandatory in the existing real-UID native
+      # gate. Pure source checks do not require unprivileged user namespaces.
       - name: Ordinary-user protected-helper capture regression
         run: |
           test "$(id -u)" -ne 0
@@ -3919,7 +3910,7 @@ jobs:
   # and, like them, still release-blocking through `release.yml`'s aggregate
   # dependency on this workflow.
   tsan:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     container: ubuntu:24.04
     defaults:
       run:
@@ -3947,23 +3938,38 @@ jobs:
           test -r "$suppression_file"
           printf 'TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_bugs=1:suppressions=%s:print_suppressions=1\n' "$suppression_file" >> "$GITHUB_ENV"
 
+      - name: Install build dependencies
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+
       - name: Check existing sanitizer shadow-memory capability
         id: tsan_host
         run: |
           mkdir -p build
           bits=$(cat /proc/sys/vm/mmap_rnd_bits)
           case "$bits" in ''|*[!0-9]*) echo '::error::Cannot determine existing TSan host capability'; exit 1;; esac
-          printf '{"mmap_rnd_bits":%s,"kernel_settings_changed":false,"compatible":%s}\n' \
-            "$bits" "$([ "$bits" -le 28 ] && echo true || echo false)" > build/tsan-host.json
-          if [ "$bits" -gt 28 ]; then
-            echo "::error::ThreadSanitizer requires a disposable runner with vm.mmap_rnd_bits <= 28 already configured; observed $bits. No kernel setting was changed."
-            exit 1
-          fi
-
-      - name: Install build dependencies
-        uses: ./.github/actions/setup-linux-build
-        with:
-          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+          python3 - "$bits" <<'PYCODE'
+          import json, os, platform, subprocess, sys
+          from pathlib import Path
+          compiler = 'clang++-' + os.environ['ANAMORPH_CLANG_VERSION']
+          status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
+          Path('build/tsan-host.json').write_text(json.dumps({
+              'requested_runner': 'ubuntu-latest',
+              'runner_image': os.environ.get('ImageOS'),
+              'runner_image_version': os.environ.get('ImageVersion'),
+              'kernel': platform.release(),
+              'container_userspace': Path('/etc/os-release').read_text(),
+              'mmap_rnd_bits': int(sys.argv[1]),
+              'seccomp_mode': status.get('Seccomp', '').strip(),
+              'compiler_version': subprocess.check_output([compiler, '--version'], text=True),
+              'runtime_package': subprocess.check_output(['dpkg-query', '-W', 'libclang-rt-' + os.environ['ANAMORPH_CLANG_VERSION'] + '-dev'], text=True),
+              'tsan_options': os.environ['TSAN_OPTIONS'],
+              'kernel_settings_changed': False,
+              'compatibility_basis': 'actual pinned-runtime seeded-race canary below',
+              'runtime_compatibility': 'not_yet_tested',
+          }, indent=2) + '\n')
+          PYCODE
 
       - name: Restore the compiler cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -3977,7 +3983,7 @@ jobs:
           clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O1 -g \
             -fsanitize=thread tests/tsan_canary.cpp -o tsan-canary
           set +e
-          ./tsan-canary > tsan-canary.log 2>&1
+          timeout 60 ./tsan-canary > tsan-canary.log 2>&1
           canary_status=$?
           set -e
           python3 - "$canary_status" <<'PYCODE'
