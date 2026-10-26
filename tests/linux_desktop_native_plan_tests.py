@@ -86,6 +86,22 @@ class PlanCase(unittest.TestCase):
             self.assertIn('expected='+native.PIN,(self.stage/entry).read_text())
 
 
+class UserCoverageCase(unittest.TestCase):
+    def test_real_suite_keeps_every_user_reliability_case(self):
+        suite=unittest.defaultTestLoader.loadTestsFromTestCase(native.NativeCase)
+        self.assertEqual(len(native.legacy.USER_RELIABILITY_METHODS),8)
+        self.assertEqual(native.user_coverage_liveness(suite),list(native.legacy.USER_RELIABILITY_METHODS))
+        for removed in native.legacy.USER_RELIABILITY_METHODS:
+            partial=unittest.TestSuite(case for case in suite if case._testMethodName!=removed)
+            with self.assertRaisesRegex(RuntimeError,'native suite omits required ordinary-user cases:'):
+                native.user_reliability_coverage(partial)
+
+    def test_disabled_coverage_verifier_is_rejected(self):
+        suite=unittest.defaultTestLoader.loadTestsFromTestCase(native.NativeCase)
+        with self.assertRaisesRegex(RuntimeError,'coverage verifier accepted an empty native suite'):
+            native.user_coverage_liveness(suite,checker=lambda ignored: [])
+
+
 class ResultLifecycleCase(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='native-result-');self.addCleanup(self.temp.cleanup)

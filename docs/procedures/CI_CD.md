@@ -405,8 +405,11 @@ edge above must not be read as release non-blocking.
   code restates the default so a future change to it cannot turn a report into a green step. A
   **liveness canary** (`tests/tsan_canary.cpp`, two threads writing one plain int) runs first and
   the step fails unless it aborts *with* a `ThreadSanitizer: data race` report — both halves, for
-  the reason the RTSan canary records. `vm.mmap_rnd_bits` is lowered to 28 first: the sanitizer's
-  shadow-memory layout cannot cope with the 32-bit ASLR entropy newer runner images default to.
+  the reason the RTSan canary records. The job records the actual kernel and
+  `vm.mmap_rnd_bits` without changing them. Compatibility is decided by the
+  actual pinned-runtime canary, not inferred solely from an entropy threshold.
+  Runtime initialization failure or a missing race report fails closed before
+  the repeated probes and complete suite; no ASLR/security setting is lowered.
   A report from inside JUCE would fail this lane too, deliberately: the boundary being measured is
   the plug-in's, and a JUCE-internal report would be evidence that it is not where ADR-0036 says.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
@@ -998,7 +1001,7 @@ confirmed to describe this compiler. Bump the pin and re-baseline in the **same*
 
 **The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
 not *newest* and not *whatever Ubuntu packages*. Ubuntu's own archives stop at `clang-20` for noble,
-which is what `ubuntu-latest` resolves to, so the toolchain is installed by
+the userspace retained for the test-only TSan container. The rolling `ubuntu-latest` host label is measured independently. The toolchain is installed by
 `scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel. Ubuntu's
 packaging boundary is a fact about Ubuntu's release process, not about this project, and it is not
 allowed to hold the warning gate, the sanitizer host and — since ADR-0030 — the shipped Linux compiler
@@ -1906,13 +1909,11 @@ push/PR/dispatch and reusable Release validation no longer require publication
 containment. Body-only description edits retain the default PR event behavior.
 
 
-Normal source-lint also restores the existing ordinary-user entry-point reliability
-selector in private user/mount namespaces on Ubuntu 22.04, with its test-only tools.
-It uses no hosted-namespace-permission flag and changes no kernel/security setting;
-an unavailable namespace capability fails. The four user smoke cases plus all-ten
-receiptless checks and bounded user cleanup cuts remain a subset, separate from the
-mandatory staged real-root gate. The 12-test recorder remains an ordinary process
-and still never elevates or interprets its inert fixture helper bytes.
+The 2026-10-25 restoration ran the ordinary-user entry-point reliability selector
+in private user/mount namespaces on Ubuntu 22.04 without a host setting change.
+The measured modern-host placement is recorded below: all eight same cases are
+mandatory in the existing staged real-UID native gate. The 12-test recorder stays
+an ordinary source-lint process and never elevates or interprets fixture bytes.
 
 The second native attempt completed with diagnostic failures: Bubblewrap rejected
 ordinary UID selection without a user namespace. Already-root observations and
@@ -2111,3 +2112,49 @@ compile command, executable SHA-256, architecture and UUID is retained. LLDB
 keeps ASLR enabled; unavailable native debugging is a visible limitation. Normal
 Build/Release jobs and all customer gates remain unchanged. A later pass is
 nonreproduction, not a repair or a retrospective pass of main Build 40221042187.
+
+
+## Modern Linux capability measurement (2026-10-26)
+
+The first candidate cf261315 measured ordinary UID 1001 on Ubuntu 24.04.5,
+image 20261023.334.3, kernel 6.17.0-1022-azure. The real Bubblewrap probe failed:
+`bwrap: setting up uid map: Permission denied`. Its failure/report is retained;
+no namespace permission, ASLR, AppArmor, seccomp or container profile changed.
+The TSan metadata step also failed with `python3: command not found` before
+normal setup. That was an ordering error, not runtime incompatibility evidence.
+Metadata now follows the existing complete dependency setup before the actual
+pinned-runtime canary. The read entropy value is recorded without inferring
+compatibility from it; the bounded real canary still must report its seeded race.
+
+Source-lint uses `ubuntu-latest` for pure checks and ordinary inert capture/plan
+fixtures. Its eight existing user functional cases were already inherited by
+NativeCase; they now have a shared selector and a same-invocation omission
+control in the genuine native gate. No case was removed or replaced by modeled
+metadata. The existing full staged gate executes them with actual ordinary UID,
+protected private mount/PID/network roots, and real project artifacts before
+customer upload. New coverage metadata lists selected methods; only the real
+suite result can certify completion and archive eligibility.
+
+TSan retains Ubuntu 24.04 container userspace, pinned Clang, all flags/options,
+canary, four repeated probes, complete state suite and suppression liveness.
+Actual modern runtime and final-head outcomes remain required. No retired
+source-publication route, job exclusion or skipped-success marker is added.
+
+GitHub's image notices name 2026-09-17 deprecation and 2027-04-17 retirement for
+Ubuntu 22.04. The latest-label rollout to 26.04 began 2026-10-19 and is scheduled
+to finish 2026-11-19; a measured 24.04 runner does not fix that label forever.
+See https://github.com/actions/runner-images/issues/14254 and
+https://github.com/actions/runner-images/issues/14748. Earlier dated host/native
+observations remain attributed to their own source and environment.
+
+
+## Measured modern TSan result (2026-10-25)
+
+Run 40238250380/job 121304339740 at 771c42d90d07338245be0850bb6a5c48c0e5f7bc
+selected `ubuntu-latest`: Ubuntu 24.04.5/image 20261012.334.1, kernel
+6.17.0-1022-azure, existing entropy 28 and seccomp mode 2. Pinned Clang 22.1.8 reported the seeded race;
+all four probes x5, the complete 5942-check state suite and all four suppression
+entries passed. No security setting changed. Artifact 12615374694 and the exact
+limits are recorded in `worklogs/2026-10-25-normal-validation.md`. The result
+does not certify the future 26.04 rollout, a 32-bit entropy host or other gates.
+No legacy-host exception is needed for this measured environment.
