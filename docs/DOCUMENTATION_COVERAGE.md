@@ -17572,6 +17572,19 @@ no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 
+## Customer installation text audit (2026-10-26)
+
+Audited all six product/platform INSTALL.txt files and both products' Linux
+entry scripts; Anamorph's desktop helper was reviewed separately, and Anabasis
+has no counterpart. This branch changes only necessary customer wording or
+genuine shell comments. Existing languages, commands, paths, error messages,
+line endings, file modes, recovery/ownership semantics, artwork and identities
+remain. A POSIX shell AST comparison retains quoted/bootstrap/here-document data
+and proves unchanged executable structure, with valid and rejecting controls.
+No prose-mirroring unit test or installer execution on a developer host is used.
+The existing release procedure records scope and evidence-reuse boundaries.
+
+
 ## Modern Linux candidate audit (2026-10-26)
 
 Current source-lint/TSan host selections are proposed as `ubuntu-latest`, with
