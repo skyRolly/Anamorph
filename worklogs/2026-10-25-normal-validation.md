@@ -496,3 +496,21 @@ primitive, signal boundary or product behavior changes. The one native allowance
 is consumed; corrected sampling has inert/normal-source evidence only and no new
 native result. Raw trace, original failure and earlier incomplete sessions remain
 separate. No further dispatch or native rerun is performed.
+
+### Observer completion accounting closure (2026-10-27)
+
+The preceding 0.35-second statement bounded requested work, not arbitrary host
+latency. Review reproduced the actual observer returning a successful empty
+census after its assigned deadline using only fake OS/time boundaries. A new
+production observer/runner regression fails at 1eccc9bb; completion accounting
+and immediate error-to-cleanup handling repair that conditional first-party gap.
+Assigned deadline, actual start/finish, elapsed time and complete/incomplete/expired
+status share one monotonic base. Optional hashes need remaining budget; expired
+results cannot certify empty cleanup, and final observation uses remaining driver
+time rather than the earlier execution deadline. Completion-removal/clean-empty
+mutants must fail the same assertions in the existing source-lint self-test.
+The earlier 919c7bd3 late-start regression and native trace remain history. No new
+native timing, attach success, service cleanup or original DSP cause is claimed.
+CI_CD/TESTING, REPOSITORY_MAP, KNOWN_ISSUES and coverage are updated narrowly.
+Workflow scheduling, driver/target/trace budgets, signal scope, helper bytes/pins,
+product contracts and Accepted ADR provenance are unchanged.

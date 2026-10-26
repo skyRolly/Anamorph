@@ -17722,3 +17722,19 @@ The narrow correction schedules that sample inside execution time, bounds the
 entire observation and omits it after expiry; existing group cleanup is unchanged.
 CI_CD/TESTING and the worklog distinguish this source regression evidence from
 the consumed native session. No second native dispatch or project replay occurs.
+
+### Observation completion review closure (2026-10-27)
+
+The handshake observer previously bounded requested deadlines without accounting
+for actual completion. Inert execution reproduces a late successful empty census;
+this is not a new native timing measurement. The correction records actual sample
+times/status, rejects expired evidence, omits optional hashing with insufficient
+budget and immediately enters existing bounded group cleanup on inspection failure.
+TESTING/CI_CD document cooperative enforcement, exact-boundary expiry, separate
+post-cleanup driver budget and no hard realtime guarantee. REPOSITORY_MAP inventories
+the production observer/parser/hash/cleanup fixtures and same-run completion/empty-
+census mutants. KNOWN_ISSUES preserves the native attach/backend boundary and adds
+the conditional finding's accurate scope. The existing source-lint command includes
+all new controls; workflow scheduling and shipping/runtime inputs are unchanged.
+The worklog keeps earlier native/start-deadline records as history. No new native
+session, broadened signal authority, product repair or ADR decision is introduced.

@@ -1328,3 +1328,16 @@ runner terminated it. The observation does not retroactively identify old orphan
 A small late-snapshot deadline defect in this new sampler is corrected with an
 inert regression; no new native session validates that correction here.
 Evidence: https://github.com/skyRolly/Anamorph/actions/runs/40349275028 .
+
+2026-10-27 observer review found a separate conditional completion-accounting
+gap: a successful ps could return late and an empty census lacked an expiry
+check. Production observer/runner regressions now reject that result, record
+actual finish/expiry and enter bounded cleanup on inspection errors. Optional
+hashes are omitted without remaining budget. This is cooperative requested-work
+enforcement; it cannot guarantee host scheduling/filesystem completion time.
+No native experiment validates this source correction, identifies the missing
+attach reply's cause or certifies outside-group backend cleanup. The dispatch-only
+utility is limited to disposable hosts with runner/host service cleanup; honest
+nonzero diagnostics and unknown original DSP causality are separate review facts.
+Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its inert
+`--self-test` completion/expiry mutation controls.

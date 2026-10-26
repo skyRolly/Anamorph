@@ -248,7 +248,11 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   Actual LLDB channel/help inspection precedes targets; packet timeout is read,
   not changed. One 120-second budget, 2 MiB trace cap, later identity snapshots
   and existing group-only cleanup. Inert source-gate controls cover selection,
-  results/stop behavior, bounds and unknown backend identity. No target rebuild.
+  results/stop behavior, bounds and unknown backend identity. Actual observer/
+  parser/hash completion accounting, late-result cleanup and same-run completion/
+  empty-census mutation rejection use inert OS/file/clock fixtures. Budgets are
+  cooperative; native timing and outside-group service cleanup stay unverified.
+  No target rebuild.
 - `tests/rosetta_cleanup_process_tests.py`: three harmless ordinary-user Linux
   process cases, with a shared 20-second limit, known PID/PGID reporting and
   independent finally cleanup. Tests census failures and a same-group child

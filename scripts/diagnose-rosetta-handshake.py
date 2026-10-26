@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Trace retained hello launches once; --self-test uses only inert fixtures."""
 import argparse
+import ast
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -252,20 +254,52 @@ class Driver:
                 h.update(data)
 
     def observe(self, pgid, pid, known, deadline):
-        limit = min(0.35, max(0, deadline-time.monotonic()))
-        if limit <= 0: raise RuntimeError('identity observation deadline exhausted')
-        table = subprocess.run(['/bin/ps', '-ww', '-axo', 'pid=,ppid=,pgid=,sess=,lstart=,comm='],
-                               text=True, capture_output=True, timeout=limit)
-        if table.returncode: raise RuntimeError('identity ps failed: ' + table.stderr)
-        result = owned_rows(table.stdout, pgid, pid, known)
-        # A ps-reported executable path plus its current file hash is stronger
-        # than a configured candidate, but is not a kernel/memory image hash.
-        for row in result['owned'] + result['unmatched_backend_candidates']:
-            path = Path(row['executable_path_observed'])
-            row['executing_memory_image_digest'] = None
-            if path.is_absolute() and path.is_file() and self.remaining(1) > 0:
-                try: row['file_sha256_at_observed_path'] = self.digest(path, deadline)
-                except OSError as error: row['file_hash_error'] = str(error)
+        """Cooperative budget, including late-result detection; not a realtime guarantee."""
+        started = time.monotonic(); end = min(deadline, self.deadline, started+0.35)
+        result = {'owned': None, 'unmatched_backend_candidates': None, 'status': 'incomplete',
+                  'deadline_offset_seconds': end-self.started, 'start_offset_seconds': started-self.started}
+        phase = 'before_ps'
+        def remaining(next_phase):
+            nonlocal phase
+            phase = next_phase
+            left = end-time.monotonic()
+            if left <= 0: raise TimeoutError('identity observation deadline exhausted: ' + phase)
+            return left
+        try:
+            table = subprocess.run(['/bin/ps', '-ww', '-axo', 'pid=,ppid=,pgid=,sess=,lstart=,comm='],
+                                   text=True, capture_output=True, timeout=remaining('before_ps'))
+            remaining('after_ps')  # A successful, empty ps can still return late.
+            if table.returncode: raise RuntimeError('identity ps failed: ' + table.stderr)
+            result.update(owned_rows(table.stdout, pgid, pid, known))
+            remaining('after_parse')
+            # Paths/file hashes are observations, never executing-memory identities.
+            for row in result['owned'] + result['unmatched_backend_candidates']:
+                remaining('before_path_metadata')
+                path = Path(row['executable_path_observed'])
+                row['executing_memory_image_digest'] = None
+                regular = path.is_absolute() and path.is_file()
+                left = remaining('before_hash')
+                # Hashes are optional. Leave 50 ms to start one, and retain the
+                # existing final driver reserve; neither bounds filesystem latency.
+                hash_end = min(end, self.deadline-1)
+                if not regular or min(left, hash_end-time.monotonic()) < 0.05:
+                    row['file_hash_omitted'] = 'nonregular path or insufficient cooperative hash budget'
+                    continue
+                digest = self.digest(path, hash_end)
+                remaining('after_hash')  # Do not publish a hash returned after expiry.
+                row['file_sha256_at_observed_path'] = digest
+            result['status'] = 'complete'
+        except Exception as error:
+            result['error'] = type(error).__name__ + ': ' + str(error)
+        finally:
+            finished = time.monotonic()
+            result.update(finish_offset_seconds=finished-self.started, elapsed_seconds=finished-started,
+                          expired=finished >= end, final_phase=phase)
+            # At the deadline is expired. Detect scheduling/file/ps latency even
+            # after the last cooperative check; partial rows cannot certify cleanup.
+            if result['expired']:
+                result['status'] = 'incomplete'
+                result.setdefault('error', 'identity observation completed at/after its deadline')
         return result
 
     def run(self, label, argv, cap, observe=False, traced=False):
@@ -284,8 +318,10 @@ class Driver:
             try: entry.update(self.observe(process.pid, process.pid, known,
                                          min(end, self.deadline, time.monotonic()+0.35)))
             except Exception as error:
+                entry['status'] = 'incomplete'
                 entry['error'] = type(error).__name__ + ': ' + str(error)
-                inspection_errors.append(entry['error'])
+            if entry.get('status') != 'complete':
+                inspection_errors.append(entry.get('error', 'identity observation incomplete'))
             result['identity_observations'].append(entry)
             return entry
         def output_limit():
@@ -304,6 +340,9 @@ class Driver:
                         pre_sampled = False
                         if observe: sample('after_spawn', process, execution_end)
                         while process.poll() is None:
+                            if inspection_errors:
+                                result['timed_out'] = time.monotonic() >= execution_end
+                                break
                             now = time.monotonic()
                             if output_limit(): result['output_limit'] = True; break
                             with log.open('rb') as current:
@@ -316,19 +355,23 @@ class Driver:
                             if observe and next_sample is not None and now-began >= next_sample:
                                 sample('live_' + str(next_sample), process, execution_end)
                                 next_sample = next(schedule, None)
+                                if inspection_errors: continue
                             now = time.monotonic()
                             if observe and not pre_sampled and execution_end-0.4 <= now < execution_end:
                                 sample('before_termination', process, execution_end)
                                 pre_sampled = True
+                                if inspection_errors: continue
                             time.sleep(min(0.05, max(0, execution_end-time.monotonic())))
                     except Exception as error:
                         result['execution_wait_error'] = type(error).__name__ + ': ' + str(error)
                     finally:
-                        if observe and not pre_sampled:
+                        if observe and not pre_sampled and not inspection_errors:
                             if time.monotonic() < execution_end:
                                 sample('before_termination', process, execution_end)
                             else:
                                 result['pre_termination_observation_limit'] = 'execution deadline exhausted; no extra census before termination'
+                        elif observe and not pre_sampled:
+                            result['pre_termination_observation_limit'] = 'inspection incomplete; proceed to cleanup without an extra census'
                         result.update(cleanup.cleanup_process(process, process.pid, cleanup_end))
                         if observe:
                             final = sample('after_cleanup', process, min(self.deadline, time.monotonic()+0.35))
@@ -427,7 +470,167 @@ def native(inputs, out):
 def self_test(report):
     good = {'exit_code': 0, 'cleanup_complete': True, 'trace_bytes': 12}
     output = 'target.disable-aslr (boolean) = false\n' + launch.MARKER + '\nProcess 123 exited with status = 0 (0x00000000)\n'
+    observation_cases = []
+    rejected_mutants = []
+
+    def observation_case(case, driver_type=Driver, runner=False):
+        """Real observer/parser/hash/cleanup; only OS, file and clock boundaries are fake."""
+        with tempfile.TemporaryDirectory() as tmp:
+            driver = driver_type(Path(tmp)/'out'); tick = [100.0]
+            driver.started = 100; driver.deadline = 220
+            calls = []; signals = []; waits = []; hashes = []
+            class Process:
+                pid = 4321
+                returncode = None
+                def poll(self): return self.returncode
+                def wait(self, timeout):
+                    waits.append(timeout)
+                    if self.returncode is None:
+                        tick[0] += timeout
+                        raise subprocess.TimeoutExpired('inert child', timeout)
+                    return self.returncode
+            process = Process()
+            def spawn(*args, **kwargs):
+                if case == 'spawn_late': tick[0] += 1.1
+                return process
+            class Table(str):
+                def splitlines(self):
+                    tick[0] += 0.03 if case == 'parse_expiry' else 0.01
+                    return super().splitlines()
+            class File(io.BytesIO):
+                def read(self, size=-1):
+                    tick[0] += 0.4 if case == 'hash_expiry' else 0.01
+                    hashes.append(tick[0])
+                    return super().read(size)
+            real_open = Path.open
+            def open_file(path, *args, **kwargs):
+                if str(path) == '/inert/identity': return File(b'inert identity bytes')
+                return real_open(path, *args, **kwargs)
+            def census(argv, **kwargs):
+                calls.append({'argv': argv, 'timeout': kwargs['timeout'], 'started': tick[0]})
+                if argv[0] != '/bin/ps':
+                    return subprocess.CompletedProcess(argv, 0, '' if process.returncode is not None else '4321 4321 S inert\n', '')
+                if case == 'ps_timeout':
+                    tick[0] += kwargs['timeout']
+                    raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+                if case == 'ps_error': raise OSError('inert inspection failure')
+                tick[0] += {'ps_late': 0.37, 'hash_omitted': 0.31, 'parse_expiry': 0.34}.get(case, 0.02)
+                text = '' if case in ('ps_late', 'final_expiry', 'finish_before', 'finish_at', 'finish_after') or (runner and process.returncode is not None) else '4321 1 4321 0 Mon Oct 26 10:00:00 2026 /inert/identity\n'
+                if case == 'survivor': text += '4322 4321 4322 0 Mon Oct 26 10:00:01 2026 /inert/backend\n' if process.returncode is None else '4322 1 4322 0 Mon Oct 26 10:00:01 2026 /inert/backend\n'
+                if case == 'unknown_backend': text += '999 1 999 0 Mon Oct 26 10:00:02 2026 /inert/debugserver\n'
+                return subprocess.CompletedProcess(argv, 0, Table(text), '')
+            def send(pgid, sig):
+                signals.append((pgid, int(sig)))
+                if int(sig) == 9: process.returncode = -9
+            def monotonic():
+                value = round(tick[0], 9)
+                # Simulate scheduling between the last phase and final accounting.
+                tick[0] += {'final_expiry': 0.081, 'finish_before': 0.079,
+                            'finish_at': 0.08, 'finish_after': 0.081}.get(case, 0)
+                return value
+            with mock.patch.object(time, 'monotonic', side_effect=monotonic), \
+                 mock.patch.object(time, 'sleep', side_effect=lambda amount: tick.__setitem__(0, tick[0]+amount)), \
+                 mock.patch.object(subprocess, 'run', side_effect=census), \
+                 mock.patch.object(subprocess, 'Popen', side_effect=spawn), \
+                 mock.patch.object(os, 'killpg', side_effect=send), mock.patch.object(os, 'getpgrp', return_value=99), \
+                 mock.patch.object(Path, 'open', new=open_file), mock.patch.object(Path, 'is_file', return_value=True):
+                if runner:
+                    result, _ = driver.run('inert', ['never-executed'], 1, observe=True)
+                else:
+                    deadline = {'before': 100.351, 'at': 100.35, 'after': 100.349,
+                                'final_expiry': 100.35}.get(case, 100.35)
+                    if case in ('before', 'at', 'after'): tick[0] = 100.35
+                    result = driver.observe(4321, 4321, {}, deadline)
+            value = {'case': case, 'runner': runner, 'implementation': 'production' if driver_type is Driver else 'in_memory_mutant',
+                     'result': result, 'ps_calls': calls,
+                     'hash_reads': hashes, 'signals': signals, 'waits': waits, 'fake_finish': tick[0]}
+            observation_cases.append(value)
+            return value
+
+    def assert_expired(value):
+        result = value['result']
+        assert result.get('status') == 'incomplete', 'expired observation accepted as complete'
+        assert result.get('expired') is True, 'observation completion expiry not recorded'
+        assert result['finish_offset_seconds'] >= result['deadline_offset_seconds']
+        assert result['elapsed_seconds'] > 0
+        assert result.get('error'), 'incomplete observation lacks diagnostic'
+
     class Inert(unittest.TestCase):
+        def test_real_observer_accounts_for_nonzero_phases(self):
+            value = observation_case('normal'); result = value['result']
+            self.assertEqual(result.get('status'), 'complete', 'observation completion not accounted')
+            self.assertFalse(result['expired'])
+            self.assertGreater(result['elapsed_seconds'], 0.04)
+            self.assertLess(result['finish_offset_seconds'], result['deadline_offset_seconds'])
+            self.assertEqual(result['owned'][0]['file_sha256_at_observed_path'], sha(b'inert identity bytes'))
+            self.assertEqual(len(value['ps_calls']), 1)
+        def test_observer_omits_hash_with_insufficient_remaining_time(self):
+            value = observation_case('hash_omitted'); result = value['result']
+            self.assertEqual(result.get('status'), 'complete')
+            self.assertEqual(value['hash_reads'], [], 'optional hashing started without its minimum budget')
+            self.assertIn('file_hash_omitted', result['owned'][0])
+        def test_late_ps_empty_census_and_phase_expiry(self):
+            for case in ('ps_late', 'parse_expiry', 'hash_expiry', 'final_expiry'):
+                with self.subTest(case=case):
+                    value = observation_case(case); assert_expired(value)
+                    if case == 'ps_late': self.assertIsNone(value['result']['owned'])
+                    if case == 'hash_expiry': self.assertNotIn('file_sha256_at_observed_path', value['result']['owned'][0])
+        def test_exact_deadline_is_expired_and_no_optional_work_starts(self):
+            for case in ('at', 'after'):
+                value = observation_case(case)
+                self.assertEqual(value['ps_calls'], [])
+                self.assertEqual(value['result'].get('status'), 'incomplete')
+                self.assertTrue(value['result']['expired'])
+            # A positive, tiny request may finish late; it must then be rejected.
+            value = observation_case('before')
+            self.assertGreater(value['ps_calls'][0]['timeout'], 0)
+            assert_expired(value)
+            self.assertEqual(observation_case('finish_before')['result']['status'], 'complete')
+            for case in ('finish_at', 'finish_after'): assert_expired(observation_case(case))
+        def test_real_observer_errors_reach_real_bounded_cleanup(self):
+            for case in ('ps_late', 'ps_timeout', 'ps_error', 'spawn_late'):
+                with self.subTest(case=case):
+                    value = observation_case(case, runner=True); result = value['result']
+                    self.assertEqual(value['signals'], [(4321, 15), (4321, 9)])
+                    self.assertTrue(result['child_reaped']); self.assertEqual(result['exit_code'], -9)
+                    self.assertTrue(value['waits']); self.assertTrue(all(0 <= t <= 2 for t in value['waits']))
+                    self.assertFalse(result['cleanup_complete']); self.assertFalse(cleanup.process_ok(result))
+                    stages = [r['stage'] for r in result['identity_observations']]
+                    self.assertEqual(stages, ['after_spawn', 'after_cleanup'], 'inspection failure did not promptly enter cleanup')
+                    self.assertEqual(trace_outcome(result, launch.MARKER+'\n')['outcome'], 'timeout' if case == 'spawn_late' else 'cleanup_incomplete')
+                    if case == 'spawn_late':
+                        self.assertEqual(value['ps_calls'][0]['argv'][0], 'ps', 'late execution observation started a new census')
+                        self.assertIn('inspection incomplete', result['pre_termination_observation_limit'])
+        def test_pretermination_and_postcleanup_use_distinct_budgets(self):
+            value = observation_case('normal', runner=True); result = value['result']
+            before = next(r for r in result['identity_observations'] if r['stage'] == 'before_termination')
+            final = result['identity_observations'][-1]
+            self.assertEqual(before['status'], 'complete'); self.assertLess(before['finish_offset_seconds'], 1)
+            self.assertGreater(final['start_offset_seconds'], 1)
+            self.assertEqual(final['status'], 'complete')
+            self.assertLess(final['finish_offset_seconds'], final['deadline_offset_seconds'])
+            self.assertLessEqual(final['deadline_offset_seconds'], 120)
+            self.assertTrue(result['timed_out']); self.assertLessEqual(len(result['identity_observations']), 6)
+        def test_observation_never_expands_signal_authority(self):
+            for case in ('survivor', 'unknown_backend'):
+                value = observation_case(case, runner=True); result = value['result']
+                self.assertFalse(result['cleanup_complete']); self.assertFalse(cleanup.process_ok(result))
+                self.assertEqual({p for p, _ in value['signals']}, {4321})
+                final = result['identity_observations'][-1]
+                self.assertTrue(final['owned'] or final['unmatched_backend_candidates'])
+        def test_completion_and_empty_census_mutants_are_rejected(self):
+            for mutation in ('remove_completion_check', 'clean_empty_expiry'):
+                tree = ast.parse(Path(__file__).read_text())
+                driver_node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Driver')
+                observer = next(n for n in driver_node.body if isinstance(n, ast.FunctionDef) and n.name == 'observe')
+                checks = [n for n in ast.walk(observer) if isinstance(n, ast.If) and ast.unparse(n.test) == "result['expired']"]
+                self.assertEqual(len(checks), 1, 'completion mutation target missing')
+                checks[0].body = [ast.Pass()] if mutation == 'remove_completion_check' else ast.parse("result.update(status='complete', owned=[], unmatched_backend_candidates=[])\nresult.pop('error', None)").body
+                namespace = dict(globals())
+                exec(compile(ast.fix_missing_locations(ast.Module(body=[driver_node], type_ignores=[])), '<inert observer mutant>', 'exec'), namespace)
+                with self.assertRaisesRegex(AssertionError, 'expired observation accepted as complete'):
+                    assert_expired(observation_case('final_expiry', driver_type=namespace['Driver']))
+                rejected_mutants.append(mutation)
         def test_production_route_and_noop_rejection(self):
             workflow = (ROOT/'.github/workflows/rosetta-scope.yml').read_text()
             selector = runpy.run_path(str(ROOT/'scripts/test-workflow-routing.py'))['selection']
@@ -499,7 +702,7 @@ def self_test(report):
                 (root/'inert').write_bytes(b'changed')
                 with self.assertRaisesRegex(ValueError,'hash mismatch'): verified_bytes(root,'inert',expected)
         def test_actual_runner_deadline_observation_cap_and_cleanup(self):
-            for fault in ('timeout','output','observation','unknown_backend'):
+            for fault in ('timeout','output','denial','observation','unknown_backend'):
                 with tempfile.TemporaryDirectory() as tmp:
                     driver = Driver(Path(tmp)/'out'); tick = [100.0]
                     driver.started=100; driver.deadline=220
@@ -511,7 +714,7 @@ def self_test(report):
                         snapshots.append(tick[0])
                         observation_deadlines.append(args[-1])
                         if fault=='observation': raise RuntimeError('inert ps failure')
-                        return {'owned':[],'unmatched_backend_candidates':[{'pid':999,'association':'unknown'}] if fault=='unknown_backend' else []}
+                        return {'status':'complete','owned':[],'unmatched_backend_candidates':[{'pid':999,'association':'unknown'}] if fault=='unknown_backend' else []}
                     def clean(process,pgid,deadline):
                         cleanup_calls.append((pgid,deadline))
                         return {'exit_code':-15,'signal':15,'child_reaped':True,'cleanup_complete':True}
@@ -519,6 +722,8 @@ def self_test(report):
                         tick[0]+=amount
                         if fault=='output':
                             with (driver.out/'lldb-x86_64.trace').open('wb') as f: f.truncate(TRACE_CAP)
+                        if fault=='denial':
+                            with (driver.out/'lldb-x86_64.log').open('ab') as f: f.write(b'error: process launch failed: Operation not permitted\n')
                     driver.observe=observe
                     with mock.patch.object(time,'monotonic',side_effect=lambda:tick[0]), mock.patch.object(time,'sleep',side_effect=sleep), \
                          mock.patch.object(subprocess,'Popen',return_value=Process()), mock.patch.object(cleanup,'cleanup_process',side_effect=clean):
@@ -533,6 +738,7 @@ def self_test(report):
                     if fault=='timeout':
                         self.assertTrue(result['timed_out']);self.assertTrue(any(t>=118 for t in snapshots))
                     elif fault=='output': self.assertTrue(result['output_limit'])
+                    elif fault=='denial': self.assertTrue(result['explicit_denial_observed']); self.assertFalse(result['timed_out'])
                     elif fault=='observation': self.assertFalse(result['cleanup_complete']);self.assertIn('inert ps failure',result['cleanup_error'])
                     else: self.assertFalse(result['cleanup_complete']);self.assertIn('unknown backend',result['cleanup_error'])
         def test_shared_deadline_reserves_cleanup_and_withholds_spawn(self):
@@ -555,7 +761,8 @@ def self_test(report):
         report.parent.mkdir(parents=True,exist_ok=True)
         report.write_text(json.dumps({'kind':'inert retained-input/trace/routing/deadline/identity controls',
             'tests_run':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),
-            'native_controls_executed':0,'real_processes_spawned':0},indent=2)+'\n')
+            'native_controls_executed':0,'real_processes_spawned':0,
+            'observation_cases':observation_cases,'rejected_completion_mutants':rejected_mutants},indent=2)+'\n')
     return result.wasSuccessful()
 
 

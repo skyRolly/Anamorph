@@ -6666,7 +6666,8 @@ launch output is separate. No output is silently truncated into a pass.
 
 At most six bounded identity snapshots per debugger cover spawn, elapsed
 2/8/18 seconds while live, immediately before termination and after cleanup.
-Time spent observing never extends the target cap. PID/PPID/PGID/session/start
+Observations request only the remaining assigned budget; late returns are
+detected and enter cleanup without another execution-phase census. PID/PPID/PGID/session/start
 and ps-observed executable paths are retained, with current on-disk hashes where
 available; these are not kernel/memory-image digests. Verified ancestry/current
 identity may associate a backend. A name-only unmatched candidate stays unknown
@@ -6691,3 +6692,29 @@ whose deadline exceeds the target execution deadline. It fails on traced consume
 and the per-snapshot 0.35-second clamp. Final cleanup observation stays within the
 single driver deadline. A consumed native allowance is not renewed by this repair;
 the corrected sampling path remains without another native run.
+
+### Observation completion accounting (2026-10-27)
+
+The unchanged handshake `--self-test --report <report.json>` command now also
+exercises production `Driver.run`/`Driver.observe`, real row parsing/hash logic
+and the existing cleanup primitive. Only clocks, OS/process handles and controlled
+file operations are mocked; no process, ps, signal, sleep or target executes.
+Nonzero phase time, insufficient optional hash budget, late successful empty ps,
+parse/hash/final-completion expiry, exact deadline boundaries, inspection timeout/
+error, pre-termination omission and separate post-cleanup budget are covered.
+TERM/KILL and bounded reaping are asserted through the real cleanup path despite
+observer errors. Known separate-group survivors and unmatched backends remain
+incomplete without any new signal authority. Existing output/denial/mode controls
+remain in the same invocation. Removing the completion check or replacing expiry
+with a clean empty census in memory must fail the same assertions; these mutation
+controls run in source-lint with the regression, not in a different job.
+
+Each sample records assigned deadline, actual start/finish, elapsed seconds,
+completion status and expiry on the driver's monotonic time base. A time at or
+after the deadline is expired. Optional hashing requires at least 50 ms remaining
+to start; post-cleanup sampling uses remaining driver time, not the target's
+expired execution budget. Python scheduling/process creation/filesystem latency
+can return late: bounded requested work and detected late results are the contract,
+not absolute realtime completion. New native timing remains unverified. Historical
+919c7bd3 packets/backend evidence and the earlier late-start regression retain
+their original provenance; no new Rosetta/LLDB campaign follows from this fix.

@@ -2304,7 +2304,8 @@ launch output is separate. No output is silently truncated into a pass.
 
 At most six bounded identity snapshots per debugger cover spawn, elapsed
 2/8/18 seconds while live, immediately before termination and after cleanup.
-Time spent observing never extends the target cap. PID/PPID/PGID/session/start
+Observations request only the remaining assigned budget; late returns are
+detected and enter cleanup without another execution-phase census. PID/PPID/PGID/session/start
 and ps-observed executable paths are retained, with current on-disk hashes where
 available; these are not kernel/memory-image digests. Verified ancestry/current
 identity may associate a backend. A name-only unmatched candidate stays unknown
@@ -2324,8 +2325,25 @@ gate, query target, sanitizer strictness, installer/archive contract or budget
 changes. Existing Linux process tests remain distinct from native macOS evidence.
 
 The traced 919c7bd3 session exposed a sampler boundary error: its final extra
-census started just after the target execution deadline. The sampler now schedules
-that observation before the deadline, clamps the entire snapshot to 0.35 seconds
-and remaining execution time, and omits it when no time remains. Cleanup signals
-do not wait for an extra late snapshot. The correction has an inert production-
-runner regression; it is not a new native execution or a repair of the attach stall.
+census started just after the target execution deadline. The sampler schedules
+that observation before the deadline and omits it when no time remains. The
+2026-10-27 correction additionally records assigned deadline, actual start/finish,
+elapsed time and complete/incomplete/expired status in driver-relative monotonic
+seconds. At the deadline is expired. Successful empty ps output, parsing or a
+file read that returns late cannot certify complete observation or cleanup.
+Phase checks bound requested ps/hash work to the 0.35-second sample and remaining
+execution/global budget; optional hashing needs at least 50 ms to start and the
+existing final driver reserve. Omitted hashes invent no image identity. Post-
+cleanup observation uses remaining driver time, independently of the earlier
+target execution deadline. Inspection errors/expiry immediately transition to
+the unchanged bounded group termination/reaping; they remain visible even if
+the client is reaped. No outside-group signal authority is added.
+
+Python process creation, scheduling and filesystem work can return late. This is
+cooperative budget enforcement with completion accounting, not a hard realtime
+guarantee. See https://docs.python.org/3/library/subprocess.html#subprocess.run
+and https://docs.python.org/3/library/time.html#time.sleep . Inert controls now
+exercise the actual observer, parser, hashing and cleanup with controlled OS/file/
+clock boundaries, including late empty results and completion/empty-census mutants.
+The existing same-job source-lint command runs these controls. No native session
+validates the corrected timing or repairs the measured translated attach stall.
