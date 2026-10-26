@@ -1,12 +1,7 @@
 name: Bounded Rosetta scope characterization
 
+# Explicit diagnostic authorization only; publication never replays the campaign.
 on:
-  push:
-    branches: [codex/rosetta-scope-characterization]
-    paths:
-      - .github/workflows/rosetta-scope.yml
-      - scripts/diagnose-rosetta-scope.py
-      - tests/scope_ring_diagnostic.cpp
   workflow_dispatch:
 
 permissions:
@@ -14,6 +9,10 @@ permissions:
 
 jobs:
   characterize:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'skyRolly/Anamorph' &&
+      github.ref == 'refs/heads/codex/rosetta-scope-characterization'
     runs-on: macos-latest
     timeout-minutes: 35
     env:
@@ -38,8 +37,10 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DANAMORPH_BUILD_NUMBER=1878
           cmake --build original-source/build --target AnamorphTests --verbose > reconstruction-build.log 2>&1
-      - name: At most three ordinary invocations and one focused debugger session
-        run: python3 scripts/diagnose-rosetta-scope.py --source original-source --report-dir rosetta-evidence --ordinary-runs 3
+      - name: Inert orchestration and outcome rejection controls
+        run: python3 scripts/diagnose-rosetta-scope.py --self-test
+      - name: AVX2 prerequisite, one direct focused invocation and one debugger session
+        run: python3 scripts/diagnose-rosetta-scope.py --source original-source --report-dir rosetta-evidence --ordinary-runs 0
       - name: Retain bounded diagnostic evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

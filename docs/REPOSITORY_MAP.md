@@ -230,9 +230,11 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 
 ### Bounded Rosetta diagnostic inputs
 
-- `.github/workflows/rosetta-scope.yml`: separate nonshipping native characterization;
-  normal Build/Release routing and shipping gates are unchanged.
+- `.github/workflows/rosetta-scope.yml`: dispatch-only nonshipping native characterization;
+  zero ordinary replays, normal Build/Release routing and shipping gates unchanged.
 - `scripts/diagnose-rosetta-scope.py`: fixed original-source checkout contract,
-  native input inventory, three-run/ten-minute bound and focused debugger record.
+  native input inventory, executable AVX2 prerequisite, one direct focused run,
+  one debugger session and a shared ten-minute deadline. Its inert `--self-test`
+  runs in source-lint and rejects malformed results and disabled verification.
 - `tests/scope_ring_diagnostic.cpp`: separately instrumented single-threaded
   newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.

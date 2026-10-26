@@ -2097,21 +2097,33 @@ their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 ## Bounded Rosetta characterization (2026-10-26)
 
-`rosetta-scope.yml` is a separate nonshipping diagnostic workflow. Its scoped
-push trigger permits first execution on the diagnostic branch; manual invocation
-is also defined. It has read-only contents permission and never calls Release,
-an installer, a signing step or a customer upload. It checks out original failing
-source `14bde706e2d121c9970cf00c757cb12d3178b9a5` separately and reconstructs the
-universal Release DSP target with deployment target 10.13 and build number 1878.
-The executable is new controlled-reconstruction input, not the original binary.
+`rosetta-scope.yml` is a dispatch-only nonshipping diagnostic workflow, guarded
+by repository, event and the exact diagnostic branch. Publication does not run it.
+There are no dispatch inputs for ordinary replay; the driver accepts only zero
+ordinary invocations. Normal Build/Release routing and shipping gates are intact.
+The workflow retains read-only contents permission, the 35-minute job limit and
+original failing source `14bde706e2d121c9970cf00c757cb12d3178b9a5` in a separate
+checkout, universal Release, deployment target 10.13 and build number 1878.
+The ordinary executable is hashed and symbol-inventoried but never executed by
+this route. Reconstructed bytes are not recovery of the original executable.
 
-The fixed characterization is at most three ordinary x86_64/Rosetta DSP runs,
-then one separately instrumented Test 61 debugger session within the same
-ten-minute post-setup bound. Every ordinary status/log, compiler/SDK, JUCE pin,
-compile command, executable SHA-256, architecture and UUID is retained. LLDB
-keeps ASLR enabled; unavailable native debugging is a visible limitation. Normal
-Build/Release jobs and all customer gates remain unchanged. A later pass is
-nonreproduction, not a repair or a retrospective pass of main Build 40221042187.
+After normal setup, a single 600-second deadline includes basic Rosetta/AVX2
+probes, focused configuration/build, one direct x86_64 invocation (at most 60
+seconds), one requested LLDB session (at most 120 seconds) and diagnostics.
+Every command clamps to the remaining deadline and reserves process termination
+time. The executable AVX2 prerequisite uses the normal Build C source and
+`cc -arch x86_64 -march=haswell -O0` with `ROSETTA_ADVERTISE_AVX=1`. Compilation
+failure is a build prerequisite failure; execution failure is an unmet execution
+prerequisite. Neither is a product DSP verdict, and neither permits later runs.
+
+Direct completion/assertions and debugger results are recorded separately.
+A direct pass cannot erase an LLDB timeout; exit zero without a valid completion
+or with mismatch evidence fails. LLDB keeps ASLR enabled. No security policy is
+changed to force a launch. Partial JSON/raw logs include exact commands,
+timeouts/signals, surviving task-owned processes, compiler/SDK, flags, fixture
+and binary hashes, UUIDs and symbols. Same-run inert controls run in source-lint
+and before native orchestration. The original three ordinary passes and timeout
+at run 40233979177 remain historical; a new pass cannot explain main 40221042187.
 
 
 ## Modern Linux capability measurement (2026-10-26)

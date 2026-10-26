@@ -499,6 +499,9 @@ jobs:
       - name: Build and Release routing regression
         run: python3 scripts/test-workflow-routing.py --report workflow-routing.json
 
+      - name: Rosetta diagnostic inert orchestration controls
+        run: python3 scripts/diagnose-rosetta-scope.py --self-test
+
       - name: macOS integration review fixture checks
         run: python3 scripts/test-macos-integration-review.py --self-test
 

@@ -373,3 +373,18 @@ needed for this measured environment. Source-lint's namespace denial and the
 separate initial Python ordering error remain recorded above. Native/archive
 and other normal checks still retain their own exact-head outcomes; this TSan
 result cannot substitute for them or diagnose the Rosetta failure.
+
+
+## Rosetta prerequisite and direct-execution correction (2026-10-26)
+
+Actual owner merge #178 is 6758ae3d2488946d6438001f6ba6ef8f9f1b35a7.
+The additive main-to-diagnostic reconciliation preserves both modern Linux
+coverage records and the separate historical Rosetta preparation. The diagnostic
+route is now dispatch-only, with zero ordinary replays. Executable AVX2
+prerequisites precede focused execution; a direct run and LLDB have independent
+strict completion/outcome records and one shared deadline. Inert regression
+controls are integrated in source-lint and inventoried in REPOSITORY_MAP.md.
+CI_CD.md and TESTING.md document the commands, bounds and limitations.
+No product/helper/asset/pin/FP/architecture contract changes. Existing Accepted
+ADR provenance remains intact. Original failure and prior debugger timeout are
+retained; new native results belong only to their actual consumer/source/run.

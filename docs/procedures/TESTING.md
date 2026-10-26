@@ -6472,21 +6472,35 @@ their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 ## Separate Rosetta scope diagnostic (2026-10-26)
 
-`scripts/diagnose-rosetta-scope.py` is a bounded native diagnostic, not a release
-gate or a replacement for `scripts/run-tests.sh`. It requires a real disposable
-hosted Apple Silicon Mac and retained failing source. It records up to three
-ordinary DSP executions, then builds `tests/scope_ring_diagnostic.cpp` only in
-the private reconstruction checkout. That single-threaded Test 61 variant takes
-each operand once and records exact bits, individual equality booleans, indices,
-addresses and FP control state at the first mismatch. LLDB records the relevant
-frames/registers/instructions if the mismatch breakpoint is reached. No epsilon
-comparison, assertion suppression, host security change or product fix is made.
+`scripts/diagnose-rosetta-scope.py --self-test` exercises the production
+selection/parser with inert command records in private directories. It compiles
+or executes no fixture and uses no installer, network or synthetic native-host
+guard. Controls reject a failed AVX2 execution after basic Rosetta success,
+probe compile failure, direct timeout, missing/invalid/duplicate completion,
+false assertions and mismatch evidence despite exit zero. Valid completion is
+a positive control; no-op and old marker-only verifiers fail the negative
+controls. Direct completion plus LLDB timeout remains an incomplete result.
+These controls run in the normal source gate and are not native evidence.
 
-Original failure: main 14bde706, Build 40221042187/job 121252472086, Rosetta DSP
-Test 61, 940 checks/one failure. Subsequent Rosetta StateTests did not execute.
-Three passes of newly built bytes would remain bounded nonreproduction. Exact
-original test executable recovery and causal diagnosis are not implied by UUIDs
-or by the separately retained product/AU symbols.
+The dispatch-only native route requires a genuine disposable hosted Apple
+Silicon Mac and exact retained failing source. The ordinary-run count is zero;
+the previous three invocations are consumed. The normal Build AVX2 program,
+compiler selection, Haswell flags and AVX advertisement must succeed before
+any focused executable. One direct focused run precedes a separately recorded
+LLDB session, within 60/120-second per-stage caps and one shared 600-second
+post-setup deadline including build and diagnostics. Missing prerequisites stop
+later execution. Partial reports retain failures, signals, launch errors,
+cleanup errors and observed surviving processes; no SIGKILL checkpoint is promised.
+
+The unchanged single-threaded Test 61 variant captures each operand once and
+records exact bits, comparison booleans, indices, addresses and FP state at its
+first mismatch. Exact assertions, FP policy, ScopeBuffer, original tests and
+shipping CMake targets remain unchanged. The requested debugger asks whether
+translated launch now completes compared with direct execution, or captures a
+mismatch trace; a timeout is not optional success or an established permission
+denial. Original main 14bde706 run 40221042187/job 121252472086 remains 940
+checks/one failure, before Rosetta StateTests. Bounded nonreproduction is not a
+causal repair, original executable recovery or proof of complete symbols.
 
 
 ## Modern Linux capability measurement (2026-10-26)
