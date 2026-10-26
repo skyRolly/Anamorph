@@ -17738,3 +17738,14 @@ the conditional finding's accurate scope. The existing source-lint command inclu
 all new controls; workflow scheduling and shipping/runtime inputs are unchanged.
 The worklog keeps earlier native/start-deadline records as history. No new native
 session, broadened signal authority, product repair or ADR decision is introduced.
+
+### Optional image-hash review correction (2026-10-27)
+
+Review of 99d9eb32 found optional file I/O could abort valid census/control flow.
+Only the observer's digest call now catches OSError and records a row error;
+post-hash budget checks and mandatory digest behavior are preserved. TESTING and
+CI_CD document in-budget warnings versus genuine inspection/expiry failure.
+REPOSITORY_MAP records the production controller fixtures and same-run handler-
+removal mutant; KNOWN_ISSUES and the worklog reconcile the confirmed regression
+with the earlier closure record. No new script or workflow route is introduced.
+Existing completion controls, signal scope and native limitations are retained.

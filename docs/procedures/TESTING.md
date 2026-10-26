@@ -6718,3 +6718,18 @@ can return late: bounded requested work and detected late results are the contra
 not absolute realtime completion. New native timing remains unverified. Historical
 919c7bd3 packets/backend evidence and the earlier late-start regression retain
 their original provenance; no new Rosetta/LLDB campaign follows from this fix.
+
+### Optional observer hash I/O boundary (2026-10-27)
+
+The same handshake self-test exercises real observer/digest/runner/controller
+code with controlled open/read PermissionError, disappearing files and OSError.
+It requires a row warning with identity retained and no invented hash, a later
+readable row's hash, natural completion or the allotted timeout without early
+cleanup, and eligibility of later otherwise-valid controls. Read errors at/after
+expiry still fail through the budget check outside the OSError handler. Genuine
+ps/observation TimeoutError and digest deadline RuntimeError remain incomplete;
+mandatory hashes still raise. Separate/unknown services remain visible and make
+final service cleanup incomplete even with unavailable hashes. Only test-owned
+file/OS/process/clock boundaries are mocked; no target, ps or signal executes.
+An in-memory removal of the optional OSError handler must fail the same assertion
+in this source-lint invocation. Prior completion mutants and timing controls remain.

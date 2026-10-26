@@ -252,7 +252,9 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   parser/hash completion accounting, late-result cleanup and same-run completion/
   empty-census mutation rejection use inert OS/file/clock fixtures. Budgets are
   cooperative; native timing and outside-group service cleanup stay unverified.
-  No target rebuild.
+  Optional image-hash I/O warnings retain census rows and valid control flow;
+  same-run exception-handler mutation and real observer/controller fixtures
+  keep deadline and mandatory-integrity failures distinct. No target rebuild.
 - `tests/rosetta_cleanup_process_tests.py`: three harmless ordinary-user Linux
   process cases, with a shared 20-second limit, known PID/PGID reporting and
   independent finally cleanup. Tests census failures and a same-group child

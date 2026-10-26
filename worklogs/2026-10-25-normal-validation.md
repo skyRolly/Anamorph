@@ -514,3 +514,17 @@ native timing, attach success, service cleanup or original DSP cause is claimed.
 CI_CD/TESTING, REPOSITORY_MAP, KNOWN_ISSUES and coverage are updated narrowly.
 Workflow scheduling, driver/target/trace budgets, signal scope, helper bytes/pins,
 product contracts and Accepted ADR provenance are unchanged.
+
+### Optional image hashing correction (2026-10-27)
+
+The earlier deadline closure at 99d9eb32 did not cover optional hash I/O failures.
+Review's inert PermissionError case ended a valid control before its deadline.
+The observer now records file_hash_error per row and continues, with after-hash
+budget checks outside the OSError handler. Mandatory digest calls and genuine
+inspection/deadline errors retain their failure behavior. Production-function
+fixtures cover opening, reading, disappearing images, readable following rows,
+natural completion/timeouts, later controls, late I/O and retained service refusal.
+The same source-gate invocation rejects removal of the new handler and retains
+the earlier completion mutants. No native experiment, product fix, broader signal
+authority, budget/route change or renewed ADR acceptance is claimed. Current
+external evidence/PR records identify the additive source and actual normal CI.

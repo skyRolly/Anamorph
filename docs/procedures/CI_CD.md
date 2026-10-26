@@ -2347,3 +2347,13 @@ exercise the actual observer, parser, hashing and cleanup with controlled OS/fil
 clock boundaries, including late empty results and completion/empty-census mutants.
 The existing same-job source-lint command runs these controls. No native session
 validates the corrected timing or repairs the measured translated attach stall.
+
+Optional image hashing has a narrower failure boundary than census inspection.
+An in-budget executable open/read `OSError` records `file_hash_error` on that
+row, preserves its identity and permits later rows/controls. No digest is
+invented. Budget checks run after failed and successful hashing outside the
+file-error handler, so observation expiry/ps/parser errors and the digest's
+deadline `RuntimeError` remain incomplete and enter existing cleanup. Mandatory
+hashing and `Driver.digest` are unchanged. Inert production observer/runner/
+controller cases and an exception-handler-removal mutant guard this distinction;
+an unreadable service image still cannot erase a separate/unknown survivor.

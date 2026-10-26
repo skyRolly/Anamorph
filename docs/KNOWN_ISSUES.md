@@ -1341,3 +1341,13 @@ utility is limited to disposable hosts with runner/host service cleanup; honest
 nonzero diagnostics and unknown original DSP causality are separate review facts.
 Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its inert
 `--self-test` completion/expiry mutation controls.
+
+A subsequent 2026-10-27 review confirmed that 99d9eb32 treated optional image-hash
+OSError as a census failure, ending an otherwise-valid in-budget control early.
+The narrow observer-only correction records a row warning and retains identity,
+later rows and valid execution. Budget checks remain outside the file-error handler;
+expiry and mandatory hashes still fail. Inert regressions reject removal of this
+handler and retain service-survivor refusal. This closes that first-party regression
+without a new native session or any claim about the original attach/DSP cause.
+Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its production
+observer/runner/controller optional-hash self-tests.

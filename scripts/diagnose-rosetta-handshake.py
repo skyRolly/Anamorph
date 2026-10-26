@@ -285,9 +285,13 @@ class Driver:
                 if not regular or min(left, hash_end-time.monotonic()) < 0.05:
                     row['file_hash_omitted'] = 'nonregular path or insufficient cooperative hash budget'
                     continue
-                digest = self.digest(path, hash_end)
+                try:
+                    digest = self.digest(path, hash_end)
+                except OSError as error:
+                    row['file_hash_error'] = type(error).__name__ + ': ' + str(error)
+                    digest = None
                 remaining('after_hash')  # Do not publish a hash returned after expiry.
-                row['file_sha256_at_observed_path'] = digest
+                if digest is not None: row['file_sha256_at_observed_path'] = digest
             result['status'] = 'complete'
         except Exception as error:
             result['error'] = type(error).__name__ + ': ' + str(error)
@@ -472,39 +476,61 @@ def self_test(report):
     output = 'target.disable-aslr (boolean) = false\n' + launch.MARKER + '\nProcess 123 exited with status = 0 (0x00000000)\n'
     observation_cases = []
     rejected_mutants = []
+    rejected_hash_mutants = []
 
-    def observation_case(case, driver_type=Driver, runner=False):
+    def observation_case(case, driver_type=Driver, runner=False, file_fault=None, natural=False, control_flow=False):
         """Real observer/parser/hash/cleanup; only OS, file and clock boundaries are fake."""
         with tempfile.TemporaryDirectory() as tmp:
             driver = driver_type(Path(tmp)/'out'); tick = [100.0]
             driver.started = 100; driver.deadline = 220
-            calls = []; signals = []; waits = []; hashes = []
+            calls = []; signals = []; waits = []; hashes = []; opens = []; signal_times = []
+            spawned = [100.0]
             class Process:
                 pid = 4321
                 returncode = None
-                def poll(self): return self.returncode
+                def poll(self):
+                    if natural and self.returncode is None and tick[0]-spawned[0] >= 0.8: self.returncode = 0
+                    return self.returncode
                 def wait(self, timeout):
                     waits.append(timeout)
-                    if self.returncode is None:
+                    if self.poll() is None:
                         tick[0] += timeout
-                        raise subprocess.TimeoutExpired('inert child', timeout)
+                        if self.poll() is None: raise subprocess.TimeoutExpired('inert child', timeout)
                     return self.returncode
             process = Process()
             def spawn(*args, **kwargs):
                 if case == 'spawn_late': tick[0] += 1.1
+                spawned[0] = tick[0]; process.returncode = None
+                if natural:
+                    kwargs['stdout'].write(output.encode()); kwargs['stdout'].flush()
+                    if kwargs.get('preexec_fn') is not None:
+                        Path(kwargs['stdout'].name).with_suffix('.trace').write_bytes(b'inert trace bytes')
                 return process
             class Table(str):
                 def splitlines(self):
                     tick[0] += 0.03 if case == 'parse_expiry' else 0.01
                     return super().splitlines()
             class File(io.BytesIO):
+                def __init__(self, path):
+                    super().__init__(b'inert identity bytes' if str(path)=='/inert/identity' else b'inert other bytes')
+                    self.fault = str(path) == fault_path
                 def read(self, size=-1):
                     tick[0] += 0.4 if case == 'hash_expiry' else 0.01
                     hashes.append(tick[0])
+                    if self.fault and file_fault in ('read_error', 'read_at', 'read_late'):
+                        if file_fault != 'read_error': tick[0] = max(tick[0], 100.35 if file_fault=='read_at' else 100.37)
+                        raise OSError('inert optional hash read failure')
                     return super().read(size)
             real_open = Path.open
+            fault_path = {'survivor':'/inert/backend', 'unknown_backend':'/inert/debugserver'}.get(case, '/inert/identity')
             def open_file(path, *args, **kwargs):
-                if str(path) == '/inert/identity': return File(b'inert identity bytes')
+                if str(path).startswith('/inert/'):
+                    opens.append(str(path))
+                    if str(path) == fault_path:
+                        if file_fault == 'permission': raise PermissionError('inert optional hash permission failure')
+                        if file_fault == 'missing': raise FileNotFoundError('inert optional hash disappeared after metadata')
+                        if file_fault == 'open_timeout': raise TimeoutError('inert file open timeout with observation budget remaining')
+                    return File(path)
                 return real_open(path, *args, **kwargs)
             def census(argv, **kwargs):
                 calls.append({'argv': argv, 'timeout': kwargs['timeout'], 'started': tick[0]})
@@ -514,13 +540,16 @@ def self_test(report):
                     tick[0] += kwargs['timeout']
                     raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
                 if case == 'ps_error': raise OSError('inert inspection failure')
+                if case == 'ps_deadline': raise TimeoutError('inert ps observation timeout')
                 tick[0] += {'ps_late': 0.37, 'hash_omitted': 0.31, 'parse_expiry': 0.34}.get(case, 0.02)
-                text = '' if case in ('ps_late', 'final_expiry', 'finish_before', 'finish_at', 'finish_after') or (runner and process.returncode is not None) else '4321 1 4321 0 Mon Oct 26 10:00:00 2026 /inert/identity\n'
+                text = '' if case in ('ps_late', 'final_expiry', 'finish_before', 'finish_at', 'finish_after') or ((runner or control_flow) and process.returncode is not None) else '4321 1 4321 0 Mon Oct 26 10:00:00 2026 /inert/identity\n'
                 if case == 'survivor': text += '4322 4321 4322 0 Mon Oct 26 10:00:01 2026 /inert/backend\n' if process.returncode is None else '4322 1 4322 0 Mon Oct 26 10:00:01 2026 /inert/backend\n'
                 if case == 'unknown_backend': text += '999 1 999 0 Mon Oct 26 10:00:02 2026 /inert/debugserver\n'
+                if case == 'two_rows' and process.returncode is None: text += '4322 4321 4321 0 Mon Oct 26 10:00:01 2026 /inert/readable\n'
                 return subprocess.CompletedProcess(argv, 0, Table(text), '')
             def send(pgid, sig):
                 signals.append((pgid, int(sig)))
+                signal_times.append(time.monotonic())
                 if int(sig) == 9: process.returncode = -9
             def monotonic():
                 value = round(tick[0], 9)
@@ -534,7 +563,11 @@ def self_test(report):
                  mock.patch.object(subprocess, 'Popen', side_effect=spawn), \
                  mock.patch.object(os, 'killpg', side_effect=send), mock.patch.object(os, 'getpgrp', return_value=99), \
                  mock.patch.object(Path, 'open', new=open_file), mock.patch.object(Path, 'is_file', return_value=True):
-                if runner:
+                if control_flow:
+                    done = traced_controls(driver.run, 'inert-lldb', Path('/inert'),
+                        dict(arm64=Path('/inert/arm.commands'), x86_64=Path('/inert/x86.commands')), driver.record, driver.save)
+                    result = {'done':done, 'controls':driver.record['controls']}
+                elif runner:
                     result, _ = driver.run('inert', ['never-executed'], 1, observe=True)
                 else:
                     deadline = {'before': 100.351, 'at': 100.35, 'after': 100.349,
@@ -543,7 +576,9 @@ def self_test(report):
                     result = driver.observe(4321, 4321, {}, deadline)
             value = {'case': case, 'runner': runner, 'implementation': 'production' if driver_type is Driver else 'in_memory_mutant',
                      'result': result, 'ps_calls': calls,
-                     'hash_reads': hashes, 'signals': signals, 'waits': waits, 'fake_finish': tick[0]}
+                     'hash_reads': hashes, 'signals': signals, 'waits': waits, 'fake_finish': tick[0],
+                     'file_fault':file_fault, 'natural':natural, 'control_flow':control_flow,
+                     'hash_opens':opens, 'signal_times':signal_times}
             observation_cases.append(value)
             return value
 
@@ -555,7 +590,80 @@ def self_test(report):
         assert result['elapsed_seconds'] > 0
         assert result.get('error'), 'incomplete observation lacks diagnostic'
 
+    def assert_optional_hash_warning(value):
+        result = value['result']
+        assert result.get('status') == 'complete', 'optional hash I/O failure aborted a valid census'
+        assert result['expired'] is False
+        row = result['owned'][0]
+        assert row['pid'] == 4321 and 'file_hash_error' in row
+        assert 'file_sha256_at_observed_path' not in row, 'failed hash invented a digest'
+        assert 'error' not in result, 'row warning became an observation error'
+
     class Inert(unittest.TestCase):
+        def test_optional_hash_io_failures_preserve_rows_and_following_hash(self):
+            for fault in ('permission', 'missing', 'read_error', 'open_timeout'):
+                with self.subTest(fault=fault):
+                    value = observation_case('two_rows', file_fault=fault)
+                    assert_optional_hash_warning(value)
+                    self.assertEqual([r['pid'] for r in value['result']['owned']], [4321,4322])
+                    other = value['result']['owned'][1]
+                    self.assertEqual(other['file_sha256_at_observed_path'], sha(b'inert other bytes'))
+                    self.assertNotIn('file_hash_error', other)
+        def test_optional_hash_warnings_do_not_end_valid_control_early(self):
+            for natural in (True, False):
+                value = observation_case('normal', runner=True, natural=natural, file_fault='permission')
+                result = value['result']
+                self.assertGreaterEqual(value['signal_times'][0], 100.8 if natural else 101.0, 'optional hash warning ended the control early')
+                self.assertEqual(result['identity_observations'][0]['status'], 'complete')
+                self.assertTrue(result['cleanup_complete']); self.assertEqual(result['timed_out'], not natural)
+                self.assertEqual(trace_outcome(result, output)['outcome'], 'complete' if natural else 'timeout')
+        def test_optional_hash_warnings_allow_production_later_controls(self):
+            value = observation_case('normal', natural=True, control_flow=True, file_fault='read_error')
+            self.assertTrue(value['result']['done'], 'optional hashing withheld later valid controls')
+            self.assertEqual([r['outcome'] for r in value['result']['controls'].values()], ['complete']*3)
+        def test_optional_hash_errors_cannot_hide_expiry(self):
+            for fault in ('read_at', 'read_late'):
+                value = observation_case('two_rows', file_fault=fault)
+                assert_expired(value)
+                self.assertIn('file_hash_error', value['result']['owned'][0])
+                self.assertIn('TimeoutError', value['result']['error'])
+                self.assertNotIn('/inert/readable', value['hash_opens'], 'optional work continued after expiry')
+            value = observation_case('normal', runner=True, file_fault='read_late')
+            self.assertFalse(value['result']['cleanup_complete'])
+            self.assertEqual(value['signals'], [(4321,15),(4321,9)])
+            self.assertTrue(value['result']['child_reaped'])
+        def test_optional_hash_warning_does_not_erase_service_identity(self):
+            for case in ('survivor', 'unknown_backend'):
+                value = observation_case(case, runner=True, file_fault='permission'); result = value['result']
+                self.assertGreaterEqual(value['signal_times'][0], 101.0, 'service hash warning aborted live wait')
+                self.assertFalse(result['cleanup_complete']); self.assertTrue(result['timed_out'])
+                self.assertEqual({p for p, _ in value['signals']}, {4321})
+                final = result['identity_observations'][-1]
+                self.assertEqual(final['status'], 'complete')
+                backend = (final['owned'] or final['unmatched_backend_candidates'])[0]
+                self.assertIn('file_hash_error', backend); self.assertNotIn('file_sha256_at_observed_path', backend)
+        def test_mandatory_digest_io_failure_still_raises(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                driver = Driver(Path(tmp)/'out')
+                with mock.patch.object(Path, 'open', side_effect=PermissionError('inert mandatory digest denied')):
+                    with self.assertRaisesRegex(PermissionError, 'mandatory digest denied'):
+                        driver.digest('/inert/mandatory')
+        def test_optional_hash_error_handler_mutant_is_rejected(self):
+            tree = ast.parse(Path(__file__).read_text())
+            driver_node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name=='Driver')
+            observer = next(n for n in driver_node.body if isinstance(n, ast.FunctionDef) and n.name=='observe')
+            targets = [n for n in ast.walk(observer) if isinstance(n, ast.Try)
+                       and any(isinstance(h.type, ast.Name) and h.type.id=='OSError' for h in n.handlers)]
+            self.assertEqual(len(targets), 1, 'optional hash mutation target missing')
+            class RemoveHandler(ast.NodeTransformer):
+                def visit_Try(self, node):
+                    return node.body if node is targets[0] else self.generic_visit(node)
+            driver_node = RemoveHandler().visit(driver_node)
+            namespace = dict(globals())
+            exec(compile(ast.fix_missing_locations(ast.Module(body=[driver_node], type_ignores=[])), '<inert optional hash mutant>', 'exec'), namespace)
+            with self.assertRaisesRegex(AssertionError, 'optional hash I/O failure aborted a valid census'):
+                assert_optional_hash_warning(observation_case('two_rows', driver_type=namespace['Driver'], file_fault='permission'))
+            rejected_hash_mutants.append('remove_optional_hash_OSError_handler')
         def test_real_observer_accounts_for_nonzero_phases(self):
             value = observation_case('normal'); result = value['result']
             self.assertEqual(result.get('status'), 'complete', 'observation completion not accounted')
@@ -588,7 +696,7 @@ def self_test(report):
             self.assertEqual(observation_case('finish_before')['result']['status'], 'complete')
             for case in ('finish_at', 'finish_after'): assert_expired(observation_case(case))
         def test_real_observer_errors_reach_real_bounded_cleanup(self):
-            for case in ('ps_late', 'ps_timeout', 'ps_error', 'spawn_late'):
+            for case in ('ps_late', 'ps_timeout', 'ps_error', 'ps_deadline', 'spawn_late'):
                 with self.subTest(case=case):
                     value = observation_case(case, runner=True); result = value['result']
                     self.assertEqual(value['signals'], [(4321, 15), (4321, 9)])
@@ -762,7 +870,8 @@ def self_test(report):
         report.write_text(json.dumps({'kind':'inert retained-input/trace/routing/deadline/identity controls',
             'tests_run':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),
             'native_controls_executed':0,'real_processes_spawned':0,
-            'observation_cases':observation_cases,'rejected_completion_mutants':rejected_mutants},indent=2)+'\n')
+            'observation_cases':observation_cases,'rejected_completion_mutants':rejected_mutants,
+            'rejected_optional_hash_mutants':rejected_hash_mutants},indent=2)+'\n')
     return result.wasSuccessful()
 
 
