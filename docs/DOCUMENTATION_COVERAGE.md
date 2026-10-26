@@ -17675,3 +17675,12 @@ dispatch modes, baseline hello inputs, the one 120-second deadline, fail-closed
 completion/cleanup checks and native evidence limits. Existing 29 inert cleanup
 controls and three bounded Linux cases remain unchanged; no discretionary local
 live-suite replay is performed. Historical records are retained, not relabeled.
+
+
+### Measured launch prerequisite and source correction (2026-10-26)
+
+The one launch dispatch stopped at a missing SDK include path, before all three
+target controls. CI_CD/TESTING now document explicit measured `-isysroot` binding;
+the worklog preserves the actual native consumer/run and unrun controls. The new
+inert compile-command case rejects the observed omission. Native compilation
+and launch after this source correction remain unverified, with no repeat dispatch.

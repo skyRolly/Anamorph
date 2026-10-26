@@ -23,6 +23,12 @@ SOURCE = '#include <stdio.h>\nint main(void) { puts("' + MARKER + '"); return 0;
 COMMANDS = 'settings set target.disable-aslr false\nsettings show target.disable-aslr\nrun\n'
 
 
+def compile_command(compiler, arch, sdk, source, binary):
+    # A selected toolchain executable is not the /usr/bin/cc SDK-selecting shim.
+    # Bind header and link lookup to the SDK already measured through xcrun.
+    return [compiler, '-arch', arch, '-isysroot', str(sdk), '-g', '-O0', str(source), '-o', str(binary)]
+
+
 def outcome(result, output, debugger=False):
     """The runtime marker, inferior exit and debugger completion are independent."""
     markers = [line for line in output.splitlines() if line.strip() == MARKER]
@@ -153,6 +159,20 @@ def self_test(report):
             with self.assertRaisesRegex(AssertionError, 'verifier accepted missing launch job'):
                 route_liveness(source, select, verifier=lambda *args: None)
             cleanup.verify_dispatch_route(source, select)
+        def test_direct_compiler_binds_measured_SDK(self):
+            sdk = '/inert/Xcode SDK/MacOSX.sdk'
+            def selected_sdk(argv):
+                if '-isysroot' not in argv or argv[argv.index('-isysroot')+1] != sdk:
+                    raise AssertionError('direct compiler omitted the selected SDK')
+            for arch in ('arm64','x86_64'):
+                argv = compile_command('/inert/clang', arch, sdk, '/inert/hello.c', '/inert/hello')
+                selected_sdk(argv)
+                # Reproduce the native failed invocation's missing SDK as data.
+                broken = argv[:3] + argv[5:]
+                with self.assertRaisesRegex(AssertionError, 'omitted the selected SDK'):
+                    selected_sdk(broken)
+                self.assertEqual(argv[argv.index('-arch')+1], arch)
+                self.assertFalse(any('haswell' in a or 'AVX' in a for a in argv))
     result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(Inert))
     if report:
         report.parent.mkdir(parents=True, exist_ok=True)
@@ -345,8 +365,9 @@ def main():
         record['binaries'] = {}; binaries = {}
         for arch in ('arm64','x86_64'):
             binary = out/('hello-'+arch); binaries[arch] = binary
-            flags = ['-arch',arch,'-g','-O0']
-            required('compile-'+arch,[compiler,*flags,str(source),'-o',str(binary)],15)
+            argv = compile_command(compiler,arch,record['SDK_path'],source,binary)
+            flags = argv[1:-3]
+            required('compile-'+arch,argv,15)
             actual = required('architecture-'+arch, ['/usr/bin/lipo','-archs',str(binary)])
             if actual != arch: raise Stop('thin_architecture_mismatch:' + arch)
             record['binaries'][arch] = {'path':str(binary),'sha256':digest(binary),'flags':flags,'actual_architecture':actual,

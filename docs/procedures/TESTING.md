@@ -6590,8 +6590,8 @@ Actual tool output is authoritative; no global selector or installation changes.
 One 120-second driver deadline includes selected-tool/SDK metadata, tiny C
 compilation, all controls, observations and cleanup. The job has a ten-minute
 outer limit for checkout/artifact handling. Baseline thin arm64 and x86_64 hello
-binaries use the same selected compiler with `-g -O0`, no JUCE or Haswell/AVX2
-flags. They are not product binaries or an AVX2 prerequisite test. The ordered
+binaries use the same selected compiler with `-g -O0` and the measured SDK
+passed through `-isysroot`, no JUCE or Haswell/AVX2 flags. They are not product binaries or an AVX2 prerequisite test. The ordered
 maximum is one direct x86_64 invocation (10 seconds), one arm64 LLDB session
 (30 seconds), then one x86_64 LLDB session (30 seconds). A failure, timeout,
 denial, exhausted deadline or incomplete cleanup withholds later controls.

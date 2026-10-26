@@ -439,3 +439,20 @@ Source checks evaluate actual routing and result parsers with rejecting controls
 normal Build keeps its existing budgets and complete gates. New native outcomes
 are recorded externally at their real consumer/run/tool/binary inputs. This
 entry does not claim a native pass, historical replay or original DSP repair.
+
+
+### Launch-control SDK prerequisite correction (2026-10-26)
+
+The single authorized dispatch, run 40323699873/job 121574836979, consumed
+consumer bcb5d66ac77317b82fef2cc9e23cd809113e39db. The launch job was selected
+and the old scope job skipped. After tool/SDK metadata, direct Clang exited 1:
+`stdio.h` was unavailable because this direct compiler invocation omitted the
+measured SDK root. No hello executable or direct/debugger target ran. The
+partial report and raw logs are retained; this is a build prerequisite failure,
+not unsupported translation, a permission denial or a DSP result.
+
+The compiler command now includes that measured SDK via `-isysroot` for both
+thin architectures. An inert production-command regression rejects the old
+missing-SDK route. This correction is source evidence, not a new native compile
+or launch pass. No second dispatch is authorized/performed; later source heads
+must not relabel the bcb5d66 run. Existing normal automatic CI remains separate.
