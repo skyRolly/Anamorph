@@ -243,6 +243,12 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   no-init/ASLR setting, owned identity observations and existing group cleanup.
   Inert parser/route controls run in normal source-lint; this is not the scope
   campaign, AVX2 certification or a shipping analysis target.
+- `scripts/diagnose-rosetta-handshake.py`: separate dispatch-only trace of exact
+  retained hello/dSYM bytes, bound to artifact/run/head and literal file hashes.
+  Actual LLDB channel/help inspection precedes targets; packet timeout is read,
+  not changed. One 120-second budget, 2 MiB trace cap, later identity snapshots
+  and existing group-only cleanup. Inert source-gate controls cover selection,
+  results/stop behavior, bounds and unknown backend identity. No target rebuild.
 - `tests/rosetta_cleanup_process_tests.py`: three harmless ordinary-user Linux
   process cases, with a shared 20-second limit, known PID/PGID reporting and
   independent finally cleanup. Tests census failures and a same-group child

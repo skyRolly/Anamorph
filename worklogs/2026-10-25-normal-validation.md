@@ -456,3 +456,22 @@ thin architectures. An inert production-command regression rejects the old
 missing-SDK route. This correction is source evidence, not a new native compile
 or launch pass. No second dispatch is authorized/performed; later source heads
 must not relabel the bcb5d66 run. Existing normal automatic CI remains separate.
+
+### SDK validation and retained-input trace preparation (2026-10-26)
+
+A later separately authorized session consumed 04d2dd43/run 40338130238/job
+121625111237: both SDK-bound thin compiles, direct x86_64 hello and native ARM
+LLDB completed. Translated LLDB timed out at 30 seconds; its known client group
+was reaped, but runner orphan debugserver 1372 had no captured ancestry/image.
+This closes the earlier SDK compile gap without rewriting bcb5d66's failure or
+claiming complete service cleanup or an original DSP cause.
+
+The present comparison reuses those exact hello/dSYM bytes from artifact
+12657441997, without recompilation. A distinct dispatch-only handshake-trace
+mode checks actual supported LLDB process/host/packet logging, unchanged packet
+timeout and same no-init/ASLR/client settings. One 120-second driver budget caps
+the ordered controls at 5/20/30 seconds with hard 2 MiB traces, later live
+identity observations and unchanged group-only cleanup. Inert source-gate
+controls and the script inventory/procedures are updated. This dated preparation
+records no new native pass, ordinary replay, full reconstruction or shipping
+repair. Actual native results belong to the external exact-head handoff and PR.

@@ -81,7 +81,8 @@ def verify_route(workflow, select):
     events = workflow.split('\non:\n', 1)[1].split('\npermissions:', 1)[0]
     assert re.findall(r'^  ([a-z_]+):', events, re.M) == ['workflow_dispatch'], 'dispatch-only required'
     assert re.search(r'        default: scope\s*$', events, re.M), 'legacy scope default changed'
-    for mode, expected in [('launch-control', ['launch-control']), ('scope', ['characterize']), ('', ['characterize']), ('invalid', [])]:
+    for mode, expected in [('launch-control', ['launch-control']), ('handshake-trace', ['handshake-trace']),
+                           ('scope', ['characterize']), ('', ['characterize']), ('invalid', [])]:
         for event, branch, repo, valid in [
             ('workflow_dispatch', 'codex/rosetta-scope-characterization', 'skyRolly/Anamorph', True),
             ('push', 'codex/rosetta-scope-characterization', 'skyRolly/Anamorph', False),
@@ -93,7 +94,7 @@ def verify_route(workflow, select):
                            'github.repository': repo, 'inputs.mode': mode})
             if actual != (expected if valid else []):
                 raise AssertionError('native launch route rejected: ' + mode + '/' + event + ': ' + repr(actual))
-    body = workflow.split('  launch-control:\n', 1)[1]
+    body = workflow.split('  launch-control:\n', 1)[1].split('\n  handshake-trace:', 1)[0]
     assert 'timeout-minutes: 10' in body
     assert body.count('uses: actions/checkout@') == 1
     assert 'python3 scripts/diagnose-rosetta-launch.py --report-dir launch-evidence' in body

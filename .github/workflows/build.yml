@@ -508,6 +508,9 @@ jobs:
       - name: Tiny Rosetta launch route and outcome inert controls
         run: python3 scripts/diagnose-rosetta-launch.py --self-test --report rosetta-launch-inert.json
 
+      - name: Retained Rosetta handshake trace inert controls
+        run: python3 scripts/diagnose-rosetta-handshake.py --self-test --report rosetta-handshake-inert.json
+
       - name: Retain POSIX cleanup control evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -518,6 +521,7 @@ jobs:
             rosetta-cleanup-inert.json
             rosetta-cleanup-processes.json
             rosetta-launch-inert.json
+            rosetta-handshake-inert.json
 
       - name: macOS integration review fixture checks
         run: python3 scripts/test-macos-integration-review.py --self-test

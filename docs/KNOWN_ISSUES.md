@@ -190,7 +190,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2459-2461 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2463-2465 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -1308,3 +1308,13 @@ cause remain unestablished. No product repair or new native session is claimed.
 Evidence: `scripts/diagnose-rosetta-scope.py::cleanup_process`,
 `tests/rosetta_cleanup_process_tests.py`, and
 https://github.com/skyRolly/Anamorph/actions/runs/40285821331.
+
+Later SDK-bound tiny controls at 04d2dd43/run 40338130238 completed direct x86
+and native ARM LLDB, while translated LLDB timed out at 30 seconds. The known
+client group was reaped; runner orphan debugserver 1372 had no captured
+ancestry/image. A separate retained-input handshake trace adds supported
+process/packet logs and later identity samples without a target rebuild or
+broader signal boundary. Its exact result belongs to its own consumer/run,
+not a relabeling of either historical timeout or original DSP operands.
+Evidence: `scripts/diagnose-rosetta-handshake.py` and
+https://github.com/skyRolly/Anamorph/actions/runs/40338130238.

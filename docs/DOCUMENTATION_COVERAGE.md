@@ -1906,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3731` and `.github/workflows/build.yml:3816`, this round being
+`.github/workflows/build.yml:3735` and `.github/workflows/build.yml:3820`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1940,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:787` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:791` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17123,7 +17123,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:558-563` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:562-567` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -17684,3 +17684,25 @@ target controls. CI_CD/TESTING now document explicit measured `-isysroot` bindin
 the worklog preserves the actual native consumer/run and unrun controls. The new
 inert compile-command case rejects the observed omission. Native compilation
 and launch after this source correction remain unverified, with no repeat dispatch.
+
+## Retained hello handshake trace preparation (2026-10-26)
+
+Later separately authorized SDK validation at 04d2dd43/run 40338130238 measured
+both thin compiles, direct x86 completion and ARM debugger completion; translated
+LLDB timed out and runner orphan 1372 lacked an identity match. The dated SDK
+entry above remains history, not the current validation disposition.
+
+The present task authorizes one new trace of exact artifact 12657441997 bytes;
+older consumed session limits remain historical. A separate handshake-trace
+choice preserves both existing dispatch-only modes and defaults. New diagnostic
+code verifies producer/run/head, retained hello/dSYM/C/command/report hashes,
+actual LLDB logging support, unchanged packet timeout and private mode preparation.
+It adds a shared 120-second deadline, direct/native/translated caps 5/20/30,
+hard 2 MiB trace files and at most six time-distributed identity snapshots.
+The repaired group cleanup is reused without broad signals or host changes.
+Inert controls exercise production routing/bounds/parsing/ownership uncertainty;
+they run in the same source gate and native job before use. Normal shipping jobs
+and analysis/installer/sanitizer contracts remain intact. REPOSITORY_MAP.md,
+CI_CD.md and TESTING.md inventory the script, commands and actual coverage.
+The worklog preserves prior native outcomes; this preparation entry claims no
+new native trace result, original DSP cause or product repair.

@@ -2213,7 +2213,7 @@ Build remains separate and unchanged except these source-gate regressions.
 The existing dispatch-only `rosetta-scope.yml` accepts an explicit `mode`.
 Its default `scope` preserves the original pinned-source reconstruction and
 zero-ordinary contract. `launch-control` selects only the new tiny control job;
-publication, wrong repository/ref/event or an invalid mode selects neither native
+publication, wrong repository/ref/event or an invalid mode selects no native
 route. The modes are mutually exclusive. Normal Build/Release semantics and
 all shipping gates remain unchanged. `scripts/diagnose-rosetta-launch.py
 --self-test` evaluates production job selection, rejects a seeded missing route
@@ -2260,3 +2260,65 @@ by LLDB timeout and an unconfirmed orphan debugserver. The original single-threa
 Test 61 cause and original executable remain unresolved. A tiny control pass
 would not certify the old focused binary, symbols or breakpoint command path.
 No shipping assertion, FP policy, helper/pin, product identity or artwork changes.
+
+## Retained-input handshake trace (2026-10-26)
+
+The explicit `handshake-trace` choice in `rosetta-scope.yml` is mutually exclusive
+with `scope` and `launch-control`; their meanings and the default remain intact.
+It retrieves artifact 12657441997/run 40338130238 at producer
+04d2dd431a980073e572cfb3855ff53f3edf55e8. The already-pinned download-artifact
+action extracts it with job-local contents/actions read permissions. Run/head/ID
+metadata and literal hashes of the exact executables, all dSYM members, original
+C/command file and report are checked before use. ZIP-byte verification is not
+claimed for direct action extraction. Only fresh private copies receive 0700
+executable modes; bytes/signatures/security controls are unchanged. No compiler,
+project reconstruction, DSP or focused target is selected.
+
+`python3 scripts/diagnose-rosetta-handshake.py --self-test --report <report.json>`
+is entirely inert. It evaluates production selection for all modes/defaults,
+wrong branch/repository/event and seeded missing-job/no-op rejection. It checks
+actual logging selection and command construction, retained provenance/hashes,
+markers/inferior exits, later timeout after earlier completion, unknown backend
+identity and the production runner with mocked clock/process/inspection/cleanup.
+It checks cleanup reservation in the fixed deadline, refusal to spawn without
+time, output-budget failure, later live samples and the six-snapshot maximum.
+Normal source-lint retains its report; the native job repeats these controls
+before use. No real process or target is spawned by the fixtures.
+
+The actual Apple LLDB's `log list` and `help log enable` must support minimal
+lldb process/host and gdb-remote packets categories plus append/timestamp/file
+options. Unsupported metadata withholds all targets. Packet timeout is recorded
+without changing it. Both debugger controls preserve `--no-lldbinit`, client
+architecture selection and `target.disable-aslr false`; their command files
+differ only in output paths. See https://lldb.llvm.org/resources/debugging.html
+and https://lldb.llvm.org/use/troubleshooting.html .
+
+After verified transfer/preparation, one fixed 120-second driver budget covers
+metadata, execution, observation and cleanup inside a ten-minute job. At most
+one same-host direct x86_64 hello (5 seconds), one arm64 LLDB hello (20 seconds)
+and one x86_64 LLDB hello (30 seconds) run, in order. Failure, missing marker or
+inferior completion, timeout, explicit denial, output limit, unknown cleanup or
+deadline exhaustion withholds later controls. One shared append trace per
+debugger has a 2 MiB hard child-only file-size limit plus bounded polling; raw
+launch output is separate. No output is silently truncated into a pass.
+
+At most six bounded identity snapshots per debugger cover spawn, elapsed
+2/8/18 seconds while live, immediately before termination and after cleanup.
+Time spent observing never extends the target cap. PID/PPID/PGID/session/start
+and ps-observed executable paths are retained, with current on-disk hashes where
+available; these are not kernel/memory-image digests. Verified ancestry/current
+identity may associate a backend. A name-only unmatched candidate stays unknown
+and is never signalled. The unchanged group cleanup remains independent of ps
+success; no outside-group killing, subreaper or debugger/host-policy workaround
+is introduced. Compare final runner orphan cleanup with captured identities;
+the raw report's scoped cleanup flag does not certify all services.
+
+The SDK-bound producer's native ARM debugger/direct x86 controls completed while
+translated LLDB timed out and runner orphan PID 1372 lacked captured ancestry.
+This trace adds a discriminating observation, not a product repair, Haswell/AVX2
+certification or another ordinary/full scope campaign. Matching binary/dSYM
+UUIDs do not establish complete symbols. Its actual result belongs to the
+exact-head external handoff and PR record. A tiny trace does not certify the
+original focused debugger route or explain single-threaded Test 61. No shipping
+gate, query target, sanitizer strictness, installer/archive contract or budget
+changes. Existing Linux process tests remain distinct from native macOS evidence.
