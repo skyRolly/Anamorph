@@ -315,6 +315,29 @@ ASLR enabled and every original assertion. This preparation makes no product
 repair and no new architecture decision; results remain exact-run evidence.
 
 
+## Customer installation wording maintenance (2026-10-26)
+
+Scope is shipped instructions and unnecessary comment history, independently
+reviewable from Rosetta/CI host work. Preserve actual customer commands, modes,
+privilege/refusal, recovery, atomicity, component retention, settings, signatures
+and attribution. Files already concise are retained rather than edited for
+symmetry. There is no product/DSP/state/GUI change or architecture decision.
+
+Rejected regex removal of hash-prefixed lines and whole-script minification as
+behavior proof: quoted bootstrap scripts and here-document data must remain
+visible. Use a verified nonshipping shfmt POSIX parser and compare ASTs after
+removing only genuine comment nodes and source coordinates. Positive comment
+controls and negative quoted/here-document/bootstrap/token controls establish
+that the comparison can reject a real change. Syntax/source checks and normal
+applicable CI/native/archive results remain separately recorded. No Release,
+tag, deployment, signing change or extra optional native campaign is requested.
+
+Anamorph changes only Linux/macOS INSTALL.txt text, including the existing
+translated icon description. Entry scripts, helper, both literal pins, native
+PIN/observer literal and approved assets remain exact. No new helper digest can
+be inferred or blessed from a mutable sidecar; no digest update is needed here.
+
+
 ## Modern Linux compatibility candidate (2026-10-26)
 
 History 378a37f2 and ace86aec selected a 22.04 TSan host after retiring kernel

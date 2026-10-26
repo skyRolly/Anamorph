@@ -1,12 +1,12 @@
 Anamorph — macOS install / 安装说明
 ====================================
 
-This bundle was built by CI as a UNIVERSAL binary (Apple Silicon + Intel).
+This bundle contains a UNIVERSAL binary (Apple Silicon + Intel).
 It is ad-hoc code-signed but NOT notarized by Apple, so macOS Gatekeeper will
 quarantine anything extracted from the zip — the manual method below includes
 the required de-quarantine step.
 
-本插件由 CI 编译为通用二进制(Apple 芯片 + Intel 都可用),做了 ad-hoc 签名但
+本插件为通用二进制(Apple 芯片 + Intel 都可用),做了 ad-hoc 签名但
 没有经过 Apple 公证。zip 解压出来的文件会被 macOS 隔离(quarantine),手动安装
 时必须按下面步骤去掉隔离,否则 DAW 里加载不出来。
 
