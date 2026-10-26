@@ -18,6 +18,19 @@ CLEANUP_SMOKE = False
 CLEANUP_RESULTS = []
 ORDINARY_ONLY = False
 USER_RELIABILITY = False
+
+ORDINARY_METHODS = (
+    'test_fresh_user_reinstall_uninstall',
+    'test_missing_receipt_user_uninstall_preserves_existing_files',
+    'test_gio_exec_escaping_and_hicolor_lookup',
+    'test_clean_archive_and_required_assets',
+)
+USER_RELIABILITY_METHODS = ORDINARY_METHODS + (
+    'test_user_receiptless_uninstall_all_managed_names',
+    'test_user_cleanup_restart_contract',
+    'test_unknown_journal_file_is_preserved',
+    'test_unknown_ownership_state_refuses_before_removal',
+)
 NAME = 'tech.rolly.anamorph'
 PNG = f'icons/hicolor/32x32/apps/{NAME}.png'
 DESKTOP = f'applications/{NAME}.desktop'
@@ -627,15 +640,7 @@ def main():
         if original_permission is not None:
             subprocess.run(['sudo', '-n', 'sysctl', '-q', '-w', permission_key + '=0'], check=True)
         if ORDINARY_ONLY or USER_RELIABILITY:
-            ordinary = ('test_fresh_user_reinstall_uninstall',
-                        'test_missing_receipt_user_uninstall_preserves_existing_files',
-                        'test_gio_exec_escaping_and_hicolor_lookup',
-                        'test_clean_archive_and_required_assets')
-            if USER_RELIABILITY:
-                ordinary += ('test_user_receiptless_uninstall_all_managed_names',
-                             'test_user_cleanup_restart_contract',
-                             'test_unknown_journal_file_is_preserved',
-                             'test_unknown_ownership_state_refuses_before_removal')
+            ordinary = USER_RELIABILITY_METHODS if USER_RELIABILITY else ORDINARY_METHODS
             suite = unittest.defaultTestLoader.loadTestsFromNames(
                 ['InstallCase.' + name for name in ordinary], module=sys.modules[__name__])
         else:

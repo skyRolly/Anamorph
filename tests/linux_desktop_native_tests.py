@@ -380,6 +380,27 @@ class NativeCase(legacy.InstallCase):
         super().test_gio_exec_escaping_and_hicolor_lookup()
 
 
+
+def user_reliability_coverage(suite):
+    names={getattr(case,'_testMethodName',None) for case in suite}
+    missing=set(legacy.USER_RELIABILITY_METHODS)-names
+    if missing:
+        raise RuntimeError('native suite omits required ordinary-user cases: '+', '.join(sorted(missing)))
+    return list(legacy.USER_RELIABILITY_METHODS)
+
+
+def user_coverage_liveness(suite, checker=user_reliability_coverage):
+    covered=checker(suite)
+    try:
+        checker(unittest.TestSuite())
+    except RuntimeError as error:
+        if not str(error).startswith('native suite omits required ordinary-user cases:'):
+            raise
+    else:
+        raise RuntimeError('ordinary-user coverage verifier accepted an empty native suite')
+    return covered
+
+
 def main():
     global UID,GID,STAGED,PROGRESS_PATH,STARTED
     if sys.argv[1:2]==['--namespace-config']:
@@ -423,6 +444,7 @@ def main():
     # Inherited methods create additional cases through this module binding.
     legacy.InstallCase=NativeCase
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(NativeCase)
+    ordinary_coverage=user_coverage_liveness(suite)
     result=unittest.TextTestRunner(verbosity=2,resultclass=ProgressResult).run(suite)
     report={'tests_run':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),
             'failure_details':[{'test':str(case),'traceback':trace} for case,trace in result.failures+result.errors],
@@ -432,6 +454,8 @@ def main():
             'kernel_security_settings_changed':False,'cleanup_fault_cases':legacy.CLEANUP_RESULTS,
             'snapshot_observations':OBSERVATIONS,'signal_observations':SIGNALS,
             'native_environment_preflight':ENVIRONMENT_PREFLIGHT,
+            'ordinary_user_methods_required_and_selected':ordinary_coverage,
+            'ordinary_user_coverage_liveness':True,
             'operations':OPERATIONS,'archive_round_trips':ARCHIVES,
             'source_head':subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),
             'staged_files':{str(p.relative_to(STAGED)):{'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'mode':oct(p.stat().st_mode & 0o7777)} for p in STAGED.rglob('*') if p.is_file()},
