@@ -47,6 +47,13 @@ install — attribution/support files are release-page assets instead (see below
 
 ## Installers (0.9.0)
 
+Installer product titles use the bare **Anamorph** name: Windows sets
+`AppVerName` and `UninstallDisplayName`, and the macOS Distribution sets `<title>`.
+Localized Setup/Uninstall wording may surround that name. `AppVersion` still
+supplies the installed Windows version; component/receipt and bundle versions,
+package identities and versioned download filenames retain their real values.
+Evidence: `packaging/windows/Anamorph.iss`, `packaging/macos/build-pkg.sh`.
+
 Every platform offers an **installer route** and a **manual (zip) route**, both landing in
 the standard locations: **system-wide** on Windows and macOS, while the Linux installer
 **asks** and defaults to a **per-user** install (since 0.9.3). The Windows/macOS installers are built from

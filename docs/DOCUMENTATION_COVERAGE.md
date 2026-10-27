@@ -1,5 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Product-only installer names (2026-10-28)
+
+Windows explicitly sets `AppVerName=Anamorph` and
+`UninstallDisplayName=Anamorph`; the macOS Distribution title is `Anamorph`.
+PACKAGING, RELEASE_PROCESS and the Unreleased changelog describe this display-only
+change. Source: `packaging/windows/Anamorph.iss`, `packaging/macos/build-pkg.sh`.
+`AppVersion`, AppId, receipt/component and bundle versions, package IDs and
+versioned output filenames are preserved. Linux install/uninstall and desktop
+presentation and all packaging INSTALL.txt files were inspected; compliant text
+is unchanged. Verification is static; no installer or product GUI was exercised.
+
 ## Normal validation restoration — 2026-10-25
 
 CI_CD and TESTING describe removal of the temporary branch-specific routing and

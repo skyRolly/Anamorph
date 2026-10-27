@@ -39,6 +39,10 @@ additional malformed host-state restrictions remain open owner decisions.
   Evidence: commit `4d96559`; ADR-0062. [Verified — build configuration; native shell display unverified]
 
 ### Changed
+- **Installer and uninstaller product names display as Anamorph without a version suffix.**
+  Windows Setup/uninstall naming and the macOS installer title use the bare product name;
+  installed version metadata and versioned download filenames are preserved.
+  Evidence: commit `d99dc5198923ce810d0bff4fdc1dc56120ed5d81`. [Verified - source; appearance not exercised]
 - **Use `tech.rolly.anamorph` for application bundles and macOS package receipts**, following
   `rolly.tech`. Development receipt identities intentionally break without aliases; RTec/Anmr,
   VST3 class IDs, Windows AppId, state and presets remain unchanged. Native host rescan/recall

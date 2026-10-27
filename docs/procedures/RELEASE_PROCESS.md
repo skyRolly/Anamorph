@@ -37,6 +37,10 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Build the release artifacts
 
+Installer product titles use **Anamorph**, with the real version retained in
+metadata and download filenames (`PACKAGING.md` section "Installers"). Source
+checks of that presentation contract do not certify wizard/uninstaller appearance.
+
 Releases publish flat zips archived by `release.yml` from the `Anamorph-<OS>` staging
 trees built per push (`CI_CD.md`) — the Linux one carries the install scripts — plus the
 installers `Anamorph-Windows-installer` and `Anamorph-macOS-installer` (`PACKAGING.md`
