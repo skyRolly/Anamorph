@@ -28,6 +28,8 @@
 AppId={{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}
 AppName=Anamorph
 AppVersion={#AppVersion}
+AppVerName=Anamorph
+UninstallDisplayName=Anamorph
 AppPublisher=RollyTech
 AppPublisherURL=https://www.rolly.tech
 DefaultDirName={autopf}\Anamorph
