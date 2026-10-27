@@ -190,7 +190,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2439-2441 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2463-2465 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -1294,3 +1294,60 @@ StateTests command after the failed DSP invocation did not run in that step.
 Native Intel/arm64 and AU/pluginval results do not substitute for the failed
 Rosetta check. Keep it separate from run 40036154695's AU teardown observation.
 No retry or product/test behavior change was made by this documentation audit.
+
+
+## Nonshipping Rosetta debugger cleanup limit (2026-10-26)
+
+The census-error control-flow defect in the draft diagnostic tool has a bounded
+TERM/KILL correction and inert/Linux process regressions. That correction does
+not explain native job 121449104663's orphan debugserver PID 4809: run
+40285821331 recorded no ps failure and did not capture its PGID/ancestry. LLDB
+still timed out while the direct fixture completed. Complete cleanup of an
+escaped debugger service, a permission denial and the original DSP failure's
+cause remain unestablished. No product repair or new native session is claimed.
+Evidence: `scripts/diagnose-rosetta-scope.py::cleanup_process`,
+`tests/rosetta_cleanup_process_tests.py`, and
+https://github.com/skyRolly/Anamorph/actions/runs/40285821331.
+
+Later SDK-bound tiny controls at 04d2dd43/run 40338130238 completed direct x86
+and native ARM LLDB, while translated LLDB timed out at 30 seconds. The known
+client group was reaped; runner orphan debugserver 1372 had no captured
+ancestry/image. A separate retained-input handshake trace adds supported
+process/packet logs and later identity samples without a target rebuild or
+broader signal boundary. Its exact result belongs to its own consumer/run,
+not a relabeling of either historical timeout or original DSP operands.
+Evidence: `scripts/diagnose-rosetta-handshake.py` and
+https://github.com/skyRolly/Anamorph/actions/runs/40338130238.
+
+The traced comparison at 919c7bd3/run 40349275028 narrows the current measured
+stall: initial remote capability exchange completed, then vAttach for observed
+hello PID 1368 had no logged reply before timeout. Live ancestry identifies
+OAH debugserver 1369 in a separate group; it survived client cleanup and the
+runner terminated it. The observation does not retroactively identify old orphan
+4809 or 1372, establish a permission denial or explain the original DSP assertion.
+A small late-snapshot deadline defect in this new sampler is corrected with an
+inert regression; no new native session validates that correction here.
+Evidence: https://github.com/skyRolly/Anamorph/actions/runs/40349275028 .
+
+2026-10-27 observer review found a separate conditional completion-accounting
+gap: a successful ps could return late and an empty census lacked an expiry
+check. Production observer/runner regressions now reject that result, record
+actual finish/expiry and enter bounded cleanup on inspection errors. Optional
+hashes are omitted without remaining budget. This is cooperative requested-work
+enforcement; it cannot guarantee host scheduling/filesystem completion time.
+No native experiment validates this source correction, identifies the missing
+attach reply's cause or certifies outside-group backend cleanup. The dispatch-only
+utility is limited to disposable hosts with runner/host service cleanup; honest
+nonzero diagnostics and unknown original DSP causality are separate review facts.
+Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its inert
+`--self-test` completion/expiry mutation controls.
+
+A subsequent 2026-10-27 review confirmed that 99d9eb32 treated optional image-hash
+OSError as a census failure, ending an otherwise-valid in-budget control early.
+The narrow observer-only correction records a row warning and retains identity,
+later rows and valid execution. Budget checks remain outside the file-error handler;
+expiry and mandatory hashes still fail. Inert regressions reject removal of this
+handler and retain service-survivor refusal. This closes that first-party regression
+without a new native session or any claim about the original attach/DSP cause.
+Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its production
+observer/runner/controller optional-hash self-tests.

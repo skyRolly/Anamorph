@@ -226,3 +226,39 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 | `scripts/test-workflow-routing.py` | Production Build/Release expression and needs selection, with same-run valid and seeded skipped-Release liveness controls before the real check. No dispatch or installer. |
 | `tests/linux_desktop_native_plan_tests.py` | Ordinary recording plans and in-process unittest result lifecycle diagnostics, including cleanup errors and the absent-parent production report writer. No privileged operation or installer. |
 | `scripts/test-macos-integration-review.py` | Optional seven selections and real two-product co-installation from independently identified artifacts; native PackageInfo/Distribution and staged bundle metadata establish artifact-specific receipt versions before installation. Pure metadata/extraction `--self-test`. |
+
+
+### Bounded Rosetta diagnostic inputs
+
+- `.github/workflows/rosetta-scope.yml`: dispatch-only nonshipping native characterization;
+  zero ordinary replays, normal Build/Release routing and shipping gates unchanged.
+- `scripts/diagnose-rosetta-scope.py`: fixed original-source checkout contract,
+  native input inventory, executable AVX2 prerequisite, one direct focused run,
+  one debugger session and a shared ten-minute deadline. Its inert `--self-test`
+  runs in source-lint and rejects malformed results and disabled verification.
+  Its production command/cleanup controls inject census, signal and reap faults
+  without spawning processes; real POSIX cases are a separate entry below.
+- `scripts/diagnose-rosetta-launch.py`: dispatch-only tiny baseline hello control;
+  one shared 120-second deadline, direct x86_64 then arm64/x86_64 LLDB, explicit
+  no-init/ASLR setting, owned identity observations and existing group cleanup.
+  Inert parser/route controls run in normal source-lint; this is not the scope
+  campaign, AVX2 certification or a shipping analysis target.
+- `scripts/diagnose-rosetta-handshake.py`: separate dispatch-only trace of exact
+  retained hello/dSYM bytes, bound to artifact/run/head and literal file hashes.
+  Actual LLDB channel/help inspection precedes targets; packet timeout is read,
+  not changed. One 120-second budget, 2 MiB trace cap, later identity snapshots
+  and existing group-only cleanup. Inert source-gate controls cover selection,
+  results/stop behavior, bounds and unknown backend identity. Actual observer/
+  parser/hash completion accounting, late-result cleanup and same-run completion/
+  empty-census mutation rejection use inert OS/file/clock fixtures. Budgets are
+  cooperative; native timing and outside-group service cleanup stay unverified.
+  Optional image-hash I/O warnings retain census rows and valid control flow;
+  same-run exception-handler mutation and real observer/controller fixtures
+  keep deadline and mandatory-integrity failures distinct. No target rebuild.
+- `tests/rosetta_cleanup_process_tests.py`: three harmless ordinary-user Linux
+  process cases, with a shared 20-second limit, known PID/PGID reporting and
+  independent finally cleanup. Tests census failures and a same-group child
+  after leader exit; fixture-local child adoption/reaping prevents orphan leaks.
+  This does not execute Rosetta, DSP, an installer or a debugger.
+- `tests/scope_ring_diagnostic.cpp`: separately instrumented single-threaded
+  newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.

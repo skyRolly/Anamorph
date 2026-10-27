@@ -1,0 +1,137 @@
+name: Bounded Rosetta scope characterization
+
+# Explicit diagnostic authorization only; publication never replays the campaign.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Explicitly authorized diagnostic mode
+        type: choice
+        options: [scope, launch-control, handshake-trace]
+        default: scope
+
+permissions:
+  contents: read
+
+jobs:
+  characterize:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'skyRolly/Anamorph' &&
+      github.ref == 'refs/heads/codex/rosetta-scope-characterization' &&
+      (inputs.mode == '' || inputs.mode == 'scope')
+    runs-on: macos-latest
+    timeout-minutes: 35
+    env:
+      ROSETTA_ADVERTISE_AVX: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout the original failing source separately
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 14bde706e2d121c9970cf00c757cb12d3178b9a5
+          path: original-source
+      - name: Install the normal native build generator
+        run: |
+          brew install ninja || true
+          ninja --version
+      - name: Controlled reconstruction with the original build settings
+        run: |
+          cmake -S original-source -B original-source/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DANAMORPH_BUILD_NUMBER=1878
+          cmake --build original-source/build --target AnamorphTests --verbose > reconstruction-build.log 2>&1
+      - name: Inert orchestration and outcome rejection controls
+        run: python3 scripts/diagnose-rosetta-scope.py --self-test
+      - name: AVX2 prerequisite, one direct focused invocation and one debugger session
+        run: python3 scripts/diagnose-rosetta-scope.py --source original-source --report-dir rosetta-evidence --ordinary-runs 0
+      - name: Retain bounded diagnostic evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Rosetta-scope-characterization
+          if-no-files-found: error
+          path: |
+            rosetta-evidence/
+            reconstruction-build.log
+            original-source/build/compile_commands.json
+            original-source/build/CMakeCache.txt
+            original-source/build/AnamorphTests_artefacts/Release/AnamorphTests
+            original-source/build/AnamorphScopeDiagnostic_artefacts/Release/AnamorphScopeDiagnostic
+
+  launch-control:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'skyRolly/Anamorph' &&
+      github.ref == 'refs/heads/codex/rosetta-scope-characterization' &&
+      inputs.mode == 'launch-control'
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Inert launch route and result controls
+        run: python3 scripts/diagnose-rosetta-launch.py --self-test
+      - name: One tiny direct and native/translated debugger launch comparison
+        run: python3 scripts/diagnose-rosetta-launch.py --report-dir launch-evidence
+      - name: Retain tiny launch controls and partial evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Rosetta-launch-control
+          if-no-files-found: error
+          path: launch-evidence/
+
+  handshake-trace:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'skyRolly/Anamorph' &&
+      github.ref == 'refs/heads/codex/rosetta-scope-characterization' &&
+      inputs.mode == 'handshake-trace'
+    runs-on: macos-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Inert trace selection, input, deadline and outcome controls
+        run: python3 scripts/diagnose-rosetta-handshake.py --self-test --report handshake-inert.json
+      - name: Retain exact producer run and artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/skyRolly/Anamorph/actions/runs/40338130238 > retained-run.json
+          gh api repos/skyRolly/Anamorph/actions/runs/40338130238/artifacts > retained-artifacts.json
+      - name: Retrieve the retained hello bytes without rebuilding
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: 12657441997
+          github-token: ${{ github.token }}
+          repository: skyRolly/Anamorph
+          run-id: 40338130238
+          merge-multiple: true
+          digest-mismatch: error
+          path: retained-download
+      - name: Verify provenance and capture private executable copies
+        run: >-
+          python3 scripts/diagnose-rosetta-handshake.py
+          --prepare-inputs retained-download --prepared-inputs retained-inputs
+          --run-metadata retained-run.json --artifact-metadata retained-artifacts.json
+      - name: One same-host direct and traced native/translated launch comparison
+        run: python3 scripts/diagnose-rosetta-handshake.py --inputs retained-inputs --report-dir handshake-evidence
+      - name: Retain bounded traces and partial outcomes
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Rosetta-handshake-trace
+          if-no-files-found: error
+          path: |
+            handshake-inert.json
+            retained-run.json
+            retained-artifacts.json
+            retained-inputs/
+            handshake-evidence/
+

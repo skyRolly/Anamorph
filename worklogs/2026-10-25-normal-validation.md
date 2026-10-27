@@ -299,6 +299,22 @@ without causal evidence. This correction records facts and keeps the failure
 visible. Coverage is updated; no document class or script inventory is added.
 
 
+## Bounded Rosetta reconstruction preparation (2026-10-26)
+
+The owner merged documentation PR #176 as 9cc5b632. Its earlier push Build
+40226154342 completed; that result does not explain the actual-main 14bde706
+Rosetta Test 61 failure. Pinned JUCE 3fb5cbc's `exactlyEqual` is operator== with
+warning suppression. ScopeBuffer/Test 61 are single-threaded in this fixture;
+printed equal hexadecimal pairs do not establish a translation/compiler defect.
+
+Prepare an independent nonshipping native workflow using original source and
+normal universal Release settings. Retain new executable hashes/UUIDs, actual
+compiler/SDK/flags, at most three ordinary outcomes and a separately instrumented
+focused debugger session. All post-setup work is bounded to ten minutes. Keep
+ASLR enabled and every original assertion. This preparation makes no product
+repair and no new architecture decision; results remain exact-run evidence.
+
+
 ## Customer installation wording maintenance (2026-10-26)
 
 Scope is shipped instructions and unnecessary comment history, independently
@@ -380,3 +396,135 @@ needed for this measured environment. Source-lint's namespace denial and the
 separate initial Python ordering error remain recorded above. Native/archive
 and other normal checks still retain their own exact-head outcomes; this TSan
 result cannot substitute for them or diagnose the Rosetta failure.
+
+
+## Rosetta prerequisite and direct-execution correction (2026-10-26)
+
+Actual owner merge #178 is 6758ae3d2488946d6438001f6ba6ef8f9f1b35a7.
+The additive main-to-diagnostic reconciliation preserves both modern Linux
+coverage records and the separate historical Rosetta preparation. The diagnostic
+route is now dispatch-only, with zero ordinary replays. Executable AVX2
+prerequisites precede focused execution; a direct run and LLDB have independent
+strict completion/outcome records and one shared deadline. Inert regression
+controls are integrated in source-lint and inventoried in REPOSITORY_MAP.md.
+CI_CD.md and TESTING.md document the commands, bounds and limitations.
+No product/helper/asset/pin/FP/architecture contract changes. Existing Accepted
+ADR provenance remains intact. Original failure and prior debugger timeout are
+retained; new native results belong only to their actual consumer/source/run.
+
+
+## Diagnostic cleanup control and actual customer-text merge (2026-10-26)
+
+The owner merged #179 as af63db9582644615d5606b142ea4c3d6fe5ffb23; the
+reviewed d2d2961f tree is identical. The additive main-to-#177 merge preserves
+both coverage/worklog append records. The cleanup correction separates census
+failures from required TERM/KILL/reaping actions, reserves one monotonic deadline
+and keeps unknown state/error records conservative. Existing inert controls now
+cover the actual production command/cleanup path; three bounded ordinary-user
+Linux process cases are separate and inventoried in REPOSITORY_MAP.md. CI_CD.md,
+TESTING.md and KNOWN_ISSUES.md distinguish this fix from the unproven detached
+debugserver cause and retained LLDB timeout. Source-lint retains both reports.
+The original DSP/focused assertions, helper bytes/four pins, approved artwork,
+product versions/identities, normal gates and existing Accepted ADRs are intact.
+No new Rosetta/LLDB dispatch or ordinary diagnostic replay is performed here.
+
+
+## Minimal debugger launch-control preparation (2026-10-26)
+
+Parent diagnostic head 9c512272 contains the completed census-error repair and
+actual owner #179 main af63db958. One new explicitly authorized hello-only
+session is prepared under a separate dispatch mode, with no original-source
+checkout, reconstruction, DSP/focused execution or scope breakpoint commands.
+Source checks evaluate actual routing and result parsers with rejecting controls;
+normal Build keeps its existing budgets and complete gates. New native outcomes
+are recorded externally at their real consumer/run/tool/binary inputs. This
+entry does not claim a native pass, historical replay or original DSP repair.
+
+
+### Launch-control SDK prerequisite correction (2026-10-26)
+
+The single authorized dispatch, run 40323699873/job 121574836979, consumed
+consumer bcb5d66ac77317b82fef2cc9e23cd809113e39db. The launch job was selected
+and the old scope job skipped. After tool/SDK metadata, direct Clang exited 1:
+`stdio.h` was unavailable because this direct compiler invocation omitted the
+measured SDK root. No hello executable or direct/debugger target ran. The
+partial report and raw logs are retained; this is a build prerequisite failure,
+not unsupported translation, a permission denial or a DSP result.
+
+The compiler command now includes that measured SDK via `-isysroot` for both
+thin architectures. An inert production-command regression rejects the old
+missing-SDK route. This correction is source evidence, not a new native compile
+or launch pass. No second dispatch is authorized/performed; later source heads
+must not relabel the bcb5d66 run. Existing normal automatic CI remains separate.
+
+### SDK validation and retained-input trace preparation (2026-10-26)
+
+A later separately authorized session consumed 04d2dd43/run 40338130238/job
+121625111237: both SDK-bound thin compiles, direct x86_64 hello and native ARM
+LLDB completed. Translated LLDB timed out at 30 seconds; its known client group
+was reaped, but runner orphan debugserver 1372 had no captured ancestry/image.
+This closes the earlier SDK compile gap without rewriting bcb5d66's failure or
+claiming complete service cleanup or an original DSP cause.
+
+The present comparison reuses those exact hello/dSYM bytes from artifact
+12657441997, without recompilation. A distinct dispatch-only handshake-trace
+mode checks actual supported LLDB process/host/packet logging, unchanged packet
+timeout and same no-init/ASLR/client settings. One 120-second driver budget caps
+the ordered controls at 5/20/30 seconds with hard 2 MiB traces, later live
+identity observations and unchanged group-only cleanup. Inert source-gate
+controls and the script inventory/procedures are updated. This dated preparation
+records no new native pass, ordinary replay, full reconstruction or shipping
+repair. Actual native results belong to the external exact-head handoff and PR.
+
+### Traced launch result and sampling boundary (2026-10-26)
+
+Consumer 919c7bd3/run 40349275028/job 121664571225 used the exact retained hello
+and dSYM bytes. Direct x86 and native ARM debugger controls completed. Translated
+LLDB exchanged initial protocol/capabilities, then sent vAttach for PID 1368 with
+no reply/completion before 30 seconds. Live observations associate debugserver
+1369 at /Library/Apple/usr/libexec/oah/debugserver with LLDB parent 1365; its
+separate group survived client cleanup, then runner cleanup terminated it.
+The image changed to 20261021.0445.8; measured Clang/LLDB bytes match the retained
+session. No general toolchain defect, permission denial or original DSP cause is
+established. This is a terminal bounded trace, not another campaign.
+
+The sampler's extra pre-termination observation began 5.409 ms after the target
+deadline. A new assertion on the actual mocked production runner fails on that
+implementation. The sample is now scheduled before execution expiry, clipped to
+0.35 seconds/remaining execution time and omitted after expiry. No group cleanup
+primitive, signal boundary or product behavior changes. The one native allowance
+is consumed; corrected sampling has inert/normal-source evidence only and no new
+native result. Raw trace, original failure and earlier incomplete sessions remain
+separate. No further dispatch or native rerun is performed.
+
+### Observer completion accounting closure (2026-10-27)
+
+The preceding 0.35-second statement bounded requested work, not arbitrary host
+latency. Review reproduced the actual observer returning a successful empty
+census after its assigned deadline using only fake OS/time boundaries. A new
+production observer/runner regression fails at 1eccc9bb; completion accounting
+and immediate error-to-cleanup handling repair that conditional first-party gap.
+Assigned deadline, actual start/finish, elapsed time and complete/incomplete/expired
+status share one monotonic base. Optional hashes need remaining budget; expired
+results cannot certify empty cleanup, and final observation uses remaining driver
+time rather than the earlier execution deadline. Completion-removal/clean-empty
+mutants must fail the same assertions in the existing source-lint self-test.
+The earlier 919c7bd3 late-start regression and native trace remain history. No new
+native timing, attach success, service cleanup or original DSP cause is claimed.
+CI_CD/TESTING, REPOSITORY_MAP, KNOWN_ISSUES and coverage are updated narrowly.
+Workflow scheduling, driver/target/trace budgets, signal scope, helper bytes/pins,
+product contracts and Accepted ADR provenance are unchanged.
+
+### Optional image hashing correction (2026-10-27)
+
+The earlier deadline closure at 99d9eb32 did not cover optional hash I/O failures.
+Review's inert PermissionError case ended a valid control before its deadline.
+The observer now records file_hash_error per row and continues, with after-hash
+budget checks outside the OSError handler. Mandatory digest calls and genuine
+inspection/deadline errors retain their failure behavior. Production-function
+fixtures cover opening, reading, disappearing images, readable following rows,
+natural completion/timeouts, later controls, late I/O and retained service refusal.
+The same source-gate invocation rejects removal of the new handler and retains
+the earlier completion mutants. No native experiment, product fix, broader signal
+authority, budget/route change or renewed ADR acceptance is claimed. Current
+external evidence/PR records identify the additive source and actual normal CI.

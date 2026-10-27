@@ -1906,7 +1906,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3711` and `.github/workflows/build.yml:3796`, this round being
+`.github/workflows/build.yml:3735` and `.github/workflows/build.yml:3820`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1940,7 +1940,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:767` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:791` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17123,7 +17123,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:538-543` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:562-567` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -17572,6 +17572,17 @@ no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 
+## Bounded Rosetta diagnostic preparation (2026-10-26)
+
+The original actual-main failure remains unresolved: 14bde706, run 40221042187,
+macOS job 121252472086, DSP Test 61 under Rosetta. New nonshipping workflow,
+diagnostic driver and focused fixture are inventoried in REPOSITORY_MAP.md and
+described in CI_CD.md/TESTING.md. The ordinary product fixture and ScopeBuffer
+are unchanged. Reconstructed executable/dSYM/UUID and debugger outputs belong
+to their own source/run; no original binary, causal repair, retrospective main
+pass or release eligibility is asserted. Existing Accepted ADRs stay Accepted.
+
+
 ## Customer installation text audit (2026-10-26)
 
 Audited all six product/platform INSTALL.txt files and both products' Linux
@@ -17623,3 +17634,118 @@ ASLR-write instruction and names the actual suppression policy; the rolling
 host label is measured separately from the retained container userspace.
 No runtime source, workflow operation, pin or security setting is changed by
 this documentation reconciliation. Earlier dated evidence keeps its own scope.
+
+
+## Rosetta prerequisite and direct-execution correction (2026-10-26)
+
+Actual owner merge #178 is 6758ae3d2488946d6438001f6ba6ef8f9f1b35a7.
+The additive main-to-diagnostic reconciliation preserves both modern Linux
+coverage records and the separate historical Rosetta preparation. The diagnostic
+route is now dispatch-only, with zero ordinary replays. Executable AVX2
+prerequisites precede focused execution; a direct run and LLDB have independent
+strict completion/outcome records and one shared deadline. Inert regression
+controls are integrated in source-lint and inventoried in REPOSITORY_MAP.md.
+CI_CD.md and TESTING.md document the commands, bounds and limitations.
+No product/helper/asset/pin/FP/architecture contract changes. Existing Accepted
+ADR provenance remains intact. Original failure and prior debugger timeout are
+retained; new native results belong only to their actual consumer/source/run.
+
+
+## Diagnostic cleanup control and actual customer-text merge (2026-10-26)
+
+The owner merged #179 as af63db9582644615d5606b142ea4c3d6fe5ffb23; the
+reviewed d2d2961f tree is identical. The additive main-to-#177 merge preserves
+both coverage/worklog append records. The cleanup correction separates census
+failures from required TERM/KILL/reaping actions, reserves one monotonic deadline
+and keeps unknown state/error records conservative. Existing inert controls now
+cover the actual production command/cleanup path; three bounded ordinary-user
+Linux process cases are separate and inventoried in REPOSITORY_MAP.md. CI_CD.md,
+TESTING.md and KNOWN_ISSUES.md distinguish this fix from the unproven detached
+debugserver cause and retained LLDB timeout. Source-lint retains both reports.
+The original DSP/focused assertions, helper bytes/four pins, approved artwork,
+product versions/identities, normal gates and existing Accepted ADRs are intact.
+No new Rosetta/LLDB dispatch or ordinary diagnostic replay is performed here.
+
+
+## Minimal launch-control route (2026-10-26)
+
+Added `scripts/diagnose-rosetta-launch.py` and its source-gate inert parser/route
+controls. REPOSITORY_MAP, CI_CD and TESTING describe mutually exclusive explicit
+dispatch modes, baseline hello inputs, the one 120-second deadline, fail-closed
+completion/cleanup checks and native evidence limits. Existing 29 inert cleanup
+controls and three bounded Linux cases remain unchanged; no discretionary local
+live-suite replay is performed. Historical records are retained, not relabeled.
+
+
+### Measured launch prerequisite and source correction (2026-10-26)
+
+The one launch dispatch stopped at a missing SDK include path, before all three
+target controls. CI_CD/TESTING now document explicit measured `-isysroot` binding;
+the worklog preserves the actual native consumer/run and unrun controls. The new
+inert compile-command case rejects the observed omission. Native compilation
+and launch after this source correction remain unverified, with no repeat dispatch.
+
+## Retained hello handshake trace preparation (2026-10-26)
+
+Later separately authorized SDK validation at 04d2dd43/run 40338130238 measured
+both thin compiles, direct x86 completion and ARM debugger completion; translated
+LLDB timed out and runner orphan 1372 lacked an identity match. The dated SDK
+entry above remains history, not the current validation disposition.
+
+The present task authorizes one new trace of exact artifact 12657441997 bytes;
+older consumed session limits remain historical. A separate handshake-trace
+choice preserves both existing dispatch-only modes and defaults. New diagnostic
+code verifies producer/run/head, retained hello/dSYM/C/command/report hashes,
+actual LLDB logging support, unchanged packet timeout and private mode preparation.
+It adds a shared 120-second deadline, direct/native/translated caps 5/20/30,
+hard 2 MiB trace files and at most six time-distributed identity snapshots.
+The repaired group cleanup is reused without broad signals or host changes.
+Inert controls exercise production routing/bounds/parsing/ownership uncertainty;
+they run in the same source gate and native job before use. Normal shipping jobs
+and analysis/installer/sanitizer contracts remain intact. REPOSITORY_MAP.md,
+CI_CD.md and TESTING.md inventory the script, commands and actual coverage.
+The worklog preserves prior native outcomes; this preparation entry claims no
+new native trace result, original DSP cause or product repair.
+
+### Traced sampler deadline correction (2026-10-26)
+
+The one traced session at 919c7bd3/run 40349275028 reached translated remote
+capability exchange and sent vAttach for observed hello PID 1368, without a reply
+or completion before timeout. Later snapshots associated OAH debugserver 1369
+through verified ancestry; it survived the client group and was reaped by the
+runner. No broad signal or product repair follows. Exact native evidence remains
+bound to 919c7bd3, not a later source head.
+
+It also measured a pre-termination snapshot starting 5.409 ms after execution
+expiry. An inert production-runner assertion reproduces this boundary defect.
+The narrow correction schedules that sample inside execution time, bounds the
+entire observation and omits it after expiry; existing group cleanup is unchanged.
+CI_CD/TESTING and the worklog distinguish this source regression evidence from
+the consumed native session. No second native dispatch or project replay occurs.
+
+### Observation completion review closure (2026-10-27)
+
+The handshake observer previously bounded requested deadlines without accounting
+for actual completion. Inert execution reproduces a late successful empty census;
+this is not a new native timing measurement. The correction records actual sample
+times/status, rejects expired evidence, omits optional hashing with insufficient
+budget and immediately enters existing bounded group cleanup on inspection failure.
+TESTING/CI_CD document cooperative enforcement, exact-boundary expiry, separate
+post-cleanup driver budget and no hard realtime guarantee. REPOSITORY_MAP inventories
+the production observer/parser/hash/cleanup fixtures and same-run completion/empty-
+census mutants. KNOWN_ISSUES preserves the native attach/backend boundary and adds
+the conditional finding's accurate scope. The existing source-lint command includes
+all new controls; workflow scheduling and shipping/runtime inputs are unchanged.
+The worklog keeps earlier native/start-deadline records as history. No new native
+session, broadened signal authority, product repair or ADR decision is introduced.
+
+### Optional image-hash review correction (2026-10-27)
+
+Review of 99d9eb32 found optional file I/O could abort valid census/control flow.
+Only the observer's digest call now catches OSError and records a row error;
+post-hash budget checks and mandatory digest behavior are preserved. TESTING and
+CI_CD document in-budget warnings versus genuine inspection/expiry failure.
+REPOSITORY_MAP records the production controller fixtures and same-run handler-
+removal mutant; KNOWN_ISSUES and the worklog reconcile the confirmed regression
+with the earlier closure record. No new script or workflow route is introduced.
+Existing completion controls, signal scope and native limitations are retained.

@@ -2095,6 +2095,37 @@ no check is waived. Native gate results and the separate old AU teardown keep
 their own scopes. See `worklogs/2026-10-25-normal-validation.md` for evidence.
 
 
+## Bounded Rosetta characterization (2026-10-26)
+
+`rosetta-scope.yml` is a dispatch-only nonshipping diagnostic workflow, guarded
+by repository, event and the exact diagnostic branch. Publication does not run it.
+There are no dispatch inputs for ordinary replay; the driver accepts only zero
+ordinary invocations. Normal Build/Release routing and shipping gates are intact.
+The workflow retains read-only contents permission, the 35-minute job limit and
+original failing source `14bde706e2d121c9970cf00c757cb12d3178b9a5` in a separate
+checkout, universal Release, deployment target 10.13 and build number 1878.
+The ordinary executable is hashed and symbol-inventoried but never executed by
+this route. Reconstructed bytes are not recovery of the original executable.
+
+After normal setup, a single 600-second deadline includes basic Rosetta/AVX2
+probes, focused configuration/build, one direct x86_64 invocation (at most 60
+seconds), one requested LLDB session (at most 120 seconds) and diagnostics.
+Every command clamps to the remaining deadline and reserves process termination
+time. The executable AVX2 prerequisite uses the normal Build C source and
+`cc -arch x86_64 -march=haswell -O0` with `ROSETTA_ADVERTISE_AVX=1`. Compilation
+failure is a build prerequisite failure; execution failure is an unmet execution
+prerequisite. Neither is a product DSP verdict, and neither permits later runs.
+
+Direct completion/assertions and debugger results are recorded separately.
+A direct pass cannot erase an LLDB timeout; exit zero without a valid completion
+or with mismatch evidence fails. LLDB keeps ASLR enabled. No security policy is
+changed to force a launch. Partial JSON/raw logs include exact commands,
+timeouts/signals, surviving task-owned processes, compiler/SDK, flags, fixture
+and binary hashes, UUIDs and symbols. Same-run inert controls run in source-lint
+and before native orchestration. The original three ordinary passes and timeout
+at run 40233979177 remain historical; a new pass cannot explain main 40221042187.
+
+
 ## Modern Linux capability measurement (2026-10-26)
 
 The first candidate cf261315 measured ordinary UID 1001 on Ubuntu 24.04.5,
@@ -2139,3 +2170,190 @@ entries passed. No security setting changed. Artifact 12615374694 and the exact
 limits are recorded in `worklogs/2026-10-25-normal-validation.md`. The result
 does not certify the future 26.04 rollout, a 32-bit entropy host or other gates.
 No legacy-host exception is needed for this measured environment.
+
+
+## Diagnostic process cleanup correction (2026-10-26)
+
+`scripts/diagnose-rosetta-scope.py::cleanup_process` uses the PGID captured from
+its own `Popen(start_new_session=True)`. TERM does not depend on a successful
+census. An unconfirmed group/direct child after the bounded grace requires a
+best-effort KILL even if another census fails. Reaping the leader alone cannot
+prove the group empty. Signals, waits and each observation have isolated error
+records; a disappeared target does not skip bounded reaping or final reporting.
+A single cleanup deadline is reserved before launch and clamped to the existing
+execution deadline. No observation can consume the time reserved for escalation.
+Unknown group state or inspection/signal/reaping errors remain visible and
+conservatively fail verification, even when the direct child was reaped.
+
+The existing inert `--self-test` includes the real production command/cleanup
+path with fake dependencies and a rejecting no-op cleanup control. The separate
+`python3 tests/rosetta_cleanup_process_tests.py --report <private-report-path>`
+runs at most three harmless standard-Python fixture cases under an ordinary
+Linux UID, within 20 seconds total. Only recorded fixture PIDs and their owned
+new-session PGID are eligible targets. A process-local subreaper role in the
+fixture harness adopts/reaps its own known orphan child and is restored; no
+host security/permission setting changes. Independent bounded finally cleanup
+protects against a broken tested implementation. Source-lint retains both
+inert and process reports as Anamorph-POSIX-cleanup-validation. These tests
+establish measured Linux same-group behavior, not complete macOS LLDB cleanup.
+
+Recorded native run 40285821331/job 121449104663 at de31f2c0 remains failed:
+direct focused completion, then a 120-second LLDB timeout. Its driver reported
+an empty invocation group, but runner cleanup terminated orphan debugserver
+PID 4809. No ps failure was recorded; the census-error defect does not establish
+that orphan's cause. Its PGID/ancestry are unknown. Do not add process-name
+killing, host-policy changes or claim escaped-service cleanup from these tests.
+The workflow stays dispatch-only with ordinary-runs zero; this correction
+performs no new Rosetta/AVX2/DSP/focused/LLDB diagnostic session. Normal automatic
+Build remains separate and unchanged except these source-gate regressions.
+
+
+## Minimal debugger launch controls (2026-10-26)
+
+The existing dispatch-only `rosetta-scope.yml` accepts an explicit `mode`.
+Its default `scope` preserves the original pinned-source reconstruction and
+zero-ordinary contract. `launch-control` selects only the new tiny control job;
+publication, wrong repository/ref/event or an invalid mode selects no native
+route. The modes are mutually exclusive. Normal Build/Release semantics and
+all shipping gates remain unchanged. `scripts/diagnose-rosetta-launch.py
+--self-test` evaluates production job selection, rejects a seeded missing route
+and a no-op verifier, and checks real parser/control order using inert results.
+Source-lint retains its report with the existing cleanup validation artifact.
+No additional local live cleanup suite is needed for this routing extension.
+
+The separately authorized launch session uses a genuine disposable Apple Silicon
+host. An existing named Xcode 26.6 bundle is preferred through command-scoped
+DEVELOPER_DIR; otherwise the runner current selection is measured as a variant.
+Actual tool output is authoritative; no global selector or installation changes.
+One 120-second driver deadline includes selected-tool/SDK metadata, tiny C
+compilation, all controls, observations and cleanup. The job has a ten-minute
+outer limit for checkout/artifact handling. Baseline thin arm64 and x86_64 hello
+binaries use the same selected compiler with `-g -O0` and the measured SDK
+passed through `-isysroot`, no JUCE or Haswell/AVX2 flags. They are not product binaries or an AVX2 prerequisite test. The ordered
+maximum is one direct x86_64 invocation (10 seconds), one arm64 LLDB session
+(30 seconds), then one x86_64 LLDB session (30 seconds). A failure, timeout,
+denial, exhausted deadline or incomplete cleanup withholds later controls.
+There are no ordinary/focused DSP runs or automatic native triggers.
+
+Both debugger controls use identical minimal commands, `--no-lldbinit`, and
+`target.disable-aslr false`, with actual help/setting output retained. This init
+choice differs from the historical scope invocation. Success requires the real
+inferior marker and zero inferior exit as well as debugger completion; echoed
+commands or wrapper zero alone are insufficient. Source/binary/command hashes,
+UUIDs, raw logs and the selected compiler/LLDB and on-disk debugserver candidates
+are recorded. Candidate presence is not proof of an executing debugserver image.
+See https://lldb.llvm.org/man/lldb.html and https://lldb.llvm.org/use/settings.html .
+
+Bounded read-only observations retain only the invocation group, observed owned
+descendants or matching previously observed identities, plus the controller's
+prelaunch record. PID/PPID/PGID, platform session field, start label and executable
+label are retained when supported. The repaired group cleanup is reused unchanged;
+no fixture subreaper, process-name kill, outside-group signal or host-policy
+workaround is introduced. Unseen/reparented services remain an explicit limit;
+compare the runner's final cleanup log with captured identities. Empty group
+census or absent runner orphan messages do not certify every service or host.
+
+The source change prepares one minimal session, not a completed native result.
+Exact consumer/run/tool/binary outcomes belong to the external handoff and PR
+record. Historical de31f2c0/run 40285821331 remains direct completion followed
+by LLDB timeout and an unconfirmed orphan debugserver. The original single-thread
+Test 61 cause and original executable remain unresolved. A tiny control pass
+would not certify the old focused binary, symbols or breakpoint command path.
+No shipping assertion, FP policy, helper/pin, product identity or artwork changes.
+
+## Retained-input handshake trace (2026-10-26)
+
+The explicit `handshake-trace` choice in `rosetta-scope.yml` is mutually exclusive
+with `scope` and `launch-control`; their meanings and the default remain intact.
+It retrieves artifact 12657441997/run 40338130238 at producer
+04d2dd431a980073e572cfb3855ff53f3edf55e8. The already-pinned download-artifact
+action extracts it with job-local contents/actions read permissions. Run/head/ID
+metadata and literal hashes of the exact executables, all dSYM members, original
+C/command file and report are checked before use. ZIP-byte verification is not
+claimed for direct action extraction. Only fresh private copies receive 0700
+executable modes; bytes/signatures/security controls are unchanged. No compiler,
+project reconstruction, DSP or focused target is selected.
+
+`python3 scripts/diagnose-rosetta-handshake.py --self-test --report <report.json>`
+is entirely inert. It evaluates production selection for all modes/defaults,
+wrong branch/repository/event and seeded missing-job/no-op rejection. It checks
+actual logging selection and command construction, retained provenance/hashes,
+markers/inferior exits, later timeout after earlier completion, unknown backend
+identity and the production runner with mocked clock/process/inspection/cleanup.
+It checks cleanup reservation in the fixed deadline, refusal to spawn without
+time, output-budget failure, later live samples and the six-snapshot maximum.
+Normal source-lint retains its report; the native job repeats these controls
+before use. No real process or target is spawned by the fixtures.
+
+The actual Apple LLDB's `log list` and `help log enable` must support minimal
+lldb process/host and gdb-remote packets categories plus append/timestamp/file
+options. Unsupported metadata withholds all targets. Packet timeout is recorded
+without changing it. Both debugger controls preserve `--no-lldbinit`, client
+architecture selection and `target.disable-aslr false`; their command files
+differ only in output paths. See https://lldb.llvm.org/resources/debugging.html
+and https://lldb.llvm.org/use/troubleshooting.html .
+
+After verified transfer/preparation, one fixed 120-second driver budget covers
+metadata, execution, observation and cleanup inside a ten-minute job. At most
+one same-host direct x86_64 hello (5 seconds), one arm64 LLDB hello (20 seconds)
+and one x86_64 LLDB hello (30 seconds) run, in order. Failure, missing marker or
+inferior completion, timeout, explicit denial, output limit, unknown cleanup or
+deadline exhaustion withholds later controls. One shared append trace per
+debugger has a 2 MiB hard child-only file-size limit plus bounded polling; raw
+launch output is separate. No output is silently truncated into a pass.
+
+At most six bounded identity snapshots per debugger cover spawn, elapsed
+2/8/18 seconds while live, immediately before termination and after cleanup.
+Observations request only the remaining assigned budget; late returns are
+detected and enter cleanup without another execution-phase census. PID/PPID/PGID/session/start
+and ps-observed executable paths are retained, with current on-disk hashes where
+available; these are not kernel/memory-image digests. Verified ancestry/current
+identity may associate a backend. A name-only unmatched candidate stays unknown
+and is never signalled. The unchanged group cleanup remains independent of ps
+success; no outside-group killing, subreaper or debugger/host-policy workaround
+is introduced. Compare final runner orphan cleanup with captured identities;
+the raw report's scoped cleanup flag does not certify all services.
+
+The SDK-bound producer's native ARM debugger/direct x86 controls completed while
+translated LLDB timed out and runner orphan PID 1372 lacked captured ancestry.
+This trace adds a discriminating observation, not a product repair, Haswell/AVX2
+certification or another ordinary/full scope campaign. Matching binary/dSYM
+UUIDs do not establish complete symbols. Its actual result belongs to the
+exact-head external handoff and PR record. A tiny trace does not certify the
+original focused debugger route or explain single-threaded Test 61. No shipping
+gate, query target, sanitizer strictness, installer/archive contract or budget
+changes. Existing Linux process tests remain distinct from native macOS evidence.
+
+The traced 919c7bd3 session exposed a sampler boundary error: its final extra
+census started just after the target execution deadline. The sampler schedules
+that observation before the deadline and omits it when no time remains. The
+2026-10-27 correction additionally records assigned deadline, actual start/finish,
+elapsed time and complete/incomplete/expired status in driver-relative monotonic
+seconds. At the deadline is expired. Successful empty ps output, parsing or a
+file read that returns late cannot certify complete observation or cleanup.
+Phase checks bound requested ps/hash work to the 0.35-second sample and remaining
+execution/global budget; optional hashing needs at least 50 ms to start and the
+existing final driver reserve. Omitted hashes invent no image identity. Post-
+cleanup observation uses remaining driver time, independently of the earlier
+target execution deadline. Inspection errors/expiry immediately transition to
+the unchanged bounded group termination/reaping; they remain visible even if
+the client is reaped. No outside-group signal authority is added.
+
+Python process creation, scheduling and filesystem work can return late. This is
+cooperative budget enforcement with completion accounting, not a hard realtime
+guarantee. See https://docs.python.org/3/library/subprocess.html#subprocess.run
+and https://docs.python.org/3/library/time.html#time.sleep . Inert controls now
+exercise the actual observer, parser, hashing and cleanup with controlled OS/file/
+clock boundaries, including late empty results and completion/empty-census mutants.
+The existing same-job source-lint command runs these controls. No native session
+validates the corrected timing or repairs the measured translated attach stall.
+
+Optional image hashing has a narrower failure boundary than census inspection.
+An in-budget executable open/read `OSError` records `file_hash_error` on that
+row, preserves its identity and permits later rows/controls. No digest is
+invented. Budget checks run after failed and successful hashing outside the
+file-error handler, so observation expiry/ps/parser errors and the digest's
+deadline `RuntimeError` remain incomplete and enter existing cleanup. Mandatory
+hashing and `Driver.digest` are unchanged. Inert production observer/runner/
+controller cases and an exception-handler-removal mutant guard this distinction;
+an unreadable service image still cannot erase a separate/unknown survivor.
