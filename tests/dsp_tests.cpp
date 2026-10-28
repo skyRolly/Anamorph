@@ -10605,9 +10605,23 @@ static void testLevelMatchReprepareKeepsOnlyACurrentResult()
                      same (finLane.before, finLane.after) ? "KEPT" : "flushed");
         check (nanHeld, "premise (6a): +Inf injected un-ducked on audio with Level Match off after a live edit publishes NaN "
                         "on every block before the prepare -- the injection made the result current, and it is not finite");
-        check (juce::exactlyEqual (infLane.after, 0.0f), "(6a) a current but non-finite result is still not kept: the "
-                                                         "same-rate re-prepare flushes by its isfinite term (published "
-                                                         "exactly 0 dB)");
+        // reset() publishes literal +0.0f. Inspect that stored value with this test's
+        // bit-exact oracle, independent of floating-point comparisons/denormal modes.
+        // The negative controls also reject values a rounded decimal would hide.
+        const float zero = 0.0f;
+        check (same (zero, zero) && ! same (-0.0f, zero)
+               && ! same (std::numeric_limits<float>::denorm_min(), zero)
+               && ! same (1.0e-6f, zero) && ! same (std::numeric_limits<float>::infinity(), zero)
+               && ! same (std::numeric_limits<float>::quiet_NaN(), zero),
+               "control (6a): the reset oracle accepts +0 bits and rejects -0, subnormal, finite nonzero, Inf and NaN");
+        std::uint32_t afterBits = 0;
+        std::memcpy (&afterBits, &infLane.after, sizeof (afterBits));
+        std::printf ("  (6a) reset: %a, bits=%08x, fp-equal=%d, bit-exact=%d\n",
+                     (double) infLane.after, (unsigned int) afterBits,
+                     (int) juce::exactlyEqual (infLane.after, zero), (int) same (infLane.after, zero));
+        check (same (infLane.after, zero), "(6a) a current but non-finite result is still not kept: the "
+                                          "same-rate re-prepare flushes by its isfinite term (published "
+                                          "exactly 0 dB)");
         check (std::isfinite (finLane.before) && same (finLane.before, finLane.after),
                "(6b) the same with a FINITE injection is kept bit-exact -- the injection made the result current, so in "
                "(6a) the isfinite term alone flushed");

@@ -111,7 +111,7 @@ build_component app  Anamorph.app       "/Applications"                      "$W
 cat > "$WORK/distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
-    <title>Anamorph ${VERSION}</title>
+    <title>Anamorph</title>
     <options customize="allow" require-scripts="false"/>
     <domains enable_localSystem="true"/>
     <choices-outline>
