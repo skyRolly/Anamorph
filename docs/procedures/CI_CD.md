@@ -117,6 +117,47 @@ these wrappers. The other current workflows (`rosetta-scope.yml`, `release.yml`,
 reusable Build calls reach the same ordinary wrappers. Historical reports and any source-built
 validation evidence retain their original provenance and are not rewritten as locked downloads.
 
+## Windows DSP dump validation
+
+`windows-avx2-ab` invokes `scripts/check-dsp-dump.py ab` on the raw A/B output from
+the existing `tests/dsp_dump.cpp` instrument. The helper's `--self-test` runs in
+that same Windows job before builds/comparison, and in `source-lint` and local
+preflight. It executes the public CLI with inert text, including a last-write-wins
+duplicate mutant and evidence-output alias regressions; it builds and executes no
+product. Local PowerShell execution is parser/invocation evidence, not native
+Windows evidence.
+
+Complete records must cover exactly the current 32 scenario identities, once
+each, with a 16-hex hash and nonnegative C++-int latency. Unknown, missing,
+duplicate and malformed records fail as **INFRASTRUCTURE**, before comparison.
+Only validated hash differences block as **NUMERICAL**, preserving ADR-0032's
+same-machine baseline-versus-shipped contract. An IDENTICAL result describes
+hashes only. Latency equality/differences are separate JSON/summary metadata;
+differences name the scenario and both values and emit a **METADATA warning**.
+The dependency-bump procedure still requires its own full latency review; this
+Windows ISA gate is not general RH-F4 dependency-comparison automation.
+
+`check-dsp-dump.py c` validates B/C before reporting informational hash and
+latency results. Invalid/missing C data produces warnings, `NOT_COMPARED` and
+no numeric comparison count. C build/run/checker/evidence failures cannot change
+the completed A/B gate. Compiler/flag checks, toolset boundary, routing and
+timeouts are unchanged. `macos-crossslice` retains its existing reporting-only
+parser/contract; this change does not validate that lane's input semantics.
+
+The always-attempted `Anamorph-Windows-dsp-dump-validation` evidence artifact
+retains unmodified `d-*.txt`, `dsp-dump-ab.json`, optional `dsp-dump-c.json`, and
+`dsp-dump-context.json` (source head, run/job, MSVC toolset and flag counts).
+Each comparison report records raw file SHA-256, validation status and, only for
+valid inputs, records with hash/latency/source line. See TESTING's
+[record contract and result schema](TESTING.md#validating-windows-ab-dsp-dump-records).
+Before comparison or writing, both evidence paths are checked against both raw
+inputs by resolved path and existing file identity, including hard links. Any
+input alias refuses all evidence writes, including the report retry, with stdout
+diagnostics only: infrastructure for A/B and warning-only for C. Same-job CLI
+fixtures check unchanged raw bytes for both output options and detect a seeded
+guard bypass that recreates both clobbers. Symlink fixtures explicitly warn if
+the host cannot create them; canonical-path and hard-link controls remain required.
+
 ## pluginval strictness lives in one place
 
 `ANAMORPH_PLUGINVAL_STRICTNESS` in `build.yml`'s `env:` block is the **single authority** for the
@@ -180,7 +221,7 @@ jobs that guard classes the build matrix cannot see:
 |---|---|---|---|
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint; the checkout fetches the full history, every branch and every tag, `fetch-depth: 0` and `fetch-tags: true`, because the `CHANGELOG.md` link check reads which versions were released from the git tags on the release line — the tags `origin/main` holds but those cut after `HEAD`, since a same-repo PR is checked at its tip — and requires an entry for each — `CHANGELOG_POLICY.md` rule 8) | — |
-| **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, `check-realtime.py`, `check-dispatch.py`, `check-state-coverage.py`, then `check-citations.py --check`; plus `test-pluginval-acquisition.py` and the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
+| **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, `check-realtime.py`, `check-dispatch.py`, `check-state-coverage.py`, then `check-citations.py --check`; plus `check-dsp-dump.py --self-test`, `test-pluginval-acquisition.py` and the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
 | **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below), the six blocking race probes, and the **XML boundary differential** (`tests/xml_boundary_differential.cpp`, ADR-0056 — compiled here like the two realtime canaries, Linux-only because it contains its parses in forked children on 1 MB `pthread` stacks) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
@@ -188,7 +229,7 @@ jobs that guard classes the build matrix cannot see:
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-crossslice** | `macos-latest` (Apple Silicon) | the twin-dump instrument for both universal slices (arm64 native + x86_64 under Rosetta); **no packaging, no artifacts; job-level `continue-on-error` — reporting-only by design** (a cross-architecture comparison is Class B, not a gate; ADR-0031 §Consequences) | — |
-| **windows-avx2-ab** | `windows-latest` (MSVC) | two twin-dump builds — baseline vs `/arch:AVX2` — diffed hash-for-hash; **no packaging, no artifacts**; **BLOCKING** (the ADR-0032 per-push Class-A assertion: any of the 32 scenarios moving fails the push, with NUMERICAL vs INFRASTRUCTURE failures distinctly labelled) | — |
+| **windows-avx2-ab** | `windows-latest` (MSVC) | two twin-dump builds — baseline vs `/arch:AVX2` — validated then compared hash-for-hash; **no packaging**; raw dump/JSON evidence artifact; **BLOCKING** on invalid A/B or differing scenario hashes, with NUMERICAL vs INFRASTRUCTURE labelled; latency is separate warning-only metadata, C stays informational | — |
 | **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, the GCC warning gate, and the two instruments' liveness builds) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
