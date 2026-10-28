@@ -1,5 +1,23 @@
 # TESTING.md
 
+## Exact-zero Level Match reset assertion (2026-10-28)
+
+DSP Test 69 (6a) requires the exact +0.0f representation written by
+`LoudnessMatch::reset`, using the test's existing byte-comparison helper.
+Its same-run control accepts +0 and rejects -0, the smallest subnormal,
+an ordinary small nonzero value, infinity and NaN. This is stricter than a
+floating equality under denormal modes; no epsilon or platform skip is used.
+The diagnostic records the hexadecimal value, raw bits, floating comparison
+and bit-exact result so a rounded decimal cannot conceal a discrepancy.
+
+Historical failure: run 40599339270/job 122523254764 at
+c09f7bbefb9eba44312aec85ffd7acde36d21f3e, x86_64 under Rosetta, 940 checks,
+one failure, exit 1; the state suite after it did not run. The original
+operator== failure's technical cause remains unconfirmed until discriminating
+runtime evidence exists. This test-oracle correction changes no DSP code,
+compiler flags, CI gate or Accepted ADR, and does not explain the separate
+historical Test 61 scope-ring or AU teardown observations.
+
 How to run and interpret the validation suite. Acceptance levels and the hard gate are defined in
 `docs/policies/TESTING_POLICY.md`.
 

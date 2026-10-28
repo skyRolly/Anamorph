@@ -1,5 +1,19 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Exact-zero Level Match reset oracle (2026-10-28)
+
+Rosetta DSP Test 69 (6a) failed in run 40599339270/job 122523254764 at
+c09f7bbefb9eba44312aec85ffd7acde36d21f3e, while its decimal diagnostic rounded
+the value to +0.0000. The existing test now checks the literal +0.0f reset's
+stored bits through its existing byte-comparison oracle. Positive-zero and
+negative controls reject -0, subnormal, ordinary nonzero, infinity and NaN
+representations; no tolerance or skip is added. Diagnostics retain hexadecimal
+value/bits and the original floating-comparison result. TESTING records this
+stronger oracle and the historical failure's unconfirmed cause. Source:
+`tests/dsp_tests.cpp::testLevelMatchReprepareKeepsOnlyACurrentResult`,
+`src/dsp/LoudnessMatch.cpp::reset`. Product DSP, flags, workflow and identities
+are unchanged; this does not identify the old Test 61 or AU teardown cause.
+
 ## Product-only installer names (2026-10-28)
 
 Windows explicitly sets `AppVerName=Anamorph` and
