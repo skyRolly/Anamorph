@@ -5596,10 +5596,36 @@ required. The previous `find … | head -n1` validated whichever bundle enumerat
 multi-config tree could pass the release gate on a bundle that was not the one just built — a
 local-only hazard, which is exactly where it would go unnoticed.
 
-The script downloads pluginval if absent (a failed `chmod +x` on it is now an error rather than
-`|| true`, so a setup fault reports where it happens instead of resurfacing as an opaque "cannot
-execute" from the validation loop), and runs under `xvfb-run` when available (Linux editor tests need
-a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginval.ps1.
+Both wrappers prepare pluginval through `scripts/acquire-pluginval.py`, using the single
+`scripts/pluginval-release.json` authority and Python's standard library (`python3` on POSIX,
+`python` in PowerShell). Python 3.8+ is required and is already used by these CI jobs. The shell
+wrapper still uses `xvfb-run` when available (Linux editor tests need a display).
+
+Acquisition verifies archive SHA-256 and length before opening the ZIP. It rejects malformed
+locks, unsupported hosts, wrong assets, failed/partial downloads, escaping paths (including
+Windows backslash/drive/UNC/ADS/device/alias spellings), links/special types, collisions and
+incomplete bundles. Files are written only in private staging; the final path is published after
+preparation succeeds. No quarantine/security policy is changed. Cache storage is
+`.tools/pluginval-releases/<version>-<platform>-<archive-sha256>/`. Reuse rehashes the archive,
+reads its full inventory, and compares every extracted file/directory against it; metadata,
+resources and signature files in the macOS app count as tool content. A marker or executable's
+presence is never sufficient. Damaged/incomplete caches fail setup before the validator loop.
+Remove **only the exact content cache directory named by the setup error** to reacquire; legacy
+`.tools/pluginval`, `.tools/pluginval.exe` and other unrelated files are not removed or reused.
+Concurrent malicious modification after verification is outside this local cache check's scope.
+
+`python3 scripts/test-pluginval-acquisition.py` exercises the production preparation functions
+with inert data-only ZIPs, transport stand-ins and counting invocation boundaries. It covers
+valid reuse without download, bad/missing/truncated inputs, stale version/platform content,
+modified executables, bundle metadata/resources, containment/type refusal and setup propagation
+through the real shell/PowerShell setup sections. No archive member is executed. The PowerShell
+leg is required by `--require-powershell` in the existing Windows CI job; a host without `pwsh`
+reports that leg as skipped. The source-lint job and local preflight run the suite too. Every real
+acquisition runs a seeded digest failure through the same archive assertion; the suite disables
+that verifier to prove the canary itself refuses a dead gate. Existing exit-classification
+self-tests remain unchanged. Manual upgrades and provenance: `DEPENDENCY_POLICY.md`.
+Evidence [Verified]: `scripts/acquire-pluginval.py`, `scripts/test-pluginval-acquisition.py`,
+`scripts/run-pluginval.sh`, `scripts/run-pluginval.ps1`.
 
 ### Signal-only retry (known X11 host flake)
 

@@ -1,5 +1,20 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Locked pluginval acquisition and cached integrity (2026-10-28)
+
+Both ordinary wrappers share `scripts/pluginval-release.json` and
+`scripts/acquire-pluginval.py`. DEPENDENCY_POLICY records measured official-release provenance,
+its limits and the manual upgrade procedure; RELEASE_HARDENING_PLAN records RH-F6's source
+implementation. CI_CD, TESTING and REPOSITORY_MAP describe the actual consumer inventory,
+Python runtime, inert regressions, per-acquisition digest canary, full bundle/cache checks and
+exact-directory recovery. Source-lint, preflight and the existing Windows job run the offline
+suite; the Windows job requires PowerShell integration. setup-linux retains its package set and
+corrects obsolete curl/unzip acquisition descriptions. No changelog entry: CI/tool integrity has
+no product-visible change (CHANGELOG_POLICY rule 3). Existing acceptance cells, platform ADRs,
+historical diagnostic/source-built evidence and all product/runtime gates remain unchanged.
+Offline evidence and actual platform CI outcomes are distinct; no local downloaded validator
+or product application execution is part of this change.
+
 ## Exact-zero Level Match reset oracle (2026-10-28)
 
 Rosetta DSP Test 69 (6a) failed in run 40599339270/job 122523254764 at
@@ -1931,7 +1946,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3735` and `.github/workflows/build.yml:3820`, this round being
+`.github/workflows/build.yml:3741` and `.github/workflows/build.yml:3826`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1965,7 +1980,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:791` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:794` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the

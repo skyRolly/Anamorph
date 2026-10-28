@@ -2,7 +2,7 @@
 # ============================================================================
 #  Anamorph -- pluginval validation (Tracktion's open-source validator)
 #
-#  Downloads a pluginval release if not present, then validates a built plugin
+#  Verifies/prepares the locked pluginval release, then validates a built plugin
 #  bundle. Works on Linux and macOS (the Windows job uses scripts/run-pluginval.ps1
 #  with the SAME structure). Editor open/close tests need a display, so we run
 #  under xvfb-run on Linux when available.
@@ -466,20 +466,11 @@ else
 fi
 BUNDLE_PATH="$BUNDLE_MATCHES"
 
-# Platform-specific pluginval release + binary path (Linux vs macOS).
-case "$(uname -s)" in
-    Darwin) PV_ZIP="pluginval_macOS.zip"; PLUGINVAL="$TOOLS_DIR/pluginval.app/Contents/MacOS/pluginval" ;;
-    *)      PV_ZIP="pluginval_Linux.zip"; PLUGINVAL="$TOOLS_DIR/pluginval" ;;
-esac
-
-if [ ! -x "$PLUGINVAL" ]; then
-    echo "Fetching pluginval ($PV_ZIP)..."
-    curl -L "https://github.com/Tracktion/pluginval/releases/latest/download/$PV_ZIP" -o "$TOOLS_DIR/pluginval.zip"
-    (cd "$TOOLS_DIR" && unzip -o pluginval.zip >/dev/null)
-    # NOT `|| true`: a failed chmod here resurfaces later as an opaque "cannot
-    # execute" from the validation loop, which reads as a plugin problem rather
-    # than the setup problem it is. Fail where the fault actually is.
-    chmod +x "$PLUGINVAL"
+# Both wrappers consume one release/content lock through the same preparer.
+# A setup failure must stop here, before any validator invocation or retry.
+if ! PLUGINVAL="$(python3 "$ROOT/scripts/acquire-pluginval.py" --tools "$TOOLS_DIR")"; then
+    echo "pluginval setup failure: acquisition refused" >&2
+    exit 1
 fi
 
 RUN_PREFIX=""

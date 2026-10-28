@@ -660,6 +660,9 @@ jobs:
       - name: pluginval verdict self-test (a crash is still called a crash)
         run: ./scripts/run-pluginval.sh --self-test
 
+      - name: pluginval acquisition offline regressions
+        run: python3 scripts/test-pluginval-acquisition.py
+
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
       # code while the document keeps reading as though it were still correct.
@@ -1621,6 +1624,9 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: pluginval acquisition offline regressions (PowerShell required)
+        run: python scripts/test-pluginval-acquisition.py --require-powershell
 
       # Default Visual Studio generator (multi-config); MSVC is auto-detected.
       - name: Configure
