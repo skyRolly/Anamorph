@@ -5614,6 +5614,15 @@ scenario (`hash`, integer `latency`, input `line`). Invalid input has null
 null comparison counts and empty differences. `errors` and `warnings` retain
 the labelled reasons. Raw files are never rewritten.
 
+**Evidence path safety.** Before comparison or either evidence write, the CLI
+checks both `--report` and `--summary` against both input paths by resolved path
+and existing file identity. Direct, relative, parent-directory, symlink and hard-link
+aliases of a raw dump are refused. If either output aliases an input, neither
+output is opened or retried: diagnostics go only to stdout, with INFRASTRUCTURE
+exit 2 for A/B and a warning with exit 0 for C, without a comparison verdict.
+Independent output files, including links to files other than the inputs, remain
+supported.
+
 **C is optional.** Mode `c` returns 0 for valid differences and input/evidence
 failures. Valid data has classification `INFORMATIONAL`; invalid/missing data
 has `INFORMATIONAL_UNAVAILABLE`, warnings and no numeric comparison count.
@@ -5637,7 +5646,14 @@ and the Windows A/B job run it; the Windows self-test precedes actual comparison
 in that same job. These fixtures contain synthetic text hashes, no audio or
 committed golden DSP baseline. Local execution, including PowerShell, does not
 establish native Windows behavior. The macOS cross-slice reporting experiment
-keeps its existing parser and non-blocking scope.
+keeps its existing parser and non-blocking scope. Evidence-path regressions invoke
+the CLI with each output aliasing each input, for both A/B and C, and assert exact
+raw-byte preservation and that the other evidence output is untouched. They cover
+absolute/relative/parent-directory equivalents and hard links everywhere; symlinks
+also run where creation is permitted, otherwise an explicit warning records that
+coverage limit without changing host privileges. Links to independent outputs
+are accepted. The same byte-preservation assertions detect executed report and
+summary clobbers when a seeded mutant bypasses the evidence-path guard.
 
 ## pluginval (VST3 + AU conformance)
 

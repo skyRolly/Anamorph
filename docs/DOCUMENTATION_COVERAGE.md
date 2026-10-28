@@ -17849,3 +17849,28 @@ production sanitizer environment remain unchanged. Local PowerShell has
 Windows self-test step to run locally, without claiming native Windows execution.
 Local preflight has no build tree and explicitly skips native output inspection
 and the product test suites; it is source/parser evidence only.
+
+### PR #182 review - raw dump aliases in evidence paths (2026-10-28)
+
+At `ec2932da02b84ae21fab6977dfd7d074b8f479aa`, the public CLI could overwrite
+a raw input through `--report` or append diagnostics through `--summary`. Inert
+copies of the text fixture reproduce both byte changes with exit 0, contradicting
+the preservation statement above. This is an evidence-writer defect; the workflow's
+ordinary distinct output paths and the earlier native run retain their original scope.
+
+Before comparison or either output write, `check-dsp-dump.py::check_evidence_paths`
+now checks both output options against both inputs using resolved path and existing
+file identity, including hard links. An input alias refuses all evidence writes
+and bypasses the report retry. The diagnostic-only result is INFRASTRUCTURE/exit 2
+for A/B and warning-only/exit 0 for C; no hash verdict is emitted. The parser,
+hash/latency contracts, workflow and product inputs are unchanged.
+
+The same public CLI fixtures cover both outputs, both inputs, A/B and C,
+direct/relative/parent-directory equivalents, hard links, and symlinks where
+creation is permitted. They assert exact raw bytes and untouched independent
+evidence files. Links to unrelated outputs stay accepted. Unsupported symlink
+creation emits an explicit coverage warning without changing host privileges.
+The exact raw-byte assertions detect executed report and summary clobbers from
+a seeded guard-bypass mutant, in addition to the existing duplicate-overwrite
+mutant. TESTING, CI_CD and REPOSITORY_MAP document the guard and its same-job
+coverage. Prior-head CI remains dated evidence, not verification of this follow-up.

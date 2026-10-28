@@ -123,8 +123,9 @@ validation evidence retain their original provenance and are not rewritten as lo
 the existing `tests/dsp_dump.cpp` instrument. The helper's `--self-test` runs in
 that same Windows job before builds/comparison, and in `source-lint` and local
 preflight. It executes the public CLI with inert text, including a last-write-wins
-duplicate mutant; it builds and executes no product. Local PowerShell execution
-is parser/invocation evidence, not native Windows evidence.
+duplicate mutant and evidence-output alias regressions; it builds and executes no
+product. Local PowerShell execution is parser/invocation evidence, not native
+Windows evidence.
 
 Complete records must cover exactly the current 32 scenario identities, once
 each, with a 16-hex hash and nonnegative C++-int latency. Unknown, missing,
@@ -149,6 +150,13 @@ retains unmodified `d-*.txt`, `dsp-dump-ab.json`, optional `dsp-dump-c.json`, an
 Each comparison report records raw file SHA-256, validation status and, only for
 valid inputs, records with hash/latency/source line. See TESTING's
 [record contract and result schema](TESTING.md#validating-windows-ab-dsp-dump-records).
+Before comparison or writing, both evidence paths are checked against both raw
+inputs by resolved path and existing file identity, including hard links. Any
+input alias refuses all evidence writes, including the report retry, with stdout
+diagnostics only: infrastructure for A/B and warning-only for C. Same-job CLI
+fixtures check unchanged raw bytes for both output options and detect a seeded
+guard bypass that recreates both clobbers. Symlink fixtures explicitly warn if
+the host cannot create them; canonical-path and hard-link controls remain required.
 
 ## pluginval strictness lives in one place
 

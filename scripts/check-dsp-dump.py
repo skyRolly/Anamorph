@@ -151,6 +151,23 @@ def messages(result: dict) -> list[str]:
     return lines
 
 
+def check_evidence_paths(left: Path, right: Path, report: Path, summary: Path | None) -> None:
+    """Refuse input aliases before either evidence output can be opened."""
+    for option, output in (("--report", report), ("--summary", summary)):
+        if output is None:
+            continue
+        for source_option, source in (("--left", left), ("--right", right)):
+            same = output.resolve() == source.resolve()
+            if not same:
+                try:
+                    same = output.samefile(source)  # Includes existing hard links.
+                except FileNotFoundError:
+                    pass  # A new evidence path is allowed; input parsing handles missing dumps.
+            if same:
+                raise ValueError(f"{option} {str(output)!r} refers to {source_option} raw dump "
+                                 f"{str(source)!r}; refusing all evidence writes")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
@@ -166,6 +183,15 @@ def main(argv: list[str] | None = None) -> int:
         return self_test()
     if args.mode is None:
         parser.error("choose ab or c, or --self-test")
+    try:
+        check_evidence_paths(args.left, args.right, args.report, args.summary)
+    except (OSError, RuntimeError, ValueError) as error:
+        # Neither output is safe to open until BOTH have been checked. In
+        # particular, do not enter the evidence writer's report-retry path.
+        level = "error" if args.mode == "ab" else "warning"
+        prefix = "INFRASTRUCTURE" if args.mode == "ab" else "informational C"
+        print(annotation(level, f"{prefix}: unsafe evidence paths: {error}"))
+        return 2 if args.mode == "ab" else 0
     result = assess(args.mode, args.left, args.right)
     lines = messages(result)
     try:
@@ -345,6 +371,92 @@ def self_test() -> int:
         else:
             raise AssertionError("duplicate-overwrite mutant survived the production-entry regression")
 
+        def output_collision(option: str, input_option: str, alias_kind: str, mode: str = "ab",
+                             script: Path = helper, collides: bool = True) -> None:
+            nonlocal cases
+            cases += 1
+            a, b = root / "protected-left.txt", root / "protected-right.txt"
+            report, summary = root / "separate-report.json", root / "separate-summary.txt"
+            alias, unrelated = root / "evidence-alias", root / "unrelated-output.txt"
+            alias.unlink(missing_ok=True)
+            before = valid.encode("utf-8")
+            a.write_bytes(before)
+            b.write_bytes(before)
+            report.write_bytes(b"report untouched\n")
+            summary.write_bytes(b"summary untouched\n")
+            unrelated.write_bytes(b"unrelated output\n")
+            target = a if input_option == "--left" else b
+            if not collides:
+                target = unrelated
+            if alias_kind == "same":
+                destination = target
+            elif alias_kind == "relative":
+                destination = Path(target.name)  # Inputs are absolute; subprocess cwd is root.
+            elif alias_kind == "dotdot":
+                (root / "alias-directory").mkdir(exist_ok=True)
+                destination = root / "alias-directory" / ".." / target.name
+            elif alias_kind == "symlink":
+                alias.symlink_to(target)
+                destination = alias
+            elif alias_kind == "hardlink":
+                alias.hardlink_to(target)
+                destination = alias
+            else:
+                raise AssertionError(alias_kind)
+            command = [sys.executable, str(script), mode, "--left", str(a), "--right", str(b),
+                       "--report", str(destination if option == "--report" else report),
+                       "--summary", str(destination if option == "--summary" else summary)]
+            process = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=15)
+            # Check bytes first: the bypass mutant must fail for this exact defect.
+            assert a.read_bytes() == b.read_bytes() == before, "raw dump bytes changed"
+            if collides:
+                assert report.read_bytes() == b"report untouched\n", "report was written before summary refusal"
+                assert summary.read_bytes() == b"summary untouched\n", "summary was written before report refusal"
+                assert process.returncode == (2 if mode == "ab" else 0), process
+                assert ("::error::INFRASTRUCTURE:" if mode == "ab" else "::warning::informational C:") in process.stdout, process
+                assert option in process.stdout and input_option in process.stdout, process.stdout
+                assert "refusing all evidence writes" in process.stdout, process.stdout
+                assert "IDENTICAL" not in process.stdout and "scenario hashes differ" not in process.stdout, process.stdout
+                if mode == "c":
+                    assert "::error::" not in process.stdout, process.stdout
+            else:
+                assert process.returncode == 0, process
+                data = json.loads((destination if option == "--report" else report).read_text(encoding="utf-8"))
+                assert data["classification"] == ("IDENTICAL" if mode == "ab" else "INFORMATIONAL"), data
+
+        # Symlink creation can require a privilege absent on Windows. Report
+        # that limitation explicitly; canonical-path and hard-link cases remain
+        # mandatory everywhere, without changing host privileges or settings.
+        link_kinds = ["hardlink"]
+        probe = root / "symlink-probe"
+        try:
+            probe.symlink_to(root / "left.txt")
+        except (OSError, NotImplementedError) as error:
+            print(annotation("warning", f"DSP dump symlink fixtures unavailable: {error}"))
+        else:
+            probe.unlink()
+            link_kinds.append("symlink")
+        for mode in ("ab", "c"):
+            for option in ("--report", "--summary"):
+                for source_option in ("--left", "--right"):
+                    for alias_kind in ("same", "relative", "dotdot", *link_kinds):
+                        output_collision(option, source_option, alias_kind, mode)
+                for alias_kind in link_kinds:
+                    output_collision(option, "--left", alias_kind, mode, collides=False)
+
+        guard_call = "        check_evidence_paths(args.left, args.right, args.report, args.summary)"
+        guard_mutant = root / "evidence-guard-bypass.py"
+        seeded = source.replace(guard_call, "        pass  # seeded evidence guard bypass", 1)
+        assert seeded != source, "evidence guard mutant was not seeded"
+        guard_mutant.write_text(seeded, encoding="utf-8")
+        for option in ("--report", "--summary"):
+            try:
+                output_collision(option, "--left", "same", script=guard_mutant)
+            except AssertionError as error:
+                assert str(error) == "raw dump bytes changed", str(error)
+            else:
+                raise AssertionError(f"evidence guard bypass survived the {option} raw-byte assertion")
+
         # Optional C evidence I/O failure must be warning-only as well.
         for mode, code, level in (("ab", 2, "error"), ("c", 0, "warning")):
             process = subprocess.run([sys.executable, str(helper), mode, "--left", str(root / "left.txt"),
@@ -358,7 +470,8 @@ def self_test() -> int:
             result = json.loads(report.read_text(encoding="utf-8"))
             assert process.returncode == result["exit_code"] == code and f"::{level}::" in process.stdout, process
             assert result["classification"] == ("INFRASTRUCTURE" if mode == "ab" else "INFORMATIONAL_UNAVAILABLE"), result
-    print(f"DSP dump parser self-test: {cases} production-entry fixtures; duplicate-overwrite mutant rejected.")
+    print(f"DSP dump parser self-test: {cases} production-entry fixtures; "
+          "duplicate-overwrite and evidence-guard-bypass mutants rejected.")
     return 0
 
 
