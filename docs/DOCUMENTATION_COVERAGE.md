@@ -1958,7 +1958,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3741` and `.github/workflows/build.yml:3826`, this round being
+`.github/workflows/build.yml:3747` and `.github/workflows/build.yml:3832`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1992,7 +1992,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:794` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:797` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17801,3 +17801,51 @@ REPOSITORY_MAP records the production controller fixtures and same-run handler-
 removal mutant; KNOWN_ISSUES and the worklog reconcile the confirmed regression
 with the earlier closure record. No new script or workflow route is introduced.
 Existing completion controls, signal scope and native limitations are retained.
+
+## Windows DSP dump record validation (2026-10-28)
+
+The Windows ADR-0032 gate at `1a3b785719130b935c2ed6fa473f3650a92ef742`
+used `Read-Dump` in `.github/workflows/build.yml` to overwrite duplicate keys
+and discard latency. Its unchanged parser/count/comparison expressions accept
+33 synthetic B records as 32 matching dictionary keys when a changed
+`haas-os1-lr` hash is followed by the original baseline row. This is isolated
+text/parser evidence, not a measured product audio regression. The old
+"all 32 scenarios agree" wording established hashes only, not full-field equality.
+
+`scripts/check-dsp-dump.py` replaces that production parser/decision path with
+exact current identity-set validation, complete hash/int-latency records and
+pre-insertion duplicate refusal. Valid A/B hash mismatches remain NUMERICAL;
+invalid A/B inputs are INFRASTRUCTURE before comparison. Latency equality and
+scenario-specific differences are separate metadata, with warning-only differences
+under this ISA gate. C validates before reporting, warns on invalid/missing data
+without a numeric count, and cannot alter completed A/B disposition. Raw input
+and JSON/context artifacts preserve diagnosis. No DSP, actual reported latency,
+flags, toolset boundary, routing, timeout, state or package contract changes.
+
+The helper's `--self-test` executes its public CLI on inert current-matrix text,
+including whitespace/headers/reordering, hash and latency differences, wrong/missing/
+extra keys, duplicate variants, invalid latency, empty/truncated/malformed data,
+A/B failure precedence, warning-only C and evidence I/O failure. The same duplicate
+refusal assertion detects an executed last-write-wins production mutant recreating
+the false pass. These fixtures are synthetic hashes, not audio or golden baselines.
+Source-lint, local preflight and Windows A/B run this check; the Windows job runs
+it before using the checker. Local PowerShell evidence is not native Windows evidence.
+
+CI_CD.md, TESTING.md and REPOSITORY_MAP.md document the production entry points,
+record forms, result schema, C behavior, artifact and testing limits. This internal
+CI correction requires no product changelog entry under CHANGELOG_POLICY rule 3;
+the published Keep a Changelog 1.1.0 guidance was read. RH-F4's general dependency
+comparison orchestration is not completed by this parser. The macOS cross-slice
+parser remains permissive and reporting-only; shared-helper migration is deferred.
+Completed installer/pluginval work is not repeated. Stopped manual/physical-host,
+GUI/DAW/debugger follow-up is not reopened or counted as passed.
+
+Workflow offsets required eight citation re-anchors, including citation-only
+edits in KNOWN_ISSUES.md, COMPATIBILITY_MATRIX.md and RELEASE_POLICY.md. Their
+decisions and status are unchanged. The local routing fixture's temporary-path
+assertion requires a canonical private TMPDIR on this host. Its checks and
+production sanitizer environment remain unchanged. Local PowerShell has
+`python3` only; a private `python` executable alias permits the unchanged
+Windows self-test step to run locally, without claiming native Windows execution.
+Local preflight has no build tree and explicitly skips native output inspection
+and the product test suites; it is source/parser evidence only.

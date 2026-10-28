@@ -2,6 +2,7 @@
 # ============================================================================
 #  Anamorph -- local preflight: the lint gates + the fast release gate, in one
 #  command, before a push spends a CI round trip discovering the same thing.
+#  Also runs the DSP dump parser's inert production-entry fixture/mutant checks.
 #
 #  WHAT THIS RUNS, in CI's own order (docs/procedures/CI_CD.md §Reproducing CI
 #  locally): the eight checkers with their --self-tests first (seconds, no
@@ -90,6 +91,7 @@ python3 scripts/check-gcc-warnings.py --self-test
 # its branches.
 ./scripts/run-pluginval.sh --self-test
 python3 scripts/test-pluginval-acquisition.py
+python3 scripts/check-dsp-dump.py --self-test
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 

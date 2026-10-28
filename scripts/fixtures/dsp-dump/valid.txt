@@ -1,0 +1,36 @@
+dsp-dump self-check passed: 32 scenarios, all repeatable and all distinct.
+
+# AnamorphDspDump -- 48000 Hz, 512-sample blocks, 120 noise + 120 silence blocks
+# scenario                 fnv1a-64            latency
+haas-os1-lr               0000000000000001        0
+haas-os1-ms               0000000000000002        1
+haas-os2-lr               0000000000000003        2
+haas-os2-ms               0000000000000004        3
+haas-os4-lr               0000000000000005        4
+haas-os4-ms               0000000000000006        5
+haas-os8-lr               0000000000000007        6
+haas-os8-ms               0000000000000008        0
+velvet-os1-lr             0000000000000009        1
+velvet-os1-ms             000000000000000a        2
+velvet-os2-lr             000000000000000b        3
+velvet-os2-ms             000000000000000c        4
+velvet-os4-lr             000000000000000d        5
+velvet-os4-ms             000000000000000e        6
+velvet-os8-lr             000000000000000f        0
+velvet-os8-ms             0000000000000010        1
+chorus-os1-lr             0000000000000011        2
+chorus-os1-ms             0000000000000012        3
+chorus-os2-lr             0000000000000013        4
+chorus-os2-ms             0000000000000014        5
+chorus-os4-lr             0000000000000015        6
+chorus-os4-ms             0000000000000016        0
+chorus-os8-lr             0000000000000017        1
+chorus-os8-ms             0000000000000018        2
+dimensional-os1-lr        0000000000000019        3
+dimensional-os1-ms        000000000000001a        4
+dimensional-os2-lr        000000000000001b        5
+dimensional-os2-ms        000000000000001c        6
+dimensional-os4-lr        000000000000001d        0
+dimensional-os4-ms        000000000000001e        1
+dimensional-os8-lr        000000000000001f        2
+dimensional-os8-ms        0000000000000020        3

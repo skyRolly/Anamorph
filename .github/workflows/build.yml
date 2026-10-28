@@ -663,6 +663,9 @@ jobs:
       - name: pluginval acquisition offline regressions
         run: python3 scripts/test-pluginval-acquisition.py
 
+      - name: DSP dump parser and comparison regressions (inert text)
+        run: python3 scripts/check-dsp-dump.py --self-test
+
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
       # code while the document keeps reading as though it were still correct.
@@ -2940,8 +2943,8 @@ jobs:
             # every nonblank one of those as an agreeing "line" -- a wording
             # change in the self-check output would have moved the reported
             # totals with no DSP change at all. A record is a row whose second
-            # field is a 16-hex FNV hash -- the same acceptance rule the
-            # windows-avx2-ab gate's Read-Dump uses (its first run counted the
+            # field is a 16-hex FNV hash -- the historical Windows Read-Dump
+            # rule (Windows now validates complete records; its first run counted the
             # self-check line as a 33rd scenario; same defect class). The
             # expected count is DERIVED from what parses -- both slices must
             # yield the same nonzero record count or no verdict is printed --
@@ -3281,8 +3284,10 @@ jobs:
   #  THE GATE: A (baseline, ANAMORPH_X86_ISA_BASELINE=OFF -> SSE2) must be
   #  bit-identical to B (the SHIPPED configuration -- /arch:AVX2 via
   #  AnamorphHardening, the same mechanism the customer binary is built with)
-  #  across all 32 twin-dump scenarios. Any scenario differing is a NUMERICAL
-  #  failure of the ADR-0032 contract and fails the job.
+  #  across all 32 twin-dump scenario HASHES. Any hash differing is a NUMERICAL
+  #  failure of the ADR-0032 contract and fails the job. Complete records and the
+  #  exact current identity set are validated first; latency is retained and
+  #  compared separately as warning-only metadata, not an ADR-0032 hash verdict.
   #
   #  TWO FAILURE CLASSES, DELIBERATELY DISTINGUISHED in the error text so a red
   #  run can never read as the wrong thing:
@@ -3316,6 +3321,15 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: DSP dump parser liveness (inert text, before the gate)
+        shell: pwsh
+        run: |
+          python scripts/check-dsp-dump.py --self-test
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::error::INFRASTRUCTURE: DSP dump parser liveness failed'
+            exit 1
+          }
 
       - name: Blocking A/B twin dump -- baseline vs the shipped /arch:AVX2 configuration (ADR-0032)
         shell: pwsh
@@ -3352,20 +3366,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { return 'run' }
             return 'ok'
           }
-          function Read-Dump([string]$f) {
-            # The dump prints its self-check verdict to stdout AHEAD of the
-            # table; on this job's first-ever run that line was counted as a
-            # 33rd "scenario" (the A7-5E blank-line lesson, one format over).
-            # Only rows whose second field is the 16-hex fnv1a hash are data.
-            $m = @{}
-            foreach ($line in Get-Content $f) {
-              if ($line -and -not $line.StartsWith('#')) {
-                $p = ($line -split '\s+') | Where-Object { $_ }
-                if ($p.Count -ge 2 -and $p[1] -match '^[0-9a-f]{16}$') { $m[$p[0]] = $p[1] }
-              }
-            }
-            return $m
-          }
           function Flag-Count([string]$dir) {
             # Self-proof the flag is live: /arch:AVX2 must appear in B's
             # generated VS project files and not in A's, else 0/32 is trivial.
@@ -3396,23 +3396,20 @@ jobs:
           if ($fb -eq 0) { Die-Infra '/arch:AVX2 not found in any build-b project file -- the flag did not apply, so an identical A/B would be vacuous' }
           if ($fa -ne 0) { Die-Infra '/arch:AVX2 found in build-a (the baseline) -- ANAMORPH_X86_ISA_BASELINE=OFF did not take effect, so the A/B compares nothing' }
           Say "- flag liveness: ``/arch:AVX2`` in $fb build-b project file(s), 0 in build-a -- the comparison is real"
+          @{ source_head = $env:GITHUB_SHA; run_id = $env:GITHUB_RUN_ID; job = $env:GITHUB_JOB;
+             toolset = $version; baseline_avx2_projects = $fa; shipped_avx2_projects = $fb } |
+            ConvertTo-Json | Set-Content -Encoding utf8 'dsp-dump-context.json'
 
           $ra = Run-Dump 'build-a' 'd-a.txt'; if ($ra -ne 'ok') { Die-Infra "dump A did not execute cleanly ($ra)" }
           $rb = Run-Dump 'build-b' 'd-b.txt'; if ($rb -ne 'ok') { Die-Infra "dump B did not execute cleanly ($rb)" }
 
-          $A = Read-Dump 'd-a.txt'; $B = Read-Dump 'd-b.txt'
-          if ($A.Count -ne 32 -or $B.Count -ne 32) { Die-Infra "parsed $($A.Count) baseline / $($B.Count) shipped scenarios where 32 were expected -- the dump format or parser moved" }
-
-          $diff = @()
-          foreach ($n in ($A.Keys | Sort-Object)) { if ($A[$n] -ne $B[$n]) { $diff += $n } }
-          if ($diff.Count -ne 0) {
-            Say "- **NUMERICAL GATE FAILURE: $($diff.Count) of 32 scenarios differ** between the baseline and the shipped /arch:AVX2 configuration"
-            Say "  differing: $($diff -join ', ')"
-            Write-Host "::error::NUMERICAL: the ADR-0032 Class-A contract is broken -- $($diff.Count)/32 twin-dump scenarios differ between baseline and /arch:AVX2 on toolset $version. This is a real numerical regression, not an infrastructure failure: do not re-run past it, diagnose it (a toolset behaviour change, or a code change interacting with /arch:AVX2)."
-            exit 1
-          }
-          Say "- **A == B: IDENTICAL -- all 32 scenarios agree.** The ADR-0032 Class-A contract holds on toolset $version."
-          Write-Host "::notice::windows-avx2-ab: ADR-0032 gate PASSED -- 0/32 scenarios differ (toolset $version)"
+          # This same public entry point is exercised by the inert self-test.
+          # Invalid A/B input is INFRASTRUCTURE before any hash verdict; a
+          # valid hash mismatch remains NUMERICAL. Latency evidence is separate.
+          python scripts/check-dsp-dump.py ab --left d-a.txt --right d-b.txt --report dsp-dump-ab.json --summary $env:GITHUB_STEP_SUMMARY
+          $abExit = $LASTEXITCODE
+          if ($abExit -eq 2) { Die-Infra 'A/B dump records or evidence are invalid -- see parser diagnostics and raw dumps' }
+          if ($abExit -ne 0) { exit 1 }
 
           # C (/arch:AVX2 /fp:contract) -- INFORMATIONAL ONLY, never affects
           # the exit code. 32/32 differing is the expected observation about
@@ -3420,12 +3417,21 @@ jobs:
           if (Build-Dump 'build-c' @('-DCMAKE_CXX_FLAGS=/fp:contract') $juce) {
             $rc = Run-Dump 'build-c' 'd-c.txt'
             if ($rc -eq 'ok') {
-              $C = Read-Dump 'd-c.txt'
-              $cd = @(); foreach ($n in ($B.Keys | Sort-Object)) { if ($B[$n] -ne $C[$n]) { $cd += $n } }
-              Say "- informational: /fp:contract moves $($cd.Count) of 32 scenarios (contraction remains the bit-moving half; the flag is NOT enabled anywhere)"
+              python scripts/check-dsp-dump.py c --left d-b.txt --right d-c.txt --report dsp-dump-c.json --summary $env:GITHUB_STEP_SUMMARY
+              if ($LASTEXITCODE -ne 0) { Write-Host '::warning::informational C checker did not complete -- the blocking A/B gate above is unaffected' }
             } else { Write-Host "::warning::informational /fp:contract dump did not execute cleanly ($rc) -- the blocking gate above is unaffected"; Say "- informational /fp:contract run skipped ($rc)" }
           } else { Write-Host "::warning::informational /fp:contract build failed -- the blocking gate above is unaffected"; Say "- informational /fp:contract build skipped" }
           exit 0
+
+      - name: Retain raw DSP dumps and validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-Windows-dsp-dump-validation
+          path: |
+            d-*.txt
+            dsp-dump-*.json
+          if-no-files-found: ignore
 
   linux-lto-tests:
     # GCC IS THE COMPATIBILITY COMPILER, NOT THE SHIPPING ONE. Clang builds the

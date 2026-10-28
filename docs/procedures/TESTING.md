@@ -5554,6 +5554,91 @@ no committed golden hashes, because that would be the golden-master DSP baseline
 deliberately rejects. The question is never "does this match a stored value" but "does build A match
 build B", and only a diff between two runs answers it.
 
+## Validating Windows A/B DSP dump records
+
+The `windows-avx2-ab` gate uses `scripts/check-dsp-dump.py`, with Python's standard
+library. Before use, run its inert production-entry regression suite:
+
+```bash
+python3 scripts/check-dsp-dump.py --self-test
+python3 scripts/check-dsp-dump.py ab --left d-a.txt --right d-b.txt --report dsp-dump-ab.json
+python3 scripts/check-dsp-dump.py c --left d-b.txt --right d-c.txt --report dsp-dump-c.json
+```
+
+Windows CI uses `python`; optional `--summary <path>` appends the same diagnostics
+to its step summary. The existing instrument/builds, self-check execution, MSVC
+14.30+ boundary and A/B flag liveness checks remain in the Windows workflow.
+
+**Accepted records.** Exactly one `<scenario> <hash> <latency>` per current key:
+the Cartesian product of `haas`, `velvet`, `chorus`, `dimensional`; `os1`, `os2`,
+`os4`, `os8`; and `lr`, `ms`, joined with hyphens. Identity is case-sensitive.
+The hash has exactly 16 hexadecimal digits (either case, normalized to lower
+case). Latency is ASCII decimal digits in `0..2147483647`, matching the harness's
+nonnegative C++ `int`; leading zeros are allowed. Whitespace between fields and
+at line edges is ignored; LF, CRLF, CR and an initial UTF-8 BOM are supported.
+Row order is irrelevant: both fields are compared by identity.
+
+Blank lines and the current optional success/header forms are deliberately
+recognized, with whitespace normalization: `dsp-dump self-check passed: 32
+scenarios, all repeatable and all distinct.`, the `# AnamorphDspDump -- <rate> Hz,
+<block>-sample blocks, <noise> noise + <silence> silence blocks` header (decimal
+integers), and `# scenario fnv1a-64 latency`. Other output is refused, including
+failed/changed self-check messages and arbitrary comments. These status lines
+do not replace the executable's existing self-check gate.
+
+**Refused records.** Missing/extra/unknown identities (including 32 wrong keys),
+any duplicate before insertion, missing/extra fields, malformed hashes, missing,
+signed, fractional, nondecimal, negative or overflowing latency, empty/truncated
+input and unsupported/record-like malformed lines. Identical duplicates are as
+ambiguous as conflicting ones. Invalid A or B yields **INFRASTRUCTURE** (helper
+exit 2; the workflow blocks) with scenario/line/reason and no hash verdict.
+A valid hash mismatch yields **NUMERICAL** (exit 1), naming each scenario and
+both hashes. Valid matching hashes yield **IDENTICAL** (exit 0), explicitly
+limited to hashes: ADR-0032 does not assert equality of every dump field.
+
+**Separate latency metadata.** Every validated record retains latency and the
+source line. The latency comparison reports `EQUAL` or `DIFFERENT` with both
+values per differing scenario; differences emit `METADATA` warnings without
+altering ADR-0032's hash disposition. This is not a change to reported product
+latency. The general dependency-bump procedure above still treats a latency
+change as its own finding requiring review; this Windows flag comparison does
+not implement that entire procedure or close RH-F4.
+
+**Result schema (version 1).** `mode` is `ab` or `c`; `classification` and
+`exit_code` record the disposition above. `inputs` is keyed by A/B or B/C, each
+with `path`, raw-byte `sha256`, `valid`, `record_count` and `records` keyed by
+scenario (`hash`, integer `latency`, input `line`). Invalid input has null
+`record_count`/`records`; unreadable input also has null digest. `hashes` and
+`latency` independently contain `status`, `compared_scenarios` and `differences`
+(scenario plus A/B or B/C values). Invalid input makes both `NOT_COMPARED` with
+null comparison counts and empty differences. `errors` and `warnings` retain
+the labelled reasons. Raw files are never rewritten.
+
+**C is optional.** Mode `c` returns 0 for valid differences and input/evidence
+failures. Valid data has classification `INFORMATIONAL`; invalid/missing data
+has `INFORMATIONAL_UNAVAILABLE`, warnings and no numeric comparison count.
+No C numerical count is derived from partial/invalid data. C build/run failure
+and an unexpected checker failure also warn in the workflow, whose final exit
+remains 0 after a completed A/B gate. Report/summary write failure is infrastructure
+for A/B and warning-only for C. The always-attempted evidence artifact retains
+raw dumps and JSON, including on failure, plus source/run/toolset/flag context.
+
+**Regression and liveness coverage.** `--self-test` executes the same public CLI
+on the independent inert `scripts/fixtures/dsp-dump/valid.txt` matrix and edits
+of it: identical/reordered/header/whitespace forms, a real hash difference,
+missing/extra/same-count wrong keys, identical/conflicting duplicates and the
+changed-hash-then-baseline-duplicate false pass, every invalid latency form,
+empty/truncated/malformed input, separate latency differences, invalid A/B with
+no verdict and invalid C without affecting A/B. A seeded production mutant
+disables duplicate refusal only; the exact same refusal assertion must detect
+its false IDENTICAL result with 32 dictionary keys from 33 records. This is
+executed behavior, not a source-literal assertion. Source-lint, local preflight
+and the Windows A/B job run it; the Windows self-test precedes actual comparison
+in that same job. These fixtures contain synthetic text hashes, no audio or
+committed golden DSP baseline. Local execution, including PowerShell, does not
+establish native Windows behavior. The macOS cross-slice reporting experiment
+keeps its existing parser and non-blocking scope.
+
 ## pluginval (VST3 + AU conformance)
 
 ```bash
