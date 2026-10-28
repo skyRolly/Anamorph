@@ -7,7 +7,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
 | **JUCE** | **9.0.4**, pinned by **immutable commit SHA** `3fb5cbc0340758596dac39f7c8de47d562b4896e` — CMakeLists.txt:71 (`3fb5cbc0340758596dac39f7c8de47d562b4896e`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.4`) |
-| **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:475-482 |
+| **pluginval** | Exact release and archive/executable SHA-256 in `scripts/pluginval-release.json` | Both wrappers call `scripts/acquire-pluginval.py` (Python standard library) | `scripts/test-pluginval-acquisition.py`; RH-F6 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable and **asserted to be the release build**: `setup-llvm-apt.sh` carries the `llvmorg-<version>` tag commit per major and refuses both an unrecorded major and a build from any other commit (ADR-0028 sets the rule; **ADR-0033** adds the assertion and records why 23 is not yet adoptable) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:126-128 |
 | **GCC** (`linux-lto-tests` only — the **compatibility** compiler; **ships nothing**) | **major pinned — 16**, patch deliberately unpinned: the floating `gcc:16` tag resolves to the newest stable 16.x | `ANAMORPH_GCC_VERSION`, consumed by the ccache lineage, the major assertion and `--gcc-major`. Supplied as the official upstream toolchain image because **no package source ships a released GCC 16** for a runner-available Ubuntu — noble stops at `g++-14`, and both `ubuntu-toolchain-r/test` and Ubuntu 26.04 carry only pre-16.1 trunk snapshots. A checker wants patch updates automatically; a shipping toolchain must not, which is why this is the one weak pin here | .github/workflows/build.yml:129 |
@@ -64,7 +64,7 @@ automated PR would carry information a human could act on.
 | Runner images (`*-latest`) | GitHub's rollout, watched by hand | Nothing to update: the labels already float, and that is intended for every job except `macos-15-intel`. Dependabot does not touch `runs-on:`. Renovate extracts runner labels but then **skips** any that are not a numeric version, so `ubuntu-latest` is read and discarded; pinning the labels to get bot coverage would trade a real property (tracking GitHub's supported image) for a PR. |
 | apt / brew packages | unpinned, installed per job | No ecosystem covers either (`apt`, `deb` and `homebrew` are absent from Dependabot's 33). They are build-environment tools, not linked dependencies: `ninja`/`cmake` do not enter the artefact, and `ccache` is explicitly optional — the jobs fall back to no launcher with a `::warning::` rather than failing. The Clang packages are the exception and are pinned by major above. |
 | Hand-run validation tools (`actionlint`; the SchemaStore `dependabot-2.0.json` schema) | unpinned, fetched when used | Neither runs in CI — they are local checks the contributor workflow leans on, so a version drift shows up as a different answer in front of a human, not as a silent gate change. Both are named here because this change made them load-bearing: `actionlint` 1.7.7 has a known false positive on this repository (`macos-15-intel` is absent from its built-in label list), and the SchemaStore schema is the **only** machine-readable Dependabot schema in existence — GitHub publishes none — so it is the authority a `dependabot.yml` edit is checked against. Pin either one only if it starts gating in CI. |
-| **pluginval** | `releases/latest`, unpinned — a **known** gap | Tracked as `RELEASE_HARDENING_PLAN.md` **RH-F6**: the release gate's own tool can change under the project, and there is no checksum. Recorded here rather than fixed here; pinning it is a change to this policy's table, which is what RH-F6 says. No bot could cover it as it stands — there is no manifest to read, and a version would have to be pinned in a file before any tool could track it. |
+| **pluginval** | Manual reviewed content lock; no automatic updater | RH-F6 implemented: version, official URLs/asset IDs, archive lengths and SHA-256 values share one lock. Acquisition verifies before extraction and checks the entire extracted tree against the independently reverified cached archive on every use. See the upgrade procedure below. |
 
 **Renovate was evaluated and not adopted.** It is the only tool that could reach the two categories
 Dependabot cannot (the Clang env value via `custom.regex`, runner labels via `github-runners`), and on
@@ -73,6 +73,34 @@ inspection it delivers neither: the Clang PR could not be green, and the runner-
 means a second bot's app install and config to maintain for one repository. The conclusion is about
 capability, not preference — re-open it if Renovate gains a CMake/FetchContent manager or if this
 repository ever grows a real package manifest.
+
+## pluginval content lock and manual upgrades
+
+`scripts/pluginval-release.json` is the only release authority for both wrappers. The initial
+pin is the already used official **v1.0.4**, not a validator upgrade. Its annotated tag object is
+`c6dfeaeac8e729c468d2b43a739e19ef4be922e1`, targeting source commit
+`ed19c2c16b57a6d94db391bea3ef4a80b769d5bf`. The lock records the three official asset IDs,
+URLs, byte counts, archive hashes and executable member hashes. The archives were independently
+retrieved and rehashed before committing the lock. The upstream API digest fields were null:
+these are measurements of official release bytes, **not upstream signed checksums or proof
+that the binaries were built from that source commit**. The complete macOS bundle is verified
+against those locked archive bytes, including metadata, resources and code-signature files.
+
+A manual upgrade requires a reviewed change:
+
+1. Select an official Tracktion/pluginval release; inspect its release/tag provenance and all
+   three archives as data. Independently calculate archive SHA-256, lengths and executable
+   SHA-256; inspect member paths/types and the full macOS bundle. Do not execute downloads
+   merely to inspect them or derive a new expected hash during normal acquisition.
+2. Update the single lock with those measured values and official asset URLs/IDs. Never replace
+   a mismatched pin with the hash of whatever a failed download happened to return.
+3. Run `python3 scripts/test-pluginval-acquisition.py` and the existing
+   `scripts/run-pluginval.sh --self-test`; on Windows use
+   `python scripts/test-pluginval-acquisition.py --require-powershell`. Review refusal cases
+   and let ordinary CI exercise the unchanged production gates after source publication.
+4. Review the lock, provenance and gate evidence together. No updater, package manager or new
+   service is installed. This initial pin changes no product dependency or validation semantics;
+   existing Accepted platform ADR provenance and unexecuted acceptance evidence remain effective.
 
 ## Upgrade rules
 

@@ -89,6 +89,7 @@ python3 scripts/check-gcc-warnings.py --self-test
 # and a green pluginval run proves nothing about it, because a pass takes none of
 # its branches.
 ./scripts/run-pluginval.sh --self-test
+python3 scripts/test-pluginval-acquisition.py
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 

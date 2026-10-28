@@ -10,11 +10,11 @@
 #  The build itself additionally needs:
 #    - github.com           (JUCE source, pinned commit, via CMake FetchContent)
 #    - github.com / dl       (pluginval release download, optional)
-#  curl + unzip: used by scripts/run-pluginval.sh to fetch and extract that
-#  release. NOT implied by libcurl4-openssl-dev, which is the development
-#  headers, not the CLI. GitHub-hosted runners preinstall both, so a missing
-#  one only ever surfaces on a fresh machine or a minimal container -- exactly
-#  the case this script exists to cover.
+#  Python's standard library verifies/prepares the locked pluginval release.
+#  curl + unzip remain general developer download/archive tools in the full
+#  profile. They are NOT implied by libcurl4-openssl-dev (development headers,
+#  not the CLI). Keeping this package set also preserves existing developer
+#  environments; ordinary pluginval acquisition no longer invokes either.
 #  libegl-dev: JUCE 9 creates Linux OpenGL contexts via EGL instead of GLX
 #  (juce_opengl linuxPackages "egl gl"), so EGL headers are a build dependency
 #  even though Anamorph never attaches a GL context on Linux (ADR-0011).
@@ -77,7 +77,7 @@ CORE_PACKAGES="
 #   build-essential -- the HOST toolchain. A container that ships its own
 #                      compiler must not have a distribution one installed over
 #                      the top of it.
-#   curl, unzip     -- run-pluginval.sh fetches and extracts a release.
+#   curl, unzip     -- general developer download/archive tools.
 #   xvfb            -- pluginval needs a display; nothing else here does.
 #   lld             -- the Clang LTO link (see above). GCC never reaches it.
 FULL_EXTRA_PACKAGES="

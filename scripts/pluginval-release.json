@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "version": "v1.0.4",
+  "release_url": "https://github.com/Tracktion/pluginval/releases/tag/v1.0.4",
+  "tag_object": "c6dfeaeac8e729c468d2b43a739e19ef4be922e1",
+  "source_commit": "ed19c2c16b57a6d94db391bea3ef4a80b769d5bf",
+  "assets": {
+    "Linux": {
+      "id": 210999199,
+      "url": "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Linux.zip",
+      "bytes": 5911681,
+      "sha256": "c01c49d8063965c4c2dea8324468336768f5c9139e0b1caebde14c2400b55352",
+      "executable": "pluginval",
+      "executable_sha256": "d3d342ea92293b0699a5c983937211e3faf2b0f38145b31cb8d78424a25e10ba"
+    },
+    "macOS": {
+      "id": 210999197,
+      "url": "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip",
+      "bytes": 9202795,
+      "sha256": "3c4c533bda0c5059eea3ddaea752d757ee2025041f0f47e6bcb0e87f6082b29f",
+      "executable": "pluginval.app/Contents/MacOS/pluginval",
+      "executable_sha256": "32ec60efb9f8161f0b840103f9bd98fa455cd86ec59eb2803133b4382fa4425c"
+    },
+    "Windows": {
+      "id": 210999198,
+      "url": "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip",
+      "bytes": 2408590,
+      "sha256": "c08e61ce3b96db41636f8ec7e76f4c7e2c13ebdac7fa1b5a1f52b4f32ec715ab",
+      "executable": "pluginval.exe",
+      "executable_sha256": "f4ac5c31c5544a434f73e686b816861d92c22ae849d69ad693681cbc9522fcd8"
+    }
+  }
+}

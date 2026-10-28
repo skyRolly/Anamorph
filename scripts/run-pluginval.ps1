@@ -59,11 +59,11 @@ New-Item -ItemType Directory -Force -Path $tools | Out-Null
 . (Join-Path $PSScriptRoot 'find-windows-vst3.ps1')
 $vst3 = Get-AnamorphVst3Bundle -BuildRoot $build
 
-$pv = Join-Path $tools "pluginval.exe"
-if (-not (Test-Path $pv)) {
-    Write-Host "Fetching pluginval (pluginval_Windows.zip)..."
-    Invoke-WebRequest -Uri "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip" -OutFile "$tools\pluginval.zip"
-    Expand-Archive -Force "$tools\pluginval.zip" -DestinationPath $tools
+# Use the same lock, archive checks and full-tree checks as the shell wrapper.
+# Native process failures need an explicit check even under ErrorActionPreference=Stop.
+$pv = & python (Join-Path $PSScriptRoot 'acquire-pluginval.py') --tools $tools
+if ($LASTEXITCODE -ne 0 -or -not $pv) {
+    throw 'pluginval setup failure: acquisition refused'
 }
 
 # NONZERO by requirement, and identical to PLUGINVAL_SEED in run-pluginval.sh.
