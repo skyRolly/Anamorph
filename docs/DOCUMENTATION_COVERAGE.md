@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## pluginval concurrent first-acquisition review correction (2026-10-28)
+
+`cached_tool` in `scripts/acquire-pluginval.py` now owns the same archive/inventory/full-tree
+verification for ordinary reuse and a failed publication with an existing target. A loser
+cleans only its own stage and cannot trust either executable presence or its own staged bytes
+to authorize the winner. Invalid winners and no-winner publication errors still fail setup.
+The production acquisition regressions reproduce the old directory-not-empty failure with a
+barrier on all three platform shapes and require all three winner checks, plus incomplete or
+modified winner refusal and stage cleanup. TESTING and CI_CD document this concurrency path.
+No wrapper invocation semantics, lock, runtime product source, gate routing or historical
+acceptance evidence changes. No product-visible changelog entry is required under rule 3.
+
 ## Locked pluginval acquisition and cached integrity (2026-10-28)
 
 Both ordinary wrappers share `scripts/pluginval-release.json` and

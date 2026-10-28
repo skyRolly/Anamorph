@@ -100,6 +100,9 @@ seed, timeouts, verdicts, retry policy, bundle selection or workflow event routi
 standard library handles bounded HTTPS acquisition, pre-extraction digest/inventory checks,
 private staging and full cached-tree verification (including all macOS bundle resources).
 Each invocation proves archive-check liveness with a seeded wrong digest before preparation.
+Concurrent first acquisition may prepare two private stages; the losing publisher reuses the
+winner only after the same archive/inventory/full-tree checks as ordinary cache reuse. The
+existing offline suite forces this race and rejects invalid winners and other publication errors.
 
 The existing `source-lint` job runs `scripts/test-pluginval-acquisition.py`; the existing Windows
 job runs it with `--require-powershell` immediately after checkout. Local preflight includes it.

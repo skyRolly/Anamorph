@@ -5610,6 +5610,10 @@ preparation succeeds. No quarantine/security policy is changed. Cache storage is
 reads its full inventory, and compares every extracted file/directory against it; metadata,
 resources and signature files in the macOS app count as tool content. A marker or executable's
 presence is never sufficient. Damaged/incomplete caches fail setup before the validator loop.
+If concurrent first-time calls race to publish the same target, the loser rehashes the
+winner's archive, rebuilds its inventory and verifies its full tree before returning that path.
+Its own stage is discarded; an invalid/incomplete winner remains a setup failure, and a
+publication error with no winner still fails. No existing cache is deleted or replaced.
 Remove **only the exact content cache directory named by the setup error** to reacquire; legacy
 `.tools/pluginval`, `.tools/pluginval.exe` and other unrelated files are not removed or reused.
 Concurrent malicious modification after verification is outside this local cache check's scope.
@@ -5618,7 +5622,10 @@ Concurrent malicious modification after verification is outside this local cache
 with inert data-only ZIPs, transport stand-ins and counting invocation boundaries. It covers
 valid reuse without download, bad/missing/truncated inputs, stale version/platform content,
 modified executables, bundle metadata/resources, containment/type refusal and setup propagation
-through the real shell/PowerShell setup sections. No archive member is executed. The PowerShell
+through the real shell/PowerShell setup sections. A barrier forces two fully staged calls to
+compete on each platform shape; assertions require the losing call to inspect the published
+archive, inventory and full tree. Invalid-winner and no-winner publication faults also fail.
+No archive member is executed. The PowerShell
 leg is required by `--require-powershell` in the existing Windows CI job; a host without `pwsh`
 reports that leg as skipped. The source-lint job and local preflight run the suite too. Every real
 acquisition runs a seeded digest failure through the same archive assertion; the suite disables

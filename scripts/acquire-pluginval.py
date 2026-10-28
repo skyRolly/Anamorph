@@ -215,6 +215,17 @@ def integrity_canary():
         raise SetupError("integrity canary was accepted; archive verifier is not live")
 
 
+def cached_tool(target, asset, platform):
+    try:
+        require(stat.S_ISDIR(metadata(target).st_mode), "invalid cache directory")
+        verify_archive(target / "archive.zip", asset)
+        with zipfile.ZipFile(target / "archive.zip") as archive:
+            verify_tree(target / "tree", inventory(archive, asset, platform), asset["executable"])
+    except (SetupError, OSError, ValueError, zipfile.BadZipFile, RuntimeError) as error:
+        raise SetupError("invalid cached tool at " + str(target) + ": " + str(error)) from error
+    return target / "tree" / asset["executable"]
+
+
 def prepare(tools, lock, platform, fetch=download):
     require(platform in PLATFORMS, "unsupported host: " + platform)
     asset = lock["assets"][platform]
@@ -227,14 +238,7 @@ def prepare(tools, lock, platform, fetch=download):
     base /= "pluginval-releases"
     target = base / (lock["version"] + "-" + platform + "-" + asset["sha256"])
     if target.exists() or target.is_symlink():
-        try:
-            require(stat.S_ISDIR(metadata(target).st_mode), "invalid cache directory")
-            verify_archive(target / "archive.zip", asset)
-            with zipfile.ZipFile(target / "archive.zip") as archive:
-                verify_tree(target / "tree", inventory(archive, asset, platform), asset["executable"])
-        except (SetupError, OSError, ValueError, zipfile.BadZipFile, RuntimeError) as error:
-            raise SetupError("invalid cached tool at " + str(target) + ": " + str(error)) from error
-        return target / "tree" / asset["executable"]
+        return cached_tool(target, asset, platform)
     stage = Path(tempfile.mkdtemp(prefix=".stage-", dir=base))
     try:
         fetch(asset, stage / "archive.zip")
@@ -251,7 +255,14 @@ def prepare(tools, lock, platform, fetch=download):
                 (tree / name).chmod(0o755 if name == asset["executable"] else 0o644)
             verify_tree(tree, manifest, asset["executable"])
         # Nothing is usable at its final path until every preparation check passed.
-        stage.rename(target)
+        try:
+            stage.rename(target)
+        except OSError:
+            if not (target.exists() or target.is_symlink()):
+                raise
+            # Another invocation may have published while we prepared. Its
+            # bytes, not our losing stage, must authorize the returned path.
+            return cached_tool(target, asset, platform)
         return target / "tree" / asset["executable"]
     finally:
         if stage.exists():
