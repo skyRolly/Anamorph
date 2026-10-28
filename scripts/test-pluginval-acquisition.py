@@ -234,6 +234,14 @@ class AcquisitionTests(unittest.TestCase):
                     with self.assertRaises(pv.SetupError):
                         pv.download(asset, output)
             output.unlink(missing_ok=True)
+        # Chunked transport and malformed compressed data must retain the same
+        # clear setup-error contract, rather than leaking a traceback.
+        for failure in (pv.http.client.IncompleteRead(b"partial", 40), pv.zlib.error("broken stream")):
+            with mock.patch.object(sys, "argv", ["acquire", "--tools", str(self.tools)]), \
+                    mock.patch.object(pv, "prepare", side_effect=failure), \
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as errors:
+                self.assertEqual(pv.main(), 1)
+                self.assertIn("pluginval setup failure", errors.getvalue())
 
     def wrapper(self, powershell):
         if powershell:

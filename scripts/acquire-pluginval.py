@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -13,6 +14,7 @@ import sys
 import tempfile
 import urllib.request
 import zipfile
+import zlib
 
 
 class SetupError(Exception):
@@ -265,7 +267,8 @@ def main():
         integrity_canary()
         print(prepare(args.tools, load_lock(), platform))
         return 0
-    except (SetupError, OSError, ValueError, KeyError, zipfile.BadZipFile, RuntimeError) as error:
+    except (SetupError, OSError, ValueError, KeyError, zipfile.BadZipFile, RuntimeError,
+            http.client.HTTPException, EOFError, zlib.error) as error:
         print("pluginval setup failure: " + str(error) +
               "; remove only the named content cache if damaged, then retry", file=sys.stderr)
         return 1
