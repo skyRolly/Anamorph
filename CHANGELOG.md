@@ -21,18 +21,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
-## [Unreleased]
+## [0.10.0] — 2026-10-29
 
-Development toward **0.9.10**. Parameter IDs, ranges, automation flags, valid state/preset formats
-and existing invalid-value restore behavior are unchanged. KI-029's audible NaN behavior and
-additional malformed host-state restrictions remain open owner decisions.
+Draft release. Parameter IDs, ranges, automation flags, valid state/preset formats and existing
+invalid-value restore behavior are unchanged. KI-029's audible NaN behavior, synthetic restore
+reentry (RISK-009/F9) and additional malformed host-state restrictions (RISK-015) remain open;
+their existing dispositions and next-round priorities are recorded in
+`worklogs/RELEASE_READINESS_0.10.0.md`. Required human listening and manual validations are
+approved by the owner (attested 2026-10-29); automated release gates remain independently required.
 
 ### Added
 - Linux installation adds the approved Anamorph desktop launcher and hicolor icons in
   the selected user/system data directory, with an absolute executable reference and
   owned-resource recovery/uninstall. Portable extraction installs no desktop files.
-  Evidence: [Linux integration diff](https://github.com/skyRolly/Anamorph/compare/main...codex/linux-desktop-native-icon); Accepted ADR-0065;
-  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated resources; GUI unverified]
+  Evidence: PR #175; Accepted ADR-0065;
+  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — native automated evidence; manual approval recorded separately]
 - **Approved Anamorph product icon in macOS and Windows build resources.**
   Mac app/plug-in bundles use a complete native iconset with compatible small-icon encodings,
   preventing multicolored application-icon corruption. Windows executable/VST3 resources retain
@@ -45,12 +48,12 @@ additional malformed host-state restrictions remain open owner decisions.
 - **Installer and uninstaller product names display as Anamorph without a version suffix.**
   Windows Setup/uninstall naming and the macOS installer title use the bare product name;
   installed version metadata and versioned download filenames are preserved.
-  Evidence: commit `d99dc5198923ce810d0bff4fdc1dc56120ed5d81`. [Verified - source; appearance not exercised]
+  Evidence: commit `d99dc5198923ce810d0bff4fdc1dc56120ed5d81`. [Verified — source; owner manual approval recorded separately]
 - **Use `tech.rolly.anamorph` for application bundles and macOS package receipts**, following
   `rolly.tech`. Development receipt identities intentionally break without aliases; RTec/Anmr,
-  VST3 class IDs, Windows AppId, state and presets remain unchanged. Native host rescan/recall
-  remains a human validation requirement.
-  Evidence: [namespace migration diff](https://github.com/skyRolly/Anamorph/compare/feature/native-product-icons-round1...codex/namespace-tech-rolly-anamorph); ADR-0063. [Verified — source; native gates reported separately]
+  VST3 class IDs, Windows AppId, state and presets remain unchanged. Required manual host
+  validation is owner-approved; individual host/environment details were not supplied.
+  Evidence: PR #171; ADR-0063. [Verified — source; native gates and manual approval recorded separately]
 
 ### Fixed
 - **System Linux desktop operations verify their helper before interpretation.**
@@ -58,17 +61,17 @@ additional malformed host-state restrictions remain open owner decisions.
   trusted entry scripts, refusing mismatched archive helper bytes. Evidence:
   PR #175 maintenance follow-up; Accepted ADR-0065;
   `tests/linux_desktop_helper_tests.py`. [Verified — source and nonprivileged
-  capture tests; privileged runtime unverified; distinct-principal exploit unproven]
+  capture tests; native gates and manual approval recorded separately; distinct-principal exploit unproven]
 - **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
   cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
   launcher or icon when its receipt is missing, preserving installed binaries for
   a safe retry. Evidence: PR #175; Accepted ADR-0065;
   `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated entry
-  points; revised-head native gate pending]
+  points and native CI; release-commit gates recorded separately]
 - **Windows installer and uninstaller use the approved product icon in every component configuration.**
   VST3-only installs now register a stable installed icon instead of an absent optional app;
   component choices, install destinations and the installer AppId are unchanged.
-  Evidence: [installer integration diff](https://github.com/skyRolly/Anamorph/compare/codex/namespace-tech-rolly-anamorph...codex/windows-installer-native-icon); ADR-0064. [Verified — source; native CI reported separately]
+  Evidence: PR #172; ADR-0064. [Verified — source; native CI and manual approval recorded separately]
 - **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The
   XML writer spells NaN on a private copy, preserving the existing text and finite encoding without
   changing the live parameter or choosing a new audible NaN policy (KI-029; ADR-0009).
@@ -2989,7 +2992,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
-[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.9.9...HEAD
+[0.10.0]: https://github.com/skyRolly/Anamorph/compare/0.9.9...0.10.0
 [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/

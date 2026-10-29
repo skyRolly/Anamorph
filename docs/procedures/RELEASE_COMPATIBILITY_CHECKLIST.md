@@ -4,7 +4,33 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).
 
-## Current gate — 0.9.9 / JUCE 9.0.4 (2026-10-21)
+## Current gate — 0.10.0 / JUCE 9.0.4 (2026-10-29)
+
+The owner states that Human Level-5 listening and all other required manual validations have
+already been completed and approved for this release. This is a new 0.10.0 attestation, not a
+carry-forward of the 0.9.9 approval and not a test performed by the agent. Actual test dates,
+artifact hashes, DAWs/versions, OS/CPU, formats, devices, sessions and lanes were not supplied.
+No redundant manual testing is requested. Automated gates must still pass on the release tree.
+
+| # | Item | 0.10.0 on JUCE 9.0.4 |
+|---|---|---|
+| 1 | Parameter IDs unchanged | **PASS** — implementation/registry fixture unchanged from 0.9.9; fresh state suite 5942 checks, zero failures |
+| 2 | Serialization schema verified | **PASS** — no field/reader change; fresh schema, round-trip, legacy and NaN-save regressions pass |
+| 3 | Presets migrated | **PASS** — owner manual approval plus fresh factory/user, A/B and NaN-save state regressions |
+| 4 | Pluginval passed (both modes) | **PASS** — fresh Linux VST3, locked v1.0.4, strictness 10, deterministic ×3 and randomise ×3, every pass on its first attempt |
+| 5 | Host matrix verified | **PASS — owner attestation**, 2026-10-29; individual environments not supplied |
+| 6 | Latency reporting verified | **PASS** — DSP/parameter implementation unchanged from 0.9.9; fresh DSP 945 / 0 and state 5942 / 0, including latency regressions |
+| 7 | Automation playback verified | **PASS — owner attestation**, 2026-10-29; individual environments/lanes not supplied |
+| 8 | Session reload verified | **PASS — owner attestation** of required manual validations, including prior-version recall; automated legacy/field-capture tests independently required |
+
+Source audit, architecture approvals, automated evidence and draft-only execution are recorded in
+`worklogs/RELEASE_READINESS_0.10.0.md`. Existing Accepted ADR-0062 through ADR-0066 cover the native
+resource/package changes; the version-only CMake edit introduces no architecture decision.
+The local compatibility gate is **8/8 PASS**, combining measured headless results and the owner's
+manual approval. The independent CI platform, packaging and tag-release gates remain mandatory;
+a local pass does not claim those have run.
+
+## Historical completion record — 0.9.9 / JUCE 9.0.4 (2026-10-21)
 
 The planned release is **2026-10-22**, using ADR-0061's 9.0.4 pin. The checklist below is the
 live checklist for that build. **8/8 PASS — COMPLETE**, explicitly confirmed by the owner
@@ -97,30 +123,30 @@ human sign-off the item is defined as.
 
 ## Checklist
 
-These boxes describe the current **JUCE 9.0.4** build; historical passes are recorded above.
+These boxes describe the current **0.10.0 / JUCE 9.0.4** build; historical passes are recorded above.
 
-- [x] **Parameter IDs unchanged** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — diff the parameter set against the previous release; no `pid::`
+- [x] **Parameter IDs unchanged** — **PASS (0.10.0 on JUCE 9.0.4, 2026-10-29).** — diff the parameter set against the previous release; no `pid::`
       ID renamed or removed. (Display-name changes are allowed; record in CHANGELOG.)
       Ref: `docs/architecture/PARAMETER_REGISTRY.md`, `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
       *Automated since the 0.8.13 cycle:* the registry-snapshot test in `tests/state_tests.cpp`
       (`AnamorphStateTests`, CI-blocking on all three platforms) fails on any ID/name/order/
       range/automation-flag change vs `tests/fixtures/parameter_registry.snapshot`.
-- [x] **Serialization schema verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — no field removed or semantically changed in
+- [x] **Serialization schema verified** — **PASS (0.10.0 on JUCE 9.0.4, 2026-10-29).** — no field removed or semantically changed in
       `AnamorphRoot` / `ANAMORPH` (APVTS) / `ANAMORPH_INTERNAL` / `AB`; additions tolerate absence.
       Ref: `docs/architecture/SERIALIZATION_REGISTRY.md`, `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
       *Automated since the 0.8.13 cycle:* schema-shape + raw-exact round-trip + the three
       legacy-format fixtures in `tests/state_tests.cpp`. The cross-version step below stays manual.
-- [x] **Presets migrated** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21; existing headless evidence plus owner Level-5 PASS).** — factory presets and a representative user `.anamorph` still load and
+- [x] **Presets migrated** — **PASS (0.10.0 on JUCE 9.0.4, 2026-10-29; existing headless evidence plus owner Level-5 PASS).** — factory presets and a representative user `.anamorph` still load and
       sound identical. Ref: `src/PresetManager.cpp`.
       *Partially automated:* `tests/state_tests.cpp` proves save→reload structural equality +
       exclusion rules + factory loadability; "sound identical" remains a Level-5 (audition) check.
-- [x] **Pluginval passed (both modes)** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — `scripts/run-pluginval.sh <n> deterministic` **and**
+- [x] **Pluginval passed (both modes)** — **PASS (0.10.0 on JUCE 9.0.4, 2026-10-29).** — `scripts/run-pluginval.sh <n> deterministic` **and**
       `scripts/run-pluginval.sh <n> randomise` (`--randomise` ×3) pass on the Linux gate, where
       `<n>` is `ANAMORPH_PLUGINVAL_STRICTNESS` from `.github/workflows/build.yml` — read it there
       rather than from this line, so a raise cannot leave this checklist certifying the old bar.
       Ref: `docs/procedures/TESTING.md`.
-- [x] **Host matrix verified** — **PASS (final 0.9.9 / JUCE 9.0.4; owner attestation, 2026-10-21 UTC).** Specific DAWs, OSes, formats, devices, sessions and actual test dates are **NOT RECORDED**. Separately qualified per-host evidence in `docs/architecture/COMPATIBILITY_MATRIX.md` does not reopen this completed release gate.
-- [x] **Latency reporting verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — reported PDC matches the actual chain
+- [x] **Host matrix verified** — **PASS (0.10.0 / JUCE 9.0.4; owner attestation, 2026-10-29, Asia/Shanghai).** Specific DAWs, OSes, formats, devices, sessions and actual test dates are **NOT RECORDED**. Separately qualified per-host evidence in `docs/architecture/COMPATIBILITY_MATRIX.md` does not reopen this completed release gate.
+- [x] **Latency reporting verified** — **PASS (0.10.0 on JUCE 9.0.4, 2026-10-29).** — reported PDC matches the actual chain
       delay across the oversampling settings; OS-off reports 0; and the number is now a function of
       the Oversampling setting alone, so no parameter move can change it. Ref:
       `docs/architecture/LATENCY_MODEL.md`; tests `testBypassNullAndLatency` (Test 3+4) and
@@ -129,8 +155,8 @@ These boxes describe the current **JUCE 9.0.4** build; historical passes are rec
       reopens in 0.9.7 with the host compensating a few samples where it previously compensated none.
       Nothing in the session file changed — the schema is untouched and item 2 is unaffected — and the
       audio is the same audio, arriving at the position the plug-in now correctly declares.
-- [x] **Automation playback verified** — **PASS (final 0.9.9 / JUCE 9.0.4; owner attestation, 2026-10-21 UTC).** Host, lanes, session and actual test date are **NOT RECORDED**. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
-- [x] **Session reload verified** — **PASS (0.9.9 on JUCE 9.0.4, 2026-10-21).** — save a session in the previous version, load it in the new
+- [x] **Automation playback verified** — **PASS (0.10.0 / JUCE 9.0.4; owner attestation, 2026-10-29, Asia/Shanghai).** Host, lanes, session and actual test date are **NOT RECORDED**. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
+- [x] **Session reload verified** — **PASS (0.10.0 on JUCE 9.0.4, 2026-10-29).** — save a session in the previous version, load it in the new
       version: sound, preset name, dirty-star, and both A/B slots reproduce exactly.
       Ref: `docs/architecture/STATE_SERIALIZATION.md`.
       *Partially automated:* the round-trip + legacy-fixture tests prove the CURRENT binary reads

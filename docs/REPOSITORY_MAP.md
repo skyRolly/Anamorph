@@ -152,7 +152,8 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `scripts/gcc-warning-baseline.txt` | The accepted GCC-only first-party sites (3 today) — a **debt list, not a permission list**. Keyed on `(path, flag)` with a distinct-site count and no line numbers; records `# gcc-major:` and the gate refuses to run against another major. |
 | `src/SerializedXml.h` | Private-copy NaN-safe XML formatting shared by session, A/B and preset writers; existing finite and invalid-token semantics are preserved. |
 | `tests/state_hardening_tests.h` | State tests 142–145 and focused KI-029/F9 probes, included after the existing state fixtures in the same console target. |
-| `worklogs/STATE_HOST_HARDENING_0.9.10.md` | Current state/host implementation evidence, RISK-015 owner decision package, conditional payload bounds and validation limits. |
+| `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
+| `worklogs/RELEASE_READINESS_0.10.0.md` | Current draft-release audit, owner manual approval, automated gate evidence and prioritized next-round residuals. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |

@@ -1,5 +1,21 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.0 draft-release preparation (2026-10-29)
+
+CMake and the dated changelog promote the original 0.9.10 development work to 0.10.0.
+The changelog cites merged PRs instead of moving branch comparisons and preserves compatibility
+and known residuals. README, HANDOVER, KNOWN_ISSUES and the release procedures identify the
+current release. FUTURE_RISKS points to the current audit while preserving existing risk dispositions.
+LEVEL5_AUDITION and RELEASE_COMPATIBILITY_CHECKLIST record the owner's direct
+approval of completed required manual validations separately from pending automated checks;
+no new manual run, environment or per-scenario observation is invented. HANDOVER's stale
+floating-pluginval summary is corrected to the implemented v1.0.4 integrity lock. The release
+audit is developer evidence under worklogs, linked in SOURCE_OF_TRUTH and REPOSITORY_MAP.
+The standing engineering programme records the attestation and its rendered report's current
+release banner is synchronized; historical findings and 0.9.9 approval remain dated records.
+Historical development filenames and earlier approval records are retained. Execution is draft
+only, using the existing annotated bare-version tag and fail-closed release workflow.
+
 ## macOS compatible icon fallback (2026-10-29)
 
 ADR-0062's appended amendment records this task's explicit fallback approval separately from

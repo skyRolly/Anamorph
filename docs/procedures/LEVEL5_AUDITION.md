@@ -208,6 +208,20 @@ covered. Partial is a legitimate and useful record; a partial audition described
 
 Newest first. A row here is a human's account of listening to a build; nothing else may create one.
 
+### 0.10.0 / JUCE 9.0.4 — **PASS, owner-approved**
+
+Recorded **2026-10-29, Asia/Shanghai**, from the owner's release instruction:
+“Human Level-5 listening tests and other required manual validations have already been completed
+and approved; record these approvals without requesting redundant testing.” The instruction
+explicitly limits release execution to **DRAFT**.
+
+This records approval for 0.10.0's required listening, host/automation/session/preset and native
+installation/appearance validation. Actual test dates, exact artifact hashes, DAWs/versions,
+OS/CPU, formats, devices, individual scenarios and measurements were not supplied and are
+**NOT RECORDED**. No per-scenario result is invented and no automated result supplies this human
+approval. Earlier dated observations remain historical. The independent automated gates and
+remaining development issues are tracked in `worklogs/RELEASE_READINESS_0.10.0.md`.
+
 ### 0.9.9 / JUCE 9.0.4 — **PASS, COMPLETE (A–G)**
 
 Source: the repository owner's explicit instruction “Anamorph — Record Final Owner Approvals
