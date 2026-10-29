@@ -38,8 +38,8 @@ additional malformed host-state restrictions remain open owner decisions.
   preventing multicolored application-icon corruption. Windows executable/VST3 resources retain
   JUCE's icon path. The B0 artwork is unchanged. Windows installer branding is recorded below;
   Linux desktop integration has its separate entry above.
-  Evidence: commits `4d96559`, `686dbf7d9c3234671918e3979b5b79b834b0c43e`; ADR-0062 (2026-10-29 amendment).
-  [Verified — native AppKit rendering; Launchpad and other macOS versions unverified]
+  Evidence: commits `4d96559`, `2ff69a5da5f047777c03834725691f2942333f48`; ADR-0062 (2026-10-29 amendment).
+  [Verified — native AppKit rendering and owner-tested Launchpad display; other macOS versions unverified]
 
 ### Changed
 - **Installer and uninstaller product names display as Anamorph without a version suffix.**

@@ -126,3 +126,16 @@ versions, Windows/Linux execution or release readiness.
 fresh built/staged outcomes are recorded in the dated integration worklog below its original
 Round 1 record. Independent format corroboration: [Chromium's icon conventions](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/mac/icons.md),
 [Apple's iconset instructions](https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Optimizing/Optimizing.html).
+
+### Owner Launchpad confirmation — 2026-10-29
+
+The owner tested `Anamorph-macOS-icon-review.zip` in macOS Launchpad and confirmed
+that its icon displays correctly, then requested applying the reviewed patch to GitHub.
+The reviewed archive's SHA-256 is
+`2fa74748c250c6d8256781fdebe12e413820f5ee5f481bbfaa2e8dabda39d88b`;
+its corrected ICNS is the `9915858b...` container recorded in the integration worklog.
+This closes the manual Launchpad check for that reviewed build. The owner's test
+did not specify an OS version or architecture; the earlier native run's macOS 15.8.1
+x86_64 environment must not be assumed to describe this separate manual test.
+The native run above retains its original observation scope. Untested OS versions,
+arm64 runtime, DAW acceptance and release/debug-symbol certification remain separate.

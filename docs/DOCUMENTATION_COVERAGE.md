@@ -13,6 +13,9 @@ and native regression helpers; ADR_INDEX registers the amendment. The existing U
 icon entry is amended because no release tag contains the original Round 1 integration.
 Historical Round 1 evidence remains unchanged; native execution, signatures, exact commands
 and remaining observation limits are recorded in the appended integration worklog section.
+The owner's 2026-10-29 confirmation that the reviewed ZIP displays correctly in Launchpad is
+recorded separately in that worklog and ADR-0062; the changelog and ADR index now reflect this
+manual result. The original native run's unobserved-Launchpad statement remains historical.
 
 Source: `CMakeLists.txt` (`cmake/MacIcon.cmake`), `scripts/check-icons.py`,
 `scripts/render-macos-icon.swift`, `scripts/test-macos-icons.py`, `.github/workflows/build.yml`.

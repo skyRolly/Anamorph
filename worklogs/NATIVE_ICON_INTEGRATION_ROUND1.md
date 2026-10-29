@@ -379,3 +379,26 @@ layout or broad cache deletion was attempted. After reviewing the supplied build
 remaining manual step is to replace `/Applications/Anamorph.app` with the review archive's
 `Anamorph.app` and inspect its icon in Launchpad. AppKit evidence is not a claim that this
 installed Launchpad result was observed fixed. No merge or release publication occurred.
+
+## Owner Launchpad acceptance and GitHub application — 2026-10-29
+
+After the native run and source review above, the owner reported testing
+`Anamorph-macOS-icon-review.zip` in macOS Launchpad and confirmed that it works
+correctly. The owner then requested applying the fix/patch to the GitHub repository.
+This is direct manual confirmation for the reviewed archive, not an inference from
+PNG decoding or AppKit metrics. Its SHA-256 is
+`2fa74748c250c6d8256781fdebe12e413820f5ee5f481bbfaa2e8dabda39d88b`, and all three
+bundles carry corrected ICNS SHA-256
+`9915858b2df52c20eb857c3329ac3e52bf1a1aa1f048be46550b499e9be3cb4d`.
+The manual test's OS version and architecture were not specified.
+
+The GitHub application commit is `2ff69a5da5f047777c03834725691f2942333f48`, based
+on `06105461d79cca68389dd8470c316b84bb56252a`. Before a trailing blank-line cleanup
+in `cmake/MacIcon.cmake`, the reviewed patch produced tree
+`a28e2f9255a62a1b1d60b241415cffbf77818ae1`, identical to the macOS delivery's final
+tree. Runtime source, source artwork, the native generator's behavior and native
+rendering checks were not changed during this review/application.
+
+The earlier native run's Launchpad limitation above remains historical; this owner
+confirmation closes that manual check for the supplied build. The documented dSYM,
+arm64 runtime, other-OS and DAW limits remain separate from this icon repair.
