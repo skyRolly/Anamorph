@@ -42,6 +42,11 @@ development residuals are in `worklogs/RELEASE_READINESS_0.10.0.md`. This attest
 replace automated checks or select a new non-finite, serialization or threading policy.
 The rendered report's current-release banner is synchronized; historical review findings remain.
 
+Execution completed 2026-10-30: the 0.10.0 draft has 11 independently verified assets from its
+unchanged annotated source (CI build 1940). INC-018 records startup/authentication recovery and
+the merged future caller repair; the full corrected native rehearsal passes. The readiness
+worklog records exact run/source/asset provenance. This is execution evidence, not a new audition.
+
 ## Historical final owner release attestation — 2026-10-21 UTC
 
 Source: the repository owner's explicit instruction in this task, **“Anamorph — Record Final

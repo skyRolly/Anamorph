@@ -1,6 +1,6 @@
 # FUTURE_RISKS.md
 
-**Current sync: 0.10.0 draft preparation, 2026-10-29.** RISK-003 closed when annotated `0.9.9` was
+**Current sync: 0.10.0 draft release, 2026-10-30.** RISK-003 closed when annotated `0.9.9` was
 created. RISK-015's acceptance remains unchanged; its owner decision and corrected conditional
 payload-containment argument are in `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 The current draft-release gate evidence and prioritized residuals are in
