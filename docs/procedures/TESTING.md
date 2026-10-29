@@ -50,7 +50,19 @@ file hashes/dimensions and the CMake consumers. It adds no third-party Python de
 After a native build, use `--platform linux`, `--platform windows` or `--platform macos` and
 optionally `--report build/icon-validation.json`; another OS is explicitly rejected. Windows
 checks actual RT_GROUP_ICON/RT_ICON payloads in the EXE/VST3 through native resource APIs.
-macOS checks actual bundle plists/resource copies and uses iconutil/sips; Linux checks only
+macOS checks actual bundle plists/resource copies and complete compatible ICNS representations
+(ARGB, paired RGB/masks, PNG in suitable slots, bounded metadata). PNG in icp4/icp5/icp6 is
+rejected even when valid as an image. Native iconutil/sips extraction must contain all ten
+standard names. AppKit renders the application bundle at 16/32/64/128/256/512 logical points,
+each at 1x and 2x, and compares premultiplied color, alpha and silhouette against the approved
+source for that actual pixel size. RGB mean absolute error <=4%, alpha <=3%, silhouette
+intersection/union >=95%, >=3% transparent and >=50% opaque pixels are required. On macOS
+15.8.1, corrected output measured <=1.05% RGB error, zero alpha error and 100% overlap;
+the old small encoding produced 37–41% RGB error and lost transparency in affected sizes.
+`python3 scripts/test-macos-icons.py` compiles real iconutil output and exercises both native
+application fixtures; its evidence lives in `build/icon-render-regression`. Old rendering that
+does not fail on another OS is reported explicitly; its structural rejection remains required.
+Linux checks only
 its ELF outputs. `--staged-dir dist/Anamorph-Windows` or `dist/Anamorph-macOS` repeats the
 native check on staged output. CI runs the self-test before use in every consuming job.
 
@@ -58,11 +70,14 @@ native check on staged output. CI runs the self-test before use in every consumi
 including immutable approved digests independent of the editable provenance. Existing native
 Release outputs trigger the matching check. When none exists it explicitly reports the native
 skip, candidate paths and configure/build/check commands; no product rebuild is attempted.
-`python3 scripts/test-icon-preflight.py` runs five shell-entry regressions in `source-lint`: a
+`python3 scripts/test-icon-preflight.py` runs six shell-entry regressions in `source-lint`: a
 missing build still reaches the next existing gate; corrupt PNGs, coordinated provenance edits,
-wrong CMake paths and wrong source commits fail before that gate, without any build tree.
+wrong CMake paths, wrong source commits and altered Linux resources fail before that gate,
+without any build tree. On macOS use a real `TMPDIR` path (for example a workspace directory)
+when the existing Linux asset self-test rejects `/var`'s symlink ancestry.
 
-Native utility/resource checks do not prove shell display, DPI, cache or DAW artwork behavior.
+Native AppKit rendering proves the exercised bundle/size/scale path; it does not prove
+Launchpad display or its cached state. Other OS versions, shell display and DAW artwork behavior
 Those remain manual tests. No global Linux icon files are installed. Exact paths, optical
 frame policy, baseline comparison and pending session tests are in
 [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) (ADR-0062).

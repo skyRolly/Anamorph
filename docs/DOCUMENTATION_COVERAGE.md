@@ -1,5 +1,23 @@
 # DOCUMENTATION_COVERAGE.md
 
+## macOS compatible icon fallback (2026-10-29)
+
+ADR-0062's appended amendment records this task's explicit fallback approval separately from
+Round 1. The unchanged B0 inputs now feed native sips/iconutil through `cmake/MacIcon.cmake`
+and `GenerateMacIcon.cmake`, after JUCE configure-time generation and before resource copying
+and signing. BUILD and DEPENDENCY_POLICY describe the tool/input contract; CI_CD and TESTING
+cover strict ICNS encoding/coverage plus real AppKit application rendering and its tolerances.
+PACKAGING and RELEASE_PROCESS retain strip/sign/stage order and distinguish installed apps,
+built/staged resources and Launchpad cache observation. REPOSITORY_MAP names the new build
+and native regression helpers; ADR_INDEX registers the amendment. The existing Unreleased
+icon entry is amended because no release tag contains the original Round 1 integration.
+Historical Round 1 evidence remains unchanged; native execution, signatures, exact commands
+and remaining observation limits are recorded in the appended integration worklog section.
+
+Source: `CMakeLists.txt` (`cmake/MacIcon.cmake`), `scripts/check-icons.py`,
+`scripts/render-macos-icon.swift`, `scripts/test-macos-icons.py`, `.github/workflows/build.yml`.
+
+
 ## pluginval concurrent first-acquisition review correction (2026-10-28)
 
 `cached_tool` in `scripts/acquire-pluginval.py` now owns the same archive/inventory/full-tree
@@ -1958,7 +1976,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3747` and `.github/workflows/build.yml:3832`, this round being
+`.github/workflows/build.yml:3776` and `.github/workflows/build.yml:3861`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare

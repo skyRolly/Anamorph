@@ -276,3 +276,106 @@ their recorded heads.
 this Round 1 worklog and its raw reports describe that historical icon-only head. The separate
 ADR-0063 implementation now uses `tech.rolly.anamorph` under the owner's namespace directive
 and explicit implementation/testing approval. Raw old native measurements remain unchanged.
+
+## Native macOS fallback implementation — 2026-10-29
+
+The sections above retain their historical Round 1 scope. This follow-up uses the separate
+approval in the supplied handoff prompt, recorded in ADR-0062's 2026-10-29 amendment. It does
+not reinterpret Round 1 approval or certify a release.
+
+Baseline: `06105461d79cca68389dd8470c316b84bb56252a`, freshly cloned from live main on this Mac;
+the older handoff baseline `f83c1ab` was not restored. Existing checkouts were left intact.
+Implementation: `686dbf7d9c3234671918e3979b5b79b834b0c43e`. All B0 PNG hashes, production
+identities, JUCE pin, compiler flags, DSP/state/parameters and Windows/Linux resources remain
+unchanged. Only the macOS resource path and its regression/evidence gates change.
+
+Environment: macOS 15.8.1 (24H32), native x86_64; selected developer directory
+`/Library/Developer/CommandLineTools`; AppleClang 17.0.0, Swift 6.2.4, CMake 4.4.4 and Ninja.
+Full Xcode is not installed. The default 26.2 SDK and installed 15.4 SDK trigger the pinned
+JUCE's SDK availability guard in this environment. The successful build selects the installed
+13.1 SDK and retains `CMAKE_OSX_DEPLOYMENT_TARGET=10.13`. No repository toolchain setting is
+changed to work around that local header issue.
+
+The installed `/Applications/Anamorph.app` is 0.9.10, bundle ID `tech.rolly.anamorph`, ad-hoc
+signed. Its ICNS is the exact supplied native artifact:
+`88b9839f2ed351e9e958963476338b1fe474f87a10d5a0aafbc72a3f89bd582d`, 255107 bytes, containing
+only `ic10` (1024px PNG) and `icp5` (32px PNG). Native application-bundle rendering reproduces
+noise at 16pt/32pt 1x and other affected sizes. At 32pt 1x, premultiplied RGB MAE is
+0.3715916, alpha MAE 0.1832874, silhouette IoU 0.81640625 and transparent fraction zero.
+Isolated diagnostic identities reproduce the defect without changing production identifiers
+or touching caches. Direct embedded PNG decoding alone still succeeds.
+
+Corrected generated, built and staged ICNS bytes have SHA-256
+`9915858b2df52c20eb857c3329ac3e52bf1a1aa1f048be46550b499e9be3cb4d` (733407 bytes).
+Native entries are `ic04` 16px and `ic05` 32px ARGB; PNG entries `ic11` 32px,
+`ic12` 64px, `ic07` 128px, `ic13`/`ic08` 256px, `ic14`/`ic09` 512px and `ic10` 1024px,
+plus bounded `info` metadata. No icp4/icp5/icp6 entry remains. All ten standard iconset names
+extract and validate. Both the actual built and signed/staged application render at all
+twelve logical-size/backing-scale combinations with maximum RGB MAE 0.01041156, zero alpha
+MAE and minimum silhouette IoU 1.0, against the approved source selected by actual pixel size.
+The real iconutil positive control passes; the malformed old layout is structurally rejected
+and its native render fails the pixel gate. Evidence includes before/after PNGs and metrics.
+
+Build commands, from the task workspace (the existing optional local JUCE override points to
+a clean checkout verified at `3fb5cbc0340758596dac39f7c8de47d562b4896e`):
+
+```bash
+cmake -S work/Anamorph -B work/Anamorph/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DANAMORPH_JUCE_PATH=/Users/rolly/Documents/Codex/2026-10-28/product-only-installer-names/work/JUCE-ci-fix
+cmake -S work/Anamorph -B work/Anamorph/build -DCMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk
+cmake -S work/Anamorph -B work/Anamorph/build -DCMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk
+cmake --build work/Anamorph/build --config Release --parallel 6
+```
+
+The first two SDK choices failed compilation at JUCE's availability guard. The 13.1 build
+completed from fresh product objects with VST3, AU, Standalone and both test executables,
+each universal where applicable. From `work/Anamorph`, subsequent `cmake -S . -B build` and
+`cmake --build build --config Release --parallel 6` completed; another build reported no work.
+Ninja's actual graph records both PNG inputs and `GenerateMacIcon.cmake` as dependencies,
+and every app/AU/VST3 resource copy consumes that generated output. No manual icon replacement
+or handoff/sibling-icon checkout is part of the build.
+
+Completed local checks, from `work/Anamorph` (each exit 0):
+
+```bash
+python3 scripts/check-icons.py --self-test
+python3 scripts/check-icons.py --report build/icon-sources.json
+python3 scripts/test-macos-icons.py
+TMPDIR=/Users/rolly/Documents/Codex/2026-10-29/e-x/work/tmp python3 scripts/test-icon-preflight.py
+TMPDIR=/Users/rolly/Documents/Codex/2026-10-29/e-x/work/tmp python3 tests/juce_cache_tests.py
+TMPDIR=/Users/rolly/Documents/Codex/2026-10-29/e-x/work/tmp python3 scripts/test-workflow-routing.py
+python3 scripts/check-icons.py --platform macos --report build/icon-validation-macos.json
+python3 scripts/check-product-identity.py --self-test
+python3 scripts/check-product-identity.py --build-dir build --platform macos --report build/product-identity-macos.json
+TMPDIR=/Users/rolly/Documents/Codex/2026-10-29/e-x/work/tmp bash scripts/preflight.sh
+python3 scripts/check-icons.py --platform macos --staged-dir dist/Anamorph-macOS --report build/icon-validation-macos-staged.json
+```
+
+The icon self-test exercises 49 matching-platform controls; native regressions have three
+tests, shell preflight six and JUCE-cache seven. Full preflight completed source/doc/citation
+and dependency/integrity controls, then 941 DSP checks and 5787 state checks with zero failures
+on native Intel. An earlier preflight stopped at five source/doc commit-boundary anchors;
+the code and anchor updates were kept together and the full gate rerun. `/var` symlink ancestry
+also made temporary-directory fixtures fail initially; a real workspace TMPDIR resolves this
+without altering the Linux checker or any validation rule.
+
+Local staging follows the existing order: dsymutil capture, `strip -x` on each binary,
+`codesign --force --deep --sign -`, then copies to `dist/Anamorph-macOS`. All three built and
+all three staged bundles pass `codesign --verify --deep --strict --verbose=2`; signature mode
+is ad-hoc, both architecture slices are asserted, and the stripped VST3 exports GetPluginFactory.
+Staged plist/icon resources match generation exactly. Exact command arrays, exit codes and
+diagnostics are retained in the task's `package-commands.json`; render evidence stays outside
+the customer payload. No production signing credential is used or changed.
+
+Warnings/limits: the clean compile emitted 116 warning lines in unchanged C++/JUCE sources.
+macOS's allocation guard does not assert raw malloc. Local dSYM extraction returned zero but
+reported overwritten/mismatched LTO objects, missing symbols and absent arm64 debug data;
+these dSYMs are not certified and are excluded from the review artifact. No pinned Linux
+warning baseline, new GitHub CI run, pluginval/DAW acceptance, arm64 runtime or other macOS
+version is claimed. Existing CI gates, including debug checks, remain enabled.
+
+Launchpad itself was not observed: Launchpad/Dock UI access timed out, and later Finder
+automation lost focus. The installed application remains untouched; no Launchpad database,
+layout or broad cache deletion was attempted. After reviewing the supplied build, the single
+remaining manual step is to replace `/Applications/Anamorph.app` with the review archive's
+`Anamorph.app` and inspect its icon in Launchpad. AppKit evidence is not a claim that this
+installed Launchpad result was observed fixed. No merge or release publication occurred.

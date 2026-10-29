@@ -33,18 +33,27 @@ publication-only evidence remains historical and does not certify these new runs
 ## Icon resource checks
 
 Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
-job before each use. The self-test includes 42 matching-platform good/bad native fixtures
-(only native API/utility boundaries are stubbed). `source-lint` also runs the five actual-shell
+job before each use. The self-test includes 49 matching-platform good/bad native fixtures
+(only native API/utility boundaries are stubbed). `source-lint` also runs the six actual-shell
 preflight regressions in `scripts/test-icon-preflight.py`. `source-lint` and `merge-check`
 verify the two vendored B0 hashes and CMake bindings;
 `linux` checks native ELF outputs and absence of stale generated ICO/ICNS. Windows enumerates
 actual EXE and VST3 PE icon groups through Windows resource APIs, checks generated ICO and
 VST3 sidecars, and repeats against staged outputs. Both macOS jobs inspect their built
-bundles/plists/ICNS using native plutil, iconutil and sips; the universal job repeats against
-the signed staging tree. Native reports/raw containers are retained in the
+bundles/plists/ICNS using native plutil, iconutil and sips, then render the real application
+bundle through AppKit (`NSWorkspace.icon(forFile:)`) at 16–512 points at 1x/2x. A build without
+Standalone uses a disposable application fixture with the generated icon. Strict container
+checks reject PNG in icp4/icp5/icp6 and require complete native coverage; RGB/alpha error and
+silhouette checks compare against the optical/large approved inputs. Both jobs also run
+`scripts/test-macos-icons.py`: real iconutil output is a positive control, the old encoding
+is structurally rejected even when its PNG decodes, and its native render is measured as a
+negative control (an OS that cannot reproduce it emits a warning). The universal job repeats
+the native checker against signed staging. Reports, render PNGs and containers are retained in the
 `Anamorph-Windows-icon-validation` and `Anamorph-macOS-icon-validation` artifacts.
 These checks add no runtime dependency, installer customization, signing-policy change or
-Finder/Dock/Explorer/DAW display claim. See [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md).
+Launchpad/Finder/Dock/Explorer/DAW display claim. Staged macOS render evidence has its own
+artifact; the Intel job retains its generated-icon fixture and native regressions separately.
+See [the integration record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md).
 
 The Windows job runs `scripts/find-windows-vst3.ps1 -SelfTest` before pluginval/staging.
 Both consumers use its shared selector for an actual `Contents/x86_64-win/Anamorph.vst3`

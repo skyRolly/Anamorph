@@ -226,6 +226,12 @@ Evidence [Verified]: packaging/macos/INSTALL.txt:70-72.
 
 ## macOS signing & quarantine
 
+The macOS icon fallback (ADR-0062, 2026-10-29 amendment) compiles the complete approved
+iconset in the normal CMake resource graph before bundle copying/signing. No signed bundle
+is patched to repair its icon. `check-icons.py --platform macos` checks generated/built
+resource equality and native application rendering; repeat with `--staged-dir` after the
+existing strip/sign/stage sequence. Render evidence belongs outside the customer payload.
+
 CI **ad-hoc** codesigns the bundles (`codesign --force --deep --sign -`) — they are **NOT
 notarized**. Order inside the packaging step (ADR-0021): `dsymutil` (capture dSYMs) → `strip -x`
 → codesign — signing is LAST because stripping afterwards would invalidate the seal. A codesign

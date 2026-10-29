@@ -2224,6 +2224,9 @@ jobs:
         id: icon_resources
         run: python3 scripts/check-icons.py --platform macos --report build/icon-validation-macos.json
 
+      - name: Native macOS application-icon regression
+        run: python3 scripts/test-macos-icons.py
+
       - name: Upload macOS icon resource evidence
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -2232,6 +2235,8 @@ jobs:
           path: |
             build/icon-validation-macos.json
             build/Anamorph_artefacts/JuceLibraryCode/AppIcon.icns
+            build/icon-render-built
+            build/icon-render-regression
           if-no-files-found: error
 
       # LTO IS STILL LTO, ASSERTED RATHER THAN ASSUMED. `-object_path_lto`
@@ -2671,6 +2676,16 @@ jobs:
         id: icon_staged
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         run: python3 scripts/check-icons.py --platform macos --staged-dir dist/Anamorph-macOS --report build/icon-validation-macos-staged.json
+
+      - name: Upload staged macOS icon evidence
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-macOS-icon-staged
+          path: |
+            build/icon-validation-macos-staged.json
+            build/icon-render-staged
+          if-no-files-found: error
 
       - name: Upload macOS plugins (VST3 + AU + Standalone)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' && steps.icon_resources.outcome == 'success' && steps.icon_staged.outcome == 'success' }}
@@ -3125,6 +3140,20 @@ jobs:
 
       - name: Inspect native Intel macOS bundle icons
         run: python3 scripts/check-icons.py --platform macos --report build/icon-validation-macos-intel.json
+
+      - name: Native Intel application-icon regression
+        run: python3 scripts/test-macos-icons.py
+
+      - name: Upload native Intel icon evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-macOS-Intel-icon-validation
+          path: |
+            build/icon-validation-macos-intel.json
+            build/icon-render-built
+            build/icon-render-regression
+          if-no-files-found: error
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}

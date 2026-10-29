@@ -109,6 +109,10 @@ Native-icon integration evidence is in `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.
 `scripts/check-icons.py` validates sources and actual native resources (with matching-platform
 good/bad fixtures); `scripts/test-icon-preflight.py` guards the actual local shell entry point,
 and ADR-0062 records the approved conventional JUCE build decision.
+Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
+`cmake/GenerateMacIcon.cmake` for native macOS resource generation,
+`scripts/render-macos-icon.swift` for application-bundle pixel evidence, and
+`scripts/test-macos-icons.py` for real iconutil/AppKit positive and negative controls.
 
 | Path | Responsibility |
 |---|---|

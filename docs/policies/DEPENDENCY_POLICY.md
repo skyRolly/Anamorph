@@ -22,6 +22,9 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   values; `scripts/check-icons.py` verifies both files and their ICON_BIG/ICON_SMALL bindings.
   This adds no code dependency and changes no JUCE/toolchain pin. Future artwork or source
   changes require owner approval and refreshed provenance. Decision and scope: ADR-0062.
+  Its 2026-10-29 amendment uses macOS's existing `sips`/`iconutil` for complete compatible
+  resources; native AppKit regressions use the developer tools' Swift compiler. No new
+  product library, downloaded icon container, artwork version or JUCE/toolchain pin is added.
 
 - **JUCE is pinned to an exact IMMUTABLE commit** (`3fb5cbc…` = tag 9.0.4; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
