@@ -16,6 +16,11 @@ and remaining observation limits are recorded in the appended integration worklo
 The owner's 2026-10-29 confirmation that the reviewed ZIP displays correctly in Launchpad is
 recorded separately in that worklog and ADR-0062; the changelog and ADR index now reflect this
 manual result. The original native run's unobserved-Launchpad statement remains historical.
+The macOS 26 CI follow-up replaces the unstyled PNG reference with an independent approved
+application fixture rendered through the same IconServices API. TESTING and CI_CD describe
+the host-styling comparison, retained reference ICNS and valid-wrong-artwork negative control;
+the numeric limits and structural rejection remain unchanged. TESTING's fixture count is
+corrected from its stale 42 to the checker's 49. ADR-0062 and the worklog record the CI evidence.
 
 Source: `CMakeLists.txt` (`cmake/MacIcon.cmake`), `scripts/check-icons.py`,
 `scripts/render-macos-icon.swift`, `scripts/test-macos-icons.py`, `.github/workflows/build.yml`.

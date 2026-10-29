@@ -39,7 +39,7 @@ exploits or unrelated fuzz campaigns are part of these checks.
 ## Build-time icon resource checks
 
 Run `python3 scripts/check-icons.py --self-test` before `python3 scripts/check-icons.py`.
-The self-test drives real PNG/ICO/ICNS/PE-group parsers, source verification and 42
+The self-test drives real PNG/ICO/ICNS/PE-group parsers, source verification and 49
 matching-platform native fixtures, without artwork, network or a build tree. It exercises
 production `check_native()` on valid/invalid Windows layouts and embedded groups/frames,
 macOS bundles/plists/resources and extraction failures, and Linux ELF layouts with Standalone
@@ -54,13 +54,19 @@ macOS checks actual bundle plists/resource copies and complete compatible ICNS r
 (ARGB, paired RGB/masks, PNG in suitable slots, bounded metadata). PNG in icp4/icp5/icp6 is
 rejected even when valid as an image. Native iconutil/sips extraction must contain all ten
 standard names. AppKit renders the application bundle at 16/32/64/128/256/512 logical points,
-each at 1x and 2x, and compares premultiplied color, alpha and silhouette against the approved
-source for that actual pixel size. RGB mean absolute error <=4%, alpha <=3%, silhouette
+each at 1x and 2x, and compares premultiplied color, alpha and silhouette against a separate
+application fixture assembled independently from the approved optical/large PNGs. Both images
+come through `NSWorkspace.icon(forFile:)`, so host styling such as macOS 26's frame/inset is
+present on both sides. The reference never uses candidate ICNS bytes or the production CMake
+generator. Its native container is retained as `approved-reference.icns` beside the renders.
+RGB mean absolute error <=4%, alpha <=3%, silhouette
 intersection/union >=95%, >=3% transparent and >=50% opaque pixels are required. On macOS
 15.8.1, corrected output measured <=1.05% RGB error, zero alpha error and 100% overlap;
 the old small encoding produced 37–41% RGB error and lost transparency in affected sizes.
-`python3 scripts/test-macos-icons.py` compiles real iconutil output and exercises both native
-application fixtures; its evidence lives in `build/icon-render-regression`. Old rendering that
+`python3 scripts/test-macos-icons.py` runs four tests: real iconutil/parser controls, the old
+PNG-in-small-slot rejection, native positive/negative rendering, and structurally valid wrong
+artwork that must fail the independent reference comparison. Evidence lives in
+`build/icon-render-regression`. Old rendering that
 does not fail on another OS is reported explicitly; its structural rejection remains required.
 Linux checks only
 its ELF outputs. `--staged-dir dist/Anamorph-Windows` or `dist/Anamorph-macOS` repeats the

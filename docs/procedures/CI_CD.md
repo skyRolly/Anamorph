@@ -44,10 +44,14 @@ bundles/plists/ICNS using native plutil, iconutil and sips, then render the real
 bundle through AppKit (`NSWorkspace.icon(forFile:)`) at 16–512 points at 1x/2x. A build without
 Standalone uses a disposable application fixture with the generated icon. Strict container
 checks reject PNG in icp4/icp5/icp6 and require complete native coverage; RGB/alpha error and
-silhouette checks compare against the optical/large approved inputs. Both jobs also run
+silhouette checks compare against the optical/large approved inputs.
+The pixel reference is an independent application fixture built from those inputs; both it
+and the candidate pass through IconServices so macOS 26 styling is compared consistently.
+Native render artifacts retain the reference ICNS as well as both PNG matrices. Both jobs run
 `scripts/test-macos-icons.py`: real iconutil output is a positive control, the old encoding
 is structurally rejected even when its PNG decodes, and its native render is measured as a
-negative control (an OS that cannot reproduce it emits a warning). The universal job repeats
+negative control (an OS that cannot reproduce it emits a warning), and a valid icon with
+different artwork must fail the pixel gate. The universal job repeats
 the native checker against signed staging. Reports, render PNGs and containers are retained in the
 `Anamorph-Windows-icon-validation` and `Anamorph-macOS-icon-validation` artifacts.
 These checks add no runtime dependency, installer customization, signing-policy change or

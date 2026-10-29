@@ -10,6 +10,7 @@ import json
 import math
 import plistlib
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -214,7 +215,7 @@ def validate_macos_render(rows):
 
 
 def render_macos_bundle(bundle, evidence):
-    """Native API boundary; render the bundle, never the embedded PNG alone."""
+    """Compare two application icons through the same host IconServices styling."""
     evidence.mkdir(parents=True, exist_ok=True)
     renderer = evidence.parent / "render-macos-icon"
     source = ROOT / "scripts/render-macos-icon.swift"
@@ -222,17 +223,47 @@ def render_macos_bundle(bundle, evidence):
         if not renderer.exists() or renderer.stat().st_mtime < source.stat().st_mtime:
             subprocess.run(["xcrun", "swiftc", "-O", str(source), "-o", str(renderer)], check=True,
                            capture_output=True, text=True)
-        subprocess.run([str(renderer), str(evidence), str(ROOT / "resources/icons/anamorph-32.png"),
-                        str(ROOT / "resources/icons/anamorph-1024.png"), str(bundle.resolve())],
-                       check=True, capture_output=True, text=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reference_icon = macos_reference_icon(root)
+            reference = macos_fixture(root / "reference", reference_icon)
+            (evidence / "approved-reference.icns").write_bytes(reference_icon)
+            subprocess.run([str(renderer), str(evidence), str(reference.resolve()), str(bundle.resolve())],
+                           check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as error:
         raise ValueError(f"native icon renderer failed: {error.stderr or error.stdout}") from error
     return json.loads((evidence / "measurements.json").read_text())
 
 
+def macos_reference_icon(directory):
+    """Build an independent golden icon from approved PNGs, never candidate bytes.
+
+    Do not invoke the production CMake generator here: a generation regression
+    must not change both sides of the pixel comparison together. IconServices
+    then applies the same OS-specific frame/inset to both application bundles.
+    """
+    iconset = directory / "Approved.iconset"
+    iconset.mkdir()
+    for name, pixels in ICONSET_SIZES.items():
+        source_size = 32 if pixels <= 32 else 1024
+        source = ROOT / f"resources/icons/anamorph-{source_size}.png"
+        destination = iconset / name
+        if pixels == source_size:
+            shutil.copyfile(source, destination)
+        else:
+            subprocess.run(["/usr/bin/sips", "--resampleHeightWidth", str(pixels), str(pixels),
+                            str(source), "--out", str(destination)],
+                           check=True, capture_output=True, text=True)
+    output = directory / "Approved.icns"
+    subprocess.run(["/usr/bin/iconutil", "--convert", "icns", "--output", str(output), str(iconset)],
+                   check=True, capture_output=True, text=True)
+    data = output.read_bytes()
+    icns_coverage(icns_images(data))
+    return data
+
+
 def macos_fixture(directory, icon):
     """Disposable application identity, separate from the real product/cache."""
-    import shutil
     bundle = directory / "IconFixture.app"
     (bundle / "Contents/Resources").mkdir(parents=True)
     (bundle / "Contents/MacOS").mkdir()

@@ -2,6 +2,7 @@
 """Exercise iconutil and the native application-icon gate with real good/bad bundles."""
 
 import argparse
+import binascii
 import importlib.util
 import json
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,6 +84,36 @@ class MacIconTests(unittest.TestCase):
                     print("::warning::this OS did not reproduce the old AppKit rendering defect; structural regression still rejects it")
         self.assertTrue(results["corrected"]["accepted"])
         (EVIDENCE / "controls.json").write_text(json.dumps(results, indent=2) + "\n")
+
+    def test_wrong_artwork_cannot_become_its_own_reference(self):
+        # A complete, renderable ICNS with different artwork must still fail.
+        # This catches accidentally deriving the golden icon from the candidate.
+        directory = self.root / "wrong-artwork"
+        directory.mkdir()
+
+        def red_png(size):
+            def chunk(kind, payload):
+                return struct.pack(">I", len(payload)) + kind + payload + struct.pack(
+                    ">I", binascii.crc32(kind + payload) & 0xffffffff)
+            margin = size // 8
+            empty = b"\0" + bytes(size * 4)
+            row = b"\0" + bytes(margin * 4) + b"\xff\0\0\xff" * (size - 2 * margin) + bytes(margin * 4)
+            raw = empty * margin + row * (size - 2 * margin) + empty * margin
+            return icons.PNG + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)) \
+                + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+        for size in (32, 1024):
+            (directory / f"red-{size}.png").write_bytes(red_png(size))
+        icon = directory / "Wrong.icns"
+        subprocess.run(["cmake", "-DBIG=" + str(directory / "red-1024.png"),
+                        "-DSMALL=" + str(directory / "red-32.png"), "-DOUTPUT=" + str(icon),
+                        "-P", str(ROOT / "cmake/GenerateMacIcon.cmake")],
+                       check=True, capture_output=True, text=True)
+        icons.icns_coverage(icons.icns_images(icon.read_bytes()))
+        bundle = icons.macos_fixture(directory / "bundle", icon.read_bytes())
+        rows = icons.render_macos_bundle(bundle, EVIDENCE / "wrong-artwork")
+        with self.assertRaisesRegex(ValueError, "native application icon differs"):
+            icons.validate_macos_render(rows)
 
 
 if __name__ == "__main__":

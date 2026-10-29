@@ -402,3 +402,25 @@ rendering checks were not changed during this review/application.
 The earlier native run's Launchpad limitation above remains historical; this owner
 confirmation closes that manual check for the supplied build. The documented dSYM,
 arm64 runtime, other-OS and DAW limits remain separate from this icon repair.
+
+## macOS 26 CI comparison repair — 2026-10-29
+
+[Build run 40880140543](https://github.com/skyRolly/Anamorph/actions/runs/40880140543)
+failed the built and staged icon checks in job `123469156120` on `macos-26-arm64`.
+The generated ICNS remained byte-identical to the accepted native review:
+`9915858b2df52c20eb857c3329ac3e52bf1a1aa1f048be46550b499e9be3cb4d`.
+The saved native renders show macOS 26's glass border and inset, which the direct
+PNG reference lacks. At 16pt 1x both checks reported RGB MAE 0.2464358660 and alpha
+MAE 0.0366115196; this mismatch is host styling rather than the former noisy ICNS
+encoding. The Intel macOS job's original comparison passed.
+
+`macos_reference_icon()` now assembles all ten representations independently from
+the immutable approved PNG inputs using native sips/iconutil. It does not call the
+production CMake generator or read candidate icon bytes. `render-macos-icon.swift`
+compares the candidate app against a disposable reference app through IconServices,
+with identical host styling and backing scales. Each evidence directory retains
+`approved-reference.icns` and the rendered reference/candidate PNGs. Existing RGB,
+alpha, silhouette and transparency limits are unchanged, as are the strict
+container rules. A fourth native test requires a complete compatible ICNS carrying
+different artwork to fail, protecting reference independence. The original bad
+small-slot layout remains structurally rejected and a measured native control.
