@@ -1,5 +1,28 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.0 P1 decision gate and customer notes (2026-10-30)
+
+Proposed ADR-0067/0068 are registered and mapped; neither is Accepted or implemented.
+README/HANDOVER, KI-029/RISK-009 and source-of-truth navigation now distinguish the original
+completed candidate from the blocked P1 replacement. The readiness worklog preserves original
+approval/provenance and records fresh failure evidence, the one-time deletion/recreation
+authorization, guarded resume states, deferred P2/P3 scope and targeted human-validation needs.
+Original release body/metadata, tag/tagger, manifest and checksums are internal historical
+evidence under `worklogs/release-0.10.0-original/`; binary recovery copies stay restricted locally.
+The previous state/host record gets a dated pointer without rewriting its measurements.
+
+CHANGELOG removes internal readiness/approval prose and the Unreleased incident/prioritization
+list; product changes and required evidence remain. Material unfixed user limitations stay
+visible until approved fixes pass. TESTING/CI_CD and the repository map document the new
+same-job release-note guard/liveness tests and opt-in real-processor audio diagnostic.
+The Release target is pinned to its source SHA with inert actual-command positive/negative
+controls; no remote draft is created by this preparation.
+RELEASE_PROCESS records the explicitly authorized one-time unpublished-candidate exception and
+separates original manual approval from targeted reapproval of changed P1 behavior. Architecture,
+parameter/thread/serialization descriptions remain the current implementation; proposed contracts
+are not silently substituted for them. No historical entry, Accepted ADR or original test result
+is converted into a new-source approval or successful replacement.
+
 ## 0.10.0 draft completion and INC-018 (2026-10-30)
 
 README, HANDOVER, compatibility/release records and the engineering banner now identify the
@@ -2019,7 +2042,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3776` and `.github/workflows/build.yml:3861`, this round being
+`.github/workflows/build.yml:3782` and `.github/workflows/build.yml:3867`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -2053,7 +2076,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:797` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:803` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17236,7 +17259,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:562-567` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:568-573` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)

@@ -533,7 +533,8 @@ static int runNonFiniteIngressProbe()
 {
     constexpr float nan = std::numeric_limits<float>::quiet_NaN();
     constexpr float inf = std::numeric_limits<float>::infinity();
-    for (const char* id : { pid::width, pid::velvetDensity, pid::monoMakerFreq, pid::advancedMode })
+    for (const char* id : { pid::width, pid::velvetDensity, pid::monoMakerFreq, pid::advancedMode,
+                           pid::algorithm, pid::mbBands, pid::mbSolo })
     {
         auto p = std::make_unique<AnamorphAudioProcessor>();
         auto* parameter = p->getAPVTS().getParameter (id);
@@ -542,6 +543,7 @@ static int runNonFiniteIngressProbe()
             parameter->setValueNotifyingHost (value);
             std::printf ("host %-16s input=%g getValue=%g atomic=%g\n", id, (double) value,
                          (double) parameter->getValue(), (double) p->getAPVTS().getRawParameterValue (id)->load());
+            std::printf ("  host display: %s\n", parameter->getText (parameter->getValue(), 64).toRawUTF8());
         }
         for (const char* text : { "nan", "inf", "-inf" })
             std::printf ("text %-16s %-4s -> normalised=%g\n", id, text, (double) parameter->getValueForText (text));
@@ -572,6 +574,103 @@ static int runNonFiniteIngressProbe()
     }
     width->removeListener (&observed);
     return 0;
+}
+
+// Deliberately opt-in until the KI-029 contract is approved. This asserts the
+// observable failure (a sustained mute), without selecting defaults or a held
+// target as the new parameter meaning. Both finite alternatives are rendered
+// through the same production processor for the Architecture Review evidence.
+static void probeNonFiniteParameterAudio()
+{
+    std::printf ("KI-029 diagnostic (opt-in, unresolved): real host/text writes and audio\n");
+    constexpr int block = 256;
+    constexpr double sr = 48000.0;
+    constexpr float nan = std::numeric_limits<float>::quiet_NaN();
+    constexpr float inf = std::numeric_limits<float>::infinity();
+    struct Row { const char* id; int algorithm; float finite; };
+    const Row rows[] { { pid::width, 0, 0.3f }, { pid::haasDelay, 0, 0.4f },
+                       { pid::chorusRate, 2, 0.4f }, { pid::outputGain, 0, 0.125f } };
+    for (const auto& row : rows)
+        for (bool text : { false, true })
+            for (int bad = 0; bad < 3; ++bad)
+                for (int lifecycle = 0; lifecycle < 4; ++lifecycle)
+                {
+                    auto p = std::make_unique<AnamorphAudioProcessor>();
+                    auto defaults = std::make_unique<AnamorphAudioProcessor>();
+                    auto held = std::make_unique<AnamorphAudioProcessor>();
+                    AnamorphAudioProcessor* lanes[] { p.get(), defaults.get(), held.get() };
+                    for (auto* lane : lanes)
+                    {
+                        setRaw (*lane, pid::advancedMode, 1.0f);
+                        setRaw (*lane, pid::mbEnable, 0.0f);
+                        setPlain (*lane, pid::algorithm, (float) row.algorithm);
+                        setRaw (*lane, pid::amount, 0.7f);
+                        setRaw (*lane, row.id, row.finite);
+                    }
+                    auto* parameter = p->getAPVTS().getParameter (row.id);
+                    const char* spelling = bad == 0 ? "nan" : bad == 1 ? "inf" : "-inf";
+                    const float invalid = text ? parameter->getValueForText (spelling)
+                                               : bad == 0 ? nan : bad == 1 ? inf : -inf;
+                    const auto poison = [&]
+                    {
+                        parameter->setValueNotifyingHost (invalid);
+                        auto* reference = defaults->getAPVTS().getParameter (row.id);
+                        reference->setValueNotifyingHost (reference->getDefaultValue());
+                    };
+                    if (lifecycle == 0) poison(); // fresh instance, before its first prepare
+                    for (auto* lane : lanes) lane->prepareToPlay (sr, block);
+                    juce::Random random (67);
+                    juce::AudioBuffer<float> input (2, block), output (2, block);
+                    juce::MidiBuffer midi;
+                    double energy[3] {}, heldDifference = 0.0, defaultDifference = 0.0;
+                    bool finite = true;
+                    float observed[3][2 * block] {};
+                    const auto render = [&] (bool measure)
+                    {
+                        for (int b = 0; b < 96; ++b)
+                        {
+                            for (int c = 0; c < 2; ++c)
+                                for (int i = 0; i < block; ++i)
+                                    input.setSample (c, i, (random.nextFloat() - 0.5f) * 0.5f);
+                            for (int lane = 0; lane < 3; ++lane)
+                            {
+                                output.makeCopyOf (input, true);
+                                midi.clear();
+                                lanes[lane]->processBlock (output, midi);
+                                if (measure && b >= 64)
+                                    for (int c = 0; c < 2; ++c)
+                                        for (int i = 0; i < block; ++i)
+                                        {
+                                            const float sample = output.getSample (c, i);
+                                            finite &= std::isfinite (sample);
+                                            energy[lane] += (double) sample * sample;
+                                            observed[lane][c * block + i] = sample;
+                                        }
+                            }
+                            if (measure && b >= 64)
+                                for (int i = 0; i < 2 * block; ++i)
+                                {
+                                    heldDifference = std::max (heldDifference,
+                                        std::abs ((double) observed[0][i] - observed[2][i]));
+                                    defaultDifference = std::max (defaultDifference,
+                                        std::abs ((double) observed[0][i] - observed[1][i]));
+                                }
+                        }
+                    };
+                    if (lifecycle != 0) { render (false); poison(); }
+                    if (lifecycle == 2) for (auto* lane : lanes) lane->reset();
+                    if (lifecycle == 3) for (auto* lane : lanes) lane->prepareToPlay (sr, block);
+                    render (true);
+                    std::printf ("  %s %s %s lifecycle=%d raw=%g energy=%g default=%g held=%g"
+                                 " maxDeltaDefault=%g maxDeltaHeld=%g\n", row.id, text ? "text" : "host",
+                                 spelling, lifecycle, (double) plainOf (*p, row.id), energy[0],
+                                 energy[1], energy[2], defaultDifference, heldDifference);
+                    check (finite, "non-finite ingress must never escape as a non-finite audio sample");
+                    check (energy[1] > 1.0e-4 && energy[2] > 1.0e-4,
+                           "both finite control processors produce audible output on the same input");
+                    check (energy[0] > 1.0e-4,
+                           "a non-finite parameter must not sustain a mute through the real processor");
+                }
 }
 
 static void probeRestoreTailReentry()

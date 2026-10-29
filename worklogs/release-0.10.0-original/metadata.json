@@ -1,0 +1,187 @@
+{
+  "id": 428196589,
+  "html_url": "https://github.com/skyRolly/Anamorph/releases/tag/untagged-e925c4f20dd9c3da3855",
+  "name": "Anamorph 0.10.0",
+  "tag_name": "0.10.0",
+  "target_commitish": "main",
+  "draft": true,
+  "created_at": "2026-10-29T16:49:47Z",
+  "published_at": null,
+  "body": "## [0.10.0] \u2014 2026-10-30\n\nDraft release. Parameter IDs, ranges, automation flags, valid state/preset formats and existing\ninvalid-value restore behavior are unchanged. KI-029's audible NaN behavior, synthetic restore\nreentry (RISK-009/F9) and additional malformed host-state restrictions (RISK-015) remain open;\ntheir existing dispositions and next-round priorities are recorded in\n`worklogs/RELEASE_READINESS_0.10.0.md`. Required human listening and manual validations are\napproved by the owner (attested 2026-10-29); automated release gates remain independently required.\n\n### Added\n- Linux installation adds the approved Anamorph desktop launcher and hicolor icons in\n  the selected user/system data directory, with an absolute executable reference and\n  owned-resource recovery/uninstall. Portable extraction installs no desktop files.\n  Evidence: PR #175; Accepted ADR-0065;\n  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified \u2014 native automated evidence; manual approval recorded separately]\n- **Approved Anamorph product icon in macOS and Windows build resources.**\n  Mac app/plug-in bundles use a complete native iconset with compatible small-icon encodings,\n  preventing multicolored application-icon corruption. Windows executable/VST3 resources retain\n  JUCE's icon path. The B0 artwork is unchanged. Windows installer branding is recorded below;\n  Linux desktop integration has its separate entry above.\n  Evidence: commits `4d96559`, `2ff69a5da5f047777c03834725691f2942333f48`; ADR-0062 (2026-10-29 amendment).\n  [Verified \u2014 native AppKit rendering and owner-tested Launchpad display; other macOS versions unverified]\n\n### Changed\n- **Installer and uninstaller product names display as Anamorph without a version suffix.**\n  Windows Setup/uninstall naming and the macOS installer title use the bare product name;\n  installed version metadata and versioned download filenames are preserved.\n  Evidence: commit `d99dc5198923ce810d0bff4fdc1dc56120ed5d81`. [Verified \u2014 source; owner manual approval recorded separately]\n- **Use `tech.rolly.anamorph` for application bundles and macOS package receipts**, following\n  `rolly.tech`. Development receipt identities intentionally break without aliases; RTec/Anmr,\n  VST3 class IDs, Windows AppId, state and presets remain unchanged. Required manual host\n  validation is owner-approved; individual host/environment details were not supplied.\n  Evidence: PR #171; ADR-0063. [Verified \u2014 source; native gates and manual approval recorded separately]\n\n### Fixed\n- **System Linux desktop operations verify their helper before interpretation.**\n  Install preflight/publication and uninstall use a private snapshot pinned by the\n  trusted entry scripts, refusing mismatched archive helper bytes. Evidence:\n  PR #175 maintenance follow-up; Accepted ADR-0065;\n  `tests/linux_desktop_helper_tests.py`. [Verified \u2014 source and nonprivileged\n  capture tests; native gates and manual approval recorded separately; distinct-principal exploit unproven]\n- **Linux desktop resource recovery resumes after interrupted cleanup.** A verified\n  cleanup plan survives partial journal deletion. Uninstall also refuses an unowned\n  launcher or icon when its receipt is missing, preserving installed binaries for\n  a safe retry. Evidence: PR #175; Accepted ADR-0065;\n  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified \u2014 isolated entry\n  points and native CI; release-commit gates recorded separately]\n- **Windows installer and uninstaller use the approved product icon in every component configuration.**\n  VST3-only installs now register a stable installed icon instead of an absent optional app;\n  component choices, install destinations and the installer AppId are unchanged.\n  Evidence: PR #172; ADR-0064. [Verified \u2014 source; native CI and manual approval recorded separately]\n- **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The\n  XML writer spells NaN on a private copy, preserving the existing text and finite encoding without\n  changing the live parameter or choosing a new audible NaN policy (KI-029; ADR-0009).\n  Regression: State test 142, including both session threads and A/B slots.\n  Evidence: commit `104d680`. [Verified]\n- **A nested mouse release during a Multiband band move no longer loses host gesture ownership.**\n  If a host callback delivers the release while the two edge gestures are still opening, it is\n  retained until the enclosing event finishes, then processed through the normal release path.\n  Both gestures close with that single release, preserving Solo and later Undo boundaries for\n  drag and in-press wheel moves (ADR-0050). Regression: State test 143.\n  Evidence: PR #168 (including its single-release review correction). [Verified]\n\n",
+  "observation_utc": "2026-10-29T19:25:12.472542+00:00",
+  "observation_utc_precision": "Local file capture time immediately after the GitHub API response",
+  "assets": [
+    {
+      "id": 689416581,
+      "name": "Anamorph-0.10.0-Linux.zip",
+      "size": 5918866,
+      "digest": "sha256:177c3415813828059fa69ca23a1170371d49cd115dda6a529344b350f098963b",
+      "created_at": "2026-10-29T17:57:02Z",
+      "updated_at": "2026-10-29T17:57:03Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-Linux.zip"
+    },
+    {
+      "id": 689416601,
+      "name": "Anamorph-0.10.0-macOS.pkg",
+      "size": 16514843,
+      "digest": "sha256:75b5b90cf97e58972ac415d43f3819fac8971fc2808998d293b3e3376289c828",
+      "created_at": "2026-10-29T17:57:03Z",
+      "updated_at": "2026-10-29T17:57:04Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-macOS.pkg"
+    },
+    {
+      "id": 689416614,
+      "name": "Anamorph-0.10.0-macOS.zip",
+      "size": 16492886,
+      "digest": "sha256:3042f89ceb8bfbf5f5650f11e58160ee685ac0e00f30d4f577736587ddce4bb4",
+      "created_at": "2026-10-29T17:57:03Z",
+      "updated_at": "2026-10-29T17:57:04Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-macOS.zip"
+    },
+    {
+      "id": 689416583,
+      "name": "Anamorph-0.10.0-NOTICE.txt",
+      "size": 17369,
+      "digest": "sha256:ffc0e6d6e3dbce4355325805f50e25d8a5b6322e0a52143304a988de403be7f2",
+      "created_at": "2026-10-29T17:57:02Z",
+      "updated_at": "2026-10-29T17:57:02Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-NOTICE.txt"
+    },
+    {
+      "id": 689416577,
+      "name": "Anamorph-0.10.0-SUPPORT.md",
+      "size": 8841,
+      "digest": "sha256:00ebf8f6ebc80888a999cee28b500f4f11d132b06b19a12fd3e3fa86cdd9dd92",
+      "created_at": "2026-10-29T17:57:02Z",
+      "updated_at": "2026-10-29T17:57:02Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-SUPPORT.md"
+    },
+    {
+      "id": 689416582,
+      "name": "Anamorph-0.10.0-THIRD_PARTY_LICENSES.md",
+      "size": 19226,
+      "digest": "sha256:47f623c519505dc9c7ba02ba27c8f360c19b67f7633a3e56e2714f7a69ddf081",
+      "created_at": "2026-10-29T17:57:02Z",
+      "updated_at": "2026-10-29T17:57:02Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-THIRD_PARTY_LICENSES.md"
+    },
+    {
+      "id": 689416585,
+      "name": "Anamorph-0.10.0-UserManual.md",
+      "size": 39261,
+      "digest": "sha256:074ff9c913aa1bfe12fa21e0e805ee044a6ff24d76781b060df34ac5e3de5610",
+      "created_at": "2026-10-29T17:57:02Z",
+      "updated_at": "2026-10-29T17:57:02Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-UserManual.md"
+    },
+    {
+      "id": 689416596,
+      "name": "Anamorph-0.10.0-Windows-Installer.exe",
+      "size": 7336346,
+      "digest": "sha256:2b6dd9eae34701256c93eedd4cdbd29c14994d61e10470366f7240ac10eade4c",
+      "created_at": "2026-10-29T17:57:03Z",
+      "updated_at": "2026-10-29T17:57:03Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-Windows-Installer.exe"
+    },
+    {
+      "id": 689416597,
+      "name": "Anamorph-0.10.0-Windows.zip",
+      "size": 7554841,
+      "digest": "sha256:cf0cc6a63e39703ee478cc6733ae8cfcbe42e2790fbecdb34fb87100fb266705",
+      "created_at": "2026-10-29T17:57:03Z",
+      "updated_at": "2026-10-29T17:57:03Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/Anamorph-0.10.0-Windows.zip"
+    },
+    {
+      "id": 689416616,
+      "name": "RELEASE_MANIFEST.txt",
+      "size": 1190,
+      "digest": "sha256:5a3dcf9a36b80ab15f964af772b4aa770f227df7c5f2f4cd00f586148aa1da94",
+      "created_at": "2026-10-29T17:57:03Z",
+      "updated_at": "2026-10-29T17:57:03Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/RELEASE_MANIFEST.txt"
+    },
+    {
+      "id": 689416650,
+      "name": "SHA256SUMS.txt",
+      "size": 862,
+      "digest": "sha256:23484e113614643b1523b9f775ab0d661ff3ad0813aac7e69a6261be078b2366",
+      "created_at": "2026-10-29T17:57:04Z",
+      "updated_at": "2026-10-29T17:57:04Z",
+      "browser_download_url": "https://github.com/skyRolly/Anamorph/releases/download/untagged-e925c4f20dd9c3da3855/SHA256SUMS.txt"
+    }
+  ],
+  "source_commit": "cd70a0b8a20d04c246a826c7b1bf616de2721c65",
+  "source_workflow_run": 40915335616,
+  "source_build": 1940,
+  "original_release_workflow_run": 40915398330,
+  "recovery_workflow_run": 40926100598,
+  "download_verification": [
+    {
+      "id": 689416581,
+      "name": "Anamorph-0.10.0-Linux.zip",
+      "size": 5918866,
+      "sha256": "177c3415813828059fa69ca23a1170371d49cd115dda6a529344b350f098963b"
+    },
+    {
+      "id": 689416601,
+      "name": "Anamorph-0.10.0-macOS.pkg",
+      "size": 16514843,
+      "sha256": "75b5b90cf97e58972ac415d43f3819fac8971fc2808998d293b3e3376289c828"
+    },
+    {
+      "id": 689416614,
+      "name": "Anamorph-0.10.0-macOS.zip",
+      "size": 16492886,
+      "sha256": "3042f89ceb8bfbf5f5650f11e58160ee685ac0e00f30d4f577736587ddce4bb4"
+    },
+    {
+      "id": 689416583,
+      "name": "Anamorph-0.10.0-NOTICE.txt",
+      "size": 17369,
+      "sha256": "ffc0e6d6e3dbce4355325805f50e25d8a5b6322e0a52143304a988de403be7f2"
+    },
+    {
+      "id": 689416577,
+      "name": "Anamorph-0.10.0-SUPPORT.md",
+      "size": 8841,
+      "sha256": "00ebf8f6ebc80888a999cee28b500f4f11d132b06b19a12fd3e3fa86cdd9dd92"
+    },
+    {
+      "id": 689416582,
+      "name": "Anamorph-0.10.0-THIRD_PARTY_LICENSES.md",
+      "size": 19226,
+      "sha256": "47f623c519505dc9c7ba02ba27c8f360c19b67f7633a3e56e2714f7a69ddf081"
+    },
+    {
+      "id": 689416585,
+      "name": "Anamorph-0.10.0-UserManual.md",
+      "size": 39261,
+      "sha256": "074ff9c913aa1bfe12fa21e0e805ee044a6ff24d76781b060df34ac5e3de5610"
+    },
+    {
+      "id": 689416596,
+      "name": "Anamorph-0.10.0-Windows-Installer.exe",
+      "size": 7336346,
+      "sha256": "2b6dd9eae34701256c93eedd4cdbd29c14994d61e10470366f7240ac10eade4c"
+    },
+    {
+      "id": 689416597,
+      "name": "Anamorph-0.10.0-Windows.zip",
+      "size": 7554841,
+      "sha256": "cf0cc6a63e39703ee478cc6733ae8cfcbe42e2790fbecdb34fb87100fb266705"
+    },
+    {
+      "id": 689416616,
+      "name": "RELEASE_MANIFEST.txt",
+      "size": 1190,
+      "sha256": "5a3dcf9a36b80ab15f964af772b4aa770f227df7c5f2f4cd00f586148aa1da94"
+    },
+    {
+      "id": 689416650,
+      "name": "SHA256SUMS.txt",
+      "size": 862,
+      "sha256": "23484e113614643b1523b9f775ab0d661ff3ad0813aac7e69a6261be078b2366"
+    }
+  ]
+}

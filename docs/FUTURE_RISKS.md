@@ -7,6 +7,12 @@ The current draft-release gate evidence and prioritized residuals are in
 `worklogs/RELEASE_READINESS_0.10.0.md`; no risk is closed by recording the owner's manual approval.
 The dated sync notes below retain the earlier state of the repository.
 
+**P1 replacement review (2026-10-30):** [ADR-0068](architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md)
+proposes completing restores before synchronous latency callbacks. F9's unchanged diagnostic
+still has four metadata failures; RISK-009 remains open. No supported-host deadlock is established,
+and the outer-held lock edge remains separately tracked. [ADR-0067](architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md)
+also remains Proposed. Neither proposal changes the accepted production threading protocol.
+
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 

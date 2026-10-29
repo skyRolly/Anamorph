@@ -1,0 +1,6 @@
+object cd70a0b8a20d04c246a826c7b1bf616de2721c65
+type commit
+tag 0.10.0
+tagger Z DN <zdn1942@gmail.com> 1793292587 +0000
+
+Anamorph 0.10.0 (DRAFT release)

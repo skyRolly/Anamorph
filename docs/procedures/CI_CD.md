@@ -1,5 +1,18 @@
 # CI_CD.md
 
+## Customer release-note content gate (2026-10-30)
+
+Build `source-lint` runs `check-release-notes.py --self-test` before the actual content check.
+The checker uses the current CMake version and existing awk extractor; its negative controls
+detect the former internal 0.10.0 draft-readiness paragraph without inspecting historical
+entries as current release notes. Release's existing reusable Build dependency makes this a
+gate for both new drafts and the authorized recreated 0.10.0 candidate. Release metadata,
+extractor, required native jobs, caller permissions and manual-publication boundary are unchanged.
+Draft creation now explicitly sets `--target "${GITHUB_SHA}"`, matching its manifest source
+instead of retaining mutable `main`. The routing check executes the actual creation body with
+a recording `gh` stub; missing/wrong targets, missing `--draft` and missing `--verify-tag` must
+fail. The stub verifies the title, notes path and all 11 asset arguments; it never contacts GitHub.
+
 ## Release reusable-workflow permission contract (2026-10-30)
 
 The Release `build` caller grants `contents: read` and `actions: read` to the reusable Build

@@ -499,6 +499,12 @@ jobs:
       - name: Build and Release routing regression
         run: python3 scripts/test-workflow-routing.py --report workflow-routing.json
 
+      - name: Customer release-note content liveness
+        run: python3 scripts/check-release-notes.py --self-test
+
+      - name: Customer release-note content
+        run: python3 scripts/check-release-notes.py
+
       - name: Rosetta diagnostic inert orchestration controls
         run: python3 scripts/diagnose-rosetta-scope.py --self-test --self-test-report rosetta-cleanup-inert.json
 

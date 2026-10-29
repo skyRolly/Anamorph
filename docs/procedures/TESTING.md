@@ -1,5 +1,26 @@
 # TESTING.md
 
+## P1 replacement diagnostics and customer notes (2026-10-30)
+
+`AnamorphStateTests --nonfinite-audio-probe` is opt-in and deliberately fails on current
+production code: 288 checks / 24 sustained-mute failures. Real host/text writes cover
+NaN/+Inf/−Inf, Width/Haas Delay/Chorus Rate/Output Gain and fresh/live/reset/re-prepare paths.
+Finite-default and held-value processors render identical seeded input as audible controls.
+Finite output alone is insufficient: the existing self-heal produces finite zeroes.
+This is evidence pending ADR-0067, not a default regression or a completed fix.
+The unchanged `--restore-reentry-probe` similarly remains opt-in (30 / 4 metadata failures),
+with callback-save assertions intact. Run all state probes serially with the default suite.
+
+`python3 scripts/check-release-notes.py --self-test` precedes the ordinary check in the same
+`source-lint` job. It permits customer changes, evidence citations and actual signing/CPU
+limitations; rejects readiness/approval/worklog/risk prose; and tests real awk extraction with
+internal text in Unreleased/history and a contaminated current section. The ordinary check
+uses the CMake version and production extractor, or `--notes <downloaded-body.md>` for a remote
+body. Release already requires this Build job. Existing extraction/date/tag checks are intact.
+The routing self-test also runs the actual draft-creation shell against an inert recording CLI,
+requiring the exact source SHA target, draft/verified-tag safeguards, title, notes and 11 assets.
+Missing target, mutable `main`, missing draft and missing verified-tag controls must be rejected.
+
 ## Release permission regression (2026-10-30)
 
 `python3 scripts/test-workflow-routing.py --self-test` and its ordinary report invocation

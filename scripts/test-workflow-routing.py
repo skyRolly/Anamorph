@@ -361,6 +361,63 @@ def verify(build_path, release_path, root):
             'workflow_digests':{str(p.relative_to(root)) if p.is_relative_to(root) else str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (build_path,release_path)}}
 
 
+def release_create_self_test(release):
+    """Run the real draft-creation body against a recording gh, never GitHub."""
+    block = jobs(release)['draft-release'].split('      - name: Create DRAFT GitHub Release\n', 1)[1]
+    body = re.search(r'^        run: \|\n((?:          [^\n]*\n|\n)+)', block, re.M)[1]
+    body = '\n'.join(line[10:] if line.startswith('          ') else line for line in body.splitlines())+'\n'
+    body = body.replace('${{ needs.validate.outputs.version }}', '0.10.0')
+    source_sha = '1234567890abcdef1234567890abcdef12345678'  # inert fixture, not a repository object
+    expected_assets = ['dist/Anamorph-0.10.0-' + suffix for suffix in
+                       ('Linux.zip', 'Windows.zip', 'macOS.zip', 'Windows-Installer.exe',
+                        'macOS.pkg', 'UserManual.md', 'NOTICE.txt', 'THIRD_PARTY_LICENSES.md',
+                        'SUPPORT.md')]
+    expected_assets += ['dist/SHA256SUMS.txt', 'dist/RELEASE_MANIFEST.txt']
+
+    def verify_arguments(args):
+        assert args[:3] == ['release', 'create', '0.10.0']
+        assert '--draft' in args and '--verify-tag' in args
+        for flag, value in (('--target', source_sha), ('--title', 'Anamorph 0.10.0'),
+                            ('--notes-file', 'notes.md')):
+            assert flag in args and args[args.index(flag)+1] == value, flag
+        assert args[-11:] == expected_assets
+
+    with tempfile.TemporaryDirectory(prefix='release-create-') as directory:
+        fixture = Path(directory); capture = fixture/'arguments.json'
+        shim = fixture/'gh'
+        shim.write_text('#!/usr/bin/env python3\nimport json, os, sys\n'
+                        'assert sys.argv[1:3] == ["release", "create"]\n'
+                        'with open(os.environ["CAPTURE_PATH"], "w") as out: json.dump(sys.argv[1:], out)\n')
+        shim.chmod(0o700)
+        env = dict(os.environ, PATH=str(fixture)+os.pathsep+os.environ['PATH'],
+                   CAPTURE_PATH=str(capture), GITHUB_SHA=source_sha, GH_TOKEN='inert-fixture')
+
+        def recorded(script):
+            capture.unlink(missing_ok=True)
+            run = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], cwd=fixture,
+                                 env=env, capture_output=True, text=True)
+            assert run.returncode == 0, run.stderr
+            return json.loads(capture.read_text())
+
+        verify_arguments(recorded(body))
+        controls = []
+        for name, before, after in (
+                ('missing target', '--target "${GITHUB_SHA}"', ''),
+                ('mutable target', '--target "${GITHUB_SHA}"', '--target main'),
+                ('missing draft', '--draft', ''),
+                ('missing verified tag', '--verify-tag', '')):
+            mutant = body.replace(before, after)
+            assert mutant != body, name + ' control failed to modify production body'
+            try:
+                verify_arguments(recorded(mutant))
+            except AssertionError:
+                controls.append(name)
+            else:
+                raise AssertionError(name + ' escaped the creation contract')
+    return {'production_body_recorded': True, 'negative_controls_rejected': controls,
+            'source_target': 'GITHUB_SHA', 'draft': True, 'asset_count': 11}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--self-test',action='store_true')
@@ -373,10 +430,13 @@ def main():
     liveness=routing_self_test(build_path.read_text(),product)
     permission_liveness=permission_self_test(build_path.read_text(),
                                             (args.release or root/'.github/workflows/release.yml').read_text())
+    release_create_liveness = (release_create_self_test((args.release or root/'.github/workflows/release.yml').read_text())
+                               if product == 'Anamorph' else None)
     if args.self_test: return
     result = verify(args.build or root/'.github/workflows/build.yml',args.release or root/'.github/workflows/release.yml',root)
     result['same_run_liveness']=liveness
     result['same_run_permission_liveness']=permission_liveness
+    result['same_run_draft_creation_liveness']=release_create_liveness
     if args.report:
         args.report.parent.mkdir(parents=True,exist_ok=True)
         args.report.write_text(json.dumps(result,indent=2)+'\n')

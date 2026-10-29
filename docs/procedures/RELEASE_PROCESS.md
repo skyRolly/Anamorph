@@ -35,6 +35,9 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    Actual test dates, exact artifacts, environments and individual observations were not supplied.
    Record the approval without requesting redundant testing; automated gates remain required.
    The execution authorization is **DRAFT ONLY**. Earlier approval records remain historical.
+   That attestation covers the original 0.10.0 candidate. A P1 replacement needs targeted
+   reapproval of newly changed invalid-input audio and restore/callback behavior; retain the
+   original unrelated installation/icon/manual approval instead of repeating it without cause.
 
 ## Build the release artifacts
 
@@ -126,6 +129,20 @@ sequence, literally:
    that does not exist yet.
 3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
    resolves the moment GitHub sees the tag; nothing is moved, amended or rewritten afterwards.
+
+### One-time unpublished 0.10.0 candidate supersession
+
+The owner's 2026-10-30 instruction explicitly authorizes deleting original draft **428196589**
+and annotated tag object `769d52fb09116b787184d119ff1db6075187e36d` (source `cd70a0b`), then
+recreating an annotated **0.10.0** and a new draft through the normal tag pipeline. This is a
+one-time exception to the ordinary no-rewrite convention, not permission to force-move a tag
+or rewrite an established public release. Complete approved P1 fixes, all required validation,
+targeted human sign-off and final main integration **before deleting either object**.
+Immediately revalidate exact draft/tag identity and unpublished/no-known-external-reliance
+conditions; archive original metadata/artifact provenance; verify deletion before creating
+anything. Never retry deletion against a new replacement identity. The complete state-aware
+resume table and original archival evidence are in `worklogs/RELEASE_READINESS_0.10.0.md`.
+The replacement must remain `draft=true`, `published_at=null`. No public publication is authorized.
 
 **A version that closes without a tag** (written up, then superseded by the next version before
 it is tagged, as 0.9.7 and 0.9.8 were) keeps its entry and loses its definition: the commit that

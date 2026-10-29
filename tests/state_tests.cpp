@@ -45936,6 +45936,12 @@ int main (int argc, char* argv[])
     }
     if (argc > 1 && std::strcmp (argv[1], "--nonfinite-ingress-probe") == 0)
         return runNonFiniteIngressProbe();
+    if (argc > 1 && std::strcmp (argv[1], "--nonfinite-audio-probe") == 0)
+    {
+        probeNonFiniteParameterAudio();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--risk014-probe") == 0)
         return runRisk014Probe (argc > 2 ? argv[2] : "", argc > 3 ? std::atoi (argv[3]) : 1);

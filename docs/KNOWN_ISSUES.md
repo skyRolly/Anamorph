@@ -192,7 +192,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2477-2479 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2483-2485 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -1039,6 +1039,11 @@ it, and the notification is an RAII member.
   constructor/destructor).
 
 ## KI-029 — a non-finite parameter value mutes or changes several controls while it is present
+
+**0.10.0 replacement proposal (2026-10-30):** [ADR-0067](architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md)
+is Proposed, not implemented or approved. The new opt-in real-processor audio diagnostic
+reproduces 24 sustained-mute failures in 288 checks. The formatter repair below remains intact;
+this issue stays open until approved semantics and full regression evidence establish closure.
 
 A parameter can hold a value that is not a number: JUCE's value-box and host text parsers accept the
 text "nan", and a host (or a damaged automation lane) can send one. The value reaches the audio engine

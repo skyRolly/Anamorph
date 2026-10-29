@@ -12,12 +12,17 @@ Operational status snapshot for technical handover. Update on every release
 (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`). Facts are Verified from the repository;
 fields with no repository evidence are marked `TODO` rather than invented (constraint C7).
 
-**Current snapshot: 2026-10-30, 0.10.0 DRAFT COMPLETE.** Annotated tag `0.10.0` remains at
+**Current snapshot: 2026-10-30, 0.10.0 P1 replacement awaiting human Architecture Review.**
+Proposed ADR-0067/0068 define the finite-parameter and restore-callback decisions; neither is
+implemented or approved. Current-code opt-in diagnostics reproduce 24 audio-mute failures and
+four restore-metadata failures; default suites remain separate. Customer-note cleanup and its
+content guard are prepared. Required new behavior/targeted manual validation and replacement
+execution remain pending. Annotated tag `0.10.0` remains at
 `cd70a0b8a20d04c246a826c7b1bf616de2721c65`. The [draft](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e925c4f20dd9c3da3855)
-has 11 verified assets from source CI build 1940. Required validation gates pass; the owner's
-2026-10-29 manual approval is recorded. PR #185 fixes the future Release caller permission
+has 11 verified original assets from source CI build 1940. The original candidate's required
+gates and owner's 2026-10-29 manual approval remain recorded. PR #185 fixes the Release caller permission
 contract, with a complete native rehearsal. Recovery provenance, original startup/upload errors
-and next-round priorities: `worklogs/RELEASE_READINESS_0.10.0.md` and CHANGELOG Unreleased.
+and remaining priorities: `worklogs/RELEASE_READINESS_0.10.0.md`.
 The original 0.9.10 development evidence retains its historical filename.
 
 **Historical preparation context (last refreshed 2026-09-28 at `b755cfb`):** the following chronology

@@ -1,5 +1,10 @@
 # State and host interaction hardening — 0.9.10 development
 
+**Later P1 decision round (2026-10-30):** current-code reproductions and Proposed ADR-0067/0068
+are recorded in `RELEASE_READINESS_0.10.0.md`. Neither proposal is approved or implemented;
+KI-029 and F9 remain open. The measurements, rejected guard and accepted completed fixes below
+remain historical evidence; this later pointer does not change their outcomes.
+
 ## Baseline and authority
 
 - Started from latest `origin/main`, `c4f390f9cccaa9551d680cb1305fa4a669b24587`, after fetching

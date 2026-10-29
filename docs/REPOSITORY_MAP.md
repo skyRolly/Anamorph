@@ -153,7 +153,11 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `src/SerializedXml.h` | Private-copy NaN-safe XML formatting shared by session, A/B and preset writers; existing finite and invalid-token semantics are preserved. |
 | `tests/state_hardening_tests.h` | State tests 142–145 and focused KI-029/F9 probes, included after the existing state fixtures in the same console target. |
 | `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
-| `worklogs/RELEASE_READINESS_0.10.0.md` | Current draft-release audit, owner manual approval, automated gate evidence and prioritized next-round residuals. |
+| `worklogs/RELEASE_READINESS_0.10.0.md` | Original draft provenance, current P1 decision/diagnostic evidence, required approvals and guarded replacement/recovery plan. |
+| `worklogs/release-0.10.0-original/` | Internal historical original release body/metadata, annotated tag/tagger, manifest and checksums; no replacement binaries. |
+| `scripts/check-release-notes.py` | Current-version extraction/content guard with same-job positive/negative liveness controls; optional downloaded-notes input. |
+| `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Proposed non-finite processor parameter contract; no production implementation or approval. |
+| `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Proposed restore/latency callback completion contract; no production implementation or approval. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |
