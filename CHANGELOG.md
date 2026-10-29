@@ -21,7 +21,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
-## [0.10.0] — 2026-10-29
+## [0.10.0] — 2026-10-30
 
 Draft release. Parameter IDs, ranges, automation flags, valid state/preset formats and existing
 invalid-value restore behavior are unchanged. KI-029's audible NaN behavior, synthetic restore

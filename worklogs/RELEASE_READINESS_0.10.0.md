@@ -82,6 +82,10 @@ CHANGELOG_POLICY rule 8; no development change is falsely listed as shipped.
 
 ## Automated validation and execution
 
+Preparation PR: [#184](https://github.com/skyRolly/Anamorph/pull/184). The release heading is
+dated **2026-10-30**, the current Asia/Shanghai date after the local gate completed; the owner's
+approval and local measurements remain correctly recorded on 2026-10-29.
+
 ### Local pre-release gate — PASS (2026-10-29)
 
 - Loaded the managed environment's documented compiler/sysroot setup. Actual compiler: Debian
