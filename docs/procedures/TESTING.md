@@ -1,5 +1,15 @@
 # TESTING.md
 
+## Release permission regression (2026-10-30)
+
+`python3 scripts/test-workflow-routing.py --self-test` and its ordinary report invocation
+validate the production Release caller's permission map against every nested Build job.
+Explicit maps reset omitted scopes to none; read cannot satisfy write. The liveness controls
+remove the caller's Actions read grant to reproduce the 0.10.0 startup rejection, then give an
+explicitly disabled optional child an Actions write request. Both must fail the same production
+assertion. Job `if` selection cannot excuse a static permission violation. No compiler, installer,
+dispatch or tag is executed by these fixtures; native workflow startup remains separate evidence.
+
 ## Exact-zero Level Match reset assertion (2026-10-28)
 
 DSP Test 69 (6a) requires the exact +0.0f representation written by

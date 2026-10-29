@@ -21,6 +21,35 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
+## [Unreleased]
+
+Next development round: prioritized issues retained during the 0.10.0 draft preparation.
+These are follow-up decisions and limitations, not implemented changes. Evidence and reopen
+conditions: `worklogs/RELEASE_READINESS_0.10.0.md` and the linked KI/RISK/ADR records.
+
+- **P1 — Release automation.** The original 0.10.0 tag workflow could not start because its
+  reusable caller omitted Actions read permission requested by optional macOS artifact consumers.
+  The caller contract and static permission regressions are repaired on this development head;
+  native rehearsal and draft recovery are recorded in `worklogs/RELEASE_READINESS_0.10.0.md`.
+- **P1 — Non-finite parameter behavior (KI-029).** Define NaN/infinity semantics at host/text
+  ingress and the DSP boundary, including reset lifetime and host readback, before an approved
+  compatibility/architecture change. The NaN serialization repair is included in 0.10.0;
+  audible mutes/transients and module-specific ingress behavior remain.
+- **P1 — Nested restore reentry (F9 / RISK-009).** Resolve the synthetic newer-sound/older-metadata
+  schedule and measured outer-held lock edge. Obtain a supported-host trace or an explicit
+  support-contract decision; preserve callback-save coherence. The rejected adoption guard
+  breaks that contract, and no supported-host deadlock has been established.
+- **P2 — Malformed host-state acceptance (RISK-015).** Decide UTF-8, NUL, framing, trailing-content
+  and truncation rules for outer sessions and A/B payloads before narrowing the current bounded
+  acceptance under an approved ADR. Assess historical writer/host tolerance first.
+- **P2 — Distribution readiness (KI-015).** Complete the existing commercial/JUCE licensing,
+  approved-terms and signing/notarization decisions before public/commercial distribution.
+  The 0.10.0 execution remains a draft release.
+- **P3 — Existing platform/performance scope.** Retain Linux host-runloop coverage (RISK-008),
+  independent multiband loads (RISK-010), golden-audio/performance-budget work and optional native
+  selection/co-installation coverage as follow-ups; their existing dispositions are unchanged.
+
+
 ## [0.10.0] — 2026-10-30
 
 Draft release. Parameter IDs, ranges, automation flags, valid state/preset formats and existing
@@ -2992,6 +3021,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.10.0...HEAD
 [0.10.0]: https://github.com/skyRolly/Anamorph/compare/0.9.9...0.10.0
 [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/

@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Release startup permission repair (2026-10-30)
+
+Release's reusable Build caller now explicitly grants contents/actions read. CI_CD and TESTING
+document static nested-job permission validation and the production routing guard's missing-grant
+and disabled-write negative controls. No runtime source, dependency, validation bar, optional job
+selection, publication permission or dispatch behavior changes. The readiness audit records the
+failed tag startup separately from the exact tagged commit's successful validation and planned
+draft recovery. Unreleased retains this automation follow-up and the next development priorities.
+
 ## 0.10.0 draft-release preparation (2026-10-29)
 
 CMake and the dated changelog promote the original 0.9.10 development work to 0.10.0.

@@ -110,3 +110,54 @@ The compatibility checklist is **8/8 PASS** from fresh local measurements plus o
 Remaining execution gates: preparation/merge CI, the unchanged full platform/packaging matrix,
 annotated tag on main, tag-triggered Release workflow and draft asset/hash/manifest verification.
 These are required before completion; no remote tag or draft is claimed before execution.
+
+### CodeQL audit — completed (2026-10-30, Asia/Shanghai)
+
+The alert-inventory API returned HTTP 403 for this integration. The workflow deliberately
+exports raw SARIF for this audit context (`.github/workflows/codeql.yml`), so the supported
+connector's artifact download was used and its ZIP bytes were verified against GitHub's
+artifact digests. The CLI's separate Actions blob redirect was denied; the connector copy
+was retrieved successfully. Alert open/dismissed states were not read.
+
+- Candidate CodeQL run: [40907315871](https://github.com/skyRolly/Anamorph/actions/runs/40907315871),
+  head `f7db27aeac847fb375f4c5093835047e0c25e765`, PR merge tree `cf2dca0e37b817b46e7fbb1f98276f097613f163`.
+- Actions SARIF: **0 results**; artifact `12911378945`, ZIP SHA-256
+  `154a3cb8f7edc703d9f4b18afe7783381a9d211b8033cb2006e36d9f297e06a7`.
+- C++ SARIF: **65 results, all under `build/_deps/juce-src/`; zero first-party results**.
+  Rules: `cpp/comparison-with-wider-type` (1), `cpp/unsafe-use-of-this` (1),
+  `cpp/alloca-in-loop` (7), `cpp/integer-multiplication-cast-to-long` (56).
+  Artifact `12912859856`, ZIP SHA-256
+  `d049f5af1d8926dfea7cd028154db919ccb8695e49fbfc8b9c7bf773d65a59a6`.
+- Baseline: [40901467382](https://github.com/skyRolly/Anamorph/actions/runs/40901467382) at
+  audited main `ad4ee7070ce2cc9b41d8de359e4e663351b9f630`; artifact `12911531192`, ZIP SHA-256
+  `d1299a0feda74b25e4acb4b75f842a0c5d1d5312df4577476c2e99002b1fafdb`.
+  It also has 65 C++ results. Comparing rule, primary path/region and level yields **zero new
+  and zero removed diagnostic locations**.
+
+These are the existing vendored-framework diagnostics whose accepted, pin-locked disposition
+the CodeQL workflow documents. No JUCE source, query scope, suppression or gate is changed.
+The measured report comparison establishes no new candidate finding; it is not a claim that
+the framework has no defects or that all scanner findings have been fixed.
+
+### Automatic draft startup failure and recovery plan
+
+Preparation PR #184 merged as `cd70a0b8a20d04c246a826c7b1bf616de2721c65`, with a tree identical
+to the fully validated head `f7db27aeac847fb375f4c5093835047e0c25e765`. Preparation build
+40907304209 passed all 13 running jobs; PR merge-check, CodeQL, MSVC and dependency review passed.
+The annotated `0.10.0` tag object is `769d52fb09116b787184d119ff1db6075187e36d`, pointing at
+`cd70a0b8a20d04c246a826c7b1bf616de2721c65`.
+
+Release run [40915398330](https://github.com/skyRolly/Anamorph/actions/runs/40915398330) failed
+with `startup_failure`, before any job ran. GitHub's workflow annotation reports both optional
+macOS review jobs requesting `actions: read` while the Release caller allows `actions: none`.
+Static compilation checks those requests even though the jobs would be skipped. The initial
+audit missed this contract. This development head adds the least required read grant only to
+the reusable Build caller and adds live regression controls; runtime and tag source stay unchanged.
+
+The existing tag remains at its original commit. The normal main-push Build & Validate run
+[40915335616](https://github.com/skyRolly/Anamorph/actions/runs/40915335616) builds that **exact
+tagged commit** through the same complete matrix. After it passes, draft recovery will use those
+validated staging trees and untouched installers, the tagged release assembler and metadata
+checks, and a manifest with the real source build number/run. All asset checks and draft-only
+authorization still apply. No draft or recovery success is claimed at this point. The fixed
+caller also needs native rehearsal evidence.
