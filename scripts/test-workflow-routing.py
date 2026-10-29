@@ -75,6 +75,71 @@ class RoutingError(AssertionError):
     """A production routing assertion failed, rather than fixture parsing."""
 
 
+def permissions(source, indent, inherited=None):
+    """The explicit map subset used here; omitted scopes in a map mean none."""
+    match = re.search(r'^' + ' ' * indent + r'permissions:([^\n]*)\n'
+                      r'((?:' + ' ' * (indent + 2) + r'[^\n]*\n)*)', source, re.M)
+    if not match:
+        return dict(inherited or {})
+    inline = match[1].split('#', 1)[0].strip()
+    if inline == '{}': return {}
+    if inline: raise RoutingError('review unsupported inline permissions: ' + inline)
+    result = {}
+    for line in match[2].splitlines():
+        line = line.split('#', 1)[0].strip()
+        if not line: continue
+        scope, level = line.split(':', 1)
+        level = level.strip()
+        if level not in ('none', 'read', 'write'):
+            raise RoutingError('review unsupported permission level: ' + level)
+        result[scope.strip()] = level
+    return result
+
+
+def verify_reusable_permissions(build, release):
+    caller = jobs(release)['build']
+    granted = permissions(caller, 4, permissions(release.split('\njobs:\n', 1)[0], 0))
+    defaults = permissions(build.split('\njobs:\n', 1)[0], 0)
+    rank = {'none': 0, 'read': 1, 'write': 2}
+    violations = []
+    # GitHub validates every nested job before evaluating its if condition.
+    for name, body in jobs(build).items():
+        for scope, requested in permissions(body, 4, defaults).items():
+            allowed = granted.get(scope, 'none')
+            if rank[requested] > rank[allowed]:
+                violations.append(f'{name} requests {scope}: {requested}, caller allows {allowed}')
+    if violations: raise RoutingError('reusable permissions: ' + '; '.join(violations))
+    return {'caller_permissions': granted, 'all_nested_jobs_checked': True}
+
+
+def permission_self_test(build, release):
+    verify_reusable_permissions(build, release)
+    caller = jobs(release)['build']
+    weakened = re.sub(r'^      actions: read[^\n]*\n', '', caller, flags=re.M)
+    assert weakened != caller, 'review new Actions grant placement'
+    broken = release.replace('  build:\n' + caller, '  build:\n' + weakened, 1)
+    try: verify_reusable_permissions(build, broken)
+    except RoutingError as error:
+        assert 'macos-review-selections requests actions: read, caller allows none' in str(error)
+        missing_grant = str(error)
+    else: raise AssertionError('permission liveness: accepted the original missing grant')
+    child = jobs(build)['macos-review-selections']
+    stronger = child.replace('      actions: read', '      actions: write', 1)
+    assert stronger != child
+    stronger = re.sub(r'^    if:[^\n]*\n', '    if: false\n', stronger, count=1, flags=re.M)
+    broken = build.replace('  macos-review-selections:\n' + child,
+                           '  macos-review-selections:\n' + stronger, 1)
+    try: verify_reusable_permissions(broken, release)
+    except RoutingError as error:
+        assert 'macos-review-selections requests actions: write, caller allows read' in str(error)
+        disabled_write = str(error)
+    else: raise AssertionError('permission liveness: skipped job escaped static validation')
+    assert permissions('permissions:\n  actions: read\n', 0, {'contents': 'write'}) == {'actions': 'read'}
+    return {'missing_grant_rejected': missing_grant,
+            'disabled_write_request_rejected': disabled_write,
+            'explicit_map_omitted_scopes_are_none': True}
+
+
 def dependencies(body):
     return [value.strip() for value in field(body, 'needs').strip('[]').split(',') if value.strip()]
 
@@ -232,6 +297,7 @@ def verify_tsan_workspace(build):
 
 def verify(build_path, release_path, root):
     build = build_path.read_text(); release = release_path.read_text()
+    permission_contract = verify_reusable_permissions(build, release)
     product = 'Anabasis' if re.search(r'^name:.*Anabasis', (root/'CMakeLists.txt').read_text(), re.M) else None
     product = product or ('Anabasis' if 'ANABASIS_' in build else 'Anamorph')
     records, branches, check = verify_selection(build, product)
@@ -287,7 +353,8 @@ def verify(build_path, release_path, root):
             values = dict(line.split('=',1) for line in output.read_text().splitlines())
             assert values['is-release'] == 'false', 'rehearsal could reach draft-release'
             rehearsals.append({'ref':ref,'metadata_outputs':values,'draft_release_selected':False})
-    return {'context_cases':records, 'preflight_contract':verify_preflight(build), 'real_metadata_body_fixtures':rehearsals,
+    return {'context_cases':records, 'reusable_permission_contract':permission_contract,
+            'preflight_contract':verify_preflight(build), 'real_metadata_body_fixtures':rehearsals,
             'release_tag_fixture': {'production_trigger_glob': tag_glob, 'CMake_version': version, 'tag': tag},
             'tsan_container_workspace_fixture': verify_tsan_workspace(build) if product == 'Anamorph' else None,
             'inputs_or_defaults':{'direct_dispatch_integration_review_default':'' if optional else None,'workflow_call_inputs':None,'release_inputs_passed':None}, 'nested_calls':'Release -> local Build only',
@@ -304,9 +371,12 @@ def main():
     build_path=args.build or root/'.github/workflows/build.yml'
     product='Anabasis' if 'ANABASIS_' in build_path.read_text() else 'Anamorph'
     liveness=routing_self_test(build_path.read_text(),product)
+    permission_liveness=permission_self_test(build_path.read_text(),
+                                            (args.release or root/'.github/workflows/release.yml').read_text())
     if args.self_test: return
     result = verify(args.build or root/'.github/workflows/build.yml',args.release or root/'.github/workflows/release.yml',root)
     result['same_run_liveness']=liveness
+    result['same_run_permission_liveness']=permission_liveness
     if args.report:
         args.report.parent.mkdir(parents=True,exist_ok=True)
         args.report.write_text(json.dumps(result,indent=2)+'\n')

@@ -1,5 +1,16 @@
 # CI_CD.md
 
+## Release reusable-workflow permission contract (2026-10-30)
+
+The Release `build` caller grants `contents: read` and `actions: read` to the reusable Build
+workflow. GitHub checks all nested job permission requests before evaluating job conditions;
+the optional macOS artifact review jobs therefore require the caller's Actions read grant even
+when a normal release skips them. No review input or new job is enabled by this permission fix.
+The draft-release job retains its independent contents-write scope and draft-only behavior.
+`scripts/test-workflow-routing.py` checks the actual caller against every nested job, with
+missing-grant and disabled-write-request negative controls. See the 0.10.0 readiness worklog
+for the original startup failure and recovery provenance.
+
 Continuous integration / delivery. Source of truth: `.github/workflows/build.yml`
 (build + validate), `.github/workflows/release.yml` (tag-triggered release pipeline
 skeleton, RH-PR-8) and the security-scanning workflows listed in

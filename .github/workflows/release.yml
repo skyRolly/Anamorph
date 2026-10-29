@@ -178,6 +178,9 @@ jobs:
   # --------------------------------------------------------------------------
   build:
     needs: validate
+    permissions:
+      contents: read
+      actions: read   # reusable optional artifact consumers are checked even when skipped
     uses: ./.github/workflows/build.yml
 
   # --------------------------------------------------------------------------
