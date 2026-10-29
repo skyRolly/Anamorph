@@ -10,11 +10,16 @@ anchored to the source tree; no icon checkout or asset download is required. Pro
 SHA-256 values are in `resources/icons/PROVENANCE.json` and
 [the Round 1 record](../../worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md) (ADR-0062).
 
-JUCE generates AppIcon.icns for macOS app/VST3/AU bundles and ICO/RC/PE resources plus VST3
-sidecars on Windows. This pinned version writes macOS entries at 32/1024 and Windows frames
-at 16/32/48/256; it does not reproduce every independently rendered source size. Linux builds
-remain valid but gain no portable embedded ELF icon. Native shell display and later installer,
-Linux launcher and Icon Composer work are separate validation/integration steps.
+Windows retains JUCE's ICO/RC/PE resources and VST3 sidecars (16/32/48/256 frames).
+On macOS, `cmake/MacIcon.cmake` runs after `juce_add_plugin` finishes its configure-time
+generation. `GenerateMacIcon.cmake` replaces the sparse JUCE ICNS using native `sips` and
+`iconutil`: all ten standard 1x/2x iconset names, the optical source for actual pixels <=32,
+and the 1024px source for >=64. Both PNGs and the generator are explicit build dependencies
+of every format's resource copy, before signing. Reconfigure also regenerates the corrected
+container; no manual bundle copy, external icon checkout or downloaded ICNS is required.
+The 10.13 deployment target and all compiler/JUCE settings remain unchanged. Linux's ELF
+and separately approved desktop resources are unchanged. Launchpad cache/display observation
+and Icon Composer authoring remain distinct. See the dated fallback amendment in ADR-0062.
 
 On multi-config Windows builds, JUCE creates `desktop.ini` directories for configurations
 that have never been built. `scripts/find-windows-vst3.ps1` selects only a bundle containing

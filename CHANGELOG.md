@@ -33,10 +33,13 @@ additional malformed host-state restrictions remain open owner decisions.
   owned-resource recovery/uninstall. Portable extraction installs no desktop files.
   Evidence: [Linux integration diff](https://github.com/skyRolly/Anamorph/compare/main...codex/linux-desktop-native-icon); Accepted ADR-0065;
   `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated resources; GUI unverified]
-- **Approved Anamorph product icon in conventional macOS and Windows build resources.**
-  App/plug-in bundles on macOS and executable/VST3 resources on Windows use the unchanged B0
-  artwork through JUCE. Windows installer branding is recorded below; Linux desktop integration has its separate entry above.
-  Evidence: commit `4d96559`; ADR-0062. [Verified — build configuration; native shell display unverified]
+- **Approved Anamorph product icon in macOS and Windows build resources.**
+  Mac app/plug-in bundles use a complete native iconset with compatible small-icon encodings,
+  preventing multicolored application-icon corruption. Windows executable/VST3 resources retain
+  JUCE's icon path. The B0 artwork is unchanged. Windows installer branding is recorded below;
+  Linux desktop integration has its separate entry above.
+  Evidence: commits `4d96559`, `2ff69a5da5f047777c03834725691f2942333f48`; ADR-0062 (2026-10-29 amendment).
+  [Verified — native AppKit rendering and owner-tested Launchpad display; other macOS versions unverified]
 
 ### Changed
 - **Installer and uninstaller product names display as Anamorph without a version suffix.**

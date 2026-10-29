@@ -74,3 +74,86 @@ deferred work and rollback are in [the integration record](../../../worklogs/NAT
 `_juce_create_windows_package`), `juce_build_tools/utils/juce_Icons.cpp` and
 `juce_PlistOptions.cpp`. Native build/check results are scoped to the exact CI run that
 produces their reports. **Unverified:** real Finder/Dock, Explorer/taskbar/DPI and DAW icon use.
+
+## macOS fallback amendment — 2026-10-29
+
+**Status: Accepted for this narrow implementation and validation.** On 2026-10-29
+(Asia/Shanghai), the owner requested execution of `PROMPT.md` from
+`anamorph-macos-icon-handoff.zip`. That prompt explicitly authorizes the measured macOS
+packaging/CMake fallback, its regressions and this limited ADR amendment, while forbidding
+merge/release publication and changes to production signing credentials. Prompt SHA-256:
+`661c4a0318295dae334cf809d7bde53ecdcdde40b9a2ac9fe30bc80931b76fcb`.
+This is new approval for the fallback; the original Round 1 approval above is unchanged.
+
+**Context/problem:** live baseline `06105461d79cca68389dd8470c316b84bb56252a` retains JUCE's
+two-entry ICNS. The installed 0.9.10 app (`tech.rolly.anamorph`) has the handoff's exact bad
+container SHA-256 `88b9839f2ed351e9e958963476338b1fe474f87a10d5a0aafbc72a3f89bd582d`.
+Native `NSWorkspace.icon(forFile:)` application rendering on macOS 15.8.1 x86_64 reproduces
+colored noise and opaque backgrounds at affected sizes, including in disposable app bundles
+with separate identities. Standalone PNG decoding had concealed this defect. This establishes
+format behavior without relying on an installed application's cached state; Launchpad itself
+remains a separate observation.
+
+**Options/decision:** take the supported native fallback anticipated in Options above.
+Compile all ten standard `.iconset` filenames with `/usr/bin/iconutil`, resampling with
+`/usr/bin/sips`. Actual pixels <=32 use the dedicated optical input; >=64 use the large PNG.
+Both approved input files remain byte-identical. The measured native small entries are
+`ic04`/`ic05` ARGB; higher/retina entries use suitable PNG slots. PNG in `icp4`/`icp5`/`icp6`
+is refused. A prebuilt external ICNS, JUCE patch/upgrade, asset catalog or Icon Composer
+authoring adds unnecessary scope for this measured repair.
+
+Run the generator after `juce_add_plugin` has completed all of JUCE's configure-time icon
+and plist work, using its `JUCE_ICON_FILE` path. Regenerate on every configure and add an
+explicit custom-command dependency on both inputs and the generator to all macOS formats.
+Resource copying and the existing signing order follow generation. Windows retains its JUCE
+ICO path and Linux its existing resources. The 10.13 deployment target, JUCE pin, compiler
+flags, formats, identities and all runtime/audio/state contracts remain unchanged.
+
+**Consequences/evidence:** `check-icons.py` now decodes bounded ARGB/RGB RLE, validates paired
+masks, metadata, duplicate/bounds/encoding rules and full coverage, and retains bundle/plist
+equality checks. `render-macos-icon.swift` draws application icons into AppKit bitmap contexts
+at 16–512 points at 1x/2x. `test-macos-icons.py` accepts actual iconutil output and rejects the
+old structural layout even though its PNG decodes, while recording the native negative control.
+Measured corrected fixtures have <=1.05% premultiplied RGB mean absolute error, zero alpha
+error and full silhouette overlap; the checker budgets 4% RGB, 3% alpha and >=95% overlap
+for native resampling/color management. Transparency and opacity floors also reject opaque
+noise. Neither these measurements nor this approval certify Launchpad, untested macOS
+versions, Windows/Linux execution or release readiness.
+
+**Related code/confidence:** `cmake/MacIcon.cmake`, `cmake/GenerateMacIcon.cmake`,
+`scripts/check-icons.py`, `scripts/render-macos-icon.swift`, `scripts/test-macos-icons.py`,
+`.github/workflows/build.yml`. Source and actual native fixture rendering are Verified;
+fresh built/staged outcomes are recorded in the dated integration worklog below its original
+Round 1 record. Independent format corroboration: [Chromium's icon conventions](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/mac/icons.md),
+[Apple's iconset instructions](https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Optimizing/Optimizing.html).
+
+### Owner Launchpad confirmation — 2026-10-29
+
+The owner tested `Anamorph-macOS-icon-review.zip` in macOS Launchpad and confirmed
+that its icon displays correctly, then requested applying the reviewed patch to GitHub.
+The reviewed archive's SHA-256 is
+`2fa74748c250c6d8256781fdebe12e413820f5ee5f481bbfaa2e8dabda39d88b`;
+its corrected ICNS is the `9915858b...` container recorded in the integration worklog.
+This closes the manual Launchpad check for that reviewed build. The owner's test
+did not specify an OS version or architecture; the earlier native run's macOS 15.8.1
+x86_64 environment must not be assumed to describe this separate manual test.
+The native run above retains its original observation scope. Untested OS versions,
+arm64 runtime, DAW acceptance and release/debug-symbol certification remain separate.
+
+### macOS 26 CI reference correction — 2026-10-29
+
+Build run `40880140543` on `macos-26-arm64` produced the exact same corrected ICNS
+as the native 15.8.1 review, but IconServices added a glass frame and inset to the
+application rendering. Comparing that styled icon with a direct, unstyled PNG draw
+rejected both built and staged apps. This is a reference-comparison defect; the
+generated resource hash and compatible entry encodings did not change.
+
+The checker now assembles a separate reference application from an independently
+compiled iconset of the approved PNGs, then renders both applications through
+`NSWorkspace.icon(forFile:)`. The reference is not read from the candidate icon
+or generated by the production CMake script. All twelve size/scale combinations,
+the existing numerical limits and strict ICNS rules remain required. A structurally
+valid icon with different artwork is a negative control against accidentally
+using the candidate as its own reference. The retained reference ICNS makes the
+comparison reproducible. This corrects validation within the existing fallback;
+it changes no product artwork, resource generation, identity or signing policy.

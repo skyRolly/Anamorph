@@ -7,12 +7,15 @@ from contextlib import contextmanager
 import ctypes
 import hashlib
 import json
+import math
 import plistlib
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
 import tempfile
+import uuid
 import zlib
 from unittest.mock import patch
 
@@ -25,6 +28,48 @@ APPROVED_HASHES = {
     "anamorph-1024.png": "b7dd6efd377125a08360f1ce2bf5c82450bf05932d70a7c957f329b73bc29b0e",
     "anamorph-32.png": "f2a80389e5f47c23b69a0e8956f0492c5f1194a6970df0726c172bf633fb2002",
 }
+ICNS_PNG_SIZES = {"ic07": 128, "ic08": 256, "ic09": 512, "ic10": 1024,
+                  "ic11": 32, "ic12": 64, "ic13": 256, "ic14": 512}
+ICNS_ARGB_SIZES = {"ic04": 16, "ic05": 32}
+ICNS_RGB_SIZES = {"is32": 16, "il32": 32, "ih32": 48, "it32": 128}
+ICNS_MASKS = {"is32": "s8mk", "il32": "l8mk", "ih32": "h8mk", "it32": "t8mk"}
+ICONSET_SIZES = {f"icon_{p}x{p}{'@2x' if s == 2 else ''}.png": p * s
+                 for p in (16, 32, 128, 256, 512) for s in (1, 2)}
+
+
+def icns_rle(data, pixels, channels):
+    """Decode exactly the declared planar channels, rejecting overruns/trailing bytes."""
+    offset, planes = 0, []
+    for _ in range(channels):
+        plane = bytearray()
+        while len(plane) < pixels:
+            require(offset < len(data), "truncated ICNS RLE channel")
+            control = data[offset]
+            offset += 1
+            count = control + 1 if control < 128 else control - 125
+            require(len(plane) + count <= pixels, "ICNS RLE channel overrun")
+            length = count if control < 128 else 1
+            require(offset + length <= len(data), "truncated ICNS RLE run")
+            plane.extend(data[offset:offset + length] if control < 128 else data[offset:offset + 1] * count)
+            offset += length
+        planes.append(bytes(plane))
+    require(offset == len(data), "trailing ICNS RLE bytes")
+    return planes
+
+
+def icns_coverage(images):
+    for label, alternatives in {
+        "16px 1x": {"ic04", "is32"}, "32px 1x": {"ic05", "il32"},
+        "16px 2x": {"ic11"}, "32px 2x": {"ic12"},
+        "128px 1x": {"ic07", "it32"}, "128px 2x": {"ic13"},
+        "256px 1x": {"ic08"}, "256px 2x": {"ic14"},
+        "512px 1x": {"ic09"}, "512px 2x": {"ic10"},
+    }.items():
+        require(bool(alternatives.intersection(images)), f"missing ICNS representation: {label}")
+
+
+def icns_entry_size(kind):
+    return {**ICNS_PNG_SIZES, **ICNS_ARGB_SIZES, **ICNS_RGB_SIZES}.get(kind)
 
 
 def require(condition, message):
@@ -94,18 +139,142 @@ def icon_images(data):
 def icns_images(data):
     require(len(data) >= 8 and data[:4] == b"icns" and struct.unpack_from(">I", data, 4)[0] == len(data), "invalid ICNS header")
     offset, images = 8, {}
-    sizes = {b"icp4": 16, b"icp5": 32, b"icp6": 64, b"ic07": 128, b"ic08": 256, b"ic09": 512, b"ic10": 1024}
+    records = []
     while offset < len(data):
         require(offset + 8 <= len(data), "truncated ICNS entry")
         kind, length = struct.unpack_from(">4sI", data, offset)
         require(length >= 8 and offset + length <= len(data), "invalid ICNS entry length")
-        require(kind in sizes and kind.decode() not in images, "unexpected/duplicate JUCE ICNS entry")
+        kind = kind.decode("ascii")
+        require(kind not in images, "duplicate ICNS entry")
         payload = data[offset + 8:offset + length]
-        require(png_size(payload) == sizes[kind], "ICNS PNG dimension mismatch")
-        images[kind.decode()] = payload
+        require(kind not in {"icp4", "icp5", "icp6"}, f"unsafe small ICNS slot: {kind}")
+        if kind in ICNS_PNG_SIZES:
+            require(png_size(payload) == ICNS_PNG_SIZES[kind], "ICNS PNG dimension mismatch")
+        elif kind in ICNS_ARGB_SIZES:
+            require(payload.startswith(b"ARGB"), "invalid ICNS ARGB signature")
+            alpha, *_ = icns_rle(payload[4:], ICNS_ARGB_SIZES[kind] ** 2, 4)
+            require(min(alpha) == 0 and max(alpha) == 255, "ICNS ARGB lost transparent silhouette")
+        elif kind in ICNS_RGB_SIZES:
+            require(not payload.startswith(PNG), "PNG in legacy ICNS RGB slot")
+            if kind == "it32":
+                require(payload.startswith(bytes(4)), "invalid 128px ICNS RGB prefix")
+                payload_rgb = payload[4:]
+            else:
+                payload_rgb = payload
+            icns_rle(payload_rgb, ICNS_RGB_SIZES[kind] ** 2, 3)
+        elif kind in ICNS_MASKS.values():
+            size = next(ICNS_RGB_SIZES[rgb] for rgb, mask in ICNS_MASKS.items() if mask == kind)
+            require(len(payload) == size ** 2, "invalid ICNS alpha mask length")
+            require(min(payload) == 0 and max(payload) == 255, "ICNS mask lost transparent silhouette")
+        elif kind == "info":
+            require(len(payload) <= 65536 and payload.startswith(b"bplist00"), "invalid ICNS info metadata")
+            require(isinstance(plistlib.loads(payload), dict), "invalid ICNS metadata plist")
+        elif kind == "TOC ":
+            require(len(payload) % 8 == 0, "invalid ICNS table of contents")
+        elif kind == "icnV":
+            require(len(payload) == 4 and math.isfinite(struct.unpack(">f", payload)[0]), "invalid ICNS version metadata")
+        else:
+            raise ValueError(f"unexpected ICNS entry: {kind}")
+        images[kind] = payload
+        records.append((kind, length))
         offset += length
     require(images, "empty ICNS")
+    for rgb, mask in ICNS_MASKS.items():
+        require((rgb in images) == (mask in images), f"missing ICNS RGB/mask pair: {rgb}/{mask}")
+    if "TOC " in images:
+        expected = b"".join(kind.encode("ascii") + struct.pack(">I", length)
+                            for kind, length in records if kind != "TOC ")
+        require(images["TOC "] == expected, "ICNS table of contents differs from entries")
     return images
+
+
+def validate_macos_render(rows):
+    """Gate native application-icon pixels, including retina/optical selection.
+
+    Limits are fractions of the full 8-bit channel range: RGB 4%, alpha 3%,
+    silhouette overlap >=95%. Native 15.8.1 measured <=1.05% RGB, zero alpha
+    error and 100% overlap; slack allows resampling/color management, while
+    the old opaque noise measures 37-41% RGB error and 18-23% alpha error.
+    """
+    expected = {(p, s) for p in (16, 32, 64, 128, 256, 512) for s in (1, 2)}
+    require(isinstance(rows, list) and len(rows) == len(expected), "incomplete native icon render matrix")
+    seen = set()
+    for row in rows:
+        key = row["points"], row["scale"]
+        require(key in expected and key not in seen and row["pixels"] == key[0] * key[1], "invalid native icon render dimensions")
+        seen.add(key)
+        for metric in ("rgb_mae", "alpha_mae", "silhouette_iou", "transparent_fraction", "opaque_fraction"):
+            value = row[metric]
+            require(isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 1,
+                    f"invalid native icon render metric: {metric}")
+        require(row["rgb_mae"] <= 0.04 and row["alpha_mae"] <= 0.03
+                and row["silhouette_iou"] >= 0.95
+                and row["transparent_fraction"] >= 0.03 and row["opaque_fraction"] >= 0.5,
+                f"native application icon differs from approved artwork at {key[0]}pt @{key[1]}x: {row}")
+    return rows
+
+
+def render_macos_bundle(bundle, evidence):
+    """Compare two application icons through the same host IconServices styling."""
+    evidence.mkdir(parents=True, exist_ok=True)
+    renderer = evidence.parent / "render-macos-icon"
+    source = ROOT / "scripts/render-macos-icon.swift"
+    try:
+        if not renderer.exists() or renderer.stat().st_mtime < source.stat().st_mtime:
+            subprocess.run(["xcrun", "swiftc", "-O", str(source), "-o", str(renderer)], check=True,
+                           capture_output=True, text=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reference_icon = macos_reference_icon(root)
+            reference = macos_fixture(root / "reference", reference_icon)
+            (evidence / "approved-reference.icns").write_bytes(reference_icon)
+            subprocess.run([str(renderer), str(evidence), str(reference.resolve()), str(bundle.resolve())],
+                           check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f"native icon renderer failed: {error.stderr or error.stdout}") from error
+    return json.loads((evidence / "measurements.json").read_text())
+
+
+def macos_reference_icon(directory):
+    """Build an independent golden icon from approved PNGs, never candidate bytes.
+
+    Do not invoke the production CMake generator here: a generation regression
+    must not change both sides of the pixel comparison together. IconServices
+    then applies the same OS-specific frame/inset to both application bundles.
+    """
+    iconset = directory / "Approved.iconset"
+    iconset.mkdir()
+    for name, pixels in ICONSET_SIZES.items():
+        source_size = 32 if pixels <= 32 else 1024
+        source = ROOT / f"resources/icons/anamorph-{source_size}.png"
+        destination = iconset / name
+        if pixels == source_size:
+            shutil.copyfile(source, destination)
+        else:
+            subprocess.run(["/usr/bin/sips", "--resampleHeightWidth", str(pixels), str(pixels),
+                            str(source), "--out", str(destination)],
+                           check=True, capture_output=True, text=True)
+    output = directory / "Approved.icns"
+    subprocess.run(["/usr/bin/iconutil", "--convert", "icns", "--output", str(output), str(iconset)],
+                   check=True, capture_output=True, text=True)
+    data = output.read_bytes()
+    icns_coverage(icns_images(data))
+    return data
+
+
+def macos_fixture(directory, icon):
+    """Disposable application identity, separate from the real product/cache."""
+    bundle = directory / "IconFixture.app"
+    (bundle / "Contents/Resources").mkdir(parents=True)
+    (bundle / "Contents/MacOS").mkdir()
+    (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({
+        "CFBundleIdentifier": "tech.rolly.anamorph.icon-fixture." + uuid.uuid4().hex,
+        "CFBundleName": "IconFixture", "CFBundleExecutable": "fixture",
+        "CFBundlePackageType": "APPL", "CFBundleIconFile": "AppIcon.icns"}))
+    shutil.copyfile("/usr/bin/true", bundle / "Contents/MacOS/fixture")
+    (bundle / "Contents/MacOS/fixture").chmod(0o755)
+    (bundle / "Contents/Resources/AppIcon.icns").write_bytes(icon)
+    return bundle
 
 
 def check_sources(root):
@@ -232,13 +401,14 @@ def check_native(build, platform, staged=None):
     elif platform == "macos":
         data = (generated / "AppIcon.icns").read_bytes()
         images = icns_images(data)
-        require(set(images) == {"icp5", "ic10"}, "unexpected pinned-JUCE macOS entries")
+        icns_coverage(images)
         formats = [("VST3", "Anamorph.vst3"), ("AU", "Anamorph.component")]
         if standalone:
             formats.append(("Standalone", "Anamorph.app"))
         result["bundles"] = []
         for kind, name in formats:
             bundle = (staged / name) if staged else (products / kind / name)
+            require((bundle / "Contents/MacOS/Anamorph").is_file(), f"missing compiled macOS binary: {bundle}")
             plist = bundle / "Contents/Info.plist"
             subprocess.run(["plutil", "-lint", str(plist)], check=True, stdout=subprocess.DEVNULL)
             info = plistlib.loads(plist.read_bytes())
@@ -252,9 +422,26 @@ def check_native(build, platform, staged=None):
             subprocess.run(["iconutil", "--convert", "iconset", "--output", str(extracted), str(generated / "AppIcon.icns")], check=True)
             pngs = list(extracted.glob("*.png"))
             require(pngs, "iconutil extracted no images")
+            require({p.name for p in pngs} == set(ICONSET_SIZES), "incomplete native iconset extraction")
             for path in pngs:
+                require(png_size(path.read_bytes()) == ICONSET_SIZES[path.name], "extracted iconset dimensions differ")
                 subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)], check=True, stdout=subprocess.DEVNULL)
-        result["icns_entries"] = {kind: png_size(data) for kind, data in images.items()}
+        evidence = build / ("icon-render-staged" if staged else "icon-render-built")
+        if standalone:
+            bundle = staged / "Anamorph.app" if staged else products / "Standalone/Anamorph.app"
+            rows = render_macos_bundle(bundle, evidence / "Anamorph")
+        else:
+            with tempfile.TemporaryDirectory() as directory:
+                bundle = macos_fixture(Path(directory), data)
+                rows = render_macos_bundle(bundle, evidence / "generated-fixture")
+        result["application_render"] = validate_macos_render(rows)
+        result["render_evidence"] = str(evidence)
+        result["icns_entries"] = {kind: icns_entry_size(kind) for kind in images}
+        result["icns_sha256"] = sha(data)
+        result["icns_encodings"] = {kind: ("ARGB" if kind in ICNS_ARGB_SIZES else
+                                          "RGB RLE" if kind in ICNS_RGB_SIZES else
+                                          "PNG" if kind in ICNS_PNG_SIZES else "mask/metadata")
+                                    for kind in images}
         result["iconutil"] = "native extraction passed"
     else:
         require(not (generated / "icon.ico").exists() and not (generated / "AppIcon.icns").exists(), "unexpected Linux native icon container; stale build?")
@@ -290,6 +477,26 @@ def preflight_native(build):
     return None
 
 
+def fixture_icns(png):
+    """Inert compatible container; real iconutil output is tested on macOS too."""
+    entries = [(kind.encode(), png(size)) for kind, size in ICNS_PNG_SIZES.items()]
+    for kind, size in ICNS_ARGB_SIZES.items():
+        planes = [b"\0" + b"\xff" * (size * size - 1)] + [bytes([c]) * (size * size) for c in (0, 68, 136)]
+        encoded = b"".join(bytes([len(plane[i:i + 128]) - 1]) + plane[i:i + 128]
+                           for plane in planes for i in range(0, len(plane), 128))
+        entries.append((kind.encode(), b"ARGB" + encoded))
+    entries.append((b"info", plistlib.dumps({"fixture": True}, fmt=plistlib.FMT_BINARY)))
+    body = b"".join(kind + struct.pack(">I", len(payload) + 8) + payload for kind, payload in entries)
+    return b"icns" + struct.pack(">I", len(body) + 8) + body
+
+
+def fixture_render():
+    return [{"points": p, "scale": s, "pixels": p * s,
+             "rgb_mae": 0.01, "alpha_mae": 0.0, "silhouette_iou": 1.0,
+             "transparent_fraction": 0.1, "opaque_fraction": 0.75}
+            for p in (16, 32, 64, 128, 256, 512) for s in (1, 2)]
+
+
 def native_self_test(png):
     """Call production dispatch with matching platforms; stub only native APIs/tools."""
     import shutil
@@ -301,8 +508,7 @@ def native_self_test(png):
         payload += data
         offset += len(data)
     ico = struct.pack("<HHH", 0, 1, len(frames)) + b"".join(entries) + payload
-    body = b"".join(kind + struct.pack(">I", len(data) + 8) + data for kind, data in [(b"icp5", png(32)), (b"ic10", png(1024))])
-    icns = b"icns" + struct.pack(">I", len(body) + 8) + body
+    icns = fixture_icns(png)
     group = struct.pack("<HHH", 0, 1, len(frames)) + b"".join(
         struct.pack("<BBBBHHIH", size % 256, size % 256, 0, 0, 1, 32, len(data), index)
         for index, (size, data) in enumerate(frames.items(), 101))
@@ -318,6 +524,7 @@ def native_self_test(png):
             products = build / "Anamorph_artefacts/Release"
             stage = build / "staged" if staged else None
             targets, resources = {}, {(14, 1): group, (14, "IDI_ICON2"): group}
+            render_rows = fixture_render()
             resources.update({(3, index): data for index, data in enumerate(frames.values(), 101)})
 
             def write(key, path, data):
@@ -343,6 +550,7 @@ def native_self_test(png):
                     info = {"CFBundleIdentifier": "fixture.anamorph", "CFBundleIconFile": "AppIcon.icns"}
                     write(kind + "_plist", bundle / "Contents/Info.plist", plistlib.dumps(info))
                     write(kind + "_icon", bundle / "Contents/Resources/AppIcon.icns", icns)
+                    write(kind + "_binary", bundle / "Contents/MacOS/Anamorph", b"inert native API fixture")
             else:
                 elf = b"\x7fELF\x02" + bytes(13) + struct.pack("<H", 62)
                 bundle = stage / "Anamorph.vst3" if stage else products / "VST3/Anamorph.vst3"
@@ -372,6 +580,11 @@ def native_self_test(png):
                     shutil.rmtree(targets[key + "_plist"].parent.parent)
                 elif action == "container":
                     (generated / key).write_bytes(b"unexpected")
+                elif action == "render":
+                    if key == "missing":
+                        render_rows.pop()
+                    else:
+                        render_rows[0][key] = 0.0 if key in {"silhouette_iou", "transparent_fraction", "opaque_fraction"} else 0.5
                 else:
                     utility_defect = key
 
@@ -391,14 +604,18 @@ def native_self_test(png):
                     output = Path(command[command.index("--output") + 1])
                     output.mkdir()
                     if utility_defect != "empty":
-                        (output / "icon_32x32.png").write_bytes(b"malformed PNG" if utility_defect == "malformed" else png(32))
+                        for name, size in ICONSET_SIZES.items():
+                            (output / name).write_bytes(b"malformed PNG" if utility_defect == "malformed" else png(size))
                 elif command[0] == "sips":
                     png_size(Path(command[-1]).read_bytes())
                 else:
                     raise AssertionError(f"unexpected native utility: {command}")
                 return subprocess.CompletedProcess(command, 0)
 
-            with patch.object(sys, "platform", {"windows": "win32", "macos": "darwin", "linux": "linux"}[platform]), patch.dict(globals(), windows_resource_api=api), patch.object(subprocess, "run", run):
+            with patch.object(sys, "platform", {"windows": "win32", "macos": "darwin", "linux": "linux"}[platform]), patch.dict(
+                    globals(), windows_resource_api=api,
+                    render_macos_bundle=lambda bundle, evidence: render_rows,
+                    macos_fixture=lambda directory, icon: directory / "IconFixture.app"), patch.object(subprocess, "run", run):
                 try:
                     result = check_native(build, platform, stage)
                 except (ValueError, OSError, struct.error, zlib.error, subprocess.CalledProcessError) as error:
@@ -427,13 +644,17 @@ def native_self_test(png):
         exercise("windows", defect, expected)
     for defect, expected in [
         (("missing", "generated"), "AppIcon.icns"), (("missing", "VST3_plist"), "Info.plist"),
+        (("missing", "VST3_binary"), "missing compiled macOS binary"),
         (("plist", "missing"), "CFBundleIconFile"), (("plist", "invalid"), "CFBundleIconFile"),
         (("missing", "VST3_icon"), "AppIcon.icns"), (("alter", "AU_icon"), "bundle ICNS differs"),
-        (("alter", "generated"), "ICNS header"), (("bundle", "AU"), "Info.plist"),
-        (("bundle", "Standalone"), "Info.plist"), (("utility", "extraction"), "iconutil"),
+        (("alter", "generated"), "ICNS header"), (("bundle", "AU"), "missing compiled macOS binary"),
+        (("bundle", "Standalone"), "missing compiled macOS binary"), (("utility", "extraction"), "iconutil"),
         (("utility", "empty"), "extracted no images"), (("utility", "malformed"), "PNG signature"),
     ]:
         exercise("macos", defect, expected)
+    for metric in ("rgb_mae", "alpha_mae", "silhouette_iou", "transparent_fraction", "opaque_fraction", "missing"):
+        exercise("macos", ("render", metric), "incomplete native icon render matrix" if metric == "missing"
+                 else "native application icon differs")
     for defect, expected in [
         (("missing", "binary"), "Anamorph.so"), (("missing", "app"), "Anamorph"),
         (("alter", "binary"), "expected x86-64 ELF"), (("alter", "app"), "expected x86-64 ELF"),
@@ -475,10 +696,50 @@ def self_test():
     rejects(icon_images, dib_ico[:-1])
     opaque_dib = dib[:40] + b"\0\x44\x88\xff" * 256 + bytes(64)
     rejects(icon_images, dib_ico[:22] + opaque_dib)
-    body = b"icp5" + struct.pack(">I", len(small) + 8) + small
-    icns = b"icns" + struct.pack(">I", len(body) + 8) + body
-    assert set(icns_images(icns)) == {"icp5"}
+    icns = fixture_icns(png)
+    icns_coverage(icns_images(icns))
     rejects(icns_images, icns[:-1])
+    # The PNG itself decodes, but cannot live in these application-icon slots.
+    for kind, size in ((b"icp4", 16), (b"icp5", 32), (b"icp6", 64)):
+        payload = png(size)
+        assert png_size(payload) == size
+        body = kind + struct.pack(">I", len(payload) + 8) + payload
+        rejects(icns_images, b"icns" + struct.pack(">I", len(body) + 8) + body)
+    rejects(icns_coverage, {"ic10": big})
+    rejects(icns_rle, b"\xff\0", 1, 1)
+    rejects(icns_rle, b"\0", 1, 1)
+    rejects(icns_rle, b"\0\xffextra", 1, 1)
+    assert icns_rle(b"\x80\xff", 3, 1) == [b"\xff" * 3]
+    def container(entries):
+        body = b"".join(k.encode() + struct.pack(">I", len(v) + 8) + v for k, v in entries)
+        return b"icns" + struct.pack(">I", len(body) + 8) + body
+
+    native_entries = icns_images(icns)
+    argb = native_entries["ic04"]
+    rejects(icns_images, container([("ic04", PNG + argb[8:])]))
+    rejects(icns_images, container([("ic04", argb + b"extra")]))
+    rejects(icns_images, container([("ic04", argb[:-1])]))
+    rejects(icns_images, container([("ic04", argb), ("ic04", argb)]))
+    rgb = argb[4 + 258:]  # three literal-coded RGB planes after the alpha plane
+    mask = b"\0" + b"\xff" * 255
+    assert set(icns_images(container([("is32", rgb), ("s8mk", mask)]))) == {"is32", "s8mk"}
+    rejects(icns_images, container([("is32", rgb)]))
+    rejects(icns_images, container([("s8mk", mask)]))
+    rejects(icns_images, container([("is32", rgb), ("s8mk", mask[:-1])]))
+    rejects(icns_images, container([("is32", png(16)), ("s8mk", mask)]))
+    rejects(icns_images, container([("info", b"not a plist")]))
+    rejects(icns_images, container([("icnV", struct.pack(">f", float("nan")))]))
+    rejects(icns_images, container([("TOC ", b"bad")]))
+    rejects(icns_images, container([("TOC ", b"ic04" + struct.pack(">I", 8))]))
+    rejects(icns_images, container([("junk", b"unknown")]))
+    validate_macos_render(fixture_render())
+    for value in (float("nan"), float("inf"), -1, 1.1):
+        rows = fixture_render()
+        rows[0]["rgb_mae"] = value
+        rejects(validate_macos_render, rows)
+    rows = fixture_render()
+    rows[-1] = rows[0]
+    rejects(validate_macos_render, rows)
     group = struct.pack("<HHHBBBBHHIH", 0, 1, 1, 32, 32, 0, 0, 1, 32, len(small), 101)
     assert group_entries(group) == [(32, len(small), 101)]
     rejects(group_entries, group[:-1])

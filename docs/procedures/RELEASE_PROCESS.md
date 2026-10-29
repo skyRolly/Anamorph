@@ -53,6 +53,11 @@ artifacts, or build locally per
 
 ## macOS signing / notarization
 
+The ADR-0062 icon fallback runs before resource copying/signing, using the unchanged approved
+PNGs and native iconutil. Built and staged macOS icon gates now include application-bundle
+rendering; retain their PNG/metric evidence separately. This does not certify Launchpad's
+cache or untested OS versions, and does not authorize replacing a user's installed app.
+
 CI ad-hoc codesigns the macOS bundles; they are **NOT notarized**. The shipped
 `packaging/macos/INSTALL.txt` documents the `xattr -dr com.apple.quarantine` step required by the
 **zip route** (payloads installed by the `.pkg` carry no quarantine attribute, so that route needs

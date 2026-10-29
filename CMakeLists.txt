@@ -436,7 +436,7 @@ juce_add_plugin(Anamorph
     VST3_CATEGORIES         "Fx" "Spatial" "Stereo"
     DESCRIPTION             "Stereo Tools / Stereo image toolkit"
 )
-
+include(cmake/MacIcon.cmake)
 # Wrapper + GUI sources. Single source of truth: AnamorphStateTests below
 # compiles the SAME list into its own console target, so a new wrapper/GUI file
 # must never be added to only one of them.
