@@ -62,7 +62,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.h:46-265.
 | `ParamPointers::toEngine` | `anamorph::EngineParameters (int oversampleIndex) const` | Converts host state → DSP snapshot. |
 | `pid::isViewParam` / `pid::isPresetExcluded` | `bool (const juce::String&)` | Shared exclusion lists (A/B, undo, presets). |
 
-Evidence [Verified]: src/PluginParameters.h:195-203, :74-87; .cpp:53-300.
+Evidence [Verified]: src/PluginParameters.h:195-210, :74-87; .cpp:53-300.
 
 ## `InternalState` — `src/InternalState.h`
 

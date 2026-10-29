@@ -4,7 +4,19 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).
 
-## Current gate — 0.10.0 / JUCE 9.0.4 (completed 2026-10-30)
+## 0.10.0 P1 replacement — targeted validation pending
+
+The owner's 2026-10-29 approval remains valid evidence for the original candidate only;
+unrelated completed manual checks are preserved. ADR-0067/0068 received explicit
+Architecture Review approval on 2026-10-30, which is not an audition of the new binaries.
+Before replacement, record the exact PR #187 candidate artifact/commit and obtain targeted
+human validation of invalid host/text automation recovery (including Output Gain returning
+to 0 dB and Density to 0.5), subsequent finite automation, session/preset/A-B recall,
+preset/Settings consistency and latency/PDC after restore/re-prepare. Use a listening level
+appropriate to the approved gain fallback. Results, DAW/version, platform/format and exact
+artifact identity are **NOT RECORDED**. Automated results do not fill those fields.
+
+## Original-candidate gate — 0.10.0 / JUCE 9.0.4 (completed 2026-10-30)
 
 The owner states that Human Level-5 listening and all other required manual validations have
 already been completed and approved for this release. This is a new 0.10.0 attestation, not a

@@ -40,8 +40,8 @@ parameter ID. Since ADR-0057 the wrapper hands the engine a READER rather than a
 word, so a bulk swap's forced bottom adopts only a complete destination.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:330-410 (`toEngine`)
-- Source: src/PluginProcessor.cpp:455-462 (per-block read inside `engine.setParametersFrom` → `engine.process`)
+- Source: src/PluginParameters.cpp:350-437 (`toEngine`)
+- Source: src/PluginProcessor.cpp:475-482 (per-block read inside `engine.setParametersFrom` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -76,7 +76,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:392 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:412 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 

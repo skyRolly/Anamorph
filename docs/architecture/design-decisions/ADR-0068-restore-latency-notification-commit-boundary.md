@@ -1,7 +1,13 @@
 # ADR-0068 — Restore completion precedes synchronous latency notification
 
-**Status:** Proposed, 2026-10-30 (Asia/Shanghai). Human Architecture Review required.
-**Implementation:** NOT IMPLEMENTED. ADR-0036 remains Accepted and the production protocol is unchanged.
+**Status:** Accepted — owner direct approval in this chat on 2026-10-30 (Asia/Shanghai).
+**Architecture Review:** APPROVED for the complete proposal in PR #187, including ADR-0067's
+0 dB Output Gain fallback/Density consequences and ADR-0068's nested-callback support boundary.
+This approval is not evidence of implemented fixes or new-binary manual validation.
+**Implementation:** Both message-thread restore paths now bracket complete application and publication before
+latency delivery. The existing request stays pending under an enclosing state command.
+State test 148 includes the unchanged original failing diagnostic; mandatory CI and targeted
+manual validation of the replacement binaries remain required.
 
 ## Context
 
@@ -26,9 +32,9 @@ coherent program. Do not solve final metadata by hiding pending restores from ca
 | Hold `soundReplacement` across the tail/callback | Rejected: a callback joining a background restore can wait on the lock its caller holds; existing State test 27 covers this class |
 | Cancel superseded tails with a message-thread application epoch | Viable alternative, but must check inside Settings' per-field loop, cover inline generation-zero restores, suppress obsolete publication/Undo resets, and define saves while a tail is still incomplete. Checking the preset-name store alone is insufficient |
 | Publish an active coherent restore snapshot for nested saves | Viable alternative, broader snapshot/overlay ownership contract; must reconcile per-field Settings edits and nested inline restores |
-| Complete the program before issuing its latency notification | Proposed: remove the production callout from the unfinished tail; preserve generation, exchange-cell, lock and fixed-point save rules |
+| Complete the program before issuing its latency notification | Selected: remove the production callout from the unfinished tail; preserve generation, exchange-cell, lock and fixed-point save rules |
 
-## Decision proposed for human review
+## Decision (approved 2026-10-30)
 
 Support a finite nesting of **synchronous latency callbacks** that perform serialized host state
 operations, including the existing newer-background-restore/join/timer-pump/save schedule and
@@ -77,8 +83,8 @@ single-clear rule so a request raised inside the callback survives for the next 
 Sound, fields, preset resolution, A/B/Undo semantics and the latency number stay unchanged for
 ordinary finite restores. A restore's latency notification now observes a fully committed program.
 Under an enclosing state command, reporting may wait for the existing timer instead of occurring
-inside that command. This timing/support-contract change is explicitly gated; the owner's request
-to investigate F9 is not approval of this particular design.
+inside that command. This timing/support-contract change received the owner's explicit Architecture Review approval
+on 2026-10-30; that approval does not attest new-binary manual tests.
 
 ## Implementation and acceptance plan
 
@@ -109,5 +115,8 @@ Evidence [Verified]:
 - Current measurements: `worklogs/RELEASE_READINESS_0.10.0.md`; historical rejected guard and
   lock-edge evidence: `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 
-The failure and lock edge are verified. The proposed completion boundary is **not implemented,
-approved or validated**; no P1 closure or release sign-off is claimed.
+The original diagnostic measured 30 checks / 4 metadata failures before this fix and now passes
+unchanged inside State test 148. The expanded regression measures 1778 checks / 0 failures.
+The outer-held lock witness and JUCE-internal host listener-lock residual remain characterized
+separately in RISK-009. Fresh mandatory CI and targeted manual validation are not inferred from
+Architecture Review or these local results.

@@ -1,9 +1,10 @@
 # Release readiness — 0.10.0 (draft only)
 
-**Current status: P1 replacement BLOCKED on human Architecture Review (2026-10-30,
-Asia/Shanghai).** Proposed ADR-0067/0068 and current-code reproductions are prepared. Neither
-P1 is closed and no replacement source, tag or release exists. The original draft/tag remain
-intact. See **P1 replacement decision and execution record** below.
+**Current status: P1 implementation complete in PR #187; new-source validation pending
+(2026-10-30, Asia/Shanghai).** The owner explicitly approved ADR-0067/0068; that architecture
+gate is cleared. The original draft/tag remain intact. Fresh mandatory automated checks and
+targeted human validation of the changed behavior must precede merge and replacement.
+See **Approved P1 implementation and PR #187 review corrections** below.
 
 **Historical original-candidate completion (2026-10-30):** required validation and manual
 approvals were complete for the original source; all 11 uploaded assets were downloaded and
@@ -225,7 +226,7 @@ Source artifact provenance:
 
 ## P1 replacement decision and execution record — 2026-10-30, Asia/Shanghai
 
-### Current authority and mandatory stop
+### Historical proposal-round authority and mandatory stop
 
 Fetched main/tags; authoritative main is `0ac384088104dfd4dd128ab6751c828c6cd51be8`
 (PR #186). PR #185's reusable Release caller grants both contents/actions read; the source
@@ -287,7 +288,7 @@ any newly known distribution/dependency or identity change before deletion; stop
 The connected GitHub tools lack release/asset-management operations, so authenticated `gh api`
 was used for those reads/downloads. No credentials were extracted or replaced.
 
-### Current-code reproductions and decision scope
+### Original-code reproductions and proposal-round decision scope
 
 Local tools: retained managed native image, GCC 14.2.0 Release, exact clean JUCE 9.0.4 pin
 `3fb5cbc0340758596dac39f7c8de47d562b4896e`. The retained helper requested four CPUs but this
@@ -435,7 +436,110 @@ all server sizes/digests, source/build/run manifest, archive/installer/bundle id
 manual/NOTICE/licenses/SUPPORT, and byte-equivalent extracted notes must be verified by download.
 Require `draft=true`, `published_at=null`; **never publish**.
 
-**Open gate:** human Architecture Review of ADR-0067/0068, followed by implementation, fresh
-mandatory validation and targeted manual approval. Replacement tag/commit/Release ID/workflow
+**Proposal-round gate (superseded by the approval/implementation record below):** human
+Architecture Review of ADR-0067/0068, followed by implementation, fresh mandatory
+validation and targeted manual approval. Replacement tag/commit/Release ID/workflow
 and asset verification are **not available because replacement has not begun**. Original green
 checks and owner approval are preserved as historical evidence, not substituted for this gate.
+
+## Approved P1 implementation and PR #187 review corrections — 2026-10-30
+
+The owner's direct **“Approved”** accepts the complete proposed ADR-0067/0068 contracts,
+including Output Gain's 0 dB fallback, Density's 0.5 fallback and the nested latency-callback
+support boundary. Both ADRs are Accepted. This is Architecture Review evidence, not an
+attestation that changed binaries were auditioned. Original 2026-10-29 manual approval remains
+historical and unrelated completed checks are preserved.
+
+### Production implementation
+
+- Every `ParamPointers` binding records its actual declared denormalized default once.
+  `toEngine` retains `seq_cst` loads and substitutes that default only for non-finite raw values,
+  before all integer/enum/Boolean conversions. No parameter writes, history cache, allocation,
+  lookup, mutex or new synchronization is added to the audio path. Finite values take exactly
+  the previous mapping; registry IDs/ranges/defaults/flags/version and fixtures are unchanged.
+- Existing host/text parsing and numeric readback remain. Float/discrete display formatting
+  guards non-finite input before conversion using existing default/endpoint labels.
+- The proposal's restore-window handshake premise was incorrect: host session installs never
+  entered ADR-0057 bulk apply. No new protocol is introduced. The existing private-copy repair
+  now also repairs an unusable `value` when the established resolver selected usable `raw`,
+  before JUCE's first notification. Exact final raw reassertion is unchanged. Re-saving that
+  malformed spelling produces its resolved finite value; valid finite bytes and all accepted
+  malformed-document boundaries remain unchanged. Numeric-NaN writer repair is untouched.
+- Both message-thread restore paths bracket application through complete Settings/A-B/Undo/
+  preset/committed-state publication. Latency delivery requires depth zero, no enclosing state
+  command and no pending restore. Otherwise the existing release-store/acquire-exchange request
+  remains for the safe timer door, including recursively pumped timers. No old restore writes
+  follow the callback. Off-thread requests never read the new message-thread depth.
+- F9 metadata correctness is fixed under the approved serialized callback contract; callback
+  fixed-point saves remain. The rejected early-return guard is not reintroduced. The distinct
+  outer-held lock witness and JUCE listener-lock residual stay open as RISK-009; no supported-host
+  deadlock is claimed or concealed. KI-029 moves to INC-019; F9 is recorded in INC-020.
+
+### Regression and review scope
+
+State 146 retains the original production-path audio failure and adds exact finite-default twin
+assertions (320 checks). State 147 covers every registered parameter through host/text/direct raw
+faults, both modes, live/reset/re-prepare audio/readback, plus repeated session/preset/A-B invalid
+restores and first-notification usable-raw windows (2552 checks). State 148 keeps all original
+F9 diagnostic assertions and expands complete callback-state and lock-admission coverage
+(1778 checks). The original negative controls were 24/288 audio failures and 4/30 metadata
+failures; these are retained as historical measurements.
+
+Only related processor Density/crossover premises in State 128/138 change to the approved
+default policy. Direct-engine DSP 64/74 and unrelated finite/match-provenance assertions remain.
+State 43 still proves newer engine priming during adoption and additionally requires deferred
+in-flight reporting and the final committed host report, matching ADR-0068.
+
+The review's preflight omission is corrected: `check-release-notes.py --self-test` precedes its
+ordinary invocation immediately after structural documentation checking. The preflight checker
+inventory and CI_CD/TESTING inventory are updated. Two real-shell regression fixtures prove that
+structurally valid forbidden current notes fail before the next source gate and valid customer
+notes reach it; the preflight fixture suite now has eight cases. An actual full-preflight negative
+control with `KI-029 remains open` in the 0.10.0 lead also failed at the content gate after the
+structural gate passed; the temporary defect was restored byte-for-byte.
+
+HANDOVER's operational Build/Test/Release rows explicitly scope completed validations and the
+complete draft to the original candidate. Its current replacement status is recorded separately.
+Customer notes describe implemented observable behavior and keep internal approval/worklog/risk
+status here. The normal Release workflow remains the only replacement packaging path.
+
+### Remaining gates and exact replacement state
+
+Local full-suite/preflight/pluginval results and exact new-source CI/artifact identities are to
+be recorded below as executed. Mandatory platform, sanitizer, warning, registry, resource and
+package gates remain binding. Targeted human validation is specified in LEVEL5_AUDITION and
+RELEASE_COMPATIBILITY_CHECKLIST: changed invalid host/text sound and finite recovery (Output Gain,
+Density), session/preset/A-B recall, preset/Settings coherence and restore/re-prepare latency/PDC.
+No new manual result is inferred from approval or automation.
+
+Original release ID `428196589`, annotated tag object `769d52fb09116b787184d119ff1db6075187e36d`
+and peeled commit `cd70a0b8a20d04c246a826c7b1bf616de2721c65` remain the guarded original identities.
+No merge, deletion, replacement tag, replacement workflow or new release has occurred. The
+state-aware plan above remains binding; defer P2/P3 on the previously recorded reopen conditions.
+
+The first full implementation suite produced 10592 checks / 1 failure: State 43 still expected
+a host latency report inside an unfinished adoption, which ADR-0068 deliberately defers. Its
+engine-priming assertion is preserved against the actual engine latency, and two new assertions
+require deferred in-flight reporting and correct final committed reporting. No production
+workaround or unrelated assertion removal was used. The final run is recorded separately.
+
+Citation maintenance retained all existing re-aim declarations, moved their current targets
+with source shifts and added six narrow inspected edited-span transitions. Two old anchors
+claimed `toEngine` while pointing into layout/bind; they now identify the actual function.
+One historical changelog citation is qualified by its already-stated `10fbfa0` commit to retain
+its original line identity. Every historical description/order and other byte is preserved.
+
+### Fresh local implementation validation (GCC 14.2.0 Release / JUCE 9.0.4)
+
+The complete VST3, Standalone, DSP and state targets build successfully. Source checker pairs
+(structure, release-note content, portability, realtime, dispatch, state coverage), warning
+checker self-tests and workflow routing/permission/actual-creation controls pass. Citation
+liveness now has 276 cases, 610 anchors pass against main, and documentation has 700 liveness
+cases / 174 clean files. The real-shell preflight suite passes all eight cases.
+
+**Local aggregate ABI failure:** after source gates pass, the real built-output ABI gate rejects
+both GCC 14 binaries for `CXXABI_1.3.15` above the declared `CXXABI_1.3.14` floor. This local
+non-shipping toolchain result is not a green preflight or a shipping ABI result. No floor,
+checker, compiler pin or mandatory job is relaxed. Full suites run separately, and the
+mandatory Clang shipping build must verify actual candidate ABI before release preparation
+can proceed. Existing GCC/JUCE warning debt and Python invalid-escape warnings remain visible.

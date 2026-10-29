@@ -26,10 +26,6 @@ including in entries written before 0.9.9 gave it that name.
 
 ## [0.10.0] — 2026-10-30
 
-Invalid parameter values sent by a host or entered as text can interrupt audio until a valid
-value is supplied. Nested session restores during a latency notification can leave the displayed
-preset name inconsistent with the restored sound.
-
 ### Added
 - Linux installation adds the Anamorph desktop launcher and hicolor icons in
   the selected user/system data directory, with an absolute executable reference and
@@ -44,6 +40,11 @@ preset name inconsistent with the restored sound.
   [Verified]
 
 ### Changed
+- **Non-finite parameter values use each control's declared default for audio processing.**
+  This prevents sustained audio loss from invalid host or text values. Output Gain can return
+  to 0 dB and Velvet Density to 0.5; finite automation and numeric host readback are unchanged.
+  Values already converted to finite range endpoints retain those endpoints.
+  Evidence: PR #187; ADR-0067. [Verified]
 - **Installer and uninstaller product names display as Anamorph without a version suffix.**
   Windows Setup/uninstall naming and the macOS installer title use the bare product name;
   installed version metadata and versioned download filenames are preserved.
@@ -54,6 +55,13 @@ preset name inconsistent with the restored sound.
   Evidence: PR #171; ADR-0063. [Verified]
 
 ### Fixed
+- **Nested session restores retain matching sound and preset information.**
+  Preset, Settings, A/B and Undo state commit before latency callbacks, so an older restore
+  cannot overwrite metadata belonging to a newer restore invoked from that callback.
+  Evidence: PR #187; ADR-0068. [Verified]
+- **Invalid parameter text no longer causes unsafe display conversions.** A session with
+  an unusable parameter `value` and a valid stored `raw` value also restores the finite value
+  before notifying listeners. Evidence: PR #187; ADR-0067. [Verified]
 - **System Linux desktop operations verify their helper before interpretation.**
   Install preflight/publication and uninstall use a private snapshot pinned by the
   trusted entry scripts, refusing mismatched archive helper bytes. Evidence:
@@ -2911,7 +2919,7 @@ preset name inconsistent with the restored sound.
   not a duck-to-silence — no mute/dropout. Evidence: commit `10fbfa0`; test
   `testMultibandEnableCrossfadeClickFree`. [Verified]
 - Renamed the automation parameter display name **"Haas Side" → "Haas Focus"** (ID `haasSide`
-  unchanged). Evidence: commit `10fbfa0`; `src/PluginParameters.cpp:135-136`. [Verified]
+  unchanged). Evidence: commit `10fbfa0`; `10fbfa0:src/PluginParameters.cpp:135-136`. [Verified]
 
 ### Fixed
 - Alt/Option-click knob reset now animates like double-click (a `resetSweep` flag opts the eased

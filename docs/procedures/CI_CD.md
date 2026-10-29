@@ -58,7 +58,7 @@ publication-only evidence remains historical and does not certify these new runs
 
 Icon validation (ADR-0062) uses `scripts/check-icons.py` with its `--self-test` in the same
 job before each use. The self-test includes 49 matching-platform good/bad native fixtures
-(only native API/utility boundaries are stubbed). `source-lint` also runs the six actual-shell
+(only native API/utility boundaries are stubbed). `source-lint` also runs the eight actual-shell
 preflight regressions in `scripts/test-icon-preflight.py`. `source-lint` and `merge-check`
 verify the two vendored B0 hashes and CMake bindings;
 `linux` checks native ELF outputs and absence of stale generated ICO/ICNS. Windows enumerates
@@ -1323,7 +1323,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:276-286 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:276-293 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1608,7 +1608,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22244`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1869,7 +1869,9 @@ present verbatim). Check **both** before concluding the gate is green.
 **`scripts/preflight.sh`** (added 2026-08-18) first validates the icon source contract and self-tests unconditionally,
 then checks existing native Release outputs or reports exact skipped checks and build commands.
 It runs the whole lint block above in one command — all
-**seven** checkers with their self-tests, the two shell self-tests beside them
+documentation structure, current-version release-note content, portability, realtime,
+dispatch, state coverage, citations, warning-classifier and ABI checkers with their self-tests,
+the two shell self-tests beside them
 (`setup-llvm-apt.sh` and, since 2026-09-06, `run-pluginval.sh`, whose crash-vs-failure verdict a
 green local pluginval run would not exercise), the citation gate against **all three** bases that
 can disagree — `origin/main`, the branch merge base, and `HEAD~1`, the **push predecessor** CI actually

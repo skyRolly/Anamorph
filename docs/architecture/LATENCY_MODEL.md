@@ -83,9 +83,12 @@ to them — a reported-latency change, and a hard-stop for review — fails the 
   reported value actually changes, appends to a heap container and `write()`s a pipe in the Linux
   wrapper. Under VST3 host automation of Drive / Algorithm the caller is the **audio thread**
   (KI-027), so every re-report is routed through `requestLatencyUpdate()`:
-  - on the **message thread** it stays fully synchronous — UI edits, preset loads, undo/redo and
-    a message-thread `prepareToPlay` (every in-spec VST3 activation, the standalone, pluginval)
-    are unchanged and instantaneous;
+  - on the **message thread** it is synchronous when no restore application, enclosing state
+    command or pending restore is active. ADR-0068 defers requests inside those boundaries:
+    complete Settings/A-B/Undo/preset publication precedes the host callout, and no enclosing
+    command may own `soundReplacement` at delivery. An outer command leaves the existing request
+    for the 20 Hz timer; recursive timer pumping cannot bypass admission. Engine priming during
+    `prepareToPlay` remains immediate (State test 43), while its report waits for commit;
   - anywhere else the caller does one atomic store and returns, and a **processor-owned** 20 Hz
     timer performs the delivery. The timer belongs to the processor, not the editor, so it runs
     with no editor open.
@@ -158,7 +161,7 @@ to them — a reported-latency change, and a hard-stop for review — fails the 
   Oversampling Setting inside an off-thread `setStateInformation` (RISK-007) can still change the
   value from a non-message thread.
 
-Evidence [Verified]: src/PluginProcessor.cpp:262-286 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:432-437,
+Evidence [Verified]: src/PluginProcessor.cpp:262-293 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:432-437,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

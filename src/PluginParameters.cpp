@@ -1,5 +1,6 @@
 #include "PluginParameters.h"
 #include <atomic>
+#include <cmath>
 
 using juce::AudioParameterFloat;
 using juce::AudioParameterChoice;
@@ -19,6 +20,14 @@ using juce::ParameterID;
 // value. No parameter ID, range, default, or choice ordering changes.
 namespace
 {
+// Only non-finite display inputs change; numeric readback stays exact (ADR-0067).
+float finiteDisplayPosition (float value, float defaultValue) noexcept
+{
+    if (std::isfinite (value)) return value;
+    if (std::isnan (value)) return defaultValue;
+    return value > 0.0f ? 1.0f : 0.0f;
+}
+
 struct RawChoice : juce::RangedAudioParameter
 {
     RawChoice (const juce::ParameterID& pid, const juce::String& nm, juce::StringArray c, int defIndex)
@@ -35,7 +44,7 @@ struct RawChoice : juce::RangedAudioParameter
     float getValueForText (const juce::String& t) const override { const int i = choices.indexOf (t); return toNorm (i < 0 ? 0 : i); }
     const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
 
-    int   indexFor (float v) const { return juce::jlimit (0, choices.size() - 1, juce::roundToInt (v * (float) juce::jmax (1, choices.size() - 1))); }
+    int   indexFor (float v) const { return juce::jlimit (0, choices.size() - 1, juce::roundToInt (finiteDisplayPosition (v, defaultNorm) * (float) juce::jmax (1, choices.size() - 1))); }
     float toNorm (int i) const     { return choices.size() > 1 ? (float) juce::jlimit (0, choices.size() - 1, i) / (float) (choices.size() - 1) : 0.0f; }
 
     juce::StringArray choices;
@@ -57,7 +66,7 @@ struct RawBool : juce::RangedAudioParameter
     bool  isDiscrete() const override      { return true; }
     bool  isBoolean() const override       { return true; }
     bool  isAutomatable() const override   { return autom; }
-    juce::String getText (float v, int) const override { return v >= 0.5f ? "On" : "Off"; }
+    juce::String getText (float v, int) const override { return finiteDisplayPosition (v, defaultNorm) >= 0.5f ? "On" : "Off"; }
     float getValueForText (const juce::String& t) const override
     { return (t.equalsIgnoreCase ("on") || t.equalsIgnoreCase ("true") || t.getIntValue() != 0) ? 1.0f : 0.0f; }
     const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
@@ -79,7 +88,7 @@ struct RawInt : juce::RangedAudioParameter
     float getDefaultValue() const override { return defaultNorm; }
     int   getNumSteps() const override     { return juce::roundToInt (range.end - range.start) + 1; }
     bool  isDiscrete() const override      { return true; }
-    juce::String getText (float v, int) const override { return juce::String (juce::roundToInt (range.convertFrom0to1 (v))); }
+    juce::String getText (float v, int) const override { return juce::String (juce::roundToInt (range.convertFrom0to1 (finiteDisplayPosition (v, defaultNorm)))); }
     float getValueForText (const juce::String& t) const override { return range.convertTo0to1 ((float) t.getIntValue()); }
     const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
 
@@ -143,7 +152,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
                            bool automatable = true)
     {
         auto attr = juce::AudioParameterFloatAttributes();
-        if (toText)   attr = attr.withStringFromValueFunction (std::move (toText));
+        if (toText)
+            attr = attr.withStringFromValueFunction (
+                [format = std::move (toText), def] (float value, int length)
+                {
+                    return format (std::isfinite (value) ? value : def, length);
+                });
         if (fromText) attr = attr.withValueFromStringFunction (std::move (fromText));
         if (! automatable) attr = attr.withAutomatable (false);
         layout.add (std::make_unique<AudioParameterFloat> (
@@ -285,42 +299,48 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
 void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
 {
-    channelMode   = s.getRawParameterValue (pid::channelMode);
-    monoSum       = s.getRawParameterValue (pid::monoSum);
-    swap          = s.getRawParameterValue (pid::swap);
-    inputBalance  = s.getRawParameterValue (pid::inputBalance);
-    polarityL     = s.getRawParameterValue (pid::polarityL);
-    polarityR     = s.getRawParameterValue (pid::polarityR);
-    msMode        = s.getRawParameterValue (pid::msMode);
-    drive         = s.getRawParameterValue (pid::drive);
-    algorithm     = s.getRawParameterValue (pid::algorithm);
-    amount        = s.getRawParameterValue (pid::amount);
-    haasDelay     = s.getRawParameterValue (pid::haasDelay);
-    haasSide      = s.getRawParameterValue (pid::haasSide);
-    velvetDensity = s.getRawParameterValue (pid::velvetDensity);
-    chorusRate    = s.getRawParameterValue (pid::chorusRate);
-    chorusDepth   = s.getRawParameterValue (pid::chorusDepth);
-    dimMode       = s.getRawParameterValue (pid::dimMode);
-    width         = s.getRawParameterValue (pid::width);
-    mbEnable      = s.getRawParameterValue (pid::mbEnable);
-    mbBands       = s.getRawParameterValue (pid::mbBands);
-    mbSolo        = s.getRawParameterValue (pid::mbSolo);
-    mbFreqLow     = s.getRawParameterValue (pid::mbFreqLow);
-    mbFreqMid     = s.getRawParameterValue (pid::mbFreqMid);
-    mbFreqHigh    = s.getRawParameterValue (pid::mbFreqHigh);
-    mbWidthLow    = s.getRawParameterValue (pid::mbWidthLow);
-    mbWidthMid    = s.getRawParameterValue (pid::mbWidthMid);
-    mbWidthHiMid  = s.getRawParameterValue (pid::mbWidthHiMid);
-    mbWidthHigh   = s.getRawParameterValue (pid::mbWidthHigh);
-    monoMakerOn   = s.getRawParameterValue (pid::monoMakerOn);
-    monoMakerFreq = s.getRawParameterValue (pid::monoMakerFreq);
-    mix           = s.getRawParameterValue (pid::mix);
-    outputGain    = s.getRawParameterValue (pid::outputGain);
-    outputBalance = s.getRawParameterValue (pid::outputBalance);
-    autoGainMatch = s.getRawParameterValue (pid::autoGainMatch);
-    solo          = s.getRawParameterValue (pid::solo);
-    bypass        = s.getRawParameterValue (pid::bypass);
-    advancedMode  = s.getRawParameterValue (pid::advancedMode);
+    const auto parameter = [&s] (const char* id)
+    {
+        const auto* p = s.getParameter (id);
+        jassert (p != nullptr);
+        return Parameter { s.getRawParameterValue (id), p->convertFrom0to1 (p->getDefaultValue()) };
+    };
+    channelMode   = parameter (pid::channelMode);
+    monoSum       = parameter (pid::monoSum);
+    swap          = parameter (pid::swap);
+    inputBalance  = parameter (pid::inputBalance);
+    polarityL     = parameter (pid::polarityL);
+    polarityR     = parameter (pid::polarityR);
+    msMode        = parameter (pid::msMode);
+    drive         = parameter (pid::drive);
+    algorithm     = parameter (pid::algorithm);
+    amount        = parameter (pid::amount);
+    haasDelay     = parameter (pid::haasDelay);
+    haasSide      = parameter (pid::haasSide);
+    velvetDensity = parameter (pid::velvetDensity);
+    chorusRate    = parameter (pid::chorusRate);
+    chorusDepth   = parameter (pid::chorusDepth);
+    dimMode       = parameter (pid::dimMode);
+    width         = parameter (pid::width);
+    mbEnable      = parameter (pid::mbEnable);
+    mbBands       = parameter (pid::mbBands);
+    mbSolo        = parameter (pid::mbSolo);
+    mbFreqLow     = parameter (pid::mbFreqLow);
+    mbFreqMid     = parameter (pid::mbFreqMid);
+    mbFreqHigh    = parameter (pid::mbFreqHigh);
+    mbWidthLow    = parameter (pid::mbWidthLow);
+    mbWidthMid    = parameter (pid::mbWidthMid);
+    mbWidthHiMid  = parameter (pid::mbWidthHiMid);
+    mbWidthHigh   = parameter (pid::mbWidthHigh);
+    monoMakerOn   = parameter (pid::monoMakerOn);
+    monoMakerFreq = parameter (pid::monoMakerFreq);
+    mix           = parameter (pid::mix);
+    outputGain    = parameter (pid::outputGain);
+    outputBalance = parameter (pid::outputBalance);
+    autoGainMatch = parameter (pid::autoGainMatch);
+    solo          = parameter (pid::solo);
+    bypass        = parameter (pid::bypass);
+    advancedMode  = parameter (pid::advancedMode);
 }
 
 // ADR-0057, PRECONDITION 2. Every load below is the default (seq_cst) `load()`: a bulk swap's forced
@@ -331,59 +351,66 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
 {
     using namespace anamorph;
     EngineParameters e;
+    // The actual declared default is bound once, not a mutable last-value cache.
+    // Keep this seq_cst load inside the body covered by ADR-0057's order lint.
+    const auto read = [] (const Parameter& parameter) noexcept
+    {
+        const float value = parameter.raw->load();
+        return std::isfinite (value) ? value : parameter.defaultValue;
+    };
 
-    const bool advanced = advancedMode->load() > 0.5f;
+    const bool advanced = read (advancedMode) > 0.5f;
 
     // --- Core widening (always active, both modes) ---
     // Discrete choice indices are read with roundToInt (not a truncating cast): the raw parameter
     // value is range.convertFrom0to1(getValue()), and with the exact-raw getValue() a legal choice
     // can denormalise a hair below its integer (e.g. Chorus 2/3 -> 1.9999), which (int) would floor
     // to the wrong choice. roundToInt snaps to the intended index for every legal selection.
-    e.driveDb      = drive->load();
-    e.algorithm    = (Algorithm) juce::roundToInt (algorithm->load());
-    e.algoAmount   = amount->load();
-    e.haasDelayMs  = haasDelay->load();
-    e.haasSide     = (HaasSide) juce::roundToInt (haasSide->load());
-    e.velvetDensity = velvetDensity->load();
-    e.chorusRate   = chorusRate->load();
-    e.chorusDepth  = chorusDepth->load();
-    e.dimMode      = juce::roundToInt (dimMode->load()) + 1; // choice 0..3 -> mode 1..4
-    e.width        = width->load();
+    e.driveDb      = read (drive);
+    e.algorithm    = (Algorithm) juce::roundToInt (read (algorithm));
+    e.algoAmount   = read (amount);
+    e.haasDelayMs  = read (haasDelay);
+    e.haasSide     = (HaasSide) juce::roundToInt (read (haasSide));
+    e.velvetDensity = read (velvetDensity);
+    e.chorusRate   = read (chorusRate);
+    e.chorusDepth  = read (chorusDepth);
+    e.dimMode      = juce::roundToInt (read (dimMode)) + 1; // choice 0..3 -> mode 1..4
+    e.width        = read (width);
 
     e.oversample   = (OversampleFactor) juce::jlimit (0, 3, oversampleIndex); // from InternalState
-    e.bypass       = bypass->load() > 0.5f;
+    e.bypass       = read (bypass) > 0.5f;
 
     if (advanced)
     {
         // --- Input module ---
-        e.channelMode  = (ChannelMode) juce::roundToInt (channelMode->load());
-        e.monoSum      = monoSum->load() > 0.5f;
-        e.swapLR       = swap->load() > 0.5f;
-        e.inputBalance = inputBalance->load();
-        e.polarityL    = polarityL->load() > 0.5f;
-        e.polarityR    = polarityR->load() > 0.5f;
-        e.msMode       = msMode->load() > 0.5f;
-        e.solo         = (SoloMode) juce::roundToInt (solo->load());
+        e.channelMode  = (ChannelMode) juce::roundToInt (read (channelMode));
+        e.monoSum      = read (monoSum) > 0.5f;
+        e.swapLR       = read (swap) > 0.5f;
+        e.inputBalance = read (inputBalance);
+        e.polarityL    = read (polarityL) > 0.5f;
+        e.polarityR    = read (polarityR) > 0.5f;
+        e.msMode       = read (msMode) > 0.5f;
+        e.solo         = (SoloMode) juce::roundToInt (read (solo));
 
         // --- Multiband ---
-        e.mbEnable     = mbEnable->load() > 0.5f;
-        e.mbBands      = juce::roundToInt (mbBands->load()); // roundToInt like the other discrete reads above
-        e.mbSolo       = juce::roundToInt (mbSolo->load());  // (was (int)(x+0.5f) -- equivalent, now uniform)
-        e.mbFreqLow    = mbFreqLow->load();
-        e.mbFreqMid    = mbFreqMid->load();
-        e.mbFreqHigh   = mbFreqHigh->load();
-        e.mbWidthLow   = mbWidthLow->load();
-        e.mbWidthMid   = mbWidthMid->load();
-        e.mbWidthHiMid = mbWidthHiMid->load();
-        e.mbWidthHigh  = mbWidthHigh->load();
+        e.mbEnable     = read (mbEnable) > 0.5f;
+        e.mbBands      = juce::roundToInt (read (mbBands)); // roundToInt like the other discrete reads above
+        e.mbSolo       = juce::roundToInt (read (mbSolo));  // (was (int)(x+0.5f) -- equivalent, now uniform)
+        e.mbFreqLow    = read (mbFreqLow);
+        e.mbFreqMid    = read (mbFreqMid);
+        e.mbFreqHigh   = read (mbFreqHigh);
+        e.mbWidthLow   = read (mbWidthLow);
+        e.mbWidthMid   = read (mbWidthMid);
+        e.mbWidthHiMid = read (mbWidthHiMid);
+        e.mbWidthHigh  = read (mbWidthHigh);
 
         // --- Output module ---
-        e.monoMakerEnable = monoMakerOn->load() > 0.5f;
-        e.monoMakerFreq   = monoMakerFreq->load();
-        e.mix             = mix->load();
-        e.outputGainDb    = outputGain->load();
-        e.outputBalance   = outputBalance->load();
-        e.autoGainMatch   = autoGainMatch->load() > 0.5f;
+        e.monoMakerEnable = read (monoMakerOn) > 0.5f;
+        e.monoMakerFreq   = read (monoMakerFreq);
+        e.mix             = read (mix);
+        e.outputGainDb    = read (outputGain);
+        e.outputBalance   = read (outputBalance);
+        e.autoGainMatch   = read (autoGainMatch) > 0.5f;
     }
     // else: Advanced-only modules behave as defaults (bypassed) while their knob
     // values stay put in the tree, so re-enabling Advanced restores them (#1).

@@ -321,6 +321,81 @@ Evidence [Verified]: [startup failure](https://github.com/skyRolly/Anamorph/acti
 `worklogs/RELEASE_READINESS_0.10.0.md`. The ADR-0059 annotated bare-tag convention and
 rehearsal/no-creation guard remain unchanged; the recovery uploader only fills an existing draft.
 
+## INC-019 — Non-finite processor targets caused sustained audio loss
+
+**Fixed in the 0.10.0 P1 candidate, PR #187; Accepted ADR-0067, owner approved 2026-10-30.**
+Every processor snapshot load now substitutes its immutable declared default when its raw
+atomic is non-finite, before integer/enum/Boolean conversion. Existing setters, parsers and
+numeric readback remain; finite endpoints already produced by ingress remain endpoints.
+Text formatting guards the same unsafe conversions. A private restore copy resolves an
+unusable `value` from authoritative usable `raw` before JUCE notifies it; final exact raw,
+valid finite bytes and parser acceptance are unchanged. The numeric-NaN writer fix is retained.
+
+The original audio diagnostic failed 24/288 checks on the old production code. State 146 now
+requires audible finite output and exact default-twin output for actual non-finite raw values;
+State 147 covers all 36 parameters, three ingress routes, both modes, reset/re-prepare,
+unchanged readback and repeated session/preset/A-B restores. Direct-engine DSP 64/74 remain
+unchanged. Output Gain targeting 0 dB and Density targeting 0.5 are explicitly approved audible
+consequences; targeted human validation and fresh mandatory CI remain release prerequisites.
+
+### Historical KI-029 record before the fix
+
+The following measurements and proposal status describe the original candidate, not the fixed
+PR #187 source. They are retained without rewriting historical observations.
+
+#### KI-029 — a non-finite parameter value mutes or changes several controls while it is present
+
+**0.10.0 replacement proposal (2026-10-30):** [ADR-0067](architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md)
+is Proposed, not implemented or approved. The new opt-in real-processor audio diagnostic
+reproduces 24 sustained-mute failures in 288 checks. The formatter repair below remains intact;
+this issue stays open until approved semantics and full regression evidence establish closure.
+
+A parameter can hold a value that is not a number: JUCE's value-box and host text parsers accept the
+text "nan", and a host (or a damaged automation lane) can send one. The value reaches the audio engine
+unchanged. While it is present, measured through the processor: **Width, Haas Delay, Chorus Rate /
+Depth, Output Gain and the multiband widths and crossovers mute** (the engine's self-heal zeroes the
+non-finite output), **Mix plays fully wet**, and the self-heal's reset **discards the Level-Match
+gain**. Mono Maker Freq is the exception: its range turns NaN into 500 Hz. Nothing latches — each
+recovers within one block (or one smoother ramp) of a valid value — and no non-finite sample ever
+reaches the host. The two glides that did latch (Velvet density, and the Mono Maker cutoff through the
+engine API) are fixed.
+
+- **Why it is not fixed here:** the stateless fix (a non-finite value treated as the parameter's
+  default where parameters enter the engine) was measured and removes every mute, but it decides what
+  a NaN value *means* — an Output Gain NaN would play at 0 dB — which ADR_POLICY makes an owner
+  decision. The text parsers accepting "nan" belong to the same decision.
+- **Serialization sub-defect repaired in 0.9.10 development:** pinned JUCE 9.0.4 still converts
+  numeric NaN to an integer in `serialiseDouble`. The real session-save reproducer aborts under
+  UBSan on that conversion. `SerializedXml.h` now spells numeric NaN on a private writer copy,
+  preserving the existing XML text and restore rules without editing the live APVTS or cached slots.
+  State test 142 covers session and preset writers. This does not resolve the audible issue above.
+- **Restore limitation:** a malformed `value="nan"` with usable `raw="0.71"` still notifies NaN
+  during `replaceState` before finishing at the finite raw value. Choosing a new ingress policy is
+  still an owner decision; the formatter repair does not conceal that window.
+- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §B–§C and §S10 (historical);
+  `worklogs/STATE_HOST_HARDENING_0.9.10.md` (current trace, sanitizer reproduction, owner alternatives);
+  State tests 123, 128 and 142; ADR-0009, Implementation note 2026-09-24.
+
+## INC-020 — An older restore tail overwrote newer preset metadata
+
+**Fixed in the 0.10.0 P1 candidate, PR #187; Accepted ADR-0068, owner approved 2026-10-30.**
+A synchronous latency callback could start/join a newer background restore and pump adoption.
+The newer sound survived, but the resumed older tail replaced its preset name. The real
+production callback diagnostic measured 30 checks / 4 metadata failures; callback saves passed.
+An `adoptingRestore` early return was rejected because it instead broke fixed-point saves.
+
+Both message-thread restore application paths now commit all Settings, A/B, Undo, preset
+metadata and final publication before latency delivery. Delivery also requires no enclosing
+state command or pending restore; the existing atomic request waits for the safe timer door.
+No old restore writes follow the callback. State 148 retains the original assertions and adds
+inline/background, repeated, pump/no-pump, callback-save, metadata and non-blocking lock-admission
+coverage (1778 checks / 0 failures locally). State 43 retains immediate engine priming and checks
+the newly deferred host report. No new lock, wait, thread or atomic ordering is introduced.
+
+F9's metadata defect is corrected; RISK-009 remains open on the distinct JUCE listener-lock
+residual and separately characterized outer-held lock edge. No supported-host deadlock has
+been demonstrated. Fresh mandatory CI and targeted human restore/PDC validation remain pending.
+
 ## Adding an incident
 
 Create the next `INC-NNN` only when backed by a commit/PR/test/README. Use the template above;

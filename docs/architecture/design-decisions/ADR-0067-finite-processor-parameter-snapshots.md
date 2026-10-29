@@ -1,7 +1,13 @@
 # ADR-0067 — Finite processor parameter snapshots
 
-**Status:** Proposed, 2026-10-30 (Asia/Shanghai). Human Architecture Review required.
-**Implementation:** NOT IMPLEMENTED. No production parameter or DSP behavior changes in this proposal.
+**Status:** Accepted — owner direct approval in this chat on 2026-10-30 (Asia/Shanghai).
+**Architecture Review:** APPROVED for the complete proposal in PR #187, including ADR-0067's
+0 dB Output Gain fallback/Density consequences and ADR-0068's nested-callback support boundary.
+This approval is not evidence of implemented fixes or new-binary manual validation.
+**Implementation:** Immutable parameter/default bindings, finite snapshot and display guards, and private-copy
+repair of the unusable-value/usable-raw restore window are implemented in PR #187.
+State tests 146/147 exercise the production processor; mandatory CI and targeted manual
+validation of the replacement binaries remain required.
 
 ## Context
 
@@ -26,7 +32,7 @@ This is a parameter-meaning decision under ADR_POLICY, not approval inferred fro
 | Reject/normalize ingress | Host readback and text entry change; must retain finite raw values of custom discrete parameters and investigate every JUCE notification | Can keep the preceding parameter target, including Output Gain | Replacing/interposing stock float setters and parsers is materially broader; does not alone cover transient/direct raw writes |
 | Last finite target at the DSP boundary | Host readback remains; invalid saved-state fallback still differs from live history | Avoids a default-gain jump; must specify initial target, inactive modules, reset/prepare, A/B lifetime and partial bulk snapshots | A cache must have one owner. A mutable cache shared by the three `toEngine` readers is rejected. An audio/prepare-only cache with advancement only after trusted ADR-0057 snapshots is a distinct, more complex alternative |
 
-## Decision proposed for human review
+## Decision (approved 2026-10-30)
 
 Select **stateless parameter-default substitution in `ParamPointers::toEngine`**. Cache each
 parameter's denormalized declared default at `bind`, beside its existing atomic pointer, and make
@@ -46,7 +52,7 @@ The table describes the value *actually reaching the cached raw atomic*, after t
 or text conversion. It deliberately does not promise that every non-finite host input survives
 those conversions:
 
-| Input/path | Proposed behavior |
+| Input/path | Approved behavior |
 | --- | --- |
 | Raw NaN | DSP substitutes that parameter's declared default; host `getValue()` remains unchanged |
 | Raw +Inf | Same default substitution; a +Inf already converted to a finite upper endpoint remains that endpoint |
@@ -54,17 +60,25 @@ those conversions:
 | Text | Existing parser/readback preserved. For example Width `nan` reaches the fallback; Mono Maker frequency `nan` already becomes finite 500 Hz and remains 500 Hz; Boolean text still resolves Off |
 | Session/undo/A/B | Existing usable-`raw` > usable-`value` > default resolver retained; invalid values do not acquire a new serialized meaning |
 | Preset file | Existing usable denormalized `value` > default rule retained |
-| `value="nan" raw="0.71"` restore window | JUCE may still notify NaN before reassertion. The temporary snapshot is finite; ADR-0057 must prevent adoption of an incomplete bulk restore. The completed sound uses usable `raw`, never a replacement default |
+| `value="nan" raw="0.71"` restore window | Resolve the unusable `value` from the authoritative usable `raw` on the private restore copy before JUCE installs it. Final exact-raw reassertion is unchanged; no transient NaN/default is installed for this field |
 | Fresh/reset/re-prepare | Exactly the same stateless fallback; no remembered runtime target to discard or share |
 | Finite automation | Bit-identical mapping and host readback; subsequent finite input immediately resumes the normal smoothed path |
 
 **Tradeoff requiring an explicit ruling:** Output Gain falling back from −18 dB to its 0 dB default
 is an 18 dB target increase. The existing smoother still applies, but this is an audible change,
 not a promise of constant loudness. Density falling back from 0.3 to 0.5 is also a real sound
-change and may invalidate Level Match. Human review must accept these consequences or select the
-fully specified audio-owned cache alternative before implementation. No output limiter is proposed.
+change and may invalidate Level Match. The owner explicitly accepted these consequences in approving this decision on 2026-10-30. No output limiter is proposed.
 
 ## Consequences and compatibility
+
+**Implementation correction (2026-10-30):** the approved proposal incorrectly attributed host
+session restore atomicity to ADR-0057. Host session installs do not enter that handshake, and
+no new host-thread bulk counter/ordering is introduced. The existing resolver already selects
+usable `raw`; the existing private-copy repair now also repairs an unusable `value` when `raw`
+is usable. This realizes the same resolved sound before JUCE's first notification. It changes
+the re-saved malformed `value` spelling to the resolved finite value, preserving field meaning,
+exact final raw readback, valid finite bytes and all accepted parser boundaries. Dedicated
+window regressions must prove the first notification and final restore, not infer a handshake.
 
 Preserve IDs, ranges, defaults, ordering, automation flags, serialization fields and all valid
 finite session/preset bytes. No schema migration is needed: older finite sessions take the same
@@ -106,5 +120,7 @@ Evidence [Verified]:
   `--nonfinite-save-probe`, new opt-in `--nonfinite-audio-probe`.
 - Measurements and exact release baseline: `worklogs/RELEASE_READINESS_0.10.0.md`.
 
-The current defect and existing resolver are verified; the proposed fix and its acceptance
-criteria are **unverified until implemented after human approval**.
+The original defect, existing resolver and implemented production-path regressions are verified.
+The original audio diagnostic failed 24 of 288 checks before the fix; State test 146 now adds
+exact default-twin assertions. State test 147 covers every registered parameter and the restore
+window. Fresh platform/sanitizer validation and targeted human approval remain separate gates.

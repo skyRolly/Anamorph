@@ -1,5 +1,12 @@
 # ADR-0009 — Crossover Nyquist clamp + engine-wide NaN/Inf self-heal; no output clipper
 
+**0.10.0 processor-boundary clarification (Accepted ADR-0067, 2026-10-30):**
+a non-finite APVTS raw value is now mapped to its declared finite default before the engine
+sees it. Processor Density therefore targets 0.5, with the corresponding Level-Match
+invalidation, rather than inheriting the engine's prior held Density. Direct engine/module
+NaN protections and DSP tests 64/74 remain unchanged. Historical measurements below retain
+their original scope; State tests 128/138 and 146/147 cover the approved processor behavior.
+
 **Status:** Accepted
 
 ## Context

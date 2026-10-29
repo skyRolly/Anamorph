@@ -10,7 +10,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 
 | Module | Audio-path status | Allocation (prepare only) | Evidence |
 |---|---|---|---|
-| `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO. Since ADR-0057 the snapshot is read inside `engine.setParametersFrom`, between two acquire `exchange`s of the request word, plus O(1) branches: no wait, spin, lock or allocation (Test 75's armed guard counts 0 across every handshake path; `check-realtime.py` seeds `setParametersFrom` and `takeRequestWord`) | n/a (engine.prepare) | src/PluginProcessor.cpp:390-463 |
+| `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO. Since ADR-0057 the snapshot is read inside `engine.setParametersFrom`, between two acquire `exchange`s of the request word, plus O(1) branches: no wait, spin, lock or allocation (Test 75's armed guard counts 0 across every handshake path; `check-realtime.py` seeds `setParametersFrom` and `takeRequestWord`) | n/a (engine.prepare) | src/PluginProcessor.cpp:410-483 |
 | `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | src/dsp/AnamorphEngine.cpp:43-213 vs :660-1339 |
 | `MidSide` | **Verified** — pure arithmetic, `noexcept` | none | MidSide.h:21-42 |
 | `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:15-22,46-63 |

@@ -20722,7 +20722,8 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     // taken at that instant instead of between two drains (the seam injects only once,
     // or the drain would have a new restore to adopt on every pass).
     int seamRuns = 0;
-    int  osInWindow = -1, latencyInWindow = -1;
+    int  osInWindow = -1, engineLatencyInWindow = -1;
+    int reportBeforeActivation = -1, reportAfterActivation = -1;
     bool viewInWindowIsA = false;
     p.seams.afterRestoreTake = [&]
     {
@@ -20735,8 +20736,10 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
         {
             viewInWindowIsA = d2::View::of (p).matches (A);
             osInWindow      = p.getInternal().oversampleIndex();
+            reportBeforeActivation = p.getLatencySamples();
             p.prepareToPlay (48000.0, 512);                                // activation inside the window
-            latencyInWindow = p.getLatencySamples();
+            engineLatencyInWindow = p.getEngine().getLatencySamples();
+            reportAfterActivation = p.getLatencySamples();
         }
     };
     p.pollUndoCoalesce();                                             // drains to a fixed point: A, then B
@@ -20746,7 +20749,13 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     check (viewInWindowIsA, "the owner adopted A's program (B's tail had not run yet)");
     check (osInWindow == 2,
            "A's tail did not overwrite B's oversampling: the word holds the newer restore's 4x");
-    check (latencyInWindow == latencyB, "an activation in the window primes the engine at B's setting");
+    check (engineLatencyInWindow == latencyB, "an activation in the window primes the engine at B's setting");
+    // ADR-0068 changes the host callout boundary, not the engine's priming:
+    // the report cannot expose the unfinished adoption to a synchronous callback.
+    check (reportAfterActivation == reportBeforeActivation,
+           "activation inside an adoption defers the host report until the complete program commits");
+    check (p.getLatencySamples() == latencyB,
+           "the completed fixed-point drain reports B's latency to the host");
 
     check (d2::View::of (p).matches (B), "B's program is adopted");
     check (p.getInternal().oversampleIndex() == 2 && (int) p.getInternal().oversampleValue().getValue() == 3,
@@ -23374,7 +23383,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2672).
+//  baseline", src/PluginProcessor.cpp:2698).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -23607,7 +23616,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2211).
+//  targets", src/PluginProcessor.cpp:2236).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -23984,7 +23993,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2857).
+//  mixed sound", src/PluginProcessor.cpp:2883).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -36469,7 +36478,7 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
     //     rule outright: "on a number click or a playback RESTART". There are exactly
     //     two paths in the product, and neither is a transport stop --
     //     `src/gui/LevelMeter.h:27` (mouseDown on the readout) and
-    //     `src/PluginProcessor.cpp:448` (a PLAY edge or a seek).
+    //     `src/PluginProcessor.cpp:468` (a PLAY edge or a seek).
     //
     //     So a stop must KEEP the reading -- stopping to look at it is what the latch
     //     is for -- while the next play must still clear it. Leg 3 asserts the first
@@ -37772,6 +37781,11 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
 //  State test 128 -- A NON-FINITE VELVET DENSITY FROM THE HOST OR THE VALUE BOX DOES NOT
 //  FREEZE THE DENSITY (ADR-0009; Test 64 is the engine's own contract)
 //
+//  ADR-0067 (0.10.0): the processor now substitutes the declared default, 0.5,
+//  for a non-finite raw density. The finite twin follows that target on each
+//  invalid leg; direct-engine Test 64 retains its held-density contract.
+//  The pre-0.10.0 diagnosis below records why this production-path test exists.
+//
 //  REACHABLE, measured: a host's NaN reaches `velvetDensity`'s raw value exactly as State
 //  test 123's reaches `amount`, and so does the text "nan" -- the parameter's own text parser
 //  (`pctFrom`, what the editor's value box and a host's text entry both call) returns NaN
@@ -37785,8 +37799,8 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
 //  Velvet silent at any Amount. Never a mute, so State test 123's level check cannot see it.
 //
 //  WHAT THIS ASSERTS, through the processor exactly as a host drives it: a twin processor
-//  that never receives the NaN (it keeps the density it had -- for a fresh instance, the
-//  default) produces BIT-IDENTICAL output from the first block, through the finite value, a
+//  that receives the declared finite default instead of NaN produces BIT-IDENTICAL output
+//  from the first block, through the finite value, a
 //  host reset and a re-prepare; a control processor that never moves proves the move is
 //  audible. Controls check both premises: the NaN reaches the raw parameter, and "nan" parses
 //  to NaN -- if either stops holding, the test says so rather than pass for the wrong reason.
@@ -37794,7 +37808,7 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
 //  never reaches its raw value as NaN (the parameter's range maps it to a finite cutoff).
 static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
 {
-    std::printf ("State test 128: a non-finite Velvet density does not freeze the density (ADR-0009)\n");
+    std::printf ("State test 128: non-finite processor Density renders its default and recovers (ADR-0067)\n");
 
     const double sr = 48000.0; const int block = 256;
     constexpr float nan = std::numeric_limits<float>::quiet_NaN();
@@ -37873,6 +37887,7 @@ static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
         {
             run (half, false);
             poison (*a);
+            set (*b, "velvetDensity", 0.5f); // approved stateless processor fallback
             run (10, false);
         }
         else
@@ -37913,7 +37928,7 @@ static void testANonFiniteVelvetDensityDoesNotFreezeTheDensity()
     check (parses,     "control: the density's own text parser turns \"nan\" into NaN (the value-box route)");
     check (mmFinite,   "control: a host NaN on Mono Maker Freq reaches its raw value finite (Test 64 is engine-only)");
     check (allFinite,  "a non-finite Velvet density never reaches the output");
-    check (allSame,    "a non-finite Velvet density is ignored: bit-identical to the twin that kept its density, "
+    check (allSame,    "a non-finite Velvet density renders its declared default: bit-identical to the finite-default twin, "
                        "through the finite value, a host reset and a re-prepare");
     check (allAudible, "control: the density move is audible (the equality is not the trivial one)");
 }
@@ -43690,6 +43705,13 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
 //  Note of 2026-09-26, the non-finite Velvet Density; Devin review "Identical Velvet slots lose matched levels";
 //  worklog §S. Test 74 is the engine half.)
 //
+//  ADR-0067 (0.10.0) supersedes the processor's held-density premise: NaN
+//  now renders 0.5, as does the finite twin. E/H return from a finite visit to
+//  that same default and KEEP; G's NaN crossover renders its existing 180 Hz
+//  default and stays audible through prepare. All finite schedules and match
+//  provenance assertions remain. The measurements below are the historical
+//  pre-0.10.0 evidence; direct-engine Test 74 remains unchanged.
+//
 //  THE FINDING, reproduced here at b82a294. A host that writes NaN into Velvet Density -- an automation lane at NaN; a
 //  host NaN or the value box's "nan" reach the raw value (State test 128) -- leaves the Velvet playing the density it
 //  held (VelvetNoise ignores a non-finite one), yet measurementInputsDiffer read NaN against NaN as a change: B's
@@ -43750,9 +43772,9 @@ static void testAnAbSlotCarriesItsPostChangeEvidence()
 //  at the first switch's bottom (block 2) or at the prepareToPlay. (E) and (H) flush there too, as their checks want,
 //  but fail on the twin comparison: their NaN lanes leave their twins at block 2. The three premises, (G) and its
 //  sibling pass there: the scenario is the same, the verdicts are not. Runtime ~0.6 s.
-static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
+static void testANaNVelvetDensityRendersTheProcessorDefault()
 {
-    std::printf ("State test 138: a NaN Velvet Density from the host is no change to what Level Match measures -- identical "
+    std::printf ("State test 138: a NaN Velvet Density renders the declared default -- identical "
                  "Velvet slots keep their matched level through an A/B return and a same-rate prepareToPlay (ADR-0007, "
                  "the non-finite Velvet Density; Devin)\n");
 
@@ -43903,17 +43925,17 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
     };
     auto diffText = [] (int d) { return d < 0 ? std::string ("yes") : "NO, block " + std::to_string (d); };
     auto sameBits = [] (float a, float b) { return std::memcmp (&a, &b, sizeof (float)) == 0; };
-    // the twin: the host writes the density the Velvet holds -- the last finite one it wrote, 0.3 before any --
-    // wherever the lane writes a non-finite one; no probes (they read only)
-    auto twinOf = [held] (Lane ln)
+    // ADR-0067: only the processor's invalid-input contract changed. Every
+    // finite step, A/B event and match-provenance assertion remains exercised.
+    // The twin now writes the declared default wherever the host lane writes NaN.
+    constexpr float defaultDensity = 0.5f;
+    auto twinOf = [] (Lane ln)
     {
         std::vector<float> d ((size_t) ln.cap);
-        float h = held;
         for (int b = 0; b < ln.cap; ++b)
         {
             const float v = ln.density (b);
-            if (std::isfinite (v)) h = v;
-            d[(size_t) b] = h;
+            d[(size_t) b] = std::isfinite (v) ? v : 0.5f;
         }
         ln.density = [d] (int b) { return d[(size_t) b]; };
         ln.probeAt.clear();
@@ -43998,7 +44020,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
             row += t;
         }
         const bool storedNaN = sameBits (atB, dflt) && sameBits (atA, dflt)
-                            && std::abs (twB - held) <= 1.0e-6f && std::abs (twA - held) <= 1.0e-6f;
+                            && std::abs (twB - defaultDensity) <= 1.0e-6f && std::abs (twA - defaultDensity) <= 1.0e-6f;
         std::printf ("  %-58s: raw Density / slot before the leave, in the visit, after the return; at the prepare:%s | "
                      "applied, before the host's write: B at the return %.4f, A after the verdict %.4f (the default %.4f); "
                      "the twin's %.4f / %.4f | Level Match off, the NaN lane's output against its twin's bit-identical: %s\n",
@@ -44017,9 +44039,9 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
                "premise (A): the host's NaN is the raw Density on B before the leave, on A in the visit, on B after the "
                "return and at the prepare; the switches happened (B, A, B); BOTH slots store the NaN -- applying either "
                "(B at the return, A after the verdict) writes the parameter's default, a restore's repair of a stored "
-               "Density that is not a number, where the twin's slots bring back their 0.3; and with Level Match off the "
+               "Density that is not a number, where the finite twin's slots bring back their 0.5; and with Level Match off the "
                "NaN lane's output is bit-identical to its twin's through the same switches and prepareToPlay -- the "
-               "Velvet plays the held 0.3, the sound is unchanged");
+               "Velvet plays the default 0.5 in both lanes");
         check (v.keep && vt.keep && d < 0,
                "(A) THE DEVIN CASE: identical Velvet slots holding the same NaN Density keep B's matched level through the "
                "A/B return and a same-rate prepareToPlay -- KEPT, published and output bit-identical to the finite twin");
@@ -44133,7 +44155,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
                      ln.probes.size() > 1 ? (unsigned) ln.probes[1].raw : 0u, word (v), diffText (d).c_str());
         check (carried && v.keep && d < 0,
                "(D) a NaN of another payload or sign replaces the lane's NaN in the raw Density at the return (premise) "
-               "and is the same held density: KEPT, bit-identical to the finite twin");
+               "and renders the same default density: KEPT, bit-identical to the finite twin");
     }
 
     // =====================================================================================================
@@ -44154,9 +44176,9 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         std::printf ("  %-58s: prepareToPlay %+.4f -> %+.4f (%s) | the twin %s | bit-identical to it: %s\n",
                      "(E) control: 0.7 for 0.5 s of the visit, then NaN", (double) v.before, (double) v.after, word (v),
                      word (vt), diffText (d).c_str());
-        check (v.flush && vt.flush && d < 0,
-               "(E) control: once the host moved the Velvet to 0.7, B's NaN Density plays 0.7 and B's record (played at "
-               "0.3) no longer describes it -- FLUSHED, as the twin is: the rule reads the density played, not the NaN");
+        check (v.keep && vt.keep && d < 0,
+               "(E) control: once the host moved the Velvet to 0.7, B's NaN Density returns to its default and B's record (played at "
+               "0.5) describes it -- KEPT, as the finite-default twin is");
     }();
 
     // =====================================================================================================
@@ -44185,7 +44207,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
                ">= 0.5 dB from the record, KEPT -- bit-identical to the finite twin");
     }();
     // =====================================================================================================
-    //  (G) THE RULE IS THE VELVET DENSITY'S ALONE: a NaN Multiband Split 1 still reads as a change
+    //  (G) THE SAME DECLARED-DEFAULT RULE ALSO COVERS CROSSOVERS (ADR-0067)
     // =====================================================================================================
     [&] {
         Lane ln;
@@ -44205,20 +44227,20 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         int silentAfter = 0;
         for (int b = L; b < ln.cap; ++b) silentAfter += silentBlock (b) ? 1 : 0;
         const bool primedNaN = ln.prepRaw.size() == 1 && std::isnan (fromBits (ln.prepRaw.front()));
-        const bool premise = primedNaN && ! silentBlock (L - 1) && silentAfter == ln.cap - L;
+        const bool premise = primedNaN && ! silentBlock (L - 1) && silentAfter == 0;
         std::printf ("  %-58s: primed with %08x | the block before audible: %s, silent after: %d of %d | prepareToPlay "
                      "%+.4f -> %+.4f (%s)\n", "(G) control: a host NaN into Multiband Split 1 (2 bands)",
                      ln.prepRaw.empty() ? 0u : (unsigned) ln.prepRaw.front(), silentBlock (L - 1) ? "no" : "yes",
                      silentAfter, ln.cap - L, (double) v.before, (double) v.after, word (v));
         check (premise,
                "premise (G): a host NaN reaches Multiband Split 1's raw value and is held live (the block before the "
-               "prepareToPlay is audible), but a prepare does not hold it -- the output is silent after (worklog §B3)");
-        check (v.flush,
-               "(G) control: the rule is the Velvet Density's alone -- a NaN in another input reads as a change, and a "
-               "NaN crossover held live is not held through a prepare: the same-rate prepareToPlay FLUSHES");
+               "prepareToPlay is audible), and the processor substitutes its default through prepare -- the output stays audible (ADR-0067)");
+        check (v.keep,
+               "(G) control: the same declared-default rule covers crossover parameters; a "
+               "NaN crossover at its already-rendered default is unchanged through prepare: Level Match KEEPS");
 
         // The sibling: a finite Split 1 move at block 5 (180 -> 190 Hz), reported there as (G)'s NaN is. The same
-        // prepareToPlay KEEPS: a block-5 report on this programme is confirmed by 3.5 s, so (G)'s flush is the prime's
+        // prepareToPlay KEEPS: a block-5 report on this programme is confirmed by 3.5 s.
         Lane fin;
         fin.hostId  = ln.hostId;
         fin.extra   = ln.extra;
@@ -44230,8 +44252,7 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
         std::printf ("  %-58s: prepareToPlay %+.4f -> %+.4f (%s)\n", "(G) sibling: Split 1 180 -> 190 Hz at block 5",
                      (double) vf.before, (double) vf.after, word (vf));
         check (vf.keep,
-               "(G) sibling: a finite Split 1 move at block 5 is confirmed by 3.5 s -- the same prepareToPlay KEEPS, so "
-               "(G)'s FLUSH is its prime reading the NaN, not a report still unconfirmed");
+               "(G) sibling: a finite Split 1 move at block 5 is confirmed by 3.5 s -- the same prepareToPlay KEEPS");
     }();
 
     // =====================================================================================================
@@ -44259,13 +44280,13 @@ static void testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure()
                          "the same visit, no write", (double) rec, (double) bot, (double) v.before, (double) v.after,
                          word (v), word (vt), diffText (d).c_str());
             if (write)
-                check (sameBits (bot, rec) && v.flush && vt.flush && d < 0,
+                check (sameBits (bot, rec) && v.keep && vt.keep && d < 0,
                        "(H) a Density the host writes while A plays Haas reaches the Velvet's target though its glide does "
-                       "not run: B's NaN comes back playing 0.7, not the 0.3 of its record -- restored bit for bit at the "
-                       "quiet bottom, NOT current: FLUSHED, as the twin is");
+                       "not run: B's NaN comes back playing its default 0.5, as its record did -- restored bit for bit at the "
+                       "quiet bottom: KEPT, as the finite-default twin is");
             else
                 check (sameBits (bot, rec) && v.keep && d < 0,
-                       "(H) control: the same visit to Haas without the write leaves B's NaN playing the 0.3 of its record "
+                       "(H) control: the same visit to Haas without the write leaves B's NaN playing the default 0.5 of its record "
                        "-- restored bit for bit, measured: KEPT, bit-identical to the finite twin");
         }
     }();
@@ -45881,6 +45902,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 
 
 #include "state_hardening_tests.h"
+#include "p1_resolution_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45939,6 +45961,18 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--nonfinite-audio-probe") == 0)
     {
         probeNonFiniteParameterAudio();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--nonfinite-boundary-probe") == 0)
+    {
+        testFiniteParameterBoundaryAndRestoreWindow();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::strcmp (argv[1], "--restore-commit-probe") == 0)
+    {
+        testRestoreCommitBeforeLatencyCallbacks();
         std::printf ("%d checks, %d failure(s)\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -46135,7 +46169,7 @@ int main (int argc, char* argv[])
     testLevelMatchEngageLandsOnThePublishedTrajectoryThroughTheProcessor();
     testAnAbGainRestoredAtAnUpgradedBottomSurvivesAReprepareInTheFadeIn();
     testAnAbSlotCarriesItsPostChangeEvidence();
-    testANaNVelvetDensityFromTheHostIsNoChangeToTheMeasure();
+    testANaNVelvetDensityRendersTheProcessorDefault();
     testAForcedBottomInsideTheSlotWritesAdoptsTheCompleteDestination();
     testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates();
     testEveryBulkSwapRequestIsCompletedOnItsRefusalAndExceptionPaths();
@@ -46169,6 +46203,9 @@ int main (int argc, char* argv[])
     testANaNSessionSavePreservesTheExistingEncoding();
     testAReleaseCannotClearABandMoveDuringItsStartup();
     testTheCurrentHostStateAcceptanceAtBothParserSurfaces();
+    probeNonFiniteParameterAudio();
+    testFiniteParameterBoundaryAndRestoreWindow();
+    testRestoreCommitBeforeLatencyCallbacks();
     testHostAdvancedModeWritesWithTheRealEditor();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);

@@ -18,9 +18,9 @@ only — it configures and builds entirely from the command line on a headless L
 contains 11 verified assets from annotated tag `0.10.0` at `cd70a0b` (CI build 1940).
 The owner approved Level-5 listening and all required manual validations on 2026-10-29.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) records the original gates,
-asset verification and draft recovery. The requested P1 replacement is awaiting human
-Architecture Review of Proposed ADR-0067/0068; production fixes and replacement execution
-remain pending. Priorities and evidence stay in that internal record. The earlier [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md)
+asset verification and draft recovery. The owner approved ADR-0067/0068 on 2026-10-30. The P1 processor/restore fixes are implemented
+in PR #187; fresh mandatory validation and targeted human checks of the changed behavior remain
+required before replacing the original draft and tag. Priorities and evidence stay in that internal record. The earlier [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md)
 retains its original development version in its filename.
 - **Version 0.10.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:

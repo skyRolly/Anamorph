@@ -13,7 +13,17 @@ parameter. Changing this surface breaks sessions, automation, and presets in the
 Enforced by convention + the version field: all parameters use `ParameterID { id, kVersion }`
 with `kVersion = 1`. The string `id` (not the display name) is the persistent key.
 
-Evidence [Verified]: src/PluginParameters.cpp:95 (`kVersion = 1`); src/PluginParameters.h:15-89.
+Evidence [Verified]: src/PluginParameters.cpp:104 (`kVersion = 1`); src/PluginParameters.h:15-89.
+
+## Non-finite processor values (0.10.0 / Accepted ADR-0067)
+
+Every cached atomic is checked before snapshot integer/enum/Boolean conversion. A non-finite
+raw number uses that parameter's immutable declared default; a finite number is unchanged.
+This adds no parameter store, mutable last-value cache or altered registry entry. Existing
+setters/parsers still decide readback: infinities already mapped to finite endpoints stay
+there. Non-finite text formatting uses existing default/endpoint labels before conversion.
+Output Gain may target 0 dB and Density 0.5; those audible consequences were explicitly
+approved. State tests 146/147 pin audio, raw readback and fresh/reset/re-prepare behavior.
 
 ## APVTS parameters (host-visible)
 
@@ -65,7 +75,7 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `bypass` | Bypass | B | false | — | yes (host bypass) | yes | yes ◊ |
 | `advancedMode` | Advanced Mode | B | false | — | yes | **no** ◊◊ | yes |
 
-36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:135-284 (`createAnamorphLayout`).
+36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:144-298 (`createAnamorphLayout`).
 
 Footnotes:
 - **‡** `mbBands`/`mbSolo` are now **fully automatable and visible** in the host's automation list
@@ -91,7 +101,7 @@ Footnotes:
   src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:85-88.
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
-  src/PluginParameters.cpp:135-136.
+  src/PluginParameters.cpp:144-145.
 - **§** Display names changed in 0.9.9 with the **IDs unchanged**: the fourth `algorithm` choice
   reads `Dimensional`, and `dimMode` is shown as `Dimensional Style`. Choice order, ranges,
   defaults and every stored value are unchanged, so sessions, presets, A/B slots and automation
@@ -100,16 +110,16 @@ Footnotes:
   choice's pre-0.9.9 label no longer resolves: it takes the fallback any unknown text takes, the
   first choice (Haas). Nothing Anamorph persists stores parameter text, so sessions, presets, A/B
   slots and automation are unaffected. **Owner decision, 2026-09-28: not fixed** — no alias for the
-  former label is added. Evidence [Verified]: src/PluginParameters.cpp:35 (`getValueForText`);
-  src/PluginParameters.cpp:211-212;
-  src/PluginParameters.cpp:224-225; `tests/fixtures/parameter_registry.snapshot` (the rename
+  former label is added. Evidence [Verified]: src/PluginParameters.cpp:44 (`getValueForText`);
+  src/PluginParameters.cpp:225-226;
+  src/PluginParameters.cpp:238-239; `tests/fixtures/parameter_registry.snapshot` (the rename
   re-froze these two strings only); CHANGELOG.md [0.9.9].
 - **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
   `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:72): when Advanced
   Mode is off, `toEngine` skips the multiband section, so the engine sees the neutral POD default
   and the multiband stage is inactive in Simple mode. The two differing defaults are intentional
   and serve different roles — host-facing default vs. Simple-mode neutral state.
-  Evidence [Verified]: src/PluginParameters.cpp:147,263-294; src/dsp/EngineParameters.h:72.
+  Evidence [Verified]: src/PluginParameters.cpp:243,383-433; src/dsp/EngineParameters.h:72.
 
 ## Host-hidden parameters (InternalState — NOT APVTS)
 
@@ -148,7 +158,7 @@ Evidence [Verified]: src/InternalState.h:34-160.
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
 (the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
-src/InternalState.h:255-309; src/PluginProcessor.cpp:2921-2924.
+src/InternalState.h:255-309; src/PluginProcessor.cpp:2947-2950.
 
 ## Introduced / Deprecated columns
 

@@ -4,10 +4,12 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-**Current sync: 0.10.0 draft release, 2026-10-30.** KI-029 remains open for audible/ingress
-semantics; its independent serialization sub-defect is repaired (State test 142, INC-014).
-The owner has approved required listening and manual validations. Existing issue dispositions
-are preserved; draft gates and next-round priorities are in `worklogs/RELEASE_READINESS_0.10.0.md`.
+**Current sync: 0.10.0 P1 candidate, 2026-10-30.** KI-029 is fixed in PR #187 under
+Accepted ADR-0067 and moved to INC-019 in `POSTMORTEMS.md`; original failure measurements
+are retained there. State tests 146/147 guard the production finite-default boundary and
+restore window; numeric-NaN writer coverage remains State 142/INC-014. The original
+candidate's manual approval is historical. Fresh mandatory CI and targeted human checks
+of the changed P1 behavior remain required in `worklogs/RELEASE_READINESS_0.10.0.md`.
 The following dated sync records the earlier issue inventory.
 
 Version-synced to **0.9.9** (PR #156, 2026-09-27). **0.9.9 added four issues**, all found in that PR's
@@ -161,7 +163,6 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-028 | ~~A value-box drag whose mouse RELEASE is never delivered leaves the host change gesture OPEN~~ | — | **RESOLVED 2026-09-01 (round 4).** Linux/Windows were fixed in round 3 by the `anamorph::gui::DragGestureOwner` sweep; the macOS residual was never the sweep but its TRIGGER, which asked JUCE for the button state and got a cached copy (KI-013). `anamorph::gui::anyPhysicalMouseButtonDown()` now calls `+[NSEvent pressedMouseButtons]` on macOS and forwards to JUCE elsewhere. State tests 21 and 23; the macOS-discriminating assertion is `#if JUCE_MAC` and is verified by the macOS CI job, which runs this suite |
 | KI-027 | ~~Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched — a condition ADR-0034 has since made unreachable) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`)~~ | — | **RESOLVED 2026-09-01 (round 4, decision D-1 — APPROVED by the maintainer and implemented).** The chain was confirmed as filed (ER-RT-01, two independent verifications) and the fix is the one the gate was asked to approve: `requestLatencyUpdate()` keeps delivery synchronous on the message thread and, from any other thread, does one atomic store that a **processor-owned** 20 Hz timer serves on the message thread — no editor polling, no `AsyncUpdater`. Round 11 closed a double-clear window in that path (ER-STATE-14) and round 12 added a deterministic barrier test for requests landing mid-delivery. State tests 22 and 27; `docs/architecture/LATENCY_MODEL.md`. Round 15 routed `prepareToPlay` through the same request (ER-STATE-19; State test 30). This row had gone stale — it still read "fix gated … awaiting maintainer sign-off" for three rounds after the approval landed; corrected in round 12 |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
-| KI-029 | A **non-finite parameter value** — the text "nan" typed into a knob's value box, or a NaN from a host — mutes or changes several controls **while it is present** (Width, Haas Delay, Chorus Rate / Depth, Output Gain and the multiband widths / crossovers mute; Mix plays fully wet; the Level-Match gain is discarded; the serialization sub-defect is repaired in 0.9.10 development) | Low | Confirmed; recovers as soon as a valid value arrives. What a NaN value should mean is an **owner decision** (ADR-0009 note 2026-09-24) |
 | KI-030 | ~~After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back~~ | — | **RESOLVED 2026-09-24** (ADR-0007, Amendment of 2026-09-24, F13(2)). An A/B switch whose slots differ in anything the Level-Match measurement reads now re-arms the analysis where the slot's gain is restored, and a re-prepare at an unchanged sample rate keeps the match instead of rebuilding it, once Level Match has caught up with the latest change to the sound (Test 67, State test 131; Test 69, State test 133). An A/B slot's remembered gain counts as caught up only if it was a confirmed measurement when the slot was left (ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134), and it stays caught up through the fade-in of a switch made during another switch's fade-out (ADR-0007, Note of 2026-09-26; Test 72, State test 136), and when Velvet Density holds a NaN the Velvet ignores (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). The engage cases recorded with it are decided behaviour, not defects: see the entry |
 | KI-031 | ~~**Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after (+2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10)~~ | — | **RESOLVED 2026-09-24** (owner ruling O4g; ADR-0007, Amendment 2026-09-24). A switch that turns Level Match on and changes nothing its measurement reads now starts at the matched level (Test 66, State test 130). Outside an A/B switch, an engage that also changes the sound still glides from unity: a measurement-staleness case, kept by the F13(2) decision (KI-030) |
 | KI-032 | ~~An **A/B switch, undo, redo or preset load made while the host processes much faster than real time** — an offline render, a host that renders ahead, one that splits its callback into small blocks — or while the message thread stalls for ~10 ms or more (at 256-sample buffers), can adopt a **partly written sound**: some of the destination's settings with the rest of the previous sound's, or the previous sound whole. It plays that into the switch's fade-in, then glides (or ducks a second time) to the destination, and a same-rate re-prepare before the destination's level is re-measured throws its matched level away~~ | — | **RESOLVED 2026-09-27** (ADR-0057, **Accepted** on the repository owner's approval and implemented; 0.9.9). A bulk swap's completion is now published after its last parameter store and acquired by the audio thread, which keeps the previous sound playing until then and lands the swap whole (Test 75, State tests 139 and 140; worklog §V) |
@@ -1037,39 +1038,6 @@ it, and the notification is an RAII member.
   (`parameterGestureChanged` counting `openGestures`, `pollUndoCoalesce`'s mid-gesture guard);
   pinned JUCE `juce_Slider.cpp` (`ScopedDragNotification` sends drag start/end from its
   constructor/destructor).
-
-## KI-029 — a non-finite parameter value mutes or changes several controls while it is present
-
-**0.10.0 replacement proposal (2026-10-30):** [ADR-0067](architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md)
-is Proposed, not implemented or approved. The new opt-in real-processor audio diagnostic
-reproduces 24 sustained-mute failures in 288 checks. The formatter repair below remains intact;
-this issue stays open until approved semantics and full regression evidence establish closure.
-
-A parameter can hold a value that is not a number: JUCE's value-box and host text parsers accept the
-text "nan", and a host (or a damaged automation lane) can send one. The value reaches the audio engine
-unchanged. While it is present, measured through the processor: **Width, Haas Delay, Chorus Rate /
-Depth, Output Gain and the multiband widths and crossovers mute** (the engine's self-heal zeroes the
-non-finite output), **Mix plays fully wet**, and the self-heal's reset **discards the Level-Match
-gain**. Mono Maker Freq is the exception: its range turns NaN into 500 Hz. Nothing latches — each
-recovers within one block (or one smoother ramp) of a valid value — and no non-finite sample ever
-reaches the host. The two glides that did latch (Velvet density, and the Mono Maker cutoff through the
-engine API) are fixed.
-
-- **Why it is not fixed here:** the stateless fix (a non-finite value treated as the parameter's
-  default where parameters enter the engine) was measured and removes every mute, but it decides what
-  a NaN value *means* — an Output Gain NaN would play at 0 dB — which ADR_POLICY makes an owner
-  decision. The text parsers accepting "nan" belong to the same decision.
-- **Serialization sub-defect repaired in 0.9.10 development:** pinned JUCE 9.0.4 still converts
-  numeric NaN to an integer in `serialiseDouble`. The real session-save reproducer aborts under
-  UBSan on that conversion. `SerializedXml.h` now spells numeric NaN on a private writer copy,
-  preserving the existing XML text and restore rules without editing the live APVTS or cached slots.
-  State test 142 covers session and preset writers. This does not resolve the audible issue above.
-- **Restore limitation:** a malformed `value="nan"` with usable `raw="0.71"` still notifies NaN
-  during `replaceState` before finishing at the finite raw value. Choosing a new ingress policy is
-  still an owner decision; the formatter repair does not conceal that window.
-- **Evidence [Verified]:** `worklogs/NONFINITE_PARAMETERS_AND_F13.md` §B–§C and §S10 (historical);
-  `worklogs/STATE_HOST_HARDENING_0.9.10.md` (current trace, sanitizer reproduction, owner alternatives);
-  State tests 123, 128 and 142; ADR-0009, Implementation note 2026-09-24.
 
 ## KI-030 — Level Match drifts after an A/B switch between slots that differ only in continuous controls
 

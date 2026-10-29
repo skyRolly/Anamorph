@@ -623,11 +623,11 @@ preset completion point; the A/B completion point after the Bypass / view write-
 
 ## Related code
 
-- `src/PluginProcessor.cpp:2210-2229` (`abSwitchToAdopted`: the guard, the request, the capture, the apply, the
-  completion); `src/PluginProcessor.cpp:2085-2126`, `src/PluginProcessor.cpp:2128-2153` (undo, redo);
-  `src/PluginProcessor.cpp:2071-2083` (`beginBulkApply`, `endBulkApply`); `src/PluginProcessor.cpp:86-87` (the
-  preset hooks); `src/PluginProcessor.cpp:240` (`prepareFrom`); `src/PluginProcessor.cpp:455-461` (`setParametersFrom`).
-- `src/PluginProcessor.h:185` (`readEngineSnapshot`); `src/PluginProcessor.h:970-1001` (the handshake block and
+- `src/PluginProcessor.cpp:2235-2254` (`abSwitchToAdopted`: the guard, the request, the capture, the apply, the
+  completion); `src/PluginProcessor.cpp:2110-2151`, `src/PluginProcessor.cpp:2153-2178` (undo, redo);
+  `src/PluginProcessor.cpp:2096-2108` (`beginBulkApply`, `endBulkApply`); `src/PluginProcessor.cpp:86-87` (the
+  preset hooks); `src/PluginProcessor.cpp:240` (`prepareFrom`); `src/PluginProcessor.cpp:475-481` (`setParametersFrom`).
+- `src/PluginProcessor.h:185` (`readEngineSnapshot`); `src/PluginProcessor.h:972-1003` (the handshake block and
   `BulkApply`).
 - `src/PresetManager.cpp:64-84` (`SoundAppliedGuard`); `src/PresetManager.cpp:867`, `src/PresetManager.cpp:895`,
   `src/PresetManager.cpp:867`, `src/PresetManager.cpp:895`, `src/PresetManager.cpp:912`, `src/PresetManager.cpp:1035-1037` (each loader's guard and its explicit completion points: `loadAdopted`'s factory and user-file branches, `applyParsedFile`'s one);
@@ -639,7 +639,7 @@ preset completion point; the A/B completion point after the Bypass / view write-
   `completeBulkApply`), `src/dsp/AnamorphEngine.cpp:672-727` (`takeRequestWord`), `src/dsp/AnamorphEngine.cpp:729-790`
   (`startTakenRequests`, `takeRequests`, `switchAbSlots`), `src/dsp/AnamorphEngine.cpp:854-878` (`setParameters`,
   `primeSnapshot`, `adoptSnapshot`).
-- `src/PluginParameters.cpp:330` (`toEngine`, precondition 2); `scripts/check-realtime.py` (the seeds, `WEAK_ORDER`).
+- `src/PluginParameters.cpp:350` (`toEngine`, precondition 2); `scripts/check-realtime.py` (the seeds, `WEAK_ORDER`).
 
 ## Evidence + confidence
 

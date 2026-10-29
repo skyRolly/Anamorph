@@ -576,13 +576,11 @@ static int runNonFiniteIngressProbe()
     return 0;
 }
 
-// Deliberately opt-in until the KI-029 contract is approved. This asserts the
-// observable failure (a sustained mute), without selecting defaults or a held
-// target as the new parameter meaning. Both finite alternatives are rendered
-// through the same production processor for the Architecture Review evidence.
+// State 146. Keep the original sustained-mute negative control and additionally
+// require the approved finite-default twin, including audible non-muting paths.
 static void probeNonFiniteParameterAudio()
 {
-    std::printf ("KI-029 diagnostic (opt-in, unresolved): real host/text writes and audio\n");
+    std::printf ("State test 146: finite-default audio through host/text writes (ADR-0067)\n");
     constexpr int block = 256;
     constexpr double sr = 48000.0;
     constexpr float nan = std::numeric_limits<float>::quiet_NaN();
@@ -670,12 +668,15 @@ static void probeNonFiniteParameterAudio()
                            "both finite control processors produce audible output on the same input");
                     check (energy[0] > 1.0e-4,
                            "a non-finite parameter must not sustain a mute through the real processor");
+                    if (! std::isfinite (plainOf (*p, row.id)))
+                        check (juce::exactlyEqual (defaultDifference, 0.0),
+                               "non-finite DSP input is bit-identical to its finite-default audio twin");
                 }
 }
 
 static void probeRestoreTailReentry()
 {
-    std::printf ("F9 diagnostic (opt-in, unresolved): nested restore adoption and callback-save coherence\n");
+    std::printf ("F9 regression: nested restore adoption and callback-save coherence\n");
     for (bool nested : { false, true, false, true })
     {
         auto p = std::make_unique<AnamorphAudioProcessor>();

@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -81,6 +82,35 @@ class IconPreflightTests(unittest.TestCase):
         path = self.root / "resources/icons/linux/hicolor/32x32/apps/tech.rolly.anamorph.png"
         path.write_bytes(path.read_bytes() + b"corrupt")
         self.assert_rejected("altered approved Linux resource")
+
+    def release_notes_fixture(self, prose):
+        for name in ("scripts/check-release-notes.py", "scripts/changelog-section.awk"):
+            shutil.copyfile(ROOT / name, self.root / name)
+        # Keep the real shell aggregate and notes checker. Unrelated structure/source
+        # checkers are sentinels so this test needs no git history, build or compiler.
+        (self.root / "scripts/check-docs.py").write_text("print('STRUCTURE_GATE_PASSED')\n")
+        (self.root / "scripts/check-portability.py").write_text("print('NEXT_SOURCE_GATE')\nraise SystemExit(73)\n")
+        version = re.search(r'project\(Anamorph VERSION (\S+)',
+                            (self.root / 'CMakeLists.txt').read_text())[1]
+        (self.root / 'CHANGELOG.md').write_text(
+            f'## [{version}] — 2026-10-30\n\n{prose}\n\n### Fixed\n- Session recall. Evidence: PR #168. [Verified]\n')
+
+    def test_current_release_notes_fail_before_the_next_source_gate(self):
+        self.release_notes_fixture('KI-029 remains open')
+        result = self.run_preflight()
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('STRUCTURE_GATE_PASSED', result.stdout)
+        self.assertIn('Release-note content self-test:', result.stdout)
+        self.assertIn('internal readiness prose in customer release notes', result.stdout)
+        self.assertNotIn('NEXT_SOURCE_GATE', result.stdout)
+
+    def test_customer_notes_pass_after_same_run_liveness(self):
+        self.release_notes_fixture('Windows installers are unsigned.')
+        result = self.run_preflight()
+        self.assertEqual(result.returncode, 73, result.stdout)
+        self.assertIn('Release-note content self-test:', result.stdout)
+        self.assertIn('NEXT_SOURCE_GATE', result.stdout)
+        self.assertLess(result.stdout.index('Release-note content self-test:'), result.stdout.index('NEXT_SOURCE_GATE'))
 
 
 if __name__ == "__main__":

@@ -275,6 +275,13 @@ void AnamorphAudioProcessor::deliverLatency()
 
 void AnamorphAudioProcessor::updateLatency()
 {
+    // ADR-0068: no host callout from an unfinished restore or under an enclosing
+    // state command's replacement lock. Preserve the request for the safe door.
+    if (! latencyDeliveryIsSafe())
+    {
+        latencyUpdateRequest.store (1, std::memory_order_release);
+        return;
+    }
     // Clear FIRST, then deliver: this ordering is what makes a concurrent request
     // survive rather than be lost. A message-thread prepareToPlay reaches here
     // through requestLatencyUpdate(), and the clear is right for it too -- a full
@@ -283,6 +290,20 @@ void AnamorphAudioProcessor::updateLatency()
     // also make the parameter write that raised it visible.
     latencyUpdateRequest.exchange (0, std::memory_order_acquire);
     deliverLatency();
+}
+
+bool AnamorphAudioProcessor::latencyDeliveryIsSafe() const noexcept
+{
+    // Message thread only. requestLatencyUpdate tests thread identity BEFORE
+    // reaching this predicate; host/audio threads still touch only the D-1 flag.
+    return restoreApplicationDepth == 0 && stateCommandDepth == 0 && pendingRestore.empty();
+}
+
+void AnamorphAudioProcessor::flushPendingLatency()
+{
+    if (latencyDeliveryIsSafe()
+        && latencyUpdateRequest.exchange (0, std::memory_order_acquire) != 0)
+        deliverLatency(); // the exchange is the only clear; callbacks may raise another request
 }
 
 // D-1 (KI-027) -- approved 2026-09-01, implemented here.
@@ -372,8 +393,7 @@ void AnamorphAudioProcessor::timerCallback()
     // latency: nothing re-raises it until the next unrelated parameter move or a
     // re-prepare. Requests landing during deliverLatency() below are served by the
     // next tick, which is the whole point of clearing before reading.
-    if (latencyUpdateRequest.exchange (0, std::memory_order_acquire) != 0)
-        deliverLatency();
+    flushPendingLatency();
 }
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
@@ -1219,7 +1239,12 @@ void AnamorphAudioProcessor::repairSerializedValues (juce::ValueTree& tree) cons
                 // resolver (ADR-0037, PluginParameters.h) that reassertParameters asserts from
                 // and the restore's baseline predictor models, so the three cannot disagree.
                 const auto resolved = anamorph::sessionNormalisedValue (*rp, node);
-                if (resolved.repaired)
+                // ADR-0067: a valid raw value can mask an unusable value from
+                // the resolver's repair flag. JUCE reads value FIRST, before our
+                // exact-raw reassertion, so resolve that private-copy window too.
+                float serializedValue = 0.0f;
+                if (resolved.repaired
+                    || ! anamorph::usableSerializedNumber (node.getProperty ("value"), serializedValue))
                 {
                     node.setProperty ("value", rp->convertFrom0to1 (resolved.normalised), nullptr);
                     if (node.hasProperty ("raw"))
@@ -2487,6 +2512,7 @@ void AnamorphAudioProcessor::adoptPendingHostState (bool mayBlock)
     if (! mayBlock && userTransactionDepth > 0)
         return;
 
+    const ScopedRestoreApplication application { *this };
     while (! pendingRestore.empty())
     {
         // THE TAKE AND THE SOUND RE-INSTALL ARE ONE STEP (round 22, ADR-0036 §27). Round 21 put
@@ -2502,11 +2528,10 @@ void AnamorphAudioProcessor::adoptPendingHostState (bool mayBlock)
         //
         // WHAT IS AND IS NOT INSIDE. Inside: the take, the generation, the re-install. OUTSIDE:
         // `seams.afterRestoreTake` (its harnesses perform whole-sound replacements of their own and
-        // would deadlock against a held lock) and the whole TAIL, which calls OUT to the host -- a
-        // restored Oversampling delivers the reported latency synchronously and `AudioProcessor-
-        // Listener`s run on this thread while it does. Holding a replacement lock across a host
-        // callback is the inversion pointing the other way, and State test 27 hangs on it (measured,
-        // round 21).
+        // would deadlock against a held lock) and the whole TAIL. ADR-0068 now defers latency
+        // notifications until the complete drain commits and no enclosing command owns this
+        // lock. Keeping the tail outside this acquisition also preserves State test 27's
+        // independent parameter-notification/host-lock regression (round 21).
         std::unique_ptr<const RestoreDecode> r;
         const auto takeAndReinstall = [this, &r]
         {
@@ -2626,7 +2651,8 @@ void AnamorphAudioProcessor::reinstallRestoredSound (const RestoreDecode& d)
 void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d, bool mayBlock)
 {
     // The host-hidden Settings. A changed Oversampling fires InternalState's callback
-    // -> requestLatencyUpdate(), synchronous on this thread; prepareToPlay re-asserts
+    // -> requestLatencyUpdate(), delivered after the restore scope commits (ADR-0068);
+    // prepareToPlay re-asserts
     // it anyway. (The engine-config word was already published on the restoring
     // thread when that was not this one; the tree write republishes it with this
     // restore's generation, which is idempotent -- or yields, if a newer restore has
@@ -3124,6 +3150,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     if (onMessageThreadOrNoMessageManager())
     {
+        // Includes the initial drain: its notification must not reenter before
+        // this newer inline restore has installed and committed its own program.
+        const ScopedRestoreApplication application { *this };
         // The owner's thread. The pending restore is adopted BEFORE this one is decoded
         // (D-2 round 4): the decode applies the new session's SOUND as it runs, and an
         // adoption that followed it would publish the older session's metadata while the

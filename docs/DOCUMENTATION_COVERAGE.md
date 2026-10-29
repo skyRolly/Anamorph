@@ -1,6 +1,25 @@
 # DOCUMENTATION_COVERAGE.md
 
-## 0.10.0 P1 decision gate and customer notes (2026-10-30)
+## 0.10.0 approved P1 implementation and PR #187 review (2026-10-30)
+
+ADR-0067/0068 are Accepted on explicit owner approval and implemented in the candidate.
+PARAMETER_REGISTRY, STATE_SERIALIZATION, SERIALIZATION_REGISTRY, THREAD_MODEL, LATENCY_MODEL
+and THREADING_POLICY describe immutable finite defaults, safe formatting, private-copy usable-raw
+repair and restore commit before latency delivery. ADR-0007/0009 retain historical measurements
+and direct-engine contracts with a narrow processor-boundary clarification. KI-029 moves to
+INC-019; F9 is INC-020, while RISK-009 keeps the distinct lock residual.
+
+TESTING/TESTING_POLICY/REPOSITORY_MAP cover State 146–148 (145 registered tests total), the
+approved State 43 report timing and only related State 128/138 premise changes. Preflight runs
+note self-test and ordinary content checking, with eight real-shell entry regressions. CI_CD
+and the checker inventory agree. HANDOVER explicitly limits prior completed Build/Test/Release
+table entries to the original candidate. README/SOURCE_OF_TRUTH and the worklog distinguish
+architecture approval, implemented code, fresh validation and targeted human approval.
+LEVEL5_AUDITION/RELEASE_COMPATIBILITY_CHECKLIST retain original approvals and specify only
+invalidated targeted checks; none is represented as performed. Original draft/tag and recovery
+evidence remain intact. The previous preparation section below is historical.
+
+## Historical 0.10.0 P1 proposal round and customer notes (2026-10-30)
 
 Proposed ADR-0067/0068 are registered and mapped; neither is Accepted or implemented.
 README/HANDOVER, KI-029/RISK-009 and source-of-truth navigation now distinguish the original
@@ -8453,7 +8472,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2211`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2236`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8486,7 +8505,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2857`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2883`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8576,7 +8595,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2672`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2698`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -10150,7 +10169,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1127`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1147`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10974,7 +10993,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1414-1590`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1439-1615`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -12497,7 +12516,7 @@ empty-directory mistake and MB1–MB6);
 
 **Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
 program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
-write-back, `src/PluginProcessor.cpp:1127` (line 960 in the pre-fix file, which is the line the
+write-back, `src/PluginProcessor.cpp:1147` (line 960 in the pre-fix file, which is the line the
 alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
 second is a false positive, and was removed rather than dismissed.
 
@@ -16312,7 +16331,7 @@ suppression. One new file (`ADR-0056`, **Proposed**), one new opt-in instrument
 (`--risk014-probe`), and four documents corrected to the measurements.
 
 **The two call graphs, from the API rather than the names.** `setStateInformation` →
-`decodeRestore` (`src/PluginProcessor.cpp:2869-2877`) → `AudioProcessor::getXmlFromBinary` →
+`decodeRestore` (`src/PluginProcessor.cpp:2895-2903`) → `AudioProcessor::getXmlFromBinary` →
 `juce::parseXML`; and, inside the same decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) →
 `juce::parseXML (slotPayload)` on a string attribute value of the already-parsed session document —
 a second, independently framed document. `getXmlFromBinary` validates exactly two things: chunk
@@ -16427,7 +16446,7 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22244`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
 1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and over its 20 largest
@@ -16907,7 +16926,7 @@ occurrence only where source and context prove it describes the CURRENT reposito
   `clang::nonblocking` / `clang::nonallocating` occurrences across `modules/`. ADR-0029's rule and the
   52-warning figure stand.
 
-**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1233` records a dated act of checking
+**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1258` records a dated act of checking
 ("CORRECTED 2026-08-31 … after checking the pinned JUCE 9.0.1"); `build.yml:1210` records the
 2026-08-18 leak retest on the configuration it names; `build.yml:2682` already says "the JUCE 9.0.1
 pin this repository carried until ADR-0054"; `README.md:28` describes the 0.9.4 release;
