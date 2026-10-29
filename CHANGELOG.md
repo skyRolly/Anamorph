@@ -23,14 +23,15 @@ including in entries written before 0.9.9 gave it that name.
 
 ## [Unreleased]
 
-Next development round: prioritized issues retained during the 0.10.0 draft preparation.
-These are follow-up decisions and limitations, not implemented changes. Evidence and reopen
-conditions: `worklogs/RELEASE_READINESS_0.10.0.md` and the linked KI/RISK/ADR records.
+Next development round: prioritized follow-ups retained after the 0.10.0 draft release.
+Remaining runtime decisions preserve current behavior; the automation repair is merged for
+future releases. Evidence and reopen conditions: `worklogs/RELEASE_READINESS_0.10.0.md` and the linked KI/RISK/ADR records.
 
-- **P1 — Release automation.** The original 0.10.0 tag workflow could not start because its
+- **P1 — Release automation (resolved in development).** The original 0.10.0 tag workflow could not start because its
   reusable caller omitted Actions read permission requested by optional macOS artifact consumers.
-  The caller contract and static permission regressions are repaired on this development head;
-  native rehearsal and draft recovery are recorded in `worklogs/RELEASE_READINESS_0.10.0.md`.
+  PR #185 repairs the caller contract and adds live permission regressions; its full native
+  rehearsal passes. The existing tag's draft was recovered from its exact validated CI payloads.
+  Evidence: `worklogs/RELEASE_READINESS_0.10.0.md` (INC-018).
 - **P1 — Non-finite parameter behavior (KI-029).** Define NaN/infinity semantics at host/text
   ingress and the DSP boundary, including reset lifetime and host readback, before an approved
   compatibility/architecture change. The NaN serialization repair is included in 0.10.0;

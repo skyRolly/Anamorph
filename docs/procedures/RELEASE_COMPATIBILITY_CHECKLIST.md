@@ -4,7 +4,7 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).
 
-## Current gate — 0.10.0 / JUCE 9.0.4 (2026-10-29)
+## Current gate — 0.10.0 / JUCE 9.0.4 (completed 2026-10-30)
 
 The owner states that Human Level-5 listening and all other required manual validations have
 already been completed and approved for this release. This is a new 0.10.0 attestation, not a
@@ -17,7 +17,7 @@ No redundant manual testing is requested. Automated gates must still pass on the
 | 1 | Parameter IDs unchanged | **PASS** — implementation/registry fixture unchanged from 0.9.9; fresh state suite 5942 checks, zero failures |
 | 2 | Serialization schema verified | **PASS** — no field/reader change; fresh schema, round-trip, legacy and NaN-save regressions pass |
 | 3 | Presets migrated | **PASS** — owner manual approval plus fresh factory/user, A/B and NaN-save state regressions |
-| 4 | Pluginval passed (both modes) | **PASS** — fresh Linux VST3, locked v1.0.4, strictness 10, deterministic ×3 and randomise ×3, every pass on its first attempt |
+| 4 | Pluginval passed (both modes) | **PASS** — fresh local Linux VST3, locked v1.0.4, strictness 10, deterministic ×3 and randomise ×3, every pass on its first attempt |
 | 5 | Host matrix verified | **PASS — owner attestation**, 2026-10-29; individual environments not supplied |
 | 6 | Latency reporting verified | **PASS** — DSP/parameter implementation unchanged from 0.9.9; fresh DSP 945 / 0 and state 5942 / 0, including latency regressions |
 | 7 | Automation playback verified | **PASS — owner attestation**, 2026-10-29; individual environments/lanes not supplied |
@@ -27,8 +27,11 @@ Source audit, architecture approvals, automated evidence and draft-only executio
 `worklogs/RELEASE_READINESS_0.10.0.md`. Existing Accepted ADR-0062 through ADR-0066 cover the native
 resource/package changes; the version-only CMake edit introduces no architecture decision.
 The local compatibility gate is **8/8 PASS**, combining measured headless results and the owner's
-manual approval. The independent CI platform, packaging and tag-release gates remain mandatory;
-a local pass does not claim those have run.
+manual approval. The independent platform and packaging gates also **PASS** on the exact tagged commit in
+[build 1940](https://github.com/skyRolly/Anamorph/actions/runs/40915335616). The original tag
+workflow failed before jobs on caller permissions; validated payloads were recovered into the
+draft, with metadata and all 11 uploaded assets independently verified. The corrected caller
+also passes its full native Release rehearsal. See the readiness worklog and INC-018.
 
 ## Historical completion record — 0.9.9 / JUCE 9.0.4 (2026-10-21)
 

@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.0 draft completion and INC-018 (2026-10-30)
+
+README, HANDOVER, compatibility/release records and the engineering banner now identify the
+completed private draft, unchanged annotated source, passed source/rehearsal gates and 11 verified
+assets. The readiness audit records exact source artifact digests, source build 1940, original
+startup/upload failures and the controlled upload-only recovery. POSTMORTEMS records INC-018;
+Unreleased preserves prioritized residuals and marks the merged future caller repair. Human
+approvals remain the existing 2026-10-29 attestation, with unsupplied details still unrecorded.
+
+
 ## Release startup permission repair (2026-10-30)
 
 Release's reusable Build caller now explicitly grants contents/actions read. CI_CD and TESTING

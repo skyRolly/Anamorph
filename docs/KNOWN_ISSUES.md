@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-**Current sync: 0.10.0 draft preparation, 2026-10-29.** KI-029 remains open for audible/ingress
+**Current sync: 0.10.0 draft release, 2026-10-30.** KI-029 remains open for audible/ingress
 semantics; its independent serialization sub-defect is repaired (State test 142, INC-014).
 The owner has approved required listening and manual validations. Existing issue dispositions
 are preserved; draft gates and next-round priorities are in `worklogs/RELEASE_READINESS_0.10.0.md`.

@@ -1,5 +1,9 @@
 # Release readiness — 0.10.0 (draft only)
 
+**Final status: DRAFT COMPLETE (2026-10-30, Asia/Shanghai).** Required validation and manual
+approvals are complete; all 11 uploaded assets were downloaded and verified. The original tag
+remains unchanged. Delivery recovery and the merged future workflow repair are recorded below.
+
 ## Scope and authority
 
 Recorded 2026-10-29, Asia/Shanghai. The owner requests promotion of Unreleased to v0.10.0,
@@ -107,9 +111,8 @@ approval and local measurements remain correctly recorded on 2026-10-29.
   exercised by the existing Windows CI job; no checker or compiler baseline is weakened.
 
 The compatibility checklist is **8/8 PASS** from fresh local measurements plus owner attestation.
-Remaining execution gates: preparation/merge CI, the unchanged full platform/packaging matrix,
-annotated tag on main, tag-triggered Release workflow and draft asset/hash/manifest verification.
-These are required before completion; no remote tag or draft is claimed before execution.
+At that point the remaining execution gates were preparation/merge CI, the full platform/packaging
+matrix, annotated tag and draft verification. Completed execution and recovery are recorded below.
 
 ### CodeQL audit — completed (2026-10-30, Asia/Shanghai)
 
@@ -139,7 +142,7 @@ the CodeQL workflow documents. No JUCE source, query scope, suppression or gate 
 The measured report comparison establishes no new candidate finding; it is not a claim that
 the framework has no defects or that all scanner findings have been fixed.
 
-### Automatic draft startup failure and recovery plan
+### Automatic draft startup failure and recovery record
 
 Preparation PR #184 merged as `cd70a0b8a20d04c246a826c7b1bf616de2721c65`, with a tree identical
 to the fully validated head `f7db27aeac847fb375f4c5093835047e0c25e765`. Preparation build
@@ -155,9 +158,62 @@ audit missed this contract. This development head adds the least required read g
 the reusable Build caller and adds live regression controls; runtime and tag source stay unchanged.
 
 The existing tag remains at its original commit. The normal main-push Build & Validate run
-[40915335616](https://github.com/skyRolly/Anamorph/actions/runs/40915335616) builds that **exact
-tagged commit** through the same complete matrix. After it passes, draft recovery will use those
-validated staging trees and untouched installers, the tagged release assembler and metadata
-checks, and a manifest with the real source build number/run. All asset checks and draft-only
-authorization still apply. No draft or recovery success is claimed at this point. The fixed
-caller also needs native rehearsal evidence.
+[40915335616](https://github.com/skyRolly/Anamorph/actions/runs/40915335616), build **1940**, passed
+all 13 running jobs on that exact tagged commit. Main CodeQL run 40915335668 and MSVC run
+40915335638 also passed. The original tagged metadata validator was executed against the real
+annotated ref and returned `version=0.10.0`, `is-release=true`; tag object and commit were
+checked independently. The original tagged asset assembler was extracted verbatim, rendering
+only the version expression and setting the real source build/run provenance.
+
+Local release creation made private draft **428196589**, but the local `uploads.github.com`
+request failed with HTTP 401 while ordinary API authentication worked. No login or credential
+replacement was attempted. A single-purpose repository-scoped CI uploader recovered the existing
+draft using the exact validated source artifacts, checking source run/head/build number, every
+required job, original annotated tag and pre-existing unpublished draft before uploading.
+It contains no release-creation or public-publishing operation. The operational workflow is retained
+on `recovery/0.10.0-draft-assets`, commit `8c3112580a282afd4e0ac00cd6733870700709f5`.
+
+[Recovery run 40926100598](https://github.com/skyRolly/Anamorph/actions/runs/40926100598) **PASS**.
+It ran the original tagged metadata validator and asset assembler, used source build 1940 in the
+manifest, uploaded all 11 assets with its repository-scoped token, and verified every server asset
+digest. Its provenance artifact retains source-run/jobs metadata, draft metadata, checksums and
+manifest. The unrelated default C++ matrix for this operational-only branch (40926100428) was
+cancelled as redundant: the uploader consumes the already fully validated tagged commit and
+builds no product code. The source validation run, fix validation and native rehearsal were retained.
+
+PR [#185](https://github.com/skyRolly/Anamorph/pull/185), commit `3176baf`, merged as
+`a5973c62d7249ce4296fe12f3f784886956c0b41`. Its full Build run 40917696003, PR merge-check
+40917861965 and CodeQL 40917861590 pass. The corrected caller's full native
+[Release rehearsal 40917857916](https://github.com/skyRolly/Anamorph/actions/runs/40917857916)
+**PASS** (validate plus all 13 running Build jobs); draft-release is intentionally skipped on dispatch.
+No runtime code, dependency pin, validation threshold or publication guard was changed.
+
+### Final draft and uploaded asset verification — PASS
+
+- Draft: [Anamorph 0.10.0](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e925c4f20dd9c3da3855),
+  ID **428196589**, `draft=true`, `published_at=null`. Notes match the original tagged changelog
+  section, headed `0.10.0 — 2026-10-30`; Unreleased is excluded.
+- **11 assets:** three platform ZIPs, Windows EXE installer, macOS PKG, user manual, NOTICE,
+  THIRD_PARTY_LICENSES, SUPPORT, SHA256SUMS and RELEASE_MANIFEST. Debug symbols remain CI artifacts.
+- All five downloaded source artifact ZIPs matched GitHub's recorded transport digests and came
+  from run 40915335616 / commit `cd70a0b`. Installers were moved unchanged; payloads were not rebuilt.
+- All final release assets were downloaded again. **Nine payload SHA-256 records pass**, every
+  asset also matches GitHub's server digest/size, and the manifest names the unchanged tag/commit,
+  real build **1940** and source validation run. Archive CRCs and flat layouts pass.
+- Linux executable/script/VST3 and macOS bundle executable modes pass. Windows PE and PKG headers
+  pass. All three macOS bundle identifiers are `tech.rolly.anamorph`, and short/build versions are
+  exactly **0.10.0**. Linux installer/helper bytes match the tag, including the trusted helper pins.
+- User manual, NOTICE, THIRD_PARTY_LICENSES and SUPPORT match their tagged source bytes exactly.
+  The owner manual approval remains the 2026-10-29 attestation; no human test is repeated or invented.
+- Prioritized residuals are recorded under CHANGELOG **Unreleased**. Runtime KI/RISK dispositions,
+  Accepted ADRs, signing/notarization and commercial/legal decisions retain their existing status.
+
+Source artifact provenance:
+
+| Artifact | ID | Transport ZIP SHA-256 |
+|---|---|---|
+| Anamorph-Windows | 12915958452 | `e90e5b16e0b7ec9f5e067f6e986ed93cd4af9757c2a5d1faafb657e48ccbac1d` |
+| Anamorph-Windows-installer | 12915819017 | `52182c32e8b1668a5d459704d6b06766c53b9eb0c8c324793168acfd37e99d93` |
+| Anamorph-macOS | 12917133302 | `b0595c9dfa9649862bd138ac5c79bb31c4b9f3ca7401705c76b3e99d763b4c1b` |
+| Anamorph-macOS-installer | 12916669168 | `870c2940d85347934953bbfd8624461582d069f757cf04977fcb67d8d96cb6b5` |
+| Anamorph-Linux | 12917872735 | `08ad6d766ab9f1c83a423b29621313f07aea4ceec81ae06d7c66ea8c6b810494` |

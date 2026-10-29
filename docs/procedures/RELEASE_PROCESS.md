@@ -333,3 +333,16 @@ step. This maintenance preserves existing translations and synchronizes changed
 wording. It does not alter a command, payload, identity, signing policy or
 installer behavior. Normal applicable native/archive gates remain required for
 each newly produced CI artifact; older artifacts retain their own source hashes.
+
+## Recorded 0.10.0 draft recovery (2026-10-30)
+
+The original tag run failed before jobs on nested Actions read permissions (INC-018). PR #185
+repairs the caller and passes a full native rehearsal. Tag `0.10.0` remains at `cd70a0b`; its exact
+main-push validation run 40915335616 passed all gates and produced source build 1940. Recovery
+used that run's validated staging trees/untouched installers and the original tagged metadata
+validator/asset assembler. A local upload-host authentication failure required the repository-scoped
+upload-only workflow on operational branch `recovery/0.10.0-draft-assets` (run 40926100598).
+It checks the existing unpublished draft, original annotated tag and successful source run;
+it has no release-creation/publication step. All 11 uploaded assets were independently downloaded
+and verified, and source build 1940 is retained in the manifest. Full provenance and limitations:
+`worklogs/RELEASE_READINESS_0.10.0.md`. Required human approval remains complete.

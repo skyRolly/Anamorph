@@ -299,6 +299,28 @@ Evidence [Verified]: `tests/state_tests.cpp` (`testPresetTransitionsUnderConcurr
 [run #1781](https://github.com/skyRolly/Anamorph/actions/runs/39860147164),
 [run #1782](https://github.com/skyRolly/Anamorph/actions/runs/39860152760).
 
+## INC-018 — Release startup omitted nested Actions read permission
+
+- **Observed / repaired:** 2026-10-30 (Asia/Shanghai), 0.10.0 draft preparation.
+- **Symptom:** the annotated tag's Release run failed at startup with zero jobs; GitHub rejected
+  optional macOS consumers requesting `actions: read` from a caller allowing `actions: none`.
+- **Cause:** native static validation checks every nested permission request before `if` selection.
+  Existing routing fixtures modeled job selection but did not enforce the caller permission ceiling.
+- **Repair:** PR #185 grants contents/actions read only to the reusable Build caller. The production
+  routing guard now rejects the original missing grant and a disabled child requesting write.
+  Full Build/merge/security checks and native Release rehearsal pass. No product code or gate changes.
+- **Delivery:** preserve the existing tag at `cd70a0b`; use its exact successful main-push CI run
+  40915335616 (build 1940) and the original tagged validator/assembler. Local draft creation worked,
+  but the upload host returned 401; scoped recovery run 40926100598 filled only the existing private
+  draft, after checking tag/source CI/draft state. All 11 assets were downloaded and verified.
+
+Evidence [Verified]: [startup failure](https://github.com/skyRolly/Anamorph/actions/runs/40915398330),
+[PR #185](https://github.com/skyRolly/Anamorph/pull/185),
+[native rehearsal](https://github.com/skyRolly/Anamorph/actions/runs/40917857916),
+[asset recovery](https://github.com/skyRolly/Anamorph/actions/runs/40926100598),
+`worklogs/RELEASE_READINESS_0.10.0.md`. The ADR-0059 annotated bare-tag convention and
+rehearsal/no-creation guard remain unchanged; the recovery uploader only fills an existing draft.
+
 ## Adding an incident
 
 Create the next `INC-NNN` only when backed by a commit/PR/test/README. Use the template above;
