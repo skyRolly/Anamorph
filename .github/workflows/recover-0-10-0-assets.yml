@@ -1,0 +1,166 @@
+name: Recover existing 0.10.0 draft assets
+
+on:
+  push:
+    branches: [recovery/0.10.0-draft-assets]
+    paths: [.github/workflows/recover-0-10-0-assets.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  upload-existing-draft:
+    if: github.repository == 'skyRolly/Anamorph' && github.ref == 'refs/heads/recovery/0.10.0-draft-assets'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: '0.10.0'
+          fetch-depth: 0
+
+      - name: Verify immutable source and completed validation run
+        run: |
+          set -euo pipefail
+          git fetch --force origin refs/tags/0.10.0:refs/tags/0.10.0
+          test "$(git rev-parse refs/tags/0.10.0)" = 769d52fb09116b787184d119ff1db6075187e36d
+          test "$(git rev-parse HEAD)" = cd70a0b8a20d04c246a826c7b1bf616de2721c65
+          gh api repos/skyRolly/Anamorph/actions/runs/40915335616 > source-run.json
+          gh api 'repos/skyRolly/Anamorph/actions/runs/40915335616/jobs?per_page=100' > source-jobs.json
+          gh api repos/skyRolly/Anamorph/releases/428196589 > draft-before.json
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          run = json.loads(Path('source-run.json').read_text())
+          assert (run['head_sha'], run['run_number'], run['status'], run['conclusion']) == (
+              'cd70a0b8a20d04c246a826c7b1bf616de2721c65', 1940, 'completed', 'success')
+          assert run['path'] == '.github/workflows/build.yml'
+          required = {'docs', 'source-lint', 'linux', 'windows', 'macos', 'macos-intel',
+                      'sanitizers', 'linux-lto-tests', 'windows-avx2-ab', 'realtime',
+                      'tsan', 'fuzz', 'macos-crossslice'}
+          jobs = json.loads(Path('source-jobs.json').read_text())
+          assert len(jobs['jobs']) == jobs['total_count']
+          states = {job['name']: job['conclusion'] for job in jobs['jobs']}
+          assert all(states.get(name) == 'success' for name in required), states
+          draft = json.loads(Path('draft-before.json').read_text())
+          assert draft['id'] == 428196589 and draft['tag_name'] == '0.10.0'
+          assert draft['draft'] is True and draft['published_at'] is None
+          assert not draft['assets'], 'unexpected pre-existing assets; review before overwriting'
+          source = Path('.github/workflows/release.yml').read_text()
+          jobs = {m[1]: m[2] for m in re.finditer(
+              r'^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)',
+              source.split('\njobs:\n', 1)[1], re.M | re.S)}
+          def bodies(text):
+              return ['\n'.join(line[10:] if line.startswith('          ') else line
+                                for line in match.splitlines()) + '\n'
+                      for match in re.findall(r'^        run: \|\n((?:          [^\n]*\n|\n)+)', text, re.M)]
+          meta = bodies(jobs['validate'])
+          stage = bodies(jobs['draft-release'])
+          assert len(meta) == 1 and len(stage) == 2
+          Path('original-validate.sh').write_text(meta[0])
+          rendered = stage[0].replace('$' + '{{ needs.validate.outputs.version }}', '0.10.0')
+          assert '$' + '{{' not in rendered
+          Path('original-stage.sh').write_text(rendered)
+          PY
+
+      - name: Validate the original annotated tag metadata
+        run: |
+          set -euo pipefail
+          GITHUB_EVENT_NAME=push GITHUB_REF=refs/tags/0.10.0 \
+            GITHUB_SHA=cd70a0b8a20d04c246a826c7b1bf616de2721c65 \
+            GITHUB_OUTPUT="$RUNNER_TEMP/original-tag-outputs" \
+            bash -e -o pipefail original-validate.sh
+          grep -Fx 'version=0.10.0' "$RUNNER_TEMP/original-tag-outputs"
+          grep -Fx 'is-release=true' "$RUNNER_TEMP/original-tag-outputs"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40915335616
+          name: Anamorph-Linux
+          path: stage/Anamorph-Linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40915335616
+          name: Anamorph-Windows
+          path: stage/Anamorph-Windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40915335616
+          name: Anamorph-macOS
+          path: stage/Anamorph-macOS
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40915335616
+          name: Anamorph-Windows-installer
+          path: stage/Anamorph-Windows-installer
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40915335616
+          name: Anamorph-macOS-installer
+          path: stage/Anamorph-macOS-installer
+
+      - name: Run the original asset assembler with actual source-build provenance
+        run: |
+          set -euo pipefail
+          GITHUB_SHA=cd70a0b8a20d04c246a826c7b1bf616de2721c65 \
+            GITHUB_RUN_ID=40915335616 GITHUB_RUN_NUMBER=1940 \
+            bash -e -o pipefail original-stage.sh
+          (cd dist && sha256sum --check SHA256SUMS.txt)
+          gh api repos/skyRolly/Anamorph/releases/428196589 > draft-current.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          draft = json.loads(Path('draft-current.json').read_text())
+          assert draft['draft'] is True and draft['published_at'] is None
+          assert draft['tag_name'] == '0.10.0' and not draft['assets']
+          assert draft['body'].replace('\r\n', '\n').rstrip() == Path('notes.md').read_text().rstrip()
+          assert len(list(Path('dist').iterdir())) == 11
+          PY
+
+      - name: Upload only to the existing private draft
+        run: |
+          set -euo pipefail
+          gh release upload 0.10.0 --repo skyRolly/Anamorph dist/*
+          gh api repos/skyRolly/Anamorph/releases/428196589 > draft-after.json
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          draft = json.loads(Path('draft-after.json').read_text())
+          assert draft['draft'] is True and draft['published_at'] is None
+          assert draft['tag_name'] == '0.10.0'
+          files = {p.name: p for p in Path('dist').iterdir()}
+          assert len(files) == 11 and {a['name'] for a in draft['assets']} == set(files)
+          for asset in draft['assets']:
+              data = files[asset['name']].read_bytes()
+              assert asset['size'] == len(data)
+              assert asset['digest'] == 'sha256:' + hashlib.sha256(data).hexdigest()
+          report = {'release_id': draft['id'], 'draft': True, 'assets': 11,
+                    'tag': '0.10.0', 'tagged_commit': 'cd70a0b8a20d04c246a826c7b1bf616de2721c65',
+                    'source_run': 40915335616, 'source_build_number': 1940,
+                    'recovery_run': os.environ['GITHUB_RUN_ID'], 'url': draft['html_url']}
+          Path('recovery-report.json').write_text(json.dumps(report, indent=2))
+          print(json.dumps(report))
+          PY
+
+      - name: Retain recovery provenance
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-0.10.0-draft-recovery
+          path: |
+            recovery-report.json
+            source-run.json
+            source-jobs.json
+            draft-after.json
+            dist/SHA256SUMS.txt
+            dist/RELEASE_MANIFEST.txt
+          if-no-files-found: error
