@@ -30,6 +30,11 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
+The current release audit and execution evidence are in
+[`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).
+It records the owner's manual approval and automated outcomes separately; it introduces no ADR
+decision and does not replace binding policies.
+
 `AGENTS.md` is the primary root-level contributor/agent guide and belongs to the developer documentation class. It points readers to binding policies and does not override the authority order above. `CLAUDE.md` is retained as a Claude-compatible import of `AGENTS.md`; it is a compatibility pointer, not a separate source of rules.
 
 ## Scope: the other three documentation classes

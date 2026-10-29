@@ -29,7 +29,20 @@ entries and CHANGELOG notes cite.
 
 ---
 
-## Final owner release attestation — 2026-10-21 UTC
+## Owner release attestation — 0.10.0 (2026-10-29, Asia/Shanghai)
+
+The owner requests **0.10.0 as a DRAFT** and states that Human Level-5 listening tests and
+all other required manual validations are already completed and approved. Record **PASS /
+APPROVED** without requesting redundant testing. This attestation covers the current release;
+the 0.9.9 record below remains historical. Actual test dates, exact artifacts, environments
+and individual measurements were not supplied and are **NOT RECORDED**.
+
+The source audit, Accepted native-resource/package ADRs, automated gate evidence and prioritized
+development residuals are in `worklogs/RELEASE_READINESS_0.10.0.md`. This attestation does not
+replace automated checks or select a new non-finite, serialization or threading policy.
+The rendered report's current-release banner is synchronized; historical review findings remain.
+
+## Historical final owner release attestation — 2026-10-21 UTC
 
 Source: the repository owner's explicit instruction in this task, **“Anamorph — Record Final
 Owner Approvals and Tag 0.9.9”**. The owner approves **all pending ADR approvals**, particularly

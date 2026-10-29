@@ -28,12 +28,13 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    `docs/policies/ARCHITECTURE_REVIEW_GATE.md` change, confirm human sign-off + an ADR.
 6. **Docs synced** — apply `docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md` triggers; refresh
    `docs/HANDOVER.md` status fields.
-7. **Manual audition** — Level 5 is the required human sign-off. The owner explicitly attests
-   final **0.9.9 / JUCE 9.0.4 PASS (A–G)**, recorded **2026-10-21 UTC** in `LEVEL5_AUDITION.md`
-   and the standing engineering worklog. Architecture Review is APPROVED, compatibility is
-   **8/8 PASS**; required human release gates are **COMPLETE**. Actual human test date, exact
-   artifact and environments are **NOT RECORDED**. Planned release: **2026-10-22**. Earlier
-   audition records remain historical; no automated agent supplies the human result.
+7. **Manual audition** — Level 5 is the required human sign-off. For **0.10.0 / JUCE 9.0.4**, the
+   owner states that Human Level-5 listening and all other required manual validations are
+   completed and approved (recorded **2026-10-29, Asia/Shanghai**). See `LEVEL5_AUDITION.md`,
+   `RELEASE_COMPATIBILITY_CHECKLIST.md` and `worklogs/RELEASE_READINESS_0.10.0.md`.
+   Actual test dates, exact artifacts, environments and individual observations were not supplied.
+   Record the approval without requesting redundant testing; automated gates remain required.
+   The execution authorization is **DRAFT ONLY**. Earlier approval records remain historical.
 
 ## Build the release artifacts
 

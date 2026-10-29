@@ -14,12 +14,12 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 
-**0.9.10 development / JUCE 9.0.4.** The last annotated release tag is
-[`0.9.9`](https://github.com/skyRolly/Anamorph/releases/tag/0.9.9), at `c4f390f`.
-The [state/host hardening record](worklogs/STATE_HOST_HARDENING_0.9.10.md) separates implemented
-corrections from the open non-finite parameter and malformed-session decisions. Release validation
-and owner sign-off for 0.9.10 are still required; the 0.9.9 approvals apply to that release.
-- **Version 0.9.10 in development** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+**0.10.0 draft-release preparation / JUCE 9.0.4.** The owner approved Level-5 listening and all
+required manual validations on 2026-10-29. The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md)
+tracks the source audit, automated gates and remaining development priorities. The earlier
+[state/host hardening record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its original development
+version in its filename. The release workflow creates a draft after its mandatory gates pass.
+- **Version 0.10.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - **0.9.5 is a performance release, and it changes nothing you can hear.** With Velvet Noise
