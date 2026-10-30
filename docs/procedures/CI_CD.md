@@ -1090,10 +1090,13 @@ The workflow passes this executable to `diagnose-au-teardown.py --apple-control`
 which observes entry, drained and queued modes under the live typed-throw debugger before the AU
 campaign, using `--cycles 128` per mode and a 180-second bound (standalone default:
 2000 cycles; accepted range 2–2000). Progress records every 16 cycles distinguish
-slow execution from an unentered path. Their logs are `au-teardown-evidence/apple-drained.log` and
-`au-teardown-evidence/apple-queued.log` / `apple-entry.log`; `report.json` records each outcome.
+slow execution from an unentered path. Logs are
+`au-teardown-evidence/apple-{entry,drained,queued}.log`; `report.json` records each outcome.
 This follow-up bounds the real AU campaign to four invocations, without changing
 ordinary conformance or interpreting no reproduction as a fix.
+A completed entry control whose callback count remains at its initial-cycle value
+proves initial delivery and disposal, not that a delivery block was pending at disposal.
+The native outcomes and exact callback counts are recorded in the worklog.
 Original build logs live under retained/. The workflow's path filter skips unchanged
 diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.
 

@@ -10,10 +10,16 @@ control; HANDOVER, RISK-017 and the worklog distinguish the established Apple th
 site from the unresolved cause. No recovery exception or ordinary gate change is
 introduced. The first 2000-cycle debugger run times out without qualifying evidence;
 the follow-up bounds each debugger control to 128 cycles with progress every 16,
-retaining the standalone 2000-cycle default. Native verification remains pending.
+retaining the standalone 2000-cycle default.
 The entry-observer variant additionally probes disposal before queued blocks drain,
 with the same liveness/exit contract and its own retained trace. Both procedures
 record all three modes and the four-trial diagnostic AU bound; ordinary gates do not change.
+Native runs 41025971859 and 41027283750 verify both control configurations with
+exit 0, live initial delivery and completed disposal. The former still captures
+the AU's typed Apple timer throw on trial 16; the latter's entry control delivers
+only eight initial callbacks. Both procedures explain why this does not prove
+queued delivery at disposal or establish a root cause. Artifact hashes, counts,
+observer refusal mutations and exact source identities are recorded in the worklog.
 
 ## Native AU control procedure reconciliation (2026-10-30, PR #189 review)
 

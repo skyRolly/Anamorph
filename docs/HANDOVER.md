@@ -15,8 +15,9 @@ fields with no repository evidence are marked `TODO` rather than invented (const
 **Active CI investigation (2026-10-30):** Build 1957's native Intel AU randomise
 pass 2/3 aborts after SUCCESS with bad_function_call. First-throw captures locate
 the throw in AudioToolboxCore's CAEventReceiver timer block on macOS 15 and 26.
-The drained Apple-only control completes, leaving the host/product interaction
-unresolved (RISK-017); a queued-disposal control probes the missing ordering.
+The drained, timer and entry controls complete, but do not reproduce the real AU's
+throw. The entry probe delivers only its initial eight callbacks; queued delivery
+at disposal remains unproven. The host/product interaction stays open (RISK-017).
 See `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`. The validated 0.10.0 tag/draft
 are unchanged and unpublished; no crash retry or conformance gate is relaxed.
 

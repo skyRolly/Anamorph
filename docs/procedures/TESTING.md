@@ -5929,6 +5929,9 @@ and a nonzero callback count. Ordinary conformance gates retain immediate failur
 on macOS crashes; RISK-017 records the unresolved interaction.
 The current diagnostic AU follow-up is bounded to four trials; a clean bounded
 campaign does not close an intermittent defect.
+In the verified entry probe only the initial cycle delivers callbacks; later
+disposals complete, but this does not establish that a delivery block was pending
+at disposal. Read the per-mode counts and captured AU failure in the worklog.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates

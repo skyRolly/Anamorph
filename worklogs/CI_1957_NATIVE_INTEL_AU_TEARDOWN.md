@@ -155,3 +155,37 @@ External corroboration, not causal proof: [Minihost's pump source](https://githu
 records the same framework exception while pumping the default run-loop mode.
 Its private-mode workaround excludes framework callbacks and cannot be transplanted
 as proof of complete AU conformance here. No such pump suppression is introduced.
+
+### Native control verification; original failure remains open
+
+Run 41025971859 on c173ea7, artifact 12963889677 (SHA-256
+`fdf5ba9d8ca3c9e3959d8cf820057e1e3e1e4ffcc72952e548327c17990d6066`),
+completes the 128-cycle drained and timer-disposal controls with 880 and 1024
+callbacks, respectively. Both inferiors and debuggers exit 0. Fifteen real AU
+trials then complete; trial 16 captures the same typed Apple CAEventReceiver
+timer-block throw after SUCCESS. The comparison correctly fails its completed
+expectation. A later passing run cannot erase this reproduction.
+
+Run 41027283750 on 1db9f3f, artifact 12963559427 (SHA-256
+`883a477fe6f0f3ebc0f0085f6fe54dec949ddaffc92b36a1e13f305e12e0258d`),
+completes 128 cycles per control: entry 8 callbacks, drained 872, timer 1024;
+inferiors and debuggers exit 0. All four AU trials complete. The eight entry-mode
+callbacks are from the initial proof cycle; later disposals deliver none. This
+does not prove that an AU delivery block was queued at disposal, so the intended
+stale-block mechanism is still unproven. Both artifacts were downloaded and their
+API archive digests independently matched; both reports retain AU source 1423704,
+their distinct diagnostic commit, AU hash 4f574b… and locked validator hash 32ec60….
+
+Local verification: all 15 observer/outcome controls; both always-clean and
+never-clean independent-classifier mutations are rejected by those controls;
+documentation self-tests/lint, citation self-tests/check and release-note
+self-tests/check. The unchanged ordinary crash classifier's 22 controls were
+also exercised. These verify diagnostic interpretation and documentation, not
+a product crash fix. CI_CD, TESTING and the coverage audit describe the exact
+native modes, bounds, liveness and exit meanings required by the PR #189 review.
+
+**Disposition:** the documentation review is addressed. RISK-017 remains open;
+no safe product correction is established by these observations. PR #189 stays
+a diagnostic draft, with the original conformance gate and unpublished release
+unchanged. Further causal isolation must establish pending delivery at disposal
+inside the real host lifecycle before selecting a correction.

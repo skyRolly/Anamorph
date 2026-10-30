@@ -403,9 +403,11 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood [Verified]:** Intermittent: Build 1957 fails, later Build 1959 passes
   unchanged production source; diagnostic runs reproduce on both OS generations.
 - **Evidence [Verified]:** `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`, diagnostic
-  runs 41018800486 and 41020131883; `tests/au_listener_teardown.mm`.
-- **Next verification:** Exercise queued delivery/disposal in the Apple-only
-  control with a live typed-throw observer. A capture must match the actual first
+  runs 41018800486, 41020131883, 41025971859 and 41027283750;
+  `tests/au_listener_teardown.mm`.
+- **Next verification:** The bounded drained/timer/entry controls complete, but
+  the entry control delivers only its initial eight callbacks. Further isolation
+  must establish that a delivery block is pending when disposal occurs. A capture must match the actual first
   throw before framework ownership is claimed. A fix must preserve the ordinary
   conformance gate; changing runner labels or passing on a later run is insufficient.
 
