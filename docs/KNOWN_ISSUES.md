@@ -4,12 +4,13 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-**Current sync: 0.10.0 P1 candidate, 2026-10-30.** KI-029 is fixed in PR #187 under
+**Current sync: 0.10.0 P1 draft replacement complete, 2026-10-30.** KI-029 is fixed in PR #187 under
 Accepted ADR-0067 and moved to INC-019 in `POSTMORTEMS.md`; original failure measurements
 are retained there. State tests 146/147 guard the production finite-default boundary and
 restore window; numeric-NaN writer coverage remains State 142/INC-014. The original
-candidate's manual approval is historical. Fresh mandatory CI and targeted human checks
-of the changed P1 behavior remain required in `worklogs/RELEASE_READINESS_0.10.0.md`.
+candidate's manual approval is historical. Final-source CI and targeted owner-attested
+human checks of the changed P1 behavior are complete; normal Release 5 produced the
+verified unpublished replacement. Evidence: `worklogs/RELEASE_READINESS_0.10.0.md`.
 The following dated sync records the earlier issue inventory.
 
 Version-synced to **0.9.9** (PR #156, 2026-09-27). **0.9.9 added four issues**, all found in that PR's
