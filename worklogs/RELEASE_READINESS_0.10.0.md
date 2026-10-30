@@ -30,11 +30,12 @@ Local completed validation:
   other mandatory local lint/self-tests, plus existing native Linux DSP/state suites:
   945 DSP checks and 10,827 state checks, zero failures. Runtime C++/CMake inputs are
   unchanged; the full fresh build/native/platform result remains a separate CI gate.
-- `tests/linux_install_tests.py --legacy-archive <verified prior ZIP>`: all 14 cases,
+- `tests/linux_install_tests.py --legacy-archive <verified prior ZIP>`: all 15 cases,
   including fresh user/system namespaces, permission-independent installation,
   optional portable payload, repeated install/uninstall, legacy receipt cleanup,
   unrelated/modified/link/missing-receipt preservation, partial cleanup retry,
   error/SIGKILL/TERM/HUP/INT swap recovery and executable-mode failure before commit.
+  A portable input extracted at the legacy bin path is also explicitly preserved.
 - Six native-plan/lifecycle/upload-condition tests, eight icon/preflight aggregate
   regressions, and package source/staged-contract positive/negative self-tests.
 - The actual existing 0.10.0 Linux ZIP (asset 690966946) was read-only downloaded and

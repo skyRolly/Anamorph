@@ -281,7 +281,7 @@ cleanup_legacy_desktop() {
     $SUDO /bin/sh -c '
         set -eu
         set -f
-        data=$1; app=$2; system=$3; owner=$(id -u)
+        data=$1; app=$2; system=$3; portable=$4; owner=$(id -u)
         warn() { printf "warning: legacy Anamorph resources preserved: %s\n" "$*" >&2; }
         present() { [ -e "$1" ] || [ -L "$1" ]; }
         hash() { sha256sum < "$1" | cut -d " " -f 1; }
@@ -377,6 +377,7 @@ icons/hicolor/scalable/apps/tech.rolly.anamorph.svg"
         clean_app() {
             app=$1
             present "$app" || return 0
+            [ ! "$app" -ef "$portable" ] || return 0
             if ! parents "$(dirname -- "$app")" || ! owned_file "$app"; then
                 warn "unverified standalone file"; return
             fi
@@ -389,7 +390,7 @@ icons/hicolor/scalable/apps/tech.rolly.anamorph.svg"
         clean_resources
         clean_app "$app"
         clean_app "${app%/*}/.Anamorph.new"
-    ' anamorph-legacy-cleanup "$_data" "$_app" "$mode" || {
+    ' anamorph-legacy-cleanup "$_data" "$_app" "$mode" "$HERE/Anamorph" || {
         printf 'warning: legacy Anamorph cleanup incomplete; unverified files are kept.\n' >&2
     }
 }

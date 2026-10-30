@@ -26,6 +26,7 @@ REQUIRED_METHODS = (
     'test_fresh_user_reinstall_and_repeated_uninstall',
     'test_system_user_coexistence_and_root_selection',
     'test_vst3_install_without_standalone_payload',
+    'test_portable_payload_at_legacy_bin_path_is_kept',
     'test_legacy_upgrade_without_permission_repair',
     'test_legacy_uninstall_without_permission_repair',
     'test_unverified_legacy_resources_are_preserved',
@@ -157,6 +158,17 @@ class InstallCase(unittest.TestCase):
     def test_vst3_install_without_standalone_payload(self):
         (self.package / 'Anamorph').unlink()
         self.good(); self.assert_installed(); self.good(script='uninstall.sh')
+
+    def test_portable_payload_at_legacy_bin_path_is_kept(self):
+        destination = self.home / '.local/bin'
+        destination.parent.mkdir(parents=True)
+        shutil.move(self.package, destination); self.package = destination
+        portable = self.package / 'Anamorph'
+        if LEGACY_ARCHIVE:
+            with zipfile.ZipFile(LEGACY_ARCHIVE) as archive: portable.write_bytes(archive.read('Anamorph'))
+        expected = portable.read_bytes()
+        self.good(); self.good(script='uninstall.sh')
+        self.assertEqual(portable.read_bytes(), expected)
 
     def test_legacy_upgrade_without_permission_repair(self):
         previous = self.seed_plugin(); self.seed_legacy()
