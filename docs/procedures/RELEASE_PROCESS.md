@@ -286,6 +286,9 @@ contains no desktop helper/assets, desktop entries or AppStream metadata. Mandat
 source/staged package checks and real-UID/sudo native installation, migration,
 interruption/retry and preservation tests must pass before customer upload. See
 PACKAGING, TESTING and proposed ADR-0069 for the exact cleanup contract.
+The staged package checker requires mode `0755` on both shell scripts, portable
+Standalone and the VST3 module before upload; release ZIP permission restoration
+does not substitute for this check.
 
 These corrections remain in 0.10.0 and update its changelog section. The existing
 0.10.0 tag and GitHub Release are deliberately unchanged by the PR task. The task

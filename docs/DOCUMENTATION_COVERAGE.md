@@ -19,6 +19,14 @@ recorded in the readiness worklog; final release replacement is a separate follo
 Inaccessible legacy icon ancestry is checked before absence: retain its receipt
 and warn so an inaccessible file cannot be mistaken for completed cleanup.
 
+Review follow-up: TESTING now explicitly inventories the `inaccessible-parent`
+regression's mode-000 icon ancestry, warning and retained resource/receipt.
+The package checker requires `0755` on both shell scripts as well as the portable
+ELF and VST3 module. Its self-test rejects each independently at `0644`, checks the
+specific mode diagnostic and restores/revalidates the stage between cases.
+PACKAGING and RELEASE_PROCESS distinguish this staged-artifact gate from the
+existing release ZIP permission restoration.
+
 ## PR #189 completed investigation disposition (2026-10-31, Asia/Shanghai)
 
 CI_CD and TESTING now record run 41086686014's verified enqueue/disposal/block-return

@@ -6425,9 +6425,12 @@ setup-log tails are retained for diagnosis; missing shortcuts still fail the gat
 
 The corrected 0.10.0 candidate uses `scripts/check-linux-package.py --self-test`
 before source/staged checks. It rejects desktop/AppStream payloads, extra archive
-members, altered scripts and incorrect executable modes. The real installer sets
-the installed VST3 module executable before publication. Old desktop publication,
-GIO/icon lookup and replaceable-helper snapshot tests are retired with that feature.
+members, altered scripts and modes other than `0755` on `install.sh`, `uninstall.sh`,
+portable `Anamorph` and the VST3 module. Its self-test independently changes each
+executable to `0644`, requires rejection for that file's mode and restores a valid
+stage before the next case. The real installer sets the installed VST3 module
+executable before publication. Old desktop publication, GIO/icon lookup and
+replaceable-helper snapshot tests are retired with that feature.
 
 ```sh
 python3 scripts/check-linux-package.py --self-test
@@ -6447,6 +6450,9 @@ modified/link/unowned resources and unknown journals, unrelated file/settings
 preservation, parked bundles, failed/killed swaps and recovery, destination links,
 XDG roots and clean ZIP extraction. A deliberately bypassed hash check must violate
 the edited-resource preservation assertion. Test logs stay outside tracked files.
+The `inaccessible-parent` case sets an icon parent to mode `000` and requires a
+preservation warning, retained icon and ownership receipt, and successful VST3
+removal without changing the inaccessible parent's permissions.
 
 The native gate runs the same mandatory cases plus real per-operation sudo and
 system killed-swap recovery on the disposable hosted VM in private mount/PID/network

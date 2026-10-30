@@ -308,8 +308,10 @@ The corrected 0.10.0 tree contains only `Anamorph.vst3/`, portable `Anamorph`,
 `install.sh`, `uninstall.sh` and `INSTALL.txt`. It ships no desktop helper, desktop
 entries, hicolor assets or AppStream metadata. Shared PNGs and Windows/macOS assets
 remain unchanged. `scripts/check-linux-package.py` checks exact top-level members,
-source/staged script equality, ELF/module modes and rejection of desktop/AppStream
-payloads; its self-test precedes use.
+source/staged script equality, mode `0755` on both scripts, portable ELF and VST3
+module, and rejection of desktop/AppStream payloads. Its self-test rejects each
+executable independently at `0644` before the staged check runs. This gate checks
+the original staged tree; release ZIP permission restoration remains separate.
 
 Both entry scripts embed the same migration-only cleanup. User cleanup uses absolute
 XDG_DATA_HOME or HOME/.local/share; system cleanup uses fixed /usr/local/share,

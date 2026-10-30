@@ -48,7 +48,8 @@ def staged_contract(stage, root=ROOT):
     for name in ('Anamorph', MODULE):
         path = stage / name
         require(path.is_file() and path.read_bytes()[:4] == b'\x7fELF', 'missing Linux ELF: ' + name)
-        require(path.stat().st_mode & 0o777 == 0o755, 'incorrect executable mode: ' + name)
+    for name in ('Anamorph', MODULE, 'install.sh', 'uninstall.sh'):
+        require((stage / name).stat().st_mode & 0o777 == 0o755, 'incorrect executable mode: ' + name)
     return {'files': {str(path.relative_to(stage)): hashlib.sha256(path.read_bytes()).hexdigest()
                       for path in stage.rglob('*') if path.is_file()}, **source_contract(root)}
 
@@ -61,7 +62,9 @@ def self_test():
             shutil.copy2(ROOT / 'packaging/linux' / name, stage / name)
         for name in ('Anamorph', MODULE):
             path = stage / name; path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b'\x7fELF inert contract fixture'); path.chmod(0o755)
+            path.write_bytes(b'\x7fELF inert contract fixture')
+        for name in ('Anamorph', MODULE, 'install.sh', 'uninstall.sh'):
+            (stage / name).chmod(0o755)
         staged_contract(stage)
         for name in ('desktop-assets/foreign.png', 'extra.keep',
                      'Anamorph.vst3/Contents/tech.rolly.anamorph.metainfo.xml'):
@@ -76,10 +79,18 @@ def self_test():
         except ValueError: pass
         else: raise AssertionError('accepted changed installer')
         script.write_bytes(original)
-        module = stage / MODULE; module.chmod(0o644)
-        try: staged_contract(stage)
-        except ValueError: pass
-        else: raise AssertionError('accepted non-executable module')
+        for name in ('install.sh', 'uninstall.sh', 'Anamorph', MODULE):
+            path = stage / name; path.chmod(0o644)
+            try:
+                staged_contract(stage)
+            except ValueError as error:
+                require(str(error) == 'incorrect executable mode: ' + name,
+                        'mode negative failed for an unrelated reason: ' + str(error))
+            else:
+                raise AssertionError('accepted non-executable payload: ' + name)
+            finally:
+                path.chmod(0o755)
+            staged_contract(stage)
     print('Linux package self-test: valid archive and metadata/script/mode negatives checked')
 
 
