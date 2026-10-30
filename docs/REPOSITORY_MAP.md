@@ -160,6 +160,9 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `scripts/au_teardown_lldb.py` | Native Intel LLDB exception-type filter: stop on the first bad_function_call before AppKit unwinds the originating frame. |
 | `tests/au_listener_teardown.mm` | Nonshipping Apple-only AU listener lifecycle controls: drained, timer and entry-observer disposal, actual delivery/disposal liveness; no Anamorph/JUCE linkage. |
 | `tests/au_pending_block_control.mm` | Apple-only enqueue-boundary experiment: observe an AudioToolbox block queued before listener disposal; disarmed absence control must fail with exit 5. |
+| `scripts/au-listener-compat.mm` | Nonshipping native validator listener adapter pilot: main/default listener delivery through Apple's dispatch-queue API; no crash catching or retry. |
+| `scripts/check-au-listener-host.py` | Listener adapter routing/lifetime and fatal callback-exception controls; missing adapter and missing CF observations fail. |
+| `tests/au_listener_compat_control.mm` | Real Apple API control for final-value delivery on main, no callbacks after disposal, and a genuinely throwing callback. |
 | `.github/workflows/au-teardown-diagnostic.yml` | Investigation-branch-only reconstruction of Build 1957's thin AU; official locked validator, native stacks and artifact retention. |
 | `worklogs/release-0.10.0-original/` | Internal historical original release body/metadata, annotated tag/tagger, manifest and checksums; no replacement binaries. |
 | `worklogs/release-0.10.0-p1/` | Candidate validation/human-attestation provenance and the executed replacement draft record: tag/source/run identities, all 11 asset hashes and fresh same-run payload verification. |

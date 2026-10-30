@@ -75,7 +75,8 @@ def observe(executable, args, log, timeout, target_environment=None):
         "print('"+MARKER+"'+json.dumps({'state': 'stopped' if p.GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else "
         "'exited' if p.GetState()==lldb.eStateExited else 'other', 'exit':p.GetExitStatus(), "
         "'stops':[t.GetStopDescription(256) for t in p], 'target_exception':au_teardown_lldb.seen_bad_call, "
-        "'exception_type':au_teardown_lldb.exception_type}))")
+        "'exception_type':au_teardown_lldb.exception_type, 'framework_cf_enqueues':au_teardown_lldb.framework_enqueues, "
+        "'origin_module':au_teardown_lldb.origin_module, 'origin_symbol':au_teardown_lldb.origin_symbol}))")
     backtrace = ("script lldb.debugger.HandleCommand('thread backtrace all') if "
         "lldb.debugger.GetSelectedTarget().GetProcess().GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else None")
     command = ['xcrun','lldb','--batch','-o','settings set target.disable-aslr false',
@@ -108,6 +109,7 @@ def main():
     parser.add_argument('--apple-control',type=Path,help='Independent Apple-only listener control executable')
     parser.add_argument('--pending-control',type=Path,help='Independent queued-framework-block disposal control')
     parser.add_argument('--pending-library',type=Path,help='Interposition library linked by the independent pending-block control')
+    parser.add_argument('--compat-library',type=Path,help='Pilot comparison using the native validator listener adapter')
     parser.add_argument('--au-source-commit',help='Historical source commit that produced the retained AU')
     parser.add_argument('--report-dir',type=Path,default=Path('au-teardown-evidence'))
     parser.add_argument('--attempts',type=int,default=16)
@@ -140,6 +142,37 @@ def main():
     save()
     assert control['outcome']=='bad-function-call-throw', 'debugger cannot capture the known first throw'
     control_threw=False
+    if args.compat_library:
+        assert args.compat_library.is_file()
+        report['adapter_sha256']=hashlib.sha256(args.compat_library.read_bytes()).hexdigest()
+        report['comparison']=[]
+        for variant,environment,count in [('baseline',{'DYLD_INSERT_LIBRARIES':str(args.compat_library.resolve()),
+            'ANAMORPH_AU_LISTENER_MODE':'observe'},1),('adapter',
+            {'DYLD_INSERT_LIBRARIES':str(args.compat_library.resolve()),'ANAMORPH_AU_LISTENER_MODE':'dispatch'},3)]:
+            for attempt in range(count):
+                log=root/f'{variant}-{attempt+1:02d}.log'
+                result=observe(args.pluginval.resolve(),['--strictness-level','10','--randomise',
+                    '--random-seed','0x3e1c70','--timeout-ms','600000','--validate',str(args.bundle.resolve())],
+                    log,180,environment)
+                text=log.read_text()
+                records=re.findall(r'^'+MARKER+r'(\{.*\})$',text,re.M)
+                details=json.loads(records[0]) if len(records)==1 else {}
+                report['comparison'].append({'variant':variant,**result,'details':details});save()
+                print(f"AU host comparison {variant} {attempt+1}: {result['outcome']}",flush=True)
+                if variant=='baseline':
+                    if 'ANAMORPH_AU_LISTENER_FRAMEWORK_CF_SEEN=1' not in text.splitlines(): return 2
+                    if 'ANAMORPH_AU_LISTENER_ADAPTER=dispatch-main' in text.splitlines(): return 2
+                    if result['outcome']=='bad-function-call-throw':
+                        if not (details.get('origin_module')=='AudioToolboxCore'
+                            and 'CAEventReceiver::Impl::timerFired()' in details.get('origin_symbol','')
+                            and re.search(r'^SUCCESS\s*$',text,re.M)): return 2
+                    elif result['outcome']!='completed' or result.get('debugger_exit')!=0: return 2
+                else:
+                    if result['outcome']!='completed' or result.get('debugger_exit')!=0: return 2
+                    checked=subprocess.run([sys.executable,str(Path(__file__).with_name('check-au-listener-host.py')),
+                        '--verify-log',str(log),'--require-no-cf'])
+                    if checked.returncode!=0: return 2
+        return 0
     if args.pending_control:
         assert args.pending_library and args.pending_library.is_file()
         pending_environment={'DYLD_INSERT_LIBRARIES':str(args.pending_library.resolve())}

@@ -4,12 +4,17 @@ import lldb
 seen_bad_call = False
 exception_type = ''
 enqueue_observations = 0
+framework_enqueues = 0
+origin_module = ''
+origin_symbol = ''
 
 
 def on_cf_enqueue(frame, _location, _internal):
-    global enqueue_observations
+    global enqueue_observations, framework_enqueues
+    caller = frame.GetThread().GetFrameAtIndex(1)
+    if caller.GetModule().GetFileSpec().GetFilename() == 'AudioToolboxCore':
+        framework_enqueues += 1
     if enqueue_observations < 16:
-        caller = frame.GetThread().GetFrameAtIndex(1)
         print('AU enqueue trace: '+str(caller.GetModule().GetFileSpec().GetFilename())
               +' / '+str(caller.GetFunctionName()), flush=True)
     enqueue_observations += 1
@@ -17,7 +22,7 @@ def on_cf_enqueue(frame, _location, _internal):
 
 
 def on_throw(frame, _location, _internal):
-    global seen_bad_call, exception_type
+    global seen_bad_call, exception_type, origin_module, origin_symbol
     # __cxa_throw(void* exception, std::type_info* type, destructor): x86_64 ABI.
     process = frame.GetThread().GetProcess()
     type_info = frame.FindRegister('rsi').GetValueAsUnsigned()
@@ -35,6 +40,9 @@ def on_throw(frame, _location, _internal):
         return False
     seen_bad_call = True
     exception_type = name
+    caller = frame.GetThread().GetFrameAtIndex(2)
+    origin_module = caller.GetModule().GetFileSpec().GetFilename() or ''
+    origin_symbol = caller.GetFunctionName() or ''
     print('AU observer: first bad_function_call throw: '+name)
     return True
 

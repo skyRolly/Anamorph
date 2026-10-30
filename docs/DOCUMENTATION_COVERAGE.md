@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Native validator dispatch-listener pilot (2026-10-31, Asia/Shanghai)
+
+CI_CD and TESTING describe the owned host-only adapter, exact caller/run-loop scope,
+unchanged notification inputs, real callback/lifetime control and genuine callback
+exception canary. REPOSITORY_MAP indexes all three sources. The checker runs 14
+pure controls ahead of native execution. The diagnostic comparison requires live
+legacy CF delivery and zero such enqueues in three clean adapter trials on the same
+AU/tool bytes. Native pilot evidence is pending; no ordinary gate or release changes.
+
 ## AU delivery enqueue-boundary follow-up (2026-10-30)
 
 CI_CD and TESTING describe the new independent pending-block fixture, public API

@@ -238,3 +238,20 @@ remains alive; the three earlier controls and one real AU trial also complete.
 This is isolation evidence, not a fix. The next `--dispose-unit` case destroys the
 component after the listener but before that pending block, matching host teardown.
 It retains the same absence guard, native canary, observer and separate report.
+
+### Dispatch-listener host pilot — 2026-10-31, Asia/Shanghai
+
+The component-disposal control also completes; these independent lifetimes still
+do not reproduce the real host failure. A narrow host adapter now pilots Apple's
+documented dispatch-queue listener API on main, preserving interval, granularity,
+callback and user data. It targets only pluginval's main/default listener creation
+and its dedicated control; other callers/modes retain the original API. No product
+code, dependency pin, official validator byte, exception verdict or retry changes.
+
+The real API control verifies final-value delivery on main, no callbacks after
+disposal, refusal without a loaded/exercised adapter and genuine fatal exception
+propagation from inside the callback. The pilot tracing build observes legacy CF
+enqueues without routing, then enables the adapter on identical AU/tool bytes.
+Every one of three adapted trials must complete and show zero framework CF enqueues;
+the legacy baseline must demonstrate that counter is live. The ordinary wrapper
+remains unchanged pending this evidence. Raw API and comparison reports are retained.

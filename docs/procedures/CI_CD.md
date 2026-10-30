@@ -1128,6 +1128,23 @@ before the queued block runs, matching the host's listener-then-component teardo
 Read `apple-pending-component.log` and `pending_component_control` separately.
 This is a diagnostic ordering experiment; no framework cause or correction is established
 until native capture. It does not interpose the actual validator or change a normal gate.
+
+The workflow additionally pilots `scripts/au-listener-compat.mm` in the locked validator.
+Only pluginval's main/default-run-loop listener creation (and its dedicated control)
+is routed to AUEventListenerCreateWithDispatchQueue on the same main queue. Notification
+interval/granularity and callback/user data are preserved; other callers/modes use the
+original API. No exception handler or retry is added. Ordinary validation is unchanged
+until the pilot is verified and integrated.
+`check-au-listener-host.py --self-test` precedes the real API control: missing adapter
+must exit 6, live delivery must reach the final value on main with no callback after
+disposal, and a deliberate exception inside that callback must still abort as
+bad_function_call. The control runs in an autorelease pool.
+The observer's `--compat-library` mode compares one observation-only legacy invocation
+and three adapter invocations using identical AU/tool bytes. The tracing build records
+at least one AudioToolbox CF enqueue in the baseline, then requires loaded/routed markers,
+zero framework CF enqueues, SUCCESS and clean debugger/inferior exits for every adapter
+trial. A failed assertion, unexpected crash or missing observation fails the comparison.
+Reports and raw logs are retained under au-host-evidence/ and au-compat-evidence/.
 Original build logs live under retained/. The workflow's path filter skips unchanged
 diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.
 
