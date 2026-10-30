@@ -1,5 +1,14 @@
 # HANDOVER.md
 
+**0.10.0 Linux correction in review (2026-10-31):** VST3-only installation with
+portable Standalone and verified legacy desktop cleanup is a new candidate under
+proposed ADR-0069. Implementation/validation/PR preparation are authorized; human
+review and manual merge are required. No tag or release edit/publication is authorized
+in this task. After merge, rebuild 0.10.0 from the exact merged source, repeat applicable
+release/native gates and targeted Linux manual checks, then replace the existing
+0.10.0 release only under separate authorization. Prior completed P1 evidence below
+is historical and does not certify the corrected Linux candidate.
+
 **Historical governance reconciliation (record updated 2026-10-24, Asia/Shanghai):** native JUCE
 ADR-0062 remains Accepted; namespace ADR-0063 and Windows installer ADR-0064 are Accepted
 under explicit final owner approval. PR #170 → #171 → #172 are merged into inspected main

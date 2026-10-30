@@ -61,97 +61,33 @@ the *same* validated staging directory the zip was archived from, in separate, a
 gated steps (`package_windows` / `package_macos_pkg`), each with the version parsed from
 `CMakeLists.txt` embedded in a deterministic file name:
 
-- **Linux** — the installer is `packaging/linux/install.sh`, shipped **inside the zip**
-  (no separate Linux package archive). Since 0.9.3 it **prompts for one of two modes**,
-  defaulting to the per-user one:
+- **Linux** — `install.sh`/`uninstall.sh` inside the ZIP install only VST3.
+  The corrected 0.10.0 candidate keeps the existing prompt/default and explicit
+  `--user` / `--system` flags:
 
-  | Mode | VST3 | Standalone | Elevation |
-  |---|---|---|---|
-  | **1) current user** (default: Enter, `1`, or any unrecognised answer) | `~/.vst3` | `~/.local/bin` | none — `sudo` is never called |
-  | 2) system-wide | `/usr/lib/vst3` | `/usr/local/bin` | `sudo` per operation, never for the whole script |
+  | Mode | Installed VST3 | Elevation |
+  |---|---|---|
+  | Current user (default) | `~/.vst3/Anamorph.vst3` | none; no sudo writes to HOME |
+  | System-wide | `/usr/lib/vst3/Anamorph.vst3` | sudo per operation, or an already-root entry |
 
-  `~/.vst3` is the VST3 standard's per-user Linux folder and is a default scan path in
-  REAPER/Bitwig/Ardour, so the no-root route is the recommended one. Three invocations skip
-  the prompt: **as root** (`sudo ./install.sh`, the pre-0.9.3 documented form) it installs
-  system-wide unchanged — root has no meaningful per-user home — with **no terminal on
-  stdin** it takes the default, and **`--user` / `--system`** answer it explicitly, which is
-  the only way for a caller with no terminal to select mode 2 without handing the whole script
-  to root. The two flags together are an error, as is an unrecognised option, and `--user` under
-  root is refused (`$HOME` under `sudo` depends on the sudoers configuration, so the destination
-  would not be predictable); repeating one flag is not a conflict. `uninstall.sh` takes the same
-  two, plus `--discard-parked`. Mode 2 fail-closes rather than degrading: no `sudo` on
-  `PATH` prints the "use a user installation instead" error and exits 1, and a failed elevated
-  operation prints the permission-denied message and exits 1.
+  Root `--user` remains refused. Both scripts accept repeated matching flags and
+  refuse conflicting flags. Standalone remains in the ZIP for portable execution;
+  it is not copied to `~/.local/bin` or `/usr/local/bin`.
 
-  **Replacement transaction — what is actually guaranteed.** Each installed artifact is
-  replaced atomically; the **two artifacts are not one transaction**, and the guarantee is
-  stated per artifact rather than for the install as a whole:
+  Replacement retains the previous workflow's same-filesystem staging and parked
+  `Anamorph.vst3.prev`. Copy/chmod failures leave the previous bundle intact;
+  failure during publication restores it. SIGKILL can leave the old copy parked;
+  the next install reconciles it before retry. Installed module chmod is mandatory,
+  before publication. Stage directories are private to the writing identity.
+  Uninstall preserves parked copies unless `--discard-parked` is explicit, and
+  preserves unknown scratch entries. Linked/foreign plugin destinations are
+  rejected before writes/removals. Serialize same-mode operations; this is
+  process-interruption recovery, not power-loss durability.
 
-  | Point of failure | Result |
-  |---|---|
-  | staging (copy fails, payload unreadable, disk full) | nothing has been displaced — the previous install is untouched, complete |
-  | commit of the VST3 (rename fails, or the run is interrupted) | the parked previous bundle is restored; the previous install is intact |
-  | after the VST3 commit, at the Standalone commit | **new VST3 + previous Standalone** — both valid, both loadable, but a mixed pair until the run is repeated |
-  | untrappable kill (`SIGKILL`, power loss) mid-swap | the previous bundle is left parked outside the scan path; the **next run restores it** before doing anything else |
+  User/system plugin copies remain independent. The scripts report a second
+  scanned copy without removing it. Legacy desktop cleanup is described below;
+  unrelated icon-directory modes no longer block plugin installation/removal.
 
-  So "the previous install is never destroyed" holds unconditionally, while "all or nothing"
-  does **not** — the last row is a real, if benign, mixed state. Re-running the installer
-  resolves it.
-
-  **How.** The replacement is built in a stage directory, the old bundle is moved **aside**
-  (`Anamorph.vst3.prev`) rather than deleted, and only then is the finished copy renamed into
-  place — so a complete copy exists at every instant. Deleting first would open a window in
-  which the destination is empty and the staged copy is the only one. A `reconcile` helper
-  restores the parked bundle if the run stops mid-swap, runs again at the *start* of the next
-  run (which is what recovers a `SIGKILL`), and drops the parked copy only once the destination
-  is populated again. `INT`, `TERM` and `HUP` are trapped explicitly because dash — `/bin/sh` on
-  Debian and Ubuntu — does not run `EXIT` traps when the script is signalled.
-
-  **Where it stages.** `.anamorph-install-stage` **next to** the plug-in directory (`$HOME` or
-  `/usr/lib`), so an incomplete bundle never appears inside the path DAWs scan. That location is
-  only usable on the same filesystem as the destination — every commit must stay a rename — and
-  `~/.vst3` or `/usr/lib/vst3` can be a symlink onto another mount, so the script **probes** it
-  with a **hard link**, the one operation that cannot cross a filesystem (`mv` is no test: it
-  falls back to copy-and-unlink). If the probe fails, staging falls back to the same directory
-  name *inside* the plug-in directory, same filesystem by construction. A false negative costs
-  the scan-path property, never atomicity. The probe's link target is the only thing written
-  into the scan directory, and `ln` refuses an existing target — so it is **removed up front on
-  every run**, before any probe. A marker left by
-  a run killed mid-probe is therefore litter, never a decision; without that clear it would fail
-  the probe on every later run and pin staging to the fallback permanently. The recovery scan
-  probes as well: a parked bundle is adopted only from a candidate that passes the same
-  filesystem test as a fresh one, rather than on the inductive ground that whatever parked it
-  must already have passed. The Standalone stages beside its own destination
-  (`.Anamorph.new`) because its directory may be on a different filesystem again, and a bin
-  directory is not a scan path. Every commit is a same-filesystem rename, which also replaces a
-  **running** Standalone that `cp` refuses with `Text file busy`.
-
-  **Which candidates are trusted.** Both staging locations are accepted only when the directory
-  is not a symlink, is owned by the identity whose writes land in the destination (root for a
-  system-wide install, the invoking user otherwise) and is writable by nobody else; the mode is
-  matched on its last two digits so a set-gid parent's `2700` reads like a plain `700`. One this
-  run creates is `chmod 700`ed explicitly, so the next run can adopt what this one made whatever
-  the umask was. If neither candidate passes, the run **stops without installing** and names both
-  paths — a fresh install included, because staging is where the payload is assembled before the
-  rename that publishes it. The recovery scan applies the same two tests and *says so* when a
-  parked bundle sits in a directory it can no longer use, since that is the one path on which the
-  interrupted-install guarantee does not hold.
-
-  `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root, and
-  removes the installer's own scratch (both stage-directory locations, the probe marker and the
-  staged Standalone) by exact name, so an interrupted install leaves nothing that survives a
-  deliberate uninstall — **with one deliberate exception**: a `Anamorph.vst3.prev` parked by an
-  interrupted install is **kept**, named on stdout together with the mode-correct `./install.sh`
-  that restores it (nothing else can), and removed only under `--discard-parked`. The `.probe`
-  hard link beside it is still swept, because that path is the only one leaving a stage directory
-  standing and so the only way that marker can outlive an uninstall; `scripts/check-portability.py`
-  holds installer and uninstaller to the same scratch-name set, `.probe` included.
-
-  **Not chased** (the Linux counterpart of the macOS note below): a per-user install does not
-  *remove* an existing system-wide one — that would need the elevation the mode exists to avoid
-  — but it does **detect** one (a plain `test -e`) and warn, naming what is still installed
-  system-wide and the `sudo ./uninstall.sh` that clears it. Registered as **KI-021**; also a
-  troubleshooting entry in `INSTALL.txt` and `docs/user/INSTALLATION.md`.
 - **Windows** — `Anamorph-<version>-Windows-Installer.exe`: compiled by the preinstalled
   Inno Setup 6 (`ISCC.exe`) from `packaging/windows/Anamorph.iss` (stable `AppId`;
   requires elevation; real uninstall entry). Wizard: a **component page** (*Install VST3*
@@ -338,7 +274,7 @@ Evidence [Verified]: build.yml (Package macOS plugins step).
 |---|---|---|---|---|
 | VST3 | `/Library/Audio/Plug-Ins/VST3/` | `%CommonProgramFiles%\VST3\` | `~/.vst3/` | `/usr/lib/vst3/` |
 | AU | `/Library/Audio/Plug-Ins/Components/` | — | — | — |
-| Standalone | `/Applications/` | `%ProgramFiles%\Anamorph\` | `~/.local/bin/` | `/usr/local/bin/` |
+| Standalone | `/Applications/` | `%ProgramFiles%\Anamorph\` | portable ZIP only | portable ZIP only |
 
 Installer and manual routes target the **same locations** — system-wide on macOS and
 Windows (whose installer additionally lets the user change both paths on its destination
@@ -366,51 +302,35 @@ empty directories on uninstall. AppId/destinations remain unchanged. The VST3 co
 bundle directory receives System attribution for its existing Plugin.ico/desktop.ini.
 No wildcard deletion, extra wizard graphics, signing or release change is introduced.
 
-## Linux desktop payload and ownership
+## Linux plugin-only package and legacy cleanup
 
-The Linux customer tree additionally contains `desktop-integration.sh` (sourced by
-neither binary), `desktop-assets/tech.rolly.anamorph.desktop`, eight hicolor PNGs,
-scalable SVG and their fixed SHA-256/provenance records. Both installer entry points
-call the helper through `sh`; artifact transport need not preserve its executable bit.
-The release ZIP archives that same validated tree and renders/downloads no artwork.
-Extraction and portable Standalone execution change no desktop/system files.
+The corrected 0.10.0 tree contains only `Anamorph.vst3/`, portable `Anamorph`,
+`install.sh`, `uninstall.sh` and `INSTALL.txt`. It ships no desktop helper, desktop
+entries, hicolor assets or AppStream metadata. Shared PNGs and Windows/macOS assets
+remain unchanged. `scripts/check-linux-package.py` checks exact top-level members,
+source/staged script equality, ELF/module modes and rejection of desktop/AppStream
+payloads; its self-test precedes use.
 
-System preflight, publication and uninstall (including already-root runs) execute
-only a private helper snapshot verified against the SHA-256 embedded in both trusted
-entry scripts. Keep the helper and both pins synchronized; run
-`python3 tests/linux_desktop_helper_tests.py` after a helper edit. The root bootstrap
-uses checked `/tmp`, private 0700/0600 single-link capture, and exact-file/directory
-cleanup. It passes the original archive assets as data to the unchanged hash/copy
-checks. A mismatched helper fails closed; use matching files from a trusted
-distribution. The entry scripts/distribution and system tools still need independent
-trust/authenticity; this pin protects subsequent helper replacement, not distribution
-authenticity. SIGKILL can leave a private snapshot; no broad cleanup is attempted.
-See Accepted ADR-0065's defensive follow-up for trust assumptions and the
-historical local-delivery limitation. Later native run 40179691961 at
-`d0f7739c0df8e66c2d818969d30ab1863a0a9565` verified 29 tests and the
-19-entry staged/uploaded archive contract; it is feature-head evidence, not an
-execution at a later main or this documentation-only head. GUI/DAW validation
-and distribution authenticity remain separate.
+Both entry scripts embed the same migration-only cleanup. User cleanup uses absolute
+XDG_DATA_HOME or HOME/.local/share; system cleanup uses fixed /usr/local/share,
+independent of root HOME/XDG. It interprets no old helper. A real owned 0700 state
+directory and exact v1 ten-path receipt authorize removing only matching regular,
+single-link, owner/hash-verified leaves. User cleanup does not chmod/chown shared
+icon parents, including mode 0775/0777. Privileged cleanup keeps strict ancestor
+ownership/write checks. Shared directories, caches, unrelated files and presets stay.
 
-User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
-ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary
-and VST3 destinations are unchanged. Install applications/tech.rolly.anamorph.desktop
-and exact icons/hicolor paths. Generated Exec uses `/usr/bin/env --` plus the escaped
-absolute installed executable to handle GIO's literal-percent path check without a shell.
-Do not guess StartupWMClass or claim embedded ELF/host plug-in-browser artwork.
+Missing owned leaves allow retry. Modified/linked/unowned/malformed resources and
+unknown/interrupted journals are preserved with explicit warnings; they do not block
+VST3 operations. A receipt is retired only after its resources are gone and the state
+contains just the verified empty format marker. Previously installed/staged Standalone
+is removed only if it exactly matches the earlier verified 0.10.0 release executable
+digest recorded in ADR-0069. Other binaries at that name remain untouched.
 
-A private 0700 `.tech.rolly.anamorph` directory owns ten resource hashes and a recovery
-journal. Foreign/modified paths, symlink ancestry and unknown journal entries stop the
-operation while preserving files. Preflight precedes binary writes; resources stage and
-publish atomically per file with rollback after ordinary failures/signals and next-run
-SIGKILL reconciliation. Binary updates remain independent; a resource error is a failed
-install even if valid new binaries are already present. Serialize same-root operations;
-this is process-interruption recovery, not a power-loss guarantee. Uninstall uses the
-same XDG root, checks ownership first, keeps modified/foreign files and never removes
-shared theme directories, other products or presets. Move an intentional edited/foreign
-resource to a safe backup before retrying. Optional cache refresh errors are visible;
-real GNOME/KDE/WM/cache display remains manual. ADR-0065 remains Accepted under owner confirmation 2026-10-25; its implementation
-is effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
+`tests/linux_install_tests.py` exercises actual scripts in disposable namespaces.
+`tests/linux_install_native_tests.py` requires real UID/root/sudo execution in
+disposable hosted-VM mount/PID/network roots, with no host security-setting changes.
+Its full successful result is required for the Linux customer artifact. Recorder/plan
+tests cannot replace that native result. See proposed ADR-0069 and TESTING for limits.
 
 ## Native installed-receipt smoke test
 

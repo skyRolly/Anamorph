@@ -279,51 +279,22 @@ ISCC and the generated Setup MAINICON afterward. Installer artifact upload also 
 isolated component/install/reinstall/uninstall tests. No icon download or generic fallback
 is allowed; normal signing/release authorization remains unchanged.
 
-## Linux desktop payload and ownership
+## Linux 0.10.0 correction and replacement boundary
 
-The Linux customer tree additionally contains `desktop-integration.sh` (sourced by
-neither binary), `desktop-assets/tech.rolly.anamorph.desktop`, eight hicolor PNGs,
-scalable SVG and their fixed SHA-256/provenance records. Both installer entry points
-call the helper through `sh`; artifact transport need not preserve its executable bit.
-The release ZIP archives that same validated tree and renders/downloads no artwork.
-Extraction and portable Standalone execution change no desktop/system files.
+The candidate Linux scripts install only VST3; Standalone remains portable. The ZIP
+contains no desktop helper/assets, desktop entries or AppStream metadata. Mandatory
+source/staged package checks and real-UID/sudo native installation, migration,
+interruption/retry and preservation tests must pass before customer upload. See
+PACKAGING, TESTING and proposed ADR-0069 for the exact cleanup contract.
 
-System preflight, publication and uninstall (including already-root runs) execute
-only a private helper snapshot verified against the SHA-256 embedded in both trusted
-entry scripts. Keep the helper and both pins synchronized; run
-`python3 tests/linux_desktop_helper_tests.py` after a helper edit. The root bootstrap
-uses checked `/tmp`, private 0700/0600 single-link capture, and exact-file/directory
-cleanup. It passes the original archive assets as data to the unchanged hash/copy
-checks. A mismatched helper fails closed; use matching files from a trusted
-distribution. The entry scripts/distribution and system tools still need independent
-trust/authenticity; this pin protects subsequent helper replacement, not distribution
-authenticity. SIGKILL can leave a private snapshot; no broad cleanup is attempted.
-See Accepted ADR-0065's defensive follow-up for trust assumptions and the
-historical local-delivery limitation. Later native run 40179691961 at
-`d0f7739c0df8e66c2d818969d30ab1863a0a9565` verified 29 tests and the
-19-entry staged/uploaded archive contract; it is feature-head evidence, not an
-execution at a later main or this documentation-only head. GUI/DAW validation
-and distribution authenticity remain separate.
-
-User data root: absolute XDG_DATA_HOME, otherwise HOME/.local/share (relative XDG is
-ignored visibly). System-local data root: /usr/local/share, ignoring HOME/XDG; binary
-and VST3 destinations are unchanged. Install applications/tech.rolly.anamorph.desktop
-and exact icons/hicolor paths. Generated Exec uses `/usr/bin/env --` plus the escaped
-absolute installed executable to handle GIO's literal-percent path check without a shell.
-Do not guess StartupWMClass or claim embedded ELF/host plug-in-browser artwork.
-
-A private 0700 `.tech.rolly.anamorph` directory owns ten resource hashes and a recovery
-journal. Foreign/modified paths, symlink ancestry and unknown journal entries stop the
-operation while preserving files. Preflight precedes binary writes; resources stage and
-publish atomically per file with rollback after ordinary failures/signals and next-run
-SIGKILL reconciliation. Binary updates remain independent; a resource error is a failed
-install even if valid new binaries are already present. Serialize same-root operations;
-this is process-interruption recovery, not a power-loss guarantee. Uninstall uses the
-same XDG root, checks ownership first, keeps modified/foreign files and never removes
-shared theme directories, other products or presets. Move an intentional edited/foreign
-resource to a safe backup before retrying. Optional cache refresh errors are visible;
-real GNOME/KDE/WM/cache display remains manual. ADR-0065 remains Accepted under owner confirmation 2026-10-25; its implementation
-is effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
+These corrections remain in 0.10.0 and update its changelog section. The existing
+0.10.0 tag and GitHub Release are deliberately unchanged by the PR task. The task
+ends with a validated PR for human review and manual merge, including review of
+the ADR-0065 reversal. After approval/merge, rebuild all release artifacts from the
+exact merged commit, run the normal mandatory release/native gates and targeted
+Linux manual checks, then obtain separate authorization to replace 0.10.0. Earlier
+tag/release replacement authorization and prior manual approvals do not authorize
+this later replacement or certify the changed Linux workflow.
 
 ## Native installed-receipt smoke test
 

@@ -2,8 +2,8 @@
 # Anamorph Linux installer. Two modes - `--user` / `--system`, or chosen
 # interactively when neither is given and stdin is a terminal:
 #
-#   1) Current user (default, no root)  VST3 -> ~/.vst3, Standalone -> ~/.local/bin
-#   2) System-wide  (needs root)        VST3 -> /usr/lib/vst3, Standalone -> /usr/local/bin
+#   1) Current user (default, no root)  VST3 -> ~/.vst3
+#   2) System-wide  (needs root)        VST3 -> /usr/lib/vst3
 #
 # ~/.vst3 is the standard per-user VST3 folder and is scanned by most DAWs, so the
 # recommended install needs no root at all. Running this script as root
@@ -12,13 +12,12 @@
 # An existing installation is replaced safely rather than overwritten: the previous
 # version is kept until the new one is fully in place, so an interrupted install
 # still leaves a working Anamorph behind and the next run recovers on its own. The
-# VST3 plug-in and the Standalone application are separate files and are replaced
-# independently of each other.
+# Standalone remains portable in the archive and is not installed.
 set -eu
+umask 022
 
-HERE="$(cd "$(dirname "$0")" && pwd)"
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 VST3_SRC="$HERE/Anamorph.vst3"
-APP_SRC="$HERE/Anamorph"
 
 SYS_VST3_DIR="/usr/lib/vst3"
 SYS_BIN_DIR="/usr/local/bin"
@@ -27,7 +26,6 @@ SYS_BIN_DIR="/usr/local/bin"
 SUDO=''
 
 [ -d "$VST3_SRC" ] || { echo "error: Anamorph.vst3 not found next to install.sh" >&2; exit 1; }
-[ -f "$APP_SRC" ]  || { echo "error: Anamorph (Standalone) not found next to install.sh" >&2; exit 1; }
 
 # ---------------------------------------------------------------- mode choice
 # --user / --system answer the prompt below up front, which is the only way to
@@ -157,7 +155,11 @@ stage_dir_is_same_filesystem() {    # $1 = candidate, $2 = probe path in the des
 # The two candidates tried here are the two `uninstall.sh` cleans up.
 choose_stage_dir() {            # $1 = plug-in directory; prints the stage directory
     _probe="$1/.anamorph-probe"
-    $SUDO rm -rf "$_probe" 2>/dev/null || true
+    if [ -L "$_probe" ] || [ -d "$_probe" ]; then
+        echo "error: occupied staging probe preserved: $_probe" >&2
+        return 1
+    fi
+    $SUDO rm -f "$_probe" 2>/dev/null || return 1
     # Who must own the directory: root when the copy is written with elevation,
     # the invoking user otherwise.
     if [ "$mode" = system ]; then _owner=0; else _owner=$(id -u); fi
@@ -215,7 +217,7 @@ reconcile() {
     if [ ! -e "$VST3_DEST" ] && $SUDO test -d "$PREV_VST3"; then
         $SUDO mv "$PREV_VST3" "$VST3_DEST" 2>/dev/null || true
     fi
-    $SUDO rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true
+    $SUDO rm -rf "$STAGE_VST3" 2>/dev/null || true
     # The kept copy is only discarded once the plug-in is back in place.
     if [ -e "$VST3_DEST" ]; then
         $SUDO rm -rf "$PREV_VST3" 2>/dev/null || true
@@ -232,91 +234,166 @@ arm_traps() {
     trap 'reconcile; exit 129' HUP
 }
 
-# Desktop data follows XDG for the real invoking user, never root's HOME.
-# System-local data belongs beside /usr/local/bin, independent of XDG variables.
-desktop_data_root() {
-    if [ "$mode" = system ]; then printf '%s\n' /usr/local/share; return; fi
-    case "${HOME:-}" in /*) ;; *) echo 'error: HOME must be absolute for a user install' >&2; exit 1 ;; esac
-    case "${XDG_DATA_HOME:-}" in
-        /*) printf '%s\n' "$XDG_DATA_HOME" ;;
-        '') printf '%s\n' "$HOME/.local/share" ;;
-        *) echo 'warning: relative XDG_DATA_HOME ignored; using HOME/.local/share' >&2
-           printf '%s\n' "$HOME/.local/share" ;;
-    esac
-}
-
-# BEGIN verified desktop helper
-# The entry scripts/distribution and system tools are trusted; the archive helper
-# and its ancestry may be replaced. Keep this bootstrap and digest in BOTH entry
-# scripts, never in a mutable sidecar. Tests require these blocks to agree.
-desktop_integration() {
-    if [ "$mode" = user ]; then
-        sh "$HERE/desktop-integration.sh" "$@"
-        return
-    fi
-    # Only this literal bootstrap is interpreted before the captured code passes
-    # verification. The root-owned snapshot remains private through interpretation.
-    priv /bin/sh -c '
+# BEGIN plugin destination checks
+# Check in the identity that will write. User installs never escalate home writes.
+check_plugin_destination() {
+    $SUDO /bin/sh -c '
         set -eu
-        set -f
-        PATH=/usr/bin:/bin
-        export PATH
-        source=$1
-        assets=$2
-        shift 2
-        expected=3ea641f74a7a04abd2cffeac4298e54022c078655593ad45d226d622ece3c45e
-        fail() { printf "error: Anamorph desktop helper: %s\n" "$*" >&2; exit 1; }
-
-        [ -f "$source" ] && [ ! -L "$source" ] || fail "missing/nonregular/linked helper"
-        part=$source
+        target=$1; mode=$2; owner=$(id -u); part=$(dirname -- "$target")
+        fail() { printf "error: unsafe plug-in destination preserved: %s\n" "$1" >&2; exit 1; }
+        case "$part" in /*) ;; *) fail "$part" ;; esac
         while [ "$part" != / ]; do
-            [ ! -L "$part" ] || fail "linked helper ancestry"
+            [ ! -L "$part" ] || fail "$part"
+            if [ -e "$part" ]; then
+                [ -d "$part" ] || fail "$part"
+                meta=$(stat -c "%u %a" -- "$part")
+                uid=${meta%% *}; permissions=${meta#* }
+                [ "$uid" = 0 ] || [ "$uid" = "$owner" ] || fail "$part"
+                if [ "$mode" = system ]; then
+                    case "$permissions" in
+                        [1357][0-7][0-7][0-7]) ;;
+                        *[2367][0-7]|*[2367]) fail "$part" ;;
+                    esac
+                fi
+            fi
             part=$(dirname -- "$part")
         done
-        meta=$(stat -c "%h %a" -- "$source") || fail "cannot inspect helper"
-        [ "${meta%% *}" = 1 ] || fail "hard-linked helper"
-        case "${meta#* }" in *[2367][0-7]|*[2367]) fail "writable helper metadata" ;; esac
-
-        # /tmp itself must protect a freshly created root-owned child. Do not
-        # honour TMPDIR, adopt an existing directory, or allow a symlink here.
-        [ -d /tmp ] && [ ! -L /tmp ] || fail "unsafe snapshot parent"
-        meta=$(stat -c "%u %a" -- /tmp) || fail "cannot inspect snapshot parent"
-        [ "${meta%% *}" = 0 ] || fail "foreign snapshot parent"
-        case "${meta#* }" in
-            [1357][0-7][0-7][0-7]) ;;
-            *[2367][0-7]|*[2367]) fail "unprotected snapshot parent" ;;
-        esac
-        umask 077
-        snapshot=$(mktemp -d /tmp/anamorph-desktop-helper.XXXXXXXXXX) || fail "cannot capture helper"
-        cleanup() {
-            result=$?
-            trap - EXIT
-            if ! rm -f -- "$snapshot/desktop-integration.sh"; then
-                printf "warning: cannot remove verified helper in %s\n" "$snapshot" >&2
-                [ "$result" -ne 0 ] || result=1
-            fi
-            if ! rmdir -- "$snapshot"; then
-                printf "warning: cannot remove helper snapshot %s\n" "$snapshot" >&2
-                [ "$result" -ne 0 ] || result=1
-            fi
-            exit "$result"
-        }
-        trap cleanup EXIT
-        trap "exit 130" INT
-        trap "exit 143" TERM
-        trap "exit 129" HUP
-        [ "$(stat -c "%u %a" -- "$snapshot")" = "0 700" ] || fail "unsafe snapshot directory"
-        # Metadata checks above are input hygiene, not authentication. Verify the
-        # bytes actually copied, then consume ONLY this protected pathname.
-        (set -C; cat -- "$source" > "$snapshot/desktop-integration.sh") || fail "helper capture failed"
-        [ -f "$snapshot/desktop-integration.sh" ] && [ ! -L "$snapshot/desktop-integration.sh" ] || fail "nonregular snapshot"
-        [ "$(stat -c "%u %a %h" -- "$snapshot/desktop-integration.sh")" = "0 600 1" ] || fail "unsafe snapshot file"
-        actual=$(sha256sum < "$snapshot/desktop-integration.sh") || fail "cannot hash captured helper"
-        [ "${actual%% *}" = "$expected" ] || fail "helper digest mismatch; use a matching trusted distribution"
-        sh "$snapshot/desktop-integration.sh" "$@" "$assets"
-    ' anamorph-desktop-helper "$HERE/desktop-integration.sh" "$HERE/desktop-assets" "$@"
+        [ ! -L "$target" ] || fail "$target"
+        if [ -e "$target" ]; then
+            [ -d "$target" ] && [ "$(stat -c %u -- "$target")" = "$owner" ] || fail "$target"
+        fi
+    ' anamorph-plugin-destination "$1" "$mode"
 }
-# END verified desktop helper
+# END plugin destination checks
+
+# BEGIN legacy desktop cleanup
+# Migration only: never install desktop resources or change shared permissions.
+# This literal code runs as the caller for --user and via sudo for --system.
+cleanup_legacy_desktop() {
+    if [ "$mode" = system ]; then
+        _data=/usr/local/share
+        _app=/usr/local/bin/Anamorph
+    else
+        _data="$HOME/.local/share"
+        case "${XDG_DATA_HOME:-}" in /*) _data=$XDG_DATA_HOME ;; esac
+        _app="$HOME/.local/bin/Anamorph"
+    fi
+    $SUDO /bin/sh -c '
+        set -eu
+        set -f
+        data=$1; app=$2; system=$3; owner=$(id -u)
+        warn() { printf "warning: legacy Anamorph resources preserved: %s\n" "$*" >&2; }
+        present() { [ -e "$1" ] || [ -L "$1" ]; }
+        hash() { sha256sum < "$1" | cut -d " " -f 1; }
+        parents() {
+            part=$1
+            case "$part" in /*) ;; *) return 1 ;; esac
+            if printf "%s" "$part" | LC_ALL=C grep -q "[[:cntrl:]]"; then return 1; fi
+            while [ "$part" != / ]; do
+                [ ! -L "$part" ] || return 1
+                if [ -e "$part" ]; then
+                    [ -d "$part" ] || return 1
+                    meta=$(stat -c "%u %a" -- "$part") || return 1
+                    uid=${meta%% *}; permissions=${meta#* }
+                    [ "$uid" = 0 ] || [ "$uid" = "$owner" ] || return 1
+                    if [ "$system" = system ]; then
+                        case "$permissions" in
+                            [1357][0-7][0-7][0-7]) ;;
+                            *[2367][0-7]|*[2367]) return 1 ;;
+                        esac
+                    fi
+                fi
+                part=$(dirname -- "$part")
+            done
+        }
+        owned_file() {
+            [ -f "$1" ] && [ ! -L "$1" ] &&
+                [ "$(stat -c "%u %h" -- "$1")" = "$owner 1" ]
+        }
+        paths="applications/tech.rolly.anamorph.desktop
+icons/hicolor/16x16/apps/tech.rolly.anamorph.png
+icons/hicolor/24x24/apps/tech.rolly.anamorph.png
+icons/hicolor/32x32/apps/tech.rolly.anamorph.png
+icons/hicolor/48x48/apps/tech.rolly.anamorph.png
+icons/hicolor/64x64/apps/tech.rolly.anamorph.png
+icons/hicolor/128x128/apps/tech.rolly.anamorph.png
+icons/hicolor/256x256/apps/tech.rolly.anamorph.png
+icons/hicolor/512x512/apps/tech.rolly.anamorph.png
+icons/hicolor/scalable/apps/tech.rolly.anamorph.svg"
+        clean_resources() {
+            parents "$data" || { warn "unsafe data-root ancestry"; return; }
+            data=$(realpath -ms -- "$data")
+            state="$data/.tech.rolly.anamorph"
+            receipt="$state/receipt"
+            present "$state" || return 0
+            if [ -L "$state" ] || [ ! -d "$state" ] ||
+               [ "$(stat -c "%u %a" -- "$state")" != "$owner 700" ]; then
+                warn "unverified ownership state"; return
+            fi
+            # A killed cleanup may have removed the receipt already. Only an
+            # empty checked format marker is then eligible for exact rmdir.
+            if present "$receipt"; then
+                if ! owned_file "$receipt" ||
+                   [ "$(head -n 1 -- "$receipt")" != "tech.rolly.anamorph desktop resources v1" ] ||
+                   [ "$(tail -n +2 -- "$receipt" | awk "{print \$2}" | LC_ALL=C sort)" != "$(printf "%s\n" "$paths" | LC_ALL=C sort)" ] ||
+                   ! tail -n +2 -- "$receipt" | awk "NF != 2 || length(\$1) != 64 || \$1 ~ /[^0-9a-f]/ {bad=1} END {exit bad}"; then
+                    warn "unverified ownership receipt"; return
+                fi
+                remaining=0
+                for relative in $paths; do
+                    target="$data/$relative"
+                    present "$target" || continue
+                    digest=$(awk -v path="$relative" "\$2 == path {print \$1}" "$receipt")
+                    if parents "$(dirname -- "$target")" && owned_file "$target" &&
+                       [ "$(hash "$target")" = "$digest" ]; then
+                        if ! rm -- "$target"; then remaining=1; warn "$relative"; fi
+                    else remaining=1; warn "$relative"; fi
+                done
+                [ "$remaining" -eq 0 ] || return 0
+                # Unknown/interrupted journals are retained with their receipt;
+                # their mere marker is not deletion authority.
+                known=$(find "$state" -mindepth 1 -maxdepth 1 -printf "%f\n" | LC_ALL=C sort)
+                if [ "$known" != "$(printf "%s\n" format-v1 receipt | LC_ALL=C sort)" ]; then
+                    warn "private recovery state requires review"; return
+                fi
+            else
+                for relative in $paths; do
+                    if present "$data/$relative"; then warn "resource without a receipt"; return; fi
+                done
+                if [ "$(ls -A -- "$state")" != format-v1 ]; then
+                    warn "state without a receipt"; return
+                fi
+            fi
+            marker="$state/format-v1"
+            if [ -L "$marker" ] || [ ! -d "$marker" ] ||
+               [ "$(stat -c "%u %a" -- "$marker")" != "$owner 700" ] ||
+               [ -n "$(ls -A -- "$marker")" ]; then
+                warn "unverified format marker"; return
+            fi
+            if present "$receipt"; then rm -- "$receipt"; fi
+            rmdir -- "$marker"
+            rmdir -- "$state"
+        }
+        clean_app() {
+            app=$1
+            present "$app" || return 0
+            if ! parents "$(dirname -- "$app")" || ! owned_file "$app"; then
+                warn "unverified standalone file"; return
+            fi
+            digest=$(hash "$app")
+            # Exact executable from the existing 0.10.0 Linux release asset.
+            if [ "$digest" = 4beedffbcedbe6c14b0a9ecb2c0c51110b32c10ed8de477bd9e9f9525811ca8e ]; then
+                rm -- "$app"
+            else warn "standalone content differs from a verified package"; fi
+        }
+        clean_resources
+        clean_app "$app"
+        clean_app "${app%/*}/.Anamorph.new"
+    ' anamorph-legacy-cleanup "$_data" "$_app" "$mode" || {
+        printf 'warning: legacy Anamorph cleanup incomplete; unverified files are kept.\n' >&2
+    }
+}
+# END legacy desktop cleanup
 
 # ------------------------------------------------------- 1) current-user mode
 if [ "$mode" = user ]; then
@@ -329,16 +406,16 @@ if [ "$mode" = user ]; then
     BIN_DIR="$HOME/.local/bin"
     VST3_DEST="$VST3_DIR/Anamorph.vst3"
 
-    DATA_DIR=$(desktop_data_root)
-    desktop_integration preflight "$DATA_DIR" "$BIN_DIR/Anamorph"
-    mkdir -p "$VST3_DIR" "$BIN_DIR"
+    check_plugin_destination "$VST3_DEST"
+    cleanup_legacy_desktop
+    mkdir -p "$VST3_DIR"
     STAGE_DIR="$(choose_stage_dir "$VST3_DIR")" || {
         stage_dir_advice "$VST3_DIR"
         exit 1
     }
     STAGE_VST3="$STAGE_DIR/Anamorph.vst3"
     PREV_VST3="$STAGE_DIR/Anamorph.vst3.prev"
-    STAGE_APP="$BIN_DIR/.Anamorph.new"
+
 
     # reconcile clears the staging directory, so make_stage_dir has to follow it
     # rather than precede it - these three lines belong in this order.
@@ -350,8 +427,7 @@ if [ "$mode" = user ]; then
     }
 
     cp -R "$VST3_SRC" "$STAGE_VST3"
-    cp "$APP_SRC" "$STAGE_APP"
-    chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
+    chmod 755 "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so"
 
     # Only ever set the old version aside into an empty slot, so the copy kept
     # for you is always the one this run put there.
@@ -365,7 +441,6 @@ if [ "$mode" = user ]; then
         mv "$VST3_DEST" "$PREV_VST3"
     fi
     mv "$STAGE_VST3" "$VST3_DEST"
-    mv "$STAGE_APP" "$BIN_DIR/Anamorph"
     # The install is complete here, so tidying up must not fail the run - but it
     # says what it could not remove rather than leaving you to find it.
     rm -rf "$PREV_VST3" 2>/dev/null || {
@@ -377,19 +452,12 @@ if [ "$mode" = user ]; then
     rmdir "$STAGE_DIR" 2>/dev/null || true
     trap - EXIT INT TERM HUP
 
-    desktop_integration install "$DATA_DIR" "$BIN_DIR/Anamorph"
     echo "Installed (current user only - no root needed):"
     echo "  VST3       -> $VST3_DEST"
-    echo "  Standalone -> $BIN_DIR/Anamorph"
-    case ":${PATH:-}:" in
-        *":$BIN_DIR:"*) ;;
-        *) echo "Note: $BIN_DIR is not on your PATH - start the Standalone with the full path above." ;;
-    esac
-    if [ -e "$SYS_VST3_DIR/Anamorph.vst3" ] || [ -e "$SYS_BIN_DIR/Anamorph" ]; then
+    if [ -e "$SYS_VST3_DIR/Anamorph.vst3" ]; then
         echo "Note: an older system-wide install is still present, so Anamorph may appear"
         echo "      twice in your DAW and the older copy may load instead:"
         if [ -e "$SYS_VST3_DIR/Anamorph.vst3" ]; then echo "        $SYS_VST3_DIR/Anamorph.vst3"; fi
-        if [ -e "$SYS_BIN_DIR/Anamorph" ];      then echo "        $SYS_BIN_DIR/Anamorph"; fi
         echo "      Remove it with:  sudo ./uninstall.sh"
     fi
     echo "Rescan plug-ins in your DAW to pick it up. Uninstall later with:  ./uninstall.sh"
@@ -422,16 +490,16 @@ VST3_DIR="$SYS_VST3_DIR"
 BIN_DIR="$SYS_BIN_DIR"
 VST3_DEST="$VST3_DIR/Anamorph.vst3"
 
-DATA_DIR=$(desktop_data_root)
-desktop_integration preflight "$DATA_DIR" "$BIN_DIR/Anamorph"
-priv mkdir -p "$VST3_DIR" "$BIN_DIR"
+check_plugin_destination "$VST3_DEST"
+cleanup_legacy_desktop
+priv mkdir -p "$VST3_DIR"
 STAGE_DIR="$(choose_stage_dir "$VST3_DIR")" || {
     stage_dir_advice "$VST3_DIR"
     exit 1
 }
 STAGE_VST3="$STAGE_DIR/Anamorph.vst3"
 PREV_VST3="$STAGE_DIR/Anamorph.vst3.prev"
-STAGE_APP="$BIN_DIR/.Anamorph.new"
+
 
 # Same order as the per-user branch above: reconcile clears the staging
 # directory, so make_stage_dir follows it.
@@ -440,8 +508,7 @@ arm_traps
 make_stage_dir "$STAGE_DIR" || { echo "System installation failed: cannot create $STAGE_DIR" >&2; exit 1; }
 
 priv cp -R "$VST3_SRC" "$STAGE_VST3"
-priv cp "$APP_SRC" "$STAGE_APP"
-$SUDO chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
+$SUDO chmod 755 "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so"
 
 # Same rule as the per-user branch: never park onto an occupied slot.
 if [ -e "$VST3_DEST" ]; then
@@ -454,7 +521,6 @@ if [ -e "$VST3_DEST" ]; then
     priv mv "$VST3_DEST" "$PREV_VST3"
 fi
 priv mv "$STAGE_VST3" "$VST3_DEST"
-priv mv "$STAGE_APP" "$BIN_DIR/Anamorph"
 # The install is complete here; clearing the kept copy must not fail the run.
 # A leftover in /usr needs root to remove, so it is named rather than swallowed.
 $SUDO rm -rf "$PREV_VST3" 2>/dev/null || {
@@ -466,10 +532,8 @@ $SUDO rm -rf "$PREV_VST3" 2>/dev/null || {
 $SUDO rmdir "$STAGE_DIR" 2>/dev/null || true
 trap - EXIT INT TERM HUP
 
-desktop_integration install "$DATA_DIR" "$BIN_DIR/Anamorph"
 echo "Installed (system-wide, all users):"
 echo "  VST3       -> $VST3_DEST"
-echo "  Standalone -> $BIN_DIR/Anamorph"
 # The mirror of the per-user branch's warning: a per-user copy is scanned too,
 # and many DAWs load it in preference to this one. Finding it needs your home
 # rather than root's, which is what SUDO_USER answers. Kept in a subshell so a
@@ -489,12 +553,10 @@ echo "  Standalone -> $BIN_DIR/Anamorph"
 
     if [ -n "$user_home" ]; then
         _uv="$user_home/.vst3/Anamorph.vst3"
-        _ua="$user_home/.local/bin/Anamorph"
-        if [ -e "$_uv" ] || [ -e "$_ua" ]; then
+        if [ -e "$_uv" ]; then
             echo "Note: a per-user install is also present, so Anamorph may appear twice in"
             echo "      your DAW and the per-user copy may load instead of this one:"
             if [ -e "$_uv" ]; then echo "        $_uv"; fi
-            if [ -e "$_ua" ]; then echo "        $_ua"; fi
             echo "      Remove it${user_as} with:  ./uninstall.sh"
         fi
     fi

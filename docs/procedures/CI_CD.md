@@ -2060,81 +2060,37 @@ uninstaller icon, installed payload/sidecars, System attribute and safe owned-fi
 are checked. Developer/self-hosted targets and existing installs are refused. Installer upload
 requires behavior success; `Anamorph-Windows-installer-validation` retains JSON evidence.
 
-## Linux desktop/hicolor installation gate
+## Linux VST3 installation and legacy cleanup gate
 
-The normal installed-resource contract under Accepted ADR-0065 (owner confirmation
-recorded 2026-10-25) originally had `source-lint` install only CI test tools (Bubblewrap, desktop-file-utils, Python GI/GTK and SVG loader), runs
-`check-linux-desktop.py --self-test` then its source/provenance check, and executes
-`tests/linux_desktop_install_tests.py`. The Linux shipping job stages desktop-assets
-and the shell helper, repeats the checker self-test/check with `--staged-dir`, and runs
-entry-point tests after a clean archive round-trip with the actual compiled payload.
-The Linux customer upload additionally requires `desktop_install` success; its JSON
-is retained as `Anamorph-Linux-desktop-validation`. Unavailable isolation is a failure,
-not a skipped pass. Existing compiler/audio/state/pluginval/ABI gates remain intact.
-GTK/Bubblewrap/Python are test dependencies only; the customer helper uses shell and
-base Linux utilities. No assets are downloaded or rendered during builds.
+The corrected 0.10.0 candidate replaces desktop publication with VST3-only
+installation and portable Standalone. Source-lint runs the package checker's
+self-test/source contract, shell syntax and native-plan/coverage-liveness tests.
+Desktop-file/GTK/SVG test dependencies and the old helper recorder are retired.
+Shared JUCE icon and other-platform native gates remain unchanged.
 
-The earlier hosted setup changed the unprivileged-user-namespace restriction.
-That historical approach is retired for current CI: no kernel/security setting is
-changed. The real gate uses root-created mount/PID/network namespaces with actual
-UIDs and real sudo on a fresh disposable hosted VM. An unsuitable VM fails visibly.
+The Linux job stages exactly the plugin, portable executable, two scripts and
+instructions. `package_source` validates the staged bytes after same-job liveness.
+`plugin_install` then invokes `tests/linux_install_native_tests.py` through real
+sudo on the disposable hosted VM. Actual ordinary/root UID and sudo capability
+preflight, all required cases, archive round-trip, ownership/content preservation,
+legacy cleanup, failure/kill retry and user/system coexistence are mandatory.
+The driver retains the established unshare/chroot mount/PID/network isolation,
+read-only host runtime and setpriv UID transitions, without user namespaces or
+host security-setting changes. Missing capabilities fail visibly.
 
-**2026-10-25 normal-validation restoration:** the constant deferred/exit-1
-placeholder is replaced by `tests/linux_desktop_native_tests.py` against the real
-staged tree. Trusted root-owned VM-private utility overlays observe actual snapshot
-ownership, modes, link count, digest and shell argv, and inject bounded ordinary
-failure/signal/cleanup cuts without changing production PATH or helper bytes.
-The complete inherited entry-point suite, all-ten receiptless checks and staged ZIP
-round-trip run. Customer upload still depends on `desktop_install` success. The
-ordinary capture recorder stays in source-lint and cannot stand in for this gate.
-No cross-principal attack or exploit demonstration is required or performed.
+The native report is always ineligible until the full unittest lifecycle completes,
+including setup/cleanup errors. Coverage verification rejects omission of each
+required case and a disabled empty-suite verifier. Incomplete/failed native results
+keep customer upload blocked. `Anamorph-Linux-install-validation` retains the package
+and native JSON evidence; customer upload explicitly requires `plugin_install`
+success plus the existing tests/stage conditions. Other mandatory DSP/state,
+pluginval, sanitizer, ABI, macOS and Windows gates are unchanged.
 
-
-## Ordinary helper regression in normal CI
-
-The obsolete separate helper review workflow is retired. Normal source-lint runs
-`tests/linux_desktop_helper_tests.py` as an ordinary UID, plus the approved source
-and shell checks. Its recorder never elevates or interprets fixture helper bytes;
-modeled ownership cannot certify native root behavior. The real installed-resource
-step and customer-upload dependency remain separate and mandatory. Normal Build
-push/PR/dispatch and reusable Release validation no longer require publication
-containment. Body-only description edits retain the default PR event behavior.
-
-
-The 2026-10-25 restoration ran the ordinary-user entry-point reliability selector
-in private user/mount namespaces on Ubuntu 22.04 without a host setting change.
-The measured modern-host placement is recorded below: all eight same cases are
-mandatory in the existing staged real-UID native gate. The 12-test recorder stays
-an ordinary source-lint process and never elevates or interprets fixture bytes.
-
-The second native attempt completed with diagnostic failures: Bubblewrap rejected
-ordinary UID selection without a user namespace. Already-root observations and
-31 reached system cleanup cuts were retained, but no full gate or customer upload
-was certified. The native driver now creates VM-private mount/PID/network roots
-with unshare/chroot and uses real setpriv UID transitions. It retains a dedicated
-namespace init and real setuid sudo; no user namespace or interpreter recorder is
-used. Host runtime files are read-only, product writes remain task-private, and
-mount capabilities are dropped before the installer runs. Signal targeting walks
-only the bounded test-owned ancestry and verifies the pinned literal bootstrap.
-The existing customer priv() maps errors to 1; separate execution of its exact
-embedded bootstrap verifies 130/143/129 signal status and snapshot cleanup. No
-production helper, digest, PATH or permission/failure contract was changed.
-
-Native namespace setup verifies distinct mount/PID/network namespaces before any
-mount operation and retains the original user namespace. The task-owned root is
-entered before forking the installer; a dedicated init reaps only its descendants.
-A one-time real UID/sudo capability preflight stops the native suite if the VM
-cannot provide this isolation. Trusted project code and test instrumentation run
-inside a disposable VM; the test root is not claimed to contain hostile root code.
-Source-lint's ordinary namespace probe also fails before its unit selection when
-that separate capability is unavailable. Its 20-minute job budget covers the
-bounded existing user reliability cases and dependency setup.
-
-The ordinary native-plan recorder checks production executor selection, real-UID
-plan fields, implicit-root/uninstall arguments, fixed PATH and task-private writable
-mounts. Its four tests execute no namespace, sudo, interpreter or fixture contents.
-Planned UID 0 is data only; these tests cannot replace native filesystem evidence.
-The original 12-test protected-helper recorder remains separate and unchanged.
+Local `linux_install_tests.py` runs actual scripts with Bubblewrap private roots.
+It does not establish real-host sudo/root ownership. Native-plan tests execute no
+installer or namespace; they cannot replace the staged real-UID gate.
+The later dated ADR-0065 runtime records below remain historical evidence for
+their recorded heads, not procedures for the corrected candidate.
 
 ## Native installed-receipt smoke test
 

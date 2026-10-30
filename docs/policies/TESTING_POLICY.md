@@ -158,37 +158,28 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
 
-## Linux desktop resource gate (Accepted ADR-0065 implementation)
+## Linux plugin installer gate (proposed ADR-0069 correction)
 
-The owner approved implementation/testing before the new CI dependency set was added;
-ADR-0065 is Accepted; merge review remains separate. Source/provenance checks run universally
-with their self-test ahead of use, including local preflight without any build directory.
-The source-lint job keeps ordinary capture/plan fixtures and pure source checks.
-All eight actual ordinary-user entry-point reliability cases are mandatory in
-its existing real-UID native gate on the disposable Linux VM, in protected private
-mount/PID/network roots. A shared selector and same-invocation positive/negative
-coverage control refuse omission of any case. No unprivileged-user-namespace
-permission or host security setting is changed. The shipping job requires this
-complete real-root gate and repeats the checks against a clean ZIP round-trip
-of the real staged customer tree; its upload requires success.
+The owner's 2026-10-31 instruction authorizes VST3-only Linux installation,
+portable Standalone and legacy receipt/hash cleanup in corrected 0.10.0, with human
+PR review/manual merge required. Source/package liveness and native integration
+remain mandatory. The desktop publication feature and its test-only dependencies
+are retired; shared native icons and other-platform gates are unchanged.
 
-Coverage includes user/system/XDG paths, real GIO escaped executable launch, hicolor
-lookup, ownership/ancestor/symlink/journal refusal, failure/SIGKILL recovery, coexistence,
-reinstall and exact safe uninstall. Deliberately disabled ownership/parent/source-hash
-checks must be caught by their negative probes. No live workstation destinations are
-used; inability to create isolated namespaces fails visibly. These tests do not certify
-GNOME/KDE display, icon-cache appearance, actual DAWs or embedded ELF icons.
+The package checker must reject obsolete desktop/AppStream payloads, unexpected
+archive members, modified scripts and incorrect executable modes. The Linux
+shipping job must run the complete real UID/root/sudo installer suite in disposable
+private mount/PID/network roots against staged native files. No live workstation
+destinations, mocked privilege metadata, user namespace or host security-setting
+changes may replace it. Inability to isolate fails, never falls back to live paths.
 
-The publication-only phase deferred native testing; that restriction is historical.
-The current owner authorization permits bounded functional/reliability tests inside
-disposable VMs/private roots. The shipping job executes
-`tests/linux_desktop_native_tests.py` via real sudo on a fresh hosted VM. Private
-mount/PID/network roots use real root/ordinary UIDs, real sudo, the normal shell
-and trusted root-owned utility overlays. The helper PATH, bytes and both pins stay
-unchanged. No kernel/security setting is modified; missing capabilities fail.
-Customer upload still requires the real installed-resource step to succeed.
-The ordinary 12-test capture recorder remains separate and models root metadata.
-`--ordinary-only` and `--user-reliability` subsets cannot satisfy the full gate.
+Required coverage includes fresh user/system installs, no manual permission repair,
+reinstall/repeated uninstall, upgrade and verified old desktop cleanup, unrelated
+file preservation, missing/malformed/modified/link/unknown legacy state, failed/killed
+swap recovery, parked-copy handling, XDG/coexistence and clean archive extraction.
+Same-invocation case omission/empty-suite controls and real preservation mutants
+prove liveness. Failed/incomplete native validation blocks customer upload.
+Local Bubblewrap behavior and ordinary plan tests are separate evidence only.
 
 ## Native installed macOS receipt gate (Accepted ADR-0066)
 

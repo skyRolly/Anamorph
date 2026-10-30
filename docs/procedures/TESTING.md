@@ -6421,101 +6421,46 @@ absent before use on the disposable VM, then inspects its real shortcut targets.
 bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
 setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
 
-## Linux desktop/hicolor regression (Accepted ADR-0065)
+## Linux VST3 installer and legacy cleanup regression
 
-Current platform-review follow-up (owner confirmation 2026-10-25) also permits
-`python3 tests/linux_desktop_install_tests.py --user-reliability --staged-dir <tree> --report <path>`.
-This explicit selector refuses root, system operations, extra probes, smoke and
-namespace-permission changes. In private Bubblewrap roots it runs the four user
-cases plus all ten receiptless resource names with regular/live-link/dangling-link
-fixtures and absent-name retry; 31 bounded user cleanup cuts across preparation,
-rollback and commit (including missing old markers), retry/uninstall and unknown
-journal/state refusal. Only test-owned subprocesses in private PID roots are killed.
-This is user-mode reliability evidence, not actual sudo/root-snapshot validation or
-the full installed-resource gate. `--ordinary-only` still selects its original four
-cases. For this user-only selector, mutation controls and system/native cases are omitted.
-
-The ordinary-UID capture recorder is integrated into normal source-lint; the
-obsolete separate publication-phase workflow is retired. It still cannot replace
-the complete real installed-resource gate or authorize customer upload.
-
-For the 2026-10-25 defensive helper maintenance task, the focused check is:
+The corrected 0.10.0 candidate uses `scripts/check-linux-package.py --self-test`
+before source/staged checks. It rejects desktop/AppStream payloads, extra archive
+members, altered scripts and incorrect executable modes. The real installer sets
+the installed VST3 module executable before publication. Old desktop publication,
+GIO/icon lookup and replaceable-helper snapshot tests are retired with that feature.
 
 ```sh
-python3 tests/linux_desktop_helper_tests.py
+python3 scripts/check-linux-package.py --self-test
+python3 scripts/check-linux-package.py
+python3 tests/linux_install_native_plan_tests.py
+python3 tests/linux_install_tests.py
+# Against an already staged native Linux customer tree:
+python3 scripts/check-linux-package.py --staged-dir dist/Anamorph-Linux
+python3 tests/linux_install_tests.py --staged-dir dist/Anamorph-Linux
 ```
 
-Run as an ordinary user. The test extracts the identical production entry-point
-functions, replaces their trusted digest only for inert fixture bytes, and supplies
-a recording `priv()` boundary. It runs the literal capture/verification bootstrap
-without elevation and replaces final `sh` interpretation with a recorder. Temporary
-creation is redirected into task-owned disposable directories; fixture contents are
-never executed. File creation, 0700/0600 modes, single/hard/symbolic links, SHA-256,
-argument quoting and exact-path exit cleanup are real. Root ownership metadata is
-modelled, including directory/file ownership/mode/link-count rejection; this does not
-test cross-account isolation. Cases include each system action, missing/nonregular/
-linked inputs, writable source mode, changed bytes despite a changed sidecar digest,
-stable snapshot consumption after sequential source replacement, and consumer failure
-with unrelated temporary content preserved. A source check requires matching bootstrap
-blocks, the actual helper digest, and routed user/system/implicit-root entry paths.
+Local behavior tests invoke actual scripts inside Bubblewrap private roots with no
+live-path fallback. They cover fresh/repeat/upgrade/remove, both modes, portable-only
+Standalone, missing optional app payload, writable icon parents without chmod/chown,
+receipt/hash-owned legacy removal, partial cleanup retry, malformed/missing receipts,
+modified/link/unowned resources and unknown journals, unrelated file/settings
+preservation, parked bundles, failed/killed swaps and recovery, destination links,
+XDG roots and clean ZIP extraction. A deliberately bypassed hash check must violate
+the edited-resource preservation assertion. Test logs stay outside tracked files.
 
-These checks establish defensive implementation and nonprivileged regression
-evidence. Actual privilege elevation, root ownership, protected interpretation,
-archive asset resolution/publication, system uninstall and interruption/recovery are
-still unverified on this revision. The distinct-principal exploit claim is unproven;
-no race/exploit demonstration or hostile process is part of this check. The commands
-below describe broader existing procedures, not authorization for this task. The
-customer-archive hold and required installed-resource gate remain unchanged.
+The native gate runs the same mandatory cases plus real per-operation sudo and
+system killed-swap recovery on the disposable hosted VM in private mount/PID/network
+roots with actual root/ordinary identities. No user namespace, metadata mock,
+substituted interpreter or host security-setting change supplies this evidence.
+Archive upload requires the complete successful native result. Plan/coverage tests
+remain nonprivileged and prove executor planning, private writable mounts, fixed
+PATH, case omission/empty-verifier rejection and incomplete report ineligibility.
 
-```sh
-python3 scripts/check-linux-desktop.py --self-test
-python3 scripts/check-linux-desktop.py
-python3 tests/linux_desktop_install_tests.py
-# After ordinary Linux staging (no product rebuild required):
-python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux
-python3 tests/linux_desktop_install_tests.py --staged-dir dist/Anamorph-Linux
-```
-
-Run with Bubblewrap/user namespaces, desktop-file-validate, Python GI/GTK and a working
-SVG loader. Tests invoke the customer shell commands, never copied helper implementations,
-inside disposable roots and at a working directory outside the archive. No fallback runs
-against real /usr or HOME when isolation is unavailable. The source checker's self-test
-precedes every check; six real preflight regressions include corrupted Linux source input.
-Fixtures cover changed/missing files, foreign paths, symlinks, private-state/receipt/journal
-errors, ordinary failure and killed transactions, discriminating old/new launcher rollback,
-user/system coexistence and reinstall/uninstall. The clean-archive case compares installed
-native payload hashes/ELF headers with the already native-gated customer files. The GIO
-case launches a harmless fixture executable from a path containing spaces, %%/quotes/dollar/
-backtick/backslash and checks GTK hicolor lookup at eight sizes × two scales, including SVG.
-It does not launch the product GUI or certify GNOME/KDE appearance. Serialize operations
-against the same data root. See the worklog for exact results, mutations and limits.
-
-Hosted CI namespace setup: the first hosted run refused Bubblewrap UID mapping
-before any installation. `--hosted-namespace-permission` now first proves its
-strict repository/OS/disposable-host guard with good/bad contexts, temporarily sets
-kernel.apparmor_restrict_unprivileged_userns=0 only on the GitHub-hosted Linux VM,
-and restores its exact original value in finally. Local tests never change kernel
-settings; self-hosted/developer/wrong-repository contexts are refused. Installation
-still runs in real private filesystem/user namespaces and fails if isolation cannot
-start. This enables the sandbox rather than replacing native tests or their gates.
-
-**Restricted follow-up, 2026-10-25:** run
-`python3 tests/linux_desktop_install_tests.py --ordinary-only` for four user-mode
-fresh/reinstall/uninstall, missing-receipt, GIO/hicolor and clean-archive checks in
-local disposable roots. That option forbids hosted namespace permission changes and
-additional selected probes. It excludes system/sudo, fault injection, SIGKILL cleanup
-cuts, hostile private-state cases and mutations. The full staged entry-point gate is
-unverified on the revised head and blocks its customer archive in CI. The earlier
-full run is historical regression evidence, not a substitute for the required
-new-head installed-resource gate before merge.
-
-Adversarial uninstall follow-up: at 787752f an unexpected file in the private
-ownership root survived, but owned desktop resources had already been removed
-before rmdir failed. Reproduced with actual entry points in isolation. The root
-now admits only format-v1, receipt and transaction before any recovery/removal.
-A regression requires both foreign and owned files/binaries to remain intact
-on refusal. The GTK test also exercises a real parent theme inheriting hicolor,
-in addition to direct lookup, at eight sizes × two scales. The suite has 20 cases.
+The optional `--legacy-archive` local check can exercise removal of the exact earlier
+0.10.0 Standalone from a digest-verified downloaded archive. Other old executables,
+edited resources and incomplete/unknown legacy journals are preserved for review.
+No GUI/DAW, power-loss or concurrent same-root operation guarantee is implied.
+The following dated desktop-era records remain historical, not current procedures.
 
 ## Real Linux private-root gate (2026-10-25)
 

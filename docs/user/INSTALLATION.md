@@ -38,121 +38,49 @@ which needs no root at all; a system-wide install is offered as the second choic
 
 ## Linux
 
-### Installer installation (install.sh)
+### Installer installation (VST3 only)
 
-1. Download and extract `Anamorph-<version>-Linux.zip`.
-2. In the extracted folder, run it **without** `sudo`:
-
-   ```sh
-   ./install.sh
-   ```
-
-   It asks where to install:
-
-   ```
-   Anamorph Linux Installer
-
-   Choose installation location:
-
-   1) Install for current user (recommended)
-      ~/.vst3
-
-   2) Install system-wide
-      /usr/lib/vst3
-
-   Select [1/2]:
-   ```
-
-   | Choice | VST3 plug-in | Standalone app | Needs root? |
-   |---|---|---|---|
-   | **1) current user** (press Enter — the default) | `~/.vst3/Anamorph.vst3` | `~/.local/bin/Anamorph` | no |
-   | 2) system-wide, all users | `/usr/lib/vst3/Anamorph.vst3` | `/usr/local/bin/Anamorph` | yes (`sudo`, for the copy only) |
-
-   **The per-user install is recommended**: it needs no root access and no password, it
-   leaves system directories untouched, and `~/.vst3` is the VST3 standard's per-user
-   Linux folder — REAPER, Bitwig, Ardour and other Linux DAWs scan it by default, so the
-   plug-in shows up exactly as a system-wide one would. Anything typed that is not `2` is
-   treated as the default. Choosing 2 prints *"System-wide installation requires
-   administrator privileges"* and lets `sudo` ask for your password; individual file
-   operations and verified desktop-helper snapshots run elevated. Running
-   `sudo ./install.sh` installs system-wide without asking, as before.
-
-3. Rescan plug-ins in your DAW (REAPER: *Options → Preferences → Plug-ins → VST →
-   Re-scan*; Bitwig: *Settings → Locations → Plug-in Locations*, then rescan; Ardour:
-   *Preferences → Plugins → Scan for Plugins*). A DAW that is already running will not
-   notice the new plug-in until you rescan or restart it.
-
-To remove it later, run `./uninstall.sh` from the same folder — it offers the same two
-choices, and removing a per-user install needs no root either (`sudo ./uninstall.sh`
-removes the system-wide one).
-
-### Desktop launcher and icons
-
-The script also installs the approved Anamorph launcher and hicolor icons. Per-user
-data goes to absolute `$XDG_DATA_HOME`, or `~/.local/share`; relative XDG values are
-ignored with a warning. System data goes to `/usr/local/share`, alongside the existing
-`/usr/local/bin` Standalone. The launcher references the actual installed app, so a
-session need not have `~/.local/bin` on PATH. Shared icon-theme folders and presets stay.
-Use the same XDG_DATA_HOME when uninstalling. A foreign/edited desktop or icon file is
-preserved and stops the operation; move it to a safe backup before retrying. Interrupted
-resource work is reconciled by the next install/uninstall. A reported resource failure
-is not successful installation; binary updates may already have completed independently.
-GNOME/KDE appearance and window association still require native desktop validation.
-
-System installation and removal reject a desktop helper that does not match the
-trusted entry scripts. If verification fails, use matching files from a trusted
-distribution. This replacement check does not establish a download's authenticity.
-
-You can run the extracted Standalone directly with `./Anamorph` (restore `chmod +x`
-if needed) without running install.sh. Merely extracting the archive installs nothing.
-
-### Manual installation (zip)
-
-Per-user, no root — copy `Anamorph.vst3` (the whole folder) into `~/.vst3/` and the
-`Anamorph` standalone executable into `~/.local/bin/`:
+Extract the corrected Linux ZIP and run `sh ./install.sh`. Choose **1** (the
+default) for `~/.vst3/Anamorph.vst3`, with no root/password, or **2** for
+`/usr/lib/vst3/Anamorph.vst3`; the script invokes sudo for system operations.
+To answer up front:
 
 ```sh
-mkdir -p ~/.vst3 ~/.local/bin
-cp -R Anamorph.vst3 ~/.vst3/
-cp Anamorph ~/.local/bin/
+sh ./install.sh --user
+sh ./install.sh --system
 ```
 
-System-wide instead (both need root):
+Root selects system-wide mode; do not run `--user` through sudo. The installer
+sets the installed module's executable permissions itself. No separate chmod/chown
+or icon-directory permission repair is required. Linked/foreign plugin destinations
+are preserved with a diagnostic.
 
-```sh
-sudo mkdir -p /usr/lib/vst3
-sudo cp -R Anamorph.vst3 /usr/lib/vst3/
-sudo cp Anamorph /usr/local/bin/
-```
+### Portable Standalone
 
-### Linux troubleshooting
+The ZIP retains `Anamorph`, which runs from the extracted directory. Scripts do
+not copy it to a bin directory or install desktop launchers, icons or AppStream
+metadata. Windows/macOS installation choices are unchanged.
 
-- **"Permission denied" launching the Standalone** — some archive tools drop the
-  executable bit (`install.sh` sets it itself, so this only follows a manual copy). Fix:
-  `chmod +x ~/.local/bin/Anamorph` (and, if the DAW can't load the plug-in,
-  `chmod +x ~/.vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so`) — with `sudo` and
-  the `/usr/...` paths for a system-wide install.
-- **`./install.sh: Permission denied`** — you downloaded the package as a per-push CI
-  artifact, which drops the executable bit (release zips keep it). Run `sh ./install.sh`
-  instead (or `sudo sh ./install.sh` to go straight to a system-wide install); the script
-  behaves identically either way.
-- **`Anamorph: command not found` after a per-user install** — `~/.local/bin` is not on
-  your `PATH`; start it with the full path `~/.local/bin/Anamorph`, or add that folder to
-  `PATH`. `install.sh` prints a note when it spots this.
-- **DAW doesn't find the plug-in** — check `~/.vst3` (per-user) or `/usr/lib/vst3`
-  (system-wide) is in the DAW's VST3 search path (both are by default in
-  REAPER/Bitwig/Ardour), then rescan.
-- **Anamorph appears twice, or an update doesn't seem to take** — you have both installs. If
-  you previously ran `sudo ./install.sh` and now take the per-user default, the older
-  system-wide copy stays where it is: both paths are scanned, so the DAW may list two, and
-  which one it loads depends on its scan order. **The installer warns you when it finds one**
-  and names what is still installed system-wide. Remove the one you don't want —
-  `sudo ./uninstall.sh` for the system-wide copy, `./uninstall.sh` for the per-user one —
-  then rescan.
-- **Standalone needs audio** — a working ALSA/JACK/PipeWire setup; pick the device in the
-  app's audio settings.
+### Uninstall, updates and old desktop resources
 
----
+Use `sh ./uninstall.sh --user` or `sh ./uninstall.sh --system`. Modes are independent;
+removing one leaves the other copy. Reinstall uses a staged VST3 replacement and
+recovers a parked old bundle after interruption. Uninstall keeps parked copies
+unless `--discard-parked` is explicit. Settings and presets remain.
+
+For an earlier 0.10.0 install, use the corrected scripts in the original mode
+and original absolute XDG_DATA_HOME (otherwise HOME/.local/share). System legacy
+resources use /usr/local/share. Only owner/hash-verified old desktop/icon files
+are removed, without changing shared directory permissions. Edited, linked,
+unowned resources and unknown/incomplete journals are preserved with warnings;
+these do not prevent VST3 installation/removal. A prior installed Standalone is
+removed only when it exactly matches the verified earlier 0.10.0 release binary;
+other content at that name is preserved. The ZIP's portable executable is kept.
+
+Restart or rescan VST3 plugins in your DAW. Both plugin directories above are
+standard scan locations. If two copies appear, remove the unwanted mode's copy.
+The portable app needs a working ALSA/JACK/PipeWire audio setup. Run the scripts
+through `sh` if archive transport dropped their executable bits.
 
 ## Windows
 

@@ -1,11 +1,14 @@
 # ADR-0065 — Owned Linux desktop/hicolor resource installation
 
-**Status:** Accepted. The owner directly confirmed on 2026-10-25 that human
-architecture review and approval are complete for this existing decision,
-including the delivered protected-helper snapshot amendment.
-This is the confirmation and record-update date; the original approval date
-was not separately specified. Merge/publication, separately required code
-review and unexecuted tests are not approved or certified by this confirmation.
+**Status:** Superseded for the proposed corrected 0.10.0 candidate by
+[ADR-0069](ADR-0069-linux-plugin-only-installation.md), on the owner's explicit
+2026-10-31 instruction to remove Linux desktop installation. ADR-0069 and the
+implementation await human PR review and manual merge. The following acceptance,
+implementation and runtime records remain historical evidence for the existing
+0.10.0 tag/release; this task does not change those objects.
+
+Original acceptance: owner confirmation on 2026-10-25, including protected-helper
+capture. This history is not approval of the replacement candidate.
 
 **Implementation effectivity (record updated 2026-10-26):** effective on main
 through the owner's actual PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`,
