@@ -53,3 +53,15 @@ The next run retrieves retained artifact 12957996229 (API/archive SHA-256
 and additionally verifies the AU binary's independently measured SHA-256
 `4f574ba6542c07b79c9d772ceb951ffbab54b81bfdcfe4ad3c83992ee7cc258a`.
 It reuses those exact reconstructed bytes instead of silently rebuilding them.
+
+### Reproduced abort; first-throw capture required
+
+Run 41011609262, artifact 12958500629 (SHA-256
+`eaf801f71f81d38090243a3f3c7c9a8505772a69a08ea44a76bd3b2b515db66c`),
+passes the native canary. Five real invocations exit successfully, then the sixth
+reproduces the post-SUCCESS abort. The message-thread stack is already inside
+AppKit's exception rethrow; the original C++ throw frame has unwound. The validator
+worker is still stopping its timeout thread. This still does not establish blame.
+The next observation filters __cxa_throw's x86_64 type_info argument for
+bad_function_call and stops before unwinding. Its actual canary must prove that
+specific first-throw path, rather than accepting a later abort as equivalent.

@@ -8,6 +8,7 @@ import platform
 from pathlib import Path
 import re
 import signal
+import shlex
 import subprocess
 import sys
 import time
@@ -21,6 +22,8 @@ def classify(output):
         return 'observer-error'
     result = json.loads(records[0])
     if result['state'] == 'stopped':
+        if result.get('target_exception') and 'bad_function_call' in result.get('exception_type',''):
+            return 'bad-function-call-throw'
         if 'SIGABRT' in str(result['stops']) and 'bad_function_call' in output:
             return 'bad-function-call-abort'
         return 'other-stop'
@@ -32,8 +35,9 @@ def classify(output):
 
 
 def self_test():
-    def record(state, exit_code=0, stops=None):
-        return MARKER+json.dumps({'state':state,'exit':exit_code,'stops':stops or []})+'\n'
+    def record(state, exit_code=0, stops=None, target=False):
+        return MARKER+json.dumps({'state':state,'exit':exit_code,'stops':stops or [],
+            'target_exception':target,'exception_type':'NSt3__117bad_function_callE' if target else ''})+'\n'
     cases = [
         ('SUCCESS\n'+record('exited'), 'completed'),
         ('SUCCESS\nlibc++abi: bad_function_call\n'+record('stopped',stops=['signal SIGABRT']), 'bad-function-call-abort'),
@@ -44,6 +48,8 @@ def self_test():
         (record('exited'), 'missing-success'),
         ('SUCCESS\n'+record('running'), 'observer-error'),
         ('SUCCESS\n'+record('exited')+record('exited'), 'observer-error'),
+        (record('stopped',stops=['breakpoint 1.1'],target=True), 'bad-function-call-throw'),
+        ('bad_function_call\n'+record('stopped',stops=['breakpoint 1.1']), 'other-stop'),
     ]
     for text, expected in cases:
         assert classify(text) == expected, (text, expected)
@@ -51,13 +57,16 @@ def self_test():
 
 
 def observe(executable, args, log, timeout):
-    result_command = ("script import lldb,json; p=lldb.debugger.GetSelectedTarget().GetProcess(); "
+    result_command = ("script import lldb,json,au_teardown_lldb; p=lldb.debugger.GetSelectedTarget().GetProcess(); "
         "print('"+MARKER+"'+json.dumps({'state': 'stopped' if p.GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else "
         "'exited' if p.GetState()==lldb.eStateExited else 'other', 'exit':p.GetExitStatus(), "
-        "'stops':[t.GetStopDescription(256) for t in p]}))")
+        "'stops':[t.GetStopDescription(256) for t in p], 'target_exception':au_teardown_lldb.seen_bad_call, "
+        "'exception_type':au_teardown_lldb.exception_type}))")
     backtrace = ("script lldb.debugger.HandleCommand('thread backtrace all') if "
         "lldb.debugger.GetSelectedTarget().GetProcess().GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else None")
     command = ['xcrun','lldb','--batch','-o','settings set target.disable-aslr false',
+               '-o','command script import '+shlex.quote(str(Path(__file__).with_name('au_teardown_lldb.py').resolve())),
+               '-o','script au_teardown_lldb.install(lldb.debugger.GetSelectedTarget())',
                '-o','process handle -s true -n true -p false SIGABRT','-o','run',
                '-o',result_command,'-o',backtrace,'-o','image list -o -f',
                '-k',result_command,'-k',backtrace,'-k','image list -o -f','--',str(executable),*args]
@@ -99,7 +108,7 @@ def main():
     def save():
         (root/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     save()
-    assert control['outcome']=='bad-function-call-abort', 'debugger cannot capture the known throw'
+    assert control['outcome']=='bad-function-call-throw', 'debugger cannot capture the known first throw'
     deadline=time.monotonic()+1000
     for attempt in range(args.attempts):
         remaining=deadline-time.monotonic()
@@ -110,7 +119,7 @@ def main():
             root/f'pass-{attempt+1:02d}.log',min(180,remaining))
         report['runs'].append(outcome);save()
         print(f"AU diagnostic {attempt+1}: {outcome['outcome']}",flush=True)
-        if outcome['outcome']=='bad-function-call-abort':
+        if outcome['outcome']=='bad-function-call-throw':
             return 0
         if outcome['outcome']!='completed':
             return 2
