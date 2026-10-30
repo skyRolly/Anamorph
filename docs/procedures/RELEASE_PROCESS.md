@@ -38,6 +38,9 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    That attestation covers the original 0.10.0 candidate. A P1 replacement needs targeted
    reapproval of newly changed invalid-input audio and restore/callback behavior; retain the
    original unrelated installation/icon/manual approval instead of repeating it without cause.
+   **Targeted P1 reapproval is now complete:** the owner attested completion on 2026-10-30
+   for the requested PR #187 / `9f9a76e` candidate scope. Exact environments/individual
+   observations were not supplied. See the dated records in those same documents.
 
 ## Build the release artifacts
 

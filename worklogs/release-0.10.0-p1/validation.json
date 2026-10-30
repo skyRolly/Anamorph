@@ -1,0 +1,280 @@
+{
+  "source_commit": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+  "workflow_run": 40988058477,
+  "version": "0.10.0",
+  "validation": {
+    "local_dsp_checks": 945,
+    "local_state_checks": 10827,
+    "local_failures": 0,
+    "restore_commit_checks": 2011,
+    "first_implementation_negative_control_failures": 54,
+    "pluginval": {
+      "strictness": 10,
+      "deterministic_passes": 3,
+      "randomise_passes": 3,
+      "retry_count_final_source": 0
+    },
+    "human_targeted_validation": "complete \u2014 direct owner attestation, 2026-10-30 Asia/Shanghai",
+    "valgrind": "both suites: 0 errors from 0 contexts, 0 suppressions"
+  },
+  "ci": {
+    "build": {
+      "run_id": 40988058477,
+      "number": 1952,
+      "head": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+      "conclusion": "success",
+      "successful_jobs": [
+        "sanitizers",
+        "macos-crossslice",
+        "docs",
+        "macos",
+        "macos-intel",
+        "realtime",
+        "source-lint",
+        "windows",
+        "windows-avx2-ab",
+        "fuzz",
+        "linux",
+        "linux-lto-tests",
+        "tsan"
+      ],
+      "skipped_jobs": [
+        "macos-review-coinstallation",
+        "merge-check",
+        "macos-review-selections"
+      ]
+    },
+    "pr_build": {
+      "run_id": 40988061775,
+      "conclusion": "success"
+    },
+    "codeql": {
+      "run_id": 40988061774,
+      "conclusion": "success"
+    },
+    "msvc": {
+      "run_id": 40988061830,
+      "conclusion": "success"
+    },
+    "dependency_review": {
+      "run_id": 40988061799,
+      "conclusion": "success"
+    },
+    "sarif_review": {
+      "codeql_cpp": 65,
+      "codeql_actions": 0,
+      "prefast": 192,
+      "semantic_new_findings": 0,
+      "note": "Same diagnostic counts/categories as preimplementation baseline. PREfast C6262 byte estimates change with immutable default bindings increasing processor size. No diagnostic suppression or threshold changed."
+    },
+    "analysis_merge_commit": "9de9c9f0fb371457181fa9bb6dccb559ff440b69"
+  },
+  "original_candidate": {
+    "release_id": 428196589,
+    "draft": true,
+    "published_at": null,
+    "tag_object": "769d52fb09116b787184d119ff1db6075187e36d",
+    "peeled_commit": "cd70a0b8a20d04c246a826c7b1bf616de2721c65",
+    "state": "untouched"
+  },
+  "human_attestation": {
+    "statement": "Human validation has been completed",
+    "recorded_date": "2026-10-30",
+    "recorded_timezone": "Asia/Shanghai",
+    "candidate_context": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+    "actual_test_date": null,
+    "daw": null,
+    "os_cpu": null,
+    "format": null,
+    "individual_results": null,
+    "selected_artifact": null
+  },
+  "artifacts": {
+    "Anamorph-Linux": {
+      "id": 12948483850,
+      "name": "Anamorph-Linux",
+      "bytes": 6041412,
+      "sha256": "14453684ea2f9ceebff15ea52e1450204f7a16403836163948a3d3b2540623a7",
+      "source_commit": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+      "workflow_run": 40988058477,
+      "artifact_url": "https://github.com/skyRolly/Anamorph/actions/runs/40988058477/artifacts/12948483850",
+      "versions": {},
+      "bundle_ids": {},
+      "architectures": {}
+    },
+    "Anamorph-Windows": {
+      "id": 12947914674,
+      "name": "Anamorph-Windows",
+      "bytes": 7779758,
+      "sha256": "54cb6bf07f5227976d4f07cb02fb9a95ccfe6733059553e66603d39fe6b728c4",
+      "source_commit": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+      "workflow_run": 40988058477,
+      "artifact_url": "https://github.com/skyRolly/Anamorph/actions/runs/40988058477/artifacts/12947914674",
+      "versions": {
+        "Anamorph.exe": {
+          "fixed_file_version": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "fixed_product_version": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "strings": {
+            "ProductName": "Anamorph",
+            "FileDescription": "Anamorph",
+            "FileVersion": "0.10.0",
+            "ProductVersion": "0.10.0"
+          },
+          "installer": false
+        },
+        "Anamorph.vst3/Contents/x86_64-win/Anamorph.vst3": {
+          "fixed_file_version": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "fixed_product_version": [
+            0,
+            10,
+            0,
+            0
+          ],
+          "strings": {
+            "ProductName": "Anamorph",
+            "FileDescription": "Anamorph",
+            "FileVersion": "0.10.0",
+            "ProductVersion": "0.10.0"
+          },
+          "installer": false
+        }
+      },
+      "bundle_ids": {}
+    },
+    "Anamorph-Windows-installer": {
+      "id": 12947919719,
+      "name": "Anamorph-Windows-installer",
+      "bytes": 6836935,
+      "sha256": "08ceb0c620a18b4c63839940d2e2858e18839f0e1bf9030fc52d73789b849451",
+      "source_commit": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+      "workflow_run": 40988058477,
+      "artifact_url": "https://github.com/skyRolly/Anamorph/actions/runs/40988058477/artifacts/12947919719",
+      "versions": {
+        "Anamorph-0.10.0-Windows-Installer.exe": {
+          "fixed_file_version": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "fixed_product_version": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "strings": {
+            "ProductName": "Anamorph",
+            "FileDescription": "Anamorph Setup",
+            "FileVersion": "",
+            "ProductVersion": "0.10.0"
+          },
+          "installer": true
+        }
+      },
+      "bundle_ids": {}
+    },
+    "Anamorph-macOS": {
+      "id": 12949271095,
+      "name": "Anamorph-macOS",
+      "bytes": 16919608,
+      "sha256": "1fd6303d59fd59e7e91cfbfd13021151f78c6c52e90ecf34524cd46eec7ef674",
+      "source_commit": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+      "workflow_run": 40988058477,
+      "artifact_url": "https://github.com/skyRolly/Anamorph/actions/runs/40988058477/artifacts/12949271095",
+      "versions": {
+        "Anamorph.app/Contents/Info.plist": "0.10.0",
+        "Anamorph.component/Contents/Info.plist": "0.10.0",
+        "Anamorph.vst3/Contents/Info.plist": "0.10.0"
+      },
+      "bundle_ids": {
+        "Anamorph.app/Contents/Info.plist": "tech.rolly.anamorph",
+        "Anamorph.component/Contents/Info.plist": "tech.rolly.anamorph",
+        "Anamorph.vst3/Contents/Info.plist": "tech.rolly.anamorph"
+      },
+      "architectures": {
+        "Anamorph.app/Contents/MacOS/Anamorph": [
+          "x86_64",
+          "arm64"
+        ],
+        "Anamorph.component/Contents/MacOS/Anamorph": [
+          "x86_64",
+          "arm64"
+        ],
+        "Anamorph.vst3/Contents/MacOS/Anamorph": [
+          "x86_64",
+          "arm64"
+        ]
+      }
+    },
+    "Anamorph-macOS-installer": {
+      "id": 12948692910,
+      "name": "Anamorph-macOS-installer",
+      "bytes": 16498323,
+      "sha256": "1c44342ae032eb52983b53210c73f2b78f4ef54ac4bbe0c7bae822a67684eec9",
+      "source_commit": "9f9a76ea9ea848f406362553ed29b51770ac375a",
+      "workflow_run": 40988058477,
+      "artifact_url": "https://github.com/skyRolly/Anamorph/actions/runs/40988058477/artifacts/12948692910",
+      "versions": {
+        "Anamorph-0.10.0-macOS.pkg": {
+          "AnamorphApp.pkg/PackageInfo": {
+            "overwrite-permissions": "true",
+            "relocatable": "false",
+            "identifier": "tech.rolly.anamorph.app",
+            "postinstall-action": "none",
+            "version": "0.10.0",
+            "format-version": "2",
+            "generator-version": "InstallCmds-864.12 (25G83)",
+            "install-location": "/Applications",
+            "auth": "root"
+          },
+          "AnamorphAU.pkg/PackageInfo": {
+            "overwrite-permissions": "true",
+            "relocatable": "false",
+            "identifier": "tech.rolly.anamorph.au",
+            "postinstall-action": "none",
+            "version": "0.10.0",
+            "format-version": "2",
+            "generator-version": "InstallCmds-864.12 (25G83)",
+            "install-location": "/Library/Audio/Plug-Ins/Components",
+            "auth": "root"
+          },
+          "AnamorphVST3.pkg/PackageInfo": {
+            "overwrite-permissions": "true",
+            "relocatable": "false",
+            "identifier": "tech.rolly.anamorph.vst3",
+            "postinstall-action": "none",
+            "version": "0.10.0",
+            "format-version": "2",
+            "generator-version": "InstallCmds-864.12 (25G83)",
+            "install-location": "/Library/Audio/Plug-Ins/VST3",
+            "auth": "root"
+          }
+        }
+      },
+      "bundle_ids": {},
+      "architectures": {}
+    }
+  },
+  "linux_abi": {
+    "check": "passed",
+    "CXXABI": "1.3.9",
+    "GLIBC": "2.38",
+    "GLIBCXX": "3.4.31"
+  }
+}

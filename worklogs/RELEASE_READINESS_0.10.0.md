@@ -1,9 +1,10 @@
 # Release readiness — 0.10.0 (draft only)
 
-**Current status: P1 implementation complete in PR #187; targeted human validation pending
-(2026-10-30, Asia/Shanghai).** The owner explicitly approved ADR-0067/0068; that architecture
-gate is cleared. The original draft/tag remain intact. Fresh mandatory automated checks and
-targeted human validation of the changed behavior must precede merge and replacement.
+**Current status: P1 candidate implementation/CI and targeted human validation complete;
+final main integration and draft replacement pending (2026-10-30, Asia/Shanghai).** The owner explicitly approved ADR-0067/0068; that architecture
+gate is cleared. Build 1952 and companion checks passed on `9f9a76e`; the owner has now
+attested the requested targeted human validation complete. The original draft/tag remain
+intact until validated final main is ready for the guarded replacement operation.
 See **Approved P1 implementation and PR #187 review corrections** below.
 
 **Historical original-candidate completion (2026-10-30):** required validation and manual
@@ -663,3 +664,40 @@ ARM CI must verify this correction on the final source; a local GCC pass does no
 After the display-oracle correction, the complete local suites were rebuilt/re-run: DSP **945 / 0**,
 state **10827 / 0**. No production code changed after the final six first-attempt pluginval
 passes. The final exact-head native matrix must confirm the ARM-specific oracle.
+
+## Final candidate validation and human completion — 2026-10-30, Asia/Shanghai
+
+Runtime source `9f9a76ea9ea848f406362553ed29b51770ac375a` is validated by
+[Build 1952](https://github.com/skyRolly/Anamorph/actions/runs/40988058477): all 13 running
+jobs succeeded; the three optional/event-specific jobs were skipped. The PR merge check
+(40988061775), CodeQL (40988061774), MSVC analysis (40988061830) and dependency review
+(40988061799) also succeeded. Valgrind reports zero errors from zero contexts for both
+suites, with zero suppressions. Native ARM and Rosetta validate the display-oracle correction.
+
+Five candidate platform/installer archives were downloaded, matched to API sizes/SHA-256
+digests and source/run identities, and inspected. Windows app/VST3 versions and installer
+ProductVersion are 0.10.0; the generic Inno loader's fixed numeric version remains zero as
+before. macOS plists and all three component PackageInfo versions are 0.10.0, with both
+arm64/x86_64 slices and the expected namespace. The downloaded Linux payload independently
+passes the unchanged ABI checker: CXXABI_1.3.9, GLIBC_2.38, GLIBCXX_3.4.31. This does not
+turn the earlier local GCC 14 aggregate failure into a pass.
+
+The security-alert API returned integration HTTP 403, so the completed SARIF artifacts were
+downloaded and compared with the preimplementation candidate. Raw counts remain 65 C++
+CodeQL, 0 Actions and 192 PREfast. Only existing C6262 stack-byte estimates change with the
+larger immutable parameter bindings; no diagnostic threshold or suppression was changed.
+Candidate provenance/digests and validation are committed in `release-0.10.0-p1/validation.json`.
+
+**Targeted human gate cleared.** The owner directly replies “Human validation has been
+completed” to the request identifying candidate `9f9a76e` and its verified downloads, invalid
+input audio/automation recovery and session/preset/A-B/Settings/PDC scope. Record this as the
+owner's completion attestation, not tests performed by the agent. Actual test date, DAW/OS/CPU,
+format/device/session, individual outcomes and selected artifact hash remain NOT RECORDED.
+The prior architecture approval and original candidate's unrelated manual approval are retained.
+
+The next source changes record this evidence only; runtime code, tests, CMake version,
+workflow behavior, metadata gates and all fixtures remain unchanged. Final main must pass
+the mandatory CI gates before original draft/tag deletion. The normal recreated-tag Release
+workflow must build fresh payloads, and every new release asset/manifest/note must be verified.
+No public publication is authorized. At this attestation record, original ID 428196589 and
+tag object 769d52fb09116b787184d119ff1db6075187e36d still exist unchanged and unpublished.

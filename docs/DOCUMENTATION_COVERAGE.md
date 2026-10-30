@@ -1,5 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.0 P1 targeted human completion and execution handoff (2026-10-30)
+
+LEVEL5_AUDITION and RELEASE_COMPATIBILITY_CHECKLIST record the owner's actual completion
+statement against the preceding `9f9a76e` / Build 1952 candidate request. Unprovided test dates,
+environments and per-item observations remain unrecorded; original unrelated approvals are
+preserved. README/HANDOVER, RELEASE_PROCESS and the readiness worklog now distinguish the
+completed candidate/manual gates from pending final-main integration and normal draft replacement.
+The compact candidate validation record preserves all five downloaded archive hashes, versions,
+source/run identity and CI results. This is documentation/evidence only, with no runtime or
+workflow change and no public publication.
+
 ## 0.10.0 approved P1 implementation and PR #187 review (2026-10-30)
 
 ADR-0067/0068 are Accepted on explicit owner approval and implemented in the candidate.
