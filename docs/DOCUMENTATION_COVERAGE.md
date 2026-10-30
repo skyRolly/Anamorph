@@ -1,5 +1,89 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #189 completed investigation disposition (2026-10-31, Asia/Shanghai)
+
+CI_CD and TESTING now record run 41086686014's verified enqueue/disposal/block-return
+controls for both listener and component destruction, with live callbacks, clean exits
+and the exact-exit-5 absence control. HANDOVER, RISK-017 and REPOSITORY_MAP reflect the
+captured first throw and the owner's intermittent-failure disposition. The cause
+remains unproven; recurrence, a supported-host symptom or causal lifetime evidence
+reopens investigation. The rejected dispatch-listener pilot and its artifact are
+recorded historically in the worklog; its unverified adapter is removed. The report's
+separate source identities, retained/configure.log and retained/build.log were checked
+in downloaded, digest-verified artifacts. No ordinary gate, product or release changes.
+
+## AU delivery enqueue-boundary follow-up (2026-10-30)
+
+CI_CD and TESTING describe the new independent pending-block fixture, public API
+interposition scoped to that executable, bounded enqueue/disposal rendezvous,
+initial callback liveness and exact exit-5 absence control. REPOSITORY_MAP indexes
+the source. The diagnostic observer records armed/disarmed outcomes and a one-trial
+AU follow-up; the worklog states the native experiment is pending. Normal gates,
+validator acquisition, production code and the unpublished release remain unchanged.
+The first native run rejects the unexercised legacy AUParameterSet path. The
+follow-up uses the wrapper's direct AUEventListenerNotify path and bounded CF
+enqueue call-site traces; both procedures record that distinction.
+The trace confirms CF enqueue from CAEventReceiver but no executable interposer entry.
+The follow-up uses a separate linked library, explicit inferior-only DYLD environment
+and its measured hash, documented in both procedures. Native interposition remains unverified.
+Run 41085754050 now verifies the interposer and both enqueues; listener-only disposal
+returns safely. Both procedures distinguish the next component-disposal case and its
+separate trace/report. This does not yet identify the real AU exception's cause.
+
+## AU listener queued-disposal follow-up (2026-10-30)
+
+CI_CD and TESTING describe both independent control invocations, first-callback
+liveness, the queued timer ordering, exit 4's unexercised-path meaning, and each
+retained debugger log/report. The observer's outcome controls cover clean, dead,
+failed and incomplete independent observations. REPOSITORY_MAP indexes the expanded
+control; HANDOVER, RISK-017 and the worklog distinguish the established Apple throw
+site from the unresolved cause. No recovery exception or ordinary gate change is
+introduced. The first 2000-cycle debugger run times out without qualifying evidence;
+the follow-up bounds each debugger control to 128 cycles with progress every 16,
+retaining the standalone 2000-cycle default.
+The entry-observer variant additionally probes disposal before queued blocks drain,
+with the same liveness/exit contract and its own retained trace. Both procedures
+record all three modes and the four-trial diagnostic AU bound; ordinary gates do not change.
+Native runs 41025971859 and 41027283750 verify both control configurations with
+exit 0, live initial delivery and completed disposal. The former still captures
+the AU's typed Apple timer throw on trial 16; the latter's entry control delivers
+only eight initial callbacks. Both procedures explain why this does not prove
+queued delivery at disposal or establish a root cause. Artifact hashes, counts,
+observer refusal mutations and exact source identities are recorded in the worklog.
+
+## Native AU control procedure reconciliation (2026-10-30, PR #189 review)
+
+CI_CD and TESTING now both describe the native macOS 26 same-binary comparison,
+Apple-only control build/run commands, first-cycle callback liveness and exit
+interpretation. They record the control's limited successful result alongside the
+continued real-AU throw, without claiming an OS-label fix or bypassing any gate.
+
+## Captured AudioToolbox throw and native OS comparison (2026-10-30)
+
+The first-throw report now identifies Apple's CAEventReceiver timer-delivery block
+on macOS 15. The worklog records raw artifact identities and the measured source/
+observer distinction. The nonshipping comparison uses identical AU/tool bytes on
+native Intel macOS 26, with a declared completed-campaign expectation and an
+independent Apple-only listener control. Ordinary validation remains unchanged;
+an environment correction is not claimed until the comparison completes.
+
+## First-throw AU observer and PR #189 review corrections (2026-10-30)
+
+The LLDB helper now filters __cxa_throw's native Intel type_info argument to stop
+at bad_function_call before AppKit unwinds the caller. The real empty-function
+canary must exercise this first-throw path; the later SIGABRT alone is insufficient.
+The abort is reproduced, but its original caller/root cause is not yet established.
+The report separates diagnostic checkout and historical AU source commits and
+records the measured AU binary hash. Retained reconstruction logs are uploaded
+under retained/, rather than referenced as nonexistent new top-level build logs.
+
+## Build 1957 native Intel AU throw-stack investigation (2026-10-30)
+
+CI_CD/TESTING qualify the historical post-SUCCESS abort's unproven ownership.
+The new branch-scoped diagnostic workflow and driver are indexed in REPOSITORY_MAP;
+the worklog records exact failure/seed/provenance and bounded observer liveness.
+Normal validation and release gates remain unchanged; no root cause or fix is
+claimed before a throw stack is retained.
 ## Original-request completion reconciliation (2026-10-30)
 
 The state-hardening worklog opening, repository-map ADR rows and current issue/risk

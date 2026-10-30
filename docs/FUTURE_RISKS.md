@@ -392,6 +392,33 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   validation failure already fails immediately with no retry. Keep the crash/failure decision in one
   self-tested function — an exit code alone does not carry it.
 
+## RISK-017 — Unresolved native Intel AU timer exception after validation
+
+- **Risk:** Native Intel AU validation intermittently throws bad_function_call after
+  SUCCESS. First-throw captures on macOS 15 and 26 identify AudioToolboxCore's
+  CAEventReceiver timer block, but do not establish which host/product interaction
+  leaves an empty callback. A successful independent drained-listener control is
+  not a standalone framework reproduction or an exoneration of Anamorph.
+- **Impact:** A complete test run can still abort at teardown. A broad exception
+  retry could conceal a product lifetime defect; the ordinary macOS gate therefore
+  continues to fail immediately. The existing validated release is unchanged.
+- **Likelihood [Verified]:** Intermittent: Build 1957 fails, later Build 1959 passes
+  unchanged production source; diagnostic runs reproduce on both OS generations.
+- **Evidence [Verified]:** `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`, diagnostic
+  runs 41018800486, 41020131883, 41025971859, 41027283750 and 41086686014;
+  `tests/au_listener_teardown.mm`, `tests/au_pending_block_control.mm`.
+- **Disposition (2026-10-31, Asia/Shanghai):** After the bounded investigation,
+  the owner permits treating this as an occasional CI failure. The causal risk
+  remains unresolved: even the verified pending-block listener/component disposal
+  controls complete without reproducing the real-host throw. An experimental
+  dispatch-listener adapter failed its exception-propagation control and is excluded.
+  No product correction or framework-only ownership is claimed; the ordinary gate
+  still fails each macOS crash immediately.
+- **Reopen conditions:** The same first-throw signature recurs in ordinary CI,
+  a supported DAW exhibits a teardown failure, or a controlled host-lifetime
+  experiment identifies the empty callback's owner. Retain the throw stack,
+  source/tool hashes and native environment before proposing a correction.
+
 ## RISK-005 — Manual-only audio/visual + host validation
 - **Risk:** Audio quality, GUI/vectorscope appearance, and real-DAW host behaviour cannot be verified
   headlessly; a green build + pluginval pass is "ready to audition," not final.

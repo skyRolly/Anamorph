@@ -1034,7 +1034,7 @@ line and calls `std::_Exit (SIGKILL)`. SIGKILL is 9, so a macOS crash arrives *b
 threshold and was announced as a plug-in that failed validation. Observed on
 [PR #141](https://github.com/skyRolly/Anamorph/pull/141) (run 34019453055, job `macos`, AU randomise
 pass 2/3): all 25 tests passed, pluginval printed `SUCCESS`, and only then did a
-`std::bad_function_call` in its own teardown produce `(exit 9) -- real validation failure, not a
+`std::bad_function_call` after test completion produce `(exit 9) -- real validation failure, not a
 crash.` The line is matched on **every** host, not on Darwin alone, because gating proof of a crash
 behind a platform check is the defect itself; a bare exit 9 counts only on Darwin, where it is that
 handler's signature and pluginval otherwise exits 0 or 1.
@@ -1048,6 +1048,92 @@ a crash. `run-pluginval.sh --self-test` proves the decision live in `source-lint
 `scripts/preflight.sh` — 22 cases over recorded strings and a stand-in validator, including the
 verbatim tail of the run above. Evidence [Verified]: `scripts/run-pluginval.sh`;
 `scripts/run-pluginval.ps1`; `docs/procedures/TESTING.md` §What counts as a crash.
+
+Build 1957 repeats this post-SUCCESS AU abort on native Intel (run 41005362987,
+job 123898933769, randomise pass 2/3, seed `0x3e1c70`). The retained tail does not
+establish whether the throw originates in pluginval, a framework or the plug-in.
+The branch-scoped `au-teardown-diagnostic.yml` initially reconstructs that source,
+then reuses its hash-verified retained AU and the locked validator for a native
+Intel macOS 26 comparison. The ordinary macos-intel gate still runs on macOS 15.
+The LLDB observer's actual empty-function canary must stop at the first typed throw
+before AppKit unwinds its caller. The same AudioToolbox CAEventReceiver throw is
+now observed on both OS generations, so the label comparison did not establish a fix.
+It changes no ordinary gate or retry. See
+`worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md` and `scripts/diagnose-au-teardown.py`.
+
+The comparison also compiles and runs the independent Apple-only control:
+
+```sh
+xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+  -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+./apple-au-listener-control > apple-au-listener-control.log 2>&1
+./apple-au-listener-control --queued-disposal > apple-au-queued-control.log 2>&1
+./apple-au-listener-control --entry-disposal > apple-au-entry-control.log 2>&1
+```
+
+It loads Apple's LowPassFilter, verifies at least one listener callback, then
+executes 2000 create/notify/dispose cycles with varied run-loop timing. Exit 0
+means this limited control completed, not that the pluginval defect is absent.
+Exit 2 means component lookup/API setup failed; exit 3 means callback liveness
+failed. A signal/abort is a control failure requiring its own stack. The native
+macOS 26 run reports 13744 callbacks and exits 0 while the real AU campaign throws;
+that result does not establish the product/host cause or excuse a failed gate.
+The queued-disposal follow-up makes a delivery timer and a disposal timer due in
+the same run-loop turn, after blocking the main thread for 25 ms. Exit 4 means
+the disposal timer did not execute, so the intended ordering was not exercised.
+It remains an ordering probe until a native stack establishes a reproduction.
+`--entry-disposal` uses a run-loop entry observer instead of the disposal timer,
+placing disposal before the loop drains queued blocks. It has the same callback
+and disposal liveness requirements and exit meanings; the two disposal modes are
+mutually exclusive. This probes an ordering the timer alone cannot guarantee.
+The workflow passes this executable to `diagnose-au-teardown.py --apple-control`,
+which observes entry, drained and queued modes under the live typed-throw debugger before the AU
+campaign, using `--cycles 128` per mode and a 180-second bound (standalone default:
+2000 cycles; accepted range 2–2000). Progress records every 16 cycles distinguish
+slow execution from an unentered path. Logs are
+`au-teardown-evidence/apple-{entry,drained,queued}.log`; `report.json` records each outcome.
+The current follow-up bounds the real AU campaign to one invocation, without changing
+ordinary conformance or interpreting no reproduction as a fix.
+A completed entry control whose callback count remains at its initial-cycle value
+proves initial delivery and disposal, not that a delivery block was pending at disposal.
+The native outcomes and exact callback counts are recorded in the worklog.
+
+The additional `tests/au_pending_block_control.mm` tests the missing enqueue boundary:
+
+```sh
+xcrun clang++ -std=c++17 -g -fblocks -DANAMORPH_PENDING_CONTROL_LIBRARY \
+  -dynamiclib tests/au_pending_block_control.mm -framework AudioToolbox \
+  -framework CoreFoundation -Wl,-install_name,@rpath/libau-pending-control.dylib \
+  -o libau-pending-control.dylib
+xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
+  -L. -lau-pending-control -Wl,-rpath,@executable_path -o apple-au-pending-control
+./apple-au-pending-control
+```
+
+This separate Apple-only executable interposes CFRunLoopPerformBlock to queue disposal
+immediately before the intercepted AudioToolbox block, with both blocks enqueued before
+disposal. It sets the value with AudioUnitSetParameter and sends AUEventListenerNotify,
+matching the production wrapper's event path rather than legacy AUParameterSet notification.
+The observer additionally traces at most 16 CF enqueue callers in this executable.
+The AU remains alive while the original block runs. A bounded rendezvous handles
+an off-main enqueue without racing the fixture's lifetime. Exit 5 means enqueue, disposal
+or block return was not observed; exit 3 still means initial callback liveness failed.
+`--pending-control ./apple-au-pending-control` first runs `--no-enqueue-hook`, requiring
+exact inferior exit 5, then observes the armed fixture. Logs/report retain both outcomes.
+Pass `--pending-library ./libau-pending-control.dylib` too; the observer sets the
+inferior's DYLD_INSERT_LIBRARIES through LLDB and records the library hash. This avoids
+losing the variable in the protected launcher and keeps the interposer outside the executable.
+After the listener-only case, `--dispose-unit` additionally destroys the Apple AU
+before the queued block runs, matching the host's listener-then-component teardown.
+Read `apple-pending-component.log` and `pending_component_control` separately.
+Run 41086686014 completes both pending-block cases with eight initial callbacks,
+verified enqueue/disposal/block return and clean exit 0; the disarmed control exits 5.
+Thus listener and component destruction before queued delivery alone do not reproduce
+the real-host throw. The cause remains unproven. The owner permits treating it as
+an occasional CI failure after this investigation; RISK-017 records reopen conditions.
+The pending-block library never interposes the actual validator or changes a normal gate.
+Original build logs live under retained/. The workflow's path filter skips unchanged
+diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.
 
 ### The Clang warning baseline
 

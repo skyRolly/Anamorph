@@ -1,0 +1,90 @@
+name: Native Intel AU teardown diagnosis
+
+# One investigation branch; never a release/validation substitute.
+on:
+  push:
+    branches: [fix/ci1957-au-teardown]
+    paths:
+      - scripts/diagnose-au-teardown.py
+      - scripts/au_teardown_lldb.py
+      - tests/au_listener_teardown.mm
+      - tests/au_pending_block_control.mm
+      - .github/workflows/au-teardown-diagnostic.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  capture:
+    runs-on: macos-26-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Retrieve the retained original-source reconstruction
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: 12957996229
+          github-token: ${{ github.token }}
+          repository: skyRolly/Anamorph
+          run-id: 41010691687
+          merge-multiple: true
+          digest-mismatch: error
+          path: retained
+      - name: Verify retained reconstruction and current native host
+        run: |
+          test "$(uname -m)" = x86_64
+          test "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+          sw_vers > host.txt
+          xcodebuild -version >> host.txt
+          BIN=retained/failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component/Contents/MacOS/Anamorph
+          echo "4f574ba6542c07b79c9d772ceb951ffbab54b81bfdcfe4ad3c83992ee7cc258a  $BIN" | shasum -a 256 --check
+          chmod 755 "$BIN"
+      - name: Prepare pinned validator and disposable AU registration
+        id: prepare
+        run: |
+          python3 scripts/diagnose-au-teardown.py --self-test
+          PLUGINVAL="$(python3 scripts/acquire-pluginval.py --tools "$PWD/.tools")"
+          DEST="$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
+          test ! -e "$DEST"
+          mkdir -p "$(dirname "$DEST")"
+          cp -R retained/failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          echo "pluginval=$PLUGINVAL" >> "$GITHUB_OUTPUT"
+          echo "bundle=$DEST" >> "$GITHUB_OUTPUT"
+          shasum -a 256 "$DEST/Contents/MacOS/Anamorph" > reconstructed-au.sha256
+      - name: Build independent Apple AU listener lifecycle control
+        run: |
+          xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+            -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+          xcrun clang++ -std=c++17 -g -fblocks -DANAMORPH_PENDING_CONTROL_LIBRARY \
+            -dynamiclib tests/au_pending_block_control.mm -framework AudioToolbox \
+            -framework CoreFoundation -Wl,-install_name,@rpath/libau-pending-control.dylib \
+            -o libau-pending-control.dylib
+          xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
+            -L. -lau-pending-control -Wl,-rpath,@executable_path -o apple-au-pending-control
+      - name: Prove debugger liveness and capture bounded controls and failing-seed campaign
+        run: >-
+          python3 scripts/diagnose-au-teardown.py
+          --pluginval "${{ steps.prepare.outputs.pluginval }}"
+          --bundle "${{ steps.prepare.outputs.bundle }}"
+          --apple-control ./apple-au-listener-control
+          --pending-control ./apple-au-pending-control
+          --pending-library ./libau-pending-control.dylib
+          --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
+          --attempts 1
+          --expect completed
+      - name: Retain native throw stacks and reconstructed bytes
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-native-Intel-AU-teardown
+          if-no-files-found: error
+          path: |
+            au-teardown-evidence/
+            host.txt
+            reconstructed-au.sha256
+            retained/
+      - name: Remove disposable AU
+        if: ${{ always() && steps.prepare.outcome == 'success' }}
+        run: rm -rf "${{ steps.prepare.outputs.bundle }}"

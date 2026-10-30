@@ -5857,7 +5857,7 @@ constructor that installs it — logs `pluginval received <signal>, exiting imme
 `std::_Exit (SIGKILL)`. SIGKILL is 9, so a macOS crash arrives as **exit 9**, and this script called
 it a plug-in that failed validation. Observed on PR #141 (run 34019453055, job `macos`, AU randomise
 pass 2/3): all 25 tests passed, pluginval printed `SUCCESS`, and only then came a
-`std::bad_function_call` in pluginval's own teardown — reported as "real validation failure, not a
+`std::bad_function_call` after test completion — reported as "real validation failure, not a
 crash", the furthest-apart verdict this gate can reach.
 
 `classify_pass_exit` now returns `pass`, `crash` or `fail` from the host, the exit code **and**
@@ -5881,6 +5881,82 @@ stand-in validator, over recorded strings — 22 cases, no build tree, no plugin
 (`classify_pass_exit`, `run_one_pass`, `self_test`); scripts/run-pluginval.ps1 (verdict block).
 
 ## CI integration
+
+### Native Intel AU teardown diagnostic control
+
+`au-teardown-diagnostic.yml` is a nonshipping investigation branch workflow. Its
+initial reconstruction/first-throw captures run on native Intel macOS 15; the
+current same-AU/validator comparison runs on native Intel macOS 26. It does not
+change the ordinary build matrix, strictness, three-pass requirement or crash retry.
+The observer's native empty-function canary must reach the typed first throw;
+an abort after AppKit unwinds the caller is not equivalent evidence.
+
+The comparison separately builds `tests/au_listener_teardown.mm` using:
+
+```sh
+xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+  -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+./apple-au-listener-control > apple-au-listener-control.log 2>&1
+./apple-au-listener-control --queued-disposal > apple-au-queued-control.log 2>&1
+./apple-au-listener-control --entry-disposal > apple-au-entry-control.log 2>&1
+```
+
+This executable links only Apple frameworks, loads the Apple LowPassFilter and
+requires callback delivery in its first cycle. It then repeats 2000 listener
+create/notify/dispose cycles with varied run-loop timing. Exit 0 means those
+cycles completed; 2 means a missing component or failed AudioToolbox API call;
+3 means the callback path was not live. Any signal/abort is a failed observation,
+not a retryable pass. The macOS 26 comparison completed with 13744 callbacks,
+while the original AU still threw in AudioToolbox. The control's success therefore
+neither reproduces nor rules out the observed host/product interaction. Interpret
+it with the first-throw report and worklog, never as a conformance-gate substitute.
+The follow-up `--queued-disposal` mode schedules disposal in a timer, then blocks
+the main thread for 25 ms to make delivery and disposal due in the same turn.
+Exit 4 means the disposal timer never ran; neither that result nor absent initial
+callbacks qualifies as evidence that the event/disposal path was exercised.
+This is an ordering probe, with no reproduction claim until the native results.
+The mutually exclusive `--entry-disposal` variant disposes in a run-loop entry
+observer, before queued blocks drain; the timer variant can run after that drain.
+Exit 4 in either variant means disposal was not exercised. The callback liveness
+requirement and all other exit meanings are identical.
+The workflow runs entry, drained and queued controls through `--apple-control` in the typed
+observer, after the real throw canary and before the AU campaign.
+The debugger campaign passes `--cycles 128` per mode within 180 seconds; standalone
+invocations default to 2000 (range 2–2000). Progress is flushed every 16 cycles.
+Read their individual outcomes in `report.json` and first-throw stacks/exit states in
+`au-teardown-evidence/apple-{entry,drained,queued}.log`. A clean control needs exit 0
+and a nonzero callback count. Ordinary conformance gates retain immediate failure
+on macOS crashes; RISK-017 records the unresolved interaction.
+The current diagnostic AU follow-up is bounded to one trial; a clean bounded
+campaign does not close an intermittent defect.
+In the verified entry probe only the initial cycle delivers callbacks; later
+disposals complete, but this does not establish that a delivery block was pending
+at disposal. Read the per-mode counts and captured AU failure in the worklog.
+`au_pending_block_control.mm` adds a separate enqueue-boundary fixture (build command:
+CI_CD's diagnostic section). It keeps the Apple AU alive, queues listener disposal
+before an observed AudioToolbox delivery block and then invokes that original block.
+Both enqueue operations must finish before disposal; initial callbacks must be live.
+The fixture uses direct AUEventListenerNotify after AudioUnitSetParameter, as the
+real wrapper does. Its observer logs up to 16 CoreFoundation enqueue call sites.
+Exit 5 rejects absent enqueue/disposal/block-return evidence. The driver first disables
+the hook with `--no-enqueue-hook` and requires exact exit 5 before observing the armed
+fixture under `--pending-control`. Read `apple-pending-disarmed.log`, `apple-pending.log`
+and their report fields. These controls introduce no exception handler or validation retry.
+The fixture implementation is built as a separate interposition library; its small
+executable links it using an executable-relative rpath. `--pending-library` also sets
+the inferior's DYLD_INSERT_LIBRARIES through LLDB rather than the protected launcher.
+The report records that library's measured hash; the ordinary validator loads none of it.
+Native run 41085754050 verifies the pending-block path with listener-only disposal;
+it completes safely while the AU stays alive. The additional `--dispose-unit` case
+destroys the component before queued delivery and has its own log/report outcome.
+Run 41086686014 completes both pending-block cases with eight live initial callbacks
+and exit 0 after verified enqueue, disposal and block return. The disarmed case exits 5.
+Neither case reproduces the real-host exception. This is an intermittent failure with
+an unproven cause, accepted by the owner for this investigation's disposition;
+RISK-017 records when to reopen it. Each ordinary macOS crash still fails immediately.
+Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
+
+### Ordinary CI gates
 
 The Linux composite action runs `scripts/configure-ci-apt-mirrors.sh --self-test` before applying
 its mirror correction. Eight fixture checks cover HTTP/HTTPS Azure entries, whitespace and priority
