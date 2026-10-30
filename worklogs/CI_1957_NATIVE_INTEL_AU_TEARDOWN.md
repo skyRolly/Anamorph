@@ -3,6 +3,22 @@
 Recorded 2026-10-30, Asia/Shanghai. Owner request: investigate and fix the
 macos-intel failure, without weakening the existing validation gate.
 
+## Final disposition — 2026-10-31, Asia/Shanghai
+
+The owner directs continuing from the existing evidence and permits treating the
+failure as occasional if sufficient troubleshooting does not identify the cause.
+The investigation below establishes an intermittent native Intel AU teardown
+failure and its first-throw site, but not the responsible lifetime or callback
+owner. PR #189 therefore completes the investigation and review corrections;
+it does not claim a product fix. RISK-017 remains an unresolved residual.
+
+Retain the locked validator, original ordinary CI matrix, strictness, both modes
+and all three passes. Each ordinary macOS crash still fails immediately. No
+adapter, exception exemption, retry, product-source or release modification is
+included. Reopen on recurrence of this first-throw signature in ordinary CI,
+a supported-DAW teardown failure, or controlled evidence identifying the empty
+callback's owner. Historical proposals below are superseded by this disposition.
+
 ## Observed failure
 
 Build 1957 / run 41005362987, source `14237044cb51a80db5656461543c92a066c97ac0`,
@@ -239,19 +255,44 @@ This is isolation evidence, not a fix. The next `--dispose-unit` case destroys t
 component after the listener but before that pending block, matching host teardown.
 It retains the same absence guard, native canary, observer and separate report.
 
-### Dispatch-listener host pilot — 2026-10-31, Asia/Shanghai
+Run 41086686014, diagnostic source `9c3efefa8fce0105c182e566c93c3a76e43adc8b`,
+artifact 12992661788 (22,685,427 bytes, SHA-256
+`9aca6c5778c29063e75a9c4176b78c483641f47d58fd030e77db32bd6644ae07`),
+completes both cases. Each log records eight initial callbacks, intercepted
+AudioToolboxCore enqueue, disposal before the original block and its return,
+then actual inferior exit 0. The disarmed case exits exactly 5; the typed-throw
+canary, all three earlier controls and one unchanged AU invocation also complete.
+This is not a standalone reproduction, even when the component is destroyed.
+The downloaded archive digest matches the API. Its report separately identifies
+diagnostic source 9c3efef and AU source 1423704, with AU hash 4f574b… and official
+validator hash 32ec60…. Both build logs are present at retained/configure.log and
+retained/build.log, confirming the PR review's upload-path correction.
 
-The component-disposal control also completes; these independent lifetimes still
-do not reproduce the real host failure. A narrow host adapter now pilots Apple's
-documented dispatch-queue listener API on main, preserving interval, granularity,
-callback and user data. It targets only pluginval's main/default listener creation
-and its dedicated control; other callers/modes retain the original API. No product
-code, dependency pin, official validator byte, exception verdict or retry changes.
+### Rejected dispatch-listener pilot
 
-The real API control verifies final-value delivery on main, no callbacks after
-disposal, refusal without a loaded/exercised adapter and genuine fatal exception
-propagation from inside the callback. The pilot tracing build observes legacy CF
-enqueues without routing, then enables the adapter on identical AU/tool bytes.
-Every one of three adapted trials must complete and show zero framework CF enqueues;
-the legacy baseline must demonstrate that counter is live. The ordinary wrapper
-remains unchanged pending this evidence. Raw API and comparison reports are retained.
+Commit `49d337e9a706be4cc7ec83f94d978f9b742e24e0` experimentally routes a
+nonshipping host listener through Apple's dispatch-queue API. Run 41089730013
+fails the required callback-exception control before any real-validator comparison.
+The plain and adapted API controls deliver eight callbacks on main with no late
+callbacks, but the throwing-callback log supplies only loaded/routed markers;
+the required genuine fatal bad_function_call proof is absent. That is insufficient
+evidence to integrate the adapter. Its source, checker and workflow integration
+are removed from the final change; no broader crash classification is substituted.
+
+Artifact 12993890718 (22,613,364 bytes, SHA-256
+`544f765f61c8c2cd4501947c7b20c99245b07f046ef20068679a7fc9b4f8af71`)
+was downloaded and matched against its API archive digest. Raw API logs and
+retained build logs preserve the failed pilot independently of the final branch.
+
+### Final local verification
+
+The retained observer passes 16 outcome controls; replacing its independent-control
+classifier with either always-completed or never-completed is rejected. The
+unchanged ordinary validator classifier passes 22 controls. Documentation passes
+700 self-tests and the 175-file scan; citations pass 276 self-tests and checks
+against main and the push predecessor; current release-note checks also complete.
+Full local preflight stops at the existing workspace Linux binaries' ABI check:
+both require CXXABI_1.3.15, exceeding the declared 1.3.14 floor. The checks below
+that point did not run as part of preflight. No ABI floor or check is relaxed;
+the separate citation checks above ran explicitly. Mandatory Linux CI must build
+and validate the final source with the repository's pinned toolchain.

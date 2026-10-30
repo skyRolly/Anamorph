@@ -1,13 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
-## Native validator dispatch-listener pilot (2026-10-31, Asia/Shanghai)
+## PR #189 completed investigation disposition (2026-10-31, Asia/Shanghai)
 
-CI_CD and TESTING describe the owned host-only adapter, exact caller/run-loop scope,
-unchanged notification inputs, real callback/lifetime control and genuine callback
-exception canary. REPOSITORY_MAP indexes all three sources. The checker runs 14
-pure controls ahead of native execution. The diagnostic comparison requires live
-legacy CF delivery and zero such enqueues in three clean adapter trials on the same
-AU/tool bytes. Native pilot evidence is pending; no ordinary gate or release changes.
+CI_CD and TESTING now record run 41086686014's verified enqueue/disposal/block-return
+controls for both listener and component destruction, with live callbacks, clean exits
+and the exact-exit-5 absence control. HANDOVER, RISK-017 and REPOSITORY_MAP reflect the
+captured first throw and the owner's intermittent-failure disposition. The cause
+remains unproven; recurrence, a supported-host symptom or causal lifetime evidence
+reopens investigation. The rejected dispatch-listener pilot and its artifact are
+recorded historically in the worklog; its unverified adapter is removed. The report's
+separate source identities, retained/configure.log and retained/build.log were checked
+in downloaded, digest-verified artifacts. No ordinary gate, product or release changes.
 
 ## AU delivery enqueue-boundary follow-up (2026-10-30)
 

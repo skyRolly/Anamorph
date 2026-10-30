@@ -405,13 +405,19 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood [Verified]:** Intermittent: Build 1957 fails, later Build 1959 passes
   unchanged production source; diagnostic runs reproduce on both OS generations.
 - **Evidence [Verified]:** `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`, diagnostic
-  runs 41018800486, 41020131883, 41025971859 and 41027283750;
-  `tests/au_listener_teardown.mm`.
-- **Next verification:** The bounded drained/timer/entry controls complete, but
-  the entry control delivers only its initial eight callbacks. Further isolation
-  must establish that a delivery block is pending when disposal occurs. A capture must match the actual first
-  throw before framework ownership is claimed. A fix must preserve the ordinary
-  conformance gate; changing runner labels or passing on a later run is insufficient.
+  runs 41018800486, 41020131883, 41025971859, 41027283750 and 41086686014;
+  `tests/au_listener_teardown.mm`, `tests/au_pending_block_control.mm`.
+- **Disposition (2026-10-31, Asia/Shanghai):** After the bounded investigation,
+  the owner permits treating this as an occasional CI failure. The causal risk
+  remains unresolved: even the verified pending-block listener/component disposal
+  controls complete without reproducing the real-host throw. An experimental
+  dispatch-listener adapter failed its exception-propagation control and is excluded.
+  No product correction or framework-only ownership is claimed; the ordinary gate
+  still fails each macOS crash immediately.
+- **Reopen conditions:** The same first-throw signature recurs in ordinary CI,
+  a supported DAW exhibits a teardown failure, or a controlled host-lifetime
+  experiment identifies the empty callback's owner. Retain the throw stack,
+  source/tool hashes and native environment before proposing a correction.
 
 ## RISK-005 — Manual-only audio/visual + host validation
 - **Risk:** Audio quality, GUI/vectorscope appearance, and real-DAW host behaviour cannot be verified

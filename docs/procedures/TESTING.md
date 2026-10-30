@@ -5941,8 +5941,7 @@ real wrapper does. Its observer logs up to 16 CoreFoundation enqueue call sites.
 Exit 5 rejects absent enqueue/disposal/block-return evidence. The driver first disables
 the hook with `--no-enqueue-hook` and requires exact exit 5 before observing the armed
 fixture under `--pending-control`. Read `apple-pending-disarmed.log`, `apple-pending.log`
-and their report fields. These controls introduce no exception handler or validation retry;
-the experiment's native outcome remains pending.
+and their report fields. These controls introduce no exception handler or validation retry.
 The fixture implementation is built as a separate interposition library; its small
 executable links it using an executable-relative rpath. `--pending-library` also sets
 the inferior's DYLD_INSERT_LIBRARIES through LLDB rather than the protected launcher.
@@ -5950,16 +5949,11 @@ The report records that library's measured hash; the ordinary validator loads no
 Native run 41085754050 verifies the pending-block path with listener-only disposal;
 it completes safely while the AU stays alive. The additional `--dispose-unit` case
 destroys the component before queued delivery and has its own log/report outcome.
-
-The listener-adapter pilot has a separate real API control,
-`tests/au_listener_compat_control.mm`, and checker `scripts/check-au-listener-host.py`.
-The checker runs its 14 pure controls first, then verifies absent-adapter exit 6,
-live main-thread delivery of the final parameter value, zero callbacks after disposal,
-and genuine SIGABRT/bad_function_call from a deliberately throwing callback. A swallowed
-exception or an unexercised adapter cannot pass. The pilot compares one observed legacy
-validator run and three adapter runs on the same AU/tool bytes, requiring the legacy CF
-delivery path to be live and absent from each completed adapter run. No ordinary gate,
-retry policy, product source or release payload changes at this experimental stage.
+Run 41086686014 completes both pending-block cases with eight live initial callbacks
+and exit 0 after verified enqueue, disposal and block return. The disarmed case exits 5.
+Neither case reproduces the real-host exception. This is an intermittent failure with
+an unproven cause, accepted by the owner for this investigation's disposition;
+RISK-017 records when to reopen it. Each ordinary macOS crash still fails immediately.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates
