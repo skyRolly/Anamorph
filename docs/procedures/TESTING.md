@@ -5943,6 +5943,10 @@ the hook with `--no-enqueue-hook` and requires exact exit 5 before observing the
 fixture under `--pending-control`. Read `apple-pending-disarmed.log`, `apple-pending.log`
 and their report fields. These controls introduce no exception handler or validation retry;
 the experiment's native outcome remains pending.
+The fixture implementation is built as a separate interposition library; its small
+executable links it using an executable-relative rpath. `--pending-library` also sets
+the inferior's DYLD_INSERT_LIBRARIES through LLDB rather than the protected launcher.
+The report records that library's measured hash; the ordinary validator loads none of it.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates

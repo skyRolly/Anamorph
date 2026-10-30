@@ -216,3 +216,13 @@ uses AudioUnitSetParameter plus direct AUEventListenerNotify, matching the AU
 wrapper, instead of legacy AUParameterSet notifications. A bounded debugger trace
 records CFRunLoopPerformBlock callers to distinguish a missing API path from an
 interposition/filter failure. Native results for this change are pending.
+
+Run 41084813516, artifact 12991670485 (SHA-256
+`d092705b3842481ba71c9b9a0b1be1fb3d21673cbca61c8b053e63e0fb7b8066`),
+also exits 5. Its debugger now confirms CFRunLoopPerformBlock calls from
+AudioToolboxCore's CAEventReceiver::Impl::createTimer block, while no replacement
+function entry is observed. The event path exists; the executable interposer is
+ineffective. The next probe places the interposer/control implementation in a
+separate linked library and sets DYLD_INSERT_LIBRARIES in the inferior through
+LLDB, avoiding protected-launcher environment stripping. The library's measured
+hash is added to the report. None of this library is loaded into the actual validator.

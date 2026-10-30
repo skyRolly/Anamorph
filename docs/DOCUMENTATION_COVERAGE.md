@@ -11,6 +11,9 @@ validator acquisition, production code and the unpublished release remain unchan
 The first native run rejects the unexercised legacy AUParameterSet path. The
 follow-up uses the wrapper's direct AUEventListenerNotify path and bounded CF
 enqueue call-site traces; both procedures record that distinction.
+The trace confirms CF enqueue from CAEventReceiver but no executable interposer entry.
+The follow-up uses a separate linked library, explicit inferior-only DYLD environment
+and its measured hash, documented in both procedures. Native interposition remains unverified.
 
 ## AU listener queued-disposal follow-up (2026-10-30)
 

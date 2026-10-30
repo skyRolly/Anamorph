@@ -1,5 +1,9 @@
 // Nonshipping ordering control: queue an AU block, then dispose before delivery.
 // Uses Apple's LowPassFilter and public APIs only; no JUCE/Anamorph is loaded.
+#if !defined(ANAMORPH_PENDING_CONTROL_LIBRARY)
+extern "C" int anamorph_pending_control_main(int, char**);
+int main(int argc, char** argv) { return anamorph_pending_control_main(argc, argv); }
+#else
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <atomic>
@@ -83,7 +87,7 @@ static const struct { const void* replacement; const void* original; } interposi
     reinterpret_cast<const void*>(&enqueue), reinterpret_cast<const void*>(&CFRunLoopPerformBlock)
 };
 
-int main(int argc, char** argv)
+extern "C" int anamorph_pending_control_main(int argc, char** argv)
 {
     const bool disarmed = argc == 2 && std::strcmp(argv[1], "--no-enqueue-hook") == 0;
     if (argc != 1 && !disarmed) return 2;
@@ -132,4 +136,6 @@ int main(int argc, char** argv)
     }
     require(AudioComponentInstanceDispose(lifetime.unit));
     std::printf("Apple AU listener control completed; callbacks=%u\n", delivered);
+    return 0;
 }
+#endif

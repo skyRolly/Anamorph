@@ -70,7 +70,7 @@ def self_test():
     print(f'AU teardown observer self-test: {len(cases)+len(control_cases)} outcome controls')
 
 
-def observe(executable, args, log, timeout):
+def observe(executable, args, log, timeout, target_environment=None):
     result_command = ("script import lldb,json,au_teardown_lldb; p=lldb.debugger.GetSelectedTarget().GetProcess(); "
         "print('"+MARKER+"'+json.dumps({'state': 'stopped' if p.GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else "
         "'exited' if p.GetState()==lldb.eStateExited else 'other', 'exit':p.GetExitStatus(), "
@@ -84,6 +84,11 @@ def observe(executable, args, log, timeout):
                '-o','process handle -s true -n true -p false SIGABRT','-o','run',
                '-o',result_command,'-o',backtrace,'-o','image list -o -f',
                '-k',result_command,'-k',backtrace,'-k','image list -o -f','--',str(executable),*args]
+    if target_environment:
+        # Set inferior environment through LLDB: a protected xcrun/lldb launcher
+        # can strip DYLD_* from its own inherited process environment.
+        command[3:3]=['-o','settings set target.env-vars '+shlex.join(
+            key+'='+value for key,value in target_environment.items())]
     with log.open('w') as output:
         process = subprocess.Popen(command,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
         try:
@@ -102,6 +107,7 @@ def main():
     parser.add_argument('--bundle',type=Path)
     parser.add_argument('--apple-control',type=Path,help='Independent Apple-only listener control executable')
     parser.add_argument('--pending-control',type=Path,help='Independent queued-framework-block disposal control')
+    parser.add_argument('--pending-library',type=Path,help='Interposition library linked by the independent pending-block control')
     parser.add_argument('--au-source-commit',help='Historical source commit that produced the retained AU')
     parser.add_argument('--report-dir',type=Path,default=Path('au-teardown-evidence'))
     parser.add_argument('--attempts',type=int,default=16)
@@ -135,8 +141,11 @@ def main():
     assert control['outcome']=='bad-function-call-throw', 'debugger cannot capture the known first throw'
     control_threw=False
     if args.pending_control:
+        assert args.pending_library and args.pending_library.is_file()
+        pending_environment={'DYLD_INSERT_LIBRARIES':str(args.pending_library.resolve())}
+        report['pending_control_library_sha256']=hashlib.sha256(args.pending_library.read_bytes()).hexdigest()
         negative_log=root/'apple-pending-disarmed.log'
-        negative=observe(args.pending_control.resolve(),['--no-enqueue-hook'],negative_log,60)
+        negative=observe(args.pending_control.resolve(),['--no-enqueue-hook'],negative_log,60,pending_environment)
         report['pending_control_disarmed']=negative
         save()
         records=re.findall(r'^'+MARKER+r'(\{.*\})$',negative_log.read_text(),re.M)
@@ -144,7 +153,7 @@ def main():
             and len(records)==1 and json.loads(records[0])['exit']==5, \
             'pending-block control accepted an unobserved enqueue/disposal path'
         log=root/'apple-pending.log'
-        result=observe(args.pending_control.resolve(),[],log,60)
+        result=observe(args.pending_control.resolve(),[],log,60,pending_environment)
         if result['outcome']!='observer-timeout':
             result['outcome']=classify_apple_control(log.read_text())
             if result['outcome']=='completed' and result['debugger_exit']!=0:

@@ -1101,8 +1101,12 @@ The native outcomes and exact callback counts are recorded in the worklog.
 The additional `tests/au_pending_block_control.mm` tests the missing enqueue boundary:
 
 ```sh
+xcrun clang++ -std=c++17 -g -fblocks -DANAMORPH_PENDING_CONTROL_LIBRARY \
+  -dynamiclib tests/au_pending_block_control.mm -framework AudioToolbox \
+  -framework CoreFoundation -Wl,-install_name,@rpath/libau-pending-control.dylib \
+  -o libau-pending-control.dylib
 xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
-  -framework AudioToolbox -framework CoreFoundation -o apple-au-pending-control
+  -L. -lau-pending-control -Wl,-rpath,@executable_path -o apple-au-pending-control
 ./apple-au-pending-control
 ```
 
@@ -1116,6 +1120,9 @@ an off-main enqueue without racing the fixture's lifetime. Exit 5 means enqueue,
 or block return was not observed; exit 3 still means initial callback liveness failed.
 `--pending-control ./apple-au-pending-control` first runs `--no-enqueue-hook`, requiring
 exact inferior exit 5, then observes the armed fixture. Logs/report retain both outcomes.
+Pass `--pending-library ./libau-pending-control.dylib` too; the observer sets the
+inferior's DYLD_INSERT_LIBRARIES through LLDB and records the library hash. This avoids
+losing the variable in the protected launcher and keeps the interposer outside the executable.
 This is a diagnostic ordering experiment; no framework cause or correction is established
 until native capture. It does not interpose the actual validator or change a normal gate.
 Original build logs live under retained/. The workflow's path filter skips unchanged

@@ -57,8 +57,12 @@ jobs:
         run: |
           xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
             -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+          xcrun clang++ -std=c++17 -g -fblocks -DANAMORPH_PENDING_CONTROL_LIBRARY \
+            -dynamiclib tests/au_pending_block_control.mm -framework AudioToolbox \
+            -framework CoreFoundation -Wl,-install_name,@rpath/libau-pending-control.dylib \
+            -o libau-pending-control.dylib
           xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
-            -framework AudioToolbox -framework CoreFoundation -o apple-au-pending-control
+            -L. -lau-pending-control -Wl,-rpath,@executable_path -o apple-au-pending-control
       - name: Prove debugger liveness and capture bounded controls and failing-seed campaign
         run: >-
           python3 scripts/diagnose-au-teardown.py
@@ -66,6 +70,7 @@ jobs:
           --bundle "${{ steps.prepare.outputs.bundle }}"
           --apple-control ./apple-au-listener-control
           --pending-control ./apple-au-pending-control
+          --pending-library ./libau-pending-control.dylib
           --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
           --attempts 1
           --expect completed
