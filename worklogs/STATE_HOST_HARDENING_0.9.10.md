@@ -1,9 +1,15 @@
 # State and host interaction hardening — 0.9.10 development
 
-**Later P1 decision round (2026-10-30):** current-code reproductions and Proposed ADR-0067/0068
-are recorded in `RELEASE_READINESS_0.10.0.md`. Neither proposal is approved or implemented;
-KI-029 and F9 remain open. The measurements, rejected guard and accepted completed fixes below
-remain historical evidence; this later pointer does not change their outcomes.
+**Current P1 disposition (2026-10-30):** ADR-0067/0068 are Accepted and implemented in
+PR #187, merged at `b085c87`. KI-029 and F9's metadata defect are corrected; the distinct
+RISK-009 lock residual remains open. Final-source CI, targeted owner-attested human
+validation and normal Release 5 completed. Replacement draft 428664381 remains unpublished.
+Exact source, tag, artifacts and approval scope: `RELEASE_READINESS_0.10.0.md`.
+
+**Historical P1 decision round (2026-10-30):** current-code reproductions and the then-Proposed
+ADR-0067/0068 are recorded in that readiness worklog. Neither proposal was approved or
+implemented at that stage; KI-029 and F9 were open. The measurements, rejected guard and
+completed fixes below retain their original outcomes as historical evidence.
 
 ## Baseline and authority
 
