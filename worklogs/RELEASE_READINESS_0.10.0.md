@@ -15,6 +15,9 @@ The owner explicitly requested correction in 0.10.0 and selected VST3-only scrip
 installation with portable Standalone retained. Dedicated branch:
 `fix/0.10.0-linux-plugin-installer`. PR preparation stops before human review/merge;
 no existing tag or release is edited, deleted, recreated or published by this task.
+Review: [PR #191](https://github.com/skyRolly/Anamorph/pull/191). Its checks and
+`Anamorph-Linux-install-validation` artifact retain fresh native/platform results;
+the PR description records final run identities, outcomes and remaining limits.
 
 Root cause: ADR-0065's desktop helper applied a whole-ancestry group/other-write
 refusal before both binary installation and removal. A normal personal-group 0775
@@ -51,7 +54,8 @@ The local environment has no sudo; namespace-mapped root is not real-host privil
 evidence. Real ordinary/root UID, per-operation sudo, system killed-swap recovery and
 foreign-owner preservation must pass in the mandatory staged hosted-VM CI gate.
 Fresh cross-platform CI and manual Linux DAW/desktop cache observations are not
-converted into local passes. CI results will be recorded before PR completion.
+converted into local passes. Final CI evidence is linked from PR #191; release
+replacement still requires separate approval after human review/manual merge.
 
 Conservative migration limits: edited/unowned resources, malformed receipts,
 incomplete/unknown legacy journals and binaries outside the verified old executable
