@@ -243,7 +243,12 @@ icons/hicolor/scalable/apps/tech.rolly.anamorph.svg"
             data=$(realpath -ms -- "$data")
             state="$data/.tech.rolly.anamorph"
             receipt="$state/receipt"
-            present "$state" || return 0
+            if ! present "$state"; then
+                for relative in $paths; do
+                    if present "$data/$relative"; then warn "resource without ownership state"; return; fi
+                done
+                return 0
+            fi
             if [ -L "$state" ] || [ ! -d "$state" ] ||
                [ "$(stat -c "%u %a" -- "$state")" != "$owner 700" ]; then
                 warn "unverified ownership state"; return

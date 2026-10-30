@@ -197,24 +197,34 @@ class InstallCase(unittest.TestCase):
         self.assertEqual(parent.stat().st_mode & 0o777, 0o777)
 
     def test_unverified_legacy_resources_are_preserved(self):
-        for kind in ('changed', 'no-receipt', 'malformed', 'symlink', 'hardlink', 'journal'):
+        for kind in ('changed', 'no-receipt', 'no-state', 'bad-state', 'malformed',
+                     'symlink', 'dangling-link', 'parent-link', 'hardlink', 'journal'):
             with self.subTest(kind=kind):
                 case = InstallCase(); case.setUp(); self.addCleanup(case.doCleanups)
                 case.seed_plugin(); state = case.seed_legacy(); resource = case.data / PNG
+                original_bytes = resource.read_bytes()
                 if kind == 'changed': resource.write_bytes(b'unrelated edited icon')
                 elif kind == 'no-receipt': (state / 'receipt').unlink()
+                elif kind == 'no-state': shutil.rmtree(state)
+                elif kind == 'bad-state': state.chmod(0o777)
                 elif kind == 'malformed': (state / 'receipt').write_text('unrecognized receipt\n')
-                elif kind == 'symlink':
-                    resource.unlink(); resource.symlink_to('/sandbox/home/keep')
+                elif kind in ('symlink', 'dangling-link'):
+                    resource.unlink(); resource.symlink_to('/sandbox/home/' + ('keep' if kind == 'symlink' else 'missing'))
+                elif kind == 'parent-link':
+                    parent = resource.parent
+                    parent.rename(parent.with_name('original-apps'))
+                    parent.symlink_to('/sandbox/home/.local/share/icons/hicolor/16x16/original-apps')
                 elif kind == 'hardlink': os.link(resource, case.home / 'hardlink.keep')
                 else: (state / 'transaction').mkdir(); (state / 'transaction/foreign.keep').write_bytes(b'keep')
                 keep = case.home / 'keep'; keep.write_bytes(b'keep')
                 result = case.good(script='uninstall.sh')
                 self.assertIn('warning: legacy Anamorph resources preserved', result.stderr)
-                self.assertFalse(case.plugin.exists()); self.assertTrue(state.exists())
+                self.assertFalse(case.plugin.exists()); self.assertEqual(state.exists(), kind != 'no-state')
                 self.assertEqual(keep.read_bytes(), b'keep')
-                if kind != 'journal': self.assertTrue(resource.exists() or resource.is_symlink())
-                else: self.assertEqual((state / 'transaction/foreign.keep').read_bytes(), b'keep')
+                if kind == 'parent-link':
+                    self.assertEqual((resource.parent.with_name('original-apps') / resource.name).read_bytes(), original_bytes)
+                elif kind == 'journal': self.assertEqual((state / 'transaction/foreign.keep').read_bytes(), b'keep')
+                else: self.assertTrue(resource.exists() or resource.is_symlink())
 
     def fault_tool(self, tool, body):
         path = self.fault / tool
