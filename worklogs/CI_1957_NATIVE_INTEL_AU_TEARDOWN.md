@@ -226,3 +226,15 @@ ineffective. The next probe places the interposer/control implementation in a
 separate linked library and sets DYLD_INSERT_LIBRARIES in the inferior through
 LLDB, avoiding protected-launcher environment stripping. The library's measured
 hash is added to the report. None of this library is loaded into the actual validator.
+
+### Component lifetime isolation — 2026-10-31, Asia/Shanghai
+
+Run 41085754050, artifact 12991008620 (SHA-256
+`3755bf4135277572c40b49b878978467247dc08a21e33c6f2f2d1afbce636fc7`),
+verifies the actual pending block: AudioToolbox enqueue is intercepted, both blocks
+are queued before listener disposal and the original block returns afterward.
+Initial callbacks remain live. Listener disposal alone is safe while the Apple AU
+remains alive; the three earlier controls and one real AU trial also complete.
+This is isolation evidence, not a fix. The next `--dispose-unit` case destroys the
+component after the listener but before that pending block, matching host teardown.
+It retains the same absence guard, native canary, observer and separate report.

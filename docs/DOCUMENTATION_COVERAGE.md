@@ -14,6 +14,9 @@ enqueue call-site traces; both procedures record that distinction.
 The trace confirms CF enqueue from CAEventReceiver but no executable interposer entry.
 The follow-up uses a separate linked library, explicit inferior-only DYLD environment
 and its measured hash, documented in both procedures. Native interposition remains unverified.
+Run 41085754050 now verifies the interposer and both enqueues; listener-only disposal
+returns safely. Both procedures distinguish the next component-disposal case and its
+separate trace/report. This does not yet identify the real AU exception's cause.
 
 ## AU listener queued-disposal follow-up (2026-10-30)
 

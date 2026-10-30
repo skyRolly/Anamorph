@@ -1123,6 +1123,9 @@ exact inferior exit 5, then observes the armed fixture. Logs/report retain both 
 Pass `--pending-library ./libau-pending-control.dylib` too; the observer sets the
 inferior's DYLD_INSERT_LIBRARIES through LLDB and records the library hash. This avoids
 losing the variable in the protected launcher and keeps the interposer outside the executable.
+After the listener-only case, `--dispose-unit` additionally destroys the Apple AU
+before the queued block runs, matching the host's listener-then-component teardown.
+Read `apple-pending-component.log` and `pending_component_control` separately.
 This is a diagnostic ordering experiment; no framework cause or correction is established
 until native capture. It does not interpose the actual validator or change a normal gate.
 Original build logs live under retained/. The workflow's path filter skips unchanged

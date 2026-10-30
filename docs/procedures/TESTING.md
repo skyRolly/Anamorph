@@ -5947,6 +5947,9 @@ The fixture implementation is built as a separate interposition library; its sma
 executable links it using an executable-relative rpath. `--pending-library` also sets
 the inferior's DYLD_INSERT_LIBRARIES through LLDB rather than the protected launcher.
 The report records that library's measured hash; the ordinary validator loads none of it.
+Native run 41085754050 verifies the pending-block path with listener-only disposal;
+it completes safely while the AU stays alive. The additional `--dispose-unit` case
+destroys the component before queued delivery and has its own log/report outcome.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates

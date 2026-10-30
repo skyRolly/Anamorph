@@ -152,18 +152,19 @@ def main():
         assert negative['outcome']=='inferior-failed' and negative.get('debugger_exit')==0 \
             and len(records)==1 and json.loads(records[0])['exit']==5, \
             'pending-block control accepted an unobserved enqueue/disposal path'
-        log=root/'apple-pending.log'
-        result=observe(args.pending_control.resolve(),[],log,60,pending_environment)
-        if result['outcome']!='observer-timeout':
-            result['outcome']=classify_apple_control(log.read_text())
-            if result['outcome']=='completed' and result['debugger_exit']!=0:
-                result['outcome']='observer-error'
-        report['pending_control']=result
-        save()
-        print(f"Apple-only pending-block control: {result['outcome']}",flush=True)
-        if result['outcome'] not in ('completed','bad-function-call-throw'):
-            return 2
-        control_threw |= result['outcome']=='bad-function-call-throw'
+        for mode,arguments in [('listener',[]),('component',['--dispose-unit'])]:
+            log=root/('apple-pending.log' if mode=='listener' else 'apple-pending-component.log')
+            result=observe(args.pending_control.resolve(),arguments,log,60,pending_environment)
+            if result['outcome']!='observer-timeout':
+                result['outcome']=classify_apple_control(log.read_text())
+                if result['outcome']=='completed' and result['debugger_exit']!=0:
+                    result['outcome']='observer-error'
+            report['pending_control' if mode=='listener' else 'pending_component_control']=result
+            save()
+            print(f"Apple-only pending-block {mode} control: {result['outcome']}",flush=True)
+            if result['outcome'] not in ('completed','bad-function-call-throw'):
+                return 2
+            control_threw |= result['outcome']=='bad-function-call-throw'
     if args.apple_control:
         report['apple_controls']=[]
         for mode,control_args in [('entry',['--entry-disposal','--cycles','128']),

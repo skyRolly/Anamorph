@@ -27,6 +27,7 @@ struct Lifetime
 {
     AudioUnit unit = nullptr;
     AUEventListenerRef listener = nullptr;
+    bool disposeUnit = false;
     std::atomic<bool> bothQueued {false};
     std::atomic<unsigned> enqueued {0}, disposed {0}, blockReturned {0};
 };
@@ -68,6 +69,11 @@ static void enqueue(CFRunLoopRef loop, CFTypeRef modes, void (^block)(void))
             require(AUListenerDispose(context->listener));
             context->listener = nullptr;
             ++context->disposed;
+            if (context->disposeUnit)
+            {
+                require(AudioComponentInstanceDispose(context->unit));
+                context->unit = nullptr;
+            }
         });
         CFRunLoopPerformBlock(loop, modes, ^{
             std::puts("AU pending control: entering original framework block after disposal");
@@ -89,8 +95,13 @@ static const struct { const void* replacement; const void* original; } interposi
 
 extern "C" int anamorph_pending_control_main(int argc, char** argv)
 {
-    const bool disarmed = argc == 2 && std::strcmp(argv[1], "--no-enqueue-hook") == 0;
-    if (argc != 1 && !disarmed) return 2;
+    bool disarmed = false, disposeUnit = false;
+    for (int argument = 1; argument < argc; ++argument)
+    {
+        if (std::strcmp(argv[argument], "--no-enqueue-hook") == 0) disarmed = true;
+        else if (std::strcmp(argv[argument], "--dispose-unit") == 0) disposeUnit = true;
+        else return 2;
+    }
     std::puts("Apple-only pending-block disposal control");
     std::fflush(stdout);
     AudioComponentDescription description {};
@@ -100,6 +111,7 @@ extern "C" int anamorph_pending_control_main(int argc, char** argv)
     const auto component = AudioComponentFindNext(nullptr, &description);
     if (component == nullptr) return 2;
     Lifetime lifetime;
+    lifetime.disposeUnit = disposeUnit;
     require(AudioComponentInstanceNew(component, &lifetime.unit));
     require(AUEventListenerCreate(callback, nullptr, CFRunLoopGetMain(), kCFRunLoopDefaultMode,
                                  0, 0, &lifetime.listener));
@@ -134,7 +146,7 @@ extern "C" int anamorph_pending_control_main(int argc, char** argv)
             lifetime.enqueued.load(), lifetime.disposed.load(), lifetime.blockReturned.load());
         return 5;
     }
-    require(AudioComponentInstanceDispose(lifetime.unit));
+    if (lifetime.unit != nullptr) require(AudioComponentInstanceDispose(lifetime.unit));
     std::printf("Apple AU listener control completed; callbacks=%u\n", delivered);
     return 0;
 }
