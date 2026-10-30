@@ -1068,6 +1068,7 @@ xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
   -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
 ./apple-au-listener-control > apple-au-listener-control.log 2>&1
 ./apple-au-listener-control --queued-disposal > apple-au-queued-control.log 2>&1
+./apple-au-listener-control --entry-disposal > apple-au-entry-control.log 2>&1
 ```
 
 It loads Apple's LowPassFilter, verifies at least one listener callback, then
@@ -1081,12 +1082,18 @@ The queued-disposal follow-up makes a delivery timer and a disposal timer due in
 the same run-loop turn, after blocking the main thread for 25 ms. Exit 4 means
 the disposal timer did not execute, so the intended ordering was not exercised.
 It remains an ordering probe until a native stack establishes a reproduction.
+`--entry-disposal` uses a run-loop entry observer instead of the disposal timer,
+placing disposal before the loop drains queued blocks. It has the same callback
+and disposal liveness requirements and exit meanings; the two disposal modes are
+mutually exclusive. This probes an ordering the timer alone cannot guarantee.
 The workflow passes this executable to `diagnose-au-teardown.py --apple-control`,
-which observes both modes under the same live typed-throw debugger before the AU
+which observes entry, drained and queued modes under the live typed-throw debugger before the AU
 campaign, using `--cycles 128` per mode and a 180-second bound (standalone default:
 2000 cycles; accepted range 2–2000). Progress records every 16 cycles distinguish
 slow execution from an unentered path. Their logs are `au-teardown-evidence/apple-drained.log` and
-`au-teardown-evidence/apple-queued.log`; `report.json` records each outcome.
+`au-teardown-evidence/apple-queued.log` / `apple-entry.log`; `report.json` records each outcome.
+This follow-up bounds the real AU campaign to four invocations, without changing
+ordinary conformance or interpreting no reproduction as a fix.
 Original build logs live under retained/. The workflow's path filter skips unchanged
 diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.
 

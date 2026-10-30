@@ -11,6 +11,9 @@ site from the unresolved cause. No recovery exception or ordinary gate change is
 introduced. The first 2000-cycle debugger run times out without qualifying evidence;
 the follow-up bounds each debugger control to 128 cycles with progress every 16,
 retaining the standalone 2000-cycle default. Native verification remains pending.
+The entry-observer variant additionally probes disposal before queued blocks drain,
+with the same liveness/exit contract and its own retained trace. Both procedures
+record all three modes and the four-trial diagnostic AU bound; ordinary gates do not change.
 
 ## Native AU control procedure reconciliation (2026-10-30, PR #189 review)
 

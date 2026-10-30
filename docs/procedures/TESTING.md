@@ -5898,6 +5898,7 @@ xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
   -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
 ./apple-au-listener-control > apple-au-listener-control.log 2>&1
 ./apple-au-listener-control --queued-disposal > apple-au-queued-control.log 2>&1
+./apple-au-listener-control --entry-disposal > apple-au-entry-control.log 2>&1
 ```
 
 This executable links only Apple frameworks, loads the Apple LowPassFilter and
@@ -5914,14 +5915,20 @@ the main thread for 25 ms to make delivery and disposal due in the same turn.
 Exit 4 means the disposal timer never ran; neither that result nor absent initial
 callbacks qualifies as evidence that the event/disposal path was exercised.
 This is an ordering probe, with no reproduction claim until the native results.
-The workflow now runs both control modes through `--apple-control` in the typed
+The mutually exclusive `--entry-disposal` variant disposes in a run-loop entry
+observer, before queued blocks drain; the timer variant can run after that drain.
+Exit 4 in either variant means disposal was not exercised. The callback liveness
+requirement and all other exit meanings are identical.
+The workflow runs entry, drained and queued controls through `--apple-control` in the typed
 observer, after the real throw canary and before the AU campaign.
 The debugger campaign passes `--cycles 128` per mode within 180 seconds; standalone
 invocations default to 2000 (range 2–2000). Progress is flushed every 16 cycles.
 Read their individual outcomes in `report.json` and first-throw stacks/exit states in
-`au-teardown-evidence/apple-{drained,queued}.log`. A clean control needs exit 0
+`au-teardown-evidence/apple-{entry,drained,queued}.log`. A clean control needs exit 0
 and a nonzero callback count. Ordinary conformance gates retain immediate failure
 on macOS crashes; RISK-017 records the unresolved interaction.
+The current diagnostic AU follow-up is bounded to four trials; a clean bounded
+campaign does not close an intermittent defect.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates

@@ -36,13 +36,19 @@ static void disposeFromTimer(CFRunLoopTimerRef, void* context)
 {
     dispose(*static_cast<Lifetime*>(context));
 }
+static void disposeAtEntry(CFRunLoopObserverRef, CFRunLoopActivity, void* context)
+{
+    dispose(*static_cast<Lifetime*>(context));
+}
 int main(int argc, char** argv)
 {
     bool queued = false;
+    bool entry = false;
     unsigned cycles = 2000;
     for (int argument = 1; argument < argc; ++argument)
     {
         if (std::strcmp(argv[argument], "--queued-disposal") == 0) queued = true;
+        else if (std::strcmp(argv[argument], "--entry-disposal") == 0) entry = true;
         else if (std::strcmp(argv[argument], "--cycles") == 0 && argument + 1 < argc)
         {
             char* end = nullptr;
@@ -52,7 +58,8 @@ int main(int argc, char** argv)
         }
         else return 2;
     }
-    std::printf("Apple-only AU listener control: %s\n", queued ? "queued disposal" : "drained disposal");
+    if (entry && queued) return 2;
+    std::printf("Apple-only AU listener control: %s\n", entry ? "entry disposal" : queued ? "queued disposal" : "drained disposal");
     std::fflush(stdout);
     AudioComponentDescription description {};
     description.componentType = kAudioUnitType_Effect;
@@ -75,7 +82,22 @@ int main(int argc, char** argv)
             require(AUParameterSet(nullptr, nullptr, &event.mArgument.mParameter,
                                    200.0f + static_cast<float>(change)*100.0f, 0));
         }
-        if (queued && iteration != 0)
+        if (entry && iteration != 0)
+        {
+            // An entry observer disposes before the run loop drains queued blocks.
+            // This complements the timer probe, which can run after that drain.
+            CFRunLoopObserverContext context {0, &lifetime, nullptr, nullptr, nullptr};
+            auto observer = CFRunLoopObserverCreate(kCFAllocatorDefault,
+                kCFRunLoopEntry, false, LONG_MAX, disposeAtEntry, &context);
+            if (observer == nullptr) return 2;
+            CFRunLoopAddObserver(CFRunLoopGetMain(), observer, kCFRunLoopDefaultMode);
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.003, false);
+            CFRunLoopObserverInvalidate(observer);
+            CFRelease(observer);
+            if (lifetime.listener != nullptr) return 4;
+        }
+        else if (queued && iteration != 0)
         {
             // Make the AU delivery timer and an independent disposal timer due in
             // the same run-loop turn. This is an ordering probe, not a reproduction

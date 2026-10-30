@@ -63,6 +63,7 @@ jobs:
           --bundle "${{ steps.prepare.outputs.bundle }}"
           --apple-control ./apple-au-listener-control
           --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
+          --attempts 4
           --expect completed
       - name: Retain native throw stacks and reconstructed bytes
         if: ${{ !cancelled() }}

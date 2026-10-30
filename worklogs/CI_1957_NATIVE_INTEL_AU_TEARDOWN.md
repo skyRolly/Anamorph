@@ -21,8 +21,8 @@ than the retained evidence. No product fix or host-side exemption is established
 
 ## Bounded observation
 
-The investigation-only workflow `au-teardown-diagnostic.yml` runs on this single
-investigation branch, on macos-15-intel. It reconstructs the original source with
+The initial investigation-only workflow `au-teardown-diagnostic.yml` ran on this single
+investigation branch, on macos-15-intel. It reconstructed the original source with
 build number 1957 and the normal thin AU configuration. These are reconstructed
 bytes, not recovered original bytes; the workflow retains their hash and host/toolchain.
 The validator remains the official content-locked v1.0.4 executable. No release,
@@ -136,3 +136,22 @@ or a product deadlock. The independent campaign is now explicitly bounded to
 128 cycles per mode under LLDB, with progress flushed every 16 cycles; standalone
 control invocations still default to 2000. An observer error or unexercised path
 continues to fail diagnosis.
+
+The timer probe may run after CoreFoundation has already drained queued blocks.
+A separate `--entry-disposal` variant disposes from a run-loop entry observer,
+before that drain, preserving the same initial callback proof and mandatory
+disposal check. The observer runs all three modes; the follow-up AU campaign is
+bounded to four trials. Neither a missing reproduction nor a clean ordinary
+build is called a crash fix.
+
+For completeness, unchanged macOS 26 diagnostic run 41020945093 on bb4f751
+completes all 16 AU trials and the drained control (13744 callbacks). Artifact
+12962182315, SHA-256
+`e6bbe09fae782c217ef0f403e354d619e64bb377d01d426daf29ca8a490f395a`,
+confirms the same AU/tool hashes and separate source identities. This strengthens
+the intermittency observation; it does not negate the earlier first-throw capture.
+
+External corroboration, not causal proof: [Minihost's pump source](https://github.com/shakfu/minihost/blob/9cc002e8e60aef02d775af24e36c8ac31557bdab/projects/libminihost/minihost_pump_mac.cpp)
+records the same framework exception while pumping the default run-loop mode.
+Its private-mode workaround excludes framework callbacks and cannot be transplanted
+as proof of complete AU conformance here. No such pump suppression is introduced.

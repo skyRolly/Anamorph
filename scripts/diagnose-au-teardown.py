@@ -134,7 +134,8 @@ def main():
     control_threw=False
     if args.apple_control:
         report['apple_controls']=[]
-        for mode,control_args in [('drained',['--cycles','128']),('queued',['--queued-disposal','--cycles','128'])]:
+        for mode,control_args in [('entry',['--entry-disposal','--cycles','128']),
+                                 ('drained',['--cycles','128']),('queued',['--queued-disposal','--cycles','128'])]:
             log=root/f'apple-{mode}.log'
             result=observe(args.apple_control.resolve(),control_args,log,180)
             if result['outcome']!='observer-timeout':
