@@ -3,6 +3,17 @@ import lldb
 
 seen_bad_call = False
 exception_type = ''
+enqueue_observations = 0
+
+
+def on_cf_enqueue(frame, _location, _internal):
+    global enqueue_observations
+    if enqueue_observations < 16:
+        caller = frame.GetThread().GetFrameAtIndex(1)
+        print('AU enqueue trace: '+str(caller.GetModule().GetFileSpec().GetFilename())
+              +' / '+str(caller.GetFunctionName()), flush=True)
+    enqueue_observations += 1
+    return False
 
 
 def on_throw(frame, _location, _internal):
@@ -32,3 +43,7 @@ def install(target):
     breakpoint = target.BreakpointCreateByName('__cxa_throw')
     assert breakpoint.IsValid()
     breakpoint.SetScriptCallbackFunction('au_teardown_lldb.on_throw')
+    if target.GetExecutable().GetFilename() == 'apple-au-pending-control':
+        enqueue_breakpoint = target.BreakpointCreateByName('CFRunLoopPerformBlock')
+        assert enqueue_breakpoint.IsValid()
+        enqueue_breakpoint.SetScriptCallbackFunction('au_teardown_lldb.on_cf_enqueue')

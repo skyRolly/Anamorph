@@ -206,3 +206,13 @@ exit exactly 5 before the armed observation, so an unobserved path cannot pass.
 The first-throw canary and recorded source/binary identities remain required.
 Native verification is pending. The real AU follow-up is bounded to one trial
 while this mechanism is isolated; no ordinary conformance invocation is changed.
+
+Run 41083898251, artifact 12990198720 (SHA-256
+`dcb43d9998e37aaad0482a6148b68cf13e9b213c8103b71fe1a8effc085708ba`),
+passes the native typed-throw canary and exact-exit-5 disarmed check. The armed
+fixture also exits 5: callbacks are live, but no framework enqueue was intercepted.
+This is an unexercised path, not a reproduction or a passing fix. The fixture now
+uses AudioUnitSetParameter plus direct AUEventListenerNotify, matching the AU
+wrapper, instead of legacy AUParameterSet notifications. A bounded debugger trace
+records CFRunLoopPerformBlock callers to distinguish a missing API path from an
+interposition/filter failure. Native results for this change are pending.

@@ -37,6 +37,12 @@ static void enqueue(CFRunLoopRef loop, CFTypeRef modes, void (^block)(void))
         || (CFGetTypeID(modes) == CFArrayGetTypeID()
             && CFArrayContainsValue(static_cast<CFArrayRef>(modes),
                 CFRangeMake(0, CFArrayGetCount(static_cast<CFArrayRef>(modes))), kCFRunLoopDefaultMode));
+    if (context != nullptr)
+    {
+        std::printf("AU pending CF enqueue: caller=%s default-mode=%d\n",
+            caller.dli_fname != nullptr ? caller.dli_fname : "unknown", static_cast<int>(defaultMode));
+        std::fflush(stdout);
+    }
     if (context != nullptr && loop == CFRunLoopGetMain() && defaultMode
         && caller.dli_fname != nullptr && std::strstr(caller.dli_fname, "AudioToolbox") != nullptr
         && armed.compare_exchange_strong(context, nullptr, std::memory_order_acq_rel))
@@ -99,8 +105,13 @@ int main(int argc, char** argv)
     require(AUEventListenerAddEventType(lifetime.listener, nullptr, &event));
     const auto notify = [&] {
         for (unsigned change = 0; change < 8; ++change)
-            require(AUParameterSet(nullptr, nullptr, &event.mArgument.mParameter,
-                                   200.0f + static_cast<float>(change)*100.0f, 0));
+        {
+            require(AudioUnitSetParameter(lifetime.unit, kLowPassParam_CutoffFrequency,
+                kAudioUnitScope_Global, 0, 200.0f + static_cast<float>(change)*100.0f, 0));
+            // Match the production AU wrapper's event API, not the legacy
+            // AUParameterSet/AUParameterListenerNotify convenience path.
+            require(AUEventListenerNotify(nullptr, nullptr, &event));
+        }
     };
     notify();
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);

@@ -1108,7 +1108,10 @@ xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
 
 This separate Apple-only executable interposes CFRunLoopPerformBlock to queue disposal
 immediately before the intercepted AudioToolbox block, with both blocks enqueued before
-disposal. The AU remains alive while the original block runs. A bounded rendezvous handles
+disposal. It sets the value with AudioUnitSetParameter and sends AUEventListenerNotify,
+matching the production wrapper's event path rather than legacy AUParameterSet notification.
+The observer additionally traces at most 16 CF enqueue callers in this executable.
+The AU remains alive while the original block runs. A bounded rendezvous handles
 an off-main enqueue without racing the fixture's lifetime. Exit 5 means enqueue, disposal
 or block return was not observed; exit 3 still means initial callback liveness failed.
 `--pending-control ./apple-au-pending-control` first runs `--no-enqueue-hook`, requiring

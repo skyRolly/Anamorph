@@ -8,6 +8,9 @@ initial callback liveness and exact exit-5 absence control. REPOSITORY_MAP index
 the source. The diagnostic observer records armed/disarmed outcomes and a one-trial
 AU follow-up; the worklog states the native experiment is pending. Normal gates,
 validator acquisition, production code and the unpublished release remain unchanged.
+The first native run rejects the unexercised legacy AUParameterSet path. The
+follow-up uses the wrapper's direct AUEventListenerNotify path and bounded CF
+enqueue call-site traces; both procedures record that distinction.
 
 ## AU listener queued-disposal follow-up (2026-10-30)
 

@@ -5936,6 +5936,8 @@ at disposal. Read the per-mode counts and captured AU failure in the worklog.
 CI_CD's diagnostic section). It keeps the Apple AU alive, queues listener disposal
 before an observed AudioToolbox delivery block and then invokes that original block.
 Both enqueue operations must finish before disposal; initial callbacks must be live.
+The fixture uses direct AUEventListenerNotify after AudioUnitSetParameter, as the
+real wrapper does. Its observer logs up to 16 CoreFoundation enqueue call sites.
 Exit 5 rejects absent enqueue/disposal/block-return evidence. The driver first disables
 the hook with `--no-enqueue-hook` and requires exact exit 5 before observing the armed
 fixture under `--pending-control`. Read `apple-pending-disarmed.log`, `apple-pending.log`
