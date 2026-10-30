@@ -109,3 +109,21 @@ The Apple-only control independently completes 2000 cycles with 13744 callbacks.
 It does not reproduce the real host/AU interaction. A runner-label move is therefore
 not a supported fix and the ordinary macos-intel gate remains unchanged on macOS 15.
 CI_CD and TESTING now document the control invocation and its exit/liveness meanings.
+
+### Queued disposal control; conformance policy preserved
+
+The drained Apple-only control does not exercise the precise pending-delivery
+ordering at the observed throw. A separate `--queued-disposal` mode schedules
+listener/component disposal in a timer and blocks the main thread for 25 ms,
+making delivery and disposal due in the same run-loop turn. The first ordinary
+cycle must still deliver callbacks; the disposal timer must run (otherwise exit 4).
+The diagnostic observer now captures both independent modes before the real AU
+campaign, retaining their exit states or first-throw stacks. Native results are
+pending; this is not yet a reproduction or a causal conclusion.
+
+A typed, same-seed retry was considered and rejected before integration: a system
+frame alone does not exclude a host/product lifetime defect, and the independent
+control has not reproduced it. No conformance exemption, wrapper retry, testing
+policy change or product patch is introduced. RISK-017 tracks the unresolved cause.
+The diagnostic workflow now filters relevant paths so documentation-only corrections
+do not repeat an unchanged experimental campaign.

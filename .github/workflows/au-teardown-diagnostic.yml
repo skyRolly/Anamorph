@@ -4,6 +4,11 @@ name: Native Intel AU teardown diagnosis
 on:
   push:
     branches: [fix/ci1957-au-teardown]
+    paths:
+      - scripts/diagnose-au-teardown.py
+      - scripts/au_teardown_lldb.py
+      - tests/au_listener_teardown.mm
+      - .github/workflows/au-teardown-diagnostic.yml
 
 permissions:
   contents: read
@@ -47,19 +52,18 @@ jobs:
           echo "pluginval=$PLUGINVAL" >> "$GITHUB_OUTPUT"
           echo "bundle=$DEST" >> "$GITHUB_OUTPUT"
           shasum -a 256 "$DEST/Contents/MacOS/Anamorph" > reconstructed-au.sha256
-      - name: Prove debugger liveness and capture bounded failing-seed campaign
+      - name: Build independent Apple AU listener lifecycle control
+        run: |
+          xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+            -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+      - name: Prove debugger liveness and capture bounded controls and failing-seed campaign
         run: >-
           python3 scripts/diagnose-au-teardown.py
           --pluginval "${{ steps.prepare.outputs.pluginval }}"
           --bundle "${{ steps.prepare.outputs.bundle }}"
+          --apple-control ./apple-au-listener-control
           --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
           --expect completed
-      - name: Independent Apple AU listener lifecycle control
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        run: |
-          xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
-            -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
-          ./apple-au-listener-control > apple-au-listener-control.log 2>&1
       - name: Retain native throw stacks and reconstructed bytes
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -71,7 +75,6 @@ jobs:
             host.txt
             reconstructed-au.sha256
             retained/
-            apple-au-listener-control.log
       - name: Remove disposable AU
         if: ${{ always() && steps.prepare.outcome == 'success' }}
         run: rm -rf "${{ steps.prepare.outputs.bundle }}"

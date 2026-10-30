@@ -34,6 +34,13 @@ def classify(output):
     return 'completed' if re.search(r'^SUCCESS\s*$', output, re.M) else 'missing-success'
 
 
+def classify_apple_control(output):
+    outcome=classify(output)
+    if outcome=='missing-success' and re.search(r'^Apple AU listener control completed; callbacks=[1-9][0-9]*$',output,re.M):
+        return 'completed'
+    return outcome
+
+
 def self_test():
     def record(state, exit_code=0, stops=None, target=False):
         return MARKER+json.dumps({'state':state,'exit':exit_code,'stops':stops or [],
@@ -53,7 +60,13 @@ def self_test():
     ]
     for text, expected in cases:
         assert classify(text) == expected, (text, expected)
-    print(f'AU teardown observer self-test: {len(cases)} outcome controls')
+    control_cases=[('Apple AU listener control completed; callbacks=8\n'+record('exited'),'completed'),
+        ('Apple AU listener control completed; callbacks=0\n'+record('exited'),'missing-success'),
+        (record('exited',4),'inferior-failed'),
+        ('Apple AU listener control completed; callbacks=8\n','observer-error')]
+    for text,expected in control_cases:
+        assert classify_apple_control(text)==expected,(text,expected)
+    print(f'AU teardown observer self-test: {len(cases)+len(control_cases)} outcome controls')
 
 
 def observe(executable, args, log, timeout):
@@ -86,6 +99,7 @@ def main():
     parser.add_argument('--self-test',action='store_true')
     parser.add_argument('--pluginval',type=Path)
     parser.add_argument('--bundle',type=Path)
+    parser.add_argument('--apple-control',type=Path,help='Independent Apple-only listener control executable')
     parser.add_argument('--au-source-commit',help='Historical source commit that produced the retained AU')
     parser.add_argument('--report-dir',type=Path,default=Path('au-teardown-evidence'))
     parser.add_argument('--attempts',type=int,default=16)
@@ -117,6 +131,20 @@ def main():
         (root/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     save()
     assert control['outcome']=='bad-function-call-throw', 'debugger cannot capture the known first throw'
+    control_threw=False
+    if args.apple_control:
+        report['apple_controls']=[]
+        for mode,control_args in [('drained',[]),('queued',['--queued-disposal'])]:
+            log=root/f'apple-{mode}.log'
+            result=observe(args.apple_control.resolve(),control_args,log,180)
+            if result['outcome']!='observer-timeout':
+                result['outcome']=classify_apple_control(log.read_text())
+            report['apple_controls'].append({'mode':mode,**result})
+            save()
+            print(f"Apple-only {mode} control: {result['outcome']}",flush=True)
+            if result['outcome'] not in ('completed','bad-function-call-throw'):
+                return 2
+            control_threw |= result['outcome']=='bad-function-call-throw'
     deadline=time.monotonic()+1500
     for attempt in range(args.attempts):
         remaining=deadline-time.monotonic()
@@ -132,7 +160,7 @@ def main():
         if outcome['outcome']!='completed':
             return 2
     if args.expect=='completed' and len(report['runs'])==args.attempts:
-        return 0
+        return 1 if control_threw else 0
     return 3  # bounded campaign did not meet its declared expectation
 
 

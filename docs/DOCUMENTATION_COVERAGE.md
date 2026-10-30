@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## AU listener queued-disposal follow-up (2026-10-30)
+
+CI_CD and TESTING describe both independent control invocations, first-callback
+liveness, the queued timer ordering, exit 4's unexercised-path meaning, and each
+retained debugger log/report. The observer's outcome controls cover clean, dead,
+failed and incomplete independent observations. REPOSITORY_MAP indexes the expanded
+control; HANDOVER, RISK-017 and the worklog distinguish the established Apple throw
+site from the unresolved cause. No recovery exception or ordinary gate change is
+introduced. Native verification of the new ordering probe remains pending.
+
 ## Native AU control procedure reconciliation (2026-10-30, PR #189 review)
 
 CI_CD and TESTING now both describe the native macOS 26 same-binary comparison,

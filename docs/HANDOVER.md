@@ -13,8 +13,10 @@ Operational status snapshot for technical handover. Update on every release
 fields with no repository evidence are marked `TODO` rather than invented (constraint C7).
 
 **Active CI investigation (2026-10-30):** Build 1957's native Intel AU randomise
-pass 2/3 aborts after SUCCESS with bad_function_call. Later main Build 1959 passes
-the same production source; ownership remains unproven without a throw stack.
+pass 2/3 aborts after SUCCESS with bad_function_call. First-throw captures locate
+the throw in AudioToolboxCore's CAEventReceiver timer block on macOS 15 and 26.
+The drained Apple-only control completes, leaving the host/product interaction
+unresolved (RISK-017); a queued-disposal control probes the missing ordering.
 See `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`. The validated 0.10.0 tag/draft
 are unchanged and unpublished; no crash retry or conformance gate is relaxed.
 

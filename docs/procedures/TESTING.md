@@ -5897,6 +5897,7 @@ The comparison separately builds `tests/au_listener_teardown.mm` using:
 xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
   -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
 ./apple-au-listener-control > apple-au-listener-control.log 2>&1
+./apple-au-listener-control --queued-disposal > apple-au-queued-control.log 2>&1
 ```
 
 This executable links only Apple frameworks, loads the Apple LowPassFilter and
@@ -5908,6 +5909,17 @@ not a retryable pass. The macOS 26 comparison completed with 13744 callbacks,
 while the original AU still threw in AudioToolbox. The control's success therefore
 neither reproduces nor rules out the observed host/product interaction. Interpret
 it with the first-throw report and worklog, never as a conformance-gate substitute.
+The follow-up `--queued-disposal` mode schedules disposal in a timer, then blocks
+the main thread for 25 ms to make delivery and disposal due in the same turn.
+Exit 4 means the disposal timer never ran; neither that result nor absent initial
+callbacks qualifies as evidence that the event/disposal path was exercised.
+This is an ordering probe, with no reproduction claim until the native results.
+The workflow now runs both control modes through `--apple-control` in the typed
+observer, after the real throw canary and before the AU campaign. Read their
+individual outcomes in `report.json` and their first-throw stacks/exit states in
+`au-teardown-evidence/apple-{drained,queued}.log`. A clean control needs exit 0
+and a nonzero callback count. Ordinary conformance gates retain immediate failure
+on macOS crashes; RISK-017 records the unresolved interaction.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates

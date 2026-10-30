@@ -1067,6 +1067,7 @@ The comparison also compiles and runs the independent Apple-only control:
 xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
   -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
 ./apple-au-listener-control > apple-au-listener-control.log 2>&1
+./apple-au-listener-control --queued-disposal > apple-au-queued-control.log 2>&1
 ```
 
 It loads Apple's LowPassFilter, verifies at least one listener callback, then
@@ -1076,8 +1077,16 @@ Exit 2 means component lookup/API setup failed; exit 3 means callback liveness
 failed. A signal/abort is a control failure requiring its own stack. The native
 macOS 26 run reports 13744 callbacks and exits 0 while the real AU campaign throws;
 that result does not establish the product/host cause or excuse a failed gate.
-The log is retained beside the observer report; original build logs live under
-retained/. TESTING.md describes the same scope and interpretation.
+The queued-disposal follow-up makes a delivery timer and a disposal timer due in
+the same run-loop turn, after blocking the main thread for 25 ms. Exit 4 means
+the disposal timer did not execute, so the intended ordering was not exercised.
+It remains an ordering probe until a native stack establishes a reproduction.
+The workflow passes this executable to `diagnose-au-teardown.py --apple-control`,
+which observes both modes under the same live typed-throw debugger before the AU
+campaign. Their logs are `au-teardown-evidence/apple-drained.log` and
+`au-teardown-evidence/apple-queued.log`; `report.json` records each outcome.
+Original build logs live under retained/. The workflow's path filter skips unchanged
+diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.
 
 ### The Clang warning baseline
 
