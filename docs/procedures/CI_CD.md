@@ -1052,10 +1052,32 @@ verbatim tail of the run above. Evidence [Verified]: `scripts/run-pluginval.sh`;
 Build 1957 repeats this post-SUCCESS AU abort on native Intel (run 41005362987,
 job 123898933769, randomise pass 2/3, seed `0x3e1c70`). The retained tail does not
 establish whether the throw originates in pluginval, a framework or the plug-in.
-The branch-scoped `au-teardown-diagnostic.yml` reconstructs that source, validates
-the LLDB observer with an actual bad_function_call canary and retains bounded
-native stacks. It changes no ordinary gate or retry. See
+The branch-scoped `au-teardown-diagnostic.yml` initially reconstructs that source,
+then reuses its hash-verified retained AU and the locked validator for a native
+Intel macOS 26 comparison. The ordinary macos-intel gate still runs on macOS 15.
+The LLDB observer's actual empty-function canary must stop at the first typed throw
+before AppKit unwinds its caller. The same AudioToolbox CAEventReceiver throw is
+now observed on both OS generations, so the label comparison did not establish a fix.
+It changes no ordinary gate or retry. See
 `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md` and `scripts/diagnose-au-teardown.py`.
+
+The comparison also compiles and runs the independent Apple-only control:
+
+```sh
+xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+  -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+./apple-au-listener-control > apple-au-listener-control.log 2>&1
+```
+
+It loads Apple's LowPassFilter, verifies at least one listener callback, then
+executes 2000 create/notify/dispose cycles with varied run-loop timing. Exit 0
+means this limited control completed, not that the pluginval defect is absent.
+Exit 2 means component lookup/API setup failed; exit 3 means callback liveness
+failed. A signal/abort is a control failure requiring its own stack. The native
+macOS 26 run reports 13744 callbacks and exits 0 while the real AU campaign throws;
+that result does not establish the product/host cause or excuse a failed gate.
+The log is retained beside the observer report; original build logs live under
+retained/. TESTING.md describes the same scope and interpretation.
 
 ### The Clang warning baseline
 

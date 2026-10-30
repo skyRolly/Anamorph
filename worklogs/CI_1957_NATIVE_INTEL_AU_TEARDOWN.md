@@ -98,3 +98,14 @@ callback frame at the throw site. The validator worker is stopping its timeout
 thread after SUCCESS. A same-binary/tool comparison on macos-26-intel and an
 Apple-only listener lifecycle control are next; the shipping gates are not changed
 on the strength of a later passing run alone.
+
+### macOS 26 comparison does not fix the abort
+
+Run 41020131883, artifact 12961621235 (SHA-256
+`d0ca26f88aabc3be9c4fc125e46a5e945766de54eb4f31757f00136bab9e23da`),
+uses the identical retained AU and validator. On macOS 26.6.1 / Xcode 26.6,
+the first invocation reaches the same first throw in CAEventReceiver's timer block.
+The Apple-only control independently completes 2000 cycles with 13744 callbacks.
+It does not reproduce the real host/AU interaction. A runner-label move is therefore
+not a supported fix and the ordinary macos-intel gate remains unchanged on macOS 15.
+CI_CD and TESTING now document the control invocation and its exit/liveness meanings.

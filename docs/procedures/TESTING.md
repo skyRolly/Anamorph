@@ -5882,6 +5882,36 @@ stand-in validator, over recorded strings — 22 cases, no build tree, no plugin
 
 ## CI integration
 
+### Native Intel AU teardown diagnostic control
+
+`au-teardown-diagnostic.yml` is a nonshipping investigation branch workflow. Its
+initial reconstruction/first-throw captures run on native Intel macOS 15; the
+current same-AU/validator comparison runs on native Intel macOS 26. It does not
+change the ordinary build matrix, strictness, three-pass requirement or crash retry.
+The observer's native empty-function canary must reach the typed first throw;
+an abort after AppKit unwinds the caller is not equivalent evidence.
+
+The comparison separately builds `tests/au_listener_teardown.mm` using:
+
+```sh
+xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+  -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+./apple-au-listener-control > apple-au-listener-control.log 2>&1
+```
+
+This executable links only Apple frameworks, loads the Apple LowPassFilter and
+requires callback delivery in its first cycle. It then repeats 2000 listener
+create/notify/dispose cycles with varied run-loop timing. Exit 0 means those
+cycles completed; 2 means a missing component or failed AudioToolbox API call;
+3 means the callback path was not live. Any signal/abort is a failed observation,
+not a retryable pass. The macOS 26 comparison completed with 13744 callbacks,
+while the original AU still threw in AudioToolbox. The control's success therefore
+neither reproduces nor rules out the observed host/product interaction. Interpret
+it with the first-throw report and worklog, never as a conformance-gate substitute.
+Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
+
+### Ordinary CI gates
+
 The Linux composite action runs `scripts/configure-ci-apt-mirrors.sh --self-test` before applying
 its mirror correction. Eight fixture checks cover HTTP/HTTPS Azure entries, whitespace and priority
 metadata, comments/custom/ports/security mirrors, exact URL matching, an already configured list,

@@ -1,5 +1,12 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Native AU control procedure reconciliation (2026-10-30, PR #189 review)
+
+CI_CD and TESTING now both describe the native macOS 26 same-binary comparison,
+Apple-only control build/run commands, first-cycle callback liveness and exit
+interpretation. They record the control's limited successful result alongside the
+continued real-AU throw, without claiming an OS-label fix or bypassing any gate.
+
 ## Captured AudioToolbox throw and native OS comparison (2026-10-30)
 
 The first-throw report now identifies Apple's CAEventReceiver timer-delivery block
