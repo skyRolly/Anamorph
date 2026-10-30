@@ -134,11 +134,13 @@ def main():
     control_threw=False
     if args.apple_control:
         report['apple_controls']=[]
-        for mode,control_args in [('drained',[]),('queued',['--queued-disposal'])]:
+        for mode,control_args in [('drained',['--cycles','128']),('queued',['--queued-disposal','--cycles','128'])]:
             log=root/f'apple-{mode}.log'
             result=observe(args.apple_control.resolve(),control_args,log,180)
             if result['outcome']!='observer-timeout':
                 result['outcome']=classify_apple_control(log.read_text())
+                if result['outcome']=='completed' and result['debugger_exit']!=0:
+                    result['outcome']='observer-error'
             report['apple_controls'].append({'mode':mode,**result})
             save()
             print(f"Apple-only {mode} control: {result['outcome']}",flush=True)

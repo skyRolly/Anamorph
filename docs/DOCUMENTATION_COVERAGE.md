@@ -8,7 +8,9 @@ retained debugger log/report. The observer's outcome controls cover clean, dead,
 failed and incomplete independent observations. REPOSITORY_MAP indexes the expanded
 control; HANDOVER, RISK-017 and the worklog distinguish the established Apple throw
 site from the unresolved cause. No recovery exception or ordinary gate change is
-introduced. Native verification of the new ordering probe remains pending.
+introduced. The first 2000-cycle debugger run times out without qualifying evidence;
+the follow-up bounds each debugger control to 128 cycles with progress every 16,
+retaining the standalone 2000-cycle default. Native verification remains pending.
 
 ## Native AU control procedure reconciliation (2026-10-30, PR #189 review)
 

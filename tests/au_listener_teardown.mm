@@ -38,8 +38,20 @@ static void disposeFromTimer(CFRunLoopTimerRef, void* context)
 }
 int main(int argc, char** argv)
 {
-    const bool queued = argc == 2 && std::strcmp(argv[1], "--queued-disposal") == 0;
-    if (argc != 1 && !queued) return 2;
+    bool queued = false;
+    unsigned cycles = 2000;
+    for (int argument = 1; argument < argc; ++argument)
+    {
+        if (std::strcmp(argv[argument], "--queued-disposal") == 0) queued = true;
+        else if (std::strcmp(argv[argument], "--cycles") == 0 && argument + 1 < argc)
+        {
+            char* end = nullptr;
+            const auto requested = std::strtoul(argv[++argument], &end, 10);
+            if (*end != '\0' || requested < 2 || requested > 2000) return 2;
+            cycles = static_cast<unsigned>(requested);
+        }
+        else return 2;
+    }
     std::printf("Apple-only AU listener control: %s\n", queued ? "queued disposal" : "drained disposal");
     std::fflush(stdout);
     AudioComponentDescription description {};
@@ -48,7 +60,7 @@ int main(int argc, char** argv)
     description.componentManufacturer = kAudioUnitManufacturer_Apple;
     const auto component = AudioComponentFindNext(nullptr, &description);
     if (component == nullptr) return 2;
-    for (unsigned iteration = 0; iteration < 2000; ++iteration)
+    for (unsigned iteration = 0; iteration < cycles; ++iteration)
     {
         Lifetime lifetime;
         require(AudioComponentInstanceNew(component, &lifetime.unit));
@@ -87,6 +99,11 @@ int main(int argc, char** argv)
             dispose(lifetime);
         }
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, false);
+        if ((iteration + 1) % 16 == 0)
+        {
+            std::printf("Apple AU control progress: cycles=%u callbacks=%u\n", iteration + 1, delivered);
+            std::fflush(stdout);
+        }
     }
     std::printf("Apple AU listener control completed; callbacks=%u\n", delivered);
 }

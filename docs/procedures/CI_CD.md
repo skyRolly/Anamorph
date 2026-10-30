@@ -1083,7 +1083,9 @@ the disposal timer did not execute, so the intended ordering was not exercised.
 It remains an ordering probe until a native stack establishes a reproduction.
 The workflow passes this executable to `diagnose-au-teardown.py --apple-control`,
 which observes both modes under the same live typed-throw debugger before the AU
-campaign. Their logs are `au-teardown-evidence/apple-drained.log` and
+campaign, using `--cycles 128` per mode and a 180-second bound (standalone default:
+2000 cycles; accepted range 2–2000). Progress records every 16 cycles distinguish
+slow execution from an unentered path. Their logs are `au-teardown-evidence/apple-drained.log` and
 `au-teardown-evidence/apple-queued.log`; `report.json` records each outcome.
 Original build logs live under retained/. The workflow's path filter skips unchanged
 diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.

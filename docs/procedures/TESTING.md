@@ -5915,8 +5915,10 @@ Exit 4 means the disposal timer never ran; neither that result nor absent initia
 callbacks qualifies as evidence that the event/disposal path was exercised.
 This is an ordering probe, with no reproduction claim until the native results.
 The workflow now runs both control modes through `--apple-control` in the typed
-observer, after the real throw canary and before the AU campaign. Read their
-individual outcomes in `report.json` and their first-throw stacks/exit states in
+observer, after the real throw canary and before the AU campaign.
+The debugger campaign passes `--cycles 128` per mode within 180 seconds; standalone
+invocations default to 2000 (range 2–2000). Progress is flushed every 16 cycles.
+Read their individual outcomes in `report.json` and first-throw stacks/exit states in
 `au-teardown-evidence/apple-{drained,queued}.log`. A clean control needs exit 0
 and a nonzero callback count. Ordinary conformance gates retain immediate failure
 on macOS crashes; RISK-017 records the unresolved interaction.

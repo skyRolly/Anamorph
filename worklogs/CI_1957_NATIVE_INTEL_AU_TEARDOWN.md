@@ -127,3 +127,12 @@ control has not reproduced it. No conformance exemption, wrapper retry, testing
 policy change or product patch is introduced. RISK-017 tracks the unresolved cause.
 The diagnostic workflow now filters relevant paths so documentation-only corrections
 do not repeat an unchanged experimental campaign.
+
+Run 41025295282, artifact 12963476507 (SHA-256
+`093b9ff53344305d7d883c44622fcce07fbff017b3277620da210c1c29847521`),
+passes the actual throw canary but times out the drained control after 180 seconds,
+before the queued probe or real AU campaign. Its log proves entry, not progress
+or a product deadlock. The independent campaign is now explicitly bounded to
+128 cycles per mode under LLDB, with progress flushed every 16 cycles; standalone
+control invocations still default to 2000. An observer error or unexercised path
+continues to fail diagnosis.
