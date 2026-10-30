@@ -54,6 +54,16 @@ The new branch-scoped diagnostic workflow and driver are indexed in REPOSITORY_M
 the worklog records exact failure/seed/provenance and bounded observer liveness.
 Normal validation and release gates remain unchanged; no root cause or fix is
 claimed before a throw stack is retained.
+## Original-request completion reconciliation (2026-10-30)
+
+The state-hardening worklog opening, repository-map ADR rows and current issue/risk
+summaries and INC-019/020 now distinguish the completed, Accepted PR #187 P1 contracts from their
+historical proposal round. RELEASE_PROCESS labels original-source recovery as historical.
+The readiness worklog records a fresh remote-state and downloaded-asset reconciliation:
+11 release assets, nine checksums, five same-run payloads, exact source/tag/notes and
+unpublished status all match the committed replacement evidence. Existing human approvals
+remain complete; unprovided test environments are not invented. No source, customer notes,
+release asset, tag, validation gate or residual-risk disposition is changed.
 
 ## 0.10.0 P1 draft replacement completed (2026-10-30)
 

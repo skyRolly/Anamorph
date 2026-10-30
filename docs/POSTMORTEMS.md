@@ -336,7 +336,9 @@ requires audible finite output and exact default-twin output for actual non-fini
 State 147 covers all 36 parameters, three ingress routes, both modes, reset/re-prepare,
 unchanged readback and repeated session/preset/A-B restores. Direct-engine DSP 64/74 remain
 unchanged. Output Gain targeting 0 dB and Density targeting 0.5 are explicitly approved audible
-consequences; targeted human validation and fresh mandatory CI remain release prerequisites.
+consequences. Final-source CI and targeted owner-attested human validation completed before
+normal Release 5 created the replacement draft. Exact execution and approval scope:
+`worklogs/RELEASE_READINESS_0.10.0.md`.
 
 ### Historical KI-029 record before the fix
 
@@ -397,7 +399,9 @@ the newly deferred host report. No new lock, wait, thread or atomic ordering is 
 
 F9's metadata defect is corrected; RISK-009 remains open on the distinct JUCE listener-lock
 residual and separately characterized outer-held lock edge. No supported-host deadlock has
-been demonstrated. Fresh mandatory CI and targeted human restore/PDC validation remain pending.
+been demonstrated. Final-source CI and targeted owner-attested human restore/PDC validation
+completed before the normal Release 5 draft replacement. Evidence:
+`worklogs/RELEASE_READINESS_0.10.0.md`.
 
 ## Adding an incident
 

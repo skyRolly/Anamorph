@@ -163,8 +163,8 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `worklogs/release-0.10.0-original/` | Internal historical original release body/metadata, annotated tag/tagger, manifest and checksums; no replacement binaries. |
 | `worklogs/release-0.10.0-p1/` | Candidate validation/human-attestation provenance and the executed replacement draft record: tag/source/run identities, all 11 asset hashes and fresh same-run payload verification. |
 | `scripts/check-release-notes.py` | Current-version extraction/content guard with same-job positive/negative liveness controls; optional downloaded-notes input. |
-| `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Proposed non-finite processor parameter contract; no production implementation or approval. |
-| `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Proposed restore/latency callback completion contract; no production implementation or approval. |
+| `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Accepted finite processor parameter contract, implemented and validated in PR #187 / 0.10.0. |
+| `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Accepted restore/latency callback completion contract, implemented and validated in PR #187 / 0.10.0; distinct lock residual retained. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |

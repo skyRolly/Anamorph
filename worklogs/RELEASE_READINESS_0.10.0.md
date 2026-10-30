@@ -768,3 +768,44 @@ acceptance, KI-015 commercial/JUCE/distribution/signing/notarization decisions a
 items retain their recorded reopen conditions. macOS bundles remain ad-hoc signed and not
 notarized; Windows installers remain unsigned. Public publication needs a separate owner
 decision and applicable distribution prerequisites. This task leaves the release **unpublished**.
+
+## Original-request completion reconciliation — 2026-10-30, Asia/Shanghai
+
+After the owner restored the full original request and reconfirmed human verification,
+the release, tag, source, merged PRs and CI were re-read from GitHub. The original release
+428196589 returns 404. Exactly one active 0.10.0 release exists: replacement 428664381,
+`draft=true`, `published_at=null`, title Anamorph 0.10.0, exact target `b085c87`.
+Annotated tag object `7229ec12472649a0d9be0cd563a94e713bc206be` still peels to that source.
+Normal tag-push Release 5 / run 41001157732 and final-main Build 1956 remain completed
+successfully; all mandatory Release jobs pass, with only the three documented optional/
+event-specific jobs skipped. PR #187 and the execution-evidence PR #188 are merged.
+
+All 11 current release assets were downloaded again into a fresh audit directory.
+Their IDs, sizes, update times and SHA-256 values match the API and committed
+`release-0.10.0-p1/draft-replacement.json`; all nine checksum/manifest payload entries match.
+The five same-run CI artifact identities/digests were refreshed and their retained ZIPs
+rehashed. Every file in each customer platform ZIP and both installer payloads matches
+those verified same-run files. CRCs, executable modes, macOS versions/identifiers and
+universal slices, VST3 metadata and tagged manual/attribution/support bytes were checked.
+Previously recorded Windows/installer format inspections apply to the exact same hashes.
+All five binary payload hashes remain different from the archived original candidate.
+The remote description equals the tagged changelog extraction byte for byte.
+
+The production finite-default snapshot and restore completion/recheck paths were inspected
+directly. Runtime, tests, scripts, workflows and version are unchanged between the
+human-validated `9f9a76e`, released `b085c87` and the subsequent evidence-only main change.
+The parameter registry fixture is unchanged from the original release. The owner's renewed
+manual-completion statement adds no inferred DAW, device, date or per-scenario result.
+
+The remaining original-request work was documentation reconciliation: the state-hardening
+worklog and repository map still called Accepted ADR-0067/0068 unapproved proposals;
+KNOWN_ISSUES/FUTURE_RISKS and INC-019/020 still described completed P1 validation as pending. Their current
+summaries now reflect execution, preserving historical measurements and the distinct
+RISK-009 residual. RELEASE_PROCESS's original recovery is explicitly historical.
+P2/P3 dispositions and their concrete reopen conditions above are unchanged.
+
+The later native Intel AU teardown investigation remains separately tracked in draft
+PR #189; no cause or crash fix is claimed here and none of its experimental source is
+added to this release. No new release/tag operation is needed or performed against the
+verified replacement. The original request's P1, approval, replacement and asset-validation
+requirements are complete. Publication remains a separate, unauthorized owner action.

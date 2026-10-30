@@ -14,7 +14,9 @@ state/lock-admission coverage (2011 checks / 0 failures locally), including an u
 callback-published restore before an outer save. The metadata defect is fixed;
 RISK-009 remains open on the separately characterized outer-held lock edge and JUCE listener-lock
 residual. No supported-host deadlock is established. Accepted ADR-0067 is also implemented;
-fresh mandatory CI and targeted human validation remain required before draft replacement.
+final-source CI and targeted owner-attested human validation completed before the
+normal Release 5 replacement. Exact execution evidence is in the readiness worklog;
+the distinct lock residual above remains open.
 
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.

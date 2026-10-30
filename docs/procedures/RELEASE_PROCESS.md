@@ -361,10 +361,10 @@ wording. It does not alter a command, payload, identity, signing policy or
 installer behavior. Normal applicable native/archive gates remain required for
 each newly produced CI artifact; older artifacts retain their own source hashes.
 
-## Recorded 0.10.0 draft recovery (2026-10-30)
+## Historical original 0.10.0 draft recovery (2026-10-30)
 
 The original tag run failed before jobs on nested Actions read permissions (INC-018). PR #185
-repairs the caller and passes a full native rehearsal. Tag `0.10.0` remains at `cd70a0b`; its exact
+repairs the caller and passes a full native rehearsal. The original tag `0.10.0` pointed at `cd70a0b`; its exact
 main-push validation run 40915335616 passed all gates and produced source build 1940. Recovery
 used that run's validated staging trees/untouched installers and the original tagged metadata
 validator/asset assembler. A local upload-host authentication failure required the repository-scoped
@@ -373,3 +373,6 @@ It checks the existing unpublished draft, original annotated tag and successful 
 it has no release-creation/publication step. All 11 uploaded assets were independently downloaded
 and verified, and source build 1940 is retained in the manifest. Full provenance and limitations:
 `worklogs/RELEASE_READINESS_0.10.0.md`. Required human approval remains complete.
+This recovery describes the superseded original candidate. The completed P1 replacement
+used normal Release 5, new draft 428664381 and annotated tag object `7229ec12` on `b085c87`,
+as recorded under "One-time unpublished 0.10.0 candidate supersession" above.
