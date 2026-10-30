@@ -27,19 +27,19 @@ including in entries written before 0.9.9 gave it that name.
 ## [0.10.0] — 2026-10-30
 
 ### Added
-- Linux installation adds the Anamorph desktop launcher and hicolor icons in
-  the selected user/system data directory, with an absolute executable reference and
-  owned-resource recovery/uninstall. Portable extraction installs no desktop files.
-  Evidence: PR #175; ADR-0065. [Verified]
 - **Anamorph product icons in macOS and Windows.**
   Mac app/plug-in bundles use a complete native iconset with compatible small-icon encodings,
   preventing multicolored application-icon corruption. Windows executable/VST3 resources retain
-  JUCE's icon path. The artwork is unchanged. Windows installer branding is recorded below;
-  Linux desktop integration has its separate entry above.
+  JUCE's icon path. The artwork is unchanged. Windows installer branding is recorded below.
   Evidence: commits `4d96559`, `2ff69a5da5f047777c03834725691f2942333f48`; ADR-0062 (2026-10-29 amendment).
   [Verified]
 
 ### Changed
+- **Linux scripts install only VST3; Standalone stays portable in the ZIP.**
+  User and system plugin locations are unchanged. Desktop launchers, hicolor icons
+  and AppStream metadata are not installed. Earlier receipt/hash-verified desktop
+  resources and the verified old 0.10.0 Standalone are cleaned up; edited or unowned
+  files are preserved with warnings. Evidence: commit `d98095c`; ADR-0069. [Verified]
 - **Non-finite parameter values use each control's declared default for audio processing.**
   This prevents sustained audio loss from invalid host or text values. Output Gain can return
   to 0 dB and Velvet Density to 0.5; finite automation and numeric host readback are unchanged.
@@ -55,6 +55,11 @@ including in entries written before 0.9.9 gave it that name.
   Evidence: PR #171; ADR-0063. [Verified]
 
 ### Fixed
+- **Linux per-user installation and removal no longer require icon-directory permission repair.**
+  Plugin operations work independently of shared icon-directory modes, without
+  recursive chmod/chown. Installed module permissions must be set before staged
+  publication; interrupted replacements and cleanup can be retried.
+  Evidence: commit `d98095c`; ADR-0069. [Verified]
 - **Nested session restores retain matching sound and preset information.**
   Preset, Settings, A/B and Undo state commit before latency callbacks, so an older restore
   cannot overwrite metadata belonging to a newer restore invoked from that callback.
@@ -62,14 +67,6 @@ including in entries written before 0.9.9 gave it that name.
 - **Invalid parameter text no longer causes unsafe display conversions.** A session with
   an unusable parameter `value` and a valid stored `raw` value also restores the finite value
   before notifying listeners. Evidence: PR #187; ADR-0067. [Verified]
-- **System Linux desktop operations verify their helper before interpretation.**
-  Install preflight/publication and uninstall use a private snapshot pinned by the
-  trusted entry scripts, refusing mismatched archive helper bytes. Evidence:
-  PR #175; ADR-0065. [Verified]
-- **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
-  cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
-  launcher or icon when its receipt is missing, preserving installed binaries for
-  a safe retry. Evidence: PR #175; ADR-0065. [Verified]
 - **Windows installer and uninstaller use the product icon in every component configuration.**
   VST3-only installs now register a stable installed icon instead of an absent optional app;
   component choices, install destinations and the installer AppId are unchanged.
