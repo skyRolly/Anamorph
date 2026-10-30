@@ -1092,11 +1092,29 @@ campaign, using `--cycles 128` per mode and a 180-second bound (standalone defau
 2000 cycles; accepted range 2–2000). Progress records every 16 cycles distinguish
 slow execution from an unentered path. Logs are
 `au-teardown-evidence/apple-{entry,drained,queued}.log`; `report.json` records each outcome.
-This follow-up bounds the real AU campaign to four invocations, without changing
+The current follow-up bounds the real AU campaign to one invocation, without changing
 ordinary conformance or interpreting no reproduction as a fix.
 A completed entry control whose callback count remains at its initial-cycle value
 proves initial delivery and disposal, not that a delivery block was pending at disposal.
 The native outcomes and exact callback counts are recorded in the worklog.
+
+The additional `tests/au_pending_block_control.mm` tests the missing enqueue boundary:
+
+```sh
+xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
+  -framework AudioToolbox -framework CoreFoundation -o apple-au-pending-control
+./apple-au-pending-control
+```
+
+This separate Apple-only executable interposes CFRunLoopPerformBlock to queue disposal
+immediately before the intercepted AudioToolbox block, with both blocks enqueued before
+disposal. The AU remains alive while the original block runs. A bounded rendezvous handles
+an off-main enqueue without racing the fixture's lifetime. Exit 5 means enqueue, disposal
+or block return was not observed; exit 3 still means initial callback liveness failed.
+`--pending-control ./apple-au-pending-control` first runs `--no-enqueue-hook`, requiring
+exact inferior exit 5, then observes the armed fixture. Logs/report retain both outcomes.
+This is a diagnostic ordering experiment; no framework cause or correction is established
+until native capture. It does not interpose the actual validator or change a normal gate.
 Original build logs live under retained/. The workflow's path filter skips unchanged
 diagnostics on documentation-only pushes. TESTING.md describes the same interpretation.
 

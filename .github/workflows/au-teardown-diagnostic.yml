@@ -8,6 +8,7 @@ on:
       - scripts/diagnose-au-teardown.py
       - scripts/au_teardown_lldb.py
       - tests/au_listener_teardown.mm
+      - tests/au_pending_block_control.mm
       - .github/workflows/au-teardown-diagnostic.yml
 
 permissions:
@@ -56,14 +57,17 @@ jobs:
         run: |
           xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
             -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+          xcrun clang++ -std=c++17 -g -fblocks tests/au_pending_block_control.mm \
+            -framework AudioToolbox -framework CoreFoundation -o apple-au-pending-control
       - name: Prove debugger liveness and capture bounded controls and failing-seed campaign
         run: >-
           python3 scripts/diagnose-au-teardown.py
           --pluginval "${{ steps.prepare.outputs.pluginval }}"
           --bundle "${{ steps.prepare.outputs.bundle }}"
           --apple-control ./apple-au-listener-control
+          --pending-control ./apple-au-pending-control
           --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
-          --attempts 4
+          --attempts 1
           --expect completed
       - name: Retain native throw stacks and reconstructed bytes
         if: ${{ !cancelled() }}

@@ -63,6 +63,7 @@ def self_test():
     control_cases=[('Apple AU listener control completed; callbacks=8\n'+record('exited'),'completed'),
         ('Apple AU listener control completed; callbacks=0\n'+record('exited'),'missing-success'),
         (record('exited',4),'inferior-failed'),
+        (record('exited',5),'inferior-failed'),
         ('Apple AU listener control completed; callbacks=8\n','observer-error')]
     for text,expected in control_cases:
         assert classify_apple_control(text)==expected,(text,expected)
@@ -100,6 +101,7 @@ def main():
     parser.add_argument('--pluginval',type=Path)
     parser.add_argument('--bundle',type=Path)
     parser.add_argument('--apple-control',type=Path,help='Independent Apple-only listener control executable')
+    parser.add_argument('--pending-control',type=Path,help='Independent queued-framework-block disposal control')
     parser.add_argument('--au-source-commit',help='Historical source commit that produced the retained AU')
     parser.add_argument('--report-dir',type=Path,default=Path('au-teardown-evidence'))
     parser.add_argument('--attempts',type=int,default=16)
@@ -132,6 +134,27 @@ def main():
     save()
     assert control['outcome']=='bad-function-call-throw', 'debugger cannot capture the known first throw'
     control_threw=False
+    if args.pending_control:
+        negative_log=root/'apple-pending-disarmed.log'
+        negative=observe(args.pending_control.resolve(),['--no-enqueue-hook'],negative_log,60)
+        report['pending_control_disarmed']=negative
+        save()
+        records=re.findall(r'^'+MARKER+r'(\{.*\})$',negative_log.read_text(),re.M)
+        assert negative['outcome']=='inferior-failed' and negative.get('debugger_exit')==0 \
+            and len(records)==1 and json.loads(records[0])['exit']==5, \
+            'pending-block control accepted an unobserved enqueue/disposal path'
+        log=root/'apple-pending.log'
+        result=observe(args.pending_control.resolve(),[],log,60)
+        if result['outcome']!='observer-timeout':
+            result['outcome']=classify_apple_control(log.read_text())
+            if result['outcome']=='completed' and result['debugger_exit']!=0:
+                result['outcome']='observer-error'
+        report['pending_control']=result
+        save()
+        print(f"Apple-only pending-block control: {result['outcome']}",flush=True)
+        if result['outcome'] not in ('completed','bad-function-call-throw'):
+            return 2
+        control_threw |= result['outcome']=='bad-function-call-throw'
     if args.apple_control:
         report['apple_controls']=[]
         for mode,control_args in [('entry',['--entry-disposal','--cycles','128']),

@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## AU delivery enqueue-boundary follow-up (2026-10-30)
+
+CI_CD and TESTING describe the new independent pending-block fixture, public API
+interposition scoped to that executable, bounded enqueue/disposal rendezvous,
+initial callback liveness and exact exit-5 absence control. REPOSITORY_MAP indexes
+the source. The diagnostic observer records armed/disarmed outcomes and a one-trial
+AU follow-up; the worklog states the native experiment is pending. Normal gates,
+validator acquisition, production code and the unpublished release remain unchanged.
+
 ## AU listener queued-disposal follow-up (2026-10-30)
 
 CI_CD and TESTING describe both independent control invocations, first-callback

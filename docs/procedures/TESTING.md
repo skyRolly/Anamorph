@@ -5927,11 +5927,20 @@ Read their individual outcomes in `report.json` and first-throw stacks/exit stat
 `au-teardown-evidence/apple-{entry,drained,queued}.log`. A clean control needs exit 0
 and a nonzero callback count. Ordinary conformance gates retain immediate failure
 on macOS crashes; RISK-017 records the unresolved interaction.
-The current diagnostic AU follow-up is bounded to four trials; a clean bounded
+The current diagnostic AU follow-up is bounded to one trial; a clean bounded
 campaign does not close an intermittent defect.
 In the verified entry probe only the initial cycle delivers callbacks; later
 disposals complete, but this does not establish that a delivery block was pending
 at disposal. Read the per-mode counts and captured AU failure in the worklog.
+`au_pending_block_control.mm` adds a separate enqueue-boundary fixture (build command:
+CI_CD's diagnostic section). It keeps the Apple AU alive, queues listener disposal
+before an observed AudioToolbox delivery block and then invokes that original block.
+Both enqueue operations must finish before disposal; initial callbacks must be live.
+Exit 5 rejects absent enqueue/disposal/block-return evidence. The driver first disables
+the hook with `--no-enqueue-hook` and requires exact exit 5 before observing the armed
+fixture under `--pending-control`. Read `apple-pending-disarmed.log`, `apple-pending.log`
+and their report fields. These controls introduce no exception handler or validation retry;
+the experiment's native outcome remains pending.
 Evidence: `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`; CI_CD.md's diagnostic section.
 
 ### Ordinary CI gates

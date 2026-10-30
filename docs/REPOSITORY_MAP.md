@@ -159,6 +159,7 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `scripts/diagnose-au-teardown.py` | Nonshipping bounded LLDB observer, inert outcome controls and actual empty-function throw canary; never a validation-gate substitute. |
 | `scripts/au_teardown_lldb.py` | Native Intel LLDB exception-type filter: stop on the first bad_function_call before AppKit unwinds the originating frame. |
 | `tests/au_listener_teardown.mm` | Nonshipping Apple-only AU listener lifecycle controls: drained, timer and entry-observer disposal, actual delivery/disposal liveness; no Anamorph/JUCE linkage. |
+| `tests/au_pending_block_control.mm` | Apple-only enqueue-boundary experiment: observe an AudioToolbox block queued before listener disposal; disarmed absence control must fail with exit 5. |
 | `.github/workflows/au-teardown-diagnostic.yml` | Investigation-branch-only reconstruction of Build 1957's thin AU; official locked validator, native stacks and artifact retention. |
 | `worklogs/release-0.10.0-original/` | Internal historical original release body/metadata, annotated tag/tagger, manifest and checksums; no replacement binaries. |
 | `worklogs/release-0.10.0-p1/` | Candidate validation/human-attestation provenance and the executed replacement draft record: tag/source/run identities, all 11 asset hashes and fresh same-run payload verification. |

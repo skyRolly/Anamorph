@@ -189,3 +189,20 @@ no safe product correction is established by these observations. PR #189 stays
 a diagnostic draft, with the original conformance gate and unpublished release
 unchanged. Further causal isolation must establish pending delivery at disposal
 inside the real host lifecycle before selecting a correction.
+
+### Reopened: observe enqueue before disposal
+
+The owner's instruction to solve PR #189 continues the investigation from the
+unproven ordering, not from a clean-run assumption. Main's completed P1/release
+documentation is merged into this branch; both coverage records are preserved.
+
+`au_pending_block_control.mm` is an independent Apple-only process that intercepts
+CFRunLoopPerformBlock from AudioToolbox, queues listener disposal before the
+original block, and proves both queue operations completed before disposal.
+The Apple AU itself remains alive until after the block returns. This isolates
+listener lifetime from product/JUCE destruction. A bounded rendezvous covers an
+off-main enqueue; no application thread is created. The disarmed fixture must
+exit exactly 5 before the armed observation, so an unobserved path cannot pass.
+The first-throw canary and recorded source/binary identities remain required.
+Native verification is pending. The real AU follow-up is bounded to one trial
+while this mechanism is isolated; no ordinary conformance invocation is changed.
