@@ -799,7 +799,7 @@ manual-completion statement adds no inferred DAW, device, date or per-scenario r
 
 The remaining original-request work was documentation reconciliation: the state-hardening
 worklog and repository map still called Accepted ADR-0067/0068 unapproved proposals;
-KNOWN_ISSUES/FUTURE_RISKS still described completed P1 validation as pending. Their current
+KNOWN_ISSUES/FUTURE_RISKS and INC-019/020 still described completed P1 validation as pending. Their current
 summaries now reflect execution, preserving historical measurements and the distinct
 RISK-009 residual. RELEASE_PROCESS's original recovery is explicitly historical.
 P2/P3 dispositions and their concrete reopen conditions above are unchanged.

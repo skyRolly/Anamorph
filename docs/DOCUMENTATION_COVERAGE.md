@@ -3,7 +3,7 @@
 ## Original-request completion reconciliation (2026-10-30)
 
 The state-hardening worklog opening, repository-map ADR rows and current issue/risk
-summaries now distinguish the completed, Accepted PR #187 P1 contracts from their
+summaries and INC-019/020 now distinguish the completed, Accepted PR #187 P1 contracts from their
 historical proposal round. RELEASE_PROCESS labels original-source recovery as historical.
 The readiness worklog records a fresh remote-state and downloaded-asset reconciliation:
 11 release assets, nine checksums, five same-run payloads, exact source/tag/notes and
