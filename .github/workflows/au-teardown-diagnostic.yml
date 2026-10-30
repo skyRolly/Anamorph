@@ -52,6 +52,7 @@ jobs:
           python3 scripts/diagnose-au-teardown.py
           --pluginval "${{ steps.prepare.outputs.pluginval }}"
           --bundle "${{ steps.prepare.outputs.bundle }}"
+          --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
       - name: Retain native throw stacks and reconstructed bytes
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -61,8 +62,6 @@ jobs:
           path: |
             au-teardown-evidence/
             host.txt
-            configure.log
-            build.log
             reconstructed-au.sha256
             retained/
       - name: Remove disposable AU

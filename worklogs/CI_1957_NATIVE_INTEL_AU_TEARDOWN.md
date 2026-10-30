@@ -65,3 +65,14 @@ worker is still stopping its timeout thread. This still does not establish blame
 The next observation filters __cxa_throw's x86_64 type_info argument for
 bad_function_call and stops before unwinding. Its actual canary must prove that
 specific first-throw path, rather than accepting a later abort as equivalent.
+
+### PR #189 review corrections
+
+The coverage audit now explicitly records the first-throw follow-up and its native
+canary without claiming a root cause. The original artifact contains configure.log
+and build.log at its root; after download they are retained/configure.log and
+retained/build.log. Uploading retained/ preserves both, so obsolete top-level
+upload entries are removed. New reports name diagnostic_commit and au_source_commit
+separately and measure the installed AU binary hash. Earlier source_commit fields
+refer to the diagnostic checkout, not the AU's historical source; those retained
+reports remain unmodified and their producer/source distinction is recorded here.

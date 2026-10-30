@@ -86,15 +86,20 @@ def main():
     parser.add_argument('--self-test',action='store_true')
     parser.add_argument('--pluginval',type=Path)
     parser.add_argument('--bundle',type=Path)
+    parser.add_argument('--au-source-commit',help='Historical source commit that produced the retained AU')
     parser.add_argument('--report-dir',type=Path,default=Path('au-teardown-evidence'))
     parser.add_argument('--attempts',type=int,default=16)
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return 0
+    if not args.au_source_commit or not re.fullmatch(r'[0-9a-f]{40}',args.au_source_commit):
+        parser.error('--au-source-commit must identify the retained AU source with a full commit SHA')
     assert platform.system() == 'Darwin' and platform.machine() == 'x86_64'
     assert subprocess.run(['sysctl','-n','sysctl.proc_translated'],capture_output=True,text=True).stdout.strip() in ('','0')
     assert args.pluginval and args.pluginval.is_file() and args.bundle and args.bundle.is_dir()
+    au_binary=args.bundle/'Contents/MacOS/Anamorph'
+    assert au_binary.is_file()
     assert 1 <= args.attempts <= 20
     root=args.report_dir.resolve();root.mkdir(parents=True,exist_ok=True)
     canary=root/'canary.cpp'
@@ -102,7 +107,9 @@ def main():
     subprocess.run(['xcrun','clang++','-std=c++17','-g',str(canary),'-o',str(root/'canary')],check=True)
     control=observe(root/'canary',[],root/'canary-lldb.log',60)
     report={'intent':'capture a throw stack; not a pluginval conformance gate',
-            'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+            'diagnostic_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+            'au_source_commit':args.au_source_commit,
+            'au_binary_sha256':hashlib.sha256(au_binary.read_bytes()).hexdigest(),
             'pluginval_sha256':hashlib.sha256(args.pluginval.read_bytes()).hexdigest(),
             'canary':control,'runs':[]}
     def save():

@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## First-throw AU observer and PR #189 review corrections (2026-10-30)
+
+The LLDB helper now filters __cxa_throw's native Intel type_info argument to stop
+at bad_function_call before AppKit unwinds the caller. The real empty-function
+canary must exercise this first-throw path; the later SIGABRT alone is insufficient.
+The abort is reproduced, but its original caller/root cause is not yet established.
+The report separates diagnostic checkout and historical AU source commits and
+records the measured AU binary hash. Retained reconstruction logs are uploaded
+under retained/, rather than referenced as nonexistent new top-level build logs.
+
 ## Build 1957 native Intel AU throw-stack investigation (2026-10-30)
 
 CI_CD/TESTING qualify the historical post-SUCCESS abort's unproven ownership.
