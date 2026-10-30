@@ -14,15 +14,16 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 
-**0.10.0 draft release / JUCE 9.0.4.** The [GitHub draft](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e925c4f20dd9c3da3855)
-contains 11 verified assets from annotated tag `0.10.0` at `cd70a0b` (CI build 1940).
-The owner approved Level-5 listening and all required manual validations on 2026-10-29.
-The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) records the original gates,
-asset verification and draft recovery. The owner approved ADR-0067/0068 on 2026-10-30. The P1 processor/restore fixes are implemented
-in PR #187. Build 1952 passed the candidate gates, and the owner attested targeted human
-validation complete on 2026-10-30. Final-main validation and normal-pipeline draft/tag
-replacement remain to execute; the original draft is still intact. Priorities and evidence stay in that internal record. The earlier [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md)
-retains its original development version in its filename.
+**0.10.0 draft release / JUCE 9.0.4.** The [GitHub draft](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e9b61aa49fbd4b5cb114)
+contains 11 verified fresh assets from annotated tag `0.10.0` at `b085c87`
+(normal Release build 5). PR #187's approved processor/restore fixes are merged;
+final-main Build 1956 and the complete tag-triggered Release workflow passed.
+The owner approved ADR-0067/0068 and attested targeted human validation complete on 2026-10-30;
+the original 2026-10-29 unrelated manual approval is preserved. The old unpublished candidate
+was superseded by authorized deletion and recreation. The release remains **Draft and unpublished**.
+The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves both identities,
+all asset hashes, validation and deferred public-distribution decisions. The earlier
+[state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.
 - **Version 0.10.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).

@@ -34,8 +34,9 @@ The current release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).
 It records the original owner's manual approval and automated outcomes separately, plus the
 P1 implementation/validation and original-candidate evidence archive. ADR-0067/0068 are
-Accepted on the owner's explicit 2026-10-30 approval; new-source automated and targeted manual
-validation remain separate requirements. The worklog does not replace binding policies.
+Accepted on the owner's explicit 2026-10-30 approval and effective on main via PR #187
+(`b085c87`). Final-main and normal Release gates passed; targeted manual completion is
+owner-attested separately. The new unpublished draft and archived original identities are recorded there. The worklog does not replace binding policies.
 
 `AGENTS.md` is the primary root-level contributor/agent guide and belongs to the developer documentation class. It points readers to binding policies and does not override the authority order above. `CLAUDE.md` is retained as a Claude-compatible import of `AGENTS.md`; it is a compatibility pointer, not a separate source of rules.
 

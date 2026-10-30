@@ -6,8 +6,10 @@
 This approval is not evidence of implemented fixes or new-binary manual validation.
 **Implementation:** Immutable parameter/default bindings, finite snapshot and display guards, and private-copy
 repair of the unusable-value/usable-raw restore window are implemented in PR #187.
-State tests 146/147 exercise the production processor; mandatory CI and targeted manual
-validation of the replacement binaries remain required.
+State tests 146/147 exercise the production processor; PR #187 merged at `b085c87`.
+Final-main Build 1956 and normal Release 5 passed; the owner attested targeted
+human validation complete on 2026-10-30. Final unpublished draft/provenance and separately
+recorded architecture/manual approvals: `worklogs/RELEASE_READINESS_0.10.0.md`.
 
 ## Context
 

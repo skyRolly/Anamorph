@@ -156,6 +156,7 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
 | `worklogs/RELEASE_READINESS_0.10.0.md` | Original draft provenance, current P1 decision/diagnostic evidence, required approvals and guarded replacement/recovery plan. |
 | `worklogs/release-0.10.0-original/` | Internal historical original release body/metadata, annotated tag/tagger, manifest and checksums; no replacement binaries. |
+| `worklogs/release-0.10.0-p1/` | Candidate validation/human-attestation provenance and the executed replacement draft record: tag/source/run identities, all 11 asset hashes and fresh same-run payload verification. |
 | `scripts/check-release-notes.py` | Current-version extraction/content guard with same-job positive/negative liveness controls; optional downloaded-notes input. |
 | `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Proposed non-finite processor parameter contract; no production implementation or approval. |
 | `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Proposed restore/latency callback completion contract; no production implementation or approval. |

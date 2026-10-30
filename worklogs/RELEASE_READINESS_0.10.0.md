@@ -1,11 +1,15 @@
 # Release readiness — 0.10.0 (draft only)
 
-**Current status: P1 candidate implementation/CI and targeted human validation complete;
-final main integration and draft replacement pending (2026-10-30, Asia/Shanghai).** The owner explicitly approved ADR-0067/0068; that architecture
-gate is cleared. Build 1952 and companion checks passed on `9f9a76e`; the owner has now
-attested the requested targeted human validation complete. The original draft/tag remain
-intact until validated final main is ready for the guarded replacement operation.
-See **Approved P1 implementation and PR #187 review corrections** below.
+**Current status: 0.10.0 P1 replacement DRAFT COMPLETE; unpublished (2026-10-30, Asia/Shanghai).**
+PR #187 merged at `b085c87d139f124e33a525e75ec13b8218c96f06`. Final-main Build 1956, CodeQL and MSVC analysis
+passed; the recreated annotated tag's normal Release build 5 / run 41001157732 passed all
+mandatory gates. New Draft Release [428664381](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e9b61aa49fbd4b5cb114) targets that exact source.
+All 11 assets were downloaded and independently verified against API digests, checksums,
+manifest, metadata and five fresh same-run build artifacts. The owner-approved P1 changes and
+targeted human attestation are included; original unrelated manual approval remains preserved.
+The old unpublished draft/tag were deleted under the explicit one-time authorization, then
+recreated without force-moving a tag. **No public publication occurred or is authorized.**
+The dated execution record and `release-0.10.0-p1/draft-replacement.json` hold final identities.
 
 **Historical original-candidate completion (2026-10-30):** required validation and manual
 approvals were complete for the original source; all 11 uploaded assets were downloaded and
@@ -701,3 +705,66 @@ the mandatory CI gates before original draft/tag deletion. The normal recreated-
 workflow must build fresh payloads, and every new release asset/manifest/note must be verified.
 No public publication is authorized. At this attestation record, original ID 428196589 and
 tag object 769d52fb09116b787184d119ff1db6075187e36d still exist unchanged and unpublished.
+
+## Executed P1 draft replacement — 2026-10-30, Asia/Shanghai
+
+The owner's explicit draft-only one-time supersession authorization was executed after the
+approved P1 implementation and targeted human completion. PR #187 merged into main at
+`b085c87d139f124e33a525e75ec13b8218c96f06`. Runtime code, tests, CMake version, scripts and workflows match the human-validated
+`9f9a76e` candidate exactly; the attestation commit changes documentation/evidence only.
+Final-main [Build 1956](https://github.com/skyRolly/Anamorph/actions/runs/40997892863) and companion CodeQL/MSVC analyses passed before
+either original object was deleted. No automated gate was waived or weakened.
+
+| Identity | Archived original candidate | Verified replacement |
+|---|---|---|
+| Version / title | 0.10.0 / Anamorph 0.10.0 | 0.10.0 / Anamorph 0.10.0 |
+| Annotated tag object | `769d52fb09116b787184d119ff1db6075187e36d` | `7229ec12472649a0d9be0cd563a94e713bc206be` |
+| Peeled source | `cd70a0b8a20d04c246a826c7b1bf616de2721c65` | `b085c87d139f124e33a525e75ec13b8218c96f06` |
+| GitHub Release ID | 428196589, deleted | [428664381](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e9b61aa49fbd4b5cb114) |
+| Source build/run | 1940 / 40915335616 | Normal Release 5 / [41001157732](https://github.com/skyRolly/Anamorph/actions/runs/41001157732) |
+| Publication state | Draft, published_at null before deletion | **Draft, published_at null** |
+| Assets | 11 authenticated restricted recovery copies retained | 11 fresh attached assets, all downloaded/verified |
+
+Immediately before deletion, the original Release ID/body/assets, annotated object/peeled
+source, unpublished status, all 11 backup sizes/hashes and absence of a conflicting Release run
+were re-read and verified. No evidence of prior public publication or external reliance was known.
+Supported `gh release delete 0.10.0 --cleanup-tag --yes` removed the original draft/tag;
+both absences were checked. Only the matching stale local tag was removed. Main/checkout/version
+and notes were rechecked, a new annotated tag was created on the validated main commit and
+pushed normally. The old ref was never force-moved. Retry checkpoints distinguish original,
+absent and replacement identities; no deletion was repeated against the replacement.
+
+The tag push triggered the normal Release workflow, including its full reusable Build matrix
+and unchanged caller permissions. The new draft was created with exact target `b085c87d139f124e33a525e75ec13b8218c96f06`,
+title `Anamorph 0.10.0` and customer-facing notes matching the tagged changelog extraction.
+Exactly one active release names 0.10.0. All mandatory native, sanitizer/threading/fuzz,
+pluginval, source, packaging and release metadata gates passed. Final-main SARIF findings
+match the fully validated candidate after path normalization: 65 C++ CodeQL, 0 Actions,
+192 PREfast, including unchanged frame estimates. Existing findings are not claimed absent.
+
+Every release asset's downloaded size and SHA-256 matches the GitHub API. All nine payload
+entries agree with SHA256SUMS and RELEASE_MANIFEST, which identifies this exact source,
+normal Release run and About-box build number. All files in the three public ZIPs match
+the corresponding fresh same-run CI artifacts; both installers match their same-run files
+byte for byte. All five binary payload hashes differ from the archived original candidate.
+No stale original binaries or debug artifacts are attached. Unix executable modes are present.
+Actual Windows binary versions/installer ProductVersion and macOS plist/component versions are
+0.10.0; universal slices, bundle IDs, package receipts and install locations match the contract.
+Inno's generic loader retains its existing zero fixed numeric version; its application
+ProductVersion is correctly 0.10.0. Downloaded Linux binaries pass the unchanged ABI gate.
+The manual, NOTICE, THIRD_PARTY_LICENSES and SUPPORT match the tagged source byte for byte.
+Full asset IDs, sizes/hashes, normal-run artifact identities and inspection results are in
+`release-0.10.0-p1/draft-replacement.json`.
+
+The 2026-10-30 targeted manual completion and original 2026-10-29 unrelated approval remain
+owner attestations; unprovided DAW/OS/format, actual test date and individual observations remain
+NOT RECORDED. No new listening result is inferred from CI or from the metadata-only follow-up.
+This follow-up records the now-observed release state after tag creation. It does not move the
+immutable replacement tag or change any release payload or its provenance.
+
+**Remaining scope:** no P1/draft-validation blocker remains. The distinct RISK-009 outer-held
+lock/JUCE listener-lock residual is not a demonstrated supported-host deadlock. RISK-015 parser
+acceptance, KI-015 commercial/JUCE/distribution/signing/notarization decisions and deferred P3
+items retain their recorded reopen conditions. macOS bundles remain ad-hoc signed and not
+notarized; Windows installers remain unsigned. Public publication needs a separate owner
+decision and applicable distribution prerequisites. This task leaves the release **unpublished**.

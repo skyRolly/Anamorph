@@ -147,6 +147,13 @@ anything. Never retry deletion against a new replacement identity. The complete 
 resume table and original archival evidence are in `worklogs/RELEASE_READINESS_0.10.0.md`.
 The replacement must remain `draft=true`, `published_at=null`. No public publication is authorized.
 
+**Execution complete (2026-10-30):** PR #187 merged at `b085c87`; final-main Build 1956 and
+normal tag-triggered Release 5 / run 41001157732 passed. New annotated tag object `7229ec12472649a0d9be0cd563a94e713bc206be`
+peels to that release commit. New draft ID 428664381 has 11 downloaded/verified
+fresh assets; the original draft/tag were removed under the guarded exception. The new tag
+is immutable and the release remains unpublished. The readiness worklog and
+`worklogs/release-0.10.0-p1/draft-replacement.json` preserve actual identities and hashes.
+
 **A version that closes without a tag** (written up, then superseded by the next version before
 it is tagged, as 0.9.7 and 0.9.8 were) keeps its entry and loses its definition: the commit that
 adds the newer version's entry also deletes the older one's `[x.y.z]:` line. Git has no tag for it,
