@@ -389,7 +389,10 @@ metadata and final publication before latency delivery. Delivery also requires n
 state command or pending restore; the existing atomic request waits for the safe timer door.
 No old restore writes follow the callback. State 148 retains the original assertions and adds
 inline/background, repeated, pump/no-pump, callback-save, metadata and non-blocking lock-admission
-coverage (1778 checks / 0 failures locally). State 43 retains immediate engine priming and checks
+coverage (initially 1778 checks / 0 failures locally). A callback that only publishes a background
+restore and returns exposed 54 failures in 2011 checks against that first implementation:
+the outer save could read older metadata. The drain now rechecks after notification and applies
+the new restore in a fresh scope; all 2011 checks pass. State 43 retains immediate engine priming and checks
 the newly deferred host report. No new lock, wait, thread or atomic ordering is introduced.
 
 F9's metadata defect is corrected; RISK-009 remains open on the distinct JUCE listener-lock

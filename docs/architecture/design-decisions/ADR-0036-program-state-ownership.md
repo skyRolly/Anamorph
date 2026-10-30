@@ -1032,7 +1032,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2698`).
+    (`src/PluginProcessor.cpp:2705`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1207,7 +1207,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2883`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2890`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install

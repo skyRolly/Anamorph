@@ -38,6 +38,8 @@ The wrapper reads the APVTS atomics once per block and fills an `EngineParameter
 parameter ID. Since ADR-0057 the wrapper hands the engine a READER rather than a snapshot
 (`engine.setParametersFrom`): the engine calls it between its two acquire takes of the request
 word, so a bulk swap's forced bottom adopts only a complete destination.
+ADR-0067 adds stateless finite-default substitution before snapshot conversions. Defaults are
+bound once beside the atomic pointers; finite values and the ADR-0057 ordering stay unchanged.
 
 Evidence [Verified]:
 - Source: src/PluginParameters.cpp:350-437 (`toEngine`)

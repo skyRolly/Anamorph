@@ -51,10 +51,18 @@ an adoption, consume a restore without applying it, or change a reported latency
 
 Drain the pending latency report only after the restore scope has ended and no enclosing state
 command owns `soundReplacement`. Read current committed parameters when delivering; do not retain
-the old decode's latency or metadata. There must be **no restore write after this callout**.
+the old decode's latency or metadata. There must be **no write from the completed older
+application after this callout**.
 Consequently a newer restore invoked from it completes after all older writes, and an older tail
 cannot resume to overwrite it. Inline generation zero needs no special ordering comparison:
 the same completion/callout boundary applies to both paths.
+
+A callback may publish a newer background restore and return without pumping or saving. The
+drainer rechecks the pending cell after notification and applies that newer restore in a fresh
+scope before returning to its caller. This preserves ADR-0036's fixed-point save/command
+contract; it never resumes the older tail. Non-blocking doors retain their non-consuming
+try-lock/transaction refusal on each pass. Finite callback/state-operation nesting remains
+the support boundary.
 
 If an enclosing preset/state command still owns the replacement lock, leave the request set for
 the existing 20 Hz timer. That timer must also defer delivery while a restore scope or state
@@ -116,7 +124,11 @@ Evidence [Verified]:
   lock-edge evidence: `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 
 The original diagnostic measured 30 checks / 4 metadata failures before this fix and now passes
-unchanged inside State test 148. The expanded regression measures 1778 checks / 0 failures.
+unchanged inside State test 148. The first expanded regression measured 1778 checks / 0 failures.
+A no-pump/no-callback-save case then found 54 failures in 2011 checks against that first
+implementation: an outer save could serialize newer sound with older metadata. Rechecking
+after notification in a fresh application scope fixes that case; State 148 now measures
+2011 checks / 0 failures.
 The outer-held lock witness and JUCE-internal host listener-lock residual remain characterized
 separately in RISK-009. Fresh mandatory CI and targeted manual validation are not inferred from
 Architecture Review or these local results.

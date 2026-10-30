@@ -115,7 +115,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 
    **The requirement is the job and the order, not adjacency**, and the distinction is stated
    because some cannot be adjacent. These are the step immediately before their check:
-   `check-docs.py`, `check-portability.py`, `check-realtime.py`, `check-linux-abi.py` (the last at
+   `check-docs.py`, `check-release-notes.py`, `check-portability.py`, `check-realtime.py`, `check-linux-abi.py` (the last at
    the end of `linux`, after the build it inspects). The other three are separated by the thing
    their check needs, not by a relaxation of this rule: the two warning gates classify a **build
    log**, so the build necessarily sits between the self-test and the gate — and

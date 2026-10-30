@@ -41,8 +41,16 @@ static void testFiniteParameterBoundaryAndRestoreWindow()
                     check (bulkswap::same (p->readEngineSnapshot(), reference->readEngineSnapshot()),
                            (label + ": entire snapshot matches the finite control").toRawUTF8());
                     if (ingress != 2)
-                        checkStr (rp->getText (hostReadback, 128), twin->getText (twin->getValue(), 128),
-                                  (label + ": host display agrees with the rendered finite value").toRawUTF8());
+                    {
+                        // ARM's finite range/snap round-trip can format the
+                        // zero-gain control as "-0.0 dB". NaN formatting uses
+                        // the declared +0 dB directly; do not change valid
+                        // finite formatting to make these strings coincide.
+                        const auto expectedText = rp->paramID == pid::outputGain && std::isnan (hostReadback)
+                            ? juce::String ("0.0 dB") : twin->getText (twin->getValue(), 128);
+                        checkStr (rp->getText (hostReadback, 128), expectedText,
+                                  (label + ": host display uses the declared NaN default or the unchanged finite control").toRawUTF8());
+                    }
                     bool identical = true, finite = true;
                     for (int lifecycle = 0; lifecycle < 3; ++lifecycle)
                     {
@@ -203,9 +211,12 @@ static void testRestoreCommitBeforeLatencyCallbacks()
     const auto older = makeRoot ("older", 1.6f, 2, 0), newer = makeRoot ("newer", 0.6f, 3, 1);
     const auto encode = [] (const juce::ValueTree& root) { return frameHostChunk (root.toXmlString()); };
     const auto oldBlob = encode (older), newBlob = encode (newer);
-    const auto verify = [] (AnamorphAudioProcessor& p, const juce::ValueTree& expected)
+    const auto verify = [] (AnamorphAudioProcessor& p, const juce::ValueTree& expected,
+                           const juce::MemoryBlock* alreadySaved = nullptr)
     {
-        juce::MemoryBlock saved; p.getStateInformation (saved);
+        juce::MemoryBlock saved;
+        if (alreadySaved != nullptr) saved = *alreadySaved;
+        else p.getStateInformation (saved);
         const auto xml = BlobCodec::unwrap (saved);
         check (xml != nullptr, "latency callback save is valid XML");
         if (xml == nullptr) return;
@@ -214,6 +225,9 @@ static void testRestoreCommitBeforeLatencyCallbacks()
             checkStr (root[key].toString(), expected[key].toString(), "callback save has one restore's complete preset metadata");
         checkNear (plainOf (p, pid::width), (double) expected.getChildWithName ("ANAMORPH").getChild (0)["value"], 1e-5,
                    "callback save and live sound belong to the same restore");
+        checkNear ((double) root.getChildWithName ("ANAMORPH").getChildWithProperty ("id", pid::width)["value"],
+                   (double) expected.getChildWithName ("ANAMORPH").getChild (0)["value"], 1e-5,
+                   "the actual saved sound belongs to the same restore as its metadata");
         const auto settings = root.getChildWithName ("ANAMORPH_INTERNAL");
         for (const auto& field : anamorph::InternalState::settings())
             checkNear ((double) settings[field.id], (double) expected.getChildWithName ("ANAMORPH_INTERNAL")[field.id],
@@ -296,6 +310,50 @@ static void testRestoreCommitBeforeLatencyCallbacks()
                     checkNear (width->getValue(), before, 1e-6, "A/B return preserves the current restore after a later edit/Undo");
                 }
             }
+
+    // A callback may only publish a background restore and RETURN: no nested
+    // pump/save supplies adoption on its behalf. The OUTER save/drain must still
+    // reach a fixed point after the notification before reading program state.
+    for (bool saveDoor : { true, false })
+    {
+        auto p = std::make_unique<AnamorphAudioProcessor>();
+        p->prepareToPlay (48000.0, 64);
+        for (int cycle = 0; cycle < 3; ++cycle)
+        {
+            p->setStateInformation (newBlob.getData(), (int) newBlob.getSize());
+            struct UnpumpedHost final : juce::AudioProcessorListener
+            {
+                std::function<void()> callback;
+                bool fired = false;
+                void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+                void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& details) override
+                {
+                    if (details.latencyChanged && ! fired)
+                    {
+                        fired = true;
+                        callback();
+                    }
+                }
+            } host;
+            host.callback = [&]
+            {
+                std::thread newerHost ([&] { p->setStateInformation (newBlob.getData(), (int) newBlob.getSize()); });
+                newerHost.join(); // intentionally no pump or callback save
+            };
+            p->addListener (&host);
+            std::thread olderHost ([&] { p->setStateInformation (oldBlob.getData(), (int) oldBlob.getSize()); });
+            olderHost.join();
+            juce::MemoryBlock saved;
+            if (saveDoor) p->getStateInformation (saved);
+            else p->pollUndoCoalesceFromTimer();
+            p->removeListener (&host);
+            check (host.fired, "each outer save/timer drain reaches the unpumped callback");
+            checkStr (p->getPresets().currentName(), "newer",
+                      "the outer drain adopts a callback-published restore before its caller reads metadata");
+            if (! saveDoor) p->getStateInformation (saved);
+            verify (*p, newer, &saved); // never replace already-captured bytes with a later repaired save
+        }
+    }
 
     // Reproduce the late-arrival edge from the real preset admission gate. A
     // callback must not run while an OUTER command still owns the lock, even

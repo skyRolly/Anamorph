@@ -21,7 +21,7 @@ preset/Settings consistency and latency/PDC after restore/re-prepare. Use a list
 appropriate to the approved gain fallback. Results, DAW/version, platform/format and exact
 artifact identity are **NOT RECORDED**. Automated results do not fill those fields.
 
-## Current build — 0.9.9 / JUCE 9.0.4 (planned 2026-10-22)
+## Historical build — 0.9.9 / JUCE 9.0.4 (planned 2026-10-22)
 
 **PASS — COMPLETE**, final owner attestation recorded **2026-10-21 UTC** for
 **0.9.9 / JUCE 9.0.4**, complete scope **A–G**. The reopened gate is closed. Actual audition

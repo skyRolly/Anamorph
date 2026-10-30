@@ -1,6 +1,6 @@
 # Release readiness — 0.10.0 (draft only)
 
-**Current status: P1 implementation complete in PR #187; new-source validation pending
+**Current status: P1 implementation complete in PR #187; targeted human validation pending
 (2026-10-30, Asia/Shanghai).** The owner explicitly approved ADR-0067/0068; that architecture
 gate is cleared. The original draft/tag remain intact. Fresh mandatory automated checks and
 targeted human validation of the changed behavior must precede merge and replacement.
@@ -543,3 +543,123 @@ non-shipping toolchain result is not a green preflight or a shipping ABI result.
 checker, compiler pin or mandatory job is relaxed. Full suites run separately, and the
 mandatory Clang shipping build must verify actual candidate ABI before release preparation
 can proceed. Existing GCC/JUCE warning debt and Python invalid-escape warnings remain visible.
+
+### Completed local behavior and real-time evidence
+
+Initial implementation commit: `0718bfdaaf33a1d68c7e7c2b7c5f6355897f3392` (PR #187). These
+measurements describe that implementation before the fixed-point follow-up below; they are
+not substituted for final-source results.
+
+| Check | Actual result | Scope / qualification |
+| --- | --- | --- |
+| Full DSP suite | 945 checks / 0 failures | Existing allocation-guard liveness: new, aligned new and malloc-family all live |
+| Full state suite | 10594 checks / 0 failures | Includes State 146/147/148 and the approved State 43 timing assertions |
+| Linux VST3 pluginval strictness 10, deterministic | 3/3 passes, all first attempts | Locked v1.0.4 and unchanged production runner |
+| Linux VST3 pluginval strictness 10, randomise | 3/3 passes | Pass 1 first attempt exited 139, then passed on permitted crash-only retry; passes 2/3 first attempts |
+| Original restore-lock probe | Outer-held edge still witnessed; final Width 0.6 / preset newer | No supported-host deadlock claimed; latency delivery occurs after safe admission |
+| Realtime source closure | 97 liveness cases; 51 files, 0 violations | Includes the processor snapshot reader and unchanged atomic-order gate |
+| Snapshot/engine coverage | 110 liveness cases; all 36 fields and 12 modules | Both reset scopes retained |
+| Preflight entry regressions | 8/8 | Real aggregate shell, note checker and awk; isolated fixtures |
+
+The randomise crash log contains `Segmentation fault` / exit 139 and no validation assertion
+failure; the unchanged runner classifies it as the Linux crash-only category allowed by policy.
+No backtrace was emitted, so this particular crash's frame is not independently attributed to
+XEmbed. It is not counted as an assertion retry or an all-first-attempt result.
+
+DSP allocation checks observed 2916 and 664 armed event/process calls with new=0/malloc=0,
+and Test 75's 7791 handshake cases reported zero allocations. The actual GCC 14 processor
+`ParamPointers::toEngine` disassembly contains no call instruction (388 assembly lines); its
+bounded finite checks and atomic reads add no allocator, wait or library callback to that
+snapshot boundary. This is bounded x86-64 codegen evidence, not a substitute for the mandatory
+RTSan, TSan and native platform jobs. No test-only allocation interposer is added to production.
+
+### Candidate CI and artifact identity
+
+The implementation push is [Build & Validate 1950](https://github.com/skyRolly/Anamorph/actions/runs/40953216526),
+with PR merge checks [1951](https://github.com/skyRolly/Anamorph/actions/runs/40953224042),
+[CodeQL](https://github.com/skyRolly/Anamorph/actions/runs/40953224090) and
+[MSVC analysis](https://github.com/skyRolly/Anamorph/actions/runs/40953224142). At this record's
+write time, source/docs, RTSan, TSan, seeded fuzzing, GCC LTO/warnings and Windows AVX2 identity
+checks have completed successfully; native packaging/ABI, remaining platform and analysis jobs
+are still running. No aggregate/native pass is inferred from partial results.
+
+This follow-up changes documentation only: API/reference/audit now distinguish finite DSP
+interpretation from unchanged stored identity, inventories include local note checking, and
+LEVEL5's old 0.9.9 heading is explicitly historical. Final-head checks and artifact identities
+are reported on [PR #187](https://github.com/skyRolly/Anamorph/pull/187). They must all be verified
+on that exact candidate before merge; prior-code CI is not a substitute. A final tag must be on
+validated approved main, and replacement must rebuild all payloads through normal Release.
+
+The original draft was re-read after the implementation push: ID `428196589`, title
+`Anamorph 0.10.0`, 11 assets, `draft=true`, `published_at=null`, tag object and peeled source
+still exactly match the archived original. No release/tag mutation or publication occurred.
+
+The remaining human gate is the targeted changed-behavior scope in LEVEL5_AUDITION and
+RELEASE_COMPATIBILITY_CHECKLIST. The owner's architecture approval and original-candidate
+manual approval remain recorded separately. Do not merge or start the guarded original
+draft/tag deletion until targeted validation is actually attested and mandatory head CI passes.
+
+### Callback-published restore fixed-point follow-up
+
+Review of the actual message-thread getter found one missing schedule: the latency callback
+starts/joins a newer background restore and simply returns, with no nested pump or save.
+The first implementation flushes notification after its drain loop, so the callback can leave
+new sound/pending metadata before the outer getter serializes it. Extended State 148 repeats
+this on getter/timer doors and checks already-captured bytes rather than re-saving to repair
+them. Against `0718bfd` production code it measures **2011 checks / 54 failures**. This is a
+real negative control for the follow-up, separate from the original 4/30 F9 failures.
+
+`adoptPendingHostState` now rechecks after the notification and applies a callback-published
+restore in a fresh scope before returning. Each previous restore and its metadata are already
+fully committed; no write from that older payload resumes. Each non-blocking pass retains
+transaction/try-lock refusal, consumes nothing on refusal and adds no blocking operation.
+This implements the already-approved ADR-0036/0068 fixed-point contract, not a new callback
+support boundary, thread path or atomic ordering. The targeted regression is **2011 / 0**, and
+the full final suites are **DSP 945 / 0, state 10827 / 0**.
+
+ADR-0068, TESTING, F9/INC-020 and the current handover describe this final case. Earlier
+1778/10594 results remain historical measurements of the first implementation. The final
+plugin builds/pluginval runs and exact new-head native/sanitizer/analysis evidence remain
+required; older passing jobs do not validate this follow-up. Original release/tag remain intact.
+
+Final follow-up local execution completed: VST3 and Standalone rebuild succeeded; full DSP
+**945 / 0** and state **10827 / 0**; locked pluginval strictness 10 deterministic **3/3** and
+randomise **3/3**, every final-source pass on its first attempt (no crash retry). The unchanged
+restore-lock probe still witnesses the outer-held edge and finishes at Width 0.6 / preset newer.
+The earlier randomise retry above belongs only to the initial implementation run.
+
+All source checker pairs and warning-gate liveness checks were repeated for the follow-up.
+Documentation 700-case liveness / 174 clean files and citation 276-case liveness pass; 609
+base-owned anchors retain their text against main and the implementation parent. Existing
+re-aim declarations were preserved and four current targets followed the seven-line source
+shift; no new exemptions were needed for the fixed-point follow-up. API/audit text explicitly
+separates finite rendering from invalid stored identity. No warning baseline, parser boundary,
+registry field, version, release-creation safeguard or native validation gate is weakened.
+
+The initial source's official Clang Linux job `123726496197` passed its actual shipped-ABI
+floor and first-party warning gates. Thus the earlier GCC 14 local aggregate rejection is not
+a claimed shipping artifact regression. The new exact-head Clang/native/sanitizer/analysis
+checks remain required independently and are exposed on PR #187; the initial run cannot
+validate the fixed-point follow-up. Targeted human validation remains pending on the actual
+new candidate binaries. No merge or draft/tag replacement is performed before that gate.
+
+### Native ARM display-oracle correction
+
+Initial Build 1950 / source `0718bfd` completed with one failed job: Apple Silicon macOS.
+The actual state log reports **10439 checks / 4 failures**, all State 147 Output Gain host/text
+NaN display comparisons: actual `0.0 dB`, finite-twin expectation `-0.0 dB`. Linux, Windows,
+native Intel, GCC LTO/warnings, source/docs, RTSan, TSan, fuzz and the other completed gates
+were successful; CodeQL and MSVC analysis also succeeded. No complete candidate pass is
+claimed for that initial source.
+
+The NaN formatter deliberately uses the declared plain +0 dB default. ARM's existing finite
+range/snap round-trip can produce a value whose display is -0.0 dB. The new test incorrectly
+required those different formatting paths to have the same sign. Its NaN Output Gain oracle
+now explicitly requires the existing `0.0 dB` text, while every finite display and other
+parameter comparison remains exact. No production formatter, finite arithmetic or readback
+is changed; no blanket signed-zero normalization or assertion removal is introduced. Native
+ARM CI must verify this correction on the final source; a local GCC pass does not do so.
+
+After the display-oracle correction, the complete local suites were rebuilt/re-run: DSP **945 / 0**,
+state **10827 / 0**. No production code changed after the final six first-attempt pluginval
+passes. The final exact-head native matrix must confirm the ARM-specific oracle.

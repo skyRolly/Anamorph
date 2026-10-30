@@ -450,13 +450,13 @@ DELIBERATE_REAIMS = {
      'src/PluginProcessor.h:739'): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     'src/PluginProcessor.cpp:3149-3251'): "setStateInformation",
+     'src/PluginProcessor.cpp:3156-3258'): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     'src/PluginProcessor.cpp:3149'): "setStateInformation",
+     'src/PluginProcessor.cpp:3156'): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     'src/PluginProcessor.cpp:2677'): "abActive",
+     'src/PluginProcessor.cpp:2684'): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -820,7 +820,7 @@ DELIBERATE_REAIMS = {
     # closing brace -- the span now ends at the last line of the branch body.
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:3067-3090",
-     'src/PluginProcessor.cpp:3093-3115'): "apvtsStateType",
+     'src/PluginProcessor.cpp:3100-3122'): "apvtsStateType",
     # 2026-10-30 (Accepted ADR-0067, PR #187): snapshot loads now call the
     # finite-default reader, so these edited spans cannot be line-mapped. The
     # multiband reads remain ten independent seq_cst loads, and Simple-mode

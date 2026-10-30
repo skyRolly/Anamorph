@@ -32,10 +32,16 @@ Missing target, mutable `main`, missing draft and missing verified-tag controls 
   unchanged readback, text formatting and exact processor audio against a finite twin across
   reset/re-prepare. It cycles invalid session/preset/A-B values and verifies usable-raw
   resolution before JUCE's first notification, final exact raw and the next save (2552 checks).
+  NaN Output Gain text is pinned to its declared `0.0 dB`; ARM's finite round-trip can
+  format `-0.0 dB`, so that existing finite text is preserved rather than normalized.
 - **State 148** keeps the original F9 diagnostic intact and adds repeated inline/background
   nested latency callbacks, pump/no-pump saves, all Settings, both A/B slots, Undo, preset
   identity/name/baseline and dirty state. A non-blocking lock witness proves delivery
-  admission under an outer state command and a recursively pumped timer (1778 checks).
+  admission under an outer state command and a recursively pumped timer. A callback that only
+  publishes a background restore and returns supplies no nested save/pump: the outer drain
+  must still serialize all newer metadata with its sound. Repeated getter/timer cases and
+  assertions on the actual captured save detect 54 failures in the first implementation;
+  a fresh application pass after notification makes all 2011 checks pass.
 - **State 43** still requires immediate newer engine priming during adoption; ADR-0068 adds
   a deferred in-flight host report and the correct report after the complete drain. Only
   State 128/138 premises about processor invalid Density/crossover defaults change; direct
@@ -2676,7 +2682,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
   the preset boundary now guards. Investigation first, and the investigation changed the entry in
   both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
-  (`src/PluginProcessor.cpp:2895-2903`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  (`src/PluginProcessor.cpp:2902-2910`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
   decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
   attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
   things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not
