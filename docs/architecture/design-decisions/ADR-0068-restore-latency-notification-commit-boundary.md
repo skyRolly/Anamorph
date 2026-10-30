@@ -6,8 +6,10 @@
 This approval is not evidence of implemented fixes or new-binary manual validation.
 **Implementation:** Both message-thread restore paths now bracket complete application and publication before
 latency delivery. The existing request stays pending under an enclosing state command.
-State test 148 includes the unchanged original failing diagnostic; mandatory CI and targeted
-manual validation of the replacement binaries remain required.
+State test 148 includes the unchanged original failing diagnostic; PR #187 merged at `b085c87`.
+Final-main Build 1956 and normal Release 5 passed; the owner attested targeted
+human validation complete on 2026-10-30. Final unpublished draft/provenance and separately
+recorded architecture/manual approvals: `worklogs/RELEASE_READINESS_0.10.0.md`.
 
 ## Context
 

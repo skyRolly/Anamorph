@@ -25,9 +25,11 @@ was already approved separately. The original 2026-10-29 approval and unrelated 
 remain preserved below. Evidence: `worklogs/RELEASE_READINESS_0.10.0.md` and
 `worklogs/release-0.10.0-p1/validation.json`.
 
-The remaining source edits record validation/release status only; they change no runtime code.
-Final main and the normal tag-triggered Release workflow still require their mandatory gates.
-Execution remains **draft only**; no public publication is authorized.
+The replacement is now built from `b085c87`, whose runtime matches this validated candidate.
+Final-main Build 1956 and normal tag-triggered Release 5 passed every mandatory gate;
+all 11 new draft assets were downloaded and verified. This completion record adds no manual
+observations. Execution remains **draft only**; no public publication occurred or is authorized.
+Final identities/hashes: `worklogs/release-0.10.0-p1/draft-replacement.json`.
 
 | # | Replacement-candidate item | Evidence / result |
 |---|---|---|

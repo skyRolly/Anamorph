@@ -1,5 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.0 P1 draft replacement completed (2026-10-30)
+
+README/HANDOVER, RELEASE_PROCESS, Level-5 and compatibility records now reflect the actual
+new unpublished draft, merged PR #187 source `b085c87`, final-main Build 1956 and
+normal Release 5. The readiness worklog records guarded original deletion, new annotated
+tag/release identities and verified provenance. The new compact evidence record preserves
+all 11 API asset hashes/sizes, nine manifest entries, five same-run artifact identities,
+package/bundle/version/permission checks and the downloaded Linux ABI result. Historical
+original evidence and both human approvals remain intact. This documentation-only follow-up
+does not change runtime, release payloads or the immutable replacement tag.
+
 ## 0.10.0 P1 targeted human completion and execution handoff (2026-10-30)
 
 LEVEL5_AUDITION and RELEASE_COMPATIBILITY_CHECKLIST record the owner's actual completion
