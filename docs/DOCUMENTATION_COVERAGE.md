@@ -16,6 +16,8 @@ build formats, DSP/state and version 0.10.0 remain unchanged. Changelog correcti
 belong in 0.10.0 on the owner's instruction. No supplied logs, computer/account names
 or host metadata are recorded. Validation and remaining legacy-state limitations are
 recorded in the readiness worklog; final release replacement is a separate follow-up.
+Inaccessible legacy icon ancestry is checked before absence: retain its receipt
+and warn so an inaccessible file cannot be mistaken for completed cleanup.
 
 ## PR #189 completed investigation disposition (2026-10-31, Asia/Shanghai)
 

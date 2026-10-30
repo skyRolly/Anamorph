@@ -292,7 +292,7 @@ cleanup_legacy_desktop() {
             while [ "$part" != / ]; do
                 [ ! -L "$part" ] || return 1
                 if [ -e "$part" ]; then
-                    [ -d "$part" ] || return 1
+                    [ -d "$part" ] && [ -x "$part" ] || return 1
                     meta=$(stat -c "%u %a" -- "$part") || return 1
                     uid=${meta%% *}; permissions=${meta#* }
                     [ "$uid" = 0 ] || [ "$uid" = "$owner" ] || return 1
@@ -347,9 +347,12 @@ icons/hicolor/scalable/apps/tech.rolly.anamorph.svg"
                 remaining=0
                 for relative in $paths; do
                     target="$data/$relative"
+                    if ! parents "$(dirname -- "$target")"; then
+                        remaining=1; warn "inaccessible/unsafe ancestry: $relative"; continue
+                    fi
                     present "$target" || continue
                     digest=$(awk -v path="$relative" "\$2 == path {print \$1}" "$receipt")
-                    if parents "$(dirname -- "$target")" && owned_file "$target" &&
+                    if owned_file "$target" &&
                        [ "$(hash "$target")" = "$digest" ]; then
                         if ! rm -- "$target"; then remaining=1; warn "$relative"; fi
                     else remaining=1; warn "$relative"; fi

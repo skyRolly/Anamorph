@@ -39,6 +39,8 @@ Local completed validation:
   unrelated/modified/link/missing-receipt preservation, partial cleanup retry,
   error/SIGKILL/TERM/HUP/INT swap recovery and executable-mode failure before commit.
   A portable input extracted at the legacy bin path is also explicitly preserved.
+  A final permission regression also verifies that inaccessible icon ancestry keeps
+  its ownership receipt and warns, rather than being mistaken for an absent resource.
 - Six native-plan/lifecycle/upload-condition tests, eight icon/preflight aggregate
   regressions, and package source/staged-contract positive/negative self-tests.
 - The actual existing 0.10.0 Linux ZIP (asset 690966946) was read-only downloaded and

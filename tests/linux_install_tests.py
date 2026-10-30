@@ -198,7 +198,7 @@ class InstallCase(unittest.TestCase):
 
     def test_unverified_legacy_resources_are_preserved(self):
         for kind in ('changed', 'no-receipt', 'no-state', 'bad-state', 'malformed',
-                     'symlink', 'dangling-link', 'parent-link', 'hardlink', 'journal'):
+                     'symlink', 'dangling-link', 'parent-link', 'inaccessible-parent', 'hardlink', 'journal'):
             with self.subTest(kind=kind):
                 case = InstallCase(); case.setUp(); self.addCleanup(case.doCleanups)
                 case.seed_plugin(); state = case.seed_legacy(); resource = case.data / PNG
@@ -214,6 +214,7 @@ class InstallCase(unittest.TestCase):
                     parent = resource.parent
                     parent.rename(parent.with_name('original-apps'))
                     parent.symlink_to('/sandbox/home/.local/share/icons/hicolor/16x16/original-apps')
+                elif kind == 'inaccessible-parent': resource.parent.chmod(0)
                 elif kind == 'hardlink': os.link(resource, case.home / 'hardlink.keep')
                 else: (state / 'transaction').mkdir(); (state / 'transaction/foreign.keep').write_bytes(b'keep')
                 keep = case.home / 'keep'; keep.write_bytes(b'keep')
@@ -223,6 +224,11 @@ class InstallCase(unittest.TestCase):
                 self.assertEqual(keep.read_bytes(), b'keep')
                 if kind == 'parent-link':
                     self.assertEqual((resource.parent.with_name('original-apps') / resource.name).read_bytes(), original_bytes)
+                elif kind == 'inaccessible-parent':
+                    self.assertEqual(resource.parent.stat().st_mode & 0o777, 0)
+                    resource.parent.chmod(0o755)  # Restore only this disposable fixture for inspection.
+                    self.assertEqual(resource.read_bytes(), original_bytes)
+                    self.assertTrue((state / 'receipt').exists())
                 elif kind == 'journal': self.assertEqual((state / 'transaction/foreign.keep').read_bytes(), b'keep')
                 else: self.assertTrue(resource.exists() or resource.is_symlink())
 
