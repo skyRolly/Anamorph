@@ -275,6 +275,13 @@ void AnamorphAudioProcessor::deliverLatency()
 
 void AnamorphAudioProcessor::updateLatency()
 {
+    // ADR-0068: no host callout from an unfinished restore or under an enclosing
+    // state command's replacement lock. Preserve the request for the safe door.
+    if (! latencyDeliveryIsSafe())
+    {
+        latencyUpdateRequest.store (1, std::memory_order_release);
+        return;
+    }
     // Clear FIRST, then deliver: this ordering is what makes a concurrent request
     // survive rather than be lost. A message-thread prepareToPlay reaches here
     // through requestLatencyUpdate(), and the clear is right for it too -- a full
@@ -283,6 +290,20 @@ void AnamorphAudioProcessor::updateLatency()
     // also make the parameter write that raised it visible.
     latencyUpdateRequest.exchange (0, std::memory_order_acquire);
     deliverLatency();
+}
+
+bool AnamorphAudioProcessor::latencyDeliveryIsSafe() const noexcept
+{
+    // Message thread only. requestLatencyUpdate tests thread identity BEFORE
+    // reaching this predicate; host/audio threads still touch only the D-1 flag.
+    return restoreApplicationDepth == 0 && stateCommandDepth == 0 && pendingRestore.empty();
+}
+
+void AnamorphAudioProcessor::flushPendingLatency()
+{
+    if (latencyDeliveryIsSafe()
+        && latencyUpdateRequest.exchange (0, std::memory_order_acquire) != 0)
+        deliverLatency(); // the exchange is the only clear; callbacks may raise another request
 }
 
 // D-1 (KI-027) -- approved 2026-09-01, implemented here.
@@ -372,8 +393,7 @@ void AnamorphAudioProcessor::timerCallback()
     // latency: nothing re-raises it until the next unrelated parameter move or a
     // re-prepare. Requests landing during deliverLatency() below are served by the
     // next tick, which is the whole point of clearing before reading.
-    if (latencyUpdateRequest.exchange (0, std::memory_order_acquire) != 0)
-        deliverLatency();
+    flushPendingLatency();
 }
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
@@ -1219,7 +1239,12 @@ void AnamorphAudioProcessor::repairSerializedValues (juce::ValueTree& tree) cons
                 // resolver (ADR-0037, PluginParameters.h) that reassertParameters asserts from
                 // and the restore's baseline predictor models, so the three cannot disagree.
                 const auto resolved = anamorph::sessionNormalisedValue (*rp, node);
-                if (resolved.repaired)
+                // ADR-0067: a valid raw value can mask an unusable value from
+                // the resolver's repair flag. JUCE reads value FIRST, before our
+                // exact-raw reassertion, so resolve that private-copy window too.
+                float serializedValue = 0.0f;
+                if (resolved.repaired
+                    || ! anamorph::usableSerializedNumber (node.getProperty ("value"), serializedValue))
                 {
                     node.setProperty ("value", rp->convertFrom0to1 (resolved.normalised), nullptr);
                     if (node.hasProperty ("raw"))
@@ -2484,67 +2509,74 @@ void AnamorphAudioProcessor::adoptPendingHostState (bool mayBlock)
     // reachable inside a transaction only if a host delivers a state call from inside a parameter
     // callback during a click; that shape is recorded as an examined residual in ADR-0008 rather
     // than closed by weakening a contract this finding produced no evidence against.
-    if (! mayBlock && userTransactionDepth > 0)
-        return;
-
-    while (! pendingRestore.empty())
+    // ADR-0068: a notification may publish another background restore without
+    // pumping or saving. Finish that NEW application before this drain returns;
+    // never resume writes from the older application after its callout.
+    do
     {
-        // THE TAKE AND THE SOUND RE-INSTALL ARE ONE STEP (round 22, ADR-0036 §27). Round 21 put
-        // the re-install behind a try-lock for the timer doors and left the take in front of it,
-        // which is a decision to consume a restore that may then not be able to publish coherently.
-        // The cell has no put-back -- a host thread owns the writing end -- so a take followed by a
-        // skipped re-install is PERMANENT: this restore's metadata lands over some other session's
-        // sound and no later adoption ever repairs it, because there is nothing left to adopt. One
-        // acquisition covers both, and a failed try consumes NOTHING and returns: the restore stays
-        // whole in the cell for the next door (a later timer tick, or the next user action, which
-        // blocks). Deferring a whole restore by one timer period is the cost; the alternative is a
-        // saved session made of two, which §10 exists to forbid.
-        //
-        // WHAT IS AND IS NOT INSIDE. Inside: the take, the generation, the re-install. OUTSIDE:
-        // `seams.afterRestoreTake` (its harnesses perform whole-sound replacements of their own and
-        // would deadlock against a held lock) and the whole TAIL, which calls OUT to the host -- a
-        // restored Oversampling delivers the reported latency synchronously and `AudioProcessor-
-        // Listener`s run on this thread while it does. Holding a replacement lock across a host
-        // callback is the inversion pointing the other way, and State test 27 hangs on it (measured,
-        // round 21).
-        std::unique_ptr<const RestoreDecode> r;
-        const auto takeAndReinstall = [this, &r]
-        {
-            r.reset (pendingRestore.take());
-            if (r == nullptr) return;   // only this thread takes, but the answer is exact either way
+        if (! mayBlock && userTransactionDepth > 0)
+            return;
 
-            // The generation FIRST. It tags every tree write the tail makes, so the
-            // oversampling this adoption republishes lands only if no newer host restore has
-            // published since (InternalState::publishEngineConfig); and it stamps the
-            // snapshot published below, which is how a host-side save learns that the
-            // program it describes is this restore's or later.
-            adoptedGeneration = r->generation;
-            internal.noteAdoptedGeneration (adoptedGeneration);
-            const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
-            reinstallRestoredSound (*r);
-        };
-
-        if (mayBlock)
+        const ScopedRestoreApplication application { *this };
+        while (! pendingRestore.empty())
         {
-            const juce::ScopedLock oneAtATime (soundReplacement);
-            takeAndReinstall();
+            // THE TAKE AND THE SOUND RE-INSTALL ARE ONE STEP (round 22, ADR-0036 §27). Round 21 put
+            // the re-install behind a try-lock for the timer doors and left the take in front of it,
+            // which is a decision to consume a restore that may then not be able to publish coherently.
+            // The cell has no put-back -- a host thread owns the writing end -- so a take followed by a
+            // skipped re-install is PERMANENT: this restore's metadata lands over some other session's
+            // sound and no later adoption ever repairs it, because there is nothing left to adopt. One
+            // acquisition covers both, and a failed try consumes NOTHING and returns: the restore stays
+            // whole in the cell for the next door (a later timer tick, or the next user action, which
+            // blocks). Deferring a whole restore by one timer period is the cost; the alternative is a
+            // saved session made of two, which §10 exists to forbid.
+            //
+            // WHAT IS AND IS NOT INSIDE. Inside: the take, the generation, the re-install. OUTSIDE:
+            // `seams.afterRestoreTake` (its harnesses perform whole-sound replacements of their own and
+            // would deadlock against a held lock) and the whole TAIL. ADR-0068 now defers latency
+            // notifications until the complete drain commits and no enclosing command owns this
+            // lock. Keeping the tail outside this acquisition also preserves State test 27's
+            // independent parameter-notification/host-lock regression (round 21).
+            std::unique_ptr<const RestoreDecode> r;
+            const auto takeAndReinstall = [this, &r]
+            {
+                r.reset (pendingRestore.take());
+                if (r == nullptr) return;   // only this thread takes, but the answer is exact either way
+
+                // The generation FIRST. It tags every tree write the tail makes, so the
+                // oversampling this adoption republishes lands only if no newer host restore has
+                // published since (InternalState::publishEngineConfig); and it stamps the
+                // snapshot published below, which is how a host-side save learns that the
+                // program it describes is this restore's or later.
+                adoptedGeneration = r->generation;
+                internal.noteAdoptedGeneration (adoptedGeneration);
+                const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
+                reinstallRestoredSound (*r);
+            };
+
+            if (mayBlock)
+            {
+                const juce::ScopedLock oneAtATime (soundReplacement);
+                takeAndReinstall();
+            }
+            else
+            {
+                const juce::ScopedTryLock oneAtATime (soundReplacement);
+                if (! oneAtATime.isLocked()) return;   // nothing consumed; the restore is still whole
+                takeAndReinstall();
+            }
+
+            if (r == nullptr) break;
+            if (seams.afterRestoreTake) seams.afterRestoreTake();
+
+            {
+                const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
+                adoptRestoreTail (*r, mayBlock);
+            }
+            publishProgram();
         }
-        else
-        {
-            const juce::ScopedTryLock oneAtATime (soundReplacement);
-            if (! oneAtATime.isLocked()) return;   // nothing consumed; the restore is still whole
-            takeAndReinstall();
-        }
-
-        if (r == nullptr) break;
-        if (seams.afterRestoreTake) seams.afterRestoreTake();
-
-        {
-            const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
-            adoptRestoreTail (*r, mayBlock);
-        }
-        publishProgram();
     }
+    while (! pendingRestore.empty());
 }
 
 // THE SOUND HALF OF AN ADOPTION (D-2 round 4, ADR-0036 §10; hoisted out of the tail in
@@ -2626,7 +2658,8 @@ void AnamorphAudioProcessor::reinstallRestoredSound (const RestoreDecode& d)
 void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d, bool mayBlock)
 {
     // The host-hidden Settings. A changed Oversampling fires InternalState's callback
-    // -> requestLatencyUpdate(), synchronous on this thread; prepareToPlay re-asserts
+    // -> requestLatencyUpdate(), delivered after the restore scope commits (ADR-0068);
+    // prepareToPlay re-asserts
     // it anyway. (The engine-config word was already published on the restoring
     // thread when that was not this one; the tree write republishes it with this
     // restore's generation, which is idempotent -- or yields, if a newer restore has
@@ -3124,6 +3157,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     if (onMessageThreadOrNoMessageManager())
     {
+        // Includes the initial drain: its notification must not reenter before
+        // this newer inline restore has installed and committed its own program.
+        const ScopedRestoreApplication application { *this };
         // The owner's thread. The pending restore is adopted BEFORE this one is decoded
         // (D-2 round 4): the decode applies the new session's SOUND as it runs, and an
         // adoption that followed it would publish the older session's metadata while the

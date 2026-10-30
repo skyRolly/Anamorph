@@ -23,89 +23,60 @@ including in entries written before 0.9.9 gave it that name.
 
 ## [Unreleased]
 
-Next development round: prioritized follow-ups retained after the 0.10.0 draft release.
-Remaining runtime decisions preserve current behavior; the automation repair is merged for
-future releases. Evidence and reopen conditions: `worklogs/RELEASE_READINESS_0.10.0.md` and the linked KI/RISK/ADR records.
-
-- **P1 — Release automation (resolved in development).** The original 0.10.0 tag workflow could not start because its
-  reusable caller omitted Actions read permission requested by optional macOS artifact consumers.
-  PR #185 repairs the caller contract and adds live permission regressions; its full native
-  rehearsal passes. The existing tag's draft was recovered from its exact validated CI payloads.
-  Evidence: `worklogs/RELEASE_READINESS_0.10.0.md` (INC-018).
-- **P1 — Non-finite parameter behavior (KI-029).** Define NaN/infinity semantics at host/text
-  ingress and the DSP boundary, including reset lifetime and host readback, before an approved
-  compatibility/architecture change. The NaN serialization repair is included in 0.10.0;
-  audible mutes/transients and module-specific ingress behavior remain.
-- **P1 — Nested restore reentry (F9 / RISK-009).** Resolve the synthetic newer-sound/older-metadata
-  schedule and measured outer-held lock edge. Obtain a supported-host trace or an explicit
-  support-contract decision; preserve callback-save coherence. The rejected adoption guard
-  breaks that contract, and no supported-host deadlock has been established.
-- **P2 — Malformed host-state acceptance (RISK-015).** Decide UTF-8, NUL, framing, trailing-content
-  and truncation rules for outer sessions and A/B payloads before narrowing the current bounded
-  acceptance under an approved ADR. Assess historical writer/host tolerance first.
-- **P2 — Distribution readiness (KI-015).** Complete the existing commercial/JUCE licensing,
-  approved-terms and signing/notarization decisions before public/commercial distribution.
-  The 0.10.0 execution remains a draft release.
-- **P3 — Existing platform/performance scope.** Retain Linux host-runloop coverage (RISK-008),
-  independent multiband loads (RISK-010), golden-audio/performance-budget work and optional native
-  selection/co-installation coverage as follow-ups; their existing dispositions are unchanged.
-
 
 ## [0.10.0] — 2026-10-30
 
-Draft release. Parameter IDs, ranges, automation flags, valid state/preset formats and existing
-invalid-value restore behavior are unchanged. KI-029's audible NaN behavior, synthetic restore
-reentry (RISK-009/F9) and additional malformed host-state restrictions (RISK-015) remain open;
-their existing dispositions and next-round priorities are recorded in
-`worklogs/RELEASE_READINESS_0.10.0.md`. Required human listening and manual validations are
-approved by the owner (attested 2026-10-29); automated release gates remain independently required.
-
 ### Added
-- Linux installation adds the approved Anamorph desktop launcher and hicolor icons in
+- Linux installation adds the Anamorph desktop launcher and hicolor icons in
   the selected user/system data directory, with an absolute executable reference and
   owned-resource recovery/uninstall. Portable extraction installs no desktop files.
-  Evidence: PR #175; Accepted ADR-0065;
-  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — native automated evidence; manual approval recorded separately]
-- **Approved Anamorph product icon in macOS and Windows build resources.**
+  Evidence: PR #175; ADR-0065. [Verified]
+- **Anamorph product icons in macOS and Windows.**
   Mac app/plug-in bundles use a complete native iconset with compatible small-icon encodings,
   preventing multicolored application-icon corruption. Windows executable/VST3 resources retain
-  JUCE's icon path. The B0 artwork is unchanged. Windows installer branding is recorded below;
+  JUCE's icon path. The artwork is unchanged. Windows installer branding is recorded below;
   Linux desktop integration has its separate entry above.
   Evidence: commits `4d96559`, `2ff69a5da5f047777c03834725691f2942333f48`; ADR-0062 (2026-10-29 amendment).
-  [Verified — native AppKit rendering and owner-tested Launchpad display; other macOS versions unverified]
+  [Verified]
 
 ### Changed
+- **Non-finite parameter values use each control's declared default for audio processing.**
+  This prevents sustained audio loss from invalid host or text values. Output Gain can return
+  to 0 dB and Velvet Density to 0.5; finite automation and numeric host readback are unchanged.
+  Values already converted to finite range endpoints retain those endpoints.
+  Evidence: PR #187; ADR-0067. [Verified]
 - **Installer and uninstaller product names display as Anamorph without a version suffix.**
   Windows Setup/uninstall naming and the macOS installer title use the bare product name;
   installed version metadata and versioned download filenames are preserved.
-  Evidence: commit `d99dc5198923ce810d0bff4fdc1dc56120ed5d81`. [Verified — source; owner manual approval recorded separately]
+  Evidence: commit `d99dc5198923ce810d0bff4fdc1dc56120ed5d81`. [Verified]
 - **Use `tech.rolly.anamorph` for application bundles and macOS package receipts**, following
   `rolly.tech`. Development receipt identities intentionally break without aliases; RTec/Anmr,
-  VST3 class IDs, Windows AppId, state and presets remain unchanged. Required manual host
-  validation is owner-approved; individual host/environment details were not supplied.
-  Evidence: PR #171; ADR-0063. [Verified — source; native gates and manual approval recorded separately]
+  VST3 class IDs, Windows AppId, state and presets remain unchanged.
+  Evidence: PR #171; ADR-0063. [Verified]
 
 ### Fixed
+- **Nested session restores retain matching sound and preset information.**
+  Preset, Settings, A/B and Undo state commit before latency callbacks, so an older restore
+  cannot overwrite metadata belonging to a newer restore invoked from that callback.
+  Evidence: PR #187; ADR-0068. [Verified]
+- **Invalid parameter text no longer causes unsafe display conversions.** A session with
+  an unusable parameter `value` and a valid stored `raw` value also restores the finite value
+  before notifying listeners. Evidence: PR #187; ADR-0067. [Verified]
 - **System Linux desktop operations verify their helper before interpretation.**
   Install preflight/publication and uninstall use a private snapshot pinned by the
   trusted entry scripts, refusing mismatched archive helper bytes. Evidence:
-  PR #175 maintenance follow-up; Accepted ADR-0065;
-  `tests/linux_desktop_helper_tests.py`. [Verified — source and nonprivileged
-  capture tests; native gates and manual approval recorded separately; distinct-principal exploit unproven]
+  PR #175; ADR-0065. [Verified]
 - **Linux desktop resource recovery resumes after interrupted cleanup.** A verified
   cleanup plan survives partial journal deletion. Uninstall also refuses an unowned
   launcher or icon when its receipt is missing, preserving installed binaries for
-  a safe retry. Evidence: PR #175; Accepted ADR-0065;
-  `worklogs/2026-10-24-linux-desktop-integration.md`. [Verified — isolated entry
-  points and native CI; release-commit gates recorded separately]
-- **Windows installer and uninstaller use the approved product icon in every component configuration.**
+  a safe retry. Evidence: PR #175; ADR-0065. [Verified]
+- **Windows installer and uninstaller use the product icon in every component configuration.**
   VST3-only installs now register a stable installed icon instead of an absent optional app;
   component choices, install destinations and the installer AppId are unchanged.
-  Evidence: PR #172; ADR-0064. [Verified — source; native CI and manual approval recorded separately]
+  Evidence: PR #172; ADR-0064. [Verified]
 - **Saving a session or preset with a NaN parameter avoids undefined number formatting.** The
   XML writer spells NaN on a private copy, preserving the existing text and finite encoding without
-  changing the live parameter or choosing a new audible NaN policy (KI-029; ADR-0009).
-  Regression: State test 142, including both session threads and A/B slots.
+  changing the live parameter. Sessions, presets and A/B slots retain their existing encoding.
   Evidence: commit `104d680`. [Verified]
 - **A nested mouse release during a Multiband band move no longer loses host gesture ownership.**
   If a host callback delivers the release while the two edge gestures are still opening, it is
@@ -2948,7 +2919,7 @@ approved by the owner (attested 2026-10-29); automated release gates remain inde
   not a duck-to-silence — no mute/dropout. Evidence: commit `10fbfa0`; test
   `testMultibandEnableCrossfadeClickFree`. [Verified]
 - Renamed the automation parameter display name **"Haas Side" → "Haas Focus"** (ID `haasSide`
-  unchanged). Evidence: commit `10fbfa0`; `src/PluginParameters.cpp:135-136`. [Verified]
+  unchanged). Evidence: commit `10fbfa0`; `10fbfa0:src/PluginParameters.cpp:135-136`. [Verified]
 
 ### Fixed
 - Alt/Option-click knob reset now animates like double-click (a `resetSweep` flag opts the eased

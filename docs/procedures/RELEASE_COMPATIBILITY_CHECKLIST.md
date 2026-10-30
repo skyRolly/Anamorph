@@ -4,7 +4,43 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).
 
-## Current gate — 0.10.0 / JUCE 9.0.4 (completed 2026-10-30)
+## 0.10.0 P1 replacement — targeted validation complete
+
+**COMPLETE — owner attestation recorded 2026-10-30 (Asia/Shanghai).** In direct response
+to the request to validate the verified PR #187 candidate, the owner states:
+“Human validation has been completed”. This clears the targeted manual gate for runtime
+source `9f9a76ea9ea848f406362553ed29b51770ac375a`, CI Build 1952 / run 40988058477.
+
+The requested scope was invalid host/text parameter recovery (including Output Gain returning
+to 0 dB and Density to 0.5), subsequent finite automation, session/preset/A-B/Settings recall,
+and latency/PDC after restore/re-prepare. Individual per-item results, actual audition date,
+DAW/version, OS/CPU, format, device/session and selected artifact hash were not supplied and
+remain **NOT RECORDED**. No measurements or environments are inferred from the completion
+statement. Candidate identity follows the immediately preceding request and verified downloads.
+
+All 13 running jobs in Build 1952 passed; PR checks, CodeQL, MSVC analysis and dependency
+review also passed. Five candidate platform/installer archives were downloaded and checked
+against their API digests, versions and source provenance. Architecture Review of ADR-0067/0068
+was already approved separately. The original 2026-10-29 approval and unrelated manual checks
+remain preserved below. Evidence: `worklogs/RELEASE_READINESS_0.10.0.md` and
+`worklogs/release-0.10.0-p1/validation.json`.
+
+The remaining source edits record validation/release status only; they change no runtime code.
+Final main and the normal tag-triggered Release workflow still require their mandatory gates.
+Execution remains **draft only**; no public publication is authorized.
+
+| # | Replacement-candidate item | Evidence / result |
+|---|---|---|
+| 1 | Parameter IDs unchanged | **PASS** — all 36 registry entries/fixture unchanged; candidate state suite passes |
+| 2 | Serialization schema verified | **PASS** — fields and valid finite encoding unchanged; approved invalid-value repair and legacy/round-trip regressions pass |
+| 3 | Presets and A/B recall | **PASS** — candidate factory/user/A-B regressions plus targeted owner completion attestation |
+| 4 | Pluginval, both modes | **PASS** — mandatory native VST3/AU matrix, strictness 10, each mode ×3 in Build 1952 |
+| 5 | Host matrix | **PASS** — original unrelated owner validation retained; changed-behavior targeted validation now complete |
+| 6 | Latency reporting | **PASS** — candidate impulse/priming/callback regressions and targeted restore/re-prepare PDC validation complete |
+| 7 | Automation playback | **PASS** — finite/raw-readback and non-finite boundary regressions plus targeted owner completion |
+| 8 | Session reload | **PASS** — legacy/field-capture and coherent callback-save regressions plus targeted owner completion |
+
+## Original-candidate gate — 0.10.0 / JUCE 9.0.4 (completed 2026-10-30)
 
 The owner states that Human Level-5 listening and all other required manual validations have
 already been completed and approved for this release. This is a new 0.10.0 attestation, not a

@@ -58,11 +58,15 @@ Evidence [Verified]: src/dsp/AnamorphEngine.h:46-265.
 |---|---|---|
 | `createAnamorphLayout` | `juce::AudioProcessorValueTreeState::ParameterLayout ()` (free fn) | Builds the entire APVTS parameter tree. |
 | `normalisedAsRendered` | `float (const juce::RangedAudioParameter&, float)` / `float (const juce::AudioProcessorParameter&)` (free fns) | The normalised value mapped onto the grid the plug-in actually renders and stores: `convertTo0to1(convertFrom0to1(v))`. The DSP reads `getRawParameterValue()` (the denormalised, interval-snapped value) and both the preset and session formats store that same number, so this is what "the sound" means for every *has it changed?* comparison — the preset modified-marker and the undo / A-B coalescer both build their signature from it (ADR-0036 §17). A no-op for stock `AudioParameterFloat`; it snaps the `RawChoice` / `RawBool` values, which deliberately keep the exact normalised value in `getValue()` for pluginval. **Apply exactly once per value**: for the custom log/exp frequency ranges it is the identity in real arithmetic but not idempotent in float. It is also the ONLY equivalence any signature uses — two sounds are the same when their rendered values agree to five decimal places, with no tolerance layered on top (ADR-0036 §19). For an interval-snapped parameter that makes a sub-step move correctly not an edit; the four log-mapped frequency ranges have no interval, so for them every representable move reaches the signature. |
-| `ParamPointers::bind` | `void (juce::AudioProcessorValueTreeState&)` | Caches raw atomic pointers (no per-block string lookup). |
-| `ParamPointers::toEngine` | `anamorph::EngineParameters (int oversampleIndex) const` | Converts host state → DSP snapshot. |
+| `ParamPointers::bind` | `void (juce::AudioProcessorValueTreeState&)` | Binds raw atomic pointers and immutable declared denormalized defaults once (no per-block string lookup). |
+| `ParamPointers::toEngine` | `anamorph::EngineParameters (int oversampleIndex) const` | Converts host state → DSP snapshot; substitutes declared defaults for non-finite raw values before integer/enum/Boolean conversion, without altering finite mapping or numeric readback (ADR-0067). |
 | `pid::isViewParam` / `pid::isPresetExcluded` | `bool (const juce::String&)` | Shared exclusion lists (A/B, undo, presets). |
 
-Evidence [Verified]: src/PluginParameters.h:195-203, :74-87; .cpp:53-300.
+The rendered-grid/signature equivalence above describes finite values. Invalid stored values
+retain their existing signature, readback and restore rules; the ADR-0067 finite processing
+boundary does not rewrite them or equate their serialized identity with a finite default.
+
+Evidence [Verified]: src/PluginParameters.h:195-210, :74-87; .cpp:53-300.
 
 ## `InternalState` — `src/InternalState.h`
 

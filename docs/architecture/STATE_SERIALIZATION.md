@@ -4,7 +4,7 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:2780-2866 (`getStateInformation`), :1226-1485
+Evidence [Verified]: src/PluginProcessor.cpp:2813-2899 (`getStateInformation`), :1226-1485
 (`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:1336-1389 (`encodeSelection` / `decodeSelection`).
 
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:2780-2866 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:2813-2899 (`getStateInformation`).
 
 ## Which thread (D-2 / ADR-0036)
 
@@ -117,11 +117,12 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
      repair (`nan`, `inf`, `abc`, `""`, `0x10`, `1e39`, or an out-of-range number), it rewrites
      `value` and any present `raw` BEFORE the tree is handed to JUCE (since D-2: the live tree is
      only ever written under JUCE's lock, and the host is told the repaired value during
-     `replaceState` rather than the clamped garbage first). **Limitation:** a usable `raw` marks the
-     resolution unrepaired even if `value="nan"`; JUCE can notify NaN during the initial replace,
-     before reassertion installs the finite raw. The next save can retain the textual `nan`.
-     KI-029 and `--nonfinite-ingress-probe` record this preserved window; no ingress policy is
-     chosen here. Then `apvts.replaceState` of that copy,
+     `replaceState` rather than the clamped garbage first). Since ADR-0067, an unusable `value`
+     is also repaired when the resolver selected a usable `raw`: JUCE's first notification uses
+     that resolved finite number, and the next save no longer retains the unusable spelling.
+     Exact final raw reassertion, valid finite values and parser acceptance remain unchanged.
+     Host session installs do not enter the ADR-0057 bulk handshake; this is a repair of the
+     existing private copy, not a new cross-thread protocol. Then `apvts.replaceState` of that copy,
      **then `reassertParameters(copy)`** — synchronously re-apply each parameter from the restored
      tree, preferring the exact `raw` attribute (falling back to the denormalised `value` for legacy
      sessions). This makes a wholesale `replaceState` deterministic + idempotent and round-trips
@@ -188,7 +189,7 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 `applyStatePreservingView` restores a snapshot but **keeps the current** shared view params
 (`pid::viewParams` = `bypass`) so an A/B / undo / preset apply never flips the view state.
-Evidence [Verified]: src/PluginProcessor.cpp:1059-1134 (`applyStatePreservingView`).
+Evidence [Verified]: src/PluginProcessor.cpp:1079-1154 (`applyStatePreservingView`).
 
 ## Invariants
 

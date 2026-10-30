@@ -8,7 +8,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 |---|---|---|---|
 | **1** | Static analysis | Compiler warnings (recommended warning flags), **gated for first-party sources under Clang — no NEW warnings above `scripts/clang-warning-baseline.txt`**; CodeQL; MSVC `/analyze`; the source-portability and documentation lints | `juce::juce_recommended_warning_flags` (CMakeLists.txt:535, 564, 611); `scripts/check-clang-warnings.py` in the `linux` job (the Linux release build); `scripts/check-portability.py`, `scripts/check-docs.py`, `scripts/check-citations.py`, `scripts/check-realtime.py` (audio-path bodies vs the `REALTIME_AUDIO_POLICY` forbidden list); GitHub code scanning |
 | **1b** | Dynamic analysis | ASan + UBSan over both suites, then valgrind memcheck over both suites from an unsanitized build; **RealtimeSanitizer over the DSP suite** in its own lane (ADR-0029 — the driver forbids combining it with the others), behind a liveness canary, enforcing `REALTIME_AUDIO_POLICY` on the annotated audio entry point; **ThreadSanitizer over the state suite's four cross-thread probes and the suite itself** in its own lane (`tsan`, ADR-0036 — likewise uncombinable), behind a seeded-race canary, enforcing the program-state ownership boundary `THREADING_POLICY` states; the **allocation guard** compiled into the DSP suite (Test 38 — `operator new` + malloc-family counters armed only around `process()`, self-checked for liveness, and the tier that reaches MSVC where RTSan cannot); `MALLOC_PERTURB_=1` on the per-push Linux self-tests (glibc fills fresh heap with `0xFE`, freed heap with `0x01` — the value is complemented for allocations, so it is **not** the fill byte) | `sanitizers`, `realtime` and `tsan` jobs in `.github/workflows/build.yml` |
-| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) + the wrapper audio path (real `processBlock`, own-FTZ denormal guard) | `tests/dsp_tests.cpp` (75 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (142 state-compatibility tests, `AnamorphStateTests`); both suites additionally execute LTO-built in the `linux-lto-tests` job, so the assertions also run against shipped-class codegen |
+| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) + the wrapper audio path (real `processBlock`, own-FTZ denormal guard) | `tests/dsp_tests.cpp` (75 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (145 state-compatibility tests, `AnamorphStateTests`); both suites additionally execute LTO-built in the `linux-lto-tests` job, so the assertions also run against shipped-class codegen |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | **VST3 conformance on all three platforms, AU conformance on macOS** — and on macOS both formats are gated twice, once on Apple Silicon and once on **native Intel**; editor open/close under `xvfb` | `scripts/run-pluginval.sh <strictness> <mode> [vst3\|au]` |
 | **5** | Manual validation | Audio sound quality + GUI/OpenGL visual appearance (cannot be judged headlessly) | Load `.vst3` in a DAW |
@@ -16,7 +16,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 ## Hard release gate
 
 - **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 75 DSP
-  self-tests, the A/B state-restoration clamp guard, **and** the 142-test state-compatibility
+  self-tests, the A/B state-restoration clamp guard, **and** the 145-test state-compatibility
   suite (`AnamorphStateTests` — both binaries are required; a missing one fails the gate, and an
   *ambiguous* one does too: exactly one match is required per binary, so a multi-config or stale
   build tree cannot let the gate report on a different configuration than the one just built).
@@ -105,7 +105,8 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    ships a `--self-test`, and it runs **in the same job as the check it vouches for, ahead of that
    job's use of the checker** — never in a different job, a different workflow or an earlier run,
    because a liveness proof somewhere else proves nothing about the run whose silence is being read.
-   All seven, with the job each pair lives in: `check-docs.py` (`docs`); `check-portability.py`,
+   The checker/job inventory includes `check-docs.py` (`docs`), `check-release-notes.py`
+   (`source-lint`, also local preflight); `check-portability.py`,
    `check-realtime.py` and `check-citations.py` (`source-lint`); `check-clang-warnings.py`
    (`linux`); `check-gcc-warnings.py` (`linux-lto-tests`); `check-linux-abi.py` (`linux`).
    A checker that has stopped matching anything is indistinguishable from a clean tree, and a gate
@@ -113,8 +114,8 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    adding a gate.
 
    **The requirement is the job and the order, not adjacency**, and the distinction is stated
-   because three of the seven cannot be adjacent. Four are the step immediately before their check:
-   `check-docs.py`, `check-portability.py`, `check-realtime.py`, `check-linux-abi.py` (the last at
+   because some cannot be adjacent. These are the step immediately before their check:
+   `check-docs.py`, `check-release-notes.py`, `check-portability.py`, `check-realtime.py`, `check-linux-abi.py` (the last at
    the end of `linux`, after the build it inspects). The other three are separated by the thing
    their check needs, not by a relaxation of this rule: the two warning gates classify a **build
    log**, so the build necessarily sits between the self-test and the gate — and

@@ -1,0 +1,17 @@
+Anamorph 0.10.0 — release manifest
+tag:          0.10.0
+commit:       cd70a0b8a20d04c246a826c7b1bf616de2721c65
+build number: 1940 (About-box build id, -DANAMORPH_BUILD_NUMBER)
+workflow run: https://github.com/skyRolly/Anamorph/actions/runs/40915335616
+date (UTC):   2026-10-29T17:57:01Z
+
+artifacts (sha256):
+  177c3415813828059fa69ca23a1170371d49cd115dda6a529344b350f098963b  Anamorph-0.10.0-Linux.zip
+  ffc0e6d6e3dbce4355325805f50e25d8a5b6322e0a52143304a988de403be7f2  Anamorph-0.10.0-NOTICE.txt
+  00ebf8f6ebc80888a999cee28b500f4f11d132b06b19a12fd3e3fa86cdd9dd92  Anamorph-0.10.0-SUPPORT.md
+  47f623c519505dc9c7ba02ba27c8f360c19b67f7633a3e56e2714f7a69ddf081  Anamorph-0.10.0-THIRD_PARTY_LICENSES.md
+  074ff9c913aa1bfe12fa21e0e805ee044a6ff24d76781b060df34ac5e3de5610  Anamorph-0.10.0-UserManual.md
+  2b6dd9eae34701256c93eedd4cdbd29c14994d61e10470366f7240ac10eade4c  Anamorph-0.10.0-Windows-Installer.exe
+  cf0cc6a63e39703ee478cc6733ae8cfcbe42e2790fbecdb34fb87100fb266705  Anamorph-0.10.0-Windows.zip
+  75b5b90cf97e58972ac415d43f3819fac8971fc2808998d293b3e3376289c828  Anamorph-0.10.0-macOS.pkg
+  3042f89ceb8bfbf5f5650f11e58160ee685ac0e00f30d4f577736587ddce4bb4  Anamorph-0.10.0-macOS.zip

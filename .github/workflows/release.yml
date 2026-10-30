@@ -319,6 +319,7 @@ jobs:
           gh release create "${VERSION}" \
             --draft \
             --verify-tag \
+            --target "${GITHUB_SHA}" \
             --title "Anamorph ${VERSION}" \
             --notes-file notes.md \
             dist/Anamorph-"${VERSION}"-Linux.zip \

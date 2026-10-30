@@ -1,5 +1,61 @@
 # TESTING.md
 
+## P1 replacement regressions and customer notes (2026-10-30)
+
+The original `--nonfinite-audio-probe` measured 288 checks / 24 sustained-mute failures;
+the original `--restore-reentry-probe` measured 30 checks / 4 metadata failures with callback
+saves passing. Under Accepted ADR-0067/0068 both are passing regressions in the default suite
+(State 146/148), with their focused CLI entry points retained. Expanded State 147/148 cover
+every parameter and complete nested callback state. Finite output alone is insufficient:
+the existing self-heal produces finite zeroes, so audio controls remain required.
+Run all state probes serially with the default suite because they share the real preset folder.
+
+`python3 scripts/check-release-notes.py --self-test` precedes the ordinary check in the same
+`source-lint` job. It permits customer changes, evidence citations and actual signing/CPU
+limitations; rejects readiness/approval/worklog/risk prose; and tests real awk extraction with
+internal text in Unreleased/history and a contaminated current section. The ordinary check
+uses the CMake version and production extractor, or `--notes <downloaded-body.md>` for a remote
+body. Release already requires this Build job. Existing extraction/date/tag checks are intact.
+Local `scripts/preflight.sh` runs the same self-test and ordinary invocation immediately
+after the structural documentation check, so structurally valid readiness prose fails locally.
+The routing self-test also runs the actual draft-creation shell against an inert recording CLI,
+requiring the exact source SHA target, draft/verified-tag safeguards, title, notes and 11 assets.
+Missing target, mutable `main`, missing draft and missing verified-tag controls must be rejected.
+
+## 0.10.0 approved P1 regressions (PR #187)
+
+- **State 146** promotes the real-processor non-finite audio diagnostic: host/text NaN and
+  both infinities, fresh/live/reset/re-prepare, finite and audible output plus exact
+  declared-default twin output when the raw atomic is non-finite (320 checks).
+- **State 147** covers all 36 registered parameters in Simple/Advanced modes through host
+  writes, text parsing and direct raw-atomic fault injection. It checks the entire snapshot,
+  unchanged readback, text formatting and exact processor audio against a finite twin across
+  reset/re-prepare. It cycles invalid session/preset/A-B values and verifies usable-raw
+  resolution before JUCE's first notification, final exact raw and the next save (2552 checks).
+  NaN Output Gain text is pinned to its declared `0.0 dB`; ARM's finite round-trip can
+  format `-0.0 dB`, so that existing finite text is preserved rather than normalized.
+- **State 148** keeps the original F9 diagnostic intact and adds repeated inline/background
+  nested latency callbacks, pump/no-pump saves, all Settings, both A/B slots, Undo, preset
+  identity/name/baseline and dirty state. A non-blocking lock witness proves delivery
+  admission under an outer state command and a recursively pumped timer. A callback that only
+  publishes a background restore and returns supplies no nested save/pump: the outer drain
+  must still serialize all newer metadata with its sound. Repeated getter/timer cases and
+  assertions on the actual captured save detect 54 failures in the first implementation;
+  a fresh application pass after notification makes all 2011 checks pass.
+- **State 43** still requires immediate newer engine priming during adoption; ADR-0068 adds
+  a deferred in-flight host report and the correct report after the complete drain. Only
+  State 128/138 premises about processor invalid Density/crossover defaults change; direct
+  engine DSP 64/74 held-density guarantees and unrelated finite assertions remain intact.
+
+Focused CLI modes are `--nonfinite-audio-probe`, `--nonfinite-boundary-probe` and
+`--restore-commit-probe`. These same regressions run in the default suite, before State 145
+(which stops the real message loop and must stay last). Original production-path negative
+controls measured 24/288 audio failures and 4/30 metadata failures; do not equate finite
+zero output with repaired audio. Full platform/sanitizer/pluginval and targeted manual
+validation remain separate gates. Preflight's two new real-shell negative/positive note
+fixtures require structural checking, same-run note self-test and ordinary content checking
+before the next source gate; `KI-029 remains open` must fail locally.
+
 ## Release permission regression (2026-10-30)
 
 `python3 scripts/test-workflow-routing.py --self-test` and its ordinary report invocation
@@ -86,7 +142,7 @@ native check on staged output. CI runs the self-test before use in every consumi
 including immutable approved digests independent of the editable provenance. Existing native
 Release outputs trigger the matching check. When none exists it explicitly reports the native
 skip, candidate paths and configure/build/check commands; no product rebuild is attempted.
-`python3 scripts/test-icon-preflight.py` runs six shell-entry regressions in `source-lint`: a
+`python3 scripts/test-icon-preflight.py` runs eight shell-entry regressions in `source-lint`: a
 missing build still reaches the next existing gate; corrupt PNGs, coordinated provenance edits,
 wrong CMake paths, wrong source commits and altered Linux resources fail before that gate,
 without any build tree. On macOS use a real `TMPDIR` path (for example a workspace directory)
@@ -2626,7 +2682,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
   the preset boundary now guards. Investigation first, and the investigation changed the entry in
   both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
-  (`src/PluginProcessor.cpp:2869-2877`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  (`src/PluginProcessor.cpp:2902-2910`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
   decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
   attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
   things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not
@@ -2721,7 +2777,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22244`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
     1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and across its 20
@@ -4743,7 +4799,7 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22244`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
@@ -4891,14 +4947,14 @@ production access). Its four numbered tests run in the ordinary suite:
 Each can run alone via `--nonfinite-save-probe`, `--nested-release-probe`,
 `--host-acceptance-probe`, `--advanced-mode-probe`. `--nonfinite-ingress-probe` prints current
 host/text/restore semantics. `--restore-lock-probe` measures F9's outer-held-lock edge;
-`--restore-reentry-probe` is an **opt-in unresolved diagnostic**, expected to fail the final
-metadata checks on current production code. It also checks saves inside the latency callback so
-an adoption guard cannot hide a mixed snapshot. It is not part of the passing regression suite.
+`--restore-reentry-probe` retains the original assertions and also runs inside State 148.
+It checks saves inside the latency callback so an adoption guard cannot hide a mixed snapshot;
+Accepted ADR-0068 fixes its former metadata failures by committing before the callback.
 Run state processes serially: these probes share the real preset folder, just like the full suite.
 Evidence, negative controls, commands and environment limits:
 `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 
-`tests/state_tests.cpp` (**142 tests**, State tests 1–145 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**145 tests**, State tests 1–148 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it. Later interaction fixtures drive real components; State test 145

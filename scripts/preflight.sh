@@ -5,11 +5,13 @@
 #  Also runs the DSP dump parser's inert production-entry fixture/mutant checks.
 #
 #  WHAT THIS RUNS, in CI's own order (docs/procedures/CI_CD.md §Reproducing CI
-#  locally): the eight checkers with their --self-tests first (seconds, no
+#  locally): documentation structure and release-note content, portability,
+#  realtime, dispatch, state coverage, citations, warning and ABI checkers,
+#  with their --self-tests first (seconds, no
 #  build, historically the most-tripped gates), then the built test suites when
 #  a built tree exists.
 #
-#  WHAT THIS CANNOT RUN, said out loud rather than implied. Three of the eight
+#  WHAT THIS CANNOT RUN, said out loud rather than implied. Three checkers
 #  need something a bare checkout does not have, and each says so instead of
 #  passing quietly:
 #    * the Clang warning gate needs a fresh clang build log to classify;
@@ -68,6 +70,8 @@ python3 scripts/check-product-identity.py
 echo "== preflight: documentation + source lints =="
 python3 scripts/check-docs.py --self-test
 python3 scripts/check-docs.py
+python3 scripts/check-release-notes.py --self-test
+python3 scripts/check-release-notes.py
 python3 scripts/check-portability.py --self-test
 python3 scripts/check-portability.py
 python3 scripts/check-realtime.py --self-test

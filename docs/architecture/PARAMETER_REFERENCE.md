@@ -2,7 +2,7 @@
 
 Purpose, behaviour, and UI mapping of each parameter. IDs, types, defaults, and ranges are in
 `PARAMETER_REGISTRY.md` (the compatibility ledger). This document describes *what each control
-does*. Evidence: src/PluginParameters.cpp:135-284 (`createAnamorphLayout`), :326-389 (`toEngine`),
+does*. Evidence: src/PluginParameters.cpp:144-298 (`createAnamorphLayout`), :350-437 (`toEngine`),
 src/dsp/AnamorphEngine.cpp (application).
 
 ## Advanced-mode gating
@@ -11,7 +11,7 @@ When **Advanced Mode** is off, the Input module, Multiband module, and Output mo
 parameters are forced to neutral defaults in `toEngine` (their tree values are preserved so
 re-enabling restores them). Only the core widening controls (Drive, Algorithm, Amount,
 per-algorithm shaping, Width, Oversampling, Bypass) are always active.
-Evidence [Verified]: src/PluginParameters.cpp:246-297.
+Evidence [Verified]: src/PluginParameters.cpp:350-437.
 
 ## Input conditioning (Advanced)
 
@@ -41,7 +41,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1050-1128, :614-617.
 | `dimMode` (Dimensional Style) | Dimensional voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. Read only by the Dimensional algorithm, so a move made under any other algorithm is adopted without a transition duck (ADR-0004, Correction of 2026-09-21). |
 | `width` | Global MS width: 0 = mono, 1.0 = identity, 2 = wide. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:950-1047, :442-469, :648-653; src/PluginParameters.cpp:257.
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:950-1047, :442-469, :648-653; src/PluginParameters.cpp:271.
 
 ## Multiband (Advanced)
 
@@ -68,7 +68,7 @@ Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cp
 | `outputBalance` | Whole-plugin output balance (signed %). |
 | `autoGainMatch` (Level Match) | Real-time BS.1770 loudness match for fair A/B. "Apply" locks the measured gain into Output Gain. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1589-1661; src/PluginProcessor.cpp:466-532 (`applyAutoGain`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1589-1661; src/PluginProcessor.cpp:486-552 (`applyAutoGain`).
 
 ## Bypass / view
 

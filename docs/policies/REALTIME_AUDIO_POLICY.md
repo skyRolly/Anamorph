@@ -35,7 +35,7 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 audio path; all allocation confined to `prepare()`. Full audit: `docs/architecture/REALTIME_SAFETY_AUDIT.md`.
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:390-463 (`processBlock`; `ScopedNoDenormals` at :392), src/dsp/AnamorphEngine.cpp:43-213 (prepare allocations) vs :1388-2358 (alloc-free process)
+- Source: src/PluginProcessor.cpp:410-483 (`processBlock`; `ScopedNoDenormals` at :392), src/dsp/AnamorphEngine.cpp:43-213 (prepare allocations) vs :1388-2358 (alloc-free process)
 - Audit: docs/architecture/REALTIME_SAFETY_AUDIT.md
 
 ## Enforcement

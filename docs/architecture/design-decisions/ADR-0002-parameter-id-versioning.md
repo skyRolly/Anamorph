@@ -29,9 +29,9 @@ or changing serialization semantics, requires an ADR + migration support.
   (see ADR-0010).
 
 ## Related code
-- `src/PluginParameters.cpp:13` (`kVersion = 1`), `:67-68`, `:135-136` (rename, ID unchanged)
+- `src/PluginParameters.cpp:14` (`kVersion = 1`), `:67-68`, `:135-136` (rename, ID unchanged)
 - `src/PluginParameters.h:15-89` (`pid::` IDs + exclusion helpers)
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:13,135-136; src/PluginParameters.h:15-89
+- Source: src/PluginParameters.cpp:14, 144-145; src/PluginParameters.h:15-89
 - History (rename) [Partially Verified]: CHANGELOG.md [0.8.6]

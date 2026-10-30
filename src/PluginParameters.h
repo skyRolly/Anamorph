@@ -197,45 +197,52 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout();
 // Cached raw atomic pointers + conversion to the DSP snapshot.
 struct ParamPointers
 {
+    // Bound once during construction; immutable while processing (ADR-0067).
+    struct Parameter
+    {
+        std::atomic<float>* raw = nullptr;
+        float defaultValue = 0.0f;
+    };
+
     void bind (juce::AudioProcessorValueTreeState& s);
     // oversampleIndex (0..3) comes from anamorph::InternalState, not the APVTS, because
     // Oversampling is no longer a host parameter (it is hidden from the host's list).
     anamorph::EngineParameters toEngine (int oversampleIndex) const;
 
-    std::atomic<float>* channelMode = nullptr;
-    std::atomic<float>* monoSum = nullptr;
-    std::atomic<float>* swap = nullptr;
-    std::atomic<float>* inputBalance = nullptr;
-    std::atomic<float>* polarityL = nullptr;
-    std::atomic<float>* polarityR = nullptr;
-    std::atomic<float>* msMode = nullptr;
-    std::atomic<float>* drive = nullptr;
-    std::atomic<float>* algorithm = nullptr;
-    std::atomic<float>* amount = nullptr;
-    std::atomic<float>* haasDelay = nullptr;
-    std::atomic<float>* haasSide = nullptr;
-    std::atomic<float>* velvetDensity = nullptr;
-    std::atomic<float>* chorusRate = nullptr;
-    std::atomic<float>* chorusDepth = nullptr;
-    std::atomic<float>* dimMode = nullptr;
-    std::atomic<float>* width = nullptr;
-    std::atomic<float>* mbEnable = nullptr;
-    std::atomic<float>* mbBands = nullptr;
-    std::atomic<float>* mbSolo = nullptr;
-    std::atomic<float>* mbFreqLow = nullptr;
-    std::atomic<float>* mbFreqMid = nullptr;
-    std::atomic<float>* mbFreqHigh = nullptr;
-    std::atomic<float>* mbWidthLow = nullptr;
-    std::atomic<float>* mbWidthMid = nullptr;
-    std::atomic<float>* mbWidthHiMid = nullptr;
-    std::atomic<float>* mbWidthHigh = nullptr;
-    std::atomic<float>* monoMakerOn = nullptr;
-    std::atomic<float>* monoMakerFreq = nullptr;
-    std::atomic<float>* mix = nullptr;
-    std::atomic<float>* outputGain = nullptr;
-    std::atomic<float>* outputBalance = nullptr;
-    std::atomic<float>* autoGainMatch = nullptr;
-    std::atomic<float>* solo = nullptr;
-    std::atomic<float>* bypass = nullptr;
-    std::atomic<float>* advancedMode = nullptr;
+    Parameter channelMode;
+    Parameter monoSum;
+    Parameter swap;
+    Parameter inputBalance;
+    Parameter polarityL;
+    Parameter polarityR;
+    Parameter msMode;
+    Parameter drive;
+    Parameter algorithm;
+    Parameter amount;
+    Parameter haasDelay;
+    Parameter haasSide;
+    Parameter velvetDensity;
+    Parameter chorusRate;
+    Parameter chorusDepth;
+    Parameter dimMode;
+    Parameter width;
+    Parameter mbEnable;
+    Parameter mbBands;
+    Parameter mbSolo;
+    Parameter mbFreqLow;
+    Parameter mbFreqMid;
+    Parameter mbFreqHigh;
+    Parameter mbWidthLow;
+    Parameter mbWidthMid;
+    Parameter mbWidthHiMid;
+    Parameter mbWidthHigh;
+    Parameter monoMakerOn;
+    Parameter monoMakerFreq;
+    Parameter mix;
+    Parameter outputGain;
+    Parameter outputBalance;
+    Parameter autoGainMatch;
+    Parameter solo;
+    Parameter bypass;
+    Parameter advancedMode;
 };

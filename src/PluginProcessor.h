@@ -630,6 +630,8 @@ private:
     // Separated because clearing the flag twice for one delivery is what loses a
     // concurrent request -- see timerCallback().
     void deliverLatency();
+    bool latencyDeliveryIsSafe() const noexcept;
+    void flushPendingLatency();
 
     // D-1 (KI-027), approved 2026-09-01. Route EVERY latency re-report through
     // here rather than calling updateLatency() directly from a listener: under
@@ -1205,6 +1207,20 @@ private:
         JUCE_DECLARE_NON_COPYABLE (OffThreadStateCall)
     };
     bool adoptingRestore = false;                    // M: suppress per-field publishes inside an adoption
+    int restoreApplicationDepth = 0;                 // M only; ADR-0068 completion/callout boundary
+    struct ScopedRestoreApplication
+    {
+        explicit ScopedRestoreApplication (AnamorphAudioProcessor& p) noexcept : owner (p)
+        { ++owner.restoreApplicationDepth; }
+        ~ScopedRestoreApplication()
+        {
+            --owner.restoreApplicationDepth;
+            owner.flushPendingLatency(); // after the caller's locks and publication scopes ended
+        }
+        ScopedRestoreApplication (const ScopedRestoreApplication&) = delete;
+        ScopedRestoreApplication& operator= (const ScopedRestoreApplication&) = delete;
+        AnamorphAudioProcessor& owner;
+    };
     // ONE WHOLE-SOUND REPLACEMENT AT A TIME (D-2 round 17, ADR-0036 §24).
     //
     // A replacement is `apvts.replaceState` (locked by JUCE) followed by a LOOP of

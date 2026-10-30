@@ -499,6 +499,12 @@ jobs:
       - name: Build and Release routing regression
         run: python3 scripts/test-workflow-routing.py --report workflow-routing.json
 
+      - name: Customer release-note content liveness
+        run: python3 scripts/check-release-notes.py --self-test
+
+      - name: Customer release-note content
+        run: python3 scripts/check-release-notes.py
+
       - name: Rosetta diagnostic inert orchestration controls
         run: python3 scripts/diagnose-rosetta-scope.py --self-test --self-test-report rosetta-cleanup-inert.json
 
@@ -954,7 +960,7 @@ jobs:
       # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
       # (`testPendingDuckDoesNotSurviveActivation`, tests/dsp_tests.cpp:1388) against
       # the state suite's 709,760 (`testSettingsPublicationIsFieldLevelAndOrdered-
-      # ByObservation`, tests/state_tests.cpp:22244) -- 28% of the 1 MB reserve, not
+      # ByObservation`, tests/state_tests.cpp:22253) -- 28% of the 1 MB reserve, not
       # 0%. This arms a tripwire rather than introducing a failure: both suites were
       # verified green under `ulimit -s 1024` before the step was widened.
       #

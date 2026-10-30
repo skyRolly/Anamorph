@@ -38,10 +38,12 @@ The wrapper reads the APVTS atomics once per block and fills an `EngineParameter
 parameter ID. Since ADR-0057 the wrapper hands the engine a READER rather than a snapshot
 (`engine.setParametersFrom`): the engine calls it between its two acquire takes of the request
 word, so a bulk swap's forced bottom adopts only a complete destination.
+ADR-0067 adds stateless finite-default substitution before snapshot conversions. Defaults are
+bound once beside the atomic pointers; finite values and the ADR-0057 ordering stay unchanged.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:330-410 (`toEngine`)
-- Source: src/PluginProcessor.cpp:455-462 (per-block read inside `engine.setParametersFrom` → `engine.process`)
+- Source: src/PluginParameters.cpp:350-437 (`toEngine`)
+- Source: src/PluginProcessor.cpp:475-482 (per-block read inside `engine.setParametersFrom` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -76,7 +78,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:392 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:412 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 

@@ -1,8 +1,15 @@
 # Release readiness — 0.10.0 (draft only)
 
-**Final status: DRAFT COMPLETE (2026-10-30, Asia/Shanghai).** Required validation and manual
-approvals are complete; all 11 uploaded assets were downloaded and verified. The original tag
-remains unchanged. Delivery recovery and the merged future workflow repair are recorded below.
+**Current status: P1 candidate implementation/CI and targeted human validation complete;
+final main integration and draft replacement pending (2026-10-30, Asia/Shanghai).** The owner explicitly approved ADR-0067/0068; that architecture
+gate is cleared. Build 1952 and companion checks passed on `9f9a76e`; the owner has now
+attested the requested targeted human validation complete. The original draft/tag remain
+intact until validated final main is ready for the guarded replacement operation.
+See **Approved P1 implementation and PR #187 review corrections** below.
+
+**Historical original-candidate completion (2026-10-30):** required validation and manual
+approvals were complete for the original source; all 11 uploaded assets were downloaded and
+verified. Delivery recovery and the merged future workflow repair remain recorded below.
 
 ## Scope and authority
 
@@ -217,3 +224,480 @@ Source artifact provenance:
 | Anamorph-macOS | 12917133302 | `b0595c9dfa9649862bd138ac5c79bb31c4b9f3ca7401705c76b3e99d763b4c1b` |
 | Anamorph-macOS-installer | 12916669168 | `870c2940d85347934953bbfd8624461582d069f757cf04977fcb67d8d96cb6b5` |
 | Anamorph-Linux | 12917872735 | `08ad6d766ab9f1c83a423b29621313f07aea4ceec81ae06d7c66ea8c6b810494` |
+
+## P1 replacement decision and execution record — 2026-10-30, Asia/Shanghai
+
+### Historical proposal-round authority and mandatory stop
+
+Fetched main/tags; authoritative main is `0ac384088104dfd4dd128ab6751c828c6cd51be8`
+(PR #186). PR #185's reusable Release caller grants both contents/actions read; the source
+still uses the normal annotated-tag pipeline, `gh release create --draft --verify-tag`,
+and the common `scripts/changelog-section.awk` extractor. No later production fix for
+either P1 was found between the historical release commit and fetched main.
+
+The owner explicitly authorizes investigation, preparation and one-time supersession of the
+unpublished **0.10.0** candidate by **deleting the old draft and tag, then recreating both**.
+This is not permission to force-move a tag, reuse old payloads, change version or publish.
+The ordinary no-rewrite convention is reconciled by this task's explicit, narrowly scoped
+exception; no separate exception-approval mechanism was found in RELEASE_POLICY/RELEASE_PROCESS
+or ADR-0059. Independently mandatory architecture and release gates remain binding.
+
+`ARCHITECTURE_REVIEW_GATE.md` says: “Detecting any gated change is an AI Agent Hard Stop —
+the agent stops and requests human review rather than proceeding.” ADR_POLICY also requires
+an ADR for parameter-meaning decisions. The earlier state/host decision record explicitly
+required approval before implementing new invalid-input semantics. The owner's present request
+requires an **approved** solution and does not approve a particular policy or nested-callback
+contract. Therefore this branch prepares evidence, opt-in diagnostics, documentation corrections
+and **Proposed** ADR-0067/0068; it changes no production parameter, DSP or restore code.
+Neither ADR is Accepted, neither P1 is closed, and no merge/tag/deletion/release has occurred.
+
+### Refreshed original candidate and recovery evidence
+
+| Identity | Verified original value | Replacement |
+| --- | --- | --- |
+| Annotated tag object | `769d52fb09116b787184d119ff1db6075187e36d` | Not created |
+| Peeled source commit | `cd70a0b8a20d04c246a826c7b1bf616de2721c65` | Final approved main not yet determined |
+| Draft Release ID | `428196589` | Not created |
+| Name | `Anamorph 0.10.0` | Must remain the same |
+| Draft/publication | `draft=true`, `published_at=null` | Must remain unpublished |
+| Source build/run | 1940 / 40915335616 | Fresh normal tag workflow required |
+| Original failed Release/recovery | 40915398330 / 40926100598 | No ad-hoc recovery substituted for a normal replacement build |
+
+The draft URL remains the historical `untagged-e925c4f20dd9c3da3855` URL recorded above.
+Its API `target_commitish` is `main`, a mutable name; original source identity is established
+by the annotated tag and downloaded manifest, not by treating that string as a commit SHA.
+Current main Build run **40929397409** completed with all 13 running jobs successful, including
+native/translated macOS, Windows, Linux, sanitizer, realtime and TSan gates; three optional/PR-only
+jobs were skipped. That is evidence for its exact pre-fix source, not for future replacement code.
+
+Internal archival evidence is in `worklogs/release-0.10.0-original/`: original title/body/status,
+release/asset IDs, sizes, server digests, provenance, raw annotated tag/tagger record, manifest
+and checksums. All **11 original assets were freshly downloaded** into the local mode-0700
+directory `/workspace/0.10.0-original-evidence` (asset files mode 0600). Every downloaded
+size and SHA-256 matches the API record; all **nine payload checksum entries** match SHA256SUMS
+and appear in the original manifest. Manifest SHA-256:
+`5a3dcf9a36b80ab15f964af772b4aa770f227df7c5f2f4cd00f586148aa1da94`;
+SHA256SUMS SHA-256: `23484e113614643b1523b9f775ab0d661ff3ad0813aac7e69a6261be078b2366`.
+These bytes remain original-source evidence and must never be relabeled as replacement assets.
+The local restricted copies need durable restricted retention before any future destructive action
+if the execution workspace will not persist. No obsolete second active Release is created.
+
+Fresh metadata and historical execution records establish a draft-only candidate; no public
+publication or external reliance is known from this investigation. API publication fields and
+download counts alone cannot prove that no private copy has ever been distributed. Reconcile
+any newly known distribution/dependency or identity change before deletion; stop if established.
+The connected GitHub tools lack release/asset-management operations, so authenticated `gh api`
+was used for those reads/downloads. No credentials were extracted or replaced.
+
+### Original-code reproductions and proposal-round decision scope
+
+Local tools: retained managed native image, GCC 14.2.0 Release, exact clean JUCE 9.0.4 pin
+`3fb5cbc0340758596dac39f7c8de47d562b4896e`. The retained helper requested four CPUs but this
+executor exposes three. An untracked task helper uses three CPUs/parallel build jobs; no compiler,
+ISA, dependency or tracked environment setup is changed. An initial bare-shell CMake invocation
+could not start; the documented native environment was then used. State processes ran serially.
+
+| Check on current production code | Actual outcome |
+| --- | --- |
+| Full DSP suite | 945 checks / 0 failures |
+| Full state suite before and after adding the opt-in audio diagnostic | 5942 checks / 0 failures on both runs |
+| `--nonfinite-ingress-probe` | Existing host/text/restore table reproduced, including NaN notification with usable raw 0.71 |
+| `--nonfinite-save-probe` | 108 checks / 0 failures; existing formatter repair preserved |
+| `--restore-lock-probe` | Exit 0; outer-held replacement-lock edge witnessed; nested final Width 0.6 with preset `older` |
+| Unchanged `--restore-reentry-probe` | **30 checks / 4 failures**, final/new-poll preset-name assertions; callback saves pass |
+| New `--nonfinite-audio-probe` | **288 checks / 24 failures**, sustained output mutes through real host/text parameter and processor paths |
+
+The expanded ingress probe also records custom discrete values and host formatting. Algorithm
+`+Inf` retains `getValue=inf`, APVTS raw **3**, but displays **Haas**; NaN Multiband Bands displays
+**0** outside its 1–4 range. These are current GCC14 observations, not sanitizer diagnoses.
+ADR-0067 therefore includes finite checks before text-format integer conversions as well as DSP
+snapshot reads; a DSP-only patch would leave the formatting inconsistency unresolved.
+
+The new audio diagnostic exercises Width, Haas Delay, Chorus Rate and Output Gain;
+NaN/+Inf/−Inf; host writes and parameter text; fresh instances, live writes, reset and re-prepare.
+It renders finite-default and held-value control processors on identical seeded input. Its
+assertions require finite, audible output and both live controls; they **do not select a new
+invalid-value meaning**. Zero-energy Width/Haas Delay/Output Gain NaN legs fail despite finite
+output samples. All finite-control and finite-output assertions pass. Infinity inputs currently
+clamp to finite endpoints on these controls. Chorus differences remain evidence, not a claim
+that this diagnostic measures every transient/coefficient failure. It is opt-in until the approved
+implementation turns it into a default regression; existing default assertions are unchanged.
+
+Example live host-NaN Output Gain energies on identical input: invalid **0**, default
+**273.665**, held −18 dB **4.3373**. Thus “default” removes the mute but raises the target
+18 dB relative to holding the previous value. This is exposed for human review, not hidden
+behind `isfinite` or self-approved as a harmless repair.
+
+**Proposed ADR-0067:** finite DSP snapshots using each parameter's actual declared default for
+a non-finite *raw atomic*, preserving host/text readback and serialized-input resolution.
+Finite endpoint results already produced by the existing setters/parsers remain endpoints.
+No mutable cache or new cross-thread path. The proposal specifies the usable-raw restore
+window, initial/reset lifetime, Density/Level-Match consequences and the Output Gain tradeoff.
+Its implementation/whole-ingress acceptance matrix remains pending approval, not measured closure.
+
+**Proposed ADR-0068:** complete both inline and adopted restores before delivering synchronous
+latency notifications; preserve fixed-point callback saves. Defer reports under an outer state
+command to the existing safe timer door. The proposal specifies ownership, request ordering,
+all Settings/A/B/Undo/preset fields and inline generation-zero behavior. The early-return guard
+is rejected. The measured outer-held edge and JUCE/host opposing-lock residual remain distinct
+from the metadata defect. No supported-host deadlock is asserted or marked resolved.
+
+Reproduction commands (use the documented native environment and Xvfb on Linux; state processes
+must run serially). The last two commands intentionally return 1 until approved fixes exist:
+
+```sh
+xvfb-run -a build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --nonfinite-ingress-probe
+xvfb-run -a build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --nonfinite-save-probe
+xvfb-run -a build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --restore-lock-probe
+xvfb-run -a build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --nonfinite-audio-probe
+xvfb-run -a build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --restore-reentry-probe
+```
+
+### Customer notes and independent preparation
+
+The 0.10.0 changelog's entire internal introductory paragraph is removed, along with approval/
+validation bookkeeping in its bullets. Legitimate product changes, date, citation forms, category
+order, historical entries and link definitions remain. Material still-unfixed audio/restore
+limitations are expressed in user terms; they are removed/replaced with precise Fixed entries
+only when implementation and tests establish closure. No unimplemented P1 fix is advertised.
+Unreleased is structurally valid and empty; INC-018 automation history and P2/P3 priorities remain
+in this internal record, not as forthcoming product features.
+
+`scripts/check-release-notes.py` extracts only the current CMake version with the existing awk
+program. The same-run liveness test and actual content check run in Build's `source-lint` job,
+which the normal Release workflow already requires. It rejects the previous draft-readiness
+paragraph, worklog/risk identifiers and approval/gate bookkeeping while allowing evidence citations
+and real signing/CPU limitations. The old notes fail the guard (negative control). No extractor,
+tag grammar, metadata/date check, permission grant, build gate or `--draft` safeguard is removed.
+The remote original notes are retained unchanged until a fully validated replacement is possible.
+
+The original API target was mutable `main`. Replacement draft creation now passes explicit
+`--target "${GITHUB_SHA}"`, matching the source recorded in its manifest. The production creation
+shell is executed only against a recording CLI in the routing regression. It checks the source
+target, draft/verified-tag safeguards, title, notes path and 11 asset arguments; four deliberate
+variants (missing target, mutable `main`, missing draft, missing verified-tag) must fail. No actual
+Release command is invoked by the test. This is a narrow provenance correction, not permission
+to create a replacement before its P1 approval/validation gates.
+
+Preparation checks: documentation self-test **700 cases**, current documentation structure
+**174 files clean**, citation self-test **270 cases**, and **610 current evidence anchors**
+verified against main. The six new Build lines shifted nine existing citation anchors; the
+checker reported them before its minimal re-anchoring. Routing/permission/draft-creation
+liveness and the real extracted-note content guard pass. The original notes fail the content
+guard as intended. Existing Python invalid-escape SyntaxWarnings and GCC14/JUCE warning sites
+remain visible; no warning baseline or validator threshold is changed. These are preparation
+results, not a claim of final P1/native/pluginval/manual release validation.
+
+### Deferred work and human-validation scope
+
+- **RISK-015:** preserve bounded malformed-input acceptance and legacy fixtures. Reopen only on
+  a concrete supported-host/safety failure or an approved byte/framing/UTF-8 contract backed by
+  historical host/writer evidence. No new parser restriction or limit change.
+- **KI-015:** retain commercial/JUCE licensing, product terms, signing, Authenticode and
+  notarization as the public-distribution track. Reviewed current NOTICE/THIRD_PARTY_LICENSES
+  requirements: every draft/release asset set retains both attribution files. No dependency
+  change or new component is proposed; do not claim unsigned installers are signed/notarized.
+- **RISK-008/RISK-010 and P3:** retain host-runloop, independent multiband reads, extra golden
+  audio/performance and optional native selection/co-installation work. Reopen on a P1-induced
+  regression, a new writer/order change, or a supported-host reproducer. No broad audit/refactor.
+- **Original human approval:** preserve the owner's 2026-10-29 approval for the original source,
+  including its unsupplied-environment limitations. Do not repeat icon/install checks without a
+  related change. New invalid-input audio/Level-Match behavior and nested restore/automation/
+  callback-save semantics require targeted approval on the new binaries. CI cannot supply it.
+
+### State-aware replacement plan — execution prerequisites not yet satisfied
+
+After human decisions, implement the approved contracts and default regressions, synchronize
+their architecture/compatibility documents, run all required suites/pluginval/sanitizers/native
+gates and targeted human validations, then merge the reviewed changes. Record the exact final
+main commit and recheck version **0.10.0**, dated customer notes, clean checkout and all required
+source gates. Do not delete either original object during this preparation.
+
+Immediately before destructive execution, re-read the Release by ID and all releases for the
+tag, the remote tag ref, annotated object/peeled commit, and current Actions runs. Require exactly
+the original unpublished identity above, no known previous public publication/external reliance,
+no conflicting creation run, durable original evidence and all approved final-source gates.
+
+| Observed state | Permitted resume action |
+| --- | --- |
+| Original draft and original tag both present | Only after all prerequisites, guarded `gh release delete 0.10.0 --repo skyRolly/Anamorph --cleanup-tag --yes`; verify both objects absent |
+| Original draft absent; original tag still present | Verify absence/current ref/object again; remove only that exact original tag using the supported ref deletion; do not delete any new Release |
+| Both original objects absent | Confirm approved main unchanged; remove only stale local original tag; create annotated `0.10.0` on the approved commit and push normally |
+| Replacement tag present; workflow pending/failed | Verify its exact new object/commit; retain it, inspect the normal Release run and use supported safe recovery; never delete it as an assumed original |
+| Replacement draft partial | Inspect its new ID, tag, source/run, assets and failure; reconcile only that candidate without mixing sources or weakening gates |
+| Replacement fully validated | Record identities and downloads; leave draft unpublished |
+| Published Release, unknown ID/tag identity, or known external dependence | Stop; no deletion, force-move or automatic retry |
+
+Create the replacement annotated tag only on a clean final approved main checkout, with the bare
+`0.10.0` convention. Verify remote object type/peeled commit. Let its normal tag push run Release's
+full reusable Build and fresh assembler; do not upload original assets. The replacement should
+explicitly target the final commit (inspect the API's target commitish as well as its tag/manifest).
+Exactly one new active draft, all mandatory jobs, 11 fresh assets, nine payload checksum entries,
+all server sizes/digests, source/build/run manifest, archive/installer/bundle identity and version,
+manual/NOTICE/licenses/SUPPORT, and byte-equivalent extracted notes must be verified by download.
+Require `draft=true`, `published_at=null`; **never publish**.
+
+**Proposal-round gate (superseded by the approval/implementation record below):** human
+Architecture Review of ADR-0067/0068, followed by implementation, fresh mandatory
+validation and targeted manual approval. Replacement tag/commit/Release ID/workflow
+and asset verification are **not available because replacement has not begun**. Original green
+checks and owner approval are preserved as historical evidence, not substituted for this gate.
+
+## Approved P1 implementation and PR #187 review corrections — 2026-10-30
+
+The owner's direct **“Approved”** accepts the complete proposed ADR-0067/0068 contracts,
+including Output Gain's 0 dB fallback, Density's 0.5 fallback and the nested latency-callback
+support boundary. Both ADRs are Accepted. This is Architecture Review evidence, not an
+attestation that changed binaries were auditioned. Original 2026-10-29 manual approval remains
+historical and unrelated completed checks are preserved.
+
+### Production implementation
+
+- Every `ParamPointers` binding records its actual declared denormalized default once.
+  `toEngine` retains `seq_cst` loads and substitutes that default only for non-finite raw values,
+  before all integer/enum/Boolean conversions. No parameter writes, history cache, allocation,
+  lookup, mutex or new synchronization is added to the audio path. Finite values take exactly
+  the previous mapping; registry IDs/ranges/defaults/flags/version and fixtures are unchanged.
+- Existing host/text parsing and numeric readback remain. Float/discrete display formatting
+  guards non-finite input before conversion using existing default/endpoint labels.
+- The proposal's restore-window handshake premise was incorrect: host session installs never
+  entered ADR-0057 bulk apply. No new protocol is introduced. The existing private-copy repair
+  now also repairs an unusable `value` when the established resolver selected usable `raw`,
+  before JUCE's first notification. Exact final raw reassertion is unchanged. Re-saving that
+  malformed spelling produces its resolved finite value; valid finite bytes and all accepted
+  malformed-document boundaries remain unchanged. Numeric-NaN writer repair is untouched.
+- Both message-thread restore paths bracket application through complete Settings/A-B/Undo/
+  preset/committed-state publication. Latency delivery requires depth zero, no enclosing state
+  command and no pending restore. Otherwise the existing release-store/acquire-exchange request
+  remains for the safe timer door, including recursively pumped timers. No old restore writes
+  follow the callback. Off-thread requests never read the new message-thread depth.
+- F9 metadata correctness is fixed under the approved serialized callback contract; callback
+  fixed-point saves remain. The rejected early-return guard is not reintroduced. The distinct
+  outer-held lock witness and JUCE listener-lock residual stay open as RISK-009; no supported-host
+  deadlock is claimed or concealed. KI-029 moves to INC-019; F9 is recorded in INC-020.
+
+### Regression and review scope
+
+State 146 retains the original production-path audio failure and adds exact finite-default twin
+assertions (320 checks). State 147 covers every registered parameter through host/text/direct raw
+faults, both modes, live/reset/re-prepare audio/readback, plus repeated session/preset/A-B invalid
+restores and first-notification usable-raw windows (2552 checks). State 148 keeps all original
+F9 diagnostic assertions and expands complete callback-state and lock-admission coverage
+(1778 checks). The original negative controls were 24/288 audio failures and 4/30 metadata
+failures; these are retained as historical measurements.
+
+Only related processor Density/crossover premises in State 128/138 change to the approved
+default policy. Direct-engine DSP 64/74 and unrelated finite/match-provenance assertions remain.
+State 43 still proves newer engine priming during adoption and additionally requires deferred
+in-flight reporting and the final committed host report, matching ADR-0068.
+
+The review's preflight omission is corrected: `check-release-notes.py --self-test` precedes its
+ordinary invocation immediately after structural documentation checking. The preflight checker
+inventory and CI_CD/TESTING inventory are updated. Two real-shell regression fixtures prove that
+structurally valid forbidden current notes fail before the next source gate and valid customer
+notes reach it; the preflight fixture suite now has eight cases. An actual full-preflight negative
+control with `KI-029 remains open` in the 0.10.0 lead also failed at the content gate after the
+structural gate passed; the temporary defect was restored byte-for-byte.
+
+HANDOVER's operational Build/Test/Release rows explicitly scope completed validations and the
+complete draft to the original candidate. Its current replacement status is recorded separately.
+Customer notes describe implemented observable behavior and keep internal approval/worklog/risk
+status here. The normal Release workflow remains the only replacement packaging path.
+
+### Remaining gates and exact replacement state
+
+Local full-suite/preflight/pluginval results and exact new-source CI/artifact identities are to
+be recorded below as executed. Mandatory platform, sanitizer, warning, registry, resource and
+package gates remain binding. Targeted human validation is specified in LEVEL5_AUDITION and
+RELEASE_COMPATIBILITY_CHECKLIST: changed invalid host/text sound and finite recovery (Output Gain,
+Density), session/preset/A-B recall, preset/Settings coherence and restore/re-prepare latency/PDC.
+No new manual result is inferred from approval or automation.
+
+Original release ID `428196589`, annotated tag object `769d52fb09116b787184d119ff1db6075187e36d`
+and peeled commit `cd70a0b8a20d04c246a826c7b1bf616de2721c65` remain the guarded original identities.
+No merge, deletion, replacement tag, replacement workflow or new release has occurred. The
+state-aware plan above remains binding; defer P2/P3 on the previously recorded reopen conditions.
+
+The first full implementation suite produced 10592 checks / 1 failure: State 43 still expected
+a host latency report inside an unfinished adoption, which ADR-0068 deliberately defers. Its
+engine-priming assertion is preserved against the actual engine latency, and two new assertions
+require deferred in-flight reporting and correct final committed reporting. No production
+workaround or unrelated assertion removal was used. The final run is recorded separately.
+
+Citation maintenance retained all existing re-aim declarations, moved their current targets
+with source shifts and added six narrow inspected edited-span transitions. Two old anchors
+claimed `toEngine` while pointing into layout/bind; they now identify the actual function.
+One historical changelog citation is qualified by its already-stated `10fbfa0` commit to retain
+its original line identity. Every historical description/order and other byte is preserved.
+
+### Fresh local implementation validation (GCC 14.2.0 Release / JUCE 9.0.4)
+
+The complete VST3, Standalone, DSP and state targets build successfully. Source checker pairs
+(structure, release-note content, portability, realtime, dispatch, state coverage), warning
+checker self-tests and workflow routing/permission/actual-creation controls pass. Citation
+liveness now has 276 cases, 610 anchors pass against main, and documentation has 700 liveness
+cases / 174 clean files. The real-shell preflight suite passes all eight cases.
+
+**Local aggregate ABI failure:** after source gates pass, the real built-output ABI gate rejects
+both GCC 14 binaries for `CXXABI_1.3.15` above the declared `CXXABI_1.3.14` floor. This local
+non-shipping toolchain result is not a green preflight or a shipping ABI result. No floor,
+checker, compiler pin or mandatory job is relaxed. Full suites run separately, and the
+mandatory Clang shipping build must verify actual candidate ABI before release preparation
+can proceed. Existing GCC/JUCE warning debt and Python invalid-escape warnings remain visible.
+
+### Completed local behavior and real-time evidence
+
+Initial implementation commit: `0718bfdaaf33a1d68c7e7c2b7c5f6355897f3392` (PR #187). These
+measurements describe that implementation before the fixed-point follow-up below; they are
+not substituted for final-source results.
+
+| Check | Actual result | Scope / qualification |
+| --- | --- | --- |
+| Full DSP suite | 945 checks / 0 failures | Existing allocation-guard liveness: new, aligned new and malloc-family all live |
+| Full state suite | 10594 checks / 0 failures | Includes State 146/147/148 and the approved State 43 timing assertions |
+| Linux VST3 pluginval strictness 10, deterministic | 3/3 passes, all first attempts | Locked v1.0.4 and unchanged production runner |
+| Linux VST3 pluginval strictness 10, randomise | 3/3 passes | Pass 1 first attempt exited 139, then passed on permitted crash-only retry; passes 2/3 first attempts |
+| Original restore-lock probe | Outer-held edge still witnessed; final Width 0.6 / preset newer | No supported-host deadlock claimed; latency delivery occurs after safe admission |
+| Realtime source closure | 97 liveness cases; 51 files, 0 violations | Includes the processor snapshot reader and unchanged atomic-order gate |
+| Snapshot/engine coverage | 110 liveness cases; all 36 fields and 12 modules | Both reset scopes retained |
+| Preflight entry regressions | 8/8 | Real aggregate shell, note checker and awk; isolated fixtures |
+
+The randomise crash log contains `Segmentation fault` / exit 139 and no validation assertion
+failure; the unchanged runner classifies it as the Linux crash-only category allowed by policy.
+No backtrace was emitted, so this particular crash's frame is not independently attributed to
+XEmbed. It is not counted as an assertion retry or an all-first-attempt result.
+
+DSP allocation checks observed 2916 and 664 armed event/process calls with new=0/malloc=0,
+and Test 75's 7791 handshake cases reported zero allocations. The actual GCC 14 processor
+`ParamPointers::toEngine` disassembly contains no call instruction (388 assembly lines); its
+bounded finite checks and atomic reads add no allocator, wait or library callback to that
+snapshot boundary. This is bounded x86-64 codegen evidence, not a substitute for the mandatory
+RTSan, TSan and native platform jobs. No test-only allocation interposer is added to production.
+
+### Candidate CI and artifact identity
+
+The implementation push is [Build & Validate 1950](https://github.com/skyRolly/Anamorph/actions/runs/40953216526),
+with PR merge checks [1951](https://github.com/skyRolly/Anamorph/actions/runs/40953224042),
+[CodeQL](https://github.com/skyRolly/Anamorph/actions/runs/40953224090) and
+[MSVC analysis](https://github.com/skyRolly/Anamorph/actions/runs/40953224142). At this record's
+write time, source/docs, RTSan, TSan, seeded fuzzing, GCC LTO/warnings and Windows AVX2 identity
+checks have completed successfully; native packaging/ABI, remaining platform and analysis jobs
+are still running. No aggregate/native pass is inferred from partial results.
+
+This follow-up changes documentation only: API/reference/audit now distinguish finite DSP
+interpretation from unchanged stored identity, inventories include local note checking, and
+LEVEL5's old 0.9.9 heading is explicitly historical. Final-head checks and artifact identities
+are reported on [PR #187](https://github.com/skyRolly/Anamorph/pull/187). They must all be verified
+on that exact candidate before merge; prior-code CI is not a substitute. A final tag must be on
+validated approved main, and replacement must rebuild all payloads through normal Release.
+
+The original draft was re-read after the implementation push: ID `428196589`, title
+`Anamorph 0.10.0`, 11 assets, `draft=true`, `published_at=null`, tag object and peeled source
+still exactly match the archived original. No release/tag mutation or publication occurred.
+
+The remaining human gate is the targeted changed-behavior scope in LEVEL5_AUDITION and
+RELEASE_COMPATIBILITY_CHECKLIST. The owner's architecture approval and original-candidate
+manual approval remain recorded separately. Do not merge or start the guarded original
+draft/tag deletion until targeted validation is actually attested and mandatory head CI passes.
+
+### Callback-published restore fixed-point follow-up
+
+Review of the actual message-thread getter found one missing schedule: the latency callback
+starts/joins a newer background restore and simply returns, with no nested pump or save.
+The first implementation flushes notification after its drain loop, so the callback can leave
+new sound/pending metadata before the outer getter serializes it. Extended State 148 repeats
+this on getter/timer doors and checks already-captured bytes rather than re-saving to repair
+them. Against `0718bfd` production code it measures **2011 checks / 54 failures**. This is a
+real negative control for the follow-up, separate from the original 4/30 F9 failures.
+
+`adoptPendingHostState` now rechecks after the notification and applies a callback-published
+restore in a fresh scope before returning. Each previous restore and its metadata are already
+fully committed; no write from that older payload resumes. Each non-blocking pass retains
+transaction/try-lock refusal, consumes nothing on refusal and adds no blocking operation.
+This implements the already-approved ADR-0036/0068 fixed-point contract, not a new callback
+support boundary, thread path or atomic ordering. The targeted regression is **2011 / 0**, and
+the full final suites are **DSP 945 / 0, state 10827 / 0**.
+
+ADR-0068, TESTING, F9/INC-020 and the current handover describe this final case. Earlier
+1778/10594 results remain historical measurements of the first implementation. The final
+plugin builds/pluginval runs and exact new-head native/sanitizer/analysis evidence remain
+required; older passing jobs do not validate this follow-up. Original release/tag remain intact.
+
+Final follow-up local execution completed: VST3 and Standalone rebuild succeeded; full DSP
+**945 / 0** and state **10827 / 0**; locked pluginval strictness 10 deterministic **3/3** and
+randomise **3/3**, every final-source pass on its first attempt (no crash retry). The unchanged
+restore-lock probe still witnesses the outer-held edge and finishes at Width 0.6 / preset newer.
+The earlier randomise retry above belongs only to the initial implementation run.
+
+All source checker pairs and warning-gate liveness checks were repeated for the follow-up.
+Documentation 700-case liveness / 174 clean files and citation 276-case liveness pass; 609
+base-owned anchors retain their text against main and the implementation parent. Existing
+re-aim declarations were preserved and four current targets followed the seven-line source
+shift; no new exemptions were needed for the fixed-point follow-up. API/audit text explicitly
+separates finite rendering from invalid stored identity. No warning baseline, parser boundary,
+registry field, version, release-creation safeguard or native validation gate is weakened.
+
+The initial source's official Clang Linux job `123726496197` passed its actual shipped-ABI
+floor and first-party warning gates. Thus the earlier GCC 14 local aggregate rejection is not
+a claimed shipping artifact regression. The new exact-head Clang/native/sanitizer/analysis
+checks remain required independently and are exposed on PR #187; the initial run cannot
+validate the fixed-point follow-up. Targeted human validation remains pending on the actual
+new candidate binaries. No merge or draft/tag replacement is performed before that gate.
+
+### Native ARM display-oracle correction
+
+Initial Build 1950 / source `0718bfd` completed with one failed job: Apple Silicon macOS.
+The actual state log reports **10439 checks / 4 failures**, all State 147 Output Gain host/text
+NaN display comparisons: actual `0.0 dB`, finite-twin expectation `-0.0 dB`. Linux, Windows,
+native Intel, GCC LTO/warnings, source/docs, RTSan, TSan, fuzz and the other completed gates
+were successful; CodeQL and MSVC analysis also succeeded. No complete candidate pass is
+claimed for that initial source.
+
+The NaN formatter deliberately uses the declared plain +0 dB default. ARM's existing finite
+range/snap round-trip can produce a value whose display is -0.0 dB. The new test incorrectly
+required those different formatting paths to have the same sign. Its NaN Output Gain oracle
+now explicitly requires the existing `0.0 dB` text, while every finite display and other
+parameter comparison remains exact. No production formatter, finite arithmetic or readback
+is changed; no blanket signed-zero normalization or assertion removal is introduced. Native
+ARM CI must verify this correction on the final source; a local GCC pass does not do so.
+
+After the display-oracle correction, the complete local suites were rebuilt/re-run: DSP **945 / 0**,
+state **10827 / 0**. No production code changed after the final six first-attempt pluginval
+passes. The final exact-head native matrix must confirm the ARM-specific oracle.
+
+## Final candidate validation and human completion — 2026-10-30, Asia/Shanghai
+
+Runtime source `9f9a76ea9ea848f406362553ed29b51770ac375a` is validated by
+[Build 1952](https://github.com/skyRolly/Anamorph/actions/runs/40988058477): all 13 running
+jobs succeeded; the three optional/event-specific jobs were skipped. The PR merge check
+(40988061775), CodeQL (40988061774), MSVC analysis (40988061830) and dependency review
+(40988061799) also succeeded. Valgrind reports zero errors from zero contexts for both
+suites, with zero suppressions. Native ARM and Rosetta validate the display-oracle correction.
+
+Five candidate platform/installer archives were downloaded, matched to API sizes/SHA-256
+digests and source/run identities, and inspected. Windows app/VST3 versions and installer
+ProductVersion are 0.10.0; the generic Inno loader's fixed numeric version remains zero as
+before. macOS plists and all three component PackageInfo versions are 0.10.0, with both
+arm64/x86_64 slices and the expected namespace. The downloaded Linux payload independently
+passes the unchanged ABI checker: CXXABI_1.3.9, GLIBC_2.38, GLIBCXX_3.4.31. This does not
+turn the earlier local GCC 14 aggregate failure into a pass.
+
+The security-alert API returned integration HTTP 403, so the completed SARIF artifacts were
+downloaded and compared with the preimplementation candidate. Raw counts remain 65 C++
+CodeQL, 0 Actions and 192 PREfast. Only existing C6262 stack-byte estimates change with the
+larger immutable parameter bindings; no diagnostic threshold or suppression was changed.
+Candidate provenance/digests and validation are committed in `release-0.10.0-p1/validation.json`.
+
+**Targeted human gate cleared.** The owner directly replies “Human validation has been
+completed” to the request identifying candidate `9f9a76e` and its verified downloads, invalid
+input audio/automation recovery and session/preset/A-B/Settings/PDC scope. Record this as the
+owner's completion attestation, not tests performed by the agent. Actual test date, DAW/OS/CPU,
+format/device/session, individual outcomes and selected artifact hash remain NOT RECORDED.
+The prior architecture approval and original candidate's unrelated manual approval are retained.
+
+The next source changes record this evidence only; runtime code, tests, CMake version,
+workflow behavior, metadata gates and all fixtures remain unchanged. Final main must pass
+the mandatory CI gates before original draft/tag deletion. The normal recreated-tag Release
+workflow must build fresh payloads, and every new release asset/manifest/note must be verified.
+No public publication is authorized. At this attestation record, original ID 428196589 and
+tag object 769d52fb09116b787184d119ff1db6075187e36d still exist unchanged and unpublished.
