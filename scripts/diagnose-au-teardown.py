@@ -89,6 +89,7 @@ def main():
     parser.add_argument('--au-source-commit',help='Historical source commit that produced the retained AU')
     parser.add_argument('--report-dir',type=Path,default=Path('au-teardown-evidence'))
     parser.add_argument('--attempts',type=int,default=16)
+    parser.add_argument('--expect',choices=('capture','completed'),default='capture')
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -116,7 +117,7 @@ def main():
         (root/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     save()
     assert control['outcome']=='bad-function-call-throw', 'debugger cannot capture the known first throw'
-    deadline=time.monotonic()+1000
+    deadline=time.monotonic()+1500
     for attempt in range(args.attempts):
         remaining=deadline-time.monotonic()
         if remaining < 180:
@@ -127,10 +128,12 @@ def main():
         report['runs'].append(outcome);save()
         print(f"AU diagnostic {attempt+1}: {outcome['outcome']}",flush=True)
         if outcome['outcome']=='bad-function-call-throw':
-            return 0
+            return 0 if args.expect=='capture' else 1
         if outcome['outcome']!='completed':
             return 2
-    return 3  # bounded campaign did not reproduce: never claim a fix
+    if args.expect=='completed' and len(report['runs'])==args.attempts:
+        return 0
+    return 3  # bounded campaign did not meet its declared expectation
 
 
 if __name__=='__main__':

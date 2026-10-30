@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Captured AudioToolbox throw and native OS comparison (2026-10-30)
+
+The first-throw report now identifies Apple's CAEventReceiver timer-delivery block
+on macOS 15. The worklog records raw artifact identities and the measured source/
+observer distinction. The nonshipping comparison uses identical AU/tool bytes on
+native Intel macOS 26, with a declared completed-campaign expectation and an
+independent Apple-only listener control. Ordinary validation remains unchanged;
+an environment correction is not claimed until the comparison completes.
+
 ## First-throw AU observer and PR #189 review corrections (2026-10-30)
 
 The LLDB helper now filters __cxa_throw's native Intel type_info argument to stop

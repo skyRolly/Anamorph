@@ -76,3 +76,25 @@ upload entries are removed. New reports name diagnostic_commit and au_source_com
 separately and measure the installed AU binary hash. Earlier source_commit fields
 refer to the diagnostic checkout, not the AU's historical source; those retained
 reports remain unmodified and their producer/source distinction is recorded here.
+
+### First-throw location established
+
+Run 41018800486, artifact 12961026174 (SHA-256
+`384da447ba1c93b85821080f2f2a089e7babffbeef42c4761fab99e1d7e7d5ad`),
+records diagnostic commit 039361e separately from AU source 1423704 and the
+unchanged AU/tool hashes. The typed canary succeeds; three complete invocations
+precede the fourth invocation's captured first throw. Native message-thread frames:
+
+```text
+libc++abi.dylib: __cxa_throw
+AudioToolboxCore: std::__1::__throw_bad_function_call
+AudioToolboxCore: invocation function for block in CAEventReceiver::Impl::timerFired()
+CoreFoundation: __CFRUNLOOP_IS_CALLING_OUT_TO_A_BLOCK__
+```
+
+This identifies an empty callback invocation in Apple's AU event-delivery machinery
+on the macOS 15 runner, before AppKit unwinds it. The full stack has no Anamorph
+callback frame at the throw site. The validator worker is stopping its timeout
+thread after SUCCESS. A same-binary/tool comparison on macos-26-intel and an
+Apple-only listener lifecycle control are next; the shipping gates are not changed
+on the strength of a later passing run alone.

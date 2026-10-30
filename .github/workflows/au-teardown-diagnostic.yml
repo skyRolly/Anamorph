@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   capture:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,6 +53,13 @@ jobs:
           --pluginval "${{ steps.prepare.outputs.pluginval }}"
           --bundle "${{ steps.prepare.outputs.bundle }}"
           --au-source-commit 14237044cb51a80db5656461543c92a066c97ac0
+          --expect completed
+      - name: Independent Apple AU listener lifecycle control
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          xcrun clang++ -std=c++17 -g -fblocks tests/au_listener_teardown.mm \
+            -framework AudioToolbox -framework CoreFoundation -o apple-au-listener-control
+          ./apple-au-listener-control > apple-au-listener-control.log 2>&1
       - name: Retain native throw stacks and reconstructed bytes
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -64,6 +71,7 @@ jobs:
             host.txt
             reconstructed-au.sha256
             retained/
+            apple-au-listener-control.log
       - name: Remove disposable AU
         if: ${{ always() && steps.prepare.outcome == 'success' }}
         run: rm -rf "${{ steps.prepare.outputs.bundle }}"
