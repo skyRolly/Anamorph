@@ -52,14 +52,15 @@ def self_test():
 
 def observe(executable, args, log, timeout):
     result_command = ("script import lldb,json; p=lldb.debugger.GetSelectedTarget().GetProcess(); "
-        "print('"+MARKER+"'+json.dumps({'state': 'stopped' if p.GetState()==lldb.eStateStopped else "
+        "print('"+MARKER+"'+json.dumps({'state': 'stopped' if p.GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else "
         "'exited' if p.GetState()==lldb.eStateExited else 'other', 'exit':p.GetExitStatus(), "
         "'stops':[t.GetStopDescription(256) for t in p]}))")
     backtrace = ("script lldb.debugger.HandleCommand('thread backtrace all') if "
-        "lldb.debugger.GetSelectedTarget().GetProcess().GetState()==lldb.eStateStopped else None")
+        "lldb.debugger.GetSelectedTarget().GetProcess().GetState() in (lldb.eStateStopped,lldb.eStateCrashed) else None")
     command = ['xcrun','lldb','--batch','-o','settings set target.disable-aslr false',
                '-o','process handle -s true -n true -p false SIGABRT','-o','run',
-               '-o',result_command,'-o',backtrace,'-o','image list -o -f','--',str(executable),*args]
+               '-o',result_command,'-o',backtrace,'-o','image list -o -f',
+               '-k',result_command,'-k',backtrace,'-k','image list -o -f','--',str(executable),*args]
     with log.open('w') as output:
         process = subprocess.Popen(command,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
         try:

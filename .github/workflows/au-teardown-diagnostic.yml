@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   capture:
@@ -14,33 +15,25 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Retrieve the retained original-source reconstruction
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          ref: 14237044cb51a80db5656461543c92a066c97ac0
-          path: failing-source
-      - name: Install native build tools
-        run: brew install ninja ccache
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .ccache
-          key: ccache-macos-intel-au-diagnostic-${{ github.run_id }}
-          restore-keys: ccache-macos-intel-
-      - name: Reconstruct failing thin AU without modifying its source
-        env:
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_COMPILERCHECK: content
+          artifact-ids: 12957996229
+          github-token: ${{ github.token }}
+          repository: skyRolly/Anamorph
+          run-id: 41010691687
+          merge-multiple: true
+          digest-mismatch: error
+          path: retained
+      - name: Verify retained reconstruction and current native host
         run: |
           test "$(uname -m)" = x86_64
           test "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 0
           sw_vers > host.txt
           xcodebuild -version >> host.txt
-          cmake -S failing-source -B failing-source/build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DANAMORPH_BUILD_STANDALONE=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DANAMORPH_BUILD_NUMBER=1957 > configure.log 2>&1
-          cmake --build failing-source/build --target Anamorph_AU > build.log 2>&1
-          dsymutil failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component/Contents/MacOS/Anamorph || true
+          BIN=retained/failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component/Contents/MacOS/Anamorph
+          echo "4f574ba6542c07b79c9d772ceb951ffbab54b81bfdcfe4ad3c83992ee7cc258a  $BIN" | shasum -a 256 --check
+          chmod 755 "$BIN"
       - name: Prepare pinned validator and disposable AU registration
         id: prepare
         run: |
@@ -49,7 +42,7 @@ jobs:
           DEST="$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
           test ! -e "$DEST"
           mkdir -p "$(dirname "$DEST")"
-          cp -R failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST"
+          cp -R retained/failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST"
           killall -9 AudioComponentRegistrar 2>/dev/null || true
           echo "pluginval=$PLUGINVAL" >> "$GITHUB_OUTPUT"
           echo "bundle=$DEST" >> "$GITHUB_OUTPUT"
@@ -71,7 +64,7 @@ jobs:
             configure.log
             build.log
             reconstructed-au.sha256
-            failing-source/build/Anamorph_artefacts/Release/AU/
+            retained/
       - name: Remove disposable AU
         if: ${{ always() && steps.prepare.outcome == 'success' }}
         run: rm -rf "${{ steps.prepare.outputs.bundle }}"

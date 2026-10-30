@@ -40,3 +40,16 @@ The original full Build matrix remains active and unchanged. The existing 0.10.0
 tag and unpublished draft retain their verified identities; this investigation
 does not replace or publish the release. Root-cause and regression records follow
 the actual native evidence; no speculative production change is made.
+
+### Observer liveness correction
+
+First diagnostic run 41010691687 reconstructs the thin AU and the native canary
+does stop on bad_function_call/SIGABRT. LLDB batch mode then skips ordinary `-o`
+commands after a crash, so no result marker/full stack was emitted; the liveness
+assertion correctly rejected the observer before any product campaign.
+The driver now uses LLDB's `-k` crash hooks as well as normal-exit commands.
+The next run retrieves retained artifact 12957996229 (API/archive SHA-256
+`94b8543ef4af3a66fe77f24edb8e96fa623fb3481eb56ca8bae76bca19d816d6`),
+and additionally verifies the AU binary's independently measured SHA-256
+`4f574ba6542c07b79c9d772ceb951ffbab54b81bfdcfe4ad3c83992ee7cc258a`.
+It reuses those exact reconstructed bytes instead of silently rebuilding them.
