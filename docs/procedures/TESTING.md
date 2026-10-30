@@ -5857,7 +5857,7 @@ constructor that installs it — logs `pluginval received <signal>, exiting imme
 `std::_Exit (SIGKILL)`. SIGKILL is 9, so a macOS crash arrives as **exit 9**, and this script called
 it a plug-in that failed validation. Observed on PR #141 (run 34019453055, job `macos`, AU randomise
 pass 2/3): all 25 tests passed, pluginval printed `SUCCESS`, and only then came a
-`std::bad_function_call` in pluginval's own teardown — reported as "real validation failure, not a
+`std::bad_function_call` after test completion — reported as "real validation failure, not a
 crash", the furthest-apart verdict this gate can reach.
 
 `classify_pass_exit` now returns `pass`, `crash` or `fail` from the host, the exit code **and**

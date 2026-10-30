@@ -155,6 +155,9 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `tests/state_hardening_tests.h` | State tests 142–146 and focused non-finite/F9 probes, included after the existing state fixtures in the same console target. |
 | `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
 | `worklogs/RELEASE_READINESS_0.10.0.md` | Original draft provenance, current P1 decision/diagnostic evidence, required approvals and guarded replacement/recovery plan. |
+| `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md` | Native Intel AU post-SUCCESS abort investigation; exact failure/seed, missing throw-stack evidence and bounded native diagnosis. |
+| `scripts/diagnose-au-teardown.py` | Nonshipping bounded LLDB observer, inert outcome controls and actual empty-function throw canary; never a validation-gate substitute. |
+| `.github/workflows/au-teardown-diagnostic.yml` | Investigation-branch-only reconstruction of Build 1957's thin AU; official locked validator, native stacks and artifact retention. |
 | `worklogs/release-0.10.0-original/` | Internal historical original release body/metadata, annotated tag/tagger, manifest and checksums; no replacement binaries. |
 | `worklogs/release-0.10.0-p1/` | Candidate validation/human-attestation provenance and the executed replacement draft record: tag/source/run identities, all 11 asset hashes and fresh same-run payload verification. |
 | `scripts/check-release-notes.py` | Current-version extraction/content guard with same-job positive/negative liveness controls; optional downloaded-notes input. |

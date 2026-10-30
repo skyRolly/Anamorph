@@ -12,6 +12,12 @@ Operational status snapshot for technical handover. Update on every release
 (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`). Facts are Verified from the repository;
 fields with no repository evidence are marked `TODO` rather than invented (constraint C7).
 
+**Active CI investigation (2026-10-30):** Build 1957's native Intel AU randomise
+pass 2/3 aborts after SUCCESS with bad_function_call. Later main Build 1959 passes
+the same production source; ownership remains unproven without a throw stack.
+See `worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md`. The validated 0.10.0 tag/draft
+are unchanged and unpublished; no crash retry or conformance gate is relaxed.
+
 **Current snapshot: 2026-10-30, 0.10.0 P1 draft replacement complete; unpublished.**
 PR #187 merged at `b085c87d139f124e33a525e75ec13b8218c96f06` with Accepted ADR-0067/0068 and the owner's
 targeted human-completion attestation of 2026-10-30. Runtime source is unchanged from the

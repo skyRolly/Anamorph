@@ -1,5 +1,13 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Build 1957 native Intel AU throw-stack investigation (2026-10-30)
+
+CI_CD/TESTING qualify the historical post-SUCCESS abort's unproven ownership.
+The new branch-scoped diagnostic workflow and driver are indexed in REPOSITORY_MAP;
+the worklog records exact failure/seed/provenance and bounded observer liveness.
+Normal validation and release gates remain unchanged; no root cause or fix is
+claimed before a throw stack is retained.
+
 ## 0.10.0 P1 draft replacement completed (2026-10-30)
 
 README/HANDOVER, RELEASE_PROCESS, Level-5 and compatibility records now reflect the actual

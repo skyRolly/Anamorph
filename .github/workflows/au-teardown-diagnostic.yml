@@ -1,0 +1,77 @@
+name: Native Intel AU teardown diagnosis
+
+# One investigation branch; never a release/validation substitute.
+on:
+  push:
+    branches: [fix/ci1957-au-teardown]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 14237044cb51a80db5656461543c92a066c97ac0
+          path: failing-source
+      - name: Install native build tools
+        run: brew install ninja ccache
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-macos-intel-au-diagnostic-${{ github.run_id }}
+          restore-keys: ccache-macos-intel-
+      - name: Reconstruct failing thin AU without modifying its source
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_COMPILERCHECK: content
+        run: |
+          test "$(uname -m)" = x86_64
+          test "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+          sw_vers > host.txt
+          xcodebuild -version >> host.txt
+          cmake -S failing-source -B failing-source/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DANAMORPH_BUILD_NUMBER=1957 > configure.log 2>&1
+          cmake --build failing-source/build --target Anamorph_AU > build.log 2>&1
+          dsymutil failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component/Contents/MacOS/Anamorph || true
+      - name: Prepare pinned validator and disposable AU registration
+        id: prepare
+        run: |
+          python3 scripts/diagnose-au-teardown.py --self-test
+          PLUGINVAL="$(python3 scripts/acquire-pluginval.py --tools "$PWD/.tools")"
+          DEST="$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
+          test ! -e "$DEST"
+          mkdir -p "$(dirname "$DEST")"
+          cp -R failing-source/build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          echo "pluginval=$PLUGINVAL" >> "$GITHUB_OUTPUT"
+          echo "bundle=$DEST" >> "$GITHUB_OUTPUT"
+          shasum -a 256 "$DEST/Contents/MacOS/Anamorph" > reconstructed-au.sha256
+      - name: Prove debugger liveness and capture bounded failing-seed campaign
+        run: >-
+          python3 scripts/diagnose-au-teardown.py
+          --pluginval "${{ steps.prepare.outputs.pluginval }}"
+          --bundle "${{ steps.prepare.outputs.bundle }}"
+      - name: Retain native throw stacks and reconstructed bytes
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-native-Intel-AU-teardown
+          if-no-files-found: error
+          path: |
+            au-teardown-evidence/
+            host.txt
+            configure.log
+            build.log
+            reconstructed-au.sha256
+            failing-source/build/Anamorph_artefacts/Release/AU/
+      - name: Remove disposable AU
+        if: ${{ always() && steps.prepare.outcome == 'success' }}
+        run: rm -rf "${{ steps.prepare.outputs.bundle }}"

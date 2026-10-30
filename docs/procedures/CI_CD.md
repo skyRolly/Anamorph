@@ -1034,7 +1034,7 @@ line and calls `std::_Exit (SIGKILL)`. SIGKILL is 9, so a macOS crash arrives *b
 threshold and was announced as a plug-in that failed validation. Observed on
 [PR #141](https://github.com/skyRolly/Anamorph/pull/141) (run 34019453055, job `macos`, AU randomise
 pass 2/3): all 25 tests passed, pluginval printed `SUCCESS`, and only then did a
-`std::bad_function_call` in its own teardown produce `(exit 9) -- real validation failure, not a
+`std::bad_function_call` after test completion produce `(exit 9) -- real validation failure, not a
 crash.` The line is matched on **every** host, not on Darwin alone, because gating proof of a crash
 behind a platform check is the defect itself; a bare exit 9 counts only on Darwin, where it is that
 handler's signature and pluginval otherwise exits 0 or 1.
@@ -1048,6 +1048,14 @@ a crash. `run-pluginval.sh --self-test` proves the decision live in `source-lint
 `scripts/preflight.sh` — 22 cases over recorded strings and a stand-in validator, including the
 verbatim tail of the run above. Evidence [Verified]: `scripts/run-pluginval.sh`;
 `scripts/run-pluginval.ps1`; `docs/procedures/TESTING.md` §What counts as a crash.
+
+Build 1957 repeats this post-SUCCESS AU abort on native Intel (run 41005362987,
+job 123898933769, randomise pass 2/3, seed `0x3e1c70`). The retained tail does not
+establish whether the throw originates in pluginval, a framework or the plug-in.
+The branch-scoped `au-teardown-diagnostic.yml` reconstructs that source, validates
+the LLDB observer with an actual bad_function_call canary and retains bounded
+native stacks. It changes no ordinary gate or retry. See
+`worklogs/CI_1957_NATIVE_INTEL_AU_TEARDOWN.md` and `scripts/diagnose-au-teardown.py`.
 
 ### The Clang warning baseline
 
