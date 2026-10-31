@@ -30,14 +30,17 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
-The 2026-10-31 Linux correction is governed by proposed
+The 2026-10-31 Linux correction is governed by Accepted
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):
 VST3-only installation, portable Standalone and preservation of legacy desktop resources.
 The owner authorized implementation/validation/PR preparation, with human review
 and manual merge required. A later read-only snapshot verifies PR #193 merged at
 `4c13688` and the rebuilt unpublished 0.10.0 draft from Release run 41173229942.
-The ADR still records Proposed; final lifecycle reconciliation must not be inferred
-from CI. Current identities, remaining decisions and stable forward work-item IDs are in
+Final owner confirmation recorded 2026-10-31 (Asia/Shanghai) explicitly approves all
+relevant ADRs and attests real-machine testing completed/approved. This is the authority
+for ADR-0069 acceptance and NR-001/002 closure, not an inference from CI or merge.
+Detailed host matrix NR-003 is Deferred; unsupplied individual cases remain unverified.
+Current identities, remaining decisions and stable forward work-item IDs are in
 [`worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md),
 a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.
@@ -119,16 +122,18 @@ main ancestry are recorded in `architecture/design-decisions/ADR_INDEX.md` under
 2026-10-24 reconciliation. The earlier implementation permission and dated evidence remain
 historical; unperformed runtime/manual validation is not converted into a pass.
 
-Accepted ADR-0065 records the separately authorized Linux desktop resource contract;
+Historically Accepted ADR-0065 records the separately authorized Linux desktop resource contract;
 the owner's direct confirmation on 2026-10-25 completes human architecture/ADR
 approval, including the delivered helper snapshot amendment. Worklogs remain evidence.
 Implementation is effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
+It is now Superseded by Accepted ADR-0069, effective through PR #193 at `4c13688`.
 Future Composer work and native visual certification remain separate.
 The existing ADR directory/index and procedures remain the navigation/authority path.
 
 Installed-receipt decision: [ADR-0066](architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
 confirmation on 2026-10-25. PR #174 merged as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`;
 its installed-receipt implementation is effective on main. ADR-0065 and its
-helper amendment are also effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
+helper amendment were implemented through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`;
+that historical Linux contract is superseded by ADR-0069/PR #193.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.

@@ -1,11 +1,11 @@
 # ADR-0065 — Owned Linux desktop/hicolor resource installation
 
-**Status:** Superseded for the proposed corrected 0.10.0 candidate by
+**Status:** Superseded for corrected 0.10.0 by
 [ADR-0069](ADR-0069-linux-plugin-only-installation.md), on the owner's explicit
-2026-10-31 instruction to remove Linux desktop installation. ADR-0069 and the
-implementation await human PR review and manual merge. The following acceptance,
-implementation and runtime records remain historical evidence for the existing
-0.10.0 tag/release; this task does not change those objects.
+2026-10-31 instruction to remove Linux desktop installation. ADR-0069 is Accepted
+on the owner's final approval recorded 2026-10-31 (Asia/Shanghai), and PR #193 is
+merged at `4c13688`. The following acceptance, implementation and runtime records
+remain historical desktop-era evidence; the current 0.10.0 tag/draft use ADR-0069.
 
 Original acceptance: owner confirmation on 2026-10-25, including protected-helper
 capture. This history is not approval of the replacement candidate.

@@ -158,11 +158,12 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
    green self-test with a moved hazard guards something that is no longer there.
 
-## Linux plugin installer gate (proposed ADR-0069 correction)
+## Linux plugin installer gate (Accepted ADR-0069)
 
 The owner's 2026-10-31 instruction authorizes VST3-only Linux installation,
-portable Standalone and preservation of legacy resources in corrected 0.10.0, with human
-PR review/manual merge required. Source/package liveness and native integration
+portable Standalone and preservation of legacy resources in corrected 0.10.0. The owner
+confirmed final ADR approval and real-machine completion on 2026-10-31; PR #193 is
+merged. Detailed host matrix NR-003 is Deferred, not passed. Source/package liveness and native integration
 remain mandatory. The desktop publication feature and its test-only dependencies
 are retired; shared native icons and other-platform gates are unchanged.
 

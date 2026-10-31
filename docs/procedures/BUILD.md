@@ -17,8 +17,8 @@ generation. `GenerateMacIcon.cmake` replaces the sparse JUCE ICNS using native `
 and the 1024px source for >=64. Both PNGs and the generator are explicit build dependencies
 of every format's resource copy, before signing. Reconfigure also regenerates the corrected
 container; no manual bundle copy, external icon checkout or downloaded ICNS is required.
-The 10.13 deployment target and all compiler/JUCE settings remain unchanged. Linux's ELF
-and separately approved desktop resources are unchanged. Launchpad cache/display observation
+The 10.13 deployment target and all compiler/JUCE settings remain unchanged. Linux's ELF icon behavior is unchanged; Accepted ADR-0069 removes desktop publication
+and keeps Standalone portable. Launchpad cache/display observation
 and Icon Composer authoring remain distinct. See the dated fallback amendment in ADR-0062.
 
 On multi-config Windows builds, JUCE creates `desktop.ini` directories for configurations

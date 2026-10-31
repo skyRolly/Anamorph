@@ -1,10 +1,10 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Status:** Ready for Review — planning only.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** execution active.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
-**Scope:** documentation, read-only source/history/API inspection and existing checkers.
-No product, test, build, version, tag or release changes are part of this assignment.
+**Original investigation scope:** documentation, read-only inspection and existing checkers;
+no product or release changes. Later execution is separately authorized as recorded below.
 
 This is the current **forward execution register**. It replaces the forward priorities in
 the older product-readiness/global-review roadmaps and the historical residual list in
@@ -14,10 +14,57 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
+## PR #195 review disposition — 2026-11-01 (Asia/Shanghai)
+
+Owner handoff findings accepted with two precision corrections: the malformed ADR-0065
+row contains **four**, not five, cells under three headings; RELEASE_PROCESS's obsolete
+paragraph refers to the Linux correction context rather than naming #193 explicitly.
+Both defects are real. The index now preserves historical acceptance/helper amendment,
+PR #175 implementation and supersession by Accepted ADR-0069/PR #193 in the intended
+columns. A same-file audit also found and escaped ADR-0050's pre-existing `||` table
+separator. SOURCE_OF_TRUTH now labels its older desktop effectivity as historical.
+
+Release instructions now distinguish completed #193 merge at `4c13688`, Release 7
+run 41173229942 and draft 429760301 replacement from current verification and future
+authorized operations. Fresh PR/tag/run/release APIs confirm that history, all 11
+assets and unpublished status; no rebuild or release modification was performed.
+Historical approval/manual records remain intact. NR-003 remains Deferred.
+
+At review start all four PRs had no submitted reviews, inline threads or conversation
+comments through the GitHub APIs; the owner's findings are tracked here regardless.
+Existing heads `f64f9d1` → `4a431ca` → `017a2e4` → `ccf1743` were preserved locally.
+Repairs are additive and descendants will merge their updated parents without
+rewriting shared history. This branch's review correction commit identifies its head;
+final stack heads/CI evidence will be recorded in #198's handoff and PR discussions.
+All four PRs must remain open and unmerged. No auto-merge, release operation or next
+implementation batch is authorized; explicit owner merge authorization is required.
+
+## Current execution — owner decisions recorded 2026-10-31 (Asia/Shanghai)
+
+Execution base: `6ae102ca72d83eb07c0a84d76465b26c457cdc16` (merged PR #194);
+product/test/packaging/build/workflow inputs equal the investigated `4c13688` candidate.
+The owner explicitly confirms all relevant ADRs manually approved and real-machine
+testing manually completed and approved. This is the authority for NR-001/002 closure.
+ADR-0069 becomes Accepted; ADR-0065 remains Superseded. Other existing ADR lifecycle
+states are preserved; no unwritten future architecture is pre-approved.
+
+**NR-001 Completed; NR-002 Completed; applicable NR-016 Completed** in the owner-decision
+review branch. Integration is pending human review/merge. Real-machine results are
+recorded as owner-attested; actual test dates, hosts/versions, hardware, format/device,
+individual outcomes and selected tested-artifact hashes remain NOT RECORDED.
+**NR-003 Deferred** by explicit owner instruction; no unexecuted matrix case is passed.
+These decisions supersede the initial missing-approval/manual-evidence observations below.
+
+Current next actionable item: **NR-022**, headless verification of pending Undo across A/B.
+NR-004/005/007 retain their recurrence triggers. NR-013 still needs a pinned reproducing
+REAPER environment; the general real-machine attestation does not prove that specific
+reported focus failure fixed. NR-018/019 owner/legal/provisioning blockers remain.
+No PR merge, tag change, release modification or publication is authorized.
+
 ## 1. Recommendation
 
 **Keep 0.10.0 as the next release candidate. It is already tagged and rebuilt, but not published.**
-Close the current Linux decision/manual-evidence gaps before proposing publication; do not repeat
+The Linux decision/manual gates are now closed by the owner confirmation above; do not repeat
 the completed P1 fixes, automatically rebuild the draft, or bump a version merely to start work.
 No confirmed P0 defect was established. There are **22 forward items: P0 0 / P1 3 / P2 16 / P3 3**.
 These count decision, validation and enhancement work as well as investigations; they are not
@@ -245,9 +292,9 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 
 | ID | Priority | Status | Kind / disposition | Phase / target |
 |---|---|---|---|---|
-| NR-001 | P1 | Ready for Review | Approval-record gap — confirm decision, then reconcile | 0 / current 0.10.0 |
-| NR-002 | P1 | Pending | Current Linux acceptance evidence — validate | 0 / current 0.10.0 |
-| NR-003 | P2 | Pending | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
+| NR-001 | P1 | Completed | Approval-record gap — confirm decision, then reconcile | 0 / current 0.10.0 |
+| NR-002 | P1 | Completed | Current Linux acceptance evidence — validate | 0 / current 0.10.0 |
+| NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
 | NR-006 | P2 | Pending | Scope overwrite/thread contract — decision before correction | 1 / architecture phase |
@@ -260,7 +307,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
-| NR-016 | P2 | Pending | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
+| NR-016 | P2 | Completed | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
 | NR-017 | P2 | Pending | Warning/scanner evidence inventory — classify, no blanket cleanup | 2 / engineering debt |
 | NR-018 | P1 | Blocked | Public/commercial distribution decisions — owner/legal | 0 decision / commercial lane |
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
@@ -270,36 +317,36 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 
 ### NR-001 — Close the Linux architecture/approval record
 
-- **Evidence/status/confidence:** Verified record gap: proposed ADR-0069/index, Accepted historical
-  ADR-0065, merged #193 and current tag annotation. Implementation/review/merge occurred; explicit
-  final ADR lifecycle reconciliation is absent. Current code is not proposed for reversal.
-- **Impact/risk:** confusing the old desktop contract with the current installer can authorize
-  wrong follow-up work. Documentation correction is low risk; silently inferring approval is not.
-- **Approach/order:** first item. Present the exact preservation contract/current source to the
-  owner; record an already available explicit final approval or obtain it, then minimally update
-  ADR-0069/index and supersession references. Do not infer it from CI or this roadmap's review.
-- **Acceptance/validation:** explicit dated approver/source and ADR status agree; ADR-0065 history
-  stays intact; no “awaiting merge/rebuild” claim remains as current where evidence proves it done.
-  Run docs/citation checker self-tests/checks and whitespace checks. **Human architecture review
-  required.** Target current 0.10.0; NR-002 may collect evidence independently, NR-021 depends on closure.
+- **Completed on owner authority:** explicit 2026-10-31 (Asia/Shanghai) confirmation that all
+  relevant ADRs were manually approved. ADR-0069/index now record Accepted; ADR-0065 remains
+  Superseded with original acceptance/history intact. PR #193 is already effective at `4c13688`.
+- **Evidence/confidence:** Verified approval provenance (the direct continuation instruction),
+  ADR text/index and merged ancestry. Approval is not inferred from CI or merge.
+- **Acceptance/validation:** current decision/navigation agree; applicable obsolete pre-merge/
+  rebuild claims corrected under NR-016. Docs/citation/self-test and whitespace checks required
+  on this review branch. Human approval is supplied; integration still awaits manual review/merge.
+- **Disposition/target:** completed documentation reconciliation for current 0.10.0; no product,
+  architecture design, version or release operation. NR-002's attestation is recorded separately.
 
 ### NR-002 — Certify the changed Linux install workflow in a real host
 
-- **Evidence/status/confidence:** Verified native shell/package behavior (§2.4), but **Unverified**
-  current-candidate DAW discovery/desktop observations. Prior original/P1 manual attestations do
-  not specifically certify #193; no later targeted human record was found.
-- **Impact/risk:** users must load the intended version without chmod/chown or scan-path ambiguity;
-  old launchers/Standalone copies intentionally persist. Manual testing must not delete user data.
-- **Approach/dependencies:** use the verified §2.4 ZIP/hash, user install into normal 0775 icon
-  ancestry, DAW scan/load, reinstall/removal; system-mode/coexisting-copy checks on an authorized
-  disposable machine. Observe preserved legacy resources/portable app and document manual cleanup
-  limits. Do not re-run 17 native cases merely because documentation changes.
-- **Acceptance/tests:** record OS/CPU, DAW/version/format, exact artifact, discovery and loaded build,
-  fresh/reinstall/uninstall results, unchanged legacy files and coexistence observations. PASS or
-  concrete defect/reopen item; never fabricate unknown rows. **Human/native DAW testing required**;
-  NR-001 before sign-off. Current 0.10.0, before NR-021 readiness closure; no publication included.
+- **Completed by owner attestation:** “Real-machine testing has been manually completed and
+  approved by the owner,” in the continuation request for NR-001/002 after PR #194.
+- **Evidence/confidence:** Verified receipt of that approval; empirical per-case details remain
+  Unverified/NOT RECORDED. This is not testing performed by the agent. Actual test date,
+  host/OS/CPU/device/format, observations and selected tested-artifact hashes were not supplied;
+  no particular artifact is falsely attributed to the human test.
+- **Acceptance/validation:** release-readiness, Level-5 and compatibility records preserve that
+  scope separately from the existing native/asset evidence. No redundant test request; NR-003 is
+  explicitly Deferred and no unexecuted matrix row becomes PASS.
+- **Disposition/target:** completed current Linux manual gate for 0.10.0, dependent on NR-001's
+  now-supplied approval. Automated requirements and human review of this record remain intact;
+  no publication or tag/release operation is included.
 
 ### NR-003 — Establish a named host and lifecycle evidence matrix
+
+**Deferred by the owner on 2026-10-31 (Asia/Shanghai).** Detailed cases remain unexecuted/
+unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 - **Evidence/status/confidence:** Verified coverage gap: COMPATIBILITY_MATRIX and KI-004/RISK-005;
   owner attestations exist but named environments/results are NOT RECORDED. Processor I/O,
@@ -510,6 +557,11 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 
 ### NR-016 — Resolve remaining documentary contradictions without rewriting history
 
+**Applicable updates Completed in the owner-decision branch (integration pending):** final ADR
+status/supersession, live Linux references, actual tag/draft/version status, committed twin-dump
+harness and reserved-ADR navigation. Historical dated worklogs and earlier attestations remain.
+The original investigation/acceptance criteria below explain the scope of that correction.
+
 - **Evidence/status/confidence:** Verified drift enumerated in §3; COMMERCIAL_STATUS,
   REPOSITORY_MAP, RELEASE_HARDENING_PLAN and dated readiness/engineering histories.
 - **Impact/risk:** future agents can repeat fixed work, choose obsolete ADR numbers or mistake
@@ -717,7 +769,7 @@ concrete approved candidate with all required gates and disclosed residuals. Fai
 source/hash skew or missing mandatory human approval returns the candidate to the appropriate
 phase. Publication/tag/replacement requires a **new authorized execution assignment**.
 
-## 7. Recommended immediate next assignment — Batch A
+## 7. Original immediate assignment — Batch A (now completed by owner decisions)
 
 **Exact items:** **NR-001 and NR-002**, plus only the dependent decision-record corrections
 within NR-016. Do not begin runtime implementation or release operations.
@@ -780,8 +832,8 @@ reuses exact-source CI results and independently verifies release/native-report 
 No candidate was installed on a live workstation. No defect ownership is inferred from exception
 location, TSan silence, runner success or a diagnostic timeout.
 
-Open decisions are explicit: final ADR-0069 lifecycle record (NR-001), targeted changed-Linux human
-acceptance (NR-002), supported named host scope (NR-003), ScopeBuffer publication contract (NR-006),
+NR-001/002 are now closed by explicit owner confirmation. The named host scope/matrix (NR-003)
+is Deferred. Remaining decisions include the ScopeBuffer publication contract (NR-006),
 additional parser restrictions/coherent multiband model only if selected (NR-008/009), and public/
 commercial/signing/product choices (NR-018/019/020). A current supported-host failure would change
 priorities immediately; none was established by this assignment. The only ongoing API access limit
@@ -800,7 +852,7 @@ authorized assignment; the investigation PR stops at human review.
 
 | Date (UTC) | Item(s) | Progress / evidence | Remaining gate |
 |---|---|---|---|
-| 2026-10-31 | Investigation | Baseline `4c13688`, API/review/CI/source reconciliation, 11 release assets and three native evidence archives inspected; forward register prepared. Documentation-only branch/PR records its commit identity. | Human review of this roadmap; Batch A has **not started** |
+| 2026-10-31 | Investigation | Baseline `4c13688`, API/review/CI/source reconciliation, 11 release assets and three native evidence archives inspected; forward register prepared. Documentation-only PR #194 merged as `6ae102c`. | Initial investigation complete; later execution recorded below |
 
 ### Roadmap quality review
 
@@ -819,3 +871,11 @@ check 177 files clean; `check-citations.py --self-test` 276 cases and `--check -
 register review found 22 unique IDs/cards and the stated priority counts. The existing docs
 checker emits Python invalid-escape SyntaxWarnings at script lines 18/2106; both invocations
 exit 0 and no checker was modified. No product implementation is part of this plan.
+
+### Execution update — owner decisions / NR-016
+
+| Recorded (Asia/Shanghai) | Items | Authority / result | Remaining gate |
+|---|---|---|---|
+| 2026-10-31 | NR-001, NR-002 | Direct owner continuation instruction after merged #194: all relevant ADRs manually approved; real-machine testing completed/approved. Existing ADR-0069 Accepted; no fabricated test details. | Review/merge of the documentation record only; no repeat owner approval requested |
+| 2026-10-31 | NR-003 | Owner explicitly defers detailed host/test matrix. | Later scoped assignment; unexecuted cases remain unverified |
+| 2026-10-31 | NR-016 | Corrected live decision/version/tag/dump/navigation contradictions; preserved dated history and all engineering gates. | Documentation checker/self-test/citation/diff evidence in the review PR |

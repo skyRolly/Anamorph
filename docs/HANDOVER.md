@@ -1,13 +1,16 @@
 # HANDOVER.md
 
-**0.10.0 Linux correction in review (2026-10-31):** VST3-only installation with
-portable Standalone and preservation of legacy desktop resources is a new candidate under
-proposed ADR-0069. Implementation/validation/PR preparation are authorized; human
-review and manual merge are required. No tag or release edit/publication is authorized
-in this task. After merge, rebuild 0.10.0 from the exact merged source, repeat applicable
-release/native gates and targeted Linux manual checks, then replace the existing
-0.10.0 release only under separate authorization. Prior completed P1 evidence below
-is historical and does not certify the corrected Linux candidate.
+**Owner-decision reconciliation — 2026-10-31 (Asia/Shanghai):** ADR-0069 is Accepted;
+ADR-0065 remains Superseded. The owner explicitly confirms all relevant ADRs manually
+approved and real-machine testing completed and approved. NR-001/002 are Completed
+on that authority. Actual test dates, hosts/versions, OS/CPU, devices, scenario results
+and selected artifact hashes were not supplied and are NOT RECORDED. Detailed host
+matrix NR-003 is Deferred; its unexecuted cases are not passed.
+
+PR #193 is merged at `4c13688`; the unchanged 0.10.0 draft 429760301 contains that
+source from Release 7 / run 41173229942. No merge or release operation is authorized
+here. The current execution register is `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`;
+the release-readiness worklog preserves earlier original/P1 attestations separately.
 
 **Historical governance reconciliation (record updated 2026-10-24, Asia/Shanghai):** native JUCE
 ADR-0062 remains Accepted; namespace ADR-0063 and Windows installer ADR-0064 are Accepted

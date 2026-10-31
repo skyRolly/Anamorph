@@ -281,23 +281,38 @@ is allowed; normal signing/release authorization remains unchanged.
 
 ## Linux 0.10.0 correction and replacement boundary
 
-The candidate Linux scripts install only VST3; Standalone remains portable. The ZIP
+The current 0.10.0 Linux scripts install only VST3; Standalone remains portable. The ZIP
 contains no desktop helper/assets, desktop entries or AppStream metadata. Mandatory
 source/staged package checks and real-UID/sudo native installation,
 interruption/retry and preservation tests must pass before customer upload. See
-PACKAGING, TESTING and proposed ADR-0069 for the legacy resource preservation contract.
+PACKAGING, TESTING and Accepted ADR-0069 for the legacy resource preservation contract.
 The staged package checker requires mode `0755` on both shell scripts, portable
 Standalone and the VST3 module before upload; release ZIP permission restoration
 does not substitute for this check.
 
-These corrections remain in 0.10.0 and update its changelog section. The existing
-0.10.0 tag and GitHub Release are deliberately unchanged by the PR task. The task
-ends with a validated PR for human review and manual merge, including review of
-the ADR-0065 reversal. After approval/merge, rebuild all release artifacts from the
-exact merged commit, run the normal mandatory release/native gates and targeted
-Linux manual checks, then obtain separate authorization to replace 0.10.0. Earlier
-tag/release replacement authorization and prior manual approvals do not authorize
-this later replacement or certify the changed Linux workflow.
+**Completed history:** PR #193 merged as `4c136881f245470577d66a7603f15b177ddcf3dc`.
+The annotated `0.10.0` tag already points to that source; normal
+[Release run 41173229942](https://github.com/skyRolly/Anamorph/actions/runs/41173229942)
+(build 7) rebuilt the artifacts in unpublished draft **429760301**. ADR-0069 is
+Accepted and ADR-0065 Superseded. The owner's separate real-machine completion
+attestation closes NR-002; unsupplied test metadata and detailed NR-003 cases remain
+NOT RECORDED/Deferred. See [release readiness](../../worklogs/RELEASE_READINESS_0.10.0.md)
+and the [execution register](../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+The merge, rebuild and draft replacement above are historical operations, not
+outstanding instructions to repeat them.
+
+**Current verification:** before owner release consideration, refresh the exact
+tag/source/draft/asset identities, source-applicable automated release/native gates
+and recorded manual-attestation scope against those records. Do not infer that a
+later development PR's CI validates the existing draft's bytes, or invent missing
+per-host results. The current review task leaves the tag, draft and assets unchanged.
+
+**Future release or replacement:** obtain new owner authorization for the intended
+release operations. For an authorized new candidate, build from the exact approved
+source, run the normal mandatory release/native gates and applicable targeted manual
+checks, and verify its manifest and asset hashes. Earlier approvals do not certify
+changed binaries or authorize a new tag/draft replacement or publication. Publication
+requires its own explicit owner authorization under RELEASE_POLICY.
 
 ## Native installed-receipt smoke test
 

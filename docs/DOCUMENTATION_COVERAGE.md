@@ -1,5 +1,52 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #195 review corrections — 2026-11-01 (Asia/Shanghai)
+
+Confirmed the ADR-0065 approval row had four cells under three headings; restored
+record/status/effectivity columns while retaining its 2026-10-25 acceptance, helper
+amendment, PR #175 implementation and supersession by Accepted ADR-0069/PR #193.
+Escaped the pre-existing ADR-0050 `||` in the same index so GFM retains four columns.
+SOURCE_OF_TRUTH's desktop-era effectivity paragraphs now identify that history and
+the current supersession explicitly.
+
+RELEASE_PROCESS now separates completed #193 merge/Release 7 draft replacement,
+read-only current-candidate verification, and future separately authorized release
+operations. Evidence: merged #193 at `4c13688`, annotated tag `1190e455`, successful
+run 41173229942 and unchanged unpublished draft 429760301 with 11 assets. Missing
+manual metadata remains NOT RECORDED and NR-003 Deferred. Roadmap records the review.
+Validation: existing documentation/citation checker pairs, table structure, local
+links/anchors, ADR lifecycle/ancestry and whitespace; final-head CI remains a separate
+check. No source, tests, engineering requirement or release object changes.
+
+## Owner approval and real-machine attestation — 2026-10-31 (Asia/Shanghai)
+
+Source: the owner's continuation request after merged PR #194. The owner explicitly
+confirms all relevant ADRs manually approved and real-machine testing completed and
+approved; detailed host/test matrix NR-003 is expressly Deferred. Recorded NR-001/002
+Completed, ADR-0069 Accepted and ADR-0065 Superseded. Other existing ADR lifecycle
+states remain intact; this does not approve an unwritten future design.
+
+Recorded the attestation separately from CI and historical original/P1 validation
+in release-readiness, LEVEL5_AUDITION and RELEASE_COMPATIBILITY_CHECKLIST. Actual
+human test dates, host/OS/CPU/device/format, per-case outcomes and selected tested
+artifact hashes were not supplied and remain NOT RECORDED. No unexecuted matrix
+case is passed; no redundant real-machine approval is requested.
+
+Applicable NR-016 corrections reconcile live Linux approval/effectivity references,
+COMMERCIAL_STATUS's version/tag status, the committed twin-dump harness and reserved
+ADR navigation. Legal terms, commercial decisions and historical dated evidence are
+unchanged. README, HANDOVER, SOURCE_OF_TRUTH and REPOSITORY_MAP point to current scope.
+The roadmap records execution after `6ae102c` and selects NR-022 next; review-branch
+completion does not claim main integration. Tests/checker requirements are unchanged.
+
+**Documents touched:** roadmap/readiness worklogs, ADR-0065/0069/index, README,
+HANDOVER/SOURCE_OF_TRUTH/REPOSITORY_MAP/COMMERCIAL_STATUS, BUILD/PACKAGING/
+RELEASE_PROCESS/LEVEL5_AUDITION/RELEASE_COMPATIBILITY_CHECKLIST, TESTING_POLICY's
+approval provenance, RELEASE_HARDENING_PLAN and this audit. **Unchanged:** product,
+tests, build/workflow configuration, version, changelog, tag/releases and legal files.
+Validation: documentation/citation checker self-tests and checks, scope/whitespace
+review; exact results are recorded in the review PR.
+
 ## Next-release investigation and execution register (2026-10-31 UTC)
 
 Added `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md` as the current forward plan,

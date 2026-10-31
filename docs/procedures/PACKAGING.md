@@ -324,7 +324,7 @@ presets stay intact.
 `tests/linux_install_native_tests.py` requires real UID/root/sudo execution in
 disposable hosted-VM mount/PID/network roots, with no host security-setting changes.
 Its full successful result is required for the Linux customer artifact. Recorder/plan
-tests cannot replace that native result. See proposed ADR-0069 and TESTING for limits.
+tests cannot replace that native result. See Accepted ADR-0069 and TESTING for limits.
 
 ## Native installed-receipt smoke test
 
