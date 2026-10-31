@@ -1,5 +1,40 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #198 independent inventory review — 2026-11-01 (Asia/Shanghai)
+
+Re-downloaded/digest-verified all three baseline SARIF archives and matched all
+257 primary-result tuples with multiplicity to the unchanged CSV. Source context,
+ownership and rule counts support the recorded retain/investigate dispositions.
+Clarified that primary location/blank reported level is the export boundary;
+related locations, flows and rule severity metadata remain in the original SARIF.
+The inventory now includes an executable stdlib-only reproduction recipe. Retried
+alert-state access: HTTP 403, so state remains unknown. The roadmap/PR ledger records
+current stack heads, review dispositions, validation limits and the explicit owner
+merge gate. Source/tests/build/gates/CSV/release remain unchanged by this review.
+
+## NR-017 — source-bound diagnostic inventory (2026-10-31, Asia/Shanghai)
+
+Added `worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md` and the 257-row
+`NR017_BASELINE_DIAGNOSTICS.csv`, with unique snapshot IDs, exact tool/artifact/source,
+rule/level/URI/line/column/message and disposition. Independently downloaded three
+main-baseline SARIF archives from runs 41167465482/41167465497 and matched API hashes.
+Remeasured counts: CodeQL C++ 65, Actions 0; PREfast 192. Reported locations split
+191 first-party tests / 66 dependencies / zero first-party runtime src locations;
+this is not a zero-defect or severity assessment. Alert state remains unavailable
+with integration HTTP 403; no open/fixed/dismissed status is fabricated.
+
+Reviewed construction/constexpr test contexts and retained stack estimates pending
+concrete frame/exposure evidence. No blanket warning cleanup, suppression, baseline,
+query or dependency-pin change is selected. CodeQL/PREfast coverage boundaries and
+new NR-022 validation limits remain explicit; its existing manual analyzer workflows
+were invoked on the exact source ref because automatic triggers filter main-base PRs.
+
+**Documents touched:** new report/CSV; roadmap NR-017 completion and next batch;
+README/SOURCE_OF_TRUTH/REPOSITORY_MAP navigation; this audit. **Unchanged:** product,
+tests/build/CI/scanner configuration, policies/ADRs, legal terms, version/tag/release.
+Validation: archive hashes, CSV extraction/count/identity/location checks,
+documentation/citation checker pairs, local links and whitespace/scope review.
+
 ## PR #197 performance-contract drift — 2026-11-01 (Asia/Shanghai)
 
 Accepted the owner's follow-up finding: PERFORMANCE_BUDGET still promised whole
