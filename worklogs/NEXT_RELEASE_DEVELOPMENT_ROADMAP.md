@@ -38,7 +38,7 @@ resolved by preserving both entries. Individual PR diffs retain their original s
 | [#195](https://github.com/skyRolly/Anamorph/pull/195) `docs/roadmap-owner-approval-2026-10-31` | `f64f9d1b3dc53a75eda8b01c4d2935a9284996cf` | `e038f23f8912a8ee591b04bec8062c493ad42052` — ADR/release-history documentation correction |
 | [#196](https://github.com/skyRolly/Anamorph/pull/196) `fix/nr022-ab-pending-undo` | `4a431cac2e32493b1d2290fb9fd8d6570b41393f` | `31ae5366eecf60e783e86051b4403df08186288c` — additive parent merge and independent review; implementation retained |
 | [#197](https://github.com/skyRolly/Anamorph/pull/197) `docs/nr006-scope-publication-review` | `017a2e458dce498aa647c087361c8b6702c7fbe1` | `57e11d0bce10dc4dd5f4f524f9454fdfc265bb75` — additive parent merge and ScopeBuffer policy/architecture correction |
-| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | This worklog-bearing merge commit, with exact SHA in the linked PR ledger — repaired parent plus inventory reproduction/clarification and final handoff |
+| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | Review merge `726a964d62d4542b1143b0d4dabc034839ec71d6` plus this final documentation-record commit; exact head in the linked PR ledger — repaired parent, inventory reproduction/clarification and handoff |
 
 ### Findings and dispositions
 
@@ -83,7 +83,9 @@ it was not repaired or relabelled by this Clang result. No new aggregate full-pr
 pass is claimed.
 
 Applicable local checks include docs **700** self-tests / **179** files, citations
-**276** self-tests / **610** anchors against main and repaired parents, GFM table widths
+**276** self-tests / **798** anchors against main and repaired parents (#195 alone:
+610 anchors). These are the actual refreshed counts, separate from the earlier
+checkpoint's reported 610. Checks also cover GFM table widths
 (with original-defect controls), local links/heading anchors, ADR lifecycle/ancestry,
 whitespace and unchanged implementation/CSV comparisons. Realtime **97**, dispatch **52**,
 portability **120**, state coverage **110** self-tests and their ordinary scans passed;
