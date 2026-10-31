@@ -46,6 +46,8 @@ a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.
 The NR-006 [ScopeBuffer review packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md)
 is supporting developer evidence, not an approved replacement for the threading policies.
+The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
+its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).

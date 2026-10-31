@@ -66,6 +66,8 @@ Anamorph/
 
 Current ScopeBuffer decision evidence: [`worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md`](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md), supporting roadmap NR-006; no runtime implementation or architecture approval.
 
+Current static-diagnostic evidence: [`worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md`](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) with the source/run-bound CSV; roadmap NR-017 owns progress.
+
 ## `src/` — wrapper + GUI
 
 | File | Responsibility |

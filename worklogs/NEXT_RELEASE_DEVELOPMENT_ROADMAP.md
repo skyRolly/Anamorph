@@ -31,8 +31,10 @@ individual outcomes and selected tested-artifact hashes remain NOT RECORDED.
 These decisions supersede the initial missing-approval/manual-evidence observations below.
 
 NR-022 is now confirmed, implemented and locally validated on its separate review branch
-(commit `0e5e644`); native CI and human PR review remain pending. Next: NR-006
-architecture packet and NR-017 static-diagnostic inventory; neither authorizes speculative runtime work.
+(source correction `0e5e644`, review head `4a431ca`); remaining native/analyzer CI and
+human PR review are pending. NR-006's architecture packet is Ready for Review and
+NR-017's source-bound static-diagnostic inventory is Completed. Neither approves a new
+threading protocol. NR-011 is the next independent headless implementation increment.
 NR-004/005/007 retain their recurrence triggers. NR-013 still needs a pinned reproducing
 REAPER environment; the general real-machine attestation does not prove that specific
 reported focus failure fixed. NR-018/019 owner/legal/provisioning blockers remain.
@@ -285,7 +287,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
 | NR-016 | P2 | Completed | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
-| NR-017 | P2 | Pending | Warning/scanner evidence inventory — classify, no blanket cleanup | 2 / engineering debt |
+| NR-017 | P2 | Completed | Main-baseline diagnostic inventory/dispositions; alert state unavailable | 2 / engineering debt |
 | NR-018 | P1 | Blocked | Public/commercial distribution decisions — owner/legal | 0 decision / commercial lane |
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
@@ -560,6 +562,16 @@ The original investigation/acceptance criteria below explain the scope of that c
   Phase 2 broader drift; independent of product implementation.
 
 ### NR-017 — Inventory current static diagnostics before debt work
+
+**Completed inventory:** [NR017_STATIC_DIAGNOSTIC_INVENTORY.md](NR017_STATIC_DIAGNOSTIC_INVENTORY.md)
+and its 257-row [baseline CSV](NR017_BASELINE_DIAGNOSTICS.csv). Latest main analysis source is
+`4c13688`, runtime/build-equivalent to merged #194 main `6ae102c`. Independently verified
+artifacts contain 65 dependency C++ CodeQL / 0 Actions / 192 PREfast results. Locations split
+191 first-party tests / 66 dependencies / 0 first-party runtime src locations. Source-context
+review selects retain/investigate-on-delta dispositions, not blanket code or suppression changes.
+Alert state still returns HTTP 403 and is unknown; no vulnerability/severity conclusion is made.
+This baseline does not substitute for new NR-022 branch CI. Original scope/acceptance follows.
+
 
 - **Evidence/status/confidence:** Verified current analysis jobs pass; alert-state API 403; prior
   P1 SARIF/stack-size analysis is historical. `scripts/*warning-baseline.txt`, `codeql.yml`,
@@ -899,3 +911,40 @@ warning/ABI threshold, pluginval retry rule or engineering gate was weakened.
   `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. THREAD_MODEL now distinguishes initial
   publication from subsequent-overwrite safety. No runtime correction, new ADR
   approval or policy waiver is claimed. Proceed independently with NR-017 inventory.
+
+### NR-017 execution — 2026-10-31 (Asia/Shanghai)
+
+- Raw SARIF from main runs 41167465482 / 41167465497 was independently downloaded and
+  hashed; all 257 results have stable snapshot IDs, exact source/rule/location/message
+  and an evidence-scoped disposition in the linked CSV. C6262 remains a test stack
+  estimate; the construction and constexpr reports do not demonstrate a current
+  read-before-init or behavioral defect on the inspected paths. Dependency reachability/
+  severity remains unassessed; no alert or analyzer configuration was modified.
+- NR-017 is Completed as an inventory/triage deliverable, not as a claim that all
+  diagnostics are fixed. GitHub open/fixed/dismissed state is unavailable (HTTP 403).
+- NR-006's separate packet is [PR #197](https://github.com/skyRolly/Anamorph/pull/197),
+  parent `017a2e4`, stacked on source PR #196 / owner-decision PR #195.
+- Source PR #196's existing CodeQL/MSVC manual workflows were requested against its
+  exact ref because the automatic analyzer trigger filters require a main-base PR.
+  No workflow/gate was changed. Final run outcomes remain source-specific evidence.
+
+### Source CI checkpoint — 2026-11-01 (Asia/Shanghai)
+
+At head `4a431cac2e32493b1d2290fb9fd8d6570b41393f`, push
+[Build run 41216103432](https://github.com/skyRolly/Anamorph/actions/runs/41216103432)
+has completed Linux, Windows, Intel macOS, source lint, docs, Linux LTO, fuzz,
+TSan, realtime, Windows AVX2 A/B and macOS cross-slice jobs successfully. ARM macOS
+and sanitizers are still in progress at this snapshot; skipped conditional review jobs
+are not passed cases. PR
+[merge-check run 41216269049](https://github.com/skyRolly/Anamorph/actions/runs/41216269049)
+is successful; its event-specific scope does not replace the push matrix. Existing
+manually dispatched [CodeQL 41217038192](https://github.com/skyRolly/Anamorph/actions/runs/41217038192)
+and [MSVC 41217041554](https://github.com/skyRolly/Anamorph/actions/runs/41217041554)
+are in progress. No incomplete or skipped job is asserted to pass.
+
+**Recommended next batch:** review the prepared NR-006 contract options; implement only
+an explicitly selected/approved protocol. Independently, NR-011's bounded transient
+DSP comparison extension is the next headless engineering increment. NR-010 needs quiet,
+identified hardware for actual budgets; NR-013 needs a pinned REAPER reproducer. NR-003
+remains Deferred; NR-004/005/007 retain recurrence triggers; NR-018/019 remain owner/
+legal/provisioning work. No merge or 0.10.0 release operation is included.

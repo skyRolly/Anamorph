@@ -1,0 +1,153 @@
+# NR-017 — Static diagnostic baseline and dispositions
+
+**Recorded:** 2026-10-31 (Asia/Shanghai). **Status:** Completed inventory; review PR
+pending integration. This is an engineering evidence inventory, not a zero-defect
+claim or a vulnerability/severity assessment. Canonical progress is in
+[NEXT_RELEASE_DEVELOPMENT_ROADMAP.md](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
+## 1. Source and provenance
+
+Latest available main-branch analyzer runs at collection both target
+`4c136881f245470577d66a7603f15b177ddcf3dc`. Main at `6ae102c` adds only merged
+PR #194 documentation; source/tests/CMake/workflow inputs are identical. NR-022's
+unmerged development branch is a different candidate and needs its own CI results.
+
+| Analyzer | Run | Artifact | Independently downloaded ZIP SHA-256 |
+|---|---|---|---|
+| CodeQL C++ | [41167465482](https://github.com/skyRolly/Anamorph/actions/runs/41167465482) | [13030303164](https://github.com/skyRolly/Anamorph/actions/runs/41167465482/artifacts/13030303164), `cpp.sarif` | `a2921477cb673675df1f4606c973b48d8d69d361b0ec26a98b047792c4db30d0` |
+| CodeQL Actions | same run | [13029512075](https://github.com/skyRolly/Anamorph/actions/runs/41167465482/artifacts/13029512075), `actions.sarif` | `9b42f4a7c3050f905f9749044eb79289b00cc10957f70c522a1c02c61f68987c` |
+| MSVC PREfast | [41167465497](https://github.com/skyRolly/Anamorph/actions/runs/41167465497) | [13029797600](https://github.com/skyRolly/Anamorph/actions/runs/41167465497/artifacts/13029797600), `results.sarif` | `2afc89b5bd5b53105b81bb2886bd5c71c52cdc0d92edb8f3b0c92191e692d541` |
+
+All three archive hashes match their GitHub API digests. The complete result
+inventory is [NR017_BASELINE_DIAGNOSTICS.csv](NR017_BASELINE_DIAGNOSTICS.csv): **257
+rows with unique snapshot IDs**, tool, artifact/source identity, rule, reported level,
+exact URI/line/column, original message and explicit disposition. Duplicate sites
+reporting different members remain distinct rows. No source positions are rewritten
+to pretend this immutable snapshot came from the later NR-022 branch.
+
+The authenticated code-scanning alerts endpoint still returns **HTTP 403,
+“Resource not accessible by integration”**. Therefore open/fixed/dismissed alert
+state is **unknown**. SARIF rows are analyzer observations, not a count of open bugs.
+No alert is dismissed, fixed or suppressed by this document.
+
+## 2. Counts and coverage boundaries
+
+Evidence [Verified]: downloaded SARIF and baseline workflow configuration.
+
+| Tool / rule | Count | Reported ownership / disposition |
+|---|---:|---|
+| CodeQL `cpp/comparison-with-wider-type` | 1 | JUCE dependency; retain report, reachability/severity unassessed |
+| CodeQL `cpp/unsafe-use-of-this` | 1 | JUCE dependency; same disposition |
+| CodeQL `cpp/alloca-in-loop` | 7 | JUCE ALSA/MIDI dependency paths; same disposition |
+| CodeQL `cpp/integer-multiplication-cast-to-long` | 56 | JUCE/vendored codec/graphics dependencies; same disposition |
+| CodeQL Actions | 0 | Zero results in this artifact, not a universal workflow-safety claim |
+| PREfast `C6262` | 180 | Test functions: 127 state / 53 DSP; retain as stack estimates requiring concrete frame/exposure evidence |
+| PREfast `C26495` | 7 + 1 | Seven test construction-style reports and one JUCE VST3 wrapper report; source context inspected below |
+| PREfast `C26498` | 4 | Two DSP / two state test const-versus-constexpr style reports; retain |
+
+Totals: CodeQL C++ **65**, Actions **0**, PREfast **192**. Across nonzero results,
+**191 locations are first-party tests, 66 are dependencies, zero are first-party
+`src/` runtime locations**. This describes the artifacts, not program correctness.
+Counts happen to match the prior P1 record; they were remeasured, not copied as
+today's alert state.
+
+CodeQL manually builds/extracts the VST3 and DSP suite, not the state suite.
+Its `paths-ignore` does not remove dependencies from that compiled extraction.
+PREfast's CMake-codemodel analysis reaches the state target too, including source
+it did not compile in its ordinary Build step. Its ignored include/target paths
+cannot suppress the JUCE VST3 wrapper translation unit inside a first-party target.
+See `.github/workflows/codeql.yml`, `msvc.yml` and TESTING's raw-SARIF section.
+The scanner coverage difference must not be interpreted as contradictory results.
+
+## 3. Source-context review and selected work
+
+### Test stack estimates — C6262
+
+All 180 reports name tests, not a shipping processing function. The original
+messages/positions remain in the CSV; the largest-looking source number is not
+accepted as a measured stack frame. Existing TESTING/CI_CD records already explain
+PREfast's estimates and the separate 1 MB-stack/native/sanitizer gates. Those gates
+passed on the baseline; that does not prove every unexecuted branch fits a stack.
+
+**Disposition: retain / investigate on a concrete failure or new diagnostic delta.**
+Do not mechanically heap-convert every test, widen a warning baseline, or mark the
+reports false solely because CI passes. A selected cleanup needs target-toolchain
+frame/call-depth evidence and a stack-limit regression or equivalent discriminating
+control. NR-022's new test uses heap-owned processors and needs its own fresh CI.
+
+### Test construction reports — C26495
+
+Reviewed the exact baseline definitions and their uses in `tests/dsp_tests.cpp`:
+
+- `testForcedSwapNoDropout::Scenario` (line 1610): both array elements receive
+  `name` and `minRatio` assignments before the later iteration. Engine parameter
+  members have their declared defaults. The report does not establish an actual
+  read-before-initialization in this sequence.
+- `testRapidForcedSwapDryFill::Case` (line 1732): `Case cases[4] {}` value-initializes
+  scalar members; each scenario then supplies its name/overrides. Missing explicit
+  assignments to false-valued flags are not evidence of indeterminate values.
+- `runForcedSwapAuditProbe::Case` (line 14152): the builder assigns `name`, `from`
+  and `to` before pushing the object into the vector used by the audit.
+
+These seven construction/design diagnostics do not demonstrate a behavioral defect
+on the reviewed paths. **Retain without suppression or unrelated initialization
+churn.** Reopen if a changed path actually reads a member before setting it.
+
+The eighth C26495 is in pinned JUCE 9.0.4's
+`modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp`, `Submenu::enabled`
+(line 1826). The local construction uses `vector<Submenu>(1)` and explicit aggregate
+members on group pushes. This is dependency code; no first-party wrapper patch or
+JUCE pin upgrade is selected. The observation is not a blanket exoneration of host
+menu lifetime or of other dependency reports.
+
+### Constexpr recommendations — C26498
+
+The four messages concern `numeric_limits<float>::min`, `quiet_NaN` or `infinity`
+assigned to const test values (DSP lines 3770/3930; state lines 19300/19301).
+The recorded issue is a constexpr-style recommendation; no wrong value, state
+transition or audio consequence is established. **Retain as-is.** A larger semantic
+test change may naturally revisit the declarations, but no standalone fix is justified.
+
+### Dependency CodeQL reports
+
+All 65 retain their exact rule/location/message in the CSV. **Keep visible; do not
+filter, dismiss, relabel as fixed or upgrade the dependency merely to lower a count.**
+Reachability and security severity have not been validated here. A credible affected
+host/input path or a new report with demonstrated product impact should become a
+separately scoped investigation. A pin/toolchain/build-topology change follows its
+normal ADR and validation requirements.
+
+No currently validated new first-party runtime defect is produced by this inventory.
+This is a disposition of available engineering evidence, not a claim that the source
+or dependencies contain no vulnerabilities.
+
+## 4. Adjacent validation facts and remaining limits
+
+- Clang/GCC warning baselines, query configuration, ignored paths, annotations and
+  compiler gates remain unchanged. This CSV is not a new automated allowlist.
+- The existing Python invalid-escape SyntaxWarnings in check-docs.py are unchanged;
+  both checker invocations succeed. They are not new SARIF findings.
+- NR-022's local GCC 14 VST3/Standalone require CXXABI_1.3.15 above the shipping
+  1.3.14 floor. That rejected local artifact is not evidence that the pinned-Clang
+  release floor should rise; the shipping CI remains mandatory.
+- Stacked PR #196 targets a feature branch, so its CodeQL/MSVC workflows are not
+  selected automatically by their main-base filter. Their existing manual workflows
+  were invoked against the exact `fix/nr022-ab-pending-undo` ref (`4a431ca`) without
+  changing configuration. Native Build jobs run separately. This baseline inventory
+  does not substitute for those new-code validation results.
+- Obtaining GitHub alert state still needs suitable owner/integration access. No
+  bypass or permission change was attempted. The explicit access limit does not
+  prevent completing this raw-output inventory, as NR-017's acceptance allows.
+
+## 5. Completion and next execution
+
+NR-017's inventory acceptance is met: provenance-bearing artifacts/digests, all
+reported locations, ownership/rule groups, source-context dispositions and explicit
+limits are recorded. No bug, suppression or numerical threshold was modified.
+Human review can select further work on demonstrated impact; there is no justified
+blanket warning-cleanup PR.
+
+Next actionable engineering batch: NR-011's bounded differential transition-test
+increment, with liveness/old-new comparison controls; NR-010 measurements need a
+quiet, identified machine before numeric budgets are asserted. NR-006's new
+handoff contract remains a separate architecture review. NR-003 stays Deferred.
