@@ -6421,7 +6421,7 @@ absent before use on the disposable VM, then inspects its real shortcut targets.
 bad source fixtures reject unreviewed menu configuration changes. Failed native snapshots and
 setup-log tails are retained for diagnosis; missing shortcuts still fail the gate.
 
-## Linux VST3 installer and legacy cleanup regression
+## Linux VST3 installer and legacy preservation regression
 
 The corrected 0.10.0 candidate uses `scripts/check-linux-package.py --self-test`
 before source/staged checks. It rejects desktop/AppStream payloads, extra archive
@@ -6445,13 +6445,13 @@ python3 tests/linux_install_tests.py --staged-dir dist/Anamorph-Linux
 Local behavior tests invoke actual scripts inside Bubblewrap private roots with no
 live-path fallback. They cover fresh/repeat/upgrade/remove, both modes, portable-only
 Standalone, missing optional app payload, writable icon parents without chmod/chown,
-receipt/hash-owned legacy removal, partial cleanup retry, malformed/missing receipts,
+preservation of owned legacy resources and Standalone copies, malformed/missing receipts,
 modified/link/unowned resources and unknown journals, unrelated file/settings
 preservation, parked bundles, failed/killed swaps and recovery, destination links,
-XDG roots and clean ZIP extraction. A deliberately bypassed hash check must violate
-the edited-resource preservation assertion. Test logs stay outside tracked files.
+XDG roots and clean ZIP extraction. Private mutants that reintroduce legacy deletion
+must violate the same resource preservation assertion. Test logs stay outside tracked files.
 The `inaccessible-parent` case sets an icon parent to mode `000` and requires a
-preservation warning, retained icon and ownership receipt, and successful VST3
+retained icon and ownership receipt without legacy cleanup warnings, and successful VST3
 removal without changing the inaccessible parent's permissions.
 
 The native gate runs the same mandatory cases plus real per-operation sudo and
@@ -6462,9 +6462,9 @@ Archive upload requires the complete successful native result. Plan/coverage tes
 remain nonprivileged and prove executor planning, private writable mounts, fixed
 PATH, case omission/empty-verifier rejection and incomplete report ineligibility.
 
-The optional `--legacy-archive` local check can exercise removal of the exact earlier
-0.10.0 Standalone from a digest-verified downloaded archive. Other old executables,
-edited resources and incomplete/unknown legacy journals are preserved for review.
+The optional `--legacy-archive` local check can exercise preservation of the exact earlier
+0.10.0 Standalone from a digest-verified downloaded archive. All old executables,
+desktop resources and incomplete/unknown legacy journals are left untouched.
 No GUI/DAW, power-loss or concurrent same-root operation guarantee is implied.
 The following dated desktop-era records remain historical, not current procedures.
 

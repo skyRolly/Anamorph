@@ -1204,7 +1204,7 @@ jobs:
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
       # pluginval-only failure still yields beta artifacts as before.
-      # The complete VST3/legacy-cleanup gate runs in fresh hosted VM private
+      # The complete VST3/legacy-preservation gate runs in fresh hosted VM private
       # roots with real UIDs/sudo. It changes no host kernel/security settings;
       # any unavailable isolation capability fails and keeps upload blocked.
       - name: Validate staged Linux VST3 and portable payload
@@ -1214,7 +1214,7 @@ jobs:
           python3 scripts/check-linux-package.py --self-test
           python3 scripts/check-linux-package.py --staged-dir dist/Anamorph-Linux > build/linux-package.json
 
-      - name: Validate real Linux VST3 installation and legacy cleanup in private roots
+      - name: Validate real Linux VST3 installation and legacy preservation in private roots
         id: plugin_install
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.package_source.outcome == 'success' }}
         run: |

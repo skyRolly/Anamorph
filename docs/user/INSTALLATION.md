@@ -69,13 +69,9 @@ recovers a parked old bundle after interruption. Uninstall keeps parked copies
 unless `--discard-parked` is explicit. Settings and presets remain.
 
 For an earlier 0.10.0 install, use the corrected scripts in the original mode
-and original absolute XDG_DATA_HOME (otherwise HOME/.local/share). System legacy
-resources use /usr/local/share. Only owner/hash-verified old desktop/icon files
-are removed, without changing shared directory permissions. Edited, linked,
-unowned resources and unknown/incomplete journals are preserved with warnings;
-these do not prevent VST3 installation/removal. A prior installed Standalone is
-removed only when it exactly matches the verified earlier 0.10.0 release binary;
-other content at that name is preserved. The ZIP's portable executable is kept.
+to update or remove VST3. Legacy desktop launchers, icons, ownership receipts
+and previously installed Standalone applications (including staging copies)
+are left untouched. Remove any unwanted legacy files manually.
 
 Restart or rescan VST3 plugins in your DAW. Both plugin directories above are
 standard scan locations. If two copies appear, remove the unwanted mode's copy.

@@ -214,8 +214,8 @@ Installer icon validation and ownership: [worklog](worklogs/2026-10-23-windows-i
 Accepted ADR-0064; owner approval and #172 merge are recorded, with native visual limits preserved.
 
 The corrected 0.10.0 Linux candidate installs only VST3 and keeps Standalone
-portable in the ZIP. It removes desktop publication and safely retires verified old
-resources without icon-directory chmod/chown. See proposed
+portable in the ZIP. It removes desktop publication and leaves legacy desktop
+resources and installed Standalone copies untouched. See proposed
 [ADR-0069](docs/architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md)
 and the [installation guide](docs/user/INSTALLATION.md). Human PR review/manual merge
 and a later rebuild/replacement of 0.10.0 remain required; the existing tag/release

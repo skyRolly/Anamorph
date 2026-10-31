@@ -25,14 +25,16 @@ def source_contract(root):
     packaging = root / 'packaging/linux'
     install = (packaging / 'install.sh').read_text()
     uninstall = (packaging / 'uninstall.sh').read_text()
-    for name in ('legacy desktop cleanup', 'plugin destination checks'):
-        require(block(install, name) == block(uninstall, name), 'entry-point safety blocks differ')
+    name = 'plugin destination checks'
+    require(block(install, name) == block(uninstall, name), 'entry-point safety blocks differ')
+    require(all('cleanup_legacy_desktop' not in text for text in (install, uninstall)),
+            'Linux entry points still clean up legacy desktop resources')
     require('APP_SRC=' not in install and 'desktop_integration ' not in install,
             'Linux installer still installs standalone/desktop resources')
     require(not (packaging / 'desktop-integration.sh').exists(), 'obsolete desktop helper remains')
     require(not (root / 'resources/icons/linux').exists(), 'obsolete Linux desktop assets remain')
     return {'vst3_only_installation': True, 'standalone_portable': True,
-            'legacy_cleanup': 'embedded receipt/hash checks; no archive helper execution'}
+            'legacy_cleanup': False}
 
 
 def staged_contract(stage, root=ROOT):

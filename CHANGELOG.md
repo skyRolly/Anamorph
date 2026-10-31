@@ -37,9 +37,8 @@ including in entries written before 0.9.9 gave it that name.
 ### Changed
 - **Linux scripts install only VST3; Standalone stays portable in the ZIP.**
   User and system plugin locations are unchanged. Desktop launchers, hicolor icons
-  and AppStream metadata are not installed. Earlier receipt/hash-verified desktop
-  resources and the verified old 0.10.0 Standalone are cleaned up; edited or unowned
-  files are preserved with warnings. Evidence: commit `d98095c`; ADR-0069. [Verified]
+  and AppStream metadata are not installed.
+  Evidence: commit `d98095c`; ADR-0069. [Verified]
 - **Non-finite parameter values use each control's declared default for audio processing.**
   This prevents sustained audio loss from invalid host or text values. Output Gain can return
   to 0 dB and Velvet Density to 0.5; finite automation and numeric host readback are unchanged.

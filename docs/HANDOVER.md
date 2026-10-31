@@ -1,7 +1,7 @@
 # HANDOVER.md
 
 **0.10.0 Linux correction in review (2026-10-31):** VST3-only installation with
-portable Standalone and verified legacy desktop cleanup is a new candidate under
+portable Standalone and preservation of legacy desktop resources is a new candidate under
 proposed ADR-0069. Implementation/validation/PR preparation are authorized; human
 review and manual merge are required. No tag or release edit/publication is authorized
 in this task. After merge, rebuild 0.10.0 from the exact merged source, repeat applicable

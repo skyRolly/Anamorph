@@ -283,9 +283,9 @@ is allowed; normal signing/release authorization remains unchanged.
 
 The candidate Linux scripts install only VST3; Standalone remains portable. The ZIP
 contains no desktop helper/assets, desktop entries or AppStream metadata. Mandatory
-source/staged package checks and real-UID/sudo native installation, migration,
+source/staged package checks and real-UID/sudo native installation,
 interruption/retry and preservation tests must pass before customer upload. See
-PACKAGING, TESTING and proposed ADR-0069 for the exact cleanup contract.
+PACKAGING, TESTING and proposed ADR-0069 for the legacy resource preservation contract.
 The staged package checker requires mode `0755` on both shell scripts, portable
 Standalone and the VST3 module before upload; release ZIP permission restoration
 does not substitute for this check.

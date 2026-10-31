@@ -2060,7 +2060,7 @@ uninstaller icon, installed payload/sidecars, System attribute and safe owned-fi
 are checked. Developer/self-hosted targets and existing installs are refused. Installer upload
 requires behavior success; `Anamorph-Windows-installer-validation` retains JSON evidence.
 
-## Linux VST3 installation and legacy cleanup gate
+## Linux VST3 installation and legacy preservation gate
 
 The corrected 0.10.0 candidate replaces desktop publication with VST3-only
 installation and portable Standalone. Source-lint runs the package checker's
@@ -2073,7 +2073,7 @@ instructions. `package_source` validates the staged bytes after same-job livenes
 `plugin_install` then invokes `tests/linux_install_native_tests.py` through real
 sudo on the disposable hosted VM. Actual ordinary/root UID and sudo capability
 preflight, all required cases, archive round-trip, ownership/content preservation,
-legacy cleanup, failure/kill retry and user/system coexistence are mandatory.
+legacy preservation, failure/kill retry and user/system coexistence are mandatory.
 The driver retains the established unshare/chroot mount/PID/network isolation,
 read-only host runtime and setpriv UID transitions, without user namespaces or
 host security-setting changes. Missing capabilities fail visibly.

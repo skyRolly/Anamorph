@@ -54,27 +54,12 @@ explicitly permits removal of that saved copy.
 
 Updating an earlier 0.10.0 package / 更新早期 0.10.0 安装
 ------------------------------------------------------
-Run the corrected scripts in the original mode. Legacy user resources use the
-original absolute XDG_DATA_HOME, otherwise ~/.local/share; system resources use
-/usr/local/share. Use the same XDG root as before.
-以原来的模式运行修正后的脚本。旧用户级资源按原有绝对 XDG_DATA_HOME 定位,
-否则使用 ~/.local/share;系统资源位于 /usr/local/share。请沿用原 XDG 数据目录。
-
-Cleanup removes only the ten desktop/icon files whose owner and contents match
-the protected old receipt. Shared directories and other applications remain
-untouched, including existing directory permissions. Modified, linked, unowned
-or unverified resources and incomplete/unknown recovery journals are preserved
-with a warning; they do not prevent VST3 installation/removal. Missing owned
-files are tolerated, so interrupted cleanup can be retried.
-仅清理所有者及内容与受保护旧收据相符的十个启动器/图标文件。不改动共享目录、
-其他程序或目录权限。被修改、链接、无所有权证明的资源及未完成或未知的恢复记录
-会保留并警告,不阻止 VST3 操作。中断的清理可安全重试。
-
-A previously installed Standalone (or its staging copy) is removed only when its
-SHA-256 matches the verified earlier 0.10.0 Linux release executable. Other
-content at that name is preserved. The portable executable in this ZIP is kept.
-旧独立程序及暂存副本仅在 SHA-256 与已验证的早期 0.10.0 Linux 发布文件相符时
-移除。同名的其他内容以及本 ZIP 中的便携独立程序均保留。
+Run the corrected scripts in the original mode to update or remove VST3.
+Legacy desktop launchers, icons, ownership receipts and previously installed
+Standalone applications (including staging copies) are left untouched. Remove
+any unwanted legacy files manually.
+以原来的模式运行修正后的脚本以更新或卸载 VST3。旧桌面启动器、图标、所有权收据
+及已安装的独立程序(含暂存副本)均保留。如不再需要,请手动删除旧文件。
 
 Rescan / 重新扫描
 ----------------

@@ -184,11 +184,17 @@ class NativeCase(cases.InstallCase):
 
     def test_actual_sudo_system_install_upgrade_uninstall(self):
         self.good(mode='system'); self.assert_installed(system=True)
-        self.seed_legacy(self.system_local / 'share')
+        data = self.system_local / 'share'; self.seed_legacy(data)
+        app = self.system_local / 'bin/Anamorph'; app.parent.mkdir(parents=True)
+        app.write_bytes(b'legacy standalone')
+        staged_app = app.with_name('.Anamorph.new'); staged_app.write_bytes(b'legacy staged standalone')
         self.good(mode='system')
-        for relative in cases.MANAGED: self.assertFalse((self.system_local / 'share' / relative).exists())
+        self.assert_legacy_preserved(data)
         self.good(script='uninstall.sh', mode='system')
         self.good(script='uninstall.sh', mode='system')
+        self.assert_legacy_preserved(data)
+        self.assertEqual(app.read_bytes(), b'legacy standalone')
+        self.assertEqual(staged_app.read_bytes(), b'legacy staged standalone')
         self.assertFalse((self.system_vst / 'Anamorph.vst3').exists())
 
     def test_system_killed_swap_and_parked_copy_recovery(self):
@@ -212,7 +218,7 @@ class NativeCase(cases.InstallCase):
         os.chown(resource, UID, GID)
         before = resource.read_bytes()
         result = self.good(mode='system', script='uninstall.sh')
-        self.assertIn('warning: legacy Anamorph resources preserved', result.stderr)
+        self.assertNotIn('legacy Anamorph', result.stderr)
         self.assertEqual(resource.read_bytes(), before)
         self.assertEqual(resource.stat().st_uid, UID)
         self.assertTrue((state / 'receipt').is_file())

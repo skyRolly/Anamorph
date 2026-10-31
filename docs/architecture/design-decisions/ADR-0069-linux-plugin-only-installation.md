@@ -1,9 +1,11 @@
-# ADR-0069 — VST3-only Linux installation and legacy desktop cleanup
+# ADR-0069 — VST3-only Linux installation
 
 **Status:** Proposed; implementation, validation and PR preparation explicitly
 authorized by the owner on 2026-10-31. Human review and manual merge remain required.
 This replaces ADR-0065 for the corrected 0.10.0 candidate. The existing tag and
 release retain their original source until a separately approved rebuild/replacement.
+The owner further directed removal of legacy desktop cleanup on 2026-10-31;
+the decision below reflects that instruction.
 
 ## Context
 
@@ -27,7 +29,7 @@ the ZIP, and requires these corrections in 0.10.0 rather than a new version.
 - Automatically chmod/chown shared icon trees: unnecessary and affects other software.
 - Keep desktop publication but relax its privileged destination checks: retains an
   unwanted installation model and expands privileged writes.
-- **Install only VST3 and retire verified old resources:** selected.
+- **Install only VST3 and leave legacy resources untouched:** selected.
 
 ## Decision
 
@@ -43,23 +45,11 @@ the ZIP, and requires these corrections in 0.10.0 rather than a new version.
   gate and desktop-specific tests. Preserve shared JUCE PNGs, platform assets and tools.
   No AppStream metadata was staged by the preceding implementation; the new archive
   gate rejects desktop/AppStream payloads as well as unexpected top-level members.
-- Embed the same literal migration code in both trusted entry scripts. It never
-  interprets an old archive helper or publishes resources. User cleanup runs as the
-  caller; system cleanup runs through sudo against fixed system-local paths.
-- A real private 0700 old ownership directory and exact v1 ten-path receipt authorize
-  unlinking only regular, single-link files with matching owner and SHA-256. Reject
-  linked ancestry and foreign owners. User cleanup can unlink those owned leaves in
-  group/other-writable icon parents without changing the shared directories. Privileged
-  cleanup retains strict ancestor ownership/write checks.
-- Missing owned files permit retry. Retire a receipt only after its resource set is
-  gone and only the checked empty format marker remains. Preserve edited, unowned,
-  linked or malformed resources and unknown/interrupted recovery state with warnings;
-  those warnings do not block VST3 operations. No broad directory/journal sweep.
-- Remove old installed/staged Standalone only on an exact known executable digest:
-  `4beedffbcedbe6c14b0a9ecb2c0c51110b32c10ed8de477bd9e9f9525811ca8e`.
-  This is the executable from existing release asset 690966946, archive SHA-256
-  `d2aea303302bc4b1e975494588a1e25e50b5471d3916b42c7852ffa005bb9963`.
-  Other binaries at those names and the portable archive payload are preserved.
+- Remove legacy desktop cleanup from both entry scripts and both installation modes.
+  Leave old desktop launchers, icons, ownership receipts, recovery journals and
+  installed/staged Standalone executables untouched, regardless of ownership or
+  content. Do not inspect legacy data roots or invoke old archive helpers. Unwanted
+  legacy resources require manual removal; VST3 scratch recovery remains unchanged.
 - Replace obsolete GUI integration validation with mandatory package and real-UID/
   sudo installer tests on disposable hosted-VM private roots. Keep same-job liveness,
   staged-byte checks, archive extraction, negative/mutation probes and fail-closed
@@ -68,10 +58,9 @@ the ZIP, and requires these corrections in 0.10.0 rather than a new version.
 ## Consequences
 
 Shared icon permissions no longer determine whether an audio plugin can be installed
-or removed. Migration needs no manual permission repair or ownership reassignment.
-Unverifiable legacy files and journals may remain for review; this deliberately avoids
-claiming authority over edited/private unknown content. Desktop caches can retain a
-stale display until the desktop refreshes; cleanup does not rewrite shared caches.
+or removed. VST3 operations need no manual icon-directory permission repair or
+ownership reassignment. All legacy desktop files and installed Standalone copies
+remain until manually removed. The scripts do not rewrite shared desktop caches.
 Same-mode operations must be serialized; no filesystem power-loss durability claim.
 
 These are corrected 0.10.0 candidate files. After human review and merge, rebuild from
@@ -90,9 +79,9 @@ changed Linux workflow.
 ## Evidence and confidence
 
 - Historical binary workflow: `fc7428e^:packaging/linux/install.sh`; PR #175.
-- Current implementation and executable preservation/fault/retry cases in the files above.
-- Existing 0.10.0 archive downloaded read-only and checked against its API digest;
-  release asset identity is also recorded in
+- Current implementation and legacy preservation/fault/retry cases in the files above.
+- Earlier migration validation used an existing 0.10.0 archive downloaded read-only
+  and checked against its API digest; historical release asset identity is recorded in
   `worklogs/release-0.10.0-p1/draft-replacement.json`.
 - Local namespace tests are functional shell evidence, not real-host sudo or DAW proof.
   Native CI results and release limitations are recorded in the release-readiness worklog.

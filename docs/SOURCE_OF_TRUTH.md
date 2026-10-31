@@ -32,7 +32,7 @@ source must be corrected to match.
 
 The 2026-10-31 Linux correction is governed by proposed
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):
-VST3-only installation, portable Standalone and verified legacy desktop cleanup.
+VST3-only installation, portable Standalone and preservation of legacy desktop resources.
 The owner authorized implementation/validation/PR preparation, with human review
 and manual merge required. Existing 0.10.0 tag/release and historical ADR-0065
 evidence are unchanged; a later approved rebuild/replacement is required.

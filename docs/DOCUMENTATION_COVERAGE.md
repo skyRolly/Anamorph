@@ -1,5 +1,30 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Remove Linux legacy desktop cleanup (2026-10-31)
+
+On the owner's further instruction, removed the migration block and its user/system
+calls from both Linux entry scripts, along with unused binary-path variables and
+the uninstaller's unused package-directory lookup. VST3 replacement, destination
+checks and parked-copy recovery are unchanged. Legacy launchers, icons, receipts,
+journals and installed/staged Standalone binaries are now left untouched.
+
+Updated the package source contract, existing installer/native regression expectations,
+legacy preservation mutation control and CI step wording. Synchronized INSTALL.txt,
+the user guide, PACKAGING/RELEASE_PROCESS, TESTING/CI_CD/TESTING_POLICY, README,
+HANDOVER, SOURCE_OF_TRUTH, REPOSITORY_MAP and proposed ADR-0069/index. Removed the
+obsolete cleanup claim from the corrected 0.10.0 changelog entry. The readiness record
+now identifies PR #193's preservation candidate and local validation scope, and labels
+PR #191 migration results and the earlier P1 replacement status as historical. Earlier
+validation evidence and ADR-0065 history remain intact. This follow-up supersedes the
+migration behavior in the earlier correction record below.
+
+Validation: all 14 Bubblewrap installer cases and six native-plan/coverage cases,
+package self-test/source contract, shell syntax and diff whitespace checks passed.
+The documentation structure check passed for all 14 changed Markdown files.
+Real UID/sudo hosted-VM execution remains a separate CI gate and was not run locally.
+Evidence: `packaging/linux/{install.sh,uninstall.sh}`,
+`scripts/check-linux-package.py`, `tests/linux_install{,_native,_native_plan}_tests.py`.
+
 ## Corrected 0.10.0 Linux plugin installation (2026-10-31)
 
 Replaced obsolete current desktop-publication instructions with VST3-only installation,

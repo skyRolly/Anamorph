@@ -30,14 +30,13 @@ REQUIRED_METHODS = (
     'test_legacy_upgrade_without_permission_repair',
     'test_legacy_uninstall_without_permission_repair',
     'test_unverified_legacy_resources_are_preserved',
-    'test_interrupted_legacy_cleanup_retries',
     'test_plugin_swap_failure_and_kill_recover',
     'test_module_permission_failure_preserves_previous_plugin',
     'test_parked_and_unknown_scratch_preservation',
     'test_symlink_destinations_preserve_unrelated_files',
     'test_xdg_roots_and_missing_sources',
     'test_clean_archive_roundtrip',
-    'test_permission_and_cleanup_guards_are_live',
+    'test_legacy_preservation_guard_is_live',
 )
 
 
@@ -123,6 +122,20 @@ class InstallCase(unittest.TestCase):
         (state / 'receipt').write_text('\n'.join(receipt) + '\n')
         return state
 
+    def assert_legacy_preserved(self, data=None):
+        data = data or self.data
+        state = data / '.tech.rolly.anamorph'
+        self.assertTrue(state.is_dir())
+        self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+        self.assertTrue((state / 'format-v1').is_dir())
+        receipt = ['tech.rolly.anamorph desktop resources v1']
+        for relative in MANAGED:
+            expected = ('old owned resource: ' + relative).encode()
+            self.assertTrue((data / relative).is_file(), relative)
+            self.assertEqual((data / relative).read_bytes(), expected)
+            receipt.append(hashlib.sha256(expected).hexdigest() + '  ' + relative)
+        self.assertEqual((state / 'receipt').read_text(), '\n'.join(receipt) + '\n')
+
     def assert_installed(self, system=False):
         plugin = self.system_vst / 'Anamorph.vst3' if system else self.plugin
         module = plugin / MODULE
@@ -178,22 +191,26 @@ class InstallCase(unittest.TestCase):
         if LEGACY_ARCHIVE:
             with zipfile.ZipFile(LEGACY_ARCHIVE) as archive: legacy_app.write_bytes(archive.read('Anamorph'))
         else: legacy_app.write_bytes(b'unverified standalone')
+        expected_app = legacy_app.read_bytes()
+        staged_app = legacy_app.with_name('.Anamorph.new'); staged_app.write_bytes(expected_app)
         self.good()
         self.assertEqual(previous.read_bytes(), (self.package / 'Anamorph.vst3' / MODULE).read_bytes())
-        for relative in MANAGED: self.assertFalse((self.data / relative).exists())
-        self.assertFalse((self.data / '.tech.rolly.anamorph').exists())
+        self.assert_legacy_preserved()
         self.assertEqual(parent.stat().st_mode & 0o777, 0o775)
         self.assertEqual(unrelated.read_bytes(), b'keep')
-        self.assertEqual(legacy_app.exists(), not bool(LEGACY_ARCHIVE))
+        self.assertEqual(legacy_app.read_bytes(), expected_app)
+        self.assertEqual(staged_app.read_bytes(), expected_app)
         self.good(script='uninstall.sh')
+        self.assert_legacy_preserved()
+        self.assertEqual(legacy_app.read_bytes(), expected_app)
+        self.assertEqual(staged_app.read_bytes(), expected_app)
 
     def test_legacy_uninstall_without_permission_repair(self):
         self.seed_plugin(); self.seed_legacy()
         parent = (self.data / PNG).parent; parent.chmod(0o777)
-        self.good(script='uninstall.sh'); self.good(script='uninstall.sh')
+        self.good(script='uninstall.sh'); self.good(script='uninstall.sh', extra=('--discard-parked',))
         self.assertFalse(self.plugin.exists())
-        self.assertFalse((self.data / '.tech.rolly.anamorph').exists())
-        for relative in MANAGED: self.assertFalse((self.data / relative).exists())
+        self.assert_legacy_preserved()
         self.assertEqual(parent.stat().st_mode & 0o777, 0o777)
 
     def test_unverified_legacy_resources_are_preserved(self):
@@ -219,7 +236,7 @@ class InstallCase(unittest.TestCase):
                 else: (state / 'transaction').mkdir(); (state / 'transaction/foreign.keep').write_bytes(b'keep')
                 keep = case.home / 'keep'; keep.write_bytes(b'keep')
                 result = case.good(script='uninstall.sh')
-                self.assertIn('warning: legacy Anamorph resources preserved', result.stderr)
+                self.assertNotIn('legacy Anamorph', result.stderr)
                 self.assertFalse(case.plugin.exists()); self.assertEqual(state.exists(), kind != 'no-state')
                 self.assertEqual(keep.read_bytes(), b'keep')
                 if kind == 'parent-link':
@@ -236,20 +253,6 @@ class InstallCase(unittest.TestCase):
         path = self.fault / tool
         path.write_text('#!/bin/sh\n' + body + '\nexec /usr/bin/' + tool + ' "$@"\n')
         path.chmod(0o755)
-
-    def test_interrupted_legacy_cleanup_retries(self):
-        self.seed_legacy(); self.seed_plugin()
-        self.fault_tool('rm', '''case "$*" in *hicolor/32x32/apps/tech.rolly.anamorph.png*)
- if [ ! -e /sandbox/control/cut ]; then
-  : > /sandbox/control/cut
-  exit 1
- fi;; esac''')
-        result = self.good(script='uninstall.sh', fault='fail')
-        self.assertIn('warning:', result.stderr)
-        self.assertTrue((self.control / 'cut').exists())
-        self.assertTrue((self.data / '.tech.rolly.anamorph/receipt').exists())
-        self.good(script='uninstall.sh')
-        self.assertFalse((self.data / '.tech.rolly.anamorph').exists())
 
     def test_plugin_swap_failure_and_kill_recover(self):
         for action in ('fail', 'kill', 'TERM', 'HUP', 'INT'):
@@ -302,8 +305,9 @@ class InstallCase(unittest.TestCase):
     def test_xdg_roots_and_missing_sources(self):
         data = self.sandbox / 'custom data'; self.seed_legacy(data)
         self.good(xdg='/sandbox/custom data/')
-        for relative in MANAGED: self.assertFalse((data / relative).exists())
+        self.assert_legacy_preserved(data)
         self.assertFalse(self.data.exists()); self.good(script='uninstall.sh', xdg='relative')
+        self.assert_legacy_preserved(data)
         shutil.rmtree(self.package / 'Anamorph.vst3')
         self.bad(message='Anamorph.vst3 not found')
 
@@ -316,16 +320,19 @@ class InstallCase(unittest.TestCase):
         with zipfile.ZipFile(archive_path) as archive: archive.extractall(self.package)
         self.good(); self.assert_installed(); self.good(script='uninstall.sh')
 
-    def test_permission_and_cleanup_guards_are_live(self):
-        # Execute a private mutant: removing the hash comparison must expose
-        # the exact edited-resource preservation assertion, not merely status.
-        self.seed_legacy(); resource = self.data / PNG; resource.write_bytes(b'foreign bytes')
+    def test_legacy_preservation_guard_is_live(self):
+        # Execute private mutants that reintroduce legacy deletion. The same
+        # preservation assertion used for normal installs must detect it.
         for name in ('install.sh', 'uninstall.sh'):
-            path = self.package / name; original = path.read_text()
-            mutated = original.replace('[ "$(hash "$target")" = "$digest" ]', 'true')
-            self.assertNotEqual(original, mutated); path.write_text(mutated)
-        self.good(script='uninstall.sh')
-        with self.assertRaises(AssertionError): self.assertEqual(resource.read_bytes() if resource.exists() else None, b'foreign bytes')
+            with self.subTest(script=name):
+                case = InstallCase(); case.setUp(); self.addCleanup(case.doCleanups)
+                case.seed_legacy(); case.seed_plugin()
+                path = case.package / name; original = path.read_text()
+                mutated = original.replace('    check_plugin_destination ',
+                    '    rm -f "$HOME/.local/share/' + PNG + '"\n    check_plugin_destination ')
+                self.assertNotEqual(original, mutated); path.write_text(mutated)
+                case.good(script=name)
+                with self.assertRaises(AssertionError): case.assert_legacy_preserved()
 
 
 def main():
