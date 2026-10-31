@@ -35,6 +35,18 @@ tests/build/CI/scanner configuration, policies/ADRs, legal terms, version/tag/re
 Validation: archive hashes, CSV extraction/count/identity/location checks,
 documentation/citation checker pairs, local links and whitespace/scope review.
 
+## PR #197 performance-contract drift — 2026-11-01 (Asia/Shanghai)
+
+Accepted the owner's follow-up finding: PERFORMANCE_BUDGET still promised whole
+committed blocks despite NR-006's reusable plain-payload overwrite exposure. A
+same-document audit found the Wave 4 explanation repeated that premise. Corrected
+both, separating fixed storage/bounded per-frame copy work and prior-write visibility
+from coherent, stable, race-free snapshots. Preserved historical measurements and
+linked the existing policy/architecture/decision packet; no runtime or policy change.
+Updated the NR-006 packet and roadmap with the disposition. Validation: existing
+documentation/citation self-tests and checks, table/link/anchor integrity, whitespace
+and unchanged-source comparison. No new benchmark or concurrent-runtime result claimed.
+
 ## PR #197 reader-affinity trace — 2026-11-01 (Asia/Shanghai)
 
 Found additional NR-006 drift: Vectorscope reads ScopeBuffer in paint as well as its

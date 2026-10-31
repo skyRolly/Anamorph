@@ -37,8 +37,8 @@ resolved by preserving both entries. Individual PR diffs retain their original s
 |---|---|---|
 | [#195](https://github.com/skyRolly/Anamorph/pull/195) `docs/roadmap-owner-approval-2026-10-31` | `f64f9d1b3dc53a75eda8b01c4d2935a9284996cf` | `e038f23f8912a8ee591b04bec8062c493ad42052` — ADR/release-history documentation correction |
 | [#196](https://github.com/skyRolly/Anamorph/pull/196) `fix/nr022-ab-pending-undo` | `4a431cac2e32493b1d2290fb9fd8d6570b41393f` | `31ae5366eecf60e783e86051b4403df08186288c` — additive parent merge and independent review; implementation retained |
-| [#197](https://github.com/skyRolly/Anamorph/pull/197) `docs/nr006-scope-publication-review` | `017a2e458dce498aa647c087361c8b6702c7fbe1` | `80f50757fe25ade4a66bc7c4374b082e5bc74841` — parent merge `57e11d0` plus publication/coherence and reader-affinity corrections |
-| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | Review merge `726a964d62d4542b1143b0d4dabc034839ec71d6`, documentation records and this additive synchronization of #197's final `80f5075`; exact final head in the linked PR ledger |
+| [#197](https://github.com/skyRolly/Anamorph/pull/197) `docs/nr006-scope-publication-review` | `017a2e458dce498aa647c087361c8b6702c7fbe1` | `b63dd65f418caab8146b7b441390f45f21fc278a` — retained parent/coherence/reader-affinity corrections plus PERFORMANCE_BUDGET drift repair |
+| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | Review merges `726a964` / `228aa3a`, documentation records and this additive synchronization of #197's final `b63dd65`; exact final head in the linked PR ledger |
 
 ### Findings and dispositions
 
@@ -173,6 +173,26 @@ THREAD_MODEL/packet claim and recorded the existing mismatch beside the policy's
 retained literal reader-affinity prohibition. That GUI lock never excludes audio
 overwrites. NR-006's owner-reviewed ADR must explicitly resolve affinity as well as
 payload ownership/coherence; no runtime change or new policy exception was enacted.
+
+**Performance-contract follow-up — 2026-11-01 (Asia/Shanghai): accepted and corrected.**
+The owner flagged PERFORMANCE_BUDGET's unconditional whole-committed-block claim.
+Re-reading `ScopeBuffer::pushBlock/readLatest` confirms the conflict with NR-006's
+later-overwrite exposure. The same file's Wave 4 explanation repeated that false
+premise and is corrected too. The row now specifies fixed 16384-frame storage and
+copy work bounded by the valid block/request size and capacity, constant per copied
+frame; one index publication does not establish coherent or race-free snapshots.
+Historical segmented-copy measurements and all runtime/policy/architecture gates
+remain unchanged. Updated the packet/coverage audit; source blob remains
+`ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. Commit `b63dd65` records the repair on #197;
+this additive #198 merge retains both coverage entries and the complete parent history.
+Fresh documentation checks: 700 self-tests / 178 files on #197, 179 on #198; citation
+checks: 276 self-tests / 610 anchors against the relevant repaired parent and main.
+Table/link/anchor/whitespace and unchanged-source checks also apply; the linked PR
+ledger records the final merge SHA and exact-head CI. Earlier #197/#198 CI snapshots
+above are historical and cannot certify these new heads. No runtime tests/benchmarks
+were rerun for this documentation-only correction or claimed as fresh results.
+No merge authorization was supplied. NR-003 stays Deferred; NR-006 remains gated;
+NR-011 and all release operations remain unstarted.
 
 ## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
 
