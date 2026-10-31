@@ -33,7 +33,9 @@ Anamorph/
 ├── resources/icons/        Approved B0 1024/32 PNG inputs and immutable provenance for JUCE icons.
 ├── tests/                  Headless self-tests (DSP + state compatibility), fixtures, and the
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
-├── worklogs/               Session-local investigation records for future agents (NOT
+├── worklogs/               Current forward execution register: NEXT_RELEASE_DEVELOPMENT_ROADMAP.md;
+│                           release execution/history: RELEASE_READINESS_0.10.0.md.
+│                           Session-local investigation records for future agents (NOT
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
 │                           graduate to ADRs; worklogs are the raw evidence trail). Some

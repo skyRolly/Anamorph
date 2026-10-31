@@ -1,5 +1,23 @@
 # Release readiness — 0.10.0 (draft only)
 
+## Later baseline and forward roadmap — 2026-10-31 UTC
+
+The read-only [next-release investigation](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) verifies
+PR #193 merged at `4c136881f245470577d66a7603f15b177ddcf3dc` and a subsequent normal
+[Release run 41173229942](https://github.com/skyRolly/Anamorph/actions/runs/41173229942)
+(build 7). Current draft ID **429760301** targets that source and remains unpublished.
+All 11 release assets and three native installation evidence archives were downloaded
+and checked; the current Linux report has 17 native tests, zero failures/errors and
+staged hashes matching the release ZIP. The roadmap preserves current identities/hashes
+and is the forward execution register; the sections below retain dated release history.
+
+The following “in review”, “rebuild required” and P1-draft identity statements describe
+their earlier task snapshots, not the live baseline above. ADR-0069 remains Proposed
+in source despite the owner merge; explicit lifecycle reconciliation is NR-001.
+Current-candidate targeted Linux human acceptance is not established by the earlier
+original/P1 attestations (NR-002). No approval, implementation or release operation
+is inferred or performed by recording this later snapshot.
+
 **0.10.0 Linux correction in review (2026-10-31):** VST3-only installation with
 portable Standalone and preservation of all legacy desktop resources is the current candidate under
 proposed ADR-0069. Implementation/validation/PR preparation are authorized; human

@@ -14,15 +14,15 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 
-**0.10.0 draft release / JUCE 9.0.4.** The [GitHub draft](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e9b61aa49fbd4b5cb114)
-contains 11 verified fresh assets from annotated tag `0.10.0` at `b085c87`
-(normal Release build 5). PR #187's approved processor/restore fixes are merged;
-final-main Build 1956 and the complete tag-triggered Release workflow passed.
-The owner approved ADR-0067/0068 and attested targeted human validation complete on 2026-10-30;
-the original 2026-10-29 unrelated manual approval is preserved. The old unpublished candidate
-was superseded by authorized deletion and recreation. The release remains **Draft and unpublished**.
-The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves both identities,
-all asset hashes, validation and deferred public-distribution decisions. The earlier
+**0.10.0 draft release / JUCE 9.0.4 (verified 2026-10-31 UTC).** The [GitHub draft](https://github.com/skyRolly/Anamorph/releases/tag/untagged-5c0f02d1d702f1d4bf30)
+contains 11 verified assets from annotated tag `0.10.0` at `4c13688`
+(normal Release build 7), including PR #187's approved processor/restore fixes and
+PRs #191/#193's Linux VST3-only installation with legacy-resource preservation.
+The release remains **Draft and unpublished**. The
+[next-release roadmap](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) records current CI,
+asset hashes, remaining Linux approval/manual-evidence gaps and development priorities.
+The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
+identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.
 - **Version 0.10.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
@@ -157,7 +157,7 @@ The documentation falls into **four classes**, kept deliberately separate:
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
 | **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
 | **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
-| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement records under [`worklogs/`](worklogs/) (including the [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md) and [native icon integration](worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement/planning records under [`worklogs/`](worklogs/) (including the [next-release execution register](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md), [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md) and [native icon integration](worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as
