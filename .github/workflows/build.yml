@@ -3319,6 +3319,9 @@ jobs:
   #  failure of the ADR-0032 contract and fails the job. Complete records and the
   #  exact current identity set are validated first; latency is retained and
   #  compared separately as warning-only metadata, not an ADR-0032 hash verdict.
+  #  NR-011 adds a separate five-scenario --transitions comparison. Its audio
+  #  hashes AND engine-latency traces/final values block A/B; this does not
+  #  change the legacy 32-record schema or its warning-only latency contract.
   #
   #  TWO FAILURE CLASSES, DELIBERATELY DISTINGUISHED in the error text so a red
   #  run can never read as the wrong thing:
@@ -3388,12 +3391,14 @@ jobs:
             cmake --build $dir --config Release --target AnamorphDspDump | Out-Null
             return ($LASTEXITCODE -eq 0)
           }
-          function Run-Dump([string]$dir, [string]$out) {
+          function Run-Dump([string]$dir, [string]$out, [string]$suite = 'steady') {
             $exe = Join-Path $dir 'AnamorphDspDump_artefacts/Release/AnamorphDspDump.exe'
             if (-not (Test-Path $exe)) { return 'missing' }
-            & $exe --self-check *> $null
+            [string[]]$dumpArgs = @()
+            if ($suite -eq 'transitions') { $dumpArgs = @('--transitions') }
+            & $exe @dumpArgs --self-check *> $null
             if ($LASTEXITCODE -ne 0) { return 'self-check' }
-            & $exe > $out 2>&1
+            & $exe @dumpArgs > $out 2>&1
             if ($LASTEXITCODE -ne 0) { return 'run' }
             return 'ok'
           }
@@ -3442,6 +3447,15 @@ jobs:
           if ($abExit -eq 2) { Die-Infra 'A/B dump records or evidence are invalid -- see parser diagnostics and raw dumps' }
           if ($abExit -ne 0) { exit 1 }
 
+          $ta = Run-Dump 'build-a' 'd-transitions-a.txt' 'transitions'
+          if ($ta -ne 'ok') { Die-Infra "transition dump A did not execute cleanly ($ta)" }
+          $tb = Run-Dump 'build-b' 'd-transitions-b.txt' 'transitions'
+          if ($tb -ne 'ok') { Die-Infra "transition dump B did not execute cleanly ($tb)" }
+          python scripts/check-dsp-dump.py ab --suite transitions --left d-transitions-a.txt --right d-transitions-b.txt --report dsp-dump-transitions-ab.json --summary $env:GITHUB_STEP_SUMMARY
+          $transitionExit = $LASTEXITCODE
+          if ($transitionExit -eq 2) { Die-Infra 'transition A/B records or evidence are invalid -- see parser diagnostics and raw dumps' }
+          if ($transitionExit -ne 0) { exit 1 }
+
           # C (/arch:AVX2 /fp:contract) -- INFORMATIONAL ONLY, never affects
           # the exit code. 32/32 differing is the expected observation about
           # contraction (ADR-0032 option 3); a C-side failure is a warning.
@@ -3450,6 +3464,11 @@ jobs:
             if ($rc -eq 'ok') {
               python scripts/check-dsp-dump.py c --left d-b.txt --right d-c.txt --report dsp-dump-c.json --summary $env:GITHUB_STEP_SUMMARY
               if ($LASTEXITCODE -ne 0) { Write-Host '::warning::informational C checker did not complete -- the blocking A/B gate above is unaffected' }
+              $tc = Run-Dump 'build-c' 'd-transitions-c.txt' 'transitions'
+              if ($tc -eq 'ok') {
+                python scripts/check-dsp-dump.py c --suite transitions --left d-transitions-b.txt --right d-transitions-c.txt --report dsp-dump-transitions-c.json --summary $env:GITHUB_STEP_SUMMARY
+                if ($LASTEXITCODE -ne 0) { Write-Host '::warning::informational transition C checker did not complete -- blocking A/B gates are unaffected' }
+              } else { Write-Host "::warning::informational transition C did not execute cleanly ($tc) -- blocking A/B gates are unaffected" }
             } else { Write-Host "::warning::informational /fp:contract dump did not execute cleanly ($rc) -- the blocking gate above is unaffected"; Say "- informational /fp:contract run skipped ($rc)" }
           } else { Write-Host "::warning::informational /fp:contract build failed -- the blocking gate above is unaffected"; Say "- informational /fp:contract build skipped" }
           exit 0

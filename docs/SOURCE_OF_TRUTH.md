@@ -48,6 +48,9 @@ The NR-006 [ScopeBuffer review packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIE
 is supporting developer evidence, not an approved replacement for the threading policies.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
+The [NR-011 execution record](../worklogs/NR011_DSP_TRANSITION_COVERAGE.md) supports
+the additive transition instrument; it does not expand cross-platform numerical
+compatibility or authorize the separate NR-006 production architecture.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).

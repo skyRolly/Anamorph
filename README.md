@@ -23,6 +23,10 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
+PRs #195–#198 were integrated on 2026-11-01 (Asia/Shanghai). The
+[NR-011 execution record](worklogs/NR011_DSP_TRANSITION_COVERAGE.md) describes additive
+transition differential coverage; NR-006's [Proposed ADR review](https://github.com/skyRolly/Anamorph/pull/199)
+remains separate. Post-tag development is not included in the existing draft assets.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.

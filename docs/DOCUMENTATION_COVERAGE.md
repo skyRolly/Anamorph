@@ -1,5 +1,29 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-011 — additive differential transition coverage (2026-11-01)
+
+Added a separate five-record transition mode to the existing DSP dump executable;
+the default 32-row stdout/record/JSON contracts and ADR-0032 legacy latency warning
+remain unchanged. Every dump entry point silently runs the new finite/adoption/
+repeatability/inert-action/sample/latency controls before emitting legacy output.
+The new explicit parser suite fails malformed/mixed evidence, differing audio and
+differing engine-latency traces, with distinct classifications. It retains optional
+C and all existing duplicate/evidence-alias liveness controls; its independent
+synthetic fixture and metadata-bypass mutant are included in the same-job self-test.
+
+Windows compares both suites using its existing A/B/C builds and retains all raw/
+JSON files; toolset/flag liveness, pins, strictness and existing gates remain intact.
+TESTING and CI_CD describe the separate schemas, controls and engine-level limits;
+the new worklog/fixture are indexed by REPOSITORY_MAP, SOURCE_OF_TRUTH and README.
+The roadmap records actual authorized integration, Proposed NR-006 review #199 and
+independent NR-011 execution. No production DSP, threading, CMake, parameter,
+serialization, latency behavior or release object is changed. No golden waveform,
+cross-architecture bit identity or new Class-B numeric threshold is imposed.
+Two historical workflow-line citations were re-anchored after inserting the new
+gate; expected source text/checker behavior is unchanged. Local legacy stdout is
+byte-identical to the pre-change binary, independent Clang ISA configurations
+match both suites, and a compiled dead-transition mutant fails before exact recovery.
+
 ## PR #198 independent inventory review — 2026-11-01 (Asia/Shanghai)
 
 Re-downloaded/digest-verified all three baseline SARIF archives and matched all
@@ -2456,7 +2480,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3778` and `.github/workflows/build.yml:3863`, this round being
+`.github/workflows/build.yml:3797` and `.github/workflows/build.yml:3882`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare

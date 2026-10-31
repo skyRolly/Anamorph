@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** review-and-repair checkpoint; owner merge authorization required.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** owner-authorized #195–#198 integrated; NR-006 Proposed ADR review #199 pending; independent NR-011 transition batch implemented for review.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -13,6 +13,46 @@ That readiness worklog remains the release execution/history record; the
 [engineering-review programme](engineering-review/ENGINEERING_REVIEW_PROGRAMME.md) remains the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
+
+## Authorized integration / independent NR-011 batch — 2026-11-01 (Asia/Shanghai)
+
+The owner explicitly authorized merging #195–#198 and continuing NR-006 research
+and independent roadmap work. The four are **Merged / Integrated**, in order:
+#195 `3df74eab68de85cc3db897b551da7333d9868d3d`,
+#196 `49958aed942a2e5eefb602e151d4d8c2ac461c41`,
+#197 `e426cc2f79e3416591ac153c053020d79972b8f6`,
+#198 `00de8c7796f37d08a338256e01830bb312ba105c`.
+Each actual main tree equaled its reviewed head, and all four heads remain
+ancestors of final main `00de8c7` (tree equals #198 `42ebbbc`). Exact-head mandatory
+push/PR gates passed before merge; new main CI is separate evidence. Fresh local
+integrated suites pass **945 DSP / 10,953 state**. Historical pending-merge
+checkpoints below are superseded, not claims about current integration status.
+
+**Priority update:** NR-006 architecture investigation is first/P1 as requested.
+It is completed for owner review in [PR #199](https://github.com/skyRolly/Anamorph/pull/199),
+head `d0e81445ccd2cd7d152dd207deda0d2d48e75187`. The agent recommends Proposed
+ADR-0070's generation-validated atomic stereo windows and explicit serialized-GUI
+affinity after comparing alternatives. Human Architecture Review is **pending**;
+ScopeBuffer production blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+The proposal's full evidence remains in #199, not silently integrated by this PR.
+
+**NR-011: implemented / Ready for Review.** This independent branch starts from
+verified main `00de8c7`, not from the unapproved architecture proposal. Added five
+bounded transition cases, separate audio/final-engine-latency/latency-trace evidence,
+inert/sample/latency controls and an explicit parser suite. Default 32-row output
+is byte-identical to the pre-change instrument. The Windows comparison adds a
+separate transition A/B gate with optional C; existing GCC/macOS dump self-checks
+exercise silent transition controls. No production DSP or threading change.
+Detailed validation/limits: [NR011_DSP_TRANSITION_COVERAGE.md](NR011_DSP_TRANSITION_COVERAGE.md).
+Native final-head CI and human PR review remain separate; no later PR merge is authorized.
+
+NR-003 stays Deferred; recurrence-triggered NR-004/005/007 remain deferred.
+NR-010 still needs controlled identified hardware, NR-013 a pinned REAPER
+reproducer, NR-018/019 owner/legal/provisioning. NR-017's unavailable GitHub alert
+state remains unknown. The historical GCC14 ABI preflight failure is not repaired
+or waived by these tests. Existing 0.10.0 tag/draft/11 assets/version are unchanged;
+NR-022 and this batch are post-tag development. NR-006 publication mitigation/
+human risk disposition remains separate from earlier manual/ADR approvals.
 
 ## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
@@ -509,12 +549,12 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P2 | Ready for Review | Scope overwrite/thread-contract review packet; runtime decision pending | 1 / architecture phase |
+| NR-006 | P1 | Proposed / Ready for Review | Selected generation-validated atomic windows; ADR-0070 pending human review, no production change | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
 | NR-010 | P2 | Pending | CPU/peak/memory budget — measure | 2 / engineering baseline |
-| NR-011 | P2 | Pending | Differential transition coverage — improve | 2 / next engineering increment |
+| NR-011 | P2 | Implemented / Ready for Review | Five additive differential transition scenarios, controls and CI comparison; final-head validation/review separate | 2 / independent test batch |
 | NR-012 | P3 | Pending | Oversampling alias reduction — measure before adding assertions | 2 / optional DSP study |
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
@@ -525,7 +565,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Pending | Candidate-specific release validation — close selected scope | 4 / each actual release |
-| NR-022 | P2 | Ready for Review | Confirmed Undo-step loss — correction and regression implemented | 1 / investigation before maintenance |
+| NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -695,6 +735,11 @@ The owner must select best-effort versus whole-window coherence before a new pay
   required.** Phase 2; future optimization depends on this, not vice versa.
 
 ### NR-011 — Extend differential DSP coverage beyond steady state
+
+**2026-11-01 execution:** implemented in the independent transition-test branch;
+[execution evidence](NR011_DSP_TRANSITION_COVERAGE.md). The original scope below
+remains the acceptance basis. Native CI and human PR review are not inferred from
+local same-configuration results; new PR merge permission is still required.
 
 - **Evidence/status/confidence:** Verified gap: `tests/dsp_dump.cpp`, TESTING §Gaps, ADR-0032.
   Current 32-scenario dump primarily measures engaged steady state; existing behavior tests do

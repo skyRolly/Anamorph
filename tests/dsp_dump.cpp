@@ -53,6 +53,9 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include <cstdint>
+#include <array>
+#include <bit>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -238,18 +241,204 @@ namespace
                      cases.size());
         return 0;
     }
+    // NR-011 is additive: legacy stdout remains the same 32 three-field rows.
+    // --transitions emits five separate four-field rows. Both modes always run
+    // these same transition controls; default mode keeps their success silent.
+    constexpr int kTransitionBlock = 128;
+    constexpr int kPhaseBlocks = 32;
+    constexpr int kTransitionBlocks = 8 * kPhaseBlocks;
+    enum class Transition { BypassMix, AlgorithmOs, Crossover, SoloBands, ResetIdle };
+    enum class Control { Normal, Inert, ChangedSample, ChangedLatency };
+    constexpr std::array<Transition, 5> transitions { Transition::BypassMix, Transition::AlgorithmOs,
+        Transition::Crossover, Transition::SoloBands, Transition::ResetIdle };
+    constexpr std::array<const char*, 5> transitionNames { "transition-bypass-mix", "transition-algorithm-os",
+        "transition-crossover", "transition-solo-bands", "transition-reset-idle" };
+
+    struct TransitionResult
+    {
+        std::uint64_t audio = 0, latencyTrace = 0;
+        int finalLatency = 0;
+        bool valid = true;
+    };
+
+    TransitionResult runTransition (Transition kind, Control control = Control::Normal)
+    {
+        anamorph::EngineParameters p;
+        p.algorithm = kind == Transition::ResetIdle ? Algorithm::Velvet : Algorithm::Haas;
+        p.algoAmount = 0.7f;
+        p.width = 1.6f;
+        p.mix = 0.8f;
+        p.mbEnable = kind != Transition::ResetIdle;
+        p.mbWidthLow = 0.4f; p.mbWidthMid = 1.8f;
+        p.mbWidthHiMid = 0.6f; p.mbWidthHigh = 1.5f;
+        // Bypass/Mix keeps a selected-but-skipped oversampling path: Haas is
+        // linear and Drive is zero, but selected factor must still supply PDC.
+        if (kind == Transition::BypassMix) p.oversample = OversampleFactor::x4;
+        if (kind == Transition::AlgorithmOs) p.driveDb = 8.0f;
+        if (kind == Transition::ResetIdle) p.mix = 1.0f;
+
+        anamorph::AnamorphEngine engine;
+        engine.primeParameters (p); // only before prepare, never a midstream shortcut
+        engine.prepare (kSampleRate, kTransitionBlock);
+        juce::AudioBuffer<float> audio (2, kTransitionBlock), empty (2, 0);
+        Lcg lcg;
+        Fnv samples, latency;
+        TransitionResult result;
+        const bool active = control != Control::Inert;
+        const auto feedLatency = [&] (int value)
+        {
+            // Explicit little-endian metadata encoding, separate from samples.
+            const auto v = static_cast<std::uint32_t> (value);
+            const std::array<unsigned char, 4> bytes { static_cast<unsigned char> (v),
+                static_cast<unsigned char> (v >> 8), static_cast<unsigned char> (v >> 16),
+                static_cast<unsigned char> (v >> 24) };
+            latency.feed (bytes.data(), bytes.size());
+        };
+
+        for (int block = 0; block < kTransitionBlocks; ++block)
+        {
+            const int phase = block / kPhaseBlocks;
+            if (active && kind == Transition::BypassMix)
+            {
+                constexpr std::array<bool, 8> bypass { false, false, true, true, false, false, true, false };
+                constexpr std::array<float, 8> mix { 0.8f, 0.0f, 0.0f, 1.0f, 1.0f, 0.35f, 0.35f, 0.8f };
+                p.bypass = bypass[static_cast<std::size_t> (phase)];
+                p.mix = mix[static_cast<std::size_t> (phase)];
+            }
+            if (active && kind == Transition::AlgorithmOs)
+            {
+                constexpr std::array<Algorithm, 8> algo { Algorithm::Haas, Algorithm::Chorus,
+                    Algorithm::Dimensional, Algorithm::Velvet, Algorithm::Haas, Algorithm::Chorus,
+                    Algorithm::Haas, Algorithm::Haas };
+                constexpr std::array<OversampleFactor, 8> factor { OversampleFactor::Off,
+                    OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8,
+                    OversampleFactor::Off, OversampleFactor::x4, OversampleFactor::Off, OversampleFactor::Off };
+                p.algorithm = algo[static_cast<std::size_t> (phase)];
+                p.oversample = factor[static_cast<std::size_t> (phase)];
+            }
+            if (active && kind == Transition::Crossover)
+            {
+                constexpr std::array<float, 8> low { 180, 70, 350, 140, 400, 70, 180, 180 };
+                constexpr std::array<float, 8> mid { 800, 600, 1500, 900, 1900, 600, 800, 800 };
+                constexpr std::array<float, 8> high { 3000, 2000, 8000, 3500, 10000, 2000, 3000, 3000 };
+                const auto at = static_cast<std::size_t> (phase);
+                const auto prior = at == 0 ? at : at - 1;
+                const float t = static_cast<float> (block % kPhaseBlocks + 1) / static_cast<float> (kPhaseBlocks);
+                p.mbFreqLow = low[prior] + t * (low[at] - low[prior]);
+                p.mbFreqMid = mid[prior] + t * (mid[at] - mid[prior]);
+                p.mbFreqHigh = high[prior] + t * (high[at] - high[prior]);
+            }
+            if (active && kind == Transition::SoloBands)
+            {
+                constexpr std::array<int, 8> bands { 4, 4, 4, 2, 3, 4, 4, 4 };
+                constexpr std::array<int, 8> solo { 0, 1, 0, 2, 4, 8, 0, 1 };
+                p.mbBands = bands[static_cast<std::size_t> (phase)];
+                p.mbSolo = solo[static_cast<std::size_t> (phase)];
+                p.mbEnable = phase != 6; // clear, disable, then repeat cold low-band engage
+            }
+            const bool idle = kind == Transition::ResetIdle && (phase == 2 || phase == 6);
+            const bool silent = kind == Transition::ResetIdle && (phase == 1 || phase == 5);
+            if (active && kind == Transition::ResetIdle && (block == 64 || block == 128))
+                engine.reset (block == 64 ? anamorph::AnamorphEngine::ResetScope::audioTailsOnly
+                                         : anamorph::AnamorphEngine::ResetScope::everything);
+            engine.setTransportPlaying (! active || kind != Transition::ResetIdle
+                || ! (phase == 2 || phase == 5 || phase == 6));
+            engine.setParameters (p);
+            feedLatency (engine.getLatencySamples());
+            auto& buffer = idle ? empty : audio;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                    buffer.setSample (ch, i, silent ? 0.0f : lcg.next() * 0.5f);
+            engine.process (buffer);
+            // Seeded instrument controls alter evidence only, never engine code.
+            if (control == Control::ChangedSample && block == 96)
+            {
+                auto* sample = buffer.getWritePointer (0);
+                sample[0] = std::bit_cast<float> (std::bit_cast<std::uint32_t> (sample[0]) ^ 1u);
+            }
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const auto* data = buffer.getReadPointer (ch);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                    result.valid = result.valid && std::isfinite (data[i]);
+                if (buffer.getNumSamples() > 0)
+                    samples.feed (data, sizeof (float) * static_cast<std::size_t> (buffer.getNumSamples()));
+            }
+            const int actual = engine.getLatencySamples();
+            result.valid = result.valid && actual >= 0;
+            feedLatency (actual + (control == Control::ChangedLatency && block == 96 ? 1 : 0));
+            // A full phase is longer than the documented discrete switch duck.
+            // Check adoption/PDC after settling without freezing a filter delay number.
+            if (block % kPhaseBlocks == kPhaseBlocks - 1)
+                result.valid = result.valid && actual == engine.predictLatency (p);
+        }
+        result.audio = samples.h;
+        result.latencyTrace = latency.h;
+        result.finalLatency = engine.getLatencySamples();
+        return result;
+    }
+
+    int transitionSelfCheck (bool quiet)
+    {
+        std::map<std::uint64_t, const char*> distinct;
+        for (std::size_t i = 0; i < transitions.size(); ++i)
+        {
+            const auto a = runTransition (transitions[i]);
+            const auto repeat = runTransition (transitions[i]);
+            const auto inert = runTransition (transitions[i], Control::Inert);
+            const auto sample = runTransition (transitions[i], Control::ChangedSample);
+            const auto metadata = runTransition (transitions[i], Control::ChangedLatency);
+            if (! a.valid || ! repeat.valid || ! inert.valid || ! sample.valid || ! metadata.valid
+                || a.audio != repeat.audio || a.latencyTrace != repeat.latencyTrace
+                || a.finalLatency != repeat.finalLatency || a.audio == inert.audio
+                || a.audio == sample.audio || a.latencyTrace != sample.latencyTrace
+                || a.audio != metadata.audio || a.latencyTrace == metadata.latencyTrace
+                || ! distinct.emplace (a.audio, transitionNames[i]).second)
+            {
+                std::fprintf (stderr, "dsp-dump transition self-check FAILED: %s is invalid, inert, "
+                    "not repeatable or its sample/latency controls are dead.\n", transitionNames[i]);
+                return 3;
+            }
+            if (transitions[i] == Transition::AlgorithmOs && a.latencyTrace == inert.latencyTrace)
+            {
+                std::fprintf (stderr, "dsp-dump transition self-check FAILED: selected OS latency never changed.\n");
+                return 3;
+            }
+        }
+        if (! quiet)
+            std::printf ("dsp-dump transition self-check passed: 5 scenarios, all repeatable and discriminating.\n");
+        return 0;
+    }
 }
 
 int main (int argc, char** argv)
 {
+    const bool transitionMode = argc > 1 && std::strcmp (argv[1], "--transitions") == 0;
+    if (transitionMode)
+    {
+        const int checked = transitionSelfCheck (false);
+        if (checked != 0 || (argc > 2 && std::strcmp (argv[2], "--self-check") == 0)) return checked;
+        std::printf ("# AnamorphDspDump transitions -- 48000 Hz, 128-sample blocks, 256 blocks\n");
+        std::printf ("# scenario fnv1a-64 latency latency-trace-fnv1a-64\n");
+        for (std::size_t i = 0; i < transitions.size(); ++i)
+        {
+            const auto r = runTransition (transitions[i]);
+            if (! r.valid) return 3;
+            std::printf ("%s %016llx %d %016llx\n", transitionNames[i],
+                static_cast<unsigned long long> (r.audio), r.finalLatency,
+                static_cast<unsigned long long> (r.latencyTrace));
+        }
+        return 0;
+    }
     const bool selfCheckOnly = (argc > 1 && std::strcmp (argv[1], "--self-check") == 0);
 
     // ALWAYS, not only on request: a dump whose instrument has not been checked
     // is the failure mode this file exists to prevent, and the check costs one
     // extra pass over a matrix that already runs in seconds.
     const int rc = selfCheck();
-    if (rc != 0 || selfCheckOnly)
-        return rc;
+    if (rc != 0) return rc;
+    const int transientRc = transitionSelfCheck (true);
+    if (transientRc != 0 || selfCheckOnly) return transientRc;
 
     std::printf ("\n# AnamorphDspDump -- %.0f Hz, %d-sample blocks, %d noise + %d silence blocks\n",
                  kSampleRate, kBlock, kNoiseBlocks, kSilenceBlocks);
