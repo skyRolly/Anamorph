@@ -1,5 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
+## ADR-0070 owner acceptance — 2026-11-01
+
+The owner explicitly approved ADR-0070 for implementation in response to the
+concrete #199 proposal, subject to native portability/performance/validation gates.
+Recorded **Accepted** status, original proposal history and scope in ADR_INDEX,
+SOURCE_OF_TRUTH, README/map, risk/audit/readiness records and NR-006/roadmap.
+Production implementation is still pending at this decision-record commit; the
+new reader-affinity contract applies to the approved atomic implementation, not
+the old plain-payload race. New PR merges/releases remain separately unauthorized.
+No production source, threading operation, test expectation or release object changed.
+
 ## Authorized integration / NR-006 architecture proposal — 2026-11-01
 
 The owner explicitly authorized #195–#198 merges and independent continuation.

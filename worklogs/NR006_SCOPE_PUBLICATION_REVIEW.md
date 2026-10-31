@@ -1,8 +1,8 @@
 # NR-006 — ScopeBuffer publication review packet
 
 **Recorded:** 2026-10-31 (Asia/Shanghai). **Updated:** 2026-11-01.
-**Current status:** investigation and recommended ADR-0070 ready for human Architecture
-Review; no production fix or Accepted ADR. Sections 1–5 preserve the earlier packet
+**Current status:** ADR-0070 Accepted by explicit owner implementation approval
+on 2026-11-01; production implementation/validation next, no runtime fix claimed yet. Sections 1–5 preserve the earlier packet
 and conditional candidate; the substantive selection is in section 6 onward. Progress remains in
 [NEXT_RELEASE_DEVELOPMENT_ROADMAP.md](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
 
@@ -202,14 +202,15 @@ All four original heads are ancestors; the final tree exactly equals #198 `42ebb
 Fresh integrated local suites: **945 DSP / 10,953 state**, zero failures, under
 `MALLOC_PERTURB_=1`. Existing checker warnings remain unchanged.
 
-**Selected recommendation:** [Proposed ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md).
+**Selected decision:** [Accepted ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md).
 Choose a generation-validated ring of atomic stereo words, accepting only exact
 committed-position windows and rejecting a reused copy once, without retry.
 Keep current OpenGL component painting, with an explicit proposed serialized-GUI
 reader contract. This replaces the earlier request for the owner to make the
 technical selection: the agent has selected and specified D below; the owner must
-review/approve that recommendation. Human acceptance and production implementation
-are still pending. No ScopeBuffer or GUI production code changed.
+review/approve that recommendation. The owner has now explicitly approved that design for implementation, subject to
+its native portability/performance/validation gates. Production implementation
+is still pending; no later PR merge is authorized. No ScopeBuffer or GUI production code changed.
 
 ### Source census and lifecycle
 
@@ -430,8 +431,9 @@ publication or temporary residual-risk acceptance needs a separate owner decisio
 
 ## 10. Current milestone
 
-**Investigated:** yes. **Selected proposal:** D / Proposed ADR-0070.
-**Human approval:** pending. **Production implementation/validation:** not started.
+**Investigated:** yes. **Selected design:** D / Accepted ADR-0070.
+**Human architecture approval:** explicit owner approval received 2026-11-01.
+**Production implementation/validation:** not started at this decision-record checkpoint.
 **Release operation:** none. Continue independent NR-011 transition differential
 coverage while this architecture is reviewed; NR-003 stays Deferred and other
 recurrence/legal/hardware/host prerequisites remain separate.

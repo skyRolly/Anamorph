@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 Proposed ADR-0070 awaits human Architecture Review; independent NR-011 authorized next.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 ADR-0070 explicitly approved for implementation; native/performance/validation gates remain. NR-011 #200 and NR-012 #201 independently submitted.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -15,6 +15,15 @@ historical finding register. Update the NR IDs here as subsequent assignments ex
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
 ## Authorized integration and architecture selection — 2026-11-01 (Asia/Shanghai)
+
+**Subsequent owner architecture decision:** the owner explicitly replied
+“Approve ADR-0070 for implementation” to PR #199's architecture question,
+subject to its native portability/performance/validation gates. ADR-0070 is now
+Accepted; production implementation/validation follow in a separate focused PR.
+This is not authorization to merge #199 or a later PR, or operate on a release.
+Independent NR-011 [#200](https://github.com/skyRolly/Anamorph/pull/200) and bounded
+NR-012 [#201](https://github.com/skyRolly/Anamorph/pull/201) are submitted from main,
+with their own validation/review requirements. No new PR is merged.
 
 The owner's new pasted assignment explicitly authorizes merging **#195, #196, #197,
 #198**, then NR-006 investigation/technical selection and independent roadmap work.
@@ -77,7 +86,8 @@ oversized pushes and editor/prepare/reset lifetimes. Independent comparison of
 atomic samples, packed pairs, owned snapshots, tagged atomics and bounded queue/
 seqlock/reclamation variants selects **generation-validated atomic stereo windows**.
 [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
-is **Proposed**, not Accepted. Its complete protocol accepts only exact committed
+is now **Accepted** by the owner's explicit 2026-11-01 implementation approval.
+Its complete protocol accepts only exact committed
 positions or rejects once, never waits/retries, retains last accepted display,
 and explicitly proposes preserving serialized JUCE OpenGL reads. This affinity
 amendment is not currently effective and grants no exception to plain shared access.
@@ -602,7 +612,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Proposed / Ready for Review | Selected generation-validated atomic windows; ADR-0070 pending human review, no production change | 1 / first architecture batch |
+| NR-006 | P1 | Approved architecture / implementation next | ADR-0070 explicitly approved by owner; production correction and native gates pending | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |

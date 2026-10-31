@@ -12,16 +12,16 @@
   data are not DSP inputs, but that is not a language-level containment guarantee.
   Normal short-block headroom is not proof against stalls/large blocks. Prior
   sanitizer silence and separate Rosetta/Test 61 or AU findings do not close this.
-- **Mitigation:** NR-006 / Proposed ADR-0070 recommends generation-validated atomic
+- **Mitigation:** NR-006 / Accepted ADR-0070 selects generation-validated atomic
   stereo windows and an explicit serialized-GUI affinity contract. Human Architecture
-  Review, native cost/portability evidence, production implementation/regressions
+  Review was cleared by explicit owner approval 2026-11-01; native cost/portability evidence, production implementation/regressions
   and visual acceptance remain pending. Documentation does not fix the runtime gap.
   Current 0.10.0 requires a reviewed mitigation or explicit human risk disposition
   before publication; draft/tag/assets stay unchanged.
 - Evidence [Verified]: `src/dsp/ScopeBuffer.h::pushBlock/readLatest`;
   `Vectorscope::{tick,paint}`, `SpectrumImager::pushFFT`; source/proof/limits in
   [NR-006 packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
-  and [Proposed ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md).
+  and [Accepted ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md).
 
 **Current sync: 0.10.0 draft release, 2026-10-30.** RISK-003 closed when annotated `0.9.9` was
 created. RISK-015's acceptance remains unchanged; its owner decision and corrected conditional

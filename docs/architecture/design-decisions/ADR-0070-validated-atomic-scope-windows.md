@@ -1,9 +1,14 @@
 # ADR-0070 — Generation-validated atomic stereo windows for ScopeBuffer
 
-**Status: Proposed.** Recommended by the agent on 2026-11-01 (Asia/Shanghai),
+**Status: Accepted.** The owner explicitly approved ADR-0070 for implementation
+on 2026-11-01 (Asia/Shanghai), replying “Approve ADR-0070 for implementation” to
+the submitted PR #199 architecture question, subject to its native portability,
+performance and validation gates. Originally proposed by the agent on that date,
 against integrated `main` `00de8c7796f37d08a338256e01830bb312ba105c`.
-Human Architecture Review is **pending**. This ADR changes no current policy or
-production code until accepted. Implementation and its later merge are separate gates.
+The architecture approval is **cleared**. Production implementation, validation
+and any new PR merge remain separate milestones. The new scope-affinity contract
+is effective for the approved atomic implementation, not an exception permitting
+the old plain-payload race. Existing release objects remain unchanged.
 
 ## Context and problem
 
@@ -57,7 +62,7 @@ real lower-cost alternative, but the local D cost is small enough to justify
 native verification before sacrificing that guarantee. The synthetic result does
 not establish production cost on ARM or modest hardware.
 
-## Recommended decision and exact protocol
+## Accepted decision and exact protocol
 
 ### Representation and lifetime
 
@@ -195,12 +200,14 @@ After approval, a focused implementation PR may change ScopeBuffer, its three
 consumer paths, regression surfaces and triggered docs. Do not alter DSP topology,
 OpenGL attachment policy, compiler/dependency pins, release objects or unrelated
 state ownership. Policy/architecture/source comments must be reconciled with the
-accepted contract in that PR. The current Proposed ADR grants no implementation permission.
+accepted contract in that PR. The owner has now authorized implementation of this Accepted design. This does
+not authorize merging its implementation PR or any release operation.
 
 ## Acceptance and rollback
 
-1. **Human gate:** owner explicitly accepts this ADR's window and GUI-affinity
-   contracts before production threading edits. A green proposal CI is insufficient.
+1. **Human gate — cleared 2026-11-01:** the owner explicitly accepted this ADR's
+   window and GUI-affinity contracts for implementation. Later validation, manual
+   acceptance, PR merge and release gates are unchanged.
 2. **Portability gate:** native compile-time guards and generated-code inspection
    on all shipping architectures; no lock-based atomic library fallback.
 3. **Behavior:** preserve Test 61 and add deterministic overlap/lapping, first/second
@@ -245,5 +252,5 @@ mitigation. Do not publish or replace 0.10.0 from this decision.
   These are living draft references to the relevant standard rules, not a claim
   that lock freedom of every implementation is mandated by C++.
 - **Unverified/pending:** native Windows/macOS prototype cost and compile guards,
-  production implementation/validation, human architecture acceptance and visual
+  production implementation/validation and visual
   audition. No user-visible failure rate or supported-host crash attribution.

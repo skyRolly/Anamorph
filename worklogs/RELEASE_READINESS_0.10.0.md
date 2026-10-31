@@ -9,8 +9,10 @@ No supported-host crash, audible corruption or field rate is established.
 **Recommendation: requires mitigation or additional validation before publication**,
 with the formal policy gap needing a reviewed mitigation or explicit human
 architecture/risk disposition; clean tests alone do not legalize it.
-[Proposed ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
-is not accepted or implemented. Previous owner approvals retain their actual scope.
+[Accepted ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+is now approved for implementation by the owner, but remains unimplemented at this
+record checkpoint. This approval does not authorize publication/replacement or
+waive native/performance/manual acceptance. Earlier owner approvals retain their scope.
 No tag, version, draft body or asset is changed. Integrated NR-022 is post-tag
 development and is not retroactively present in these 11 already-built assets.
 Publication/replacement remains a separate owner decision. Detailed evidence:
