@@ -8740,7 +8740,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2890`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2894`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8830,7 +8830,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2705`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2709`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -16566,7 +16566,7 @@ suppression. One new file (`ADR-0056`, **Proposed**), one new opt-in instrument
 (`--risk014-probe`), and four documents corrected to the measurements.
 
 **The two call graphs, from the API rather than the names.** `setStateInformation` →
-`decodeRestore` (`src/PluginProcessor.cpp:2902-2910`) → `AudioProcessor::getXmlFromBinary` →
+`decodeRestore` (`src/PluginProcessor.cpp:2906-2914`) → `AudioProcessor::getXmlFromBinary` →
 `juce::parseXML`; and, inside the same decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) →
 `juce::parseXML (slotPayload)` on a string attribute value of the already-parsed session document —
 a second, independently framed document. `getXmlFromBinary` validates exactly two things: chunk

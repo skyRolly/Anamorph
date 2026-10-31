@@ -623,7 +623,7 @@ preset completion point; the A/B completion point after the Bypass / view write-
 
 ## Related code
 
-- `src/PluginProcessor.cpp:2235-2254` (`abSwitchToAdopted`: the guard, the request, the capture, the apply, the
+- `src/PluginProcessor.cpp:2235-2258` (`abSwitchToAdopted`: the guard, the request, the capture, the apply, the
   completion); `src/PluginProcessor.cpp:2110-2151`, `src/PluginProcessor.cpp:2153-2178` (undo, redo);
   `src/PluginProcessor.cpp:2096-2108` (`beginBulkApply`, `endBulkApply`); `src/PluginProcessor.cpp:86-87` (the
   preset hooks); `src/PluginProcessor.cpp:240` (`prepareFrom`); `src/PluginProcessor.cpp:475-481` (`setParametersFrom`).

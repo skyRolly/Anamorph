@@ -2682,7 +2682,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
   the preset boundary now guards. Investigation first, and the investigation changed the entry in
   both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
-  (`src/PluginProcessor.cpp:2902-2910`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  (`src/PluginProcessor.cpp:2906-2914`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
   decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
   attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
   things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not

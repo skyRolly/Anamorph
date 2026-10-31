@@ -2237,6 +2237,10 @@ void AnamorphAudioProcessor::abSwitchToAdopted (int slot)
     slot = juce::jlimit (0, anamorph::kNumAbSlots - 1, slot); // defensive: never index out of bounds
     abEnsureInit();
     if (slot == abActive) return;
+    // NR-022: commit a completed edit to the OUTGOING slot before syncCommitted()
+    // clears its pending gesture. Admission already drained and holds the lock;
+    // use the adopted poll so no second drain can move this switch's target.
+    pollUndoCoalesceAdopted();
     // The duck that masks the level jump (#1, 0.6.4) AND the per-slot Level-Match memory (#23):
     // the engine records the slot being left and restores this one's at the duck's bottom, each
     // value with the currency of the result it was taken from (ADR-0007, Amendment of 2026-09-25,
