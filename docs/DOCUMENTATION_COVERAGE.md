@@ -12,9 +12,11 @@ Updated the package source contract, existing installer/native regression expect
 legacy preservation mutation control and CI step wording. Synchronized INSTALL.txt,
 the user guide, PACKAGING/RELEASE_PROCESS, TESTING/CI_CD/TESTING_POLICY, README,
 HANDOVER, SOURCE_OF_TRUTH, REPOSITORY_MAP and proposed ADR-0069/index. Removed the
-obsolete cleanup claim from the corrected 0.10.0 changelog entry; historical worklogs
-and ADR-0065 evidence remain intact. This follow-up supersedes the migration behavior
-in the earlier correction record below.
+obsolete cleanup claim from the corrected 0.10.0 changelog entry. The readiness record
+now identifies PR #193's preservation candidate and local validation scope, and labels
+PR #191 migration results and the earlier P1 replacement status as historical. Earlier
+validation evidence and ADR-0065 history remain intact. This follow-up supersedes the
+migration behavior in the earlier correction record below.
 
 Validation: all 14 Bubblewrap installer cases and six native-plan/coverage cases,
 package self-test/source contract, shell syntax and diff whitespace checks passed.

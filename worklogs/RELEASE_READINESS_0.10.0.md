@@ -1,7 +1,7 @@
 # Release readiness — 0.10.0 (draft only)
 
 **0.10.0 Linux correction in review (2026-10-31):** VST3-only installation with
-portable Standalone and verified legacy desktop cleanup is a new candidate under
+portable Standalone and preservation of all legacy desktop resources is the current candidate under
 proposed ADR-0069. Implementation/validation/PR preparation are authorized; human
 review and manual merge are required. No tag or release edit/publication is authorized
 in this task. After merge, rebuild 0.10.0 from the exact merged source, repeat applicable
@@ -9,7 +9,30 @@ release/native gates and targeted Linux manual checks, then replace the existing
 0.10.0 release only under separate authorization. Prior completed P1 evidence below
 is historical and does not certify the corrected Linux candidate.
 
-## Linux installer correction — candidate validation (2026-10-31)
+## Legacy cleanup removal — current candidate validation (2026-10-31)
+
+The owner's follow-up removes legacy desktop cleanup from both Linux entry scripts
+and both installation modes. Launchers, icons, ownership receipts, recovery journals
+and installed/staged Standalone binaries are left untouched. VST3 replacement,
+destination checks and parked-copy recovery retain their existing behavior.
+Source: commit `f728b50`; review: [PR #193](https://github.com/skyRolly/Anamorph/pull/193);
+contract: [proposed ADR-0069](../docs/architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md).
+
+Local validation for this preservation candidate: 14 Bubblewrap installer cases,
+six native-plan/coverage cases, package self-test/source contract, shell syntax,
+documentation structure for 14 changed Markdown files and `git diff --check` passed.
+The installer cases now require legacy preservation; the obsolete partial-cleanup
+retry case is retired, and deletion mutants exercise the preservation assertion.
+The optional earlier-release archive check was not run for this candidate. Real
+UID/sudo hosted-VM validation was not run locally and remains a required CI gate.
+PR #191's migration, native/platform and earlier manual results below do not certify
+this follow-up. Release rebuild/replacement still requires separate authorization.
+
+## Historical PR #191 migration validation (2026-10-31; superseded by PR #193)
+
+The following record describes the earlier cleanup implementation and its original
+validation only. Its cleanup behavior, case count and migration limits are historical;
+the preservation contract and validation scope above govern the current candidate.
 
 The owner explicitly requested correction in 0.10.0 and selected VST3-only script
 installation with portable Standalone retained. Dedicated branch:
@@ -70,7 +93,7 @@ source, repeat mandatory release/native checks and targeted Linux manual validat
 then request separate authorization to replace the existing 0.10.0 release/tag.
 Existing P1 execution authorization/history below does not authorize that follow-up.
 
-**Current status: 0.10.0 P1 replacement DRAFT COMPLETE; unpublished (2026-10-30, Asia/Shanghai).**
+**Historical P1 replacement status: DRAFT COMPLETE; unpublished (2026-10-30, Asia/Shanghai).**
 PR #187 merged at `b085c87d139f124e33a525e75ec13b8218c96f06`. Final-main Build 1956, CodeQL and MSVC analysis
 passed; the recreated annotated tag's normal Release build 5 / run 41001157732 passed all
 mandatory gates. New Draft Release [428664381](https://github.com/skyRolly/Anamorph/releases/tag/untagged-e9b61aa49fbd4b5cb114) targets that exact source.
