@@ -107,7 +107,8 @@ main scope blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
 
 ### Production and independent roadmap checkpoint — 2026-11-01
 
-**NR-006 implemented:** branch `fix/nr006-validated-scope-windows`, based on
+**NR-006 implemented:** source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`,
+branch `fix/nr006-validated-scope-windows`, based on
 Accepted ADR branch #199 `89694f24c940947fbbf70b9f32c07a6d31a3f07b`.
 The focused diff is atomic scope storage/protocol, three GUI consumers, regression
 surfaces and affected contracts. Main remains `00de8c7`. The approval authorizes
@@ -123,7 +124,7 @@ manual acceptance are explicitly pending. No new PR has been merged.
 | [#199](https://github.com/skyRolly/Anamorph/pull/199) / ADR-0070 | `89694f24c940947fbbf70b9f32c07a6d31a3f07b` | main; owner architecture Accepted, PR integration not authorized |
 | [#200](https://github.com/skyRolly/Anamorph/pull/200) / NR-011 | `104f60eb2ee246babba739e989f320d1811f73dd` | main, independent; preserves legacy32 and adds five transition/audio+latency-trace oracles, native CI/review separate |
 | [#201](https://github.com/skyRolly/Anamorph/pull/201) / NR-012 | `2d56eac297300a5ac65ad62efd4d17b40ff65055` | main, independent; 36 repeated alias rows support retaining current DSP assertions; no universal/monotonic dB gate justified |
-| NR-006 implementation | branch above; commit/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
+| NR-006 implementation | source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final head/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
 
 NR-011’s mandatory push run `41234815844` also hit the unchanged sanitizer time
 limit during Valgrind state tests; only cancelled job `124636244763` was retried.

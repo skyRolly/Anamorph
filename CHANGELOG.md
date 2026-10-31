@@ -28,6 +28,9 @@ including in entries written before 0.9.9 gave it that name.
   The edit stays in its original slot's history; switching itself adds no Undo step,
   and later host automation remains outside the edit.
   Evidence: commit `0e5e6449e23fd61c6967d5aa4ce42a94002e78b3`; ADR-0008; State test 149. [Verified]
+- **Scope and spectrum windows stay coherent when new audio overwrites their history.**
+  A contended copy keeps the last valid display instead of using partial sample data.
+  Evidence: commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; Accepted ADR-0070; State tests 150–151. [Verified]
 
 
 ## [0.10.0] — 2026-10-30

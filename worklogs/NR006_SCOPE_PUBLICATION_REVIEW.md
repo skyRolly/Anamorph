@@ -446,6 +446,8 @@ recurrence/legal/hardware/host prerequisites remain separate.
 recorded in [#199](https://github.com/skyRolly/Anamorph/pull/199#issuecomment-6548395725)
 and commit `89694f2`. **Implemented on branch:**
 `fix/nr006-validated-scope-windows`, based on that accepted decision branch.
+Source correction commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final review head/PR and subsequent
+validation attempts are maintained in the GitHub handoff ledger.
 Main remains `00de8c7`; implementation/research/NR-011/NR-012 PRs are not merged.
 Sections 1–10 are dated original/proposal evidence; statements there about plain
 storage, pending architecture approval or no production edits describe those

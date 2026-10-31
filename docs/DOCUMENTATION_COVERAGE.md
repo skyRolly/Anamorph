@@ -25,6 +25,9 @@ re-derived against the same live symbols after constructor lines moved (no check
 rules/expectations weakened). Added production source hashes, seven-repeat serial
 cost/codegen artifacts and exact limitations. Full native/performance/manual
 acceptance, integration and new PR merges remain separate from local checks.
+The Unreleased scope/FFT fix cites actual source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`;
+published Keep a Changelog 1.1.0 was read before editing. No tagged release
+section, version metadata, draft/tag or asset was changed.
 
 
 ## ADR-0070 owner acceptance — 2026-11-01

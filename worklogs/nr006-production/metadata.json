@@ -82,5 +82,6 @@
   ],
   "limits": "Serial API microbenchmark in shared managed Linux x64 environment, averages per 2000 calls. Not individual worst-block latency, representative production hardware, full-engine/GUI contention cost, ARM/MSVC native generated-code proof or owner cost acceptance. Min/max are repeat-mean spread, not WCET.",
   "assembly": "GNU objdump -d --disassemble=scope_push_assembly_canary / scope_read_assembly_canary; no helper call/lock/memory RMW on these paths. xchg %ax,%ax is a register-only alignment NOP. Other native targets pending.",
-  "assembly_text_normalization": "Trailing horizontal whitespace trimmed from objdump text only; instructions/bytes unchanged."
+  "assembly_text_normalization": "Trailing horizontal whitespace trimmed from objdump text only; instructions/bytes unchanged.",
+  "implementation_source_commit": "7f44bdc699d1509b33f5bdd33d1f50fb017a7a56"
 }
