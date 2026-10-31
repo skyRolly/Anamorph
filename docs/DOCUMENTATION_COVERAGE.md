@@ -1,5 +1,18 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #197 reader-affinity trace — 2026-11-01 (Asia/Shanghai)
+
+Found additional NR-006 drift: Vectorscope reads ScopeBuffer in paint as well as its
+tick, and pinned JUCE's OpenGL component-paint path holds the message-manager lock
+on the rendering thread. GUI reads are serialized, but are not all on the message
+thread. Corrected THREAD_MODEL's render responsibility/table/reader description and
+the review packet. THREADING_POLICY retains its literal affinity prohibition and
+records the existing mismatch; no policy exception or new path is approved. The
+architecture decision must resolve affinity along with payload ownership/coherence.
+The roadmap records the finding; source/tests/build/ADRs remain unchanged. Validation:
+actual consumer/JUCE call-chain inspection, docs/citation pairs, links/tables and
+unchanged-source comparison; no new runtime or cross-platform experiment is claimed.
+
 ## PR #197 publication-contract review — 2026-11-01 (Asia/Shanghai)
 
 Confirmed THREADING_POLICY still inferred whole-block coherence from the scope's

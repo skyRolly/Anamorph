@@ -32,6 +32,15 @@ approvals and earlier manual testing do not choose this future design. ScopeBuff
 blob `ed24ceab5ced2784d9fe96effdc46f8aeb03f472` and all implementation/tests are unchanged;
 single-thread DSP Test 61 cannot prove concurrent payload safety.
 
+**Additional finding from the final call-site trace: accepted/documented.**
+`Vectorscope::paint` reads the ring; pinned JUCE 9.0.4's OpenGL rendering thread can
+execute that component paint under its message-manager lock on macOS/Windows.
+GUI reads are serialized, but not all message-thread-affine. Corrected the
+THREAD_MODEL/packet claim and recorded the existing mismatch beside the policy's
+retained literal reader-affinity prohibition. That GUI lock never excludes audio
+overwrites. NR-006's owner-reviewed ADR must explicitly resolve affinity as well as
+payload ownership/coherence; no runtime change or new policy exception was enacted.
+
 ## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
 
 **Disposition: preserve the implementation.** `abSwitchToAdopted` polls the existing

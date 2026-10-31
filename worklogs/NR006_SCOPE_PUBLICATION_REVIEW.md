@@ -16,8 +16,19 @@ it is not attributed to a design or prototype that does not yet exist.
 Evidence [Verified]: `ScopeBuffer::pushBlock/readLatest/writeCount`, current
 `Vectorscope::tick` and `SpectrumImager::pushFFT`, plus the historical R7 analysis.
 The single audio writer copies two plain float arrays and then release-stores the
-new write index. The GUI acquires the index and copies frames below it. All readers
-are on the message thread; two GUI consumers are not two concurrent reader threads.
+new write index. The GUI acquires the index and copies frames below it. Ticks/FFT
+run on the message thread; `Vectorscope::paint` also reads the ring. With OpenGL
+attached on macOS/Windows, pinned JUCE 9.0.4 can call that paint on its rendering
+thread while holding the message-manager lock. GUI read sites are therefore serialized,
+but not all message-thread-affine. This corrects the packet's former claim that every
+read occurs on the message thread. The policy's literal affinity rule remains an
+unresolved NR-006 contract boundary, not a newly approved exception.
+
+Evidence [Verified]: `Vectorscope::paint/readLatest`, the editor's existing OpenGL
+attachment, and pinned JUCE's `juce_OpenGLContext.cpp::CachedImage::renderFrame`
+(scoped message-manager lock), `paintComponent` (lock assertion), `paintOwner`
+(`component.paintEntireComponent`). Linux/BSD do not attach that context. The GUI lock
+never excludes `pushBlock`, so it cannot establish audio-to-GUI payload ownership.
 
 The publication orders writes from the committed block before the reader that
 acquires it. It does **not** order that reader against a subsequent producer lap:
@@ -57,8 +68,12 @@ race-free. The source comment remains explicitly identified as overstated above.
 
 ## 2. Required invariants and decision
 
-Any selected correction must keep exactly one audio producer, message-thread
-consumers, fixed prepared storage and bounded work. No audio allocation, lock,
+Any selected correction must keep exactly one audio producer, serialized GUI
+consumers, fixed prepared storage and bounded work. The decision must explicitly
+resolve the current OpenGL-paint/message-thread policy-affinity drift: either approve
+a precise serialized GUI-reader contract through the ADR or choose an implementation
+that satisfies the existing affinity rule. Neither is silently selected here.
+No audio allocation, lock,
 wait, message posting, file IO or unbounded retry; no GUI-written audio payload.
 Preserve single-threaded count/clamp/wrap/oversized-block behavior, staleness probes,
 normal sample bit patterns and the engine's output. No DSP order, parameter,
@@ -112,7 +127,8 @@ architecture approval is represented by this packet.
 
 1. **Representation proof:** every conflicting payload access uses a defined atomic
    or proven ownership handoff. Review the reader-to-next-overwrite relation, not only
-   the initial writer-to-reader publication. Same-thread read sites remain stateless.
+   the initial writer-to-reader publication. GUI read sites remain stateless and
+   their thread affinity/serialization must match the explicitly selected contract.
 2. **Behavioral regression:** retain DSP Test 61 and its wrap/oversized/newest-frame
    controls. Add a deterministic scheduled lapping/stereo-consistency surface that
    distinguishes the old representation and the selected new guarantee. Use explicit
@@ -143,13 +159,21 @@ descriptive drift is corrected. Runtime correction remains pending selection of 
 contract/protocol and its validation surface. No defect is declared fixed.
 
 **Review disposition — 2026-11-01 (Asia/Shanghai): accepted and corrected.** Re-read
-the exact ScopeBuffer blob and both message-thread consumers. The missing reverse
+the exact ScopeBuffer blob and both GUI consumers. The missing reverse
 ordering/storage protection confirms the finding without relying on a new sanitizer
 result. Whole-block coherence is not established. THREAD_MODEL and THREADING_POLICY
 now say so consistently; no source/test/build/ADR decision was changed. Existing
 DSP Test 61 is single-threaded evidence, not concurrent snapshot validation. The
 existing packet's packed-frame recommendation remains conditional on explicit owner
 selection of the contract and subsequent human Architecture Review.
+
+**Additional review finding: accept/document existing reader-affinity drift.** A
+final call-site trace found Vectorscope's paint read and followed it through the
+pinned JUCE rendering thread. THREAD_MODEL now describes that existing execution;
+THREADING_POLICY retains its prohibition and explicitly records the mismatch rather
+than pretending the rule is satisfied or granting a new exception. NR-006 must resolve
+both this contract boundary and the plain-payload overwrite gap. No thread, lock,
+reader path, payload access or source comment was changed by this factual correction.
 
 The binding gate is
 [ARCHITECTURE_REVIEW_GATE.md](../docs/policies/ARCHITECTURE_REVIEW_GATE.md):
