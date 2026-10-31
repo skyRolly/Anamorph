@@ -30,6 +30,13 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
+The 2026-10-31 Linux correction is governed by proposed
+[ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):
+VST3-only installation, portable Standalone and verified legacy desktop cleanup.
+The owner authorized implementation/validation/PR preparation, with human review
+and manual merge required. Existing 0.10.0 tag/release and historical ADR-0065
+evidence are unchanged; a later approved rebuild/replacement is required.
+
 The current release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).
 It records the original owner's manual approval and automated outcomes separately, plus the

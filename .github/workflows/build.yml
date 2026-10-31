@@ -582,21 +582,19 @@ jobs:
           python3 scripts/check-installer-icon.py --self-test
           python3 scripts/check-installer-icon.py
 
-      # The same eight user cases are mandatory in the existing real-UID native
-      # gate. Pure source checks do not require unprivileged user namespaces.
-      - name: Ordinary-user protected-helper capture regression
+      # Installer behavior is mandatory in the real-UID/sudo native gate.
+      # These plan/source checks do not execute installers or require namespaces.
+      - name: Linux installer plan and shell regression
         run: |
           test "$(id -u)" -ne 0
-          python3 tests/linux_desktop_helper_tests.py
-          python3 tests/linux_desktop_native_plan_tests.py
+          python3 tests/linux_install_native_plan_tests.py
           /bin/sh -n packaging/linux/install.sh
           /bin/sh -n packaging/linux/uninstall.sh
-          /bin/sh -n packaging/linux/desktop-integration.sh
 
-      - name: Linux desktop approved source contract
+      - name: Linux VST3 package contract
         run: |
-          python3 scripts/check-linux-desktop.py --self-test
-          python3 scripts/check-linux-desktop.py
+          python3 scripts/check-linux-package.py --self-test
+          python3 scripts/check-linux-package.py
 
       - name: Product identity self-test and source contract
         run: |
@@ -750,7 +748,6 @@ jobs:
         uses: ./.github/actions/setup-linux-build
         with:
           clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
-          extra-packages: bubblewrap desktop-file-utils python3-gi gir1.2-gtk-3.0 librsvg2-common
 
       # Shared lineage with `merge-check` -- see that job. This is the writer of
       # the two: it runs on every push, so the cache a PR restores is the one
@@ -1168,14 +1165,13 @@ jobs:
         run: |
           set -e
           DIST="dist/Anamorph-Linux"
+          rm -rf -- "$DIST"
           mkdir -p "$DIST"
           cp -R build/Anamorph_artefacts/Release/VST3/Anamorph.vst3 "$DIST/"
           cp    build/Anamorph_artefacts/Release/Standalone/Anamorph "$DIST/Anamorph"
           cp    packaging/linux/INSTALL.txt "$DIST/INSTALL.txt"
           install -m 755 packaging/linux/install.sh   "$DIST/install.sh"
           install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
-          install -m 644 packaging/linux/desktop-integration.sh "$DIST/desktop-integration.sh"
-          cp -R resources/icons/linux "$DIST/desktop-assets"
           # Attribution/support files (NOTICE, THIRD_PARTY_LICENSES.md,
           # SUPPORT.md) are deliberately NOT staged: the packages carry only
           # what a user needs to install, and INSTALL.txt is installation-only
@@ -1208,36 +1204,36 @@ jobs:
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
       # pluginval-only failure still yields beta artifacts as before.
-      # The complete installed-resource gate runs in fresh hosted VM private
+      # The complete VST3/legacy-cleanup gate runs in fresh hosted VM private
       # roots with real UIDs/sudo. It changes no host kernel/security settings;
       # any unavailable isolation capability fails and keeps upload blocked.
-      - name: Validate staged Linux desktop resource bytes
-        id: desktop_source
+      - name: Validate staged Linux VST3 and portable payload
+        id: package_source
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
         run: |
-          python3 scripts/check-linux-desktop.py --self-test
-          python3 scripts/check-linux-desktop.py --staged-dir dist/Anamorph-Linux > build/linux-desktop-source.json
+          python3 scripts/check-linux-package.py --self-test
+          python3 scripts/check-linux-package.py --staged-dir dist/Anamorph-Linux > build/linux-package.json
 
-      - name: Validate real Linux desktop installation in disposable private roots
-        id: desktop_install
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.desktop_source.outcome == 'success' }}
+      - name: Validate real Linux VST3 installation and legacy cleanup in private roots
+        id: plugin_install
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.package_source.outcome == 'success' }}
         run: |
           sudo -n --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,GITHUB_REPOSITORY \
-            python3 tests/linux_desktop_native_tests.py \
-            --staged-dir dist/Anamorph-Linux --report build/linux-desktop-install.json
+            python3 tests/linux_install_native_tests.py \
+            --staged-dir dist/Anamorph-Linux --report build/linux-install.json
 
-      - name: Retain Linux desktop install evidence
-        if: ${{ always() && steps.desktop_install.outcome != 'skipped' }}
+      - name: Retain Linux install evidence
+        if: ${{ always() && steps.plugin_install.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Anamorph-Linux-desktop-validation
+          name: Anamorph-Linux-install-validation
           path: |
-            build/linux-desktop-source.json
-            build/linux-desktop-install.json
+            build/linux-package.json
+            build/linux-install.json
           if-no-files-found: error
 
       - name: Upload Linux artifacts
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.desktop_install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' && steps.plugin_install.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Anamorph-Linux

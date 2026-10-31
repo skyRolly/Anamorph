@@ -166,11 +166,12 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `scripts/check-release-notes.py` | Current-version extraction/content guard with same-job positive/negative liveness controls; optional downloaded-notes input. |
 | `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Accepted finite processor parameter contract, implemented and validated in PR #187 / 0.10.0. |
 | `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Accepted restore/latency callback completion contract, implemented and validated in PR #187 / 0.10.0; distinct lock residual retained. |
+| `docs/architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md` | Proposed corrected 0.10.0 Linux installer/legacy-cleanup decision; human review/manual merge required. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |
 | `packaging/windows/Anamorph.iss` + `INSTALL.txt` | Inno Setup installer script (stable AppId; component page + dual-path destination page, VST3 → Common Files) + Windows install notes (shipped in the zip). |
-| `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | Linux installer/uninstaller — prompts for per-user (`~/.vst3`, `~/.local/bin`, no root; the default) or system-wide (`/usr/lib/vst3`, `/usr/local/bin`, `sudo`), or is told with `--user` / `--system` when there is no terminal to ask on (`uninstall.sh` also takes `--discard-parked`) — + install notes; all three ship in the zip. |
+| `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | VST3-only user/system installation, parked-copy recovery and verified migration of earlier desktop resources; Standalone stays portable. |
 | `docs/user/USER_MANUAL.md` | Full end-user manual (interface, signal flow, algorithms, presets, workflows, troubleshooting); attached to GitHub releases. |
 | `docs/user/INSTALLATION.md` | End-user installation guide for all three platforms (installer + manual routes). |
 | `.github/actions/setup-linux-build/` | Composite action carrying the Linux setup the Linux jobs share: `setup-linux.sh` at the requested `dependency-profile` (`full` by default, `headless` for the containerised GCC job), optionally the pinned Clang (`clang-version`) and extra apt packages (`extra-packages`, both fail-closed), then the ccache install behind its non-fatal fallback. **The ccache fallback is a policy, and this is its one copy** — it used to be written out seven times, six of them byte-identical. The per-job cache **lineage** deliberately stays in `build.yml`: that part genuinely differs per job. |
@@ -217,17 +218,13 @@ the inventory, stack dependencies, comparisons and native limitations for Accept
 `scripts/test-windows-installer.ps1` checks disposable-VM component/reinstall/uninstall behavior
 and exposes a portable snapshot self-test. Evidence: `worklogs/2026-10-23-windows-installer-icon.md`.
 
-Linux desktop additions (Accepted ADR-0065): `resources/icons/linux/` contains the
-approved hash-pinned handoff; `packaging/linux/desktop-integration.sh` implements exact
-resource ownership/recovery for both customer entry points; `scripts/check-linux-desktop.py`
-validates sources/staging with a preceding self-test; `tests/linux_desktop_install_tests.py`
-drives actual scripts in disposable filesystem namespaces. Test-only GTK/GIO/Bubblewrap
-are independent of the product runtime. ADR-0065 is registered as Accepted (owner confirmation 2026-10-25).
-
-The ordinary-UID helper recorder runs in normal source-lint. The obsolete separate
-publication-phase review workflow is retired. `tests/linux_desktop_native_tests.py`
-adds real sudo/root selection and protected-snapshot observation in private roots
-on a fresh hosted Linux VM; its successful full gate is required for customer upload.
+Linux VST3-only correction (proposed ADR-0069): `packaging/linux` contains two
+installer entry points with embedded verified legacy cleanup and `INSTALL.txt`.
+`scripts/check-linux-package.py` checks source/staged archive contracts with liveness;
+`tests/linux_install_tests.py` runs actual scripts in disposable roots;
+`tests/linux_install_native_tests.py` runs the full real-UID/root/sudo gate required
+for customer upload. Standalone remains portable; no desktop assets/helper ship.
+The native-plan recorder checks planning/coverage without privileged execution.
 
 `scripts/test-macos-receipts.py` adds installed PackageKit/pkgutil receipt validation
 on the repository's disposable hosted Mac only; `--self-test` needs no native installer.
@@ -245,7 +242,7 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 | Script | Review validation responsibility |
 |---|---|
 | `scripts/test-workflow-routing.py` | Production Build/Release expression and needs selection, with same-run valid and seeded skipped-Release liveness controls before the real check. No dispatch or installer. |
-| `tests/linux_desktop_native_plan_tests.py` | Ordinary recording plans and in-process unittest result lifecycle diagnostics, including cleanup errors and the absent-parent production report writer. No privileged operation or installer. |
+| `tests/linux_install_native_plan_tests.py` | Ordinary native-executor plans, private writable mounts, mandatory-case omission/liveness and incomplete-report ineligibility. No privileged operation or installer. |
 | `scripts/test-macos-integration-review.py` | Optional seven selections and real two-product co-installation from independently identified artifacts; native PackageInfo/Distribution and staged bundle metadata establish artifact-specific receipt versions before installation. Pure metadata/extraction `--self-test`. |
 
 

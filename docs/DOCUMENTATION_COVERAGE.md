@@ -1,5 +1,32 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Corrected 0.10.0 Linux plugin installation (2026-10-31)
+
+Replaced obsolete current desktop-publication instructions with VST3-only installation,
+portable Standalone and receipt/hash-verified migration. Updated Linux INSTALL.txt,
+user installation, PACKAGING/RELEASE_PROCESS, CI_CD/TESTING/TESTING_POLICY, README,
+HANDOVER, SOURCE_OF_TRUTH, REPOSITORY_MAP and the existing readiness worklog.
+Registered proposed ADR-0069 and marked ADR-0065 superseded for this proposed
+candidate while retaining dated historical approvals/evidence. The owner explicitly
+authorized this reversal and VST3-only choice; human PR review/manual merge remain.
+
+The source/package gate, new behavior/native/plan tests and artifact-upload dependency
+replace retired desktop-specific assets/helper/tests. Shared JUCE/Windows/macOS assets,
+build formats, DSP/state and version 0.10.0 remain unchanged. Changelog corrections
+belong in 0.10.0 on the owner's instruction. No supplied logs, computer/account names
+or host metadata are recorded. Validation and remaining legacy-state limitations are
+recorded in the readiness worklog; final release replacement is a separate follow-up.
+Inaccessible legacy icon ancestry is checked before absence: retain its receipt
+and warn so an inaccessible file cannot be mistaken for completed cleanup.
+
+Review follow-up: TESTING now explicitly inventories the `inaccessible-parent`
+regression's mode-000 icon ancestry, warning and retained resource/receipt.
+The package checker requires `0755` on both shell scripts as well as the portable
+ELF and VST3 module. Its self-test rejects each independently at `0644`, checks the
+specific mode diagnostic and restores/revalidates the stage between cases.
+PACKAGING and RELEASE_PROCESS distinguish this staged-artifact gate from the
+existing release ZIP permission restoration.
+
 ## PR #189 completed investigation disposition (2026-10-31, Asia/Shanghai)
 
 CI_CD and TESTING now record run 41086686014's verified enqueue/disposal/block-return
@@ -2184,7 +2211,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3782` and `.github/workflows/build.yml:3867`, this round being
+`.github/workflows/build.yml:3778` and `.github/workflows/build.yml:3863`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -2218,7 +2245,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:803` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:800` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the

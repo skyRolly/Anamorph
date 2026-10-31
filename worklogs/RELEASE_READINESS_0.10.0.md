@@ -1,5 +1,75 @@
 # Release readiness — 0.10.0 (draft only)
 
+**0.10.0 Linux correction in review (2026-10-31):** VST3-only installation with
+portable Standalone and verified legacy desktop cleanup is a new candidate under
+proposed ADR-0069. Implementation/validation/PR preparation are authorized; human
+review and manual merge are required. No tag or release edit/publication is authorized
+in this task. After merge, rebuild 0.10.0 from the exact merged source, repeat applicable
+release/native gates and targeted Linux manual checks, then replace the existing
+0.10.0 release only under separate authorization. Prior completed P1 evidence below
+is historical and does not certify the corrected Linux candidate.
+
+## Linux installer correction — candidate validation (2026-10-31)
+
+The owner explicitly requested correction in 0.10.0 and selected VST3-only script
+installation with portable Standalone retained. Dedicated branch:
+`fix/0.10.0-linux-plugin-installer`. PR preparation stops before human review/merge;
+no existing tag or release is edited, deleted, recreated or published by this task.
+Review: [PR #191](https://github.com/skyRolly/Anamorph/pull/191). Its checks and
+`Anamorph-Linux-install-validation` artifact retain fresh native/platform results;
+the PR description records final run identities, outcomes and remaining limits.
+
+Root cause: ADR-0065's desktop helper applied a whole-ancestry group/other-write
+refusal before both binary installation and removal. A normal personal-group 0775
+icon directory therefore blocked an otherwise independent audio-plugin operation.
+The earlier binary workflow (`fc7428e^`) did not depend on desktop icon ancestry.
+The corrected scripts retain staged VST3 replacement and recovery, make installed
+module chmod mandatory before publication, and remove desktop publication. Migration
+uses protected old receipts/owner/content hashes without chmod/chown of shared trees.
+
+Local completed validation:
+
+- `scripts/preflight.sh`: source/documentation/identity/icon/realtime/portability and
+  other mandatory local lint/self-tests, plus existing native Linux DSP/state suites:
+  945 DSP checks and 10,827 state checks, zero failures. Runtime C++/CMake inputs are
+  unchanged; the full fresh build/native/platform result remains a separate CI gate.
+- `tests/linux_install_tests.py --legacy-archive <verified prior ZIP>`: all 15 cases,
+  including fresh user/system namespaces, permission-independent installation,
+  optional portable payload, repeated install/uninstall, legacy receipt cleanup,
+  unrelated/modified/link/missing-receipt preservation, partial cleanup retry,
+  error/SIGKILL/TERM/HUP/INT swap recovery and executable-mode failure before commit.
+  A portable input extracted at the legacy bin path is also explicitly preserved.
+  A final permission regression also verifies that inaccessible icon ancestry keeps
+  its ownership receipt and warns, rather than being mistaken for an absent resource.
+- Six native-plan/lifecycle/upload-condition tests, eight icon/preflight aggregate
+  regressions, and package source/staged-contract positive/negative self-tests.
+- The actual existing 0.10.0 Linux ZIP (asset 690966946) was read-only downloaded and
+  SHA-256 checked against `d2aea303302bc4b1e975494588a1e25e50b5471d3916b42c7852ffa005bb9963`.
+  Its actual old scripts/binaries/resources were installed in isolated user and
+  mapped-root system namespaces. Old user removal refused a 0775 icon parent;
+  corrected upgrade/reinstall/repeated removal cleaned verified resources and the
+  exact old Standalone, preserved unrelated icons, and kept the parent mode intact.
+- Workflow edits moved eight governed citations; the same source text was re-anchored
+  by the citation gate. No referenced policy/compatibility decision was changed.
+
+The local environment has no sudo; namespace-mapped root is not real-host privilege
+evidence. Real ordinary/root UID, per-operation sudo, system killed-swap recovery and
+foreign-owner preservation must pass in the mandatory staged hosted-VM CI gate.
+Fresh cross-platform CI and manual Linux DAW/desktop cache observations are not
+converted into local passes. Final CI evidence is linked from PR #191; release
+replacement still requires separate approval after human review/manual merge.
+
+Conservative migration limits: edited/unowned resources, malformed receipts,
+incomplete/unknown legacy journals and binaries outside the verified old executable
+digest remain with warnings. They do not block VST3 operations. Shared icon/cache
+directories and permissions remain unchanged; a desktop may refresh stale cache
+display later. Same-root operations must be serialized; no power-loss guarantee.
+
+After human review and manual merge, build 0.10.0 from the exact final merged
+source, repeat mandatory release/native checks and targeted Linux manual validation,
+then request separate authorization to replace the existing 0.10.0 release/tag.
+Existing P1 execution authorization/history below does not authorize that follow-up.
+
 **Current status: 0.10.0 P1 replacement DRAFT COMPLETE; unpublished (2026-10-30, Asia/Shanghai).**
 PR #187 merged at `b085c87d139f124e33a525e75ec13b8218c96f06`. Final-main Build 1956, CodeQL and MSVC analysis
 passed; the recreated annotated tag's normal Release build 5 / run 41001157732 passed all
