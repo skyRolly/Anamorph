@@ -41,6 +41,20 @@ retained literal reader-affinity prohibition. That GUI lock never excludes audio
 overwrites. NR-006's owner-reviewed ADR must explicitly resolve affinity as well as
 payload ownership/coherence; no runtime change or new policy exception was enacted.
 
+**Performance-contract follow-up — 2026-11-01 (Asia/Shanghai): accepted and corrected.**
+The owner flagged PERFORMANCE_BUDGET's unconditional whole-committed-block claim.
+Re-reading `ScopeBuffer::pushBlock/readLatest` confirms the conflict with NR-006's
+later-overwrite exposure. The same file's Wave 4 explanation repeated that false
+premise and is corrected too. The row now specifies fixed 16384-frame storage and
+copy work bounded by the valid block/request size and capacity, constant per copied
+frame; one index publication does not establish coherent or race-free snapshots.
+Historical segmented-copy measurements and all runtime/policy/architecture gates
+remain unchanged. Updated the packet/coverage audit; source blob remains
+`ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. This follow-up will be committed on #197
+and additively propagated to #198; final heads/checks are recorded in the PR ledger.
+No merge authorization was supplied. NR-003 stays Deferred; NR-006 remains gated;
+NR-011 and all release operations remain unstarted.
+
 ## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
 
 **Disposition: preserve the implementation.** `abSwitchToAdopted` polls the existing

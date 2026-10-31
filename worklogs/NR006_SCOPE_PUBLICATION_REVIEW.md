@@ -175,6 +175,16 @@ than pretending the rule is satisfied or granting a new exception. NR-006 must r
 both this contract boundary and the plain-payload overwrite gap. No thread, lock,
 reader path, payload access or source comment was changed by this factual correction.
 
+**Performance-contract follow-up: accepted and corrected.** The owner's next review
+flag identified PERFORMANCE_BUDGET's remaining whole-committed-block promise. A
+separate drift check also found its Wave 4 explanation repeating the same index-only
+argument. Corrected both, retaining the segmented-copy implementation and historical
+measurement while distinguishing serially observed final ring bytes from concurrent
+snapshot safety. The performance row now states fixed storage and bounded copy work,
+constant per copied frame rather than an unqualified O(1) transfer. This is a factual
+documentation correction; no performance experiment, runtime repair, policy exception
+or approved architecture decision is claimed.
+
 The binding gate is
 [ARCHITECTURE_REVIEW_GATE.md](../docs/policies/ARCHITECTURE_REVIEW_GATE.md):
 “Thread Model change — new thread, new cross-thread path, new atomic ordering”.
