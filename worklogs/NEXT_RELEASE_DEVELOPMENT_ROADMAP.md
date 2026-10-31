@@ -922,6 +922,11 @@ warning/ABI threshold, pluginval retry rule or engineering gate was weakened.
   severity remains unassessed; no alert or analyzer configuration was modified.
 - NR-017 is Completed as an inventory/triage deliverable, not as a claim that all
   diagnostics are fixed. GitHub open/fixed/dismissed state is unavailable (HTTP 403).
+- Inventory review: [PR #198](https://github.com/skyRolly/Anamorph/pull/198), initial
+  inventory commit `3f9c327`, stacked on #197. Documentation/checker evidence:
+  700 doc self-tests / 179 files clean, 276 citation self-tests / 610 live anchors,
+  exact original-SARIF/CSV comparison for all 257 records, archive hashes and relative
+  links. No product, tests, CI or analyzer settings change in this packet.
 - NR-006's separate packet is [PR #197](https://github.com/skyRolly/Anamorph/pull/197),
   parent `017a2e4`, stacked on source PR #196 / owner-decision PR #195.
 - Source PR #196's existing CodeQL/MSVC manual workflows were requested against its
@@ -941,6 +946,13 @@ is successful; its event-specific scope does not replace the push matrix. Existi
 manually dispatched [CodeQL 41217038192](https://github.com/skyRolly/Anamorph/actions/runs/41217038192)
 and [MSVC 41217041554](https://github.com/skyRolly/Anamorph/actions/runs/41217041554)
 are in progress. No incomplete or skipped job is asserted to pass.
+
+The completed pinned-Clang Linux job's log independently confirms **945 DSP / 10,953
+state checks**, zero failures, and the state suite under a **1 MB stack**. Both its
+VST3 and Standalone require CXXABI_1.3.9 / GLIBC_2.38 / GLIBCXX_3.4.31, within the
+unchanged declared floor. This validates those CI artifacts; it does not turn the
+separate rejected local GCC aggregate preflight into a pass or finish the remaining
+platform/sanitizer/analyzer jobs.
 
 **Recommended next batch:** review the prepared NR-006 contract options; implement only
 an explicitly selected/approved protocol. Independently, NR-011's bounded transient

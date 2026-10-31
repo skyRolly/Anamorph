@@ -129,7 +129,10 @@ or dependencies contain no vulnerabilities.
   both checker invocations succeed. They are not new SARIF findings.
 - NR-022's local GCC 14 VST3/Standalone require CXXABI_1.3.15 above the shipping
   1.3.14 floor. That rejected local artifact is not evidence that the pinned-Clang
-  release floor should rise; the shipping CI remains mandatory.
+  release floor should rise. Its source-head pinned-Clang Linux job in run
+  41216103432 passes the existing ABI check for both artifacts (CXXABI_1.3.9,
+  GLIBC_2.38, GLIBCXX_3.4.31); the other required platform/analyzer jobs remain
+  separate. See the roadmap's dated source-CI checkpoint.
 - Stacked PR #196 targets a feature branch, so its CodeQL/MSVC workflows are not
   selected automatically by their main-base filter. Their existing manual workflows
   were invoked against the exact `fix/nr022-ab-pending-undo` ref (`4a431ca`) without
