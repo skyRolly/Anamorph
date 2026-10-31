@@ -23,7 +23,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 | `LoudnessMatch` | **Verified** — fixed nested biquad structs; `pow/log10/tanh`; no alloc. The result-currency bookkeeping (ADR-0007, 2026-09-25) is scalar: a `pow` when the block size changes, a `log10` pair per audible block while a change is being caught up | prepare(): coeff compute only | LoudnessMatch.cpp:48-245 |
 | `CorrelationMeter` | **Verified** — scalar one-poles only | none | Correlation.h:48-107 |
 | `LevelMeters` | **Verified** — scalar envelopes; NaN self-heal per sample | none | LevelMeters.h:85-192 |
-| `ScopeBuffer` | **Verified** — fixed `std::array`, lock-free SPSC | none | ScopeBuffer.h:28-57 |
+| `ScopeBuffer` | **Verified bounded storage/copying**, no allocation/lock in methods; release/acquire index does not protect reusable plain samples. NR-006 payload/GUI-affinity gaps remain open; Proposed ADR-0070 is not an implemented fix | none | ScopeBuffer.h::pushBlock/readLatest; worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md |
 
 ## Cross-cutting findings (Verified)
 

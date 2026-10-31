@@ -46,6 +46,9 @@ a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.
 The NR-006 [ScopeBuffer review packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md)
 is supporting developer evidence, not an approved replacement for the threading policies.
+[Proposed ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+records the agent's post-integration recommendation; human Architecture Review remains
+pending and no production synchronization or reader-affinity change is effective.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
 

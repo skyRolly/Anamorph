@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** review-and-repair checkpoint; owner merge authorization required.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 Proposed ADR-0070 awaits human Architecture Review; independent NR-011 authorized next.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -13,6 +13,99 @@ That readiness worklog remains the release execution/history record; the
 [engineering-review programme](engineering-review/ENGINEERING_REVIEW_PROGRAMME.md) remains the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
+
+## Authorized integration and architecture selection — 2026-11-01 (Asia/Shanghai)
+
+The owner's new pasted assignment explicitly authorizes merging **#195, #196, #197,
+#198**, then NR-006 investigation/technical selection and independent roadmap work.
+It does **not** approve a new threading design, later PR merges or release operations.
+This section supersedes the earlier pending-merge checkpoints below without rewriting
+their historical evidence. NR-003 remains Deferred.
+
+### Actual integration
+
+Refreshed heads, full conversations, reviews, threads, push/PR workflows and
+repository merge state before integration. No new reviews or inline threads were
+returned. Each exact approved head's mandatory push matrix and PR merge-check
+completed successfully; optional review-job and duplicate PR matrix skips were
+kept distinct. #195 dependency review and #196 exact-source CodeQL/MSVC also
+succeeded. Main branch metadata reported `protected:false`/checks off and rulesets
+`[]`; the administrative protection endpoint still returned 403. Merge endpoints
+reported CLEAN/MERGEABLE, with no required review decision outstanding. No gate was
+changed or bypassed.
+
+| PR | Reviewed head | Actual merge commit | Exact-head Build push / PR run |
+|---|---|---|---|
+| [#195](https://github.com/skyRolly/Anamorph/pull/195) | `e038f23f8912a8ee591b04bec8062c493ad42052` | `3df74eab68de85cc3db897b551da7333d9868d3d` | [41224491946](https://github.com/skyRolly/Anamorph/actions/runs/41224491946) / [41224494636](https://github.com/skyRolly/Anamorph/actions/runs/41224494636) |
+| [#196](https://github.com/skyRolly/Anamorph/pull/196) | `31ae5366eecf60e783e86051b4403df08186288c` | `49958aed942a2e5eefb602e151d4d8c2ac461c41` | [41224607380](https://github.com/skyRolly/Anamorph/actions/runs/41224607380) / [41224612982](https://github.com/skyRolly/Anamorph/actions/runs/41224612982) |
+| [#197](https://github.com/skyRolly/Anamorph/pull/197) | `b63dd65f418caab8146b7b441390f45f21fc278a` | `e426cc2f79e3416591ac153c053020d79972b8f6` | [41227858250](https://github.com/skyRolly/Anamorph/actions/runs/41227858250) / [41227862824](https://github.com/skyRolly/Anamorph/actions/runs/41227862824) |
+| [#198](https://github.com/skyRolly/Anamorph/pull/198) | `42ebbbc6bce5f68f60d93942f894a63b022f4f39` | `00de8c7796f37d08a338256e01830bb312ba105c` | [41227975494](https://github.com/skyRolly/Anamorph/actions/runs/41227975494) / [41227979254](https://github.com/skyRolly/Anamorph/actions/runs/41227979254) |
+
+Merged sequentially using merge commits and expected-head leases. After each
+merge, fetched actual main, checked both parents and exact tree equality with
+that PR's reviewed head. Retargeted only the next PR to main; its computed merge
+tree equaled its already validated head. No shared history rewrite, conflict,
+source correction or duplicate patch application. All four reviewed heads are
+ancestors of final main **`00de8c7`**, whose tree exactly equals final #198 `42ebbbc`.
+All four are now closed/merged, not merely ready for review.
+
+Fresh integrated local checks: docs self-test **700** / **179** files; citation
+self-test **276** / **610** anchors against pre-stack main; whitespace/ancestry/tree
+checks; full `MALLOC_PERTURB_=1` suites **945 DSP / 10,953 state**, zero failures.
+The prior GCC14 shipping ABI failure at CXXABI_1.3.15 > 1.3.14 remains a historical
+failed preflight, not repaired by Clang or by integration. Existing invalid-escape
+Python checker warnings remain. Final-main CI is reported separately from head CI.
+Final-main Build [41231806213](https://github.com/skyRolly/Anamorph/actions/runs/41231806213)
+was in progress at the proposal checkpoint: macOS ARM/Intel, sanitizers, Windows
+and Linux still running; other executed jobs succeeded. This is not a final-main
+pass claim. Proposal-local checks additionally cover 180 documentation files,
+610 citation anchors, 742 table rows, new relative links/headings, source/artifact
+digests and unchanged production/release inputs.
+
+### NR-006 selection and changed priority
+
+**Priority decision:** promote NR-006's investigation to **P1 / first architecture
+batch**, as explicitly requested, because the cross-thread payload violation is
+confirmed at source level. This does not establish a supported-host crash or
+automatically declare a release-blocking runtime defect. The old NR-011-first
+ordering below is historical; NR-011 becomes the independent implementation lane
+after the architecture proposal is ready, while approval remains pending.
+
+The [expanded research packet](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
+reconstructs writer/readers, JUCE OpenGL locking, count/payload ordering, wrap,
+oversized pushes and editor/prepare/reset lifetimes. Independent comparison of
+atomic samples, packed pairs, owned snapshots, tagged atomics and bounded queue/
+seqlock/reclamation variants selects **generation-validated atomic stereo windows**.
+[ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+is **Proposed**, not Accepted. Its complete protocol accepts only exact committed
+positions or rejects once, never waits/retries, retains last accepted display,
+and explicitly proposes preserving serialized JUCE OpenGL reads. This affinity
+amendment is not currently effective and grants no exception to plain shared access.
+
+Nonshipping research provides deterministic weaker-contract and order-weakening
+controls, concurrent two-reader tagged / one-reader owned stress, Clang22/GCC14
+compile guards, bit-preservation controls, and active-canary TSan. Seven-repeat
+serial benchmark artifacts/metadata are retained in `nr006-research/`; native
+Mac/Windows/ARM performance/guards and representative production costs remain
+pending. No production threading edits or new implementation acceptance claimed.
+Actual ScopeBuffer blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+
+### Release and next actions
+
+For unchanged 0.10.0, NR-006 disposition is **requires mitigation or additional
+validation before publication**, with a reviewed mitigation or explicit human
+architecture/risk disposition required for the source-level policy gap. More clean
+runs alone do not legalize it. No field failure rate/crash is established. Existing
+tag `1190e455` → `4c13688`, draft 429760301, 11 assets and version stay unchanged;
+post-tag NR-022 is not in those assets. Prior owner manual/ADR attestations keep
+their original scope. Publication/replacement remains separately unauthorized.
+
+**Next:** submit ADR-0070 for human Architecture Review, then implement/test the
+bounded NR-011 differential transition batch independently from verified main.
+No later PR may be merged without separate owner authorization. NR-010 needs
+controlled identified hardware; NR-013 a pinned REAPER reproducer; NR-018/019
+owner/legal/provisioning decisions. NR-004/005/007 recurrence dispositions and
+NR-017's unknown GitHub alert state remain unchanged.
 
 ## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
@@ -509,7 +602,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P2 | Ready for Review | Scope overwrite/thread-contract review packet; runtime decision pending | 1 / architecture phase |
+| NR-006 | P1 | Proposed / Ready for Review | Selected generation-validated atomic windows; ADR-0070 pending human review, no production change | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
@@ -525,7 +618,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Pending | Candidate-specific release validation — close selected scope | 4 / each actual release |
-| NR-022 | P2 | Ready for Review | Confirmed Undo-step loss — correction and regression implemented | 1 / investigation before maintenance |
+| NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -608,10 +701,11 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 ### NR-006 — Decide the ScopeBuffer overwrite contract
 
-**Packet Ready for Review:** [NR006_SCOPE_PUBLICATION_REVIEW.md](NR006_SCOPE_PUBLICATION_REVIEW.md).
-The original mechanism remains in source; only descriptive overclaims are corrected.
-Packed atomic stereo frames are a conditional candidate, not an approved decision or fix.
-The owner must select best-effort versus whole-window coherence before a new payload protocol.
+**Proposed ADR Ready for Review:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
+with [research evidence](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
+The agent selected generation-validated atomic stereo windows after comparing the
+alternatives; human architecture acceptance and native verification remain pending.
+The original mechanism stays in production until that gate is cleared.
 
 
 - **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
@@ -890,7 +984,12 @@ This baseline does not substitute for new NR-022 branch CI. Original scope/accep
 
 ### NR-022 — Preserve completed Undo across a direct A/B switch
 
-- **Ready for Review / Verified:** reproduced against current unchanged processor code
+- **Merged / Integrated — 2026-11-01:** #196 merged at `49958ae`; final stack main
+  `00de8c7` contains implementation, regression and documentation. Exact-head mandatory
+  native/sanitizer/RTSan/TSan/LTO, CodeQL/MSVC and PR checks succeeded. Fresh integrated
+  local suites pass 945 DSP / 10,953 state. Historical reproduction below was against
+  the pre-fix processor, not current main.
+- **Original reproduction / Verified:** reproduced against the then-unchanged processor code
   (`f64f9d1`, runtime equal to `4c13688`). A completed gesture followed by A→B→A before a
   coalescer poll retains the sound but loses its Undo step. State test 149 fails **10/126**;
   the matching polled controls pass. The earlier global-review candidate is confirmed.
@@ -906,9 +1005,9 @@ This baseline does not substitute for new NR-022 branch CI. Original scope/accep
   checks under `MALLOC_PERTURB_=1`; locked Linux VST3 pluginval strictness 10, deterministic
   and randomise ×3, all first attempts. Controls cover repeated cycles, relative/absolute
   switches, exact step counts, separate B history, later host writes, same-slot and empty edits.
-- **Remaining validation/review:** required native CI/sanitizer/RTSan/TSan/LTO gates and human
-  PR review. Local container uses GCC 14.2.0 Release, not the pinned shipping Clang; its ABI
-  floor result must not be waived. Source citations and four historical target declarations
+- **Validation distinction:** the first local container used GCC 14.2.0 Release; its failed ABI
+  preflight was not waived. Later fresh shipping-Clang checks and mandatory native CI
+  passed, as recorded above; neither repairs that historical GCC result. Source citations and four historical target declarations
   are re-anchored with unchanged expected tokens/checker behavior. No version bump/release
   change; this is Unreleased maintenance work, not part of the existing 0.10.0 draft.
 

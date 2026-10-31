@@ -1,0 +1,21 @@
+bench,plain-serial-only,bytes=131080,block=32,push_ns=13.5/14.0/36.9,read8192_ns=4727.7/4837.6/8572.8
+bench,plain-serial-only,bytes=131080,block=64,push_ns=19.0/19.2/19.9,read8192_ns=4739.9/8002.1/8920.7
+bench,plain-serial-only,bytes=131080,block=512,push_ns=92.9/93.6/94.4,read8192_ns=4848.9/5017.5/8329.8
+bench,plain-serial-only,bytes=131080,block=16401,push_ns=3452.9/3476.0/3902.0,read8192_ns=4696.7/4759.9/8088.6
+bench,A-split,bytes=131080,block=32,push_ns=27.8/28.0/34.9,read8192_ns=8067.3/8315.3/9531.4
+bench,A-split,bytes=131080,block=64,push_ns=59.7/60.2/82.1,read8192_ns=8066.8/8385.9/10236.1
+bench,A-split,bytes=131080,block=512,push_ns=457.4/469.2/688.9,read8192_ns=8001.9/8480.3/8798.6
+bench,A-split,bytes=131080,block=16401,push_ns=16146.1/16766.8/17179.4,read8192_ns=7928.3/8096.2/9141.6
+bench,B-packed,bytes=131080,block=32,push_ns=15.5/15.6/16.9,read8192_ns=7892.0/8199.1/8634.7
+bench,B-packed,bytes=131080,block=64,push_ns=30.2/30.2/42.1,read8192_ns=7821.0/7895.3/8657.5
+bench,B-packed,bytes=131080,block=512,push_ns=236.5/244.7/271.7,read8192_ns=7889.9/8045.1/8903.4
+bench,B-packed,bytes=131080,block=16401,push_ns=7821.3/8018.6/8368.8,read8192_ns=7774.8/7992.7/8641.5
+bench,C-owned,bytes=524336,block=32,push_ns=13477.3/17211.5/22413.6,read8192_ns=1699.2/1718.3/1874.4
+bench,C-owned,bytes=524336,block=64,push_ns=16331.4/16899.6/17480.1,read8192_ns=1698.6/1801.7/2050.6
+bench,C-owned,bytes=524336,block=512,push_ns=16098.0/16978.7/17689.9,read8192_ns=1679.2/1741.6/1797.8
+bench,C-owned,bytes=524336,block=16401,push_ns=20181.5/20643.8/21370.4,read8192_ns=1692.4/1812.9/1935.2
+bench,D-tagged,bytes=262152,block=32,push_ns=23.9/26.4/35.4,read8192_ns=9793.9/10349.9/10642.6
+bench,D-tagged,bytes=262152,block=64,push_ns=45.9/46.9/56.7,read8192_ns=9836.9/9991.5/10196.6
+bench,D-tagged,bytes=262152,block=512,push_ns=346.9/414.5/693.2,read8192_ns=9756.4/10104.8/10602.6
+bench,D-tagged,bytes=262152,block=16401,push_ns=11944.7/12094.5/14274.4,read8192_ns=9967.9/10229.0/11311.8
+nr006-research: 0 failures; production ScopeBuffer unchanged

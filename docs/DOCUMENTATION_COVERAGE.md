@@ -1,5 +1,32 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Authorized integration / NR-006 architecture proposal — 2026-11-01
+
+The owner explicitly authorized #195–#198 merges and independent continuation.
+Recorded actual sequential merge commits/trees, exact-head CI and fresh integrated
+945 DSP / 10,953 state checks in the roadmap. Historical pending-merge snapshots
+remain dated history. Corrected the real-time audit's overbroad ScopeBuffer SPSC
+label: bounded fixed copying is not race freedom. Production source stays unchanged.
+
+Added Proposed ADR-0070, registered in ADR_INDEX, after independently comparing
+atomic samples, packed pairs, full owned snapshots and bounded tagged/queue/
+seqlock variants. It recommends generation-validated atomic windows and an explicit
+serialized-GUI affinity contract, conditional on human review and native evidence.
+Expanded the existing research packet with source/lifecycle census, memory-model
+proof/limitations, comparative evidence, implementation/acceptance plan and release
+disposition. Nonshipping prototypes/model, raw seven-repeat results/metadata and
+seeded TSan liveness are indexed in REPOSITORY_MAP/TESTING; README/SOURCE_OF_TRUTH
+distinguish the Proposed decision from current policy. No production architecture,
+DSP, CMake/workflow, release object or Accepted ADR is changed.
+
+The unchanged 0.10.0 readiness record now separates this source-level gap and its
+required mitigation/human disposition from earlier owner approvals.
+RISK-018 records the verified mechanism and unverified field impact, without
+closing historical risks or inventing a crash/severity verdict. Native prototype
+portability/performance, production regressions and visual acceptance remain pending;
+synthetic results are not a machine budget. NR-003 stays Deferred; later PR merges
+and release operations remain unauthorized.
+
 ## PR #198 independent inventory review — 2026-11-01 (Asia/Shanghai)
 
 Re-downloaded/digest-verified all three baseline SARIF archives and matched all

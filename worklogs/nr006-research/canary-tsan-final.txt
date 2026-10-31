@@ -1,0 +1,28 @@
+tsan canary: the seeded race ran (shared = 200000); if this is all you see, the lane is NOT live
+==35700==WARNING: invalid path to external symbolizer!
+==35700==WARNING: Failed to use and restart external symbolizer!
+==================
+WARNING: ThreadSanitizer: data race (pid=35700)
+  Write of size 4 at 0x563e8ded8798 by thread T2:
+    #0 <null> <null> (canary-tsan+0xec5e1) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 <null> <null> (canary-tsan+0xec649) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #2 <null> <null> (libstdc++.so.6+0xe1223) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+
+  Previous write of size 4 at 0x563e8ded8798 by thread T1:
+    #0 <null> <null> (canary-tsan+0xec5e1) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 <null> <null> (canary-tsan+0xec649) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #2 <null> <null> (libstdc++.so.6+0xe1223) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+
+  Thread T2 (tid=35703, running) created by main thread at:
+    #0 <null> <null> (canary-tsan+0x658ce) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 <null> <null> (libstdc++.so.6+0xe12f8) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+    #2 <null> <null> (libc.so.6+0x29ca7) (BuildId: 5e5b51f4c39af9ac589408c1dc432ba390a273cc)
+
+  Thread T1 (tid=35702, finished) created by main thread at:
+    #0 <null> <null> (canary-tsan+0x658ce) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 <null> <null> (libstdc++.so.6+0xe12f8) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+    #2 <null> <null> (libc.so.6+0x29ca7) (BuildId: 5e5b51f4c39af9ac589408c1dc432ba390a273cc)
+
+SUMMARY: ThreadSanitizer: data race (/workspace/scratch/anamorph-nr006/canary-tsan+0xec5e1) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+==================
+ThreadSanitizer: reported 1 warnings

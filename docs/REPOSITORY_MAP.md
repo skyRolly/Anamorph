@@ -174,6 +174,9 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Accepted finite processor parameter contract, implemented and validated in PR #187 / 0.10.0. |
 | `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Accepted restore/latency callback completion contract, implemented and validated in PR #187 / 0.10.0; distinct lock residual retained. |
 | `docs/architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md` | Accepted corrected 0.10.0 Linux installer/legacy-preservation decision; effective via PR #193. |
+| `docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md` | Proposed NR-006 generation-validated atomic stereo windows and explicit GUI affinity; human Architecture Review pending, no production implementation. |
+| `tests/experiments/nr006_scope_protocol.cpp` + `tests/experiments/nr006_memory_model.py` | Nonshipping standalone protocol stress/benchmark and bounded memory-model controls; never linked into product targets. |
+| `worklogs/nr006-research/` | Source-digested prototype results, seeded TSan liveness, model controls and seven-repeat synthetic timing/metadata; not native production acceptance. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |
