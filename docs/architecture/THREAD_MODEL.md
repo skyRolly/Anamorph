@@ -82,7 +82,7 @@ calls do not acquire a new support contract. State test 148 guards this boundary
 ### Audio → GUI (production → consumption)
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
-| Scope samples | `ScopeBuffer` SPSC ring (release/acquire on one `atomic<uint64_t> write`; the index is published once per block, so readers see whole blocks atomically) | audio `pushBlock()` | GUI `readLatest()` / `writeCount()` | ScopeBuffer.h:28-80 |
+| Scope samples | `ScopeBuffer` SPSC ring: release/acquire index publishes prior block writes; plain sample arrays are not protected from a later overwrite while the reader copies (NR-006) | audio `pushBlock()` | GUI `readLatest()` / `writeCount()` | ScopeBuffer.h:28-80 |
 | Level meters | `std::atomic<float/int>` (relaxed), published per block | audio `publish()`; and `reset()` (prepare) / `resetLive()` (host reset), each publishing once from that row's thread while no `processBlock` runs | GUI getters | LevelMeters.h:150-241 |
 | Correlation / balance / energy | `std::atomic<float>` (relaxed) | audio `publish()`; and `reset()` on the prepare and host-reset threads, publishing the idle state (`energy` 0) while no `processBlock` runs | GUI getters | Correlation.h:62-107 |
 | Level-Match gain (dB) | `std::atomic<float>` (relaxed) | audio `process()` (the measure, and an A/B slot's remembered value restored at a forced bottom); `prepare()` / `reset()` flushing it while no `processBlock` runs | GUI `getMatchGainDb()` | LoudnessMatch.h `matchGainDb` |
@@ -129,7 +129,12 @@ completion taken, on a trusted snapshot), against the source, which nothing has 
 ## Forbidden
 
 - No painting, allocation, locking, or file IO on the audio thread.
-- No direct cross-thread access to non-atomic shared state. The only synchronisers are the
+- No direct cross-thread access to non-atomic shared state is permitted.
+  **Known gap (NR-006):** ScopeBuffer uses plain payload arrays; the index publication
+  does not protect a lapped reader from subsequent overwrites. This representation
+  is not established race-free. See `worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md` for
+  the decision packet; no binding policy exception or runtime correction is enacted.
+  The implemented synchronization mechanisms include the
   `ScopeBuffer` release/acquire index, the D-1 latency flag, the two D-2 exchange cells and their
   generation pair, the request word's release completion / acquire takes (ADR-0057), relaxed published
   atomics, and — between the message thread and a host state thread ONLY — the §24 whole-sound

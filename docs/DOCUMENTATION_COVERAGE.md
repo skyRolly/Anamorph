@@ -1,5 +1,25 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-006 — ScopeBuffer decision packet (2026-10-31, Asia/Shanghai)
+
+Added `worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md` as supporting evidence for the
+canonical roadmap item. It proves the missing reader-to-next-overwrite relation,
+separates stereo-pair from whole-window coherence, compares bounded atomic/fixed-buffer
+options and defines regression/concurrency/RT/native/performance/visual review gates.
+The preferred packed-frame candidate is conditional on an explicit window contract;
+no new ADR is presented as approved and no runtime protocol is implemented.
+
+Reported descriptive drift before editing: THREAD_MODEL's whole-block wording
+overstates initial publication and omits the known plain-payload lapping gap. The
+document now names that gap; no binding policy exception, race-free claim or product
+fix follows. Existing owner ADR approvals and real-machine attestation are preserved.
+
+**Documents touched:** new packet; roadmap NR-006 status/progress; THREAD_MODEL;
+README/SOURCE_OF_TRUTH/REPOSITORY_MAP navigation and this audit. **Unchanged:** all
+source/tests/build/version/CI/ADRs/policies, current 0.10.0 tag/draft and legal terms.
+Validation is documentation/citation self-tests/checks, link/diff/scope review;
+native/runtime evidence is not implied by a documentation-only packet.
+
 ## NR-022 — completed edit retained before a direct A/B switch (2026-10-31)
 
 Reproduced the surviving roadmap candidate on the current processor: State 149
