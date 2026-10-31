@@ -158,7 +158,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 - **What the risk was.** ADR-0055 (0.9.9) put a byte-level boundary in front of `juce::parseXML` for
   `.anamorph` files and its scope ruling left two paths alone: the host session blob
-  (`src/PluginProcessor.cpp:2910`, via `getXmlFromBinary`) and the A/B slot payload
+  (`src/PluginProcessor.cpp:2914`, via `getXmlFromBinary`) and the A/B slot payload
   (`:2946-2956`, via `parseXML` on a string the session carried). Round 50 measured both through the
   real `setStateInformation` on `de89b1a` rather than reasoning from the preset path:
   - **Crash, both paths, same thresholds.** SIGSEGV between 2 500 and 3 000 levels of nesting on a
@@ -1222,7 +1222,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:3156-3258 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:3160-3262 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -1300,7 +1300,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:3156`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:3160`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -1309,7 +1309,7 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:2684`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `src/PluginProcessor.cpp:2688`, against `canUndo()`; the `abUndo` vector's internals twice, via
   `UndoStacks::operator=` (`src/PluginProcessor.h:739`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture

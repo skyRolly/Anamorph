@@ -14,6 +14,34 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
+## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
+
+**Disposition: preserve the implementation.** `abSwitchToAdopted` polls the existing
+coalescer after same-slot refusal and before the outgoing slot's `syncCommitted`
+reset. Both switch APIs reach it after existing restore admission. The adopted helper
+does not drain again or introduce an audio call, lock, atomic ordering or callback
+route. It respects open gestures/transactions and records the existing owned-parameter
+endpoints; Undo/Redo, preset flush and restore-cleared histories keep their contracts.
+No new architecture decision or product correction was justified by this review.
+
+Fresh deterministic negative control in the retained Debian 13 environment, Clang
+22.1.8 Release: State 149 with **exact `origin/main` PluginProcessor.cpp** and current
+tests fails **10/126**; restoring the reviewed processor passes **126/126**, before
+and after the control. No sleeps, expectation changes or source changes were kept.
+The test covers explicit/toggle switches, repeat cycles, independent histories, exact
+step counts, same-slot no-op, empty gestures and post-gesture host automation.
+The full state suite retains preset/restore/pending-state and deferred-command
+boundaries. Source inputs remain identical to reviewed source head `4a431ca`.
+
+Refreshed historical CI: Build 41216103432, merge-check 41216269049, CodeQL
+41217038192 and MSVC 41217041554 are now **completed/success**, including the formerly
+pending ARM macOS and sanitizers. This refresh does not certify a later head: the
+additive parent-sync/review commit must receive its own Build/merge-check, and the
+existing analyzer workflows will be dispatched on its exact ref without changing
+their filters. Preserve the historical rejected GCC 14 ABI preflight; a new Clang
+result cannot convert it into a pass. No owner real-machine approval is assigned to
+this new code, and no merge or next roadmap implementation is authorized.
+
 ## PR #195 review disposition — 2026-11-01 (Asia/Shanghai)
 
 Owner handoff findings accepted with two precision corrections: the malformed ADR-0065
@@ -55,7 +83,9 @@ individual outcomes and selected tested-artifact hashes remain NOT RECORDED.
 **NR-003 Deferred** by explicit owner instruction; no unexecuted matrix case is passed.
 These decisions supersede the initial missing-approval/manual-evidence observations below.
 
-Current next actionable item: **NR-022**, headless verification of pending Undo across A/B.
+NR-022 is now confirmed, implemented and locally validated on its separate review branch
+(commit `0e5e644`); native CI and human PR review remain pending. Next: NR-006
+architecture packet and NR-017 static-diagnostic inventory; neither authorizes speculative runtime work.
 NR-004/005/007 retain their recurrence triggers. NR-013 still needs a pinned reproducing
 REAPER environment; the general real-machine attestation does not prove that specific
 reported focus failure fixed. NR-018/019 owner/legal/provisioning blockers remain.
@@ -313,7 +343,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Pending | Candidate-specific release validation — close selected scope | 4 / each actual release |
-| NR-022 | P2 | Pending | Pending Undo step across A/B — validate surviving candidate | 1 / investigation before maintenance |
+| NR-022 | P2 | Ready for Review | Confirmed Undo-step loss — correction and regression implemented | 1 / investigation before maintenance |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -660,25 +690,30 @@ The original investigation/acceptance criteria below explain the scope of that c
   authorization for tag/release operations/publication required.** Phase 4 for each candidate;
   passing this item prepares a decision, it does not execute one.
 
-### NR-022 — Verify pending Undo retention across a direct A/B switch
+### NR-022 — Preserve completed Undo across a direct A/B switch
 
-- **Evidence/status/confidence:** **Partially Verified current candidate**, not a newly reproduced
-  defect. GLOBAL_REVIEW Appendix A names `ab-switch-deletes-pending-undo-step`; current
-  `abSwitchToAdopted` still captures the outgoing slot and calls `syncCommitted()` without an
-  explicit coalescer flush, and `syncCommitted` clears pending gesture state. Admission/deferred
-  transaction tests cover related but not necessarily identical timing. ADR-0008's “switch itself
-  is not undoable” does not alone decide whether a completed earlier edit may lose its step.
-- **Impact/risk:** a just-finished edit could remain audible/stored in slot A yet lose its Undo
-  entry after A→B→A. Field incidence and exact current reachability are unmeasured; do not call
-  this release-blocking or alter shared coalescing solely from the old report.
-- **Approach/order:** early Phase 1, independent of DAW access: drive the real processor through
-  gesture edit/end, no intervening timer poll, A→B→A, then Undo; compare a polled control. Inspect
-  admission/committed/slot stacks to distinguish deliberate switch history from lost edit history.
-- **Acceptance/tests:** a deterministic old-code failing assertion or a documented refutation;
-  if confirmed, preserve one prior user-edit step, per-slot isolation, non-undoable switch and
-  automation-without-gesture behavior across repeated cycles. Run state suites/TSan and related
-  deferred-command/AB tests. **Human semantic review; architecture approval if changing the
-  accepted ownership/coalescing contract.** Any fix is a separate reviewed maintenance proposal.
+- **Ready for Review / Verified:** reproduced against current unchanged processor code
+  (`f64f9d1`, runtime equal to `4c13688`). A completed gesture followed by A→B→A before a
+  coalescer poll retains the sound but loses its Undo step. State test 149 fails **10/126**;
+  the matching polled controls pass. The earlier global-review candidate is confirmed.
+- **Impact/risk:** bounded loss of per-slot edit history, not audio/state-file corruption.
+  Priority remains P2. `abSwitchToAdopted` now polls the completed outgoing edit through the
+  existing adopted helper before replacing/resetting it, after the same-slot no-op check.
+  Existing admission/lock/drain, ownership, serialization, parameters and latency stay intact;
+  this enforces Accepted ADR-0008 rather than introducing a new architecture decision.
+- **Implementation/evidence:** commit `0e5e6449e23fd61c6967d5aa4ce42a94002e78b3`;
+  `src/PluginProcessor.cpp::abSwitchToAdopted`; `tests/ab_undo_tests.h`, registered in the
+  ordinary suite and `--ab-pending-undo-probe`. INC-021 and ADR-0008 record the causal chain.
+- **Acceptance observed locally:** **126/126** focused checks; **945 DSP / 10,953 state**
+  checks under `MALLOC_PERTURB_=1`; locked Linux VST3 pluginval strictness 10, deterministic
+  and randomise ×3, all first attempts. Controls cover repeated cycles, relative/absolute
+  switches, exact step counts, separate B history, later host writes, same-slot and empty edits.
+- **Remaining validation/review:** required native CI/sanitizer/RTSan/TSan/LTO gates and human
+  PR review. Local container uses GCC 14.2.0 Release, not the pinned shipping Clang; its ABI
+  floor result must not be waived. Source citations and four historical target declarations
+  are re-anchored with unchanged expected tokens/checker behavior. No version bump/release
+  change; this is Unreleased maintenance work, not part of the existing 0.10.0 draft.
+
 
 ## 5. Version and release strategy
 
@@ -879,3 +914,21 @@ exit 0 and no checker was modified. No product implementation is part of this pl
 | 2026-10-31 | NR-001, NR-002 | Direct owner continuation instruction after merged #194: all relevant ADRs manually approved; real-machine testing completed/approved. Existing ADR-0069 Accepted; no fabricated test details. | Review/merge of the documentation record only; no repeat owner approval requested |
 | 2026-10-31 | NR-003 | Owner explicitly defers detailed host/test matrix. | Later scoped assignment; unexecuted cases remain unverified |
 | 2026-10-31 | NR-016 | Corrected live decision/version/tag/dump/navigation contradictions; preserved dated history and all engineering gates. | Documentation checker/self-test/citation/diff evidence in the review PR |
+
+### NR-022 execution — 2026-10-31 (Asia/Shanghai)
+
+| Evidence | Result |
+|---|---|
+| Prior-code full suites | 945 DSP / 10,827 state checks, zero failures |
+| New State 149 on prior processor | 126 checks / 10 failures; unpolled A→B→A fails, polled controls pass |
+| Corrected State 149 | 126 checks / 0 failures |
+| Full corrected Release suites | 945 DSP / 10,953 state, zero failures; `MALLOC_PERTURB_=1` |
+| Locked Linux VST3 conformance | strictness 10, deterministic ×3 and randomise ×3; each first attempt |
+| Source checker pairs | realtime 97 self-tests; dispatch 52; portability 120; state coverage 110; ordinary checks clean |
+| Local shipping-ABI check | GCC 14 VST3 requires CXXABI_1.3.15 above the 1.3.14 floor; rejected as expected for this documented local toolchain. No floor/toolchain/gate changed; pinned Clang CI remains mandatory. |
+| Citation liveness | 276 self-tests; 28 automatic source anchors plus three manual shifted citations; four corresponding historical declarations moved, expected tokens unchanged |
+| Source / review scope | commit `0e5e644`; stacked on owner-decision PR #195; native CI and human review pending; no merge/version/tag/release operation |
+
+Automated evidence was produced in the existing managed Debian/GCC 14.2.0 container
+with mounted source/dependency tree, not a newly claimed real-DAW audition. No source,
+warning/ABI threshold, pluginval retry rule or engineering gate was weakened.

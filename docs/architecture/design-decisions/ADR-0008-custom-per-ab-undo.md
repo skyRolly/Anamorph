@@ -1101,3 +1101,25 @@ State test 112, legs A–F. Mutation coverage M213–M219.
 Evidence [Verified]:
 - Source: src/PluginProcessor.cpp:555-1015, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")
+
+## Implementation correction — NR-022 (2026-10-31, Asia/Shanghai)
+
+The original Decision already requires one per-slot step for a completed gesture
+and excludes the A/B switch itself. A direct switch before the coalescer's poll
+violated that contract: `abSwitchToAdopted` saved the outgoing sound but then
+`syncCommitted` cleared its pending step. Returning to that slot kept the sound
+and lost its Undo entry. The existing deferred-transaction flush did not cover
+this direct, completed-gesture schedule.
+
+Commit `0e5e644` calls `pollUndoCoalesceAdopted` after the same-slot no-op check,
+before the outgoing slot is captured/replaced. Admission has already drained and
+holds the existing recursive replacement lock; this helper introduces no second
+drain, callback route, thread, synchronization primitive or atomic ordering.
+It retains the existing owned-parameter endpoints rather than inventing a
+whole-state user entry. No decision, serialization or parameter meaning changes.
+
+State test 149 in `tests/ab_undo_tests.h` distinguishes the missing step, the
+polled control, relative/absolute switches, repeated cycles, independent B history,
+automation preservation and empty/same-slot actions. Evidence: 10/126 failures on
+unchanged source; 0/126 with the correction. This is implementation on a review
+branch, not a merge/publication or a new architecture approval request.
