@@ -34,10 +34,15 @@ The 2026-10-31 Linux correction is governed by proposed
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):
 VST3-only installation, portable Standalone and preservation of legacy desktop resources.
 The owner authorized implementation/validation/PR preparation, with human review
-and manual merge required. Existing 0.10.0 tag/release and historical ADR-0065
-evidence are unchanged; a later approved rebuild/replacement is required.
+and manual merge required. A later read-only snapshot verifies PR #193 merged at
+`4c13688` and the rebuilt unpublished 0.10.0 draft from Release run 41173229942.
+The ADR still records Proposed; final lifecycle reconciliation must not be inferred
+from CI. Current identities, remaining decisions and stable forward work-item IDs are in
+[`worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md),
+a developer worklog, not a new authority class or architecture approval.
+Historical ADR-0065 and prior release approval/evidence records remain dated history.
 
-The current release audit and execution evidence are in
+The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).
 It records the original owner's manual approval and automated outcomes separately, plus the
 P1 implementation/validation and original-candidate evidence archive. ADR-0067/0068 are

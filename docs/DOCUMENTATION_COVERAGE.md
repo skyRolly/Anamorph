@@ -1,5 +1,36 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Next-release investigation and execution register (2026-10-31 UTC)
+
+Added `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md` as the current forward plan,
+with a verified main/tag/draft baseline, completed-work reconciliation, 22 stable
+NR items, priorities, evidence/confidence, dispositions, acceptance/tests/human gates,
+phases, first assignment and progress tracking. Historical readiness/engineering/
+performance worklogs remain the evidence trail; the plan does not approve architecture
+or initiate implementation/release operations.
+
+Drift reported before editing: live draft/source supersedes the older P1 candidate
+and Linux “in review” snapshot. Added a dated notice in the existing release-readiness
+record and updated README's live status plus SOURCE_OF_TRUTH/REPOSITORY_MAP navigation.
+Remaining ADR-0069 lifecycle, commercial/version and old roadmap contradictions are
+explicit work items, not silently accepted decisions. Existing legal terms, policies,
+ADRs, human attestations, historical evidence and HTML programme dashboard are unchanged.
+
+Evidence: main `4c13688`, Release 41173229942 / draft 429760301, all 11 release assets
+checked against API digests, nine assets against sums/manifest, three native installer
+evidence archives independently downloaded/hashed, current source and recent CI/PR APIs.
+Code-scanning alert-state access remains HTTP 403; no zero-alert claim is made.
+
+**Documents touched:** new roadmap; existing release-readiness worklog; README,
+SOURCE_OF_TRUTH, REPOSITORY_MAP and this coverage audit. Documentation-only lifecycle
+triggers (new developer worklog/navigation and self-coverage) apply. **Unchanged:**
+product source, tests, build/workflow configuration, version metadata, changelog, tags,
+releases, ADR status and legal/licensing terms. Existing documentation/citation checks
+and whitespace/link review validate the final documentation diff: docs self-test 700 cases,
+177 files clean; citation self-test 276 cases, 610 unchanged anchors against origin/main;
+no missing local link targets, duplicate NR IDs/cards or whitespace errors. Existing Python
+invalid-escape SyntaxWarnings in check-docs.py are non-blocking and unchanged.
+
 ## Remove Linux legacy desktop cleanup (2026-10-31)
 
 On the owner's further instruction, removed the migration block and its user/system
