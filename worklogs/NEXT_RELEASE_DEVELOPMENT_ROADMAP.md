@@ -14,6 +14,31 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
+## PR #195 review disposition — 2026-11-01 (Asia/Shanghai)
+
+Owner handoff findings accepted with two precision corrections: the malformed ADR-0065
+row contains **four**, not five, cells under three headings; RELEASE_PROCESS's obsolete
+paragraph refers to the Linux correction context rather than naming #193 explicitly.
+Both defects are real. The index now preserves historical acceptance/helper amendment,
+PR #175 implementation and supersession by Accepted ADR-0069/PR #193 in the intended
+columns. A same-file audit also found and escaped ADR-0050's pre-existing `||` table
+separator. SOURCE_OF_TRUTH now labels its older desktop effectivity as historical.
+
+Release instructions now distinguish completed #193 merge at `4c13688`, Release 7
+run 41173229942 and draft 429760301 replacement from current verification and future
+authorized operations. Fresh PR/tag/run/release APIs confirm that history, all 11
+assets and unpublished status; no rebuild or release modification was performed.
+Historical approval/manual records remain intact. NR-003 remains Deferred.
+
+At review start all four PRs had no submitted reviews, inline threads or conversation
+comments through the GitHub APIs; the owner's findings are tracked here regardless.
+Existing heads `f64f9d1` → `4a431ca` → `017a2e4` → `ccf1743` were preserved locally.
+Repairs are additive and descendants will merge their updated parents without
+rewriting shared history. This branch's review correction commit identifies its head;
+final stack heads/CI evidence will be recorded in #198's handoff and PR discussions.
+All four PRs must remain open and unmerged. No auto-merge, release operation or next
+implementation batch is authorized; explicit owner merge authorization is required.
+
 ## Current execution — owner decisions recorded 2026-10-31 (Asia/Shanghai)
 
 Execution base: `6ae102ca72d83eb07c0a84d76465b26c457cdc16` (merged PR #194);

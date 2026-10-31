@@ -1,5 +1,23 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #195 review corrections — 2026-11-01 (Asia/Shanghai)
+
+Confirmed the ADR-0065 approval row had four cells under three headings; restored
+record/status/effectivity columns while retaining its 2026-10-25 acceptance, helper
+amendment, PR #175 implementation and supersession by Accepted ADR-0069/PR #193.
+Escaped the pre-existing ADR-0050 `||` in the same index so GFM retains four columns.
+SOURCE_OF_TRUTH's desktop-era effectivity paragraphs now identify that history and
+the current supersession explicitly.
+
+RELEASE_PROCESS now separates completed #193 merge/Release 7 draft replacement,
+read-only current-candidate verification, and future separately authorized release
+operations. Evidence: merged #193 at `4c13688`, annotated tag `1190e455`, successful
+run 41173229942 and unchanged unpublished draft 429760301 with 11 assets. Missing
+manual metadata remains NOT RECORDED and NR-003 Deferred. Roadmap records the review.
+Validation: existing documentation/citation checker pairs, table structure, local
+links/anchors, ADR lifecycle/ancestry and whitespace; final-head CI remains a separate
+check. No source, tests, engineering requirement or release object changes.
+
 ## Owner approval and real-machine attestation — 2026-10-31 (Asia/Shanghai)
 
 Source: the owner's continuation request after merged PR #194. The owner explicitly
