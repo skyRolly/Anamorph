@@ -1,5 +1,30 @@
 # TESTING.md
 
+## Completed edit before A/B polling — NR-022 / State test 149
+
+`tests/ab_undo_tests.h::testAbSwitchPreservesACompletedUnpolledEdit` runs in the
+ordinary state suite and alone through `AnamorphStateTests --ab-pending-undo-probe`.
+It uses the real processor and parameter gestures without sleeps or message pumping.
+A completed Width edit followed by A→B→A must retain its Undo/Redo endpoints even
+when the coalescer timer has not polled. The test repeats the cycle and exercises
+both explicit slot selection and the relative toggle.
+
+Controls cover the same sequence with a pre-switch poll (passes on old code), a
+separate B history, exact step counts, a later host Drive write outside the gesture,
+same-slot selection, automation-only state and an empty gesture. Thus a whole-state
+snapshot, globally shared history, unconditional step or committing before the
+same-slot no-op cannot masquerade as the fix.
+
+On unchanged production source from `f64f9d1`/`4c13688`, 10/126 checks fail only on
+the unpolled edit path. With commit `0e5e644`, 126/126 pass. Full local GCC 14.2.0
+Release suites pass 945 DSP / 10,953 state checks under `MALLOC_PERTURB_=1`; locked
+Linux VST3 pluginval strictness 10 completes deterministic/randomise ×3, all on first
+attempts. Native CI, sanitizers/RTSan/TSan and human PR review remain separate gates.
+Source-citation positions and four historical re-aim targets moved mechanically;
+expected tokens/checker behavior are unchanged. This fix does not alter audio,
+serialization, parameter identities, admission/locking or reported latency.
+
+
 ## P1 replacement regressions and customer notes (2026-10-30)
 
 The original `--nonfinite-audio-probe` measured 288 checks / 24 sustained-mute failures;
@@ -4954,7 +4979,7 @@ Run state processes serially: these probes share the real preset folder, just li
 Evidence, negative controls, commands and environment limits:
 `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 
-`tests/state_tests.cpp` (**145 tests**, State tests 1–148 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**146 tests**, State tests 1–149 with 13–15 unassigned; own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it. Later interaction fixtures drive real components; State test 145

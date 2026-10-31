@@ -1,5 +1,41 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-022 — completed edit retained before a direct A/B switch (2026-10-31)
+
+Reproduced the surviving roadmap candidate on the current processor: State 149
+fails 10/126 assertions when a completed gesture is switched away before the
+coalescer poll; the polled controls pass. Commit `0e5e644` invokes the existing
+adopted coalescer on the outgoing slot after the same-slot no-op check, before
+the switch clears pending bookkeeping. This enforces Accepted ADR-0008 without
+changing parameter/schema/latency, audio processing, admission or threading.
+
+Added `tests/ab_undo_tests.h` to the ordinary state suite and a focused probe;
+controls cover repeated direct/toggle cycles, per-slot histories, exact steps,
+post-gesture automation, same-slot and empty gestures. Updated current inventories
+to 146 state tests (1–149, 13–15 unassigned), TESTING, HANDOVER, ADR-0008's implementation
+note, INC-021, Unreleased customer notes and roadmap progress/remaining gates.
+
+The four inserted source lines moved evidence positions. Re-anchored 28 unchanged
+citations automatically and three shifted FUTURE_RISKS citations manually; adjusted
+four historical target strings in check-citations.py while keeping their expected
+tokens and all checker logic unchanged. Its 276-case liveness/check remains required.
+
+Local Release GCC 14.2.0 evidence: State 149 126/0 after correction; full DSP/state
+945/10,953 checks; locked Linux VST3 strictness-10 deterministic/randomise ×3, all
+first attempts; realtime/dispatch/portability/state-coverage checker pairs clean.
+Native CI, sanitizer/RTSan/TSan/LTO and review remain separate gates. These are
+Unreleased development changes, not the approved original 0.10.0 draft's binaries.
+The local GCC 14 VST3 is rejected by the unchanged shipping ABI gate for
+CXXABI_1.3.15 above 1.3.14; pinned Clang CI remains required. No full-preflight
+success is inferred from separately passing behavior/conformance tests.
+
+**Documents touched:** existing roadmap, TESTING/HANDOVER/REPOSITORY_MAP/TESTING_POLICY,
+ADR-0008, POSTMORTEMS and CHANGELOG; mechanically shifted evidence in the affected
+architecture/policy records and earlier coverage entries. **Unchanged:** versions,
+identity/serialization contracts, DSP/latency/threading decisions, native CI gates,
+tags/releases and legal terms. No KI was added for a candidate found/fixed in this
+same execution; NR-022 and INC-021 preserve traceability.
+
 ## Owner approval and real-machine attestation — 2026-10-31 (Asia/Shanghai)
 
 Source: the owner's continuation request after merged PR #194. The owner explicitly

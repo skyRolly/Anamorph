@@ -408,3 +408,27 @@ completed before the normal Release 5 draft replacement. Evidence:
 Create the next `INC-NNN` only when backed by a commit/PR/test/README. Use the template above;
 cite evidence with a confidence level; cross-link the relevant ADR. Do not fabricate dates —
 use the fix-commit date or mark `[Unverified]`.
+
+## INC-021 — A direct A/B switch discarded a completed edit's Undo step
+
+**Status:** implemented and locally validated on the NR-022 review branch;
+not yet merged or included in the existing 0.10.0 draft. Recorded 2026-10-31
+(Asia/Shanghai). Evidence: commit `0e5e644`, roadmap NR-022, State test 149.
+
+A parameter gesture could finish before the 24 Hz coalescer polled. A→B→A
+preserved the edited sound in slot A but lost its Undo entry: the switch's
+`syncCommitted()` cleared pending gesture bookkeeping without first committing
+that completed edit. The old global-review candidate was reproduced against the
+current processor: 10/126 assertions failed; the pre-polled controls passed.
+
+The switch now invokes the already-adopted coalescer under its existing admission
+lock before leaving the outgoing slot, after the same-slot no-op check. This
+restores Accepted ADR-0008's per-slot history contract with no audio-path, schema,
+parameter, threading-model or latency change. State 149 cycles both switch APIs,
+checks separate B history/step counts and proves automation and empty gestures
+remain outside user Undo. All 126 checks pass; full local Release suites pass
+945 DSP / 10,953 state checks and Linux VST3 pluginval both modes ×3 passes.
+
+The coverage lesson is that a correct deferred-transaction close is not proof of
+a correct direct command. Native CI and review are independent of these local
+results; original owner attestations are not retroactively assigned to new code.

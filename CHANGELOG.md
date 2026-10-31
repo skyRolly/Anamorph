@@ -23,6 +23,12 @@ including in entries written before 0.9.9 gave it that name.
 
 ## [Unreleased]
 
+### Fixed
+- **A completed edit remains undoable after switching A/B before the editor's next update.**
+  The edit stays in its original slot's history; switching itself adds no Undo step,
+  and later host automation remains outside the edit.
+  Evidence: commit `0e5e6449e23fd61c6967d5aa4ce42a94002e78b3`; ADR-0008; State test 149. [Verified]
+
 
 ## [0.10.0] — 2026-10-30
 
