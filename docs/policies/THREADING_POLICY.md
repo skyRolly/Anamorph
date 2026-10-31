@@ -23,7 +23,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | GUI → Audio (forced duck / A/B switch / A/B forget / a bulk swap's completion) | `std::atomic<int> duckRequest` | One request word: the duck bit, the A/B switch bit with its two slot indices, the forget bit, and — ADR-0057, Accepted 2026-09-27 — a bulk swap's sequence and its completion. The message thread writes it ONLY with read-modify-writes (`fetch_or` / CAS; no plain store), so no request clobbers another and every modification continues a completion's release sequence; the requests are relaxed, and **`completeBulkApply` is a RELEASE CAS, published after the swap's last parameter store**. The audio thread (`setParametersFrom`) and the prepare path (`prepareFrom`) take it whole with an **ACQUIRE `exchange`** twice — before and after reading the snapshot — and adopt nothing while a swap's completion is awaited. The per-slot Level-Match records it drives are engine-owned, audio-thread / prepare-path state; nothing engine-side is read back on the message thread (ADR-0007, Amendment of 2026-09-25, A/B provenance). |
 | GUI → Audio (engine-API match injection) | `std::atomic<float> matchInject` | Relaxed store / `exchange`; an engine API the processor no longer calls. |
-| Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
+| Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. Known NR-006 gap: index publication does not protect plain sample storage from reuse during `readLatest`; this is not established race-free or an exception to the prohibition below. |
 | Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. The meter and correlation resets also publish once each — `reset()` from a prepare, `levels.resetLive()` / `correlation.reset()` from a host reset — on the host's thread, which the format contract keeps from running concurrently with `processBlock` (`THREAD_MODEL.md` host rows). |
 | Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
 | Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | An ordering-critical pair (the second of the four listed under *Atomic usage rules*): the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously on the message thread only after ADR-0068 safe-delivery admission: no restore application, enclosing state command or pending restore. Otherwise the existing flag remains pending; a recursively pumped timer must defer too. |
@@ -309,9 +309,18 @@ relies on.
 - `soundParamGen`: `memory_order_relaxed` — a generation / staleness counter only. It gates a
   message-thread cache rebuild and transfers no payload, so it is deliberately **not** an
   ordering/publication primitive (unlike the scope index below).
-- Scope ring index: `release` on write, `acquire` on read (the first ordering-critical pair). The
-  index is published **once per block** (`pushBlock`), so a reader that acquires it sees a whole
-  committed block — never a partially written one.
+- Scope ring index: `release` on write, `acquire` on read (the first ordering-critical pair).
+  `pushBlock` publishes the index **once per block** after its sample writes; an acquire
+  observing that publication orders those prior writes before the reader. It transfers
+  no ownership of the reusable plain `left`/`right` arrays and establishes no
+  reader-to-next-overwrite happens-before edge. A later producer overwrite can conflict
+  with `readLatest`'s copy: stable stereo pairs, complete coherent blocks/windows and
+  race-free payload access are **not guaranteed** by this index protocol. `writeCount`
+  reads only the atomic count. This corrects the former whole-block claim without
+  relaxing the non-atomic shared-state prohibition or approving a replacement protocol.
+  NR-006 remains unresolved; see the
+  [review packet](../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md). Any new storage
+  handoff/atomic ordering requires an explicit ADR decision and human Architecture Review.
 - `latencyUpdateRequest`: `release` on the store, `acquire` on the `exchange` — the second
   ordering-critical pair (D-1). The engine's `latency2/4/8` are `relaxed`: their ordering rides on
   that flag, and they carry no ordering of their own.

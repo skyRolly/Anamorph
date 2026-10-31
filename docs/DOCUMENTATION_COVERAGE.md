@@ -1,5 +1,18 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #197 publication-contract review — 2026-11-01 (Asia/Shanghai)
+
+Confirmed THREADING_POLICY still inferred whole-block coherence from the scope's
+index publication. Reconciled its communication row/Atomic usage rules and
+THREAD_MODEL with the existing plain-array reuse exposure: visibility transfers no
+storage ownership; subsequent overwrites can race the GUI copy and stable stereo
+pairs/blocks/windows are not guaranteed. The non-atomic shared-state prohibition
+and Architecture Review gate remain binding. Updated the NR-006 packet/roadmap;
+no new ADR is Accepted and runtime resolution still requires an owner decision.
+ScopeBuffer's source blob, tests, thread/ordering implementation and release remain
+unchanged. Validation: documentation/citation checker pairs, links, tables,
+whitespace, unchanged-source comparison and existing DSP Test 61 in the suite.
+
 ## NR-006 — ScopeBuffer decision packet (2026-10-31, Asia/Shanghai)
 
 Added `worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md` as supporting evidence for the
@@ -16,9 +29,22 @@ fix follows. Existing owner ADR approvals and real-machine attestation are prese
 
 **Documents touched:** new packet; roadmap NR-006 status/progress; THREAD_MODEL;
 README/SOURCE_OF_TRUTH/REPOSITORY_MAP navigation and this audit. **Unchanged:** all
-source/tests/build/version/CI/ADRs/policies, current 0.10.0 tag/draft and legal terms.
+source/tests/build/version/CI/ADRs, current 0.10.0 tag/draft and legal terms. The
+original packet left policy text unchanged; the later PR #197 review correction
+above removes its factual coherence overclaim without granting a policy exception.
 Validation is documentation/citation self-tests/checks, link/diff/scope review;
 native/runtime evidence is not implied by a documentation-only packet.
+
+## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
+
+Retained the NR-022 implementation and deterministic State 149 controls after
+reviewing admission, completed/open gestures, Undo/Redo, preset and restore paths
+against ADR-0008/0036/0057. A fresh Clang 22.1.8 Release build reproduced 10/126
+failures with the exact main processor source, then 0/126 after restoration; the
+committed tests and expectations were unchanged. Source/citation logic is unchanged
+by this review. Parent #195 corrections were merged additively; both coverage
+records were retained at their insertion conflict. Full suites and final-head
+native/analyzer validation are recorded in the stack handoff/PR discussion.
 
 ## NR-022 — completed edit retained before a direct A/B switch (2026-10-31)
 
@@ -55,6 +81,24 @@ architecture/policy records and earlier coverage entries. **Unchanged:** version
 identity/serialization contracts, DSP/latency/threading decisions, native CI gates,
 tags/releases and legal terms. No KI was added for a candidate found/fixed in this
 same execution; NR-022 and INC-021 preserve traceability.
+
+## PR #195 review corrections — 2026-11-01 (Asia/Shanghai)
+
+Confirmed the ADR-0065 approval row had four cells under three headings; restored
+record/status/effectivity columns while retaining its 2026-10-25 acceptance, helper
+amendment, PR #175 implementation and supersession by Accepted ADR-0069/PR #193.
+Escaped the pre-existing ADR-0050 `||` in the same index so GFM retains four columns.
+SOURCE_OF_TRUTH's desktop-era effectivity paragraphs now identify that history and
+the current supersession explicitly.
+
+RELEASE_PROCESS now separates completed #193 merge/Release 7 draft replacement,
+read-only current-candidate verification, and future separately authorized release
+operations. Evidence: merged #193 at `4c13688`, annotated tag `1190e455`, successful
+run 41173229942 and unchanged unpublished draft 429760301 with 11 assets. Missing
+manual metadata remains NOT RECORDED and NR-003 Deferred. Roadmap records the review.
+Validation: existing documentation/citation checker pairs, table structure, local
+links/anchors, ADR lifecycle/ancestry and whitespace; final-head CI remains a separate
+check. No source, tests, engineering requirement or release object changes.
 
 ## Owner approval and real-machine attestation — 2026-10-31 (Asia/Shanghai)
 

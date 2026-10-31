@@ -46,8 +46,14 @@ Test 69 equality anomaly and native Intel AU exception remain separate causal it
 
 **Documentation drift:** THREAD_MODEL's “whole blocks atomically” described initial
 publication too broadly, and its blanket non-atomic-access sentence omitted this
-known gap. The descriptive document now states that limitation. No binding policy
-is relaxed and the current representation is not declared race-free or approved anew.
+known gap. PR #197's follow-up review also confirmed the same unconditional claim
+remained in THREADING_POLICY's Atomic usage rules. Both the architecture table and
+binding policy now distinguish prior-write visibility from ownership, subsequent
+reuse and stable stereo/block/window snapshots. The policy's non-atomic shared-state
+prohibition remains binding; NR-006 is a known implementation gap, not an exception
+or an approved best-effort race. This factual correction enacts no new protocol,
+memory ordering or policy relaxation and does not mark the current representation
+race-free. The source comment remains explicitly identified as overstated above.
 
 ## 2. Required invariants and decision
 
@@ -135,6 +141,15 @@ architecture approval is represented by this packet.
 **NR-006: Ready for Review (packet only).** The formal mechanism is characterized and
 descriptive drift is corrected. Runtime correction remains pending selection of the
 contract/protocol and its validation surface. No defect is declared fixed.
+
+**Review disposition — 2026-11-01 (Asia/Shanghai): accepted and corrected.** Re-read
+the exact ScopeBuffer blob and both message-thread consumers. The missing reverse
+ordering/storage protection confirms the finding without relying on a new sanitizer
+result. Whole-block coherence is not established. THREAD_MODEL and THREADING_POLICY
+now say so consistently; no source/test/build/ADR decision was changed. Existing
+DSP Test 61 is single-threaded evidence, not concurrent snapshot validation. The
+existing packet's packed-frame recommendation remains conditional on explicit owner
+selection of the contract and subsequent human Architecture Review.
 
 The binding gate is
 [ARCHITECTURE_REVIEW_GATE.md](../docs/policies/ARCHITECTURE_REVIEW_GATE.md):
