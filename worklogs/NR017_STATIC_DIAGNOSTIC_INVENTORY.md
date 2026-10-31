@@ -25,6 +25,12 @@ exact URI/line/column, original message and explicit disposition. Duplicate site
 reporting different members remain distinct rows. No source positions are rewritten
 to pretend this immutable snapshot came from the later NR-022 branch.
 
+Each CSV row records the result's **primary** physical location, not every related
+location, end span or code-flow element. Those remain in the original SARIF artifacts.
+An empty `reported_level` preserves an absent result-level field; it does not infer
+a rule default or security severity. The CSV is a primary-result inventory, not a
+lossless replacement for the SARIF.
+
 The authenticated code-scanning alerts endpoint still returns **HTTP 403,
 “Resource not accessible by integration”**. Therefore open/fixed/dismissed alert
 state is **unknown**. SARIF rows are analyzer observations, not a count of open bugs.
@@ -150,7 +156,73 @@ limits are recorded. No bug, suppression or numerical threshold was modified.
 Human review can select further work on demonstrated impact; there is no justified
 blanket warning-cleanup PR.
 
-Next actionable engineering batch: NR-011's bounded differential transition-test
-increment, with liveness/old-new comparison controls; NR-010 measurements need a
+After explicitly authorized integration and repository reassessment, the recommended
+first engineering batch is NR-011's bounded differential transition-test increment,
+with liveness/old-new comparison controls; NR-010 measurements need a
 quiet, identified machine before numeric budgets are asserted. NR-006's new
 handoff contract remains a separate architecture review. NR-003 stays Deferred.
+
+## 6. Independent review and reproduction — 2026-11-01 (Asia/Shanghai)
+
+**Disposition: retain the inventory and existing diagnostic dispositions; clarify
+the export boundary and make identity verification reproducible.** Independently
+downloaded all three original archives again and matched every primary result tuple,
+including multiplicity, against all 257 CSV rows. Rechecked the 127 state/53 DSP
+stack reports, seven first-party construction reports, four constexpr recommendations
+and JUCE wrapper context against the exact baseline/pinned dependency. No new
+behavioral defect or blanket cleanup is justified by that evidence. Keep dependency
+reachability/severity unassessed and reopen on demonstrated impact or a new delta.
+
+The alerts API was retried through the authenticated CLI because the connector's
+general fetch tool excludes that endpoint: HTTP 403, “Resource not accessible by
+integration”. Open/fixed/dismissed state remains unknown. The connector successfully
+downloaded the artifacts; this environment's direct CLI artifact redirect returned
+HTTP 403, a transport limitation rather than absent SARIF evidence. No permission
+or scanner configuration was changed. Historical pending CI text above is a dated
+checkpoint; current stack-head outcomes are in the roadmap and PR handoff ledger.
+
+To reproduce, download the three linked **ZIP archives** into one directory as
+`13030303164.zip`, `13029512075.zip`, `13029797600.zip` using authenticated Actions
+artifact access. From the repository root, run the following stdlib-only check with
+that directory as its argument. Archive hashes also match the GitHub artifact API's
+digests. This check intentionally preserves primary locations/messages exactly,
+including blank result levels and duplicate result tuples; classification and
+disposition still require the source review described above.
+
+```sh
+python3 - /path/to/downloaded-zips <<'PY'
+import collections, csv, hashlib, json, pathlib, sys, zipfile
+
+archives = {
+    '13030303164': ('a2921477cb673675df1f4606c973b48d8d69d361b0ec26a98b047792c4db30d0', 'CodeQL C++'),
+    '13029512075': ('9b42f4a7c3050f905f9749044eb79289b00cc10957f70c522a1c02c61f68987c', 'CodeQL Actions'),
+    '13029797600': ('2afc89b5bd5b53105b81bb2886bd5c71c52cdc0d92edb8f3b0c92191e692d541', 'MSVC PREfast'),
+}
+rows = list(csv.DictReader(open('worklogs/NR017_BASELINE_DIAGNOSTICS.csv', newline='')))
+assert len(rows) == len({r['id'] for r in rows}) == 257
+assert {r['artifact_id'] for r in rows} <= archives.keys()
+fields = ('rule', 'reported_level', 'source_uri', 'start_line', 'start_column', 'message')
+for aid, (digest, tool) in archives.items():
+    path = pathlib.Path(sys.argv[1]) / (aid + '.zip')
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    expected = []
+    with zipfile.ZipFile(path) as archive:
+        names = [n for n in archive.namelist() if n.endswith('.sarif')]
+        assert len(names) == 1
+        for run in json.loads(archive.read(names[0]))['runs']:
+            for result in run.get('results', []):
+                assert len(result['locations']) == 1
+                loc = result['locations'][0]['physicalLocation']
+                region = loc.get('region', {})
+                expected.append((result.get('ruleId', ''), result.get('level', ''),
+                    loc['artifactLocation']['uri'], str(region.get('startLine', '')),
+                    str(region.get('startColumn', '')), result['message']['text']))
+    actual = [r for r in rows if r['artifact_id'] == aid]
+    assert all(r['tool'] == tool and r['source_commit'] ==
+        '4c136881f245470577d66a7603f15b177ddcf3dc' and r['review_disposition'] for r in actual)
+    assert collections.Counter(expected) == collections.Counter(tuple(r[f] for f in fields) for r in actual)
+    print(aid, len(actual), 'primary results verified')
+assert collections.Counter(r['ownership_scope'] for r in rows) == {
+    'first-party tests': 191, 'dependency': 66}
+PY
+```
