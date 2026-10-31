@@ -1,5 +1,20 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-012 — bounded alias evidence (2026-11-01)
+
+Added nonshipping calibrated high-tone engine probe, Linux/Ninja object-reuse
+runner, 36 repeated raw observations and source/provenance metadata. Two rates,
+two normalized tones, four factors, linear/bypass controls and adjacent periods
+separate measured alias bins from simple wrap/latency engagement. Selected-bin
+power is normalized to actual carrier level; known injected alias and omission
+controls prove calibration. Retain current behavioral assertions: no universal
+dB threshold, monotonic factor rule, DSP/filter fix or production change.
+
+The new worklog/data/tool are indexed in REPOSITORY_MAP, SOURCE_OF_TRUTH, README
+and TESTING. The roadmap records #195–#198 actual integration, NR-011 #200, the
+owner's explicit ADR-0070 implementation approval and remaining native/release
+gates. Existing historical evidence and GCC ABI failure remain unchanged.
+
 ## PR #198 independent inventory review — 2026-11-01 (Asia/Shanghai)
 
 Re-downloaded/digest-verified all three baseline SARIF archives and matched all

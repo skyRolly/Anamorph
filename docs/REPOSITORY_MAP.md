@@ -159,6 +159,8 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `src/SerializedXml.h` | Private-copy NaN-safe XML formatting shared by session, A/B and preset writers; existing finite and invalid-token semantics are preserved. |
 | `tests/p1_resolution_tests.h` | State tests 147–148: every processor parameter/ingress/lifecycle, authoritative raw restore windows and complete nested restore callback state/lock admission. |
 | `tests/ab_undo_tests.h` | State test 149: completed unpolled edits across direct/toggle A/B cycles, independent slot history, same-slot no-op and automation/empty-gesture controls; included in the ordinary state suite. |
+| `tests/experiments/nr012_aliasing_study.cpp` + `scripts/run-alias-study.py` | Nonshipping calibrated engine alias study and Linux/Ninja reuse of actual dump-target compile/link commands; no product target change. |
+| `worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md` + `worklogs/nr012-alias-study/` | 36 repeated coherent-tone observations, controls/provenance and retain-current-assertions disposition; no universal quality threshold. |
 | `tests/state_hardening_tests.h` | State tests 142–146 and focused non-finite/F9 probes, included after the existing state fixtures in the same console target. |
 | `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
 | `worklogs/RELEASE_READINESS_0.10.0.md` | Original draft provenance, current P1 decision/diagnostic evidence, required approvals and guarded replacement/recovery plan. |

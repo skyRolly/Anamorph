@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** review-and-repair checkpoint; owner merge authorization required.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated; NR-011 submitted as #200; NR-012 bounded study recorded; owner approved ADR-0070 for NR-006 implementation, with new merges/releases still unauthorized.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -13,6 +13,41 @@ That readiness worklog remains the release execution/history record; the
 [engineering-review programme](engineering-review/ENGINEERING_REVIEW_PROGRAMME.md) remains the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
+
+## Independent alias study / architecture approval — 2026-11-01 (Asia/Shanghai)
+
+The owner authorized and the agent integrated #195 → #196 → #197 → #198 using
+merge commits `3df74ea` → `49958ae` → `e426cc2` → `00de8c7`; final main exactly
+equals reviewed #198 and retains all four heads. Prior pending-merge snapshots
+below are historical. New main CI and future PR checks are separate evidence.
+
+The NR-006 architecture investigation/recommendation is [PR #199](https://github.com/skyRolly/Anamorph/pull/199).
+The owner explicitly answered **“Approve ADR-0070 for implementation”**, subject to
+its native portability/performance/validation gates. Record human acceptance in
+that ADR, then implement the selected generation-validated atomic stereo protocol
+in a focused PR. This approves the architecture, not a new PR merge or release.
+Production ScopeBuffer remains unchanged at this measurement checkpoint.
+
+Independent NR-011 is submitted as [PR #200](https://github.com/skyRolly/Anamorph/pull/200),
+head `104f60eb2ee246babba739e989f320d1811f73dd`; five transition cases and separate
+latency traces preserve default 32-row behavior. Native final-head CI remains a
+distinct gate. This NR-012 branch is independently based on verified main `00de8c7`.
+
+[NR-012 measurements](NR012_OVERSAMPLING_ALIAS_STUDY.md) now cover actual Drive
+through Off/2×/4×/8× with coherent high tones, calibrated folded-bin analysis,
+linear/bypass controls, two rates and repeated captures. All 36 observations
+repeat exactly locally; no universal alias dB or monotonic-factor assertion is
+justified. **Disposition: retain existing behavioral assertions; no DSP fix**.
+The new research utility reuses existing built engine/JUCE objects without changing
+the build architecture. No production, parameter, latency or release edit.
+
+NR-003 remains Deferred. NR-010 needs controlled identified hardware; NR-013 a
+pinned reproducer (a fresh REAPER issue search returned none). NR-004/005/007 retain
+recurrence triggers; NR-018/019 owner/legal/provisioning gates remain. NR-017 alert
+state is still unavailable, not inferred fixed. The historical GCC14 ABI preflight
+failure remains failed. Existing 0.10.0 tag/draft/11 assets/version are untouched;
+post-tag NR-022 and new test work are not in those assets. NR-006's publication
+mitigation/risk review remains separate from the implementation approval.
 
 ## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
@@ -509,13 +544,13 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P2 | Ready for Review | Scope overwrite/thread-contract review packet; runtime decision pending | 1 / architecture phase |
+| NR-006 | P1 | Approved architecture / implementation next | ADR-0070 explicitly approved by owner; production correction and native gates pending | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
 | NR-010 | P2 | Pending | CPU/peak/memory budget — measure | 2 / engineering baseline |
-| NR-011 | P2 | Pending | Differential transition coverage — improve | 2 / next engineering increment |
-| NR-012 | P3 | Pending | Oversampling alias reduction — measure before adding assertions | 2 / optional DSP study |
+| NR-011 | P2 | Ready for Review | Five transition scenarios and latency evidence submitted as #200; native CI/review separate | 2 / independent test batch |
+| NR-012 | P3 | Investigated / locally measured | Bounded alias study supports retaining current assertions; native/broader quality interpretation pending | 2 / optional DSP study |
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
@@ -525,7 +560,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Pending | Candidate-specific release validation — close selected scope | 4 / each actual release |
-| NR-022 | P2 | Ready for Review | Confirmed Undo-step loss — correction and regression implemented | 1 / investigation before maintenance |
+| NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -711,6 +746,11 @@ The owner must select best-effort versus whole-window coherence before a new pay
   no frozen golden waveform and no cross-architecture bit-identity target.
 
 ### NR-012 — Measure the oversampling quality claim
+
+**2026-11-01 result:** [bounded study](NR012_OVERSAMPLING_ALIAS_STUDY.md) measured
+36 calibrated/repeated local cells. Retain behavioral coverage; do not invent
+a universal quality threshold or monotonic factor assertion. No DSP fix justified.
+Native/broader-grid interpretation remains separate from these local observations.
 
 - **Evidence/status/confidence:** Verified coverage distinction in R7 §H: latency/wrap-running
   tests do not measure alias reduction. An aliasing defect is **Unverified**.

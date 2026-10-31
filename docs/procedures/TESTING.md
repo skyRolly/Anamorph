@@ -1,5 +1,16 @@
 # TESTING.md
 
+## Nonshipping NR-012 alias measurements
+
+The [bounded study](../../worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md) uses coherent
+high tones through the actual engine, an injected-alias calibration/omission control,
+linear/bypass references and repeated periods/executions. It records selected
+odd-harmonic folded-bin powers normalized to measured carrier power. The Linux/
+Ninja reproduction utility reuses existing engine/JUCE objects and flags; no
+production build target or mandatory quality assertion changes. Native quality
+interpretation and broader grids remain unverified; “the wrap runs” and measured
+alias suppression remain different evidence. No frozen waveform is introduced.
+
 ## Completed edit before A/B polling — NR-022 / State test 149
 
 `tests/ab_undo_tests.h::testAbSwitchPreservesACompletedUnpolledEdit` runs in the
