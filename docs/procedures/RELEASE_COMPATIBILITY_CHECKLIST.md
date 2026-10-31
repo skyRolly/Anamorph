@@ -1,5 +1,32 @@
 # RELEASE_COMPATIBILITY_CHECKLIST.md
 
+## Owner continuation decisions — 2026-10-31 (Asia/Shanghai)
+
+The owner instructs continuation from merged PR #194 and states:
+
+> All relevant ADRs have been manually approved.
+>
+> Real-machine testing has been manually completed and approved by the owner.
+
+This explicit confirmation closes **NR-001** (ADR-0069 final acceptance and ADR-0065
+supersession) and **NR-002** (targeted current Linux real-machine acceptance) without
+requesting redundant testing. It is an **owner attestation**, not testing performed
+by the agent. Actual test date, DAW/version, OS/CPU, format/device, individual scenario
+outcomes and selected test-artifact hash were not supplied and are **NOT RECORDED**.
+The instruction applies to the current roadmap/candidate; it does not assert a
+particular asset hash was the owner's tested file.
+
+The owner separately directs **NR-003 Deferred**: the detailed host compatibility/test
+matrix belongs to a later phase. No unexecuted case is marked passed and no named DAW
+is upgraded to Verified. Earlier broad original/P1 attestations remain historical.
+
+Fresh inspection finds `main` at `6ae102ca72d83eb07c0a84d76465b26c457cdc16` (merged #194),
+with product/test/packaging/build/workflow inputs unchanged from `4c13688`. Draft
+429760301 remains unpublished at tag/source `4c13688`, normal Release 7 / run 41173229942,
+with 11 assets. Existing automated evidence in the roadmap remains source-applicable;
+this approval does not waive future checks or authorize merging or release operations.
+
+
 Hard compatibility gate. **Every box must be checked before a release ships.** This enforces
 `docs/policies/COMPATIBILITY_POLICY.md` and its subset policies. A failed item blocks the release
 (or requires the COMPATIBILITY_POLICY exception: ADR + migration + Architecture Review).

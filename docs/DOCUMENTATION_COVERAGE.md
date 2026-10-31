@@ -1,5 +1,34 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Owner approval and real-machine attestation — 2026-10-31 (Asia/Shanghai)
+
+Source: the owner's continuation request after merged PR #194. The owner explicitly
+confirms all relevant ADRs manually approved and real-machine testing completed and
+approved; detailed host/test matrix NR-003 is expressly Deferred. Recorded NR-001/002
+Completed, ADR-0069 Accepted and ADR-0065 Superseded. Other existing ADR lifecycle
+states remain intact; this does not approve an unwritten future design.
+
+Recorded the attestation separately from CI and historical original/P1 validation
+in release-readiness, LEVEL5_AUDITION and RELEASE_COMPATIBILITY_CHECKLIST. Actual
+human test dates, host/OS/CPU/device/format, per-case outcomes and selected tested
+artifact hashes were not supplied and remain NOT RECORDED. No unexecuted matrix
+case is passed; no redundant real-machine approval is requested.
+
+Applicable NR-016 corrections reconcile live Linux approval/effectivity references,
+COMMERCIAL_STATUS's version/tag status, the committed twin-dump harness and reserved
+ADR navigation. Legal terms, commercial decisions and historical dated evidence are
+unchanged. README, HANDOVER, SOURCE_OF_TRUTH and REPOSITORY_MAP point to current scope.
+The roadmap records execution after `6ae102c` and selects NR-022 next; review-branch
+completion does not claim main integration. Tests/checker requirements are unchanged.
+
+**Documents touched:** roadmap/readiness worklogs, ADR-0065/0069/index, README,
+HANDOVER/SOURCE_OF_TRUTH/REPOSITORY_MAP/COMMERCIAL_STATUS, BUILD/PACKAGING/
+RELEASE_PROCESS/LEVEL5_AUDITION/RELEASE_COMPATIBILITY_CHECKLIST, TESTING_POLICY's
+approval provenance, RELEASE_HARDENING_PLAN and this audit. **Unchanged:** product,
+tests, build/workflow configuration, version, changelog, tag/releases and legal files.
+Validation: documentation/citation checker self-tests and checks, scope/whitespace
+review; exact results are recorded in the review PR.
+
 ## Next-release investigation and execution register (2026-10-31 UTC)
 
 Added `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md` as the current forward plan,

@@ -30,14 +30,17 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
-The 2026-10-31 Linux correction is governed by proposed
+The 2026-10-31 Linux correction is governed by Accepted
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):
 VST3-only installation, portable Standalone and preservation of legacy desktop resources.
 The owner authorized implementation/validation/PR preparation, with human review
 and manual merge required. A later read-only snapshot verifies PR #193 merged at
 `4c13688` and the rebuilt unpublished 0.10.0 draft from Release run 41173229942.
-The ADR still records Proposed; final lifecycle reconciliation must not be inferred
-from CI. Current identities, remaining decisions and stable forward work-item IDs are in
+Final owner confirmation recorded 2026-10-31 (Asia/Shanghai) explicitly approves all
+relevant ADRs and attests real-machine testing completed/approved. This is the authority
+for ADR-0069 acceptance and NR-001/002 closure, not an inference from CI or merge.
+Detailed host matrix NR-003 is Deferred; unsupplied individual cases remain unverified.
+Current identities, remaining decisions and stable forward work-item IDs are in
 [`worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md),
 a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.

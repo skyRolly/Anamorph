@@ -67,11 +67,11 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0062](ADR-0062-native-juce-icon-resources.md) | Approved B0 PNGs through JUCE; 2026-10-29 macOS fallback amendment compiles a complete native iconset and validates application rendering; Windows/Linux paths retained | **Accepted** — original 2026-10-23 approval retained; narrow fallback separately authorized by owner execution of the handoff prompt on 2026-10-29 | Verified source and native fixture rendering on macOS 15.8.1; built/staged evidence in the integration worklog; owner confirmed the reviewed ZIP's Launchpad display on 2026-10-29; other OS versions/DAW display unverified |
 | [ADR-0063](ADR-0063-domain-product-namespace.md) | Domain product namespace `tech.rolly.anamorph`; receipts below it; preserve independent host codes/GUID and #170 art | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/generated fixture evidence and native limits in `worklogs/2026-10-23-product-namespace.md` |
 | [ADR-0064](ADR-0064-windows-installer-native-icon.md) | Approved B0 Setup/Uninstall MAINICON, unconditional installed uninstall ICO and component-safe Windows tests | **Accepted** — explicit final owner approval; record updated 2026-10-24; Architecture Review cleared | Source/API-boundary/snapshot fixtures verified; actual native CI reported separately |
-| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Historical owned Linux desktop/hicolor installation and protected helper capture | **Superseded for the proposed corrected candidate by ADR-0069**; original 2026-10-25 acceptance and PR #175 effectivity retained for the existing tag | Dated native evidence remains historical; new candidate requires its own checks |
+| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Historical owned Linux desktop/hicolor installation and protected helper capture | **Superseded by Accepted ADR-0069** — owner confirmation 2026-10-31 | Original acceptance/PR #175 evidence preserved; current source is PR #193 |
 | [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Complete installed-receipt ownership and explicit liveness/PKG artifact boundary | **Accepted** — owner direct confirmation 2026-10-25; human architecture review complete; implementation effective on main via PR #174 (`04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`) | Native fixtures, omission/mutation and scheduling-fault regressions |
 | [ADR-0067](ADR-0067-finite-processor-parameter-snapshots.md) | Stateless parameter-default substitution for non-finite processor DSP snapshot loads, preserving host readback and finite behavior | **Accepted** — owner approval 2026-10-30; effective on main via PR #187 (`b085c87`); final-main/normal Release gates and targeted owner validation complete | Current host/text/restore and audio diagnostics; Output Gain and Density tradeoffs explicit |
 | [ADR-0068](ADR-0068-restore-latency-notification-commit-boundary.md) | Commit inline/adopted restores before synchronous latency callbacks; retain fixed-point callback saves | **Accepted** — owner approval 2026-10-30; effective on main via PR #187 (`b085c87`); final-main/normal Release gates and targeted owner validation complete | Original F9 negative control: 30 / 4; State 148: 2011 / 0, including callback publication without a nested pump/save; distinct lock residual retained |
-| [ADR-0069](ADR-0069-linux-plugin-only-installation.md) | VST3-only Linux installation, portable Standalone and legacy resource preservation in 0.10.0 | **Proposed**; owner authorized implementation/validation/PR and removal of legacy cleanup on 2026-10-31; human review and manual merge required | Current shell/package/private-root tests; native CI evidence and limits in release-readiness worklog |
+| [ADR-0069](ADR-0069-linux-plugin-only-installation.md) | VST3-only Linux installation, portable Standalone and legacy resource preservation in 0.10.0 | **Accepted** — explicit final owner approval recorded 2026-10-31 (Asia/Shanghai); effective via PR #193 at `4c13688` | Native Release 7 evidence and separate owner real-machine completion attestation; detailed matrix NR-003 Deferred |
 
 ## Owner approval reconciliation — record updated 2026-10-24
 
@@ -154,7 +154,7 @@ recorded below; earlier Proposed and pre-merge statements remain historical.
 
 | Record / amendment | Decision status now | Implementation effectivity |
 | --- | --- | --- |
-| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) and its helper snapshot amendment | Accepted; owner confirmation 2026-10-25 | Effective on main via PR #175; merge `14bde706e2d121c9970cf00c757cb12d3178b9a5` |
+| [ADR-0065](ADR-0065-linux-desktop-resource-installation.md) | Historical owned Linux desktop/hicolor installation and protected helper capture | **Superseded by Accepted ADR-0069** — owner confirmation 2026-10-31 | Original acceptance/PR #175 evidence preserved; current source is PR #193 |
 | [ADR-0066](ADR-0066-installed-receipt-validation-boundary.md) | Accepted; owner confirmation 2026-10-25 | Effective on main via PR #174; merge `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b` |
 
 ## 2026-10-25 actual-main effectivity reconciliation
@@ -181,3 +181,18 @@ Cause is unconfirmed; it is separate from the retained AU teardown observation.
 No rerun, assertion waiver, runtime/CI change or speculative repair is made here.
 Native receipt/installer/archive results remain separately attributed evidence.
 See `worklogs/2026-10-25-normal-validation.md` for the recorded observation.
+
+## Owner confirmation — 2026-10-31 (Asia/Shanghai)
+
+Source: the repository owner's direct continuation instruction for merged PR #194:
+“All relevant ADRs have been manually approved.” ADR-0069 is the only existing
+current decision still marked Proposed at this snapshot; it becomes Accepted.
+ADR-0065 remains Superseded; other Accepted/Deprecated/Superseded lifecycle states
+remain intact. No unwritten decision or new threading design is pre-approved.
+
+The same instruction confirms real-machine testing completed and approved and
+explicitly defers the detailed host/test matrix NR-003. NR-001/002 are Completed
+on that owner authority. Test dates, hosts, hardware, formats, per-case observations
+and selected test-artifact hashes were not supplied and are NOT RECORDED.
+Automated gates are separate; no PR merge or tag/release operation is authorized.
+See `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md` and the release-readiness record.

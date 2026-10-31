@@ -10,8 +10,9 @@ restating them; where this file and the record it cites disagree, the cited reco
 Last reviewed: **2026-07-26**. One change of substance since: on 2026-09-27 decision 6 (§4) was narrowed to
 the trademark status of the product and company names, when the fourth widening algorithm was renamed
 **Dimensional**. The release then in preparation was
-0.9.0. The annotated **0.9.9** tag now exists (peels to `c4f390f`; tagger 2026-10-21 UTC),
-and **0.9.10 is in development** (`CMakeLists.txt:14`; `CHANGELOG.md` `[Unreleased]`). Nothing in this document — the product model, the
+0.9.0. The annotated **0.10.0** tag now peels to `4c13688`; its GitHub Release is an
+unpublished draft (Release 7). `CMakeLists.txt:14` is 0.10.0; later development belongs
+under `CHANGELOG.md` `[Unreleased]`. Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
 
@@ -29,11 +30,11 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**0.9.9**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**0.10.0**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
-  but no tag has been cut yet (`RISK-003`) — `docs/procedures/PACKAGING.md`. Publishing a release
+  with annotated tags 0.9.9 and 0.10.0 and two unpublished drafts — `docs/procedures/PACKAGING.md`. Publishing a release
   is a manual maintainer action after the Level-5 audition (`docs/policies/RELEASE_POLICY.md`
   precondition 7).
 - **No licence is in force** (`EULA.md` §0, and §1 above). Testers hold builds by the owner's
@@ -47,7 +48,7 @@ The current pre-1.0 build (**0.9.9**; see `docs/HANDOVER.md`) is being prepared 
 
 | Channel | What ships | Status |
 |---|---|---|
-| **GitHub Releases** (draft → manually published) | flat permission-preserving zips per platform, Windows Inno Setup installer, macOS `.pkg`, user manual, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`, `SHA256SUMS.txt`, `RELEASE_MANIFEST.txt` | implemented; first tag not yet cut (`RISK-003`) |
+| **GitHub Releases** (draft → manually published) | flat permission-preserving zips per platform, Windows Inno Setup installer, macOS `.pkg`, user manual, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`, `SHA256SUMS.txt`, `RELEASE_MANIFEST.txt` | implemented; 0.9.9 and 0.10.0 tagged, both releases unpublished drafts at the 2026-10-31 snapshot |
 | **Per-push CI artifacts** | loose-file payloads for testers; the same trees are archived into the release zips | implemented |
 | **Commercial storefront** | — | does not exist; not designed |
 

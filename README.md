@@ -20,7 +20,9 @@ contains 11 verified assets from annotated tag `0.10.0` at `4c13688`
 PRs #191/#193's Linux VST3-only installation with legacy-resource preservation.
 The release remains **Draft and unpublished**. The
 [next-release roadmap](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) records current CI,
-asset hashes, remaining Linux approval/manual-evidence gaps and development priorities.
+asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
+confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
+The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.
@@ -215,11 +217,12 @@ Accepted ADR-0064; owner approval and #172 merge are recorded, with native visua
 
 The corrected 0.10.0 Linux candidate installs only VST3 and keeps Standalone
 portable in the ZIP. It removes desktop publication and leaves legacy desktop
-resources and installed Standalone copies untouched. See proposed
+resources and installed Standalone copies untouched. See Accepted
 [ADR-0069](docs/architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md)
-and the [installation guide](docs/user/INSTALLATION.md). Human PR review/manual merge
-and a later rebuild/replacement of 0.10.0 remain required; the existing tag/release
-are unchanged. ADR-0065 remains the historical desktop-era record.
+and the [installation guide](docs/user/INSTALLATION.md). PR #193 is already merged and
+rebuilt in the current draft. Owner approval and real-machine completion are recorded
+separately from native CI evidence; this development work changes no tag/release.
+ADR-0065 remains the historical desktop-era record.
 
 Installed-receipt decision: [ADR-0066](docs/architecture/design-decisions/ADR-0066-installed-receipt-validation-boundary.md) is Accepted by the owner's direct
 confirmation on 2026-10-25. PR #174 merged as `04e6ed48acc3532a112ab8a6ea1fb969f4abc83b`;

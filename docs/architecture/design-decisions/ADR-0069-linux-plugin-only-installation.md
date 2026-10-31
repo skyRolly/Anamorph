@@ -1,11 +1,16 @@
 # ADR-0069 — VST3-only Linux installation
 
-**Status:** Proposed; implementation, validation and PR preparation explicitly
-authorized by the owner on 2026-10-31. Human review and manual merge remain required.
-This replaces ADR-0065 for the corrected 0.10.0 candidate. The existing tag and
-release retain their original source until a separately approved rebuild/replacement.
-The owner further directed removal of legacy desktop cleanup on 2026-10-31;
-the decision below reflects that instruction.
+**Status:** Accepted — explicit owner confirmation recorded 2026-10-31 (Asia/Shanghai):
+“All relevant ADRs have been manually approved.” This completes NR-001, including the
+VST3-only installation, portable Standalone and legacy-resource-preservation decision.
+ADR-0065 is Superseded; its original acceptance remains historical.
+
+**Implementation effectivity:** PR #191 merged at `cf51bc3`; PR #193 merged at
+`4c136881f245470577d66a7603f15b177ddcf3dc`. The current annotated 0.10.0 tag and
+unpublished draft 429760301 already contain those changes (Release run 41173229942).
+The owner also confirms real-machine testing completed and approved; details were
+not supplied. See `worklogs/RELEASE_READINESS_0.10.0.md` for this separate attestation.
+No merge, tag/release modification or publication is authorized by this record.
 
 ## Context
 
@@ -63,11 +68,11 @@ ownership reassignment. All legacy desktop files and installed Standalone copies
 remain until manually removed. The scripts do not rewrite shared desktop caches.
 Same-mode operations must be serialized; no filesystem power-loss durability claim.
 
-These are corrected 0.10.0 candidate files. After human review and merge, rebuild from
-the exact merged source, repeat applicable release/native/manual checks, and replace
-0.10.0 under separate authorization. This task performs no merge, tag mutation,
-release editing or publication. Prior manual approval is not certification of this
-changed Linux workflow.
+These corrected 0.10.0 files are merged and rebuilt as recorded above. The owner's
+new real-machine completion attestation covers NR-002; it does not manufacture
+individual host/scenario results. The detailed host matrix NR-003 is Deferred by
+the owner. Existing automated gates remain mandatory; later product changes need
+their own validation. Release modification/publication requires separate authorization.
 
 ## Related code
 
