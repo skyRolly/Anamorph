@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** execution active.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** review-and-repair checkpoint; owner merge authorization required.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -13,6 +13,139 @@ That readiness worklog remains the release execution/history record; the
 [engineering-review programme](engineering-review/ENGINEERING_REVIEW_PROGRAMME.md) remains the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
+
+## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
+
+**Integration gate:** all four PRs remain open and unmerged. No auto-merge, release
+operation, version change or next implementation batch is authorized. This checkpoint
+prepares owner review; green CI or earlier ADR/manual approval does not grant merge
+permission. Final exact-head CI outcomes and the final #198 SHA are maintained in
+the [PR handoff ledger](https://github.com/skyRolly/Anamorph/pull/198#issuecomment-6546761558),
+which accompanies this worklog-bearing commit. The dated checkpoints below remain
+historical; they are not final-head validation claims.
+
+### Heads and dependency integrity
+
+`main` remains `6ae102ca72d83eb07c0a84d76465b26c457cdc16`.
+Review order is **#195 → #196 → #197 → #198**, each PR based on the preceding branch.
+Local `archive/review-start-pr195` through `archive/review-start-pr198` preserve the
+fetched heads. No shared history was rewritten and no contributor commit discarded.
+Each descendant merged its repaired parent; coverage-audit insertion conflicts were
+resolved by preserving both entries. Individual PR diffs retain their original scope.
+
+| PR / head branch | Original head | Repaired head / correction |
+|---|---|---|
+| [#195](https://github.com/skyRolly/Anamorph/pull/195) `docs/roadmap-owner-approval-2026-10-31` | `f64f9d1b3dc53a75eda8b01c4d2935a9284996cf` | `e038f23f8912a8ee591b04bec8062c493ad42052` — ADR/release-history documentation correction |
+| [#196](https://github.com/skyRolly/Anamorph/pull/196) `fix/nr022-ab-pending-undo` | `4a431cac2e32493b1d2290fb9fd8d6570b41393f` | `31ae5366eecf60e783e86051b4403df08186288c` — additive parent merge and independent review; implementation retained |
+| [#197](https://github.com/skyRolly/Anamorph/pull/197) `docs/nr006-scope-publication-review` | `017a2e458dce498aa647c087361c8b6702c7fbe1` | `b63dd65f418caab8146b7b441390f45f21fc278a` — retained parent/coherence/reader-affinity corrections plus PERFORMANCE_BUDGET drift repair |
+| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | Review merges `726a964` / `228aa3a`, documentation records and this additive synchronization of #197's final `b63dd65`; exact final head in the linked PR ledger |
+
+### Findings and dispositions
+
+- **#195 ADR table: accept/fix.** Actual row had four cells under three headings,
+  rather than the reported five. Restored record/status/effectivity meaning, historical
+  acceptance/helper amendment and #175 provenance, with current supersession by Accepted
+  ADR-0069/#193. Same-file ADR-0050's unescaped `||` also broke GFM columns; escaped it.
+  SOURCE_OF_TRUTH now labels desktop-era acceptance/effectivity as historical.
+- **#195 release instructions: accept/fix.** Read-only tag/PR/Release APIs and readiness
+  history prove #193 merged at `4c13688` and Release 7 / 41173229942 rebuilt draft
+  429760301. Procedure now separates completed operations, current verification and
+  future separately authorized release/replacement/publication. Tag/draft/11 assets
+  remain untouched; missing human test metadata stays NOT RECORDED.
+- **#196 NR-022: preserve implementation.** Reproduced the negative control and reviewed
+  adopted coalescer, same-slot no-op, open/settled gestures, owned endpoints, Undo/Redo,
+  preset/restore/pending-state and RT/admission boundaries. No additional code fix
+  justified; no new synchronization or architecture decision. Details follow below.
+- **#197 coherence: accept/fix documentation; defer runtime decision.** Release/acquire
+  index publication orders prior writes but does not transfer ownership/protect reusable
+  plain samples during a GUI copy. Corrected architecture and binding policy without
+  granting an exception to the non-atomic shared-state prohibition. NR-006 stays Ready
+  for Review (packet only); no new protocol or Accepted ADR. ScopeBuffer blob remains
+  `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+  Additional source tracing found `Vectorscope::paint` can read on pinned JUCE's
+  macOS/Windows OpenGL thread under the message-manager lock. GUI reads are serialized,
+  but the packet's all-message-thread claim was false. Corrected the description and
+  recorded its mismatch with the retained policy-affinity rule; no new exception was
+  granted. The architecture decision must explicitly resolve both affinity and payload.
+- **#198 NR-017: retain dispositions, clarify evidence/reproduction.** Independently
+  verified archive digests and all 257 primary-result tuples/multiplicities. Counts,
+  ownership and source-context dispositions agree. Added a runnable reproduction recipe
+  and clarified primary locations/absent levels versus related SARIF context. CSV,
+  scanner settings, warnings and gates remain unchanged. Alert state is still unknown:
+  authenticated API returned HTTP 403; no fixed/dismissed/open claim is inferred.
+
+### Validation outcomes and limits
+
+Fresh local environment: retained Debian 13 x86-64, Clang **22.1.8**, pinned JUCE 9.0.4,
+Release configuration. This differs from the earlier GCC 14 container. On the unchanged
+NR-022 implementation/test inputs: focused control **126 checks / 10 failures** with
+exact main processor source; **126 / 0** before/after restoration. Complete suites under
+`MALLOC_PERTURB_=1`: **945 DSP / 10,953 state**, zero failures. No expectations or
+negative controls were weakened. Both local Clang VST3/Standalone pass the existing ABI
+gate: CXXABI_1.3.9 / GLIBC_2.38 / GLIBCXX_3.4.31. The earlier GCC 14 aggregate preflight
+still **failed** at CXXABI_1.3.15 > 1.3.14 and its later aggregate stages did not run;
+it was not repaired or relabelled by this Clang result. No new aggregate full-preflight
+pass is claimed.
+
+Applicable local checks include docs **700** self-tests / **179** files, citations
+**276** self-tests / **610** anchors against main and the repaired parent on the
+committed tree. An intermediate merge-index check counted repeated unmerged paths
+and printed 798; that is not the final committed-tree count. Checks also cover GFM table widths
+(with original-defect controls), local links/heading anchors, ADR lifecycle/ancestry,
+whitespace and unchanged implementation/CSV comparisons. Realtime **97**, dispatch **52**,
+portability **120**, state coverage **110** self-tests and their ordinary scans passed;
+release-note self-test/check passed. Existing Python invalid-escape SyntaxWarnings remain
+unchanged. Locked Linux pluginval at strictness **10** completed deterministic ×3 and
+randomise ×3, all six passes on their first attempts. The linked ledger records the
+final verification alongside the exact PR heads.
+
+**Exact-head CI at this recording step:** #195 push
+[41224491946](https://github.com/skyRolly/Anamorph/actions/runs/41224491946) and PR
+[41224494636](https://github.com/skyRolly/Anamorph/actions/runs/41224494636) are in progress;
+dependency review 41224494633 succeeded. #196 push
+[41224607380](https://github.com/skyRolly/Anamorph/actions/runs/41224607380) and PR
+[41224612982](https://github.com/skyRolly/Anamorph/actions/runs/41224612982) are queued;
+exact-head manual [CodeQL 41224608045](https://github.com/skyRolly/Anamorph/actions/runs/41224608045)
+is queued and [MSVC 41224610787](https://github.com/skyRolly/Anamorph/actions/runs/41224610787)
+is in progress. #197 push [41224708753](https://github.com/skyRolly/Anamorph/actions/runs/41224708753)
+and PR [41224714388](https://github.com/skyRolly/Anamorph/actions/runs/41224714388) are queued.
+#198's final-head runs begin after this commit is pushed; the ledger records their
+IDs and final observed states. Pending jobs are not passes; same-repository PR event
+skips do not replace the push matrix. No CI configuration/gate was changed. Analyzer
+filters exclude these stacked/doc-only updates, so #196's existing manual workflows
+were dispatched at its repaired ref. Descendants have identical implementation/test inputs.
+
+The subsequent reader-affinity trace added documentation-only #197 commit `80f5075`
+and its additive #198 synchronization. The earlier #197 run IDs above describe the
+`57e11d0` checkpoint and must not be presented as final `80f5075` results. Final #197
+and #198 run IDs/states are recorded in the linked ledger after this push; no source
+or test input changed and no new runtime/native experiment is claimed by that trace.
+
+The original #196 Build 41216103432 and analyzer runs 41217038192/41217041554 are now
+completed/success, including formerly pending ARM macOS/sanitizers/CodeQL. These are
+refreshed historical outcomes, separate from the repaired heads above. Branch-protection
+API access is HTTP 403; repository ruleset listing is empty, which does not establish
+that branch protection is absent. No required check is bypassed. Review/inline-thread/
+conversation APIs were empty initially and must be refreshed after PR updates; only
+evidence-supported dispositions may be reported resolved.
+
+### Owner review and continuation
+
+The documentation/inventory corrections and retained NR-022 fix are prepared for
+human review; pending/failed mandatory CI remains an approval blocker until verified.
+#197 is reviewable as an investigation packet, not a fixed concurrency implementation.
+The NR-006 architecture decision is separate from approval to merge this documentation.
+Existing real-machine attestation is preserved for its original candidate; no new
+manual result is invented or assigned to NR-022.
+
+After an explicit owner decision, refresh states/required checks and integrate only
+the authorized portion in order **#195 → #196 → #197 → #198**. No integration into main
+is claimed here. Reconcile the actual main tree/worklog before starting any later
+implementation. **NR-011 remains the proposed first batch after authorized integration**:
+bounded differential DSP transition tests with old/new and liveness controls. NR-003
+stays Deferred; NR-006 stays gated; NR-010 needs identified quiet hardware; NR-013 needs
+a pinned reproducer; NR-018/019 remain owner/legal/provisioning work. Further execution
+awaits explicit owner merge authorization.
 
 ## PR #197 review disposition — 2026-11-01 (Asia/Shanghai)
 
@@ -50,8 +183,14 @@ copy work bounded by the valid block/request size and capacity, constant per cop
 frame; one index publication does not establish coherent or race-free snapshots.
 Historical segmented-copy measurements and all runtime/policy/architecture gates
 remain unchanged. Updated the packet/coverage audit; source blob remains
-`ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. This follow-up will be committed on #197
-and additively propagated to #198; final heads/checks are recorded in the PR ledger.
+`ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. Commit `b63dd65` records the repair on #197;
+this additive #198 merge retains both coverage entries and the complete parent history.
+Fresh documentation checks: 700 self-tests / 178 files on #197, 179 on #198; citation
+checks: 276 self-tests / 610 anchors against the relevant repaired parent and main.
+Table/link/anchor/whitespace and unchanged-source checks also apply; the linked PR
+ledger records the final merge SHA and exact-head CI. Earlier #197/#198 CI snapshots
+above are historical and cannot certify these new heads. No runtime tests/benchmarks
+were rerun for this documentation-only correction or claimed as fresh results.
 No merge authorization was supplied. NR-003 stays Deferred; NR-006 remains gated;
 NR-011 and all release operations remain unstarted.
 
@@ -125,8 +264,10 @@ individual outcomes and selected tested-artifact hashes remain NOT RECORDED.
 These decisions supersede the initial missing-approval/manual-evidence observations below.
 
 NR-022 is now confirmed, implemented and locally validated on its separate review branch
-(commit `0e5e644`); native CI and human PR review remain pending. Next: NR-006
-architecture packet and NR-017 static-diagnostic inventory; neither authorizes speculative runtime work.
+(source correction `0e5e644`, review head `4a431ca`); remaining native/analyzer CI and
+human PR review are pending. NR-006's architecture packet is Ready for Review and
+NR-017's source-bound static-diagnostic inventory is Completed. Neither approves a new
+threading protocol. NR-011 is the next independent headless implementation increment.
 NR-004/005/007 retain their recurrence triggers. NR-013 still needs a pinned reproducing
 REAPER environment; the general real-machine attestation does not prove that specific
 reported focus failure fixed. NR-018/019 owner/legal/provisioning blockers remain.
@@ -379,7 +520,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
 | NR-016 | P2 | Completed | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
-| NR-017 | P2 | Pending | Warning/scanner evidence inventory — classify, no blanket cleanup | 2 / engineering debt |
+| NR-017 | P2 | Completed | Main-baseline diagnostic inventory/dispositions; alert state unavailable | 2 / engineering debt |
 | NR-018 | P1 | Blocked | Public/commercial distribution decisions — owner/legal | 0 decision / commercial lane |
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
@@ -654,6 +795,16 @@ The original investigation/acceptance criteria below explain the scope of that c
   Phase 2 broader drift; independent of product implementation.
 
 ### NR-017 — Inventory current static diagnostics before debt work
+
+**Completed inventory:** [NR017_STATIC_DIAGNOSTIC_INVENTORY.md](NR017_STATIC_DIAGNOSTIC_INVENTORY.md)
+and its 257-row [baseline CSV](NR017_BASELINE_DIAGNOSTICS.csv). Latest main analysis source is
+`4c13688`, runtime/build-equivalent to merged #194 main `6ae102c`. Independently verified
+artifacts contain 65 dependency C++ CodeQL / 0 Actions / 192 PREfast results. Locations split
+191 first-party tests / 66 dependencies / 0 first-party runtime src locations. Source-context
+review selects retain/investigate-on-delta dispositions, not blanket code or suppression changes.
+Alert state still returns HTTP 403 and is unknown; no vulnerability/severity conclusion is made.
+This baseline does not substitute for new NR-022 branch CI. Original scope/acceptance follows.
+
 
 - **Evidence/status/confidence:** Verified current analysis jobs pass; alert-state API 403; prior
   P1 SARIF/stack-size analysis is historical. `scripts/*warning-baseline.txt`, `codeql.yml`,
@@ -993,3 +1144,53 @@ warning/ABI threshold, pluginval retry rule or engineering gate was weakened.
   `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. THREAD_MODEL now distinguishes initial
   publication from subsequent-overwrite safety. No runtime correction, new ADR
   approval or policy waiver is claimed. Proceed independently with NR-017 inventory.
+
+### NR-017 execution — 2026-10-31 (Asia/Shanghai)
+
+- Raw SARIF from main runs 41167465482 / 41167465497 was independently downloaded and
+  hashed; all 257 results have stable snapshot IDs, exact source/rule/location/message
+  and an evidence-scoped disposition in the linked CSV. C6262 remains a test stack
+  estimate; the construction and constexpr reports do not demonstrate a current
+  read-before-init or behavioral defect on the inspected paths. Dependency reachability/
+  severity remains unassessed; no alert or analyzer configuration was modified.
+- NR-017 is Completed as an inventory/triage deliverable, not as a claim that all
+  diagnostics are fixed. GitHub open/fixed/dismissed state is unavailable (HTTP 403).
+- Inventory review: [PR #198](https://github.com/skyRolly/Anamorph/pull/198), initial
+  inventory commit `3f9c327`, stacked on #197. Documentation/checker evidence:
+  700 doc self-tests / 179 files clean, 276 citation self-tests / 610 live anchors,
+  exact original-SARIF/CSV comparison for all 257 records, archive hashes and relative
+  links. No product, tests, CI or analyzer settings change in this packet.
+- NR-006's separate packet is [PR #197](https://github.com/skyRolly/Anamorph/pull/197),
+  parent `017a2e4`, stacked on source PR #196 / owner-decision PR #195.
+- Source PR #196's existing CodeQL/MSVC manual workflows were requested against its
+  exact ref because the automatic analyzer trigger filters require a main-base PR.
+  No workflow/gate was changed. Final run outcomes remain source-specific evidence.
+
+### Source CI checkpoint — 2026-11-01 (Asia/Shanghai)
+
+At head `4a431cac2e32493b1d2290fb9fd8d6570b41393f`, push
+[Build run 41216103432](https://github.com/skyRolly/Anamorph/actions/runs/41216103432)
+has completed Linux, Windows, Intel macOS, source lint, docs, Linux LTO, fuzz,
+TSan, realtime, Windows AVX2 A/B and macOS cross-slice jobs successfully. ARM macOS
+and sanitizers are still in progress at this snapshot; skipped conditional review jobs
+are not passed cases. PR
+[merge-check run 41216269049](https://github.com/skyRolly/Anamorph/actions/runs/41216269049)
+is successful; its event-specific scope does not replace the push matrix. Existing
+manually dispatched [CodeQL 41217038192](https://github.com/skyRolly/Anamorph/actions/runs/41217038192)
+is in progress. [MSVC 41217041554](https://github.com/skyRolly/Anamorph/actions/runs/41217041554)
+subsequently completed successfully at the same source head. No incomplete or skipped
+job is asserted to pass.
+
+The completed pinned-Clang Linux job's log independently confirms **945 DSP / 10,953
+state checks**, zero failures, and the state suite under a **1 MB stack**. Both its
+VST3 and Standalone require CXXABI_1.3.9 / GLIBC_2.38 / GLIBCXX_3.4.31, within the
+unchanged declared floor. This validates those CI artifacts; it does not turn the
+separate rejected local GCC aggregate preflight into a pass or finish the remaining
+platform/sanitizer/analyzer jobs.
+
+**Recommended next batch:** review the prepared NR-006 contract options; implement only
+an explicitly selected/approved protocol. Independently, NR-011's bounded transient
+DSP comparison extension is the next headless engineering increment. NR-010 needs quiet,
+identified hardware for actual budgets; NR-013 needs a pinned REAPER reproducer. NR-003
+remains Deferred; NR-004/005/007 retain recurrence triggers; NR-018/019 remain owner/
+legal/provisioning work. No merge or 0.10.0 release operation is included.
