@@ -1,5 +1,22 @@
 # CI_CD.md
 
+## ADR-0070 scope protocol gates
+
+`source-lint` runs `python3 scripts/check-scope-snapshots.py --self-test`: immutable
+original-source old/fixed schedules and protocol-weakening liveness, compiled in
+temporary storage. The normal state suite includes State 150–151; `tsan` also runs
+`--scope-snapshot-probe` five times after its existing seeded race canary. No TSan
+suppression or detector semantics are changed. Existing native matrix, RTSan,
+allocation guard, leaf effects, 1 MB stack and strictness-10 pluginval gates remain.
+
+The scope ring now occupies 262152 bytes on the local x86-64 toolchain. State tests
+therefore construct their test-owned processors through scoped heap fixtures,
+retaining the old assertions/callbacks and lexical destruction order; the former
+823352-byte optimized main frame plus a 273832-byte registry-test frame exceeded
+1 MB after the inline ring grew. The repaired full suite passes that same limit.
+Earlier stack sizes/analyzer dispositions below describe their original source
+revisions and are not new measurements. Native MSVC analysis still has to run.
+
 ## Customer release-note content gate (2026-10-30)
 
 Build `source-lint` runs `check-release-notes.py --self-test` before the actual content check.
@@ -1694,7 +1711,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1706,7 +1723,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15554` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15566` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when

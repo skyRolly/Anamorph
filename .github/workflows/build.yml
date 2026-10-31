@@ -670,6 +670,9 @@ jobs:
       - name: DSP dump parser and comparison regressions (inert text)
         run: python3 scripts/check-dsp-dump.py --self-test
 
+      - name: Scope snapshot old/fixed regression and validation-bypass liveness
+        run: python3 scripts/check-scope-snapshots.py --self-test
+
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
       # code while the document keeps reading as though it were still correct.
@@ -957,7 +960,7 @@ jobs:
       # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
       # (`testPendingDuckDoesNotSurviveActivation`, tests/dsp_tests.cpp:1388) against
       # the state suite's 709,760 (`testSettingsPublicationIsFieldLevelAndOrdered-
-      # ByObservation`, tests/state_tests.cpp:22253) -- 28% of the 1 MB reserve, not
+      # ByObservation`, tests/state_tests.cpp:22266) -- 28% of the 1 MB reserve, not
       # 0%. This arms a tripwire rather than introducing a failure: both suites were
       # verified green under `ulimit -s 1024` before the step was widened.
       #
@@ -4108,10 +4111,10 @@ jobs:
       # that this machine's scheduling may or may not interleave in a single
       # 400-iteration run; five runs of each probe is what distinguishes "silent
       # because eliminated" from "silent because it did not happen this time".
-      - name: The D-2 probes under ThreadSanitizer (x5 each)
+      - name: The D-2 and scope probes under ThreadSanitizer (x5 each)
         run: |
           BIN=./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests
-          for probe in --state-thread-probe --state-prepare-race-probe --reprepare-race-probe --d2-stress-probe; do
+          for probe in --state-thread-probe --state-prepare-race-probe --reprepare-race-probe --d2-stress-probe --scope-snapshot-probe; do
             for run in 1 2 3 4 5; do
               echo "== $probe, run $run"
               "$BIN" "$probe"

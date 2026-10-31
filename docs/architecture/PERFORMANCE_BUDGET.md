@@ -1,8 +1,9 @@
 # PERFORMANCE_BUDGET.md
 
-Performance and resource budget. **Numeric targets are intentionally left as explicit TODOs:
-no benchmark/profiling data exists in the repository, and inventing numbers is prohibited
-(constraint C2).** Only structurally-provable facts are stated as Verified.
+Performance and resource budget. **Numeric targets remain explicit TODOs; inventing
+budgets is prohibited (constraint C2).** Source bounds and dated measurements below
+retain their actual toolchain/hardware scope; synthetic data are not representative
+performance acceptance. The reproducible benchmark procedure is recorded below.
 
 ## Structurally-provable facts (Verified)
 
@@ -13,17 +14,16 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 | **`ScopedNoDenormals` is active for the whole block.** | src/PluginProcessor.cpp:275 |
 | **Oversampling only runs when nonlinear work exists** (Drive>0 or Chorus/Dimensional); linear chains skip it → no needless CPU. **Unchanged by ADR-0034 and ADR-0035.** ADR-0034 decoupled the reported LATENCY from this predicate without touching the run gate: where the wrap is skipped, a 2-channel integer ring supplies its group delay instead. ADR-0035 turned the engage/disengage into a 12 ms crossfade, so the wrap additionally runs for the duration of a crossing — and goes cold again once the blend has left it, which is what keeps the saving. Re-measured after both, at 48 kHz / 128 on the `working` chain with Drive 0 and a linear algorithm — OS Off 159.19, 2× 170.06, 4× 166.60, 8× 169.44 ns/sample, i.e. inside each other's 5–9 % run-to-run spread and far below the engaged rows (210.44 / 266.13 / 375.85). The ring's own cost, and the always-on write that keeps it warm, are below this instrument's floor. | src/dsp/AnamorphEngine.cpp (`osActiveFor`, `osCompDelayBuffer`); `AnamorphBench` §"Oversampling SELECTED but skipped, Drive 0" |
 | **GUI redraw is bounded, idle-gated (0.8.8) AND display-rate-adaptive (0.8.10)**. The editor timer stays 24 Hz and the editor's meter/micro-anim VBlank stays per-frame; the four visualizers (Vectorscope, LevelMeter, StereoMeter, SpectrumImager), formerly fixed 60 Hz `juce::Timer`s, now refresh from `gui::FrameClock` — a `VBlankAttachment` paced to the display and capped near 120 Hz (executes every `ceil(rate/126)`-th vblank: 60→60, 120→120, 144→72, 240→120; 60 Hz wall-clock fallback when the cadence is unmeasurable). Every temporal ease/decay was re-expressed in `dt` form (matching the old 60 Hz curves to within the display quantum), so smoothness scales to the panel while the S1/S2/S3/H15 idle gates and once-per-block audio ballistics are unchanged. The *work* inside each tick still runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), and since Wave 3 computes only the non-negative-frequency magnitudes its consumers read (`ignoreNegativeFreqs`, ~half the per-transform magnitude work, identical visuals), the micro-animation poll skips when provably static — and since Wave 2 (H15) it decides "provably static" from three relaxed change-generation counters (sound params, view params, InternalState) instead of hashing every tracked widget's value at 60 Hz, which was 68-87 % of the remaining idle editor instructions in the Round-2 attribution — and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. Active repaint cost is also bounded (0.8.9 / H2 + H13 + N2): the Vectorscope's static layer (background gradient, rounded panel, glass edges, grid, labels) and each StereoMeter's static layer (glass panel, centre tick) — pure functions of size/scale/look — are rendered once into cached physical-resolution images and blitted per frame; only signal-dependent drawing (point cloud, clip ring, meter pointer, meter end labels for z-order) is rasterized live. These components are opaque (N2): the cached layers are RGB with the editor's flat `colours::bg` backdrop baked into the rounded corners, so the blit is an opaque copy (not an alpha composite) and the parent never re-renders beneath them. The Spectrum analyser caches its bottom layer the same way (H17: panel + band tints + grid, keyed on its exactly-converging eased inputs) but stays translucent — it sits on the editor's semi-transparent Multiband panel, so the N2 opacity pattern does not apply there. The `FrameClock` refresh (0.8.10) stops the Advanced-only Imager while hidden and debounces its rate cap against single-vblank jitter, so idle stays ~0 on any display. Wave 6 (0.8.12) removed the last avoidable GPU cost: the Spectrum analyser's per-band solo-headphone glyph no longer allocates a **plot-sized transparency-layer offscreen every Advanced-mode frame** — the layer is clipped to the glyph (~200× smaller offscreen) and skipped entirely at full opacity, pixel-identical (worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md). Since Wave 4 the **LevelMeter** carries the same opaque static-layer cache as the other three visualizers (panel, IN/OUT + L/R headers, the four recessed bar slots and the centre dB ruler blit from a cached RGB image; only the numbers, fills, peak blocks and live glass edges rasterize per frame — measured −29…−31 % per meter frame, pixel-identical), the **Vectorscope** tick early-returns while the whole editor is hidden (parity with the S3 gates; it was the one visualizer still scanning the ring unseen), the **Spectrum analyser** converts bins to dB once per NEW transform instead of per decay tick (the multi-second release tail after audio stops re-ran ~4k log10s per tick on identical input; measured −92 % of that loop) and reuses its spectrum/fill/clip-quad `Path` storage across paints (no per-paint heap growth), and the editor's 24 Hz tick memoises its three remaining unconditional jobs: preset-name shaping re-runs only when (name, dirty, slot width) changed, the combo hover poll runs only while the cursor is inside the editor or a box is still lit, and the match readout re-formats only when the raw published float changed (bitwise compare). | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp, FrameClock.h; src/PluginEditor.cpp `stepMicroAnims` + `timerCallback` + `refreshPresetDisplay`; CHANGELOG [0.8.8], [0.8.9], [0.8.10], [0.8.11], [0.8.12]; worklogs/performance/WAVE4_INVESTIGATION.md + WAVE6_GPU_RENDER_INVESTIGATION.md |
-| **Scope transfer uses fixed storage and bounded copy work.** For nonnegative block/request sizes, `pushBlock` and `readLatest` copy at most the fixed 16384-frame capacity; work scales with the frames copied (constant per frame), with no allocation, lock or wait in either method. `pushBlock` release-publishes the write index **once per block**; this does not guarantee a stable whole-block snapshot (NR-006). | src/dsp/ScopeBuffer.h:28-80 |
+| **Scope transfer uses fixed storage and bounded atomic work (ADR-0070).** At most 16384 retained/copied frames per call: three release stores per retained frame and one total publication per block; at most three acquire loads per attempted frame. A copy accepts the exact selected committed positions or rejects once, with no retry, allocation, lock or reader reservation. Rejected scratch is not consumed. | src/dsp/ScopeBuffer.h `pushImpl` / `copyAt`; gui/ScopeSnapshotCache.h |
 
-Scope index publication orders prior writes for an acquire observing that publication;
-it neither transfers ownership of the plain sample arrays nor protects them from a
-later overwrite during a read. Stable stereo pairs, coherent blocks/windows and
-race-free payload copies are not guaranteed by this protocol. These are unresolved
-NR-006 boundaries, as recorded in [THREAD_MODEL](THREAD_MODEL.md), the binding
-[THREADING_POLICY](../policies/THREADING_POLICY.md#atomic-usage-rules) and the
-[review packet](../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md). The fixed work/storage
-facts above do not imply concurrency safety or approve a replacement synchronization
-design. GUI reader-affinity drift also remains subject to that architecture decision.
+Scope index publication alone is a visibility edge, not a reusable-storage
+ownership guarantee. The current whole-window guarantee depends on **atomic
+payloads, ordered invalidation and two matching generation checks per frame**
+(ADR-0070); it is conditional on copy success and does not promise reader progress
+under indefinite lapping. Private accepted buffers survive failed copies.
+Native code-generation/cost gates and targeted visual acceptance remain separate
+from these source-level guarantees. The NR-006 packet records local synthetic
+production measurements, not a real-time deadline or representative hardware budget.
 
 ## Known per-sample costs (Verified, qualitative)
 
@@ -125,22 +125,20 @@ design. GUI reader-affinity drift also remains subject to that architecture deci
   Session-local: haas-parked scenario −12.4 % whole-run instructions (callgrind).
   Evidence [Verified]: src/dsp/HaasProcessor.cpp (parked fast path + invariant comment);
   tests/dsp_tests.cpp; worklogs/performance/WAVE4_INVESTIGATION.md.
-- **The NaN self-heal scan is detector-gated, and the scope/bypass ring fills are
-  segmented copies (Wave 4).** The per-sample `isfinite` branches are preceded by a
-  branch-free exponent-mask max-reduction (auto-vectorized); the original zeroing loop —
-  and the reset cascade — run only when the detector fires, bit-identically (proven on
-  NaN-injection twin dumps). `ScopeBuffer::pushBlock` and the bypass ring's write-only
-  fill write ≤2 contiguous copy segments instead of per-sample masked/wrapped stores —
-  the same final ring bytes for serially observed blocks. ScopeBuffer retains its
-  single release-store publication. The former claim that acquiring the index makes
-  intra-block store order unobservable omitted later reuse: plain sample overwrites
-  can overlap a GUI copy (NR-006). The copy optimization does not establish a
-  stable or race-free concurrent scope snapshot;
-  the bypass READ-BACK branch stays per-sample (its reads can overlap the same block's
-  writes when the latency is shorter than the block). Session-local: transparent floor
-  −4.9 % whole-run instructions (callgrind). Evidence [Verified]: src/dsp/AnamorphEngine.cpp
-  (detector + segmented fill), src/dsp/ScopeBuffer.h (pushBlock);
-  worklogs/performance/WAVE4_INVESTIGATION.md.
+- **The NaN self-heal scan is detector-gated; Wave 4's scope-copy optimization
+  is historical.** The per-sample `isfinite` branches are preceded by a
+  branch-free exponent-mask max-reduction (auto-vectorized); the original zeroing
+  loop and reset cascade run only when it fires, bit-identically in the retained
+  NaN-injection twin dumps. The bypass ring's write-only fill retains ≤2 contiguous
+  copy segments; its read-back stays per-sample because reads may overlap the same
+  block's writes when latency is shorter than the block. Wave 4 also segmented the
+  **then-plain ScopeBuffer** writes. That part is replaced by ADR-0070's atomic
+  per-slot invalidation/payload/tag stores: copying directly into atomic storage
+  would violate the selected protocol. The old session-local −4.9 % whole-run
+  instruction result belongs to the historical combined optimization, **not** the
+  new scope implementation. Evidence: `AnamorphEngine.cpp` detector/bypass fill;
+  `ScopeBuffer.h` current protocol; `worklogs/performance/WAVE4_INVESTIGATION.md`;
+  `worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md` current cost/limits.
 - **Per-block parameter adoption and settled-state bookkeeping are gated (Wave 5).** The
   wrapper hands the engine a snapshot every block; a BITWISE-identical one (steady
   playback) no longer re-runs `updateDerived`'s two `decibelsToGain` pow calls + ~25
@@ -312,7 +310,14 @@ matrix. Do not populate with estimated numbers.`
 
 `TODO: Per-instance memory is not measured. Structurally, allocation is bounded and occurs
 only in prepare() (delay lines sized to max latency + max block; chorus buffers to 8× rate;
-ScopeBuffer fixed at 16384 stereo frames). Requires measurement for a concrete figure.`
+ScopeBuffer fixed at 16384 stereo frames). Full-instance figures still require measurement.`
+
+ADR-0070 makes the shared scope payload/tag storage 256 KiB plus its count/alignment
+(local x86-64 `sizeof(ScopeBuffer)` 262152 bytes, previously 131080). Each open
+editor keeps separate scratch and accepted stereo windows: 256 KiB in Vectorscope
+and 128 KiB in SpectrumImager, adding 192 KiB over their old scratch storage.
+These buffers allocate at GUI construction, never on the audio path. They are not
+a measurement of total process RSS, allocator overhead or cache/WCET cost.
 
 ## How to produce those numbers — required benchmark procedure
 

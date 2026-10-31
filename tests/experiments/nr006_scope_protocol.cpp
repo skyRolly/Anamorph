@@ -1,6 +1,7 @@
 // Nonshipping NR-006 research. Not included by CMake or production headers.
 // Build/run instructions and limits: worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md.
-#include "../../src/dsp/ScopeBuffer.h"
+// Freeze the original serial reference; production now implements ADR-0070.
+#include "../fixtures/scope-legacy/ScopeBuffer.h"
 
 #include <algorithm>
 #include <array>

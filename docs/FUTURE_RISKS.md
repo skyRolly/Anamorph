@@ -14,11 +14,14 @@
   sanitizer silence and separate Rosetta/Test 61 or AU findings do not close this.
 - **Mitigation:** NR-006 / Accepted ADR-0070 selects generation-validated atomic
   stereo windows and an explicit serialized-GUI affinity contract. Human Architecture
-  Review was cleared by explicit owner approval 2026-11-01; native cost/portability evidence, production implementation/regressions
-  and visual acceptance remain pending. Documentation does not fix the runtime gap.
+  Review was cleared by explicit owner approval 2026-11-01. The atomic-window
+  correction/regressions are implemented on a separate development branch, with
+  native cost/portability evidence, integration and visual acceptance still pending.
+  This risk remains open on main and the unchanged draft; branch-local source/test
+  evidence does not retroactively fix either candidate.
   Current 0.10.0 requires a reviewed mitigation or explicit human risk disposition
   before publication; draft/tag/assets stay unchanged.
-- Evidence [Verified]: `src/dsp/ScopeBuffer.h::pushBlock/readLatest`;
+- Evidence [Verified]: original `00de8c7:src/dsp/ScopeBuffer.h::pushBlock/readLatest`;
   `Vectorscope::{tick,paint}`, `SpectrumImager::pushFFT`; source/proof/limits in
   [NR-006 packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
   and [Accepted ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md).
@@ -1001,7 +1004,7 @@ mitigation. Do not invent risks to fill the template.
   prefers that request to its live read. Mutations M76-M82.
 - **STATUS AFTER ROUND 20: STILL OPEN, and deliberately NOT reclassified as an accepted residual.**
   What remains is the imager's gesture-bracketed bare stores (`resetParam`, `setBands`,
-  `setSoloMask`; `src/gui/SpectrumImager.cpp:899-914` is the shape), which declare no endpoint at
+  `setSoloMask`; `src/gui/SpectrumImager.cpp:897-912` is the shape), which declare no endpoint at
   all, so a host write landing inside their own `setValueNotifyingHost` is still live-read as the
   user's `after`. That violates the stated product rule -- host automation must never become a
   user's endpoint -- so it does not meet the bar for an accepted residual and is recorded as an open

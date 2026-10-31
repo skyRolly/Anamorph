@@ -9,8 +9,6 @@ static constexpr float kInvSqrt2 = 0.70710678118654752440f;
 
 Vectorscope::Vectorscope (anamorph::ScopeBuffer& buffer) : scope (buffer)
 {
-    bufL.resize (anamorph::ScopeBuffer::capacity);
-    bufR.resize (anamorph::ScopeBuffer::capacity);
     // Gate init: treat whatever the ring already holds as non-silent, so the
     // first windowFrames() of observed frames always paint (conservative --
     // an editor reopened mid-playback shows the live picture immediately).
@@ -39,6 +37,18 @@ void Vectorscope::tick()
     if (! isShowing())
         return;
 
+    pollNewSamples();
+    if (frameDirty)
+    {
+        frameDirty = false;
+        repaint();
+    }
+}
+
+void Vectorscope::pollNewSamples()
+{
+    JUCE_ASSERT_MESSAGE_MANAGER_IS_LOCKED
+
     // Idle repaint gate. paint() is a pure function of (window content,
     // persistence, size) -- the trail's age-alpha is positional, not clocked --
     // so a frame only needs re-rendering when that content can have changed.
@@ -51,16 +61,17 @@ void Vectorscope::tick()
     // fades exactly as it always did; the final all-zero frame paints once,
     // then the view goes idle. A persistence change re-arms via setPersistence
     // (frameDirty); resize/expose repaints bypass the timer entirely.
-    const auto count = scope.writeCount();
-    if (const auto fresh = count - lastSeenCount; fresh > 0)
+    if (scope.writeCount() != lastSeenCount)
     {
         // Scan only the newly arrived frames (order-of-800 samples per tick,
         // far cheaper than one paint). Frames older than the scratch size can
         // never re-enter any window (max window < capacity), so capping is safe.
-        const int n   = (int) juce::jmin (fresh, (std::uint64_t) bufL.size());
-        const int got = scope.readLatest (bufL.data(), bufR.data(), n);
-        for (int i = 0; i < got; ++i)
-            if (std::abs (bufL[(size_t) i]) > 0.0f || std::abs (bufR[(size_t) i]) > 0.0f)
+        const auto read = snapshot.readSince (scope, lastSeenCount);
+        if (! read.valid) return; // partial scratch is not activity or silence
+        const auto count = read.end;
+        for (int i = 0; i < read.copied; ++i)
+            if (std::abs (snapshot.scratchLeft()[(size_t) i]) > 0.0f
+                || std::abs (snapshot.scratchRight()[(size_t) i]) > 0.0f)
             {
                 lastNonZero = count;
                 break;
@@ -71,12 +82,6 @@ void Vectorscope::tick()
         if (! (windowSilent && lastFrameSilent))
             frameDirty = true;
         lastFrameSilent = windowSilent;
-    }
-
-    if (frameDirty)
-    {
-        frameDirty = false;
-        repaint();
     }
 }
 
@@ -158,6 +163,7 @@ void Vectorscope::ensureStaticLayer (juce::Graphics& g, juce::Rectangle<float> a
 
 void Vectorscope::paint (juce::Graphics& g)
 {
+    JUCE_ASSERT_MESSAGE_MANAGER_IS_LOCKED
     auto area = getLocalBounds().toFloat();
 
     // Static layer (H2): blit the cached background/panel/edges/grid/labels
@@ -178,8 +184,9 @@ void Vectorscope::paint (juce::Graphics& g)
 
     // --- read a decimated window from the lock-free ring buffer ---
     const int wantFrames = windowFrames();
-    const int got = scope.readLatest (bufL.data(), bufR.data(),
-                                      juce::jmin (wantFrames, (int) bufL.size()));
+    snapshot.accept (snapshot.readLatest (scope, wantFrames));
+    const int got = juce::jmin (wantFrames, snapshot.result().copied);
+    const int offset = snapshot.result().copied - got;
     if (got <= 0)
         return;
 
@@ -202,8 +209,8 @@ void Vectorscope::paint (juce::Graphics& g)
 
         for (int i = 0; i < got; i += step)
         {
-            const float L = bufL[(size_t) i];
-            const float R = bufR[(size_t) i];
+            const float L = snapshot.left()[(size_t) (offset + i)];
+            const float R = snapshot.right()[(size_t) (offset + i)];
             clip = juce::jmax (clip, std::abs (L), std::abs (R));
 
             // Rotate 45 deg: vertical = Mid (mono up), horizontal = Side.

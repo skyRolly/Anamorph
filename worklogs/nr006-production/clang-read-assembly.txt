@@ -1,0 +1,61 @@
+
+/workspace/scratch/anamorph-nr006/production-bench:     file format elf64-x86-64
+
+
+Disassembly of section .init:
+
+Disassembly of section .plt:
+
+Disassembly of section .plt.got:
+
+Disassembly of section .text:
+
+00000000000012f0 <scope_read_assembly_canary>:
+    12f0:	53                   	push   %rbx
+    12f1:	48 8b 87 00 00 04 00 	mov    0x40000(%rdi),%rax
+    12f8:	41 89 c8             	mov    %ecx,%r8d
+    12fb:	41 c1 f8 1f          	sar    $0x1f,%r8d
+    12ff:	c4 62 38 f2 c1       	andn   %ecx,%r8d,%r8d
+    1304:	41 81 f8 00 40 00 00 	cmp    $0x4000,%r8d
+    130b:	b9 00 40 00 00       	mov    $0x4000,%ecx
+    1310:	41 0f 4c c8          	cmovl  %r8d,%ecx
+    1314:	48 39 c8             	cmp    %rcx,%rax
+    1317:	48 0f 42 c8          	cmovb  %rax,%rcx
+    131b:	48 85 c9             	test   %rcx,%rcx
+    131e:	74 4e                	je     136e <scope_read_assembly_canary+0x7e>
+    1320:	48 29 c8             	sub    %rcx,%rax
+    1323:	4c 8d 04 8d 00 00 00 	lea    0x0(,%rcx,4),%r8
+    132a:	00
+    132b:	45 31 c9             	xor    %r9d,%r9d
+    132e:	66 90                	xchg   %ax,%ax
+    1330:	41 89 c2             	mov    %eax,%r10d
+    1333:	41 81 e2 ff 3f 00 00 	and    $0x3fff,%r10d
+    133a:	41 c1 e2 04          	shl    $0x4,%r10d
+    133e:	4e 8b 1c 17          	mov    (%rdi,%r10,1),%r11
+    1342:	48 ff c0             	inc    %rax
+    1345:	4c 39 d8             	cmp    %r11,%rax
+    1348:	75 2d                	jne    1377 <scope_read_assembly_canary+0x87>
+    134a:	49 01 fa             	add    %rdi,%r10
+    134d:	49 8b 5a 08          	mov    0x8(%r10),%rbx
+    1351:	4d 8b 12             	mov    (%r10),%r10
+    1354:	4d 39 da             	cmp    %r11,%r10
+    1357:	75 1e                	jne    1377 <scope_read_assembly_canary+0x87>
+    1359:	42 89 1c 0e          	mov    %ebx,(%rsi,%r9,1)
+    135d:	48 c1 eb 20          	shr    $0x20,%rbx
+    1361:	42 89 1c 0a          	mov    %ebx,(%rdx,%r9,1)
+    1365:	49 83 c1 04          	add    $0x4,%r9
+    1369:	4d 39 c8             	cmp    %r9,%r8
+    136c:	75 c2                	jne    1330 <scope_read_assembly_canary+0x40>
+    136e:	48 c1 e1 20          	shl    $0x20,%rcx
+    1372:	48 ff c1             	inc    %rcx
+    1375:	eb 02                	jmp    1379 <scope_read_assembly_canary+0x89>
+    1377:	31 c9                	xor    %ecx,%ecx
+    1379:	89 ca                	mov    %ecx,%edx
+    137b:	48 c1 e9 20          	shr    $0x20,%rcx
+    137f:	31 c0                	xor    %eax,%eax
+    1381:	f6 c2 01             	test   $0x1,%dl
+    1384:	0f 45 c1             	cmovne %ecx,%eax
+    1387:	5b                   	pop    %rbx
+    1388:	c3                   	ret
+
+Disassembly of section .fini:

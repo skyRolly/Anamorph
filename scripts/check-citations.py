@@ -403,7 +403,7 @@ DELIBERATE_REAIMS = {
     # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
-     "src/gui/SpectrumImager.cpp:725"): "bandCount",
+     "src/gui/SpectrumImager.cpp:723"): "bandCount",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
@@ -642,7 +642,7 @@ DELIBERATE_REAIMS = {
      'src/PluginProcessor.cpp:1147'): "viewParams",
     ("docs/FUTURE_RISKS.md",
      "src/gui/SpectrumImager.cpp:898-913",
-     "src/gui/SpectrumImager.cpp:899-914"): "beginChangeGesture",
+     "src/gui/SpectrumImager.cpp:897-912"): "beginChangeGesture",
     # ...and ADR-0010's, whose anchor is a PAIR: the notifying write the wrapper replaced, and the
     # poll's gesture guard, which merely moved. One end edited is enough to make the whole anchor
     # unmappable, so the entry carries both ends at their re-derived spellings. The two entries

@@ -23,10 +23,10 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | GUI → Audio (forced duck / A/B switch / A/B forget / a bulk swap's completion) | `std::atomic<int> duckRequest` | One request word: the duck bit, the A/B switch bit with its two slot indices, the forget bit, and — ADR-0057, Accepted 2026-09-27 — a bulk swap's sequence and its completion. The message thread writes it ONLY with read-modify-writes (`fetch_or` / CAS; no plain store), so no request clobbers another and every modification continues a completion's release sequence; the requests are relaxed, and **`completeBulkApply` is a RELEASE CAS, published after the swap's last parameter store**. The audio thread (`setParametersFrom`) and the prepare path (`prepareFrom`) take it whole with an **ACQUIRE `exchange`** twice — before and after reading the snapshot — and adopt nothing while a swap's completion is awaited. The per-slot Level-Match records it drives are engine-owned, audio-thread / prepare-path state; nothing engine-side is read back on the message thread (ADR-0007, Amendment of 2026-09-25, A/B provenance). |
 | GUI → Audio (engine-API match injection) | `std::atomic<float> matchInject` | Relaxed store / `exchange`; an engine API the processor no longer calls. |
-| Audio → GUI (scope) | `ScopeBuffer` ring; release/acquire write index | Exactly one audio producer; intended reader affinity is the message thread. Known NR-006 gaps: plain storage can be reused during a copy, and Vectorscope painting can read on the macOS/Windows OpenGL thread under JUCE's message-manager lock. GUI reads are serialized, but the literal reader-affinity rule below and audio-payload safety are not established by that fact; no exception is granted here. |
+| Audio → GUI (scope) | `ScopeBuffer` fixed atomic stereo/tag ring, release/acquire publication and per-frame validation (Accepted ADR-0070) | One audio producer. GUI reads run on the message thread or the existing JUCE OpenGL component-paint path while holding its message-manager lock; those GUI accesses are serialized. A copy accepts exactly the selected committed positions or rejects once on reuse. Rejected scratch never reaches painting, FFT or silence/freshness counters. |
 | Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. The meter and correlation resets also publish once each — `reset()` from a prepare, `levels.resetLive()` / `correlation.reset()` from a host reset — on the host's thread, which the format contract keeps from running concurrently with `processBlock` (`THREAD_MODEL.md` host rows). |
 | Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
-| Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | An ordering-critical pair (the second of the four listed under *Atomic usage rules*): the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously on the message thread only after ADR-0068 safe-delivery admission: no restore application, enclosing state command or pending restore. Otherwise the existing flag remains pending; a recursively pumped timer must defer too. |
+| Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | An ordering-critical pair (the second of the four protocols listed under *Atomic usage rules*): the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously on the message thread only after ADR-0068 safe-delivery admission: no restore application, enclosing state command or pending restore. Otherwise the existing flag remains pending; a recursively pumped timer must defer too. |
 | Audio → GUI (view-param / InternalState generations, Wave 2 / H15) | `std::atomic<uint32> viewParamGen`; `InternalState::gen` (relaxed) | The identical staleness-hint pattern, extended so the editor's 60 Hz micro-anim poll re-arms on counter loads instead of hashing every animated widget per frame: `viewParamGen` is bumped by a dedicated no-gesture listener on the view params (Bypass), `InternalState::gen` by its property-change callback (Settings values, incl. session restore). No payload, no ordering role. |
 | Host state thread → Message (a restore's metadata tail, D-2 / ADR-0036) | `ExchangeCell<RestoreDecode> pendingRestore` — one `std::atomic<T*>`, `exchange` with **acq_rel** on both sides | An off-message-thread `setStateInformation` first ANNOUNCES its generation in the engine-config word (a CAS, tagged with this restore's generation — from that instant the restore is authoritative and every older one obsolete, ADR-0036 §25), then installs the sound (the APVTS, JUCE-locked, under the whole-sound replacement lock), on the caller's thread, then publishes the DECODED metadata tail as one immutable object carrying that generation; the message thread adopts it (`adoptPendingHostState`) from the processor's 20 Hz timer and at the top of every entry point that mutates program state, draining to a FIXED POINT so a restore that arrives during an adoption is adopted in the same pass and the caller never goes on to edit a session already superseded (ADR-0036 §15). Ownership transfers with the exchange — whichever side's exchange returns the pointer frees it — so at most one object exists and nothing is freed while reachable elsewhere. The decode carries the parameter tree it installed, so the adoption commits the restore's SOUND and metadata together and a message-thread action taken in the handoff window cannot be left half-applied under the new session's identity (ADR-0036 §10). On the message thread the tail is adopted inline, after the pending one is drained; nothing is deferred. |
 | Message → Host state thread (the program snapshot, D-2 / ADR-0036) | `ExchangeCell<ProgramSnapshot> programMailbox` (same cell); the snapshot carries the generation of the last restore the message thread had adopted when it published | The message thread republishes an immutable snapshot of the program state it owns after every mutation (`PresetManager::onMetaChanged`, `InternalState::onChanged`, the A/B paths); an off-message-thread `getStateInformation` takes the latest into its own view and serializes from it plus the JUCE-locked `copyState()`. While the newest snapshot it holds carries a generation older than its own last restore, it serializes from the view it built from that restore, so a save after a restore on the same host thread describes the sound it applied — and because the generation is part of the snapshot, the decision is about the object in hand, never about a generation read at another moment (round 2, review finding 1). |
@@ -34,17 +34,17 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 ## Forbidden cross-thread access
 
 - No painting, allocation, locking, or IO on the audio thread.
-- No direct access to non-atomic shared state across threads (the only synchronisers are the
-  listed atomics + the SPSC ring).
-- No second producer on `ScopeBuffer`, and no reads off the message thread (one writer + one
-  reader thread by construction; reads are stateless `const` peeks — `readLatest` / `writeCount`
-  never mutate, so multiple message-thread read sites are safe).
-  **Known NR-006 affinity drift:** the "by construction" description does not hold on
-  macOS/Windows. `Vectorscope::paint` reads the ring and pinned JUCE component painting
-  can execute on its OpenGL thread under the existing message-manager lock. That lock
-  serializes GUI consumers, not the audio producer. This records a conflict with the
-  rule, not permission for new off-message-thread/concurrent readers. Resolve affinity
-  explicitly in NR-006's human-reviewed ADR before changing the implementation/contract.
+- No unsynchronized non-atomic shared-state access across threads. Use the listed
+  atomic/publication protocols; GUI-owned view caches shared between message callbacks
+  and JUCE component painting require the existing message-manager serialization.
+  No GUI lock may be acquired on the audio path.
+- No second producer on `ScopeBuffer`. GUI consumers are serialized: message-thread
+  callbacks, or the existing JUCE component paint under its message-manager lock on
+  macOS/Windows. Accepted ADR-0070 explicitly amends the former message-thread-only
+  scope rule for this path; it does not authorize arbitrary background readers or
+  unsynchronized access to GUI scratch/cache state. Assert that serialization at
+  consumer entry. Ring reads are stateless const peeks; each consumer keeps its own
+  scratch and last accepted window. No reader ownership/state reaches the producer.
 - PDC/latency must be recomputed on the **message thread** via the `const`, race-free
   `predictLatency` — never by mutating audio-thread state from the message thread.
   **KI-027 (filed 2026-08-31, RESOLVED 2026-09-01 under decision D-1, approved by the maintainer):**
@@ -315,18 +315,27 @@ relies on.
 - `soundParamGen`: `memory_order_relaxed` — a generation / staleness counter only. It gates a
   message-thread cache rebuild and transfers no payload, so it is deliberately **not** an
   ordering/publication primitive (unlike the scope index below).
-- Scope ring index: `release` on write, `acquire` on read (the first ordering-critical pair).
-  `pushBlock` publishes the index **once per block** after its sample writes; an acquire
-  observing that publication orders those prior writes before the reader. It transfers
-  no ownership of the reusable plain `left`/`right` arrays and establishes no
-  reader-to-next-overwrite happens-before edge. A later producer overwrite can conflict
-  with `readLatest`'s copy: stable stereo pairs, complete coherent blocks/windows and
-  race-free payload access are **not guaranteed** by this index protocol. `writeCount`
-  reads only the atomic count. This corrects the former whole-block claim without
-  relaxing the non-atomic shared-state prohibition or approving a replacement protocol.
-  NR-006 remains unresolved; see the
-  [review packet](../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md). Any new storage
-  handoff/atomic ordering requires an explicit ADR decision and human Architecture Review.
+- Scope ring (Accepted ADR-0070, the first ordering-critical protocol): fixed
+  16384 slots, each with a native lock-free atomic 64-bit stereo payload and tag.
+  The single producer stores tag zero **release**, payload **release**, then
+  absolute-position-plus-one tag **release** for each retained frame, and publishes
+  the total **release once per block**. A reader acquires that total once, then
+  acquires expected tag → payload → expected tag for each selected position.
+  A mismatch rejects the entire attempt, without retry. All reusable payload
+  accesses are atomic: index visibility alone still transfers no storage ownership.
+  If a payload acquire observes a later overwrite, it orders the invalidation
+  before the second tag read, which cannot return the older valid tag. Initial
+  tag/count acquires exclude an earlier payload. See ADR-0070 for the full proof.
+  A valid window contains exactly `[end-copied,end)`; `readLatestSince` derives
+  both tail length and returned end from the same acquired publication. Valid
+  empty and rejection are distinct. Rejected partial scratch is never consumed;
+  GUI caches and activity/FFT counters commit only successful copies. The imager's
+  wakeup tail is not a full-window success: a failed second read commits nothing.
+  Stale valid windows are allowed; perpetual producer lapping can starve a reader.
+  There is no reader reservation, audio wait/retry/allocation/RMW, or live reset
+  of count/tags. Ring wrap is supported; 64-bit epoch rollover is outside the
+  processor lifetime contract (>1.5 million years at 384 kHz). Compile guards
+  reject non-IEC559 float32 or non-lock-free atomic64 targets without a fallback.
 - `latencyUpdateRequest`: `release` on the store, `acquire` on the `exchange` — the second
   ordering-critical pair (D-1). The engine's `latency2/4/8` are `relaxed`: their ordering rides on
   that flag, and they carry no ordering of their own.
@@ -372,7 +381,7 @@ relies on.
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
-- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:150-241; src/dsp/Correlation.h:62-202;
+- Source: src/dsp/ScopeBuffer.h (`pushImpl`, `copyAt`); src/dsp/LevelMeters.h:150-241; src/dsp/Correlation.h:62-202;
   src/PluginProcessor.cpp:166-188, 421; src/InternalState.h:175, 548-571
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,

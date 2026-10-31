@@ -25,8 +25,9 @@ confirmed relevant ADR approvals and real-machine testing completed/approved (NR
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
 PRs #195–#198 are integrated on main as of 2026-11-01 (Asia/Shanghai).
 The [NR-006 architecture recommendation](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
-is Accepted for implementation by the owner; production ScopeBuffer remains unchanged
-at this architecture-record checkpoint.
+is Accepted by the owner. Its atomic-window implementation is under separate PR
+review; native portability, representative performance and visual acceptance remain
+required. This branch does not imply integration into main or the draft release.
 Post-tag development is not included in the existing draft assets.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier

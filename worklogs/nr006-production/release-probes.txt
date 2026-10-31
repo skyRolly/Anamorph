@@ -1,0 +1,30 @@
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=5823 rejected=8732 during-writer=5822 bad=0
+  scope reader 1: accepted=27 rejected=0 during-writer=26 bad=0
+27 checks, 0 failure(s)
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=5203 rejected=11945 during-writer=5202 bad=0
+  scope reader 1: accepted=30 rejected=0 during-writer=29 bad=0
+27 checks, 0 failure(s)
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=5455 rejected=9718 during-writer=5454 bad=0
+  scope reader 1: accepted=27 rejected=0 during-writer=26 bad=0
+27 checks, 0 failure(s)
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=5168 rejected=6557 during-writer=5167 bad=0
+  scope reader 1: accepted=31 rejected=0 during-writer=30 bad=0
+27 checks, 0 failure(s)
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=5217 rejected=6563 during-writer=5217 bad=0
+  scope reader 1: accepted=29 rejected=0 during-writer=29 bad=0
+27 checks, 0 failure(s)

@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 ADR-0070 explicitly approved for implementation; native/performance/validation gates remain. NR-011 #200 and NR-012 #201 independently submitted.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 ADR-0070 Accepted and atomic-window correction implemented on its separate review branch; native/performance/manual acceptance and integration remain. NR-011 #200 and NR-012 #201 independently submitted.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -19,7 +19,8 @@ Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policie
 **Subsequent owner architecture decision:** the owner explicitly replied
 “Approve ADR-0070 for implementation” to PR #199's architecture question,
 subject to its native portability/performance/validation gates. ADR-0070 is now
-Accepted; production implementation/validation follow in a separate focused PR.
+Accepted; the focused atomic-window implementation is recorded below and in
+[packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai).
 This is not authorization to merge #199 or a later PR, or operate on a release.
 Independent NR-011 [#200](https://github.com/skyRolly/Anamorph/pull/200) and bounded
 NR-012 [#201](https://github.com/skyRolly/Anamorph/pull/201) are submitted from main,
@@ -65,9 +66,11 @@ The prior GCC14 shipping ABI failure at CXXABI_1.3.15 > 1.3.14 remains a histori
 failed preflight, not repaired by Clang or by integration. Existing invalid-escape
 Python checker warnings remain. Final-main CI is reported separately from head CI.
 Final-main Build [41231806213](https://github.com/skyRolly/Anamorph/actions/runs/41231806213)
-was in progress at the proposal checkpoint: macOS ARM/Intel, sanitizers, Windows
-and Linux still running; other executed jobs succeeded. This is not a final-main
-pass claim. Proposal-local checks additionally cover 180 documentation files,
+was in progress at the proposal checkpoint. Its first attempt then hit the
+unchanged 60-minute sanitizer limit during Valgrind state tests (ASan/UBSan and
+DSP memcheck passed, state memcheck incomplete). Other executed jobs succeeded.
+Only cancelled sanitizer job `124628545860` was retried; refreshed attempt status
+is in the PR handoff ledger. This is not a final-main pass claim. Proposal-local checks additionally cover 180 documentation files,
 610 citation anchors, 742 table rows, new relative links/headings, source/artifact
 digests and unchanged production/release inputs.
 
@@ -89,16 +92,54 @@ seqlock/reclamation variants selects **generation-validated atomic stereo window
 is now **Accepted** by the owner's explicit 2026-11-01 implementation approval.
 Its complete protocol accepts only exact committed
 positions or rejects once, never waits/retries, retains last accepted display,
-and explicitly proposes preserving serialized JUCE OpenGL reads. This affinity
-amendment is not currently effective and grants no exception to plain shared access.
+and explicitly preserves serialized JUCE OpenGL reads. The implementation branch
+updates that affinity contract; it grants no exception to the original plain shared
+access still on main and in the existing draft.
 
 Nonshipping research provides deterministic weaker-contract and order-weakening
 controls, concurrent two-reader tagged / one-reader owned stress, Clang22/GCC14
 compile guards, bit-preservation controls, and active-canary TSan. Seven-repeat
 serial benchmark artifacts/metadata are retained in `nr006-research/`; native
 Mac/Windows/ARM performance/guards and representative production costs remain
-pending. No production threading edits or new implementation acceptance claimed.
-Actual ScopeBuffer blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+pending. The subsequent approved implementation is recorded below; no native/
+representative-cost/manual acceptance is inferred from local evidence. Original
+main scope blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+
+### Production and independent roadmap checkpoint — 2026-11-01
+
+**NR-006 implemented:** branch `fix/nr006-validated-scope-windows`, based on
+Accepted ADR branch #199 `89694f24c940947fbbf70b9f32c07a6d31a3f07b`.
+The focused diff is atomic scope storage/protocol, three GUI consumers, regression
+surfaces and affected contracts. Main remains `00de8c7`. The approval authorizes
+implementation, not this PR’s merge or acceptance of unmeasured production cost.
+See [packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai)
+for deterministic original/fixed/weakening controls, genuine production-path
+concurrency, 1 MB stack-fixture failure/repair, byte-identical legacy engine dump,
+local safety/pluginval/ABI and measured footprint/synthetic cost. Native/performance/
+manual acceptance are explicitly pending. No new PR has been merged.
+
+| Review unit | Head at submission | Dependency / disposition |
+|---|---|---|
+| [#199](https://github.com/skyRolly/Anamorph/pull/199) / ADR-0070 | `89694f24c940947fbbf70b9f32c07a6d31a3f07b` | main; owner architecture Accepted, PR integration not authorized |
+| [#200](https://github.com/skyRolly/Anamorph/pull/200) / NR-011 | `104f60eb2ee246babba739e989f320d1811f73dd` | main, independent; preserves legacy32 and adds five transition/audio+latency-trace oracles, native CI/review separate |
+| [#201](https://github.com/skyRolly/Anamorph/pull/201) / NR-012 | `2d56eac297300a5ac65ad62efd4d17b40ff65055` | main, independent; 36 repeated alias rows support retaining current DSP assertions; no universal/monotonic dB gate justified |
+| NR-006 implementation | branch above; commit/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
+
+NR-011’s mandatory push run `41234815844` also hit the unchanged sanitizer time
+limit during Valgrind state tests; only cancelled job `124636244763` was retried.
+Passing PR-event summary/analyzers do not substitute for the incomplete push
+matrix. Exact-head statuses and subsequent attempts must be read from GitHub.
+The inaccessible NR-017 scanning alert state remains unknown (403); no clean-
+alert inference follows from CodeQL workflow success.
+
+**Next evidence/decisions:** native final-head CI/codegen, representative NR-006
+cost/visual acceptance, then explicit new-PR merge authorization. NR-010 remains
+blocked on controlled identified hardware; NR-013 repository issue search found
+no pinned REAPER reproducer, so no host-focus fix/claim is invented. NR-003 stays
+Deferred. NR-004/005/007 recurrence dispositions and NR-018/019 owner/legal/
+provisioning boundaries remain. Release readiness is evaluated separately under
+NR-021: unchanged draft still requires NR-006 mitigation/risk disposition before
+publication. There is no version/tag/asset/publishing operation.
 
 ### Release and next actions
 
@@ -110,8 +151,9 @@ tag `1190e455` → `4c13688`, draft 429760301, 11 assets and version stay unchan
 post-tag NR-022 is not in those assets. Prior owner manual/ADR attestations keep
 their original scope. Publication/replacement remains separately unauthorized.
 
-**Next:** submit ADR-0070 for human Architecture Review, then implement/test the
-bounded NR-011 differential transition batch independently from verified main.
+**Next:** review the approved NR-006 implementation and final-head native results,
+then complete representative cost and visual acceptance before any integration
+decision. NR-011 #200 and NR-012 #201 are independently submitted, not integrated.
 No later PR may be merged without separate owner authorization. NR-010 needs
 controlled identified hardware; NR-013 a pinned REAPER reproducer; NR-018/019
 owner/legal/provisioning decisions. NR-004/005/007 recurrence dispositions and
@@ -612,13 +654,13 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Approved architecture / implementation next | ADR-0070 explicitly approved by owner; production correction and native gates pending | 1 / first architecture batch |
+| NR-006 | P1 | Approved / implemented on review branch | ADR-0070 owner-approved; local controls/stress pass, native/performance/manual acceptance and integration pending | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
 | NR-010 | P2 | Pending | CPU/peak/memory budget — measure | 2 / engineering baseline |
-| NR-011 | P2 | Pending | Differential transition coverage — improve | 2 / next engineering increment |
-| NR-012 | P3 | Pending | Oversampling alias reduction — measure before adding assertions | 2 / optional DSP study |
+| NR-011 | P2 | Implemented / PR #200 open | Bounded differential transitions and strict metadata oracle; final-head CI tracked separately | 2 / independent engineering increment |
+| NR-012 | P3 | Investigated / PR #201 open | Reproducible alias study supports retaining assertions; broader native grid unmeasured | 2 / independent measurement study |
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
@@ -711,28 +753,27 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 ### NR-006 — Decide the ScopeBuffer overwrite contract
 
-**Proposed ADR Ready for Review:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
-with [research evidence](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
-The agent selected generation-validated atomic stereo windows after comparing the
-alternatives; human architecture acceptance and native verification remain pending.
-The original mechanism stays in production until that gate is cleared.
+**Accepted and implemented on review branch:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
+explicit owner implementation approval 2026-11-01. Full alternatives/source proof,
+production tests and limits are in [packet §6–11](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
 
-
-- **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
-  `dsp/ScopeBuffer.h::pushBlock/readLatest`. Release/acquire publishes prior writes; it does not
-  order a reader against the producer's next lap over plain float arrays. Current THREAD_MODEL
-  descriptions overstate that boundary. This is independent of single-threaded Rosetta Test 61.
-- **Impact/risk:** display-only torn scope/FFT windows under a lapped reader; formally a C++ data
-  race. No audio corruption/crash or field frequency is established. Calling aligned access
-  “benign” is not a language-level race-freedom proof. TSan silence with memcpy is not closure.
-- **Approach/order:** after NR-001, prepare a small architecture decision: honest current-risk
-  documentation versus a bounded race-free publication design. Evaluate atomic sample access or
-  reader-safe fixed buffers without audio locks/allocations or unbounded retries. Do not implement
-  until owner review; a waiver must not describe the code as race-free.
-- **Acceptance/tests:** explicit selected contract; if corrected, a deterministic lapped-reader
-  schedule/negative control, buffer-wrap/newest-frame tests, suitable race instrumentation and
-  audio allocation/performance checks. **Human threading review and visual audition required.**
-  Phase 1 architecture work; implementation version chosen after evidence/approval.
+- **Original issue Verified:** release/acquire index publication did not protect
+  reusable plain samples from producer lapping. It is a C++ data-race exposure,
+  separate from serial Rosetta Test 61. Supported-host crash, audible corruption
+  and field frequency are not established.
+- **Selected/implemented correction:** fixed generation-validated atomic stereo
+  slots, exact committed windows or one rejection, no audio wait/allocation/RMW;
+  independent accepted GUI windows and explicit serialized JUCE paint affinity.
+  Original code remains on main/draft until separately authorized integration.
+- **Local validation:** deterministic original 3/3 failures versus fixed 3/3 pass,
+  removed-validation/invalidation controls; State 150–151 concurrent/consumer/lifecycle
+  regressions; 945 DSP / 10,980 state checks and unchanged 1 MB stack gate; TSan
+  preceded by its live race canary, source/leaf effects, pluginval10 modes ×3,
+  pinned-Clang ABI. Production serial costs/footprint retained as synthetic data.
+- **Outstanding:** final-head native matrix/codegen, representative full-engine/GUI
+  costs and owner acceptance, targeted native visual/editor lifecycle audition,
+  implementation PR review/merge authorization. No weakening of accepted protocol.
+  RISK-018 remains open on unchanged main/draft; architecture approval is cleared.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 

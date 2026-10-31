@@ -66,7 +66,7 @@ Evidence [Verified]:
 | DSP | `LoudnessMatch` | `src/dsp/LoudnessMatch.{h,cpp}` | BS.1770 Level Match |
 | DSP | `CorrelationMeter` | `src/dsp/Correlation.h` | Phase correlation |
 | DSP | `LevelMeters` | `src/dsp/LevelMeters.h` | L/R Peak+RMS metering |
-| DSP | `ScopeBuffer` | `src/dsp/ScopeBuffer.h` | Lock-free SPSC scope ring |
+| DSP | `ScopeBuffer` | `src/dsp/ScopeBuffer.h` | Fixed atomic stereo/tag scope ring; validated windows or rejection (ADR-0070) |
 
 ## 4. Thread layers (summary; full detail in `THREAD_MODEL.md`)
 
@@ -77,7 +77,7 @@ Evidence [Verified]:
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
-- Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
+- Source: src/dsp/ScopeBuffer.h (`pushImpl` / `copyAt`, Accepted ADR-0070)
 - Source: src/PluginProcessor.cpp:412 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts

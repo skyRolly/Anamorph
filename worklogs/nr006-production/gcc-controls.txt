@@ -1,0 +1,3 @@
+scope snapshot control: old, cases=3, failures=3
+scope snapshot control: new, cases=3, failures=0
+scope snapshot self-test: legacy3/3 failures; fixed3/3 pass; validation and invalidation mutants rejected
