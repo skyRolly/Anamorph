@@ -1,5 +1,65 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #197 performance-contract drift — 2026-11-01 (Asia/Shanghai)
+
+Accepted the owner's follow-up finding: PERFORMANCE_BUDGET still promised whole
+committed blocks despite NR-006's reusable plain-payload overwrite exposure. A
+same-document audit found the Wave 4 explanation repeated that premise. Corrected
+both, separating fixed storage/bounded per-frame copy work and prior-write visibility
+from coherent, stable, race-free snapshots. Preserved historical measurements and
+linked the existing policy/architecture/decision packet; no runtime or policy change.
+Updated the NR-006 packet and roadmap with the disposition. Validation: existing
+documentation/citation self-tests and checks, table/link/anchor integrity, whitespace
+and unchanged-source comparison. No new benchmark or concurrent-runtime result claimed.
+
+## PR #197 reader-affinity trace — 2026-11-01 (Asia/Shanghai)
+
+Found additional NR-006 drift: Vectorscope reads ScopeBuffer in paint as well as its
+tick, and pinned JUCE's OpenGL component-paint path holds the message-manager lock
+on the rendering thread. GUI reads are serialized, but are not all on the message
+thread. Corrected THREAD_MODEL's render responsibility/table/reader description and
+the review packet. THREADING_POLICY retains its literal affinity prohibition and
+records the existing mismatch; no policy exception or new path is approved. The
+architecture decision must resolve affinity along with payload ownership/coherence.
+The roadmap records the finding; source/tests/build/ADRs remain unchanged. Validation:
+actual consumer/JUCE call-chain inspection, docs/citation pairs, links/tables and
+unchanged-source comparison; no new runtime or cross-platform experiment is claimed.
+
+## PR #197 publication-contract review — 2026-11-01 (Asia/Shanghai)
+
+Confirmed THREADING_POLICY still inferred whole-block coherence from the scope's
+index publication. Reconciled its communication row/Atomic usage rules and
+THREAD_MODEL with the existing plain-array reuse exposure: visibility transfers no
+storage ownership; subsequent overwrites can race the GUI copy and stable stereo
+pairs/blocks/windows are not guaranteed. The non-atomic shared-state prohibition
+and Architecture Review gate remain binding. Updated the NR-006 packet/roadmap;
+no new ADR is Accepted and runtime resolution still requires an owner decision.
+ScopeBuffer's source blob, tests, thread/ordering implementation and release remain
+unchanged. Validation: documentation/citation checker pairs, links, tables,
+whitespace, unchanged-source comparison and existing DSP Test 61 in the suite.
+
+## NR-006 — ScopeBuffer decision packet (2026-10-31, Asia/Shanghai)
+
+Added `worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md` as supporting evidence for the
+canonical roadmap item. It proves the missing reader-to-next-overwrite relation,
+separates stereo-pair from whole-window coherence, compares bounded atomic/fixed-buffer
+options and defines regression/concurrency/RT/native/performance/visual review gates.
+The preferred packed-frame candidate is conditional on an explicit window contract;
+no new ADR is presented as approved and no runtime protocol is implemented.
+
+Reported descriptive drift before editing: THREAD_MODEL's whole-block wording
+overstates initial publication and omits the known plain-payload lapping gap. The
+document now names that gap; no binding policy exception, race-free claim or product
+fix follows. Existing owner ADR approvals and real-machine attestation are preserved.
+
+**Documents touched:** new packet; roadmap NR-006 status/progress; THREAD_MODEL;
+README/SOURCE_OF_TRUTH/REPOSITORY_MAP navigation and this audit. **Unchanged:** all
+source/tests/build/version/CI/ADRs, current 0.10.0 tag/draft and legal terms. The
+original packet left policy text unchanged; the later PR #197 review correction
+above removes its factual coherence overclaim without granting a policy exception.
+Validation is documentation/citation self-tests/checks, link/diff/scope review;
+native/runtime evidence is not implied by a documentation-only packet.
+
 ## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
 
 Retained the NR-022 implementation and deterministic State 149 controls after

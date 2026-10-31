@@ -44,6 +44,8 @@ Current identities, remaining decisions and stable forward work-item IDs are in
 [`worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md),
 a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.
+The NR-006 [ScopeBuffer review packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md)
+is supporting developer evidence, not an approved replacement for the threading policies.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).

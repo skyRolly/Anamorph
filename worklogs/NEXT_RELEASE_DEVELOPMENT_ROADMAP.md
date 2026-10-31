@@ -14,6 +14,47 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
+## PR #197 review disposition — 2026-11-01 (Asia/Shanghai)
+
+**Accepted and corrected:** release/acquire publication of the ScopeBuffer index
+orders prior writes, but gives the reader no ownership of reusable plain arrays.
+The producer can overwrite storage while `readLatest` copies it; stable stereo
+pairs, coherent blocks/windows and race-free access are not guaranteed. Corrected
+THREADING_POLICY's unconditional claim and communication row alongside THREAD_MODEL;
+the prohibition on unsafe non-atomic sharing and all RT/Architecture Review gates
+remain binding. This records an unresolved implementation gap, not a new exception.
+
+NR-006 remains **Ready for Review (packet only)**. The existing options/recommendation
+and validation surface are retained in [its packet](NR006_SCOPE_PUBLICATION_REVIEW.md).
+The owner must select the best-effort versus whole-window contract and approve the
+corresponding architecture/ADR before runtime implementation. Existing general ADR
+approvals and earlier manual testing do not choose this future design. ScopeBuffer
+blob `ed24ceab5ced2784d9fe96effdc46f8aeb03f472` and all implementation/tests are unchanged;
+single-thread DSP Test 61 cannot prove concurrent payload safety.
+
+**Additional finding from the final call-site trace: accepted/documented.**
+`Vectorscope::paint` reads the ring; pinned JUCE 9.0.4's OpenGL rendering thread can
+execute that component paint under its message-manager lock on macOS/Windows.
+GUI reads are serialized, but not all message-thread-affine. Corrected the
+THREAD_MODEL/packet claim and recorded the existing mismatch beside the policy's
+retained literal reader-affinity prohibition. That GUI lock never excludes audio
+overwrites. NR-006's owner-reviewed ADR must explicitly resolve affinity as well as
+payload ownership/coherence; no runtime change or new policy exception was enacted.
+
+**Performance-contract follow-up — 2026-11-01 (Asia/Shanghai): accepted and corrected.**
+The owner flagged PERFORMANCE_BUDGET's unconditional whole-committed-block claim.
+Re-reading `ScopeBuffer::pushBlock/readLatest` confirms the conflict with NR-006's
+later-overwrite exposure. The same file's Wave 4 explanation repeated that false
+premise and is corrected too. The row now specifies fixed 16384-frame storage and
+copy work bounded by the valid block/request size and capacity, constant per copied
+frame; one index publication does not establish coherent or race-free snapshots.
+Historical segmented-copy measurements and all runtime/policy/architecture gates
+remain unchanged. Updated the packet/coverage audit; source blob remains
+`ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. This follow-up will be committed on #197
+and additively propagated to #198; final heads/checks are recorded in the PR ledger.
+No merge authorization was supplied. NR-003 stays Deferred; NR-006 remains gated;
+NR-011 and all release operations remain unstarted.
+
 ## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
 
 **Disposition: preserve the implementation.** `abSwitchToAdopted` polls the existing
@@ -327,7 +368,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P2 | Pending | Scope overwrite/thread contract — decision before correction | 1 / architecture phase |
+| NR-006 | P2 | Ready for Review | Scope overwrite/thread-contract review packet; runtime decision pending | 1 / architecture phase |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
@@ -425,6 +466,12 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
   before threading/ordering changes; host test for demonstrated exposure.** Conditional maintenance.
 
 ### NR-006 — Decide the ScopeBuffer overwrite contract
+
+**Packet Ready for Review:** [NR006_SCOPE_PUBLICATION_REVIEW.md](NR006_SCOPE_PUBLICATION_REVIEW.md).
+The original mechanism remains in source; only descriptive overclaims are corrected.
+Packed atomic stereo frames are a conditional candidate, not an approved decision or fix.
+The owner must select best-effort versus whole-window coherence before a new payload protocol.
+
 
 - **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
   `dsp/ScopeBuffer.h::pushBlock/readLatest`. Release/acquire publishes prior writes; it does not
@@ -932,3 +979,17 @@ exit 0 and no checker was modified. No product implementation is part of this pl
 Automated evidence was produced in the existing managed Debian/GCC 14.2.0 container
 with mounted source/dependency tree, not a newly claimed real-DAW audition. No source,
 warning/ABI threshold, pluginval retry rule or engineering gate was weakened.
+
+### Subsequent review packets — 2026-10-31 (Asia/Shanghai)
+
+- **NR-022:** [PR #196](https://github.com/skyRolly/Anamorph/pull/196), source
+  `4a431cac2e32493b1d2290fb9fd8d6570b41393f`, stacked on owner-decision PR #195.
+  Full local preflight stopped at the unchanged ABI gate: both fresh GCC 14 VST3
+  and Standalone require CXXABI_1.3.15 above 1.3.14. Earlier preflight checks ran;
+  later citation/suite stages did not run inside that aggregate invocation. Their
+  separate liveness/check and behavioral results above remain separate evidence.
+  Pinned shipping Clang/native/sanitizer/RTSan/TSan/LTO CI and review remain mandatory.
+- **NR-006:** read-only review packet prepared; actual ScopeBuffer blob remains
+  `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`. THREAD_MODEL now distinguishes initial
+  publication from subsequent-overwrite safety. No runtime correction, new ADR
+  approval or policy waiver is claimed. Proceed independently with NR-017 inventory.
