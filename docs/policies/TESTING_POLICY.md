@@ -161,7 +161,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 ## Linux plugin installer gate (proposed ADR-0069 correction)
 
 The owner's 2026-10-31 instruction authorizes VST3-only Linux installation,
-portable Standalone and legacy receipt/hash cleanup in corrected 0.10.0, with human
+portable Standalone and preservation of legacy resources in corrected 0.10.0, with human
 PR review/manual merge required. Source/package liveness and native integration
 remain mandatory. The desktop publication feature and its test-only dependencies
 are retired; shared native icons and other-platform gates are unchanged.
@@ -174,7 +174,7 @@ destinations, mocked privilege metadata, user namespace or host security-setting
 changes may replace it. Inability to isolate fails, never falls back to live paths.
 
 Required coverage includes fresh user/system installs, no manual permission repair,
-reinstall/repeated uninstall, upgrade and verified old desktop cleanup, unrelated
+reinstall/repeated uninstall, upgrade with all legacy desktop resources kept, unrelated
 file preservation, missing/malformed/modified/link/unknown legacy state, failed/killed
 swap recovery, parked-copy handling, XDG/coexistence and clean archive extraction.
 Same-invocation case omission/empty-suite controls and real preservation mutants

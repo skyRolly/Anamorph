@@ -9,7 +9,6 @@
 # is a plug-in copy parked by an interrupted install unless --discard-parked
 # says otherwise.
 set -eu
-HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 # --user / --system mirror install.sh, for a run with no terminal to ask on.
 # --discard-parked is the opt-in for the one thing this script keeps by default:
@@ -44,7 +43,6 @@ for arg in "$@"; do
 done
 
 SYS_VST3_DIR="/usr/lib/vst3"
-SYS_BIN_DIR="/usr/local/bin"
 SYS_VST3="$SYS_VST3_DIR/Anamorph.vst3"
 
 # Only a system-wide uninstall sets this; a per-user uninstall never uses sudo.
@@ -184,144 +182,6 @@ check_plugin_destination() {
 }
 # END plugin destination checks
 
-# BEGIN legacy desktop cleanup
-# Migration only: never install desktop resources or change shared permissions.
-# This literal code runs as the caller for --user and via sudo for --system.
-cleanup_legacy_desktop() {
-    if [ "$mode" = system ]; then
-        _data=/usr/local/share
-        _app=/usr/local/bin/Anamorph
-    else
-        _data="$HOME/.local/share"
-        case "${XDG_DATA_HOME:-}" in /*) _data=$XDG_DATA_HOME ;; esac
-        _app="$HOME/.local/bin/Anamorph"
-    fi
-    $SUDO /bin/sh -c '
-        set -eu
-        set -f
-        data=$1; app=$2; system=$3; portable=$4; owner=$(id -u)
-        warn() { printf "warning: legacy Anamorph resources preserved: %s\n" "$*" >&2; }
-        present() { [ -e "$1" ] || [ -L "$1" ]; }
-        hash() { sha256sum < "$1" | cut -d " " -f 1; }
-        parents() {
-            part=$1
-            case "$part" in /*) ;; *) return 1 ;; esac
-            if printf "%s" "$part" | LC_ALL=C grep -q "[[:cntrl:]]"; then return 1; fi
-            while [ "$part" != / ]; do
-                [ ! -L "$part" ] || return 1
-                if [ -e "$part" ]; then
-                    [ -d "$part" ] && [ -x "$part" ] || return 1
-                    meta=$(stat -c "%u %a" -- "$part") || return 1
-                    uid=${meta%% *}; permissions=${meta#* }
-                    [ "$uid" = 0 ] || [ "$uid" = "$owner" ] || return 1
-                    if [ "$system" = system ]; then
-                        case "$permissions" in
-                            [1357][0-7][0-7][0-7]) ;;
-                            *[2367][0-7]|*[2367]) return 1 ;;
-                        esac
-                    fi
-                fi
-                part=$(dirname -- "$part")
-            done
-        }
-        owned_file() {
-            [ -f "$1" ] && [ ! -L "$1" ] &&
-                [ "$(stat -c "%u %h" -- "$1")" = "$owner 1" ]
-        }
-        paths="applications/tech.rolly.anamorph.desktop
-icons/hicolor/16x16/apps/tech.rolly.anamorph.png
-icons/hicolor/24x24/apps/tech.rolly.anamorph.png
-icons/hicolor/32x32/apps/tech.rolly.anamorph.png
-icons/hicolor/48x48/apps/tech.rolly.anamorph.png
-icons/hicolor/64x64/apps/tech.rolly.anamorph.png
-icons/hicolor/128x128/apps/tech.rolly.anamorph.png
-icons/hicolor/256x256/apps/tech.rolly.anamorph.png
-icons/hicolor/512x512/apps/tech.rolly.anamorph.png
-icons/hicolor/scalable/apps/tech.rolly.anamorph.svg"
-        clean_resources() {
-            parents "$data" || { warn "unsafe data-root ancestry"; return; }
-            data=$(realpath -ms -- "$data")
-            state="$data/.tech.rolly.anamorph"
-            receipt="$state/receipt"
-            if ! present "$state"; then
-                for relative in $paths; do
-                    if present "$data/$relative"; then warn "resource without ownership state"; return; fi
-                done
-                return 0
-            fi
-            if [ -L "$state" ] || [ ! -d "$state" ] ||
-               [ "$(stat -c "%u %a" -- "$state")" != "$owner 700" ]; then
-                warn "unverified ownership state"; return
-            fi
-            # A killed cleanup may have removed the receipt already. Only an
-            # empty checked format marker is then eligible for exact rmdir.
-            if present "$receipt"; then
-                if ! owned_file "$receipt" ||
-                   [ "$(head -n 1 -- "$receipt")" != "tech.rolly.anamorph desktop resources v1" ] ||
-                   [ "$(tail -n +2 -- "$receipt" | awk "{print \$2}" | LC_ALL=C sort)" != "$(printf "%s\n" "$paths" | LC_ALL=C sort)" ] ||
-                   ! tail -n +2 -- "$receipt" | awk "NF != 2 || length(\$1) != 64 || \$1 ~ /[^0-9a-f]/ {bad=1} END {exit bad}"; then
-                    warn "unverified ownership receipt"; return
-                fi
-                remaining=0
-                for relative in $paths; do
-                    target="$data/$relative"
-                    if ! parents "$(dirname -- "$target")"; then
-                        remaining=1; warn "inaccessible/unsafe ancestry: $relative"; continue
-                    fi
-                    present "$target" || continue
-                    digest=$(awk -v path="$relative" "\$2 == path {print \$1}" "$receipt")
-                    if owned_file "$target" &&
-                       [ "$(hash "$target")" = "$digest" ]; then
-                        if ! rm -- "$target"; then remaining=1; warn "$relative"; fi
-                    else remaining=1; warn "$relative"; fi
-                done
-                [ "$remaining" -eq 0 ] || return 0
-                # Unknown/interrupted journals are retained with their receipt;
-                # their mere marker is not deletion authority.
-                known=$(find "$state" -mindepth 1 -maxdepth 1 -printf "%f\n" | LC_ALL=C sort)
-                if [ "$known" != "$(printf "%s\n" format-v1 receipt | LC_ALL=C sort)" ]; then
-                    warn "private recovery state requires review"; return
-                fi
-            else
-                for relative in $paths; do
-                    if present "$data/$relative"; then warn "resource without a receipt"; return; fi
-                done
-                if [ "$(ls -A -- "$state")" != format-v1 ]; then
-                    warn "state without a receipt"; return
-                fi
-            fi
-            marker="$state/format-v1"
-            if [ -L "$marker" ] || [ ! -d "$marker" ] ||
-               [ "$(stat -c "%u %a" -- "$marker")" != "$owner 700" ] ||
-               [ -n "$(ls -A -- "$marker")" ]; then
-                warn "unverified format marker"; return
-            fi
-            if present "$receipt"; then rm -- "$receipt"; fi
-            rmdir -- "$marker"
-            rmdir -- "$state"
-        }
-        clean_app() {
-            app=$1
-            present "$app" || return 0
-            [ ! "$app" -ef "$portable" ] || return 0
-            if ! parents "$(dirname -- "$app")" || ! owned_file "$app"; then
-                warn "unverified standalone file"; return
-            fi
-            digest=$(hash "$app")
-            # Exact executable from the existing 0.10.0 Linux release asset.
-            if [ "$digest" = 4beedffbcedbe6c14b0a9ecb2c0c51110b32c10ed8de477bd9e9f9525811ca8e ]; then
-                rm -- "$app"
-            else warn "standalone content differs from a verified package"; fi
-        }
-        clean_resources
-        clean_app "$app"
-        clean_app "${app%/*}/.Anamorph.new"
-    ' anamorph-legacy-cleanup "$_data" "$_app" "$mode" "$HERE/Anamorph" || {
-        printf 'warning: legacy Anamorph cleanup incomplete; unverified files are kept.\n' >&2
-    }
-}
-# END legacy desktop cleanup
-
 # ------------------------------------------------------- 1) current-user mode
 if [ "$mode" = user ]; then
     [ -n "${HOME:-}" ] || {
@@ -332,7 +192,6 @@ if [ "$mode" = user ]; then
     VST3="$HOME/.vst3/Anamorph.vst3"
 
     check_plugin_destination "$VST3"
-    cleanup_legacy_desktop
     if [ -d "$VST3" ]; then rm -rf "$VST3"; echo "removed $VST3"; removed=1; fi
     remove_install_scratch "$HOME/.vst3"
 
@@ -363,7 +222,6 @@ priv() {
 }
 
 check_plugin_destination "$SYS_VST3"
-cleanup_legacy_desktop
 if [ -d "$SYS_VST3" ]; then priv rm -rf "$SYS_VST3"; echo "removed $SYS_VST3"; removed=1; fi
 remove_install_scratch "$SYS_VST3_DIR"
 

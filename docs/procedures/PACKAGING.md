@@ -85,7 +85,7 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   process-interruption recovery, not power-loss durability.
 
   User/system plugin copies remain independent. The scripts report a second
-  scanned copy without removing it. Legacy desktop cleanup is described below;
+  scanned copy without removing it. Legacy desktop resources are left untouched;
   unrelated icon-directory modes no longer block plugin installation/removal.
 
 - **Windows** — `Anamorph-<version>-Windows-Installer.exe`: compiled by the preinstalled
@@ -302,7 +302,7 @@ empty directories on uninstall. AppId/destinations remain unchanged. The VST3 co
 bundle directory receives System attribution for its existing Plugin.ico/desktop.ini.
 No wildcard deletion, extra wizard graphics, signing or release change is introduced.
 
-## Linux plugin-only package and legacy cleanup
+## Linux plugin-only package and legacy resource preservation
 
 The corrected 0.10.0 tree contains only `Anamorph.vst3/`, portable `Anamorph`,
 `install.sh`, `uninstall.sh` and `INSTALL.txt`. It ships no desktop helper, desktop
@@ -313,20 +313,12 @@ module, and rejection of desktop/AppStream payloads. Its self-test rejects each
 executable independently at `0644` before the staged check runs. This gate checks
 the original staged tree; release ZIP permission restoration remains separate.
 
-Both entry scripts embed the same migration-only cleanup. User cleanup uses absolute
-XDG_DATA_HOME or HOME/.local/share; system cleanup uses fixed /usr/local/share,
-independent of root HOME/XDG. It interprets no old helper. A real owned 0700 state
-directory and exact v1 ten-path receipt authorize removing only matching regular,
-single-link, owner/hash-verified leaves. User cleanup does not chmod/chown shared
-icon parents, including mode 0775/0777. Privileged cleanup keeps strict ancestor
-ownership/write checks. Shared directories, caches, unrelated files and presets stay.
-
-Missing owned leaves allow retry. Modified/linked/unowned/malformed resources and
-unknown/interrupted journals are preserved with explicit warnings; they do not block
-VST3 operations. A receipt is retired only after its resources are gone and the state
-contains just the verified empty format marker. Previously installed/staged Standalone
-is removed only if it exactly matches the earlier verified 0.10.0 release executable
-digest recorded in ADR-0069. Other binaries at that name remain untouched.
+Both entry scripts operate only on VST3 and its installer scratch. They do not
+inspect or remove legacy desktop launchers, hicolor icons, ownership receipts,
+recovery journals or installed/staged Standalone executables. XDG_DATA_HOME and
+shared icon-directory permissions do not affect VST3 operations. Unwanted legacy
+files require manual removal. Shared directories, caches, unrelated files and
+presets stay intact.
 
 `tests/linux_install_tests.py` exercises actual scripts in disposable namespaces.
 `tests/linux_install_native_tests.py` requires real UID/root/sudo execution in
