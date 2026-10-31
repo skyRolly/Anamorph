@@ -64,6 +64,8 @@ Anamorph/
 └── docs/                   This documentation library.
 ```
 
+Current ScopeBuffer decision evidence: [`worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md`](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md), supporting roadmap NR-006; no runtime implementation or architecture approval.
+
 ## `src/` — wrapper + GUI
 
 | File | Responsibility |
