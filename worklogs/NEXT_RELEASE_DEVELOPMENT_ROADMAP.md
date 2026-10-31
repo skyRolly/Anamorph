@@ -944,8 +944,9 @@ are not passed cases. PR
 [merge-check run 41216269049](https://github.com/skyRolly/Anamorph/actions/runs/41216269049)
 is successful; its event-specific scope does not replace the push matrix. Existing
 manually dispatched [CodeQL 41217038192](https://github.com/skyRolly/Anamorph/actions/runs/41217038192)
-and [MSVC 41217041554](https://github.com/skyRolly/Anamorph/actions/runs/41217041554)
-are in progress. No incomplete or skipped job is asserted to pass.
+is in progress. [MSVC 41217041554](https://github.com/skyRolly/Anamorph/actions/runs/41217041554)
+subsequently completed successfully at the same source head. No incomplete or skipped
+job is asserted to pass.
 
 The completed pinned-Clang Linux job's log independently confirms **945 DSP / 10,953
 state checks**, zero failures, and the state suite under a **1 MB stack**. Both its
