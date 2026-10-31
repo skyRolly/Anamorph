@@ -1,0 +1,12 @@
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=128 rejected=745261 during-writer=127 bad=0
+  scope reader 1: accepted=121 rejected=28879 during-writer=120 bad=0
+
+10980 checks, 0 failure(s)
+ThreadSanitizer: Matched 4 suppressions (pid=75492):
+1 deadlock:WriteFromInsideAGestureOpen
+1 deadlock:PumpedUserInteraction
+1 deadlock:testNoStateCommandWaitsForAReplacement
+1 deadlock:testThePumpedTimerNeverBaresTheApvtsLock

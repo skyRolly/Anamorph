@@ -30,6 +30,13 @@ published Keep a Changelog 1.1.0 was read before editing. No tagged release
 section, version metadata, draft/tag or asset was changed.
 
 
+Final implementation review is [#202](https://github.com/skyRolly/Anamorph/pull/202),
+stacked only on #199. Added final-source active-canary/five-probe/full-state TSan
+results (10,980/0, all four unchanged suppression entries live), reproducible input/
+artifact digests, and the stable exact-head ledger to the roadmap/packet. Native
+CI and representative performance/manual gates remain explicitly separate; all
+new PRs remain open. The existing release snapshot is freshly verified unchanged.
+
 ## ADR-0070 owner acceptance — 2026-11-01
 
 The owner explicitly approved ADR-0070 for implementation in response to the

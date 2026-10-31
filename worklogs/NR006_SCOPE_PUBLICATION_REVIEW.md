@@ -444,10 +444,10 @@ recurrence/legal/hardware/host prerequisites remain separate.
 
 **Architecture approval:** owner reply “Approve ADR-0070 for implementation”,
 recorded in [#199](https://github.com/skyRolly/Anamorph/pull/199#issuecomment-6548395725)
-and commit `89694f2`. **Implemented on branch:**
+and commit `89694f2`. **Implemented in [#202](https://github.com/skyRolly/Anamorph/pull/202), on branch:**
 `fix/nr006-validated-scope-windows`, based on that accepted decision branch.
-Source correction commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final review head/PR and subsequent
-validation attempts are maintained in the GitHub handoff ledger.
+Source correction commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final review head and subsequent
+validation attempts are maintained in the [#202 handoff ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755).
 Main remains `00de8c7`; implementation/research/NR-011/NR-012 PRs are not merged.
 Sections 1–10 are dated original/proposal evidence; statements there about plain
 storage, pending architecture approval or no production edits describe those
@@ -540,12 +540,12 @@ initial stopped run is not reported as a full-suite pass.
   changing or importing #200's scenario source into this PR; raw output/provenance
   are in `nr006-production/transition-twin*`.
 - Existing TSan seeded race canary remains live; five genuine concurrent
-  production scope probes pass without a race report. After installing the
-  matching symbolizer, the full state suite passes **10,980 / 0** with all four
-  existing suppression entries matched exactly once; source/protocol is unchanged.
-  That run preceded the test-only scheduling checkpoint; its final-source probe/
-  full-suite rerun and final-head CI are tracked in the PR handoff ledger.
-  The initial unsymbolized stopped run remains a tooling failure, not a pass.
+  production scope probes pass without a race report. After the scheduling
+  correction, the final-source full TSan suite passes **10,980 / 0**, with all four
+  unchanged suppression entries matched exactly once. Matching LLVM22 symbolization
+  repairs the initial local tooling gap. Raw canary/probes and full-suite summary/
+  digest are committed in `nr006-production/`; final-head native CI is tracked in
+  the #202 ledger. The initial unsymbolized stopped run is a tooling failure, not a pass.
 - Realtime source lint **97** liveness cases / zero violations; leaf function-effects
   compile clean and its allocating canary fails with `-Wfunction-effects`.
   Portability/state-coverage controls and full native mandatory CI remain in force.

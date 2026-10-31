@@ -1,0 +1,34 @@
+==================
+WARNING: ThreadSanitizer: data race (pid=75436)
+  Write of size 4 at 0x55b8afe2e798 by thread T2:
+    #0 (anonymous namespace)::hammer() /workspace/Anamorph/tests/tsan_canary.cpp:27:13 (canary-tsan+0xec5e1) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/invoke.h:61:14 (canary-tsan+0xec649) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/invoke.h:96:14 (canary-tsan+0xec649)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/std_thread.h:301:13 (canary-tsan+0xec649)
+    #4 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/std_thread.h:308:11 (canary-tsan+0xec649)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/std_thread.h:253:13 (canary-tsan+0xec649)
+    #6 <null> <null> (libstdc++.so.6+0xe1223) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+
+  Previous write of size 4 at 0x55b8afe2e798 by thread T1:
+    #0 (anonymous namespace)::hammer() /workspace/Anamorph/tests/tsan_canary.cpp:27:13 (canary-tsan+0xec5e1) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/invoke.h:61:14 (canary-tsan+0xec649) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #2 std::__invoke_result<void (*)()>::type std::__invoke<void (*)()>(void (*&&)()) /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/invoke.h:96:14 (canary-tsan+0xec649)
+    #3 void std::thread::_Invoker<std::tuple<void (*)()>>::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/std_thread.h:301:13 (canary-tsan+0xec649)
+    #4 std::thread::_Invoker<std::tuple<void (*)()>>::operator()() /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/std_thread.h:308:11 (canary-tsan+0xec649)
+    #5 std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)()>>>::_M_run() /usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/bits/std_thread.h:253:13 (canary-tsan+0xec649)
+    #6 <null> <null> (libstdc++.so.6+0xe1223) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+
+  Location is global '(anonymous namespace)::shared' of size 4 at 0x55b8afe2e798 (canary-tsan+0x149a798)
+
+  Thread T2 (tid=75439, running) created by main thread at:
+    #0 pthread_create <null> (canary-tsan+0x658ce) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xe12f8) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+    #2 <null> <null> (libc.so.6+0x29ca7) (BuildId: 5e5b51f4c39af9ac589408c1dc432ba390a273cc)
+
+  Thread T1 (tid=75438, finished) created by main thread at:
+    #0 pthread_create <null> (canary-tsan+0x658ce) (BuildId: 4e36baa4db1cdb2ef86f37e4f57c2855a97b15ac)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State>>, void (*)()) <null> (libstdc++.so.6+0xe12f8) (BuildId: 133b71e0013695cc7832680a74edb51008c4fc4c)
+    #2 <null> <null> (libc.so.6+0x29ca7) (BuildId: 5e5b51f4c39af9ac589408c1dc432ba390a273cc)
+
+SUMMARY: ThreadSanitizer: data race /workspace/Anamorph/tests/tsan_canary.cpp:27:13 in (anonymous namespace)::hammer()
+==================

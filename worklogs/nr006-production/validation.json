@@ -1,0 +1,59 @@
+{
+  "source_commit": "7f44bdc699d1509b33f5bdd33d1f50fb017a7a56",
+  "initial_submitted_head": "ee06f355cd8f14d3fd390b1d8627c8a669bc74a8",
+  "pr": 202,
+  "final_head_ledger": "https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755",
+  "local": {
+    "pinned_clang_preflight": "passed; warning baselines/current full analyzers remain CI-specific",
+    "dsp_checks": 945,
+    "state_checks": 10980,
+    "failures": 0,
+    "one_mb_stack": "DSP945 and state10980 passed with original1024KiB limit",
+    "scope_control": "original3/3 failures; fixed3/3 pass; validation mutant3/3 failures; invalidation mutant1/3 failure; Clang22 and GCC14",
+    "final_tsan_scope_runs": 5,
+    "checks_per_probe": 27,
+    "final_tsan_full_state_checks": 10980,
+    "final_tsan_full_state_failures": 0,
+    "tsan_suppressions_expected": [
+      "WriteFromInsideAGestureOpen",
+      "PumpedUserInteraction",
+      "testNoStateCommandWaitsForAReplacement",
+      "testThePumpedTimerNeverBaresTheApvtsLock"
+    ],
+    "tsan_suppressions_used": [
+      "WriteFromInsideAGestureOpen",
+      "PumpedUserInteraction",
+      "testNoStateCommandWaitsForAReplacement",
+      "testThePumpedTimerNeverBaresTheApvtsLock"
+    ],
+    "seeded_race_canary": "nonzero and required ThreadSanitizer data-race report, same suppression file",
+    "full_tsan_log_sha256": "2707202592519b567ec9bc67f64ce0dba8740f910df0f2f43146d0cd59dc61cc",
+    "legacy32_output": "byte-identical to original-scope twin, same configuration",
+    "nr011_five_transitions": "audio/final latency/latency trace byte-identical, temporary TU only",
+    "linux_pluginval": "strictness10 deterministic3/3 and randomise3/3",
+    "pinned_clang_shipping_abi": "passed; GLIBC2.38 GLIBCXX3.4.31 CXXABI1.3.9",
+    "historical_gcc14_abi_preflight": "failed at unchanged CXXABI1.3.15 > 1.3.14, not repaired"
+  },
+  "initial_failures": [
+    {
+      "kind": "introduced test stack overflow",
+      "disposition": "scoped heap fixtures; same assertions and1024KiB limit; final full suite passes"
+    },
+    {
+      "kind": "introduced stress harness scheduling defect",
+      "disposition": "bounded observation checkpoint outside APIs, remaining phase free-running; no assertion/deadline weakened"
+    },
+    {
+      "kind": "local TSan tooling",
+      "disposition": "missing symbolizer prevented existing named harness suppression; installed matching LLVM22 symbolizer; unchanged four entries all used in final full run"
+    }
+  ],
+  "remaining": [
+    "final-head mandatory native CI/codegen inspection",
+    "representative native production performance and owner cost acceptance",
+    "targeted native visual/editor lifecycle acceptance",
+    "separate new-PR merge authorization"
+  ],
+  "release": "draft429760301 unpublished; tag/body/metadata/11assets unchanged against prior snapshot",
+  "code_scanning_alert_state": "direct GitHub API HTTP403; unknown"
+}

@@ -117,21 +117,34 @@ See [packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-imple
 for deterministic original/fixed/weakening controls, genuine production-path
 concurrency, 1 MB stack-fixture failure/repair, byte-identical legacy engine dump,
 local safety/pluginval/ABI and measured footprint/synthetic cost. Native/performance/
-manual acceptance are explicitly pending. No new PR has been merged.
+manual acceptance are explicitly pending. Final-source TSan full state **10,980/0**
+with all four unchanged suppression entries used, active canary and five scope
+probes are now recorded in `nr006-production/validation.json`. The [#202 exact-head
+ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
+tracks final SHA/CI after evidence-only commits; source commit and initial submitted
+head `ee06f355cd8f14d3fd390b1d8627c8a669bc74a8` are historical checkpoints.
+No new PR has been merged.
 
 | Review unit | Head at submission | Dependency / disposition |
 |---|---|---|
 | [#199](https://github.com/skyRolly/Anamorph/pull/199) / ADR-0070 | `89694f24c940947fbbf70b9f32c07a6d31a3f07b` | main; owner architecture Accepted, PR integration not authorized |
 | [#200](https://github.com/skyRolly/Anamorph/pull/200) / NR-011 | `104f60eb2ee246babba739e989f320d1811f73dd` | main, independent; preserves legacy32 and adds five transition/audio+latency-trace oracles, native CI/review separate |
 | [#201](https://github.com/skyRolly/Anamorph/pull/201) / NR-012 | `2d56eac297300a5ac65ad62efd4d17b40ff65055` | main, independent; 36 repeated alias rows support retaining current DSP assertions; no universal/monotonic dB gate justified |
-| NR-006 implementation | source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final head/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
+| [#202](https://github.com/skyRolly/Anamorph/pull/202) / NR-006 implementation | source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final head/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
 
 NR-011’s mandatory push run `41234815844` also hit the unchanged sanitizer time
 limit during Valgrind state tests; only cancelled job `124636244763` was retried.
 Passing PR-event summary/analyzers do not substitute for the incomplete push
 matrix. Exact-head statuses and subsequent attempts must be read from GitHub.
-The inaccessible NR-017 scanning alert state remains unknown (403); no clean-
-alert inference follows from CodeQL workflow success.
+#199 and #201 initial push matrices also reached 60-minute sanitizer cancellation.
+#201 printed both full-suite zero failures and zero memcheck errors immediately
+before cancellation, but its **job still did not pass**. Only cancelled jobs were
+retried, with commands, limits, suppressions and criteria unchanged. #202’s initial
+native matrix and manually dispatched exact-head CodeQL/MSVC were running at this
+evidence snapshot; its evidence-only final head is tracked in the ledger. The
+connector does not expose scanning-alert reads; the direct GitHub API freshly
+returns **403**. NR-017 alert state remains unknown, without a clean-alert inference
+from CodeQL workflow success.
 
 **Next evidence/decisions:** native final-head CI/codegen, representative NR-006
 cost/visual acceptance, then explicit new-PR merge authorization. NR-010 remains
