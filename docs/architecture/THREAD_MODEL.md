@@ -9,7 +9,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 |---|---|---|
 | **Audio** | host → `AnamorphAudioProcessor::processBlock` | DSP, parameter snapshot read, meter/scope/correlation *production*. Real-time: no allocation, lock, or IO. |
 | **Message / GUI** | JUCE message loop; editor `juce::Timer` (24 Hz) + editor `meterVBlank` + per-visualizer `FrameClock` (display-rate vblank, capped ~120 Hz) | Painting, parameter writes (APVTS + InternalState), Undo coalesce, FFT, meter/scope *consumption*. |
-| **OpenGL render** | `openGLContext.attachTo(*this)` — **macOS/Windows only** | GPU compositing of the editor's paint. Absent on Linux/BSD. |
+| **OpenGL render** | `openGLContext.attachTo(*this)` — **macOS/Windows only** | JUCE component painting under its message-manager lock, then GPU compositing. `Vectorscope::paint` reads scope payload here too; see NR-006's reader-affinity drift below. Absent on Linux/BSD. |
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
 | **Host state thread** (external) | host → `getStateInformation` / `setStateInformation` on a thread that is not the message thread: macOS AU `SaveState`/`RestoreState` (autosave), pluginval's AU background-thread state test, an out-of-spec VST3 host, JUCE's Linux VST3 wrapper before the host registers an `IRunLoop` | Announces its generation in the engine-config word (the oversampling atomic, ADR-0036 §25), THEN installs the sound (the APVTS, JUCE-locked, under the replacement lock), synchronously and in that order; exchanges the program metadata with the message thread through the two D-2 cells below. Owns nothing of the program state (ADR-0036). |
 | **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). It runs `reset (ResetScope::everything)`, so beyond what the host-reset row below clears it ALSO clears the meters' latches (held peak, clip latches) and the published `matchGainDb` — except that a re-prepare at the SAME sample rate whose primed snapshot changes nothing the measurement reads keeps `matchGainDb` and re-arms only the Level-Match analysis (ADR-0007, Amendment of 2026-09-24, F13(2)). The two flags that decide it are written on this thread only: `primeMeasChanged` by the prime (`primeSnapshot`, reached from `prepareFrom`'s `primeParametersFrom` or the engine API's `primeParameters`, and written only for a snapshot the ADR-0057 handshake trusts) and `prepare`, and `keepMatchResult`, which is true only inside `prepare()`'s own `reset()` call (a host reset reads it false). No new cross-thread state. It leaves `prevPlaying` alone, and that is benign rather than an oversight: the hold has just been cleared outright, so a missed restart edge afterwards has nothing left to clear (State test 120, third leg). |
@@ -82,7 +82,7 @@ calls do not acquire a new support contract. State test 148 guards this boundary
 ### Audio → GUI (production → consumption)
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
-| Scope samples | `ScopeBuffer` SPSC ring: release/acquire index orders prior block writes; it gives no ownership or protection against later overwrites of the plain arrays. Stable stereo pairs, coherent blocks/windows and race-free payload copies are not guaranteed (NR-006) | audio `pushBlock()` | GUI `readLatest()`; `writeCount()` reads only the atomic count | ScopeBuffer.h:28-80 |
+| Scope samples | `ScopeBuffer` ring: release/acquire index orders prior block writes; it gives no ownership or protection against later overwrites of the plain arrays. Stable stereo pairs, coherent blocks/windows and race-free payload copies are not guaranteed (NR-006) | audio `pushBlock()` | Message-thread ticks/FFT; `Vectorscope::paint` can also read on the macOS/Windows OpenGL thread under JUCE's message-manager lock. `writeCount()` reads only the atomic count | ScopeBuffer.h:28-80 |
 | Level meters | `std::atomic<float/int>` (relaxed), published per block | audio `publish()`; and `reset()` (prepare) / `resetLive()` (host reset), each publishing once from that row's thread while no `processBlock` runs | GUI getters | LevelMeters.h:150-241 |
 | Correlation / balance / energy | `std::atomic<float>` (relaxed) | audio `publish()`; and `reset()` on the prepare and host-reset threads, publishing the idle state (`energy` 0) while no `processBlock` runs | GUI getters | Correlation.h:62-107 |
 | Level-Match gain (dB) | `std::atomic<float>` (relaxed) | audio `process()` (the measure, and an A/B slot's remembered value restored at a forced bottom); `prepare()` / `reset()` flushing it while no `processBlock` runs | GUI `getMatchGainDb()` | LoudnessMatch.h `matchGainDb` |
@@ -98,6 +98,17 @@ the C++ data-race exposure remains even if a later index check discards the copy
 The [NR-006 review packet](../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md) records
 the options and decision gate. No replacement synchronization design is implemented
 or Accepted by this documentation correction.
+
+Reader affinity is a second NR-006 documentation/contract boundary. `Vectorscope::tick`
+and `SpectrumImager::pushFFT` run on the message thread, but `Vectorscope::paint` also
+calls `readLatest`. Pinned JUCE 9.0.4's `OpenGLContext::CachedImage::renderFrame`
+takes a message-manager lock before `paintComponent` → `paintOwner` →
+`component.paintEntireComponent` on its rendering thread. This serializes those
+GUI reads with message callbacks; it does not exclude the audio producer or satisfy
+THREADING_POLICY's literal message-thread-only reader rule. Linux/BSD have no attached
+OpenGL context. This records existing behavior and unresolved policy drift; it neither
+introduces a cross-thread path nor approves an exception. The NR-006 decision must
+resolve reader affinity explicitly as well as payload ownership/coherence.
 
 ### Host state thread ↔ Message (D-2 / ADR-0036, lock-free)
 | Data | Mechanism | Writer | Reader | Source |
@@ -180,8 +191,10 @@ completion taken, on a trusted snapshot), against the source, which nothing has 
   re-install over a newer one.
 - No host thread reads or writes program metadata directly (ADR-0036): a restore off the message
   thread hands its decoded tail over; a save off the message thread reads a published snapshot.
-- `ScopeBuffer` is single-producer / single-reader-thread: exactly one audio writer; all reads
-  happen on the message thread as stateless peeks (`readLatest` copies, `writeCount` staleness
-  probe) — the Vectorscope and the SpectrumImager are two such read sites, never concurrent.
+- `ScopeBuffer` has exactly one audio writer and stateless GUI peeks (`readLatest` copies,
+  `writeCount` probes). The current GUI read sites are serialized by JUCE's message-manager
+  lock, but are not all confined to one thread on macOS/Windows: Vectorscope painting can
+  run on OpenGL's rendering thread. The policy-affinity drift and audio-overwrite gap
+  remain unresolved NR-006 boundaries; GUI serialization does not protect audio payload.
 
 Evidence [Verified]: src/dsp/ScopeBuffer.h:8-18; src/dsp/LevelMeters.h; src/dsp/Correlation.h.

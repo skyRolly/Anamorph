@@ -37,8 +37,8 @@ resolved by preserving both entries. Individual PR diffs retain their original s
 |---|---|---|
 | [#195](https://github.com/skyRolly/Anamorph/pull/195) `docs/roadmap-owner-approval-2026-10-31` | `f64f9d1b3dc53a75eda8b01c4d2935a9284996cf` | `e038f23f8912a8ee591b04bec8062c493ad42052` — ADR/release-history documentation correction |
 | [#196](https://github.com/skyRolly/Anamorph/pull/196) `fix/nr022-ab-pending-undo` | `4a431cac2e32493b1d2290fb9fd8d6570b41393f` | `31ae5366eecf60e783e86051b4403df08186288c` — additive parent merge and independent review; implementation retained |
-| [#197](https://github.com/skyRolly/Anamorph/pull/197) `docs/nr006-scope-publication-review` | `017a2e458dce498aa647c087361c8b6702c7fbe1` | `57e11d0bce10dc4dd5f4f524f9454fdfc265bb75` — additive parent merge and ScopeBuffer policy/architecture correction |
-| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | Review merge `726a964d62d4542b1143b0d4dabc034839ec71d6` plus final documentation-record commits; exact head in the linked PR ledger — repaired parent, inventory reproduction/clarification and handoff |
+| [#197](https://github.com/skyRolly/Anamorph/pull/197) `docs/nr006-scope-publication-review` | `017a2e458dce498aa647c087361c8b6702c7fbe1` | `80f50757fe25ade4a66bc7c4374b082e5bc74841` — parent merge `57e11d0` plus publication/coherence and reader-affinity corrections |
+| [#198](https://github.com/skyRolly/Anamorph/pull/198) `docs/nr017-diagnostic-inventory` | `ccf1743f2682c9b0946580208b572de0f9790f36` | Review merge `726a964d62d4542b1143b0d4dabc034839ec71d6`, documentation records and this additive synchronization of #197's final `80f5075`; exact final head in the linked PR ledger |
 
 ### Findings and dispositions
 
@@ -62,6 +62,11 @@ resolved by preserving both entries. Individual PR diffs retain their original s
   granting an exception to the non-atomic shared-state prohibition. NR-006 stays Ready
   for Review (packet only); no new protocol or Accepted ADR. ScopeBuffer blob remains
   `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+  Additional source tracing found `Vectorscope::paint` can read on pinned JUCE's
+  macOS/Windows OpenGL thread under the message-manager lock. GUI reads are serialized,
+  but the packet's all-message-thread claim was false. Corrected the description and
+  recorded its mismatch with the retained policy-affinity rule; no new exception was
+  granted. The architecture decision must explicitly resolve both affinity and payload.
 - **#198 NR-017: retain dispositions, clarify evidence/reproduction.** Independently
   verified archive digests and all 257 primary-result tuples/multiplicities. Counts,
   ownership and source-context dispositions agree. Added a runnable reproduction recipe
@@ -110,6 +115,12 @@ skips do not replace the push matrix. No CI configuration/gate was changed. Anal
 filters exclude these stacked/doc-only updates, so #196's existing manual workflows
 were dispatched at its repaired ref. Descendants have identical implementation/test inputs.
 
+The subsequent reader-affinity trace added documentation-only #197 commit `80f5075`
+and its additive #198 synchronization. The earlier #197 run IDs above describe the
+`57e11d0` checkpoint and must not be presented as final `80f5075` results. Final #197
+and #198 run IDs/states are recorded in the linked ledger after this push; no source
+or test input changed and no new runtime/native experiment is claimed by that trace.
+
 The original #196 Build 41216103432 and analyzer runs 41217038192/41217041554 are now
 completed/success, including formerly pending ARM macOS/sanitizers/CodeQL. These are
 refreshed historical outcomes, separate from the repaired heads above. Branch-protection
@@ -153,6 +164,15 @@ corresponding architecture/ADR before runtime implementation. Existing general A
 approvals and earlier manual testing do not choose this future design. ScopeBuffer
 blob `ed24ceab5ced2784d9fe96effdc46f8aeb03f472` and all implementation/tests are unchanged;
 single-thread DSP Test 61 cannot prove concurrent payload safety.
+
+**Additional finding from the final call-site trace: accepted/documented.**
+`Vectorscope::paint` reads the ring; pinned JUCE 9.0.4's OpenGL rendering thread can
+execute that component paint under its message-manager lock on macOS/Windows.
+GUI reads are serialized, but not all message-thread-affine. Corrected the
+THREAD_MODEL/packet claim and recorded the existing mismatch beside the policy's
+retained literal reader-affinity prohibition. That GUI lock never excludes audio
+overwrites. NR-006's owner-reviewed ADR must explicitly resolve affinity as well as
+payload ownership/coherence; no runtime change or new policy exception was enacted.
 
 ## PR #196 independent review — 2026-11-01 (Asia/Shanghai)
 
