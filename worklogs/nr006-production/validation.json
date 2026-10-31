@@ -55,5 +55,15 @@
     "separate new-PR merge authorization"
   ],
   "release": "draft429760301 unpublished; tag/body/metadata/11assets unchanged against prior snapshot",
-  "code_scanning_alert_state": "direct GitHub API HTTP403; unknown"
+  "code_scanning_alert_state": "direct GitHub API HTTP403; unknown",
+  "native_dsp_fixture_followup": {
+    "previous_head": "a3178e95e3a74c3cc3c06c10028ed2d6b9fff397",
+    "initial_failure": "Windows DSP suite beforeTest52 banner; state did not start",
+    "msvc_estimate_bytes": 1628304,
+    "local_full_dsp_checks": 945,
+    "local_failures": 0,
+    "stack_limit_kib": 1024,
+    "prior_dsp_expressions_preserved": 554,
+    "native_final_head": "pending; ledger tracks resolution"
+  }
 }

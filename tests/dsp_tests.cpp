@@ -25,6 +25,8 @@
 #include <cstring>
 #include <vector>
 #include <limits>
+#include <memory>
+#include <utility>
 #include <random>
 
 namespace
@@ -36,6 +38,18 @@ namespace
     {
         ++checks;
         if (! cond) { ++failures; std::printf ("  [FAIL] %s\n", what); }
+    }
+
+    // Fixed scope history doubles under ADR-0070. Keep test-owned engines
+    // off the 1 MB Windows stack: MSVC can reserve sibling-scope fixtures
+    // together before the test's first statement. Ownership/destruction stays
+    // scoped; all allocation guards still arm only around the measured calls.
+    auto heapEngineFixture()
+    {
+        auto owner = std::make_unique<anamorph::AnamorphEngine>();
+        auto& engine = *owner;
+        return std::pair<std::unique_ptr<anamorph::AnamorphEngine>, anamorph::AnamorphEngine&>
+            { std::move (owner), engine };
     }
 
     // THE DENORMAL HALF OF `isBad` IS A PROPERTY OF THE RUNNER AS WELL AS OF THE
@@ -116,7 +130,7 @@ static void testNoBadSamples()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
 
     using namespace anamorph;
@@ -186,7 +200,7 @@ static void testBypassNullAndLatency()
     const double sr = 48000.0;
     const int block = 512;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
 
     // --- 4a. OS off -> zero latency, exact null bypass ---
@@ -265,7 +279,7 @@ static void testTransparentDefault()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters def; // all defaults
     engine.setParameters (def);
@@ -301,7 +315,7 @@ static void testMonoMaker()
 
     auto measureSide = [&] (bool monoMakerOn)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;            // transparent defaults
         p.monoMakerEnable = monoMakerOn;
@@ -343,7 +357,7 @@ static void testMonoMaker()
     // the Mid energy with Mono Maker on; it should match the input level.
     auto measureMonoMid = [&] (bool monoMakerOn)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.monoMakerEnable = monoMakerOn;
@@ -392,7 +406,7 @@ static void testMultibandMonoCompat()
 
     auto monoRatio = [&] (float mix) -> double
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;   // transparent defaults (amount 0, width 1, drive 0)
         p.mbEnable   = true;
@@ -453,7 +467,7 @@ static void testMonoMakerPostMix()
 
     auto sideRatio = [&] (float mix) -> double
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable        = true;
@@ -515,7 +529,7 @@ static void testSoloMonitor()
 
     auto toneRms = [&] (double freq, int soloMask) -> double
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable = true; p.mbBands = 4; p.mbSolo = soloMask; p.mix = 1.0f;
@@ -551,7 +565,7 @@ static void testSoloMonitor()
     // Energy transparency: soloing every band sums to an allpass of the output.
     auto noiseEnergy = [&] (int soloMask) -> double
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable = true; p.mbBands = 4; p.mbSolo = soloMask; p.mix = 1.0f;
@@ -591,7 +605,7 @@ static void testLevelMatchAndSolo()
 
     auto matchDb = [&] (int soloMask) -> float
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable      = true; p.mbBands = 4; p.mbSolo = soloMask;
@@ -634,7 +648,7 @@ static void testNoClicksAcrossTransitions()
     const double freq = 220.0;
     const float amp = 0.25f;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
 
     anamorph::EngineParameters p; // transparent defaults
@@ -707,7 +721,7 @@ static void testSoloNoGhostInSilence()
     const double sr = 48000.0;
     const int block = 128;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.mbEnable = true; p.mbBands = 4;
@@ -746,7 +760,7 @@ static void testLevelMatchUnity()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p; // transparent defaults: width 1, mix 1, drive 0, no modules
     p.autoGainMatch = true;
@@ -776,7 +790,7 @@ static void testLevelMatchNoRatchet()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.autoGainMatch = true; p.mix = 1.0f;
@@ -821,7 +835,7 @@ static void testLevelMatchMixCouplingNoSlam()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.autoGainMatch = true; p.driveDb = 24.0f; p.mix = 0.0f; // full drive, but fully dry
@@ -893,7 +907,7 @@ static void testLevelMatchSilenceFreeze()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.autoGainMatch = true; p.driveDb = 8.0f; p.mix = 1.0f;
@@ -936,7 +950,7 @@ static void testCrossoverAutomationSafe()
     for (double sr : { 44100.0, 48000.0, 96000.0 })
     {
         const int block = 128;
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable = true; p.mbBands = 4; p.mix = 0.7f; // Mix<1 exercises the dry-align bank too
@@ -980,7 +994,7 @@ static void testMultibandUnityMatch()
     juce::ScopedNoDenormals noDenormals;
     const double sr = 48000.0; const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.mbEnable = true; p.mbBands = 4; p.autoGainMatch = true; // widths all default 1.0
@@ -1042,7 +1056,7 @@ static void testBypassToggleRobust()
     juce::ScopedNoDenormals noDenormals;
     const double sr = 48000.0; const int block = 128;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.mbEnable = true; p.mbBands = 4; p.monoMakerEnable = true;
@@ -1099,7 +1113,7 @@ static void testLevelMatchRunsInBypass()
 
     auto matchAfter = [&] (bool bypass) -> float
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.driveDb = 12.0f; p.autoGainMatch = true; p.mix = 1.0f; p.bypass = bypass;
@@ -1135,7 +1149,7 @@ static void testBypassCrossfadeClickFree()
     const double sr = 48000.0; const int block = 128;
     const double freq = 220.0; const float amp = 0.25f;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.outputGainDb = -6.0f; // processed is clearly quieter than bypass -> a real transition
@@ -1184,7 +1198,7 @@ static void testMultibandEnableCrossfadeClickFree()
     const double sr = 48000.0; const int block = 128;
     const double freq = 220.0; const float amp = 0.25f;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.mbEnable = true; p.mbBands = 4;
@@ -1243,7 +1257,7 @@ static void testSoloMultibandEnableClickFree()
     const double sr = 48000.0; const int block = 128;
     const double freq = 280.0; const float amp = 0.4f; // inside band 1 (180..800 Hz)
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.mbEnable = true; p.mbBands = 4; p.mix = 1.0f;
@@ -1317,7 +1331,7 @@ static void testResetClearsPendingForcedDuck()
     const double sr = 48000.0;
     const int block = 64;                     // short blocks: stay INSIDE the ~6 ms fade-out
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;             // transparent defaults
     p.autoGainMatch = true;
@@ -1433,7 +1447,8 @@ static void testPendingDuckDoesNotSurviveActivation()
         }
     };
 
-    anamorph::AnamorphEngine ducked, control;
+    auto [duckedHeapOwner, ducked] = heapEngineFixture();
+    auto [controlHeapOwner, control] = heapEngineFixture();
     for (auto* e : { &ducked, &control })
     {
         activate (*e);
@@ -1543,7 +1558,7 @@ static void testDryAlignGateRecomb()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;
     p.mbEnable   = true;
@@ -1628,7 +1643,7 @@ static void testForcedSwapNoDropout()
 
     for (const auto& sc : scenarios)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         engine.setParameters (sc.from);
         engine.reset();
@@ -1777,7 +1792,7 @@ static void testRapidForcedSwapDryFill()
 
     for (const auto& c : cases)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         engine.setParameters (c.from);
         engine.reset();
@@ -2399,7 +2414,7 @@ static void testDryFillRespectsOutputGain()
     const double freq = 220.0;
     const float amp = 0.25f;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p; // transparent defaults, OS off -> latency 0 (dry fill engages)
     p.outputGainDb = -24.0f;
@@ -2475,7 +2490,7 @@ static void testForcedSwapDuringOrdinaryFadeOut()
 
     // --- Scenario A: stale-tail discriminator ------------------------------
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters from;          // Haas holds a 35 ms tail; OS off (latency 0)
         from.algorithm   = anamorph::Algorithm::Haas;
@@ -2529,7 +2544,7 @@ static void testForcedSwapDuringOrdinaryFadeOut()
 
     // --- Scenario B: transition quality of the upgrade ---------------------
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters from;          // near-transparent defaults
         from.mix = 1.0f;
@@ -2911,7 +2926,7 @@ static void testMonoSumInputConditioning()
     // duck has settled (monoSum is a discrete control, so it arrives ducked).
     auto measure = [&] (bool monoSumOn, bool pureSideInput, double& outCh0, double& outSide)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;            // transparent defaults
         p.monoSum = monoSumOn;
@@ -2978,7 +2993,7 @@ static void testMsSoloInputIsolation()
     // given -- solo is a discrete control, so measurement waits out the duck.
     auto soloRms = [&] (anamorph::SoloMode mode, bool pureSideInput, float amount) -> double
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.solo = mode;
@@ -3035,7 +3050,7 @@ static void testMatchInjectRestore()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     anamorph::EngineParameters p;                // transparent defaults
     p.autoGainMatch = true;
@@ -3166,7 +3181,7 @@ static void testProcessIsAllocationFree()
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
 
     using namespace anamorph;
@@ -4122,7 +4137,7 @@ static void testPrepareSettlesSmoothers()
     p.driveDb    = 8.0f;
     p.mix        = 0.0f;             // ...but Mix=0 must be a bit-exact null (ADR-0005)
 
-    AnamorphEngine engine;
+    auto [engineHeapOwner, engine] = heapEngineFixture();
     engine.prepare (sr, block);
     engine.setParameters (p);
     engine.reset();
@@ -4456,7 +4471,7 @@ static void testInputConditioningAndCharacterParams()
     // continuous smoothers finish well inside that), measure RMS over 20 more.
     auto measure = [&] (auto configure, double& rms0, double& rms1)
     {
-        AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         EngineParameters p; // transparent defaults
         configure (p);
@@ -4510,7 +4525,7 @@ static void testInputConditioningAndCharacterParams()
     // smoothed sign is EXACTLY -1 / +1, and the default chain is bit-transparent,
     // so the settled output must be the exact negation on the flipped channel.
     {
-        AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         EngineParameters p;
         p.polarityL = true;
@@ -4635,7 +4650,8 @@ static int runMatchInjectProbe()
 
     auto scenario = [&] (int settleBlocks, int chain, float stale, const char* label)
     {
-        anamorph::AnamorphEngine c, k;                 // c = contaminated, k = control
+        auto [cHeapOwner, c] = heapEngineFixture();
+        auto [kHeapOwner, k] = heapEngineFixture();                 // c = contaminated, k = control
         anamorph::EngineParameters p;
         p.autoGainMatch = true;
         p.width = chain == 0 ? 1.9f : 1.5f;
@@ -4873,7 +4889,8 @@ static void testRestoredModulesDoNotGlideIn()
         e.algoAmount      = 0.0f;          // widener identity, so only the crossover acts
         e.mix             = 1.0f;
 
-        anamorph::AnamorphEngine ref, sub;
+        auto [refHeapOwner, ref] = heapEngineFixture();
+        auto [subHeapOwner, sub] = heapEngineFixture();
         ref.primeParameters (e);
         ref.prepare (sr, n);
         ref.setParameters (e);
@@ -4940,7 +4957,7 @@ static int runOsLatencyProbe()
     // latched for the snapshot under test rather than for the defaults.
     auto measureDelay = [] (anamorph::EngineParameters p) -> int
     {
-        anamorph::AnamorphEngine e;
+        auto [eHeapOwner, e] = heapEngineFixture();
         e.primeParameters (p);
         e.prepare (sr, bs);
         e.setParameters (p);
@@ -4964,7 +4981,7 @@ static int runOsLatencyProbe()
 
     auto reported = [] (anamorph::EngineParameters p) -> int
     {
-        anamorph::AnamorphEngine e;
+        auto [eHeapOwner, e] = heapEngineFixture();
         e.primeParameters (p);
         e.prepare (sr, bs);
         e.setParameters (p);
@@ -4973,7 +4990,7 @@ static int runOsLatencyProbe()
 
     auto predicted = [] (anamorph::EngineParameters p) -> int
     {
-        anamorph::AnamorphEngine e;
+        auto [eHeapOwner, e] = heapEngineFixture();
         e.prepare (sr, bs);
         return e.predictLatency (p);
     };
@@ -5044,7 +5061,7 @@ static void testOversamplingLatencyIsFactorOnly()
     // ---- LEG A: the whole grid, statically -------------------------------
     int perFactor[4] = { 0, 0, 0, 0 };
     {
-        anamorph::AnamorphEngine ref;
+        auto [refHeapOwner, ref] = heapEngineFixture();
         ref.prepare (sr, block);
         for (int o = 0; o < 4; ++o)
         {
@@ -5087,7 +5104,7 @@ static void testOversamplingLatencyIsFactorOnly()
         anamorph::EngineParameters p;
         p.oversample = osv[o];
         p.driveDb    = 6.0f;                     // wrap engaged
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.primeParameters (p);
         engine.prepare (sr, block);
         engine.setParameters (p);
@@ -5126,7 +5143,7 @@ static void testOversamplingLatencyIsFactorOnly()
         p.bypass     = true;
         p.oversample = osv[o];
         p.driveDb    = 0.0f;                     // wrap SKIPPED -- the new path
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.primeParameters (p);
         engine.prepare (sr, block);
         engine.setParameters (p);
@@ -5185,7 +5202,8 @@ static void testOversamplingLatencyIsFactorOnly()
         a.oversample = anamorph::OversampleFactor::Off;
         b.oversample = osv[o];                   // drive stays at its 0 default
 
-        anamorph::AnamorphEngine ea, eb;
+        auto [eaHeapOwner, ea] = heapEngineFixture();
+        auto [ebHeapOwner, eb] = heapEngineFixture();
         ea.primeParameters (a); ea.prepare (sr, block); ea.setParameters (a);
         eb.primeParameters (b); eb.prepare (sr, block); eb.setParameters (b);
         const int lat = eb.getLatencySamples();
@@ -5251,7 +5269,7 @@ static void testOversamplingLatencyIsFactorOnly()
             p.bypass     = true;
             p.oversample = osv[o];
             p.driveDb    = 6.0f;                 // wrap engaged; the sweep disengages it
-            anamorph::AnamorphEngine engine;
+            auto [engineHeapOwner, engine] = heapEngineFixture();
             engine.primeParameters (p);
             engine.prepare (sr, block);
             engine.setParameters (p);
@@ -5312,7 +5330,7 @@ static void testOversamplingLatencyIsFactorOnly()
             p.algorithm  = anamorph::Algorithm::Haas;
             p.algoAmount = 0.5f;
             p.driveDb    = 0.4f;                 // just above the 0.01 dB threshold
-            anamorph::AnamorphEngine engine;
+            auto [engineHeapOwner, engine] = heapEngineFixture();
             engine.primeParameters (p);
             engine.prepare (sr, 64);
             engine.setParameters (p);
@@ -5416,7 +5434,7 @@ namespace
         p.driveDb    = zeroToSix ? 0.0f : 6.0f;
         const float after = zeroToSix ? 6.0f : 0.0f;
 
-        anamorph::AnamorphEngine e;
+        auto [eHeapOwner, e] = heapEngineFixture();
         e.primeParameters (p); e.prepare (sr, bs); e.setParameters (p);
 
         std::vector<float> out; out.reserve ((size_t) (settle + tail) * bs);
@@ -5556,7 +5574,7 @@ namespace
         p.algoAmount = 0.7f;
         p.driveDb    = driveDb;
         p.oversample = from;
-        anamorph::AnamorphEngine e;
+        auto [eHeapOwner, e] = heapEngineFixture();
         e.primeParameters (p); e.prepare (sr, bs); e.setParameters (p);
 
         anamorph::EngineParameters probeTo = p; probeTo.oversample = to;
@@ -5804,7 +5822,7 @@ static void testInertDiscreteChangeDoesNotDuck()
     auto render = [] (double sr, int block, int blocks, anamorph::Algorithm alg,
                       int startDimMode, Lane lane, int toggleEvery) -> Rendered
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.algorithm = alg; p.algoAmount = 0.7f; p.width = 1.4f; p.mix = 1.0f;
@@ -5904,7 +5922,7 @@ static void testInertDiscreteChangeDoesNotDuck()
         const double sr = 48000.0; const int block = 128;
         auto switchToDimensional = [&] (int dimBefore, int dimAfter) -> std::vector<float>
         {
-            anamorph::AnamorphEngine engine;
+            auto [engineHeapOwner, engine] = heapEngineFixture();
             engine.prepare (sr, block);
             anamorph::EngineParameters p;
             p.algorithm = anamorph::Algorithm::Haas; p.algoAmount = 0.7f; p.width = 1.4f;
@@ -5992,7 +6010,7 @@ static void testMultibandEnableDrySourceNoStep()
     // Returns worstStep / medianSlew across the whole transition.
     auto ratio = [sr] (int block, int bands, float mix, bool startEnabled) -> double
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.algorithm = anamorph::Algorithm::Haas; p.algoAmount = 0.7f; p.width = 1.4f;
@@ -6114,7 +6132,7 @@ static void testAlgoResetSurvivesMidFadeRetarget()
     auto render = [sr] (int block, int route, anamorph::Algorithm from,
                         anamorph::Algorithm to, int delayBlocks)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         anamorph::EngineParameters p;
         p.algorithm = from; p.algoAmount = 0.8f; p.width = 1.4f; p.mix = 1.0f;
         p.mbEnable = true; p.mbBands = 2;
@@ -6242,7 +6260,7 @@ static void testInertDimModeDoesNotReArmLevelMatch()
     auto moveAfter = [&] (const anamorph::EngineParameters& start,
                           const anamorph::EngineParameters& next, bool forced)
     {
-        anamorph::AnamorphEngine engine;
+        auto [engineHeapOwner, engine] = heapEngineFixture();
         engine.primeParameters (start);                 // production order (Test 55's note)
         engine.prepare (sr, bs);
         engine.setParameters (start);
@@ -14179,7 +14197,7 @@ static int runForcedSwapAuditProbe()
 
     for (const auto& c : cases)
     {
-        anamorph::AnamorphEngine e;
+        auto [eHeapOwner, e] = heapEngineFixture();
         auto p = c.from;
         e.primeParameters (p); e.prepare (sr, bs); e.setParameters (p);
         std::vector<float> l, r; l.reserve (51200); r.reserve (51200);

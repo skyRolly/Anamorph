@@ -1,5 +1,20 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-006 native Windows DSP fixture follow-up — 2026-11-01
+
+Head a3178e9’s native Windows DSP run stopped after Test48 and before Test52’s
+entry banner, without a failed assertion; the state suite did not start and
+customer artifacts were withheld. Test52 declares seven inline engines in sibling
+scopes; actual MSVC SARIF estimates a 1,628,304-byte frame (C6262, not a runtime
+measurement). Converted 61 legacy
+DSP test-owned engines to scoped heap fixtures, preserving all 554 previous check
+expressions, guard scopes and destruction order. The 1 MB limit is unchanged.
+Local full DSP945/0 passes; final native Windows validation must confirm the repair
+before this introduced fixture portability finding is closed. Re-anchored shifted
+DSP test citations; no warning baseline, production protocol/DSP code or release
+input changed. Existing inSq unused-set warning remains declared Clang debt.
+
+
 ## ADR-0070 production implementation — 2026-11-01
 
 Applied owner-Accepted atomic stereo/tag protocol, typed result/end, GUI scratch/
@@ -16918,14 +16933,14 @@ result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` o
 functions across the two translation units. Largest real frames: **709,760** bytes
 (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
-`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
+`tests/dsp_tests.cpp:1402`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
 1,285,476 at `tests/state_tests.cpp:15566` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
 **DO NOT FIX — `C26495` x 7, and the 2026-09-07 entry's reason for them was wrong.** That entry
 said the structs are "aggregate-initialised at every construction site". Two of the three are not:
-`Scenario scenarios[2];` (`tests/dsp_tests.cpp:1611`) and `Case c;` (:5787) are DEFAULT-initialised,
+`Scenario scenarios[2];` (`tests/dsp_tests.cpp:1626`) and `Case c;` (:5787) are DEFAULT-initialised,
 which genuinely leaves `const char* name` and `double minRatio` indeterminate. The correct evidence
 is that every member default-initialisation leaves indeterminate is assigned before the first read —
 checked member by member for both `scenarios` elements and for every `mk()` call. The third site,
@@ -16934,7 +16949,7 @@ what the rule is about: the DECLARATION carrying no default member initialisers,
 writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
-suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
+suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3785`, :3930,
 `tests/state_tests.cpp:19312`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already

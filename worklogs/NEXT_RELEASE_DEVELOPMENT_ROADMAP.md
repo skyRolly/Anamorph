@@ -123,7 +123,13 @@ probes are now recorded in `nr006-production/validation.json`. The [#202 exact-h
 ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
 tracks final SHA/CI after evidence-only commits; source commit and initial submitted
 head `ee06f355cd8f14d3fd390b1d8627c8a669bc74a8` are historical checkpoints.
-No new PR has been merged.
+The first implementation’s Windows DSP gate subsequently failed before Test52’s
+entry banner: seven sibling-scope inline engines exceeded the MSVC stack budget
+after the ring grew. The 61 legacy DSP engine fixtures now use scoped heap
+ownership with all 554 check expressions/guard scopes retained; local DSP945/0
+passes at the same 1 MB limit. Final native Windows confirmation remains required,
+as tracked in the #202 ledger; the initial failure is not called an infrastructure
+flake or marked resolved solely on push. No new PR has been merged.
 
 | Review unit | Head at submission | Dependency / disposition |
 |---|---|---|

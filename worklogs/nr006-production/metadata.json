@@ -17,7 +17,8 @@
     "src/gui/Vectorscope.h": "cb48a11598fb87c3f9bac31b04f5e6ff100399b82d83575d184facbd146d6ca3",
     "tests/experiments/nr006_scope_protocol.cpp": "eac196cb0e621aeaac9de5aa4e97d25c838f5c713b23573011fc4ceafd3178aa",
     "tests/fixtures/scope-legacy/ScopeBuffer.h": "1be1baed6bbb439ad5b517ea2efe4cacd80fbb849959224c2561c38a84588e60",
-    "tests/state_tests.cpp": "32e186fbc4b791f480902e2c3c4182475bd410d47fdba4b27f94a9b9243f4daf"
+    "tests/state_tests.cpp": "32e186fbc4b791f480902e2c3c4182475bd410d47fdba4b27f94a9b9243f4daf",
+    "tests/dsp_tests.cpp": "59c5a5b3d14e284d0e9712190c274db7349c99696d01958213ed1cf78a39639c"
   },
   "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
   "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
@@ -102,7 +103,9 @@
     "tsan-canary.txt": "82c31ceb8ea233297659cc9a508604d587d111f342aa53603d09a0e2babb928a",
     "tsan-probes.txt": "477f4d72e7eae699834042a1b88217c842c2688ce88e41ce187ba5f06fdd7f8e",
     "tsan-state-summary.txt": "4558718059be8f95775d8e857440f5170725db5d6c0e235f0a85f17f9672c12e",
-    "validation.json": "f728eb6a3fd01fa26bf16d58994fdf1e435d8766ca9d72373869d2320936768a"
+    "validation.json": "fe49e2454ecc8f700e79a063ba9a3d025eee859885a1d78d29dde34504c5ae7d",
+    "windows-stack-followup.json": "787400b7993c3521aaa742aa6b09438c83e8aef7c84159b352436249ca136e14"
   },
-  "final_head_ledger": "https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755"
+  "final_head_ledger": "https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755",
+  "native_dsp_fixture_followup": "test-only heap placement after a3178e9 Windows failure; production protocol source unchanged; final native confirmation in ledger"
 }

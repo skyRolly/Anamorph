@@ -14,10 +14,15 @@ original-source fixture in temporary storage: original 3/3 contract failures,
 fixed 3/3 successes, removed-validation and missing-invalidation controls detected.
 Schedules execute on one thread, so the original control does not execute a C++ race.
 
-The state suite’s test-owned processors use scoped heap fixtures: the new fixed
+The state suite’s test-owned processors and the DSP suite’s legacy engines use
+scoped heap fixtures: the new fixed
 ring doubles inline size, and the old inlined fixtures exceeded the existing 1 MB
 stack gate. Assertions, lifecycle/destruction ordering and stack limit are retained.
-This is test scaffolding, not an audio allocation or a new product owner. Full
+The native Windows DSP failure before Test52’s banner required the DSP counterpart
+after local Clang had passed: its seven sibling-scope engines exceeded the MSVC
+stack budget. The conversion preserves 61 engine lifetimes and all 554 existing
+DSP check expressions; no stack/guard/expectation is relaxed. This is test
+scaffolding, not an audio allocation or a new product owner. Full
 native suites/sanitizers/pluginval remain required; headless GUI checks do not
 replace the targeted native visual/editor-lifecycle acceptance in ADR-0070.
 
@@ -2827,13 +2832,13 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     functions across the two translation units: the largest real frame is **709,760** bytes
     (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
-    (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
+    (`tests/dsp_tests.cpp:1402`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
     1,285,476 at `tests/state_tests.cpp:15566` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
     said the structs are "aggregate-initialised at every construction site". Two of the three sites
-    are not: `Scenario scenarios[2];` (`tests/dsp_tests.cpp:1611`) and `Case c;` (:5787) are
+    are not: `Scenario scenarios[2];` (`tests/dsp_tests.cpp:1626`) and `Case c;` (:5787) are
     DEFAULT-initialised, which does leave `const char* name` and `double minRatio` indeterminate.
     The correct evidence is that every member default-initialisation leaves indeterminate is
     assigned before the first read — checked member by member for both elements of `scenarios` and
@@ -2842,7 +2847,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     default member initialisers, not about any site — so writing `{}` at the other two would change
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
-    mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
+    mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3785`, :3930,
     `tests/state_tests.cpp:19312`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
@@ -4848,7 +4853,7 @@ alone — but that is not the rule: what overflows a frame is a large automatic 
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
 (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`) and
-**289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
+**289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1402`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
 `tests/state_tests.cpp:15566` is 1,285,476 where the real frame is 284,800.

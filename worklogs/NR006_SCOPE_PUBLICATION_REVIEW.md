@@ -576,3 +576,26 @@ those conditions. Architecture approval is cleared; implementation, merge,
 performance/manual acceptance and release authorization remain separate milestones.
 RISK-018 stays open for main and unchanged 0.10.0, with mitigation/additional
 validation required before publication. No release operation is performed.
+
+### Native Windows fixture follow-up
+
+The first submitted implementation’s full native Windows DSP job
+[124657185678](https://github.com/skyRolly/Anamorph/actions/runs/41241794891/job/124657185678)
+failed after Test48, before Test52’s first print, with no failed DSP assertion.
+State tests never started; product artifacts were withheld correctly. Test52
+has seven by-value engines in sibling scopes, each now holding at least 256 KiB
+of inline scope history. MSVC’s actual SARIF artifact `13057634256` from run `41241930773`
+reports C6262 at the original line5031: **1,628,304 bytes**. This is an analyzer
+estimate, not a debugger-measured frame; together with the pre-banner exit it
+supports stack exhaustion. Local Clang’s successful 1 MB run did not discharge that native frame-layout risk.
+This is classified as an introduced test-fixture stack portability failure,
+with fresh native confirmation required, not a demonstrated DSP math failure.
+
+The same scoped heap technique now covers 61 legacy DSP engine locals. All
+**554 prior DSP check expressions remain byte-identical**, alongside the 3064
+state expressions already preserved. Engine/guard lifetimes and the 1 MB limit
+remain unchanged. Local full DSP945/0 passes at that limit; the final native
+Windows rerun is tracked in the stable #202 ledger. The pre-existing inSq
+unused-set warning is the one accepted Clang-baseline DSP warning, not suppressed
+or fixed here. No production protocol, engine token stream, parameter/state
+contract, dependency/version or release object changes in this follow-up.

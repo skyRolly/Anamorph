@@ -14,6 +14,15 @@ therefore construct their test-owned processors through scoped heap fixtures,
 retaining the old assertions/callbacks and lexical destruction order; the former
 823352-byte optimized main frame plus a 273832-byte registry-test frame exceeded
 1 MB after the inline ring grew. The repaired full suite passes that same limit.
+Native Windows on the first implementation head exposed the DSP counterpart:
+output stopped before Test52’s first banner, with no failed DSP assertion. That
+test has seven inline engines across sibling scopes (at least 7 × 256 KiB of
+scope storage alone); MSVC’s SARIF estimates a 1,628,304-byte frame (C6262 at original line5031);
+this is an analyzer estimate, not a measured runtime frame.
+The DSP suite now uses the same scoped heap pattern for its 61 legacy test-owned
+engine locals, preserving all 554 prior check expressions and guard scopes.
+Local DSP945/0 passes the original 1 MB limit; a fresh native Windows full-suite
+result is required before closing this introduced portability failure.
 Earlier stack sizes/analyzer dispositions below describe their original source
 revisions and are not new measurements. Native MSVC analysis still has to run.
 
@@ -1710,7 +1719,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
-`tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
+`tests/dsp_tests.cpp:1402`) — 28% of the 1 MB reserve, against the state suite's **709,760**
 (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
@@ -1785,7 +1794,7 @@ The probe is opt-in, so the guard step never runs it; `--risk014-probe census` w
 **Re-measured for PR #156's one new claim, and DISPOSED `DO NOT FIX`.** Diffed by *byte value* across
 the `prefast-sarif-*` artifacts: `main` at `659ca0a` carries 179 `C6262`, and every head of this PR
 from `f155978` on carries 180 — **one added, none removed**: `Function uses '20528' bytes of stack` at
-`tests/dsp_tests.cpp:7519`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
+`tests/dsp_tests.cpp:7537`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
 It is absent on `5f28e2b`, the commit before the test landed, and unchanged on every later head. The
 other 127 claims in `state_tests.cpp` each moved by an exact multiple of **64 bytes** — one
 `std::function` (MSVC's size) per stack-allocated `AnamorphAudioProcessor`, the State-test-129 seam
