@@ -469,6 +469,12 @@ construction. Vectorscope paint retains the accepted window when copying fails;
 its activity poll retains counters on failure. SpectrumImager retains FFT,
 silence and freshness state on failure, including a valid wakeup tail followed
 by a failed full FFT window. Its next tick can retry that same publication.
+The #202 review found a separate scheduling gap: a successful silent activity
+poll could precede a rejected paint, after which the idle gate suppressed the
+needed retry. Vectorscope now retains `frameDirty` until a paint accepts a window;
+later silent or frozen ticks request another ordinary repaint. State 150 checks
+the actual scheduling and return to idle; the old scheduler fails three checks.
+See [the regression evidence](nr006-production/REPAINT_RETRY_REVIEW.md).
 The source preserves JUCE component painting under its existing message-manager
 serialization; consumer entries assert that contract. No GL attachment change,
 new thread, audio lock/allocation, reader ownership or RMW is introduced.

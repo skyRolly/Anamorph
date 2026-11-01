@@ -27,6 +27,7 @@ namespace anamorph::gui
 struct ScopeVisualTestAccess
 {
     static void poll (Vectorscope& view) { view.pollNewSamples(); }
+    static void update (Vectorscope& view) { view.updateDisplay(); }
     static auto state (const Vectorscope& view)
     { return std::tuple { view.lastSeenCount, view.lastNonZero, view.lastFrameSilent, view.snapshot.result().end }; }
     static auto state (const SpectrumImager& view)
@@ -165,6 +166,71 @@ static void testScopeSnapshotPublication()
     Visual::poll (vector); vector.paint (graphics);
     check (std::get<0> (Visual::state (vector)) == 8256 && std::get<3> (Visual::state (vector)) == 8256,
            "scope GUI: restored validity retries at the same publication");
+
+    // Observe actual repaint() requests without a native peer. The FrameClock's
+    // visibility wrapper calls this same scheduler when the editor is showing.
+    struct RepaintObserver final : juce::CachedComponentImage
+    {
+        explicit RepaintObserver (int& count) : requests (count) {}
+        void paint (juce::Graphics&) override {}
+        bool invalidateAll() override { ++requests; return false; }
+        bool invalidate (const juce::Rectangle<int>&) override { ++requests; return false; }
+        void releaseResources() override {}
+        int& requests;
+    };
+    int repaintRequests = 0;
+    vector.setVisible (true);
+    vector.setCachedComponentImage (new RepaintObserver (repaintRequests));
+    vector.setPersistence (1.0f); // exercise the maximum 8,000-frame silence window
+    Visual::update (vector); vector.paint (graphics);
+    const auto activePoints = Visual::points (vector);
+    std::fill (l.begin(), l.end(), 0.0f); std::fill (r.begin(), r.end(), 0.0f);
+    visualRing->pushBlock (l.data(), r.data(), 8000);
+    const int beforeSilence = repaintRequests;
+    Visual::update (vector); // valid activity poll commits its silent/count hints
+    check (repaintRequests == beforeSilence + 1,
+           "scope GUI: the first wholly silent window requests a final paint");
+    const auto silentPosition = visualRing->writeCount() - 1;
+    const auto silentTag = Access::tag (*visualRing, silentPosition);
+    Access::tag (*visualRing, silentPosition, 0); // reuse begins after the activity poll
+    vector.paint (graphics);
+    check (Visual::points (vector) == activePoints,
+           "scope GUI: a rejected final-silence paint retains the accepted waveform");
+    Access::tag (*visualRing, silentPosition, silentTag);
+    visualRing->pushBlock (l.data(), r.data(), 64);
+    const int beforeRetry = repaintRequests;
+    Visual::update (vector);
+    check (repaintRequests == beforeRetry + 1,
+           "scope GUI: later silent audio retries a rejected final-silence paint");
+    if (repaintRequests > beforeRetry) vector.paint (graphics);
+    const auto& silentPoints = Visual::points (vector);
+    check (std::get<3> (Visual::state (vector)) == visualRing->writeCount()
+               && std::all_of (silentPoints.begin(), silentPoints.begin() + 8000,
+                               [] (float sample) { return sample == 0.0f; }),
+           "scope GUI: the scheduled retry replaces the old waveform with valid silence");
+    visualRing->pushBlock (l.data(), r.data(), 64);
+    const int beforeIdle = repaintRequests;
+    Visual::update (vector);
+    check (repaintRequests == beforeIdle,
+           "scope GUI: successful silent paint restores the idle repaint gate");
+
+    // A pending rejected paint also retries if the host then freezes publication.
+    vector.setPersistence (1.0f);
+    Visual::update (vector);
+    const auto frozenPosition = visualRing->writeCount() - 1;
+    const auto frozenTag = Access::tag (*visualRing, frozenPosition);
+    Access::tag (*visualRing, frozenPosition, 0);
+    vector.paint (graphics);
+    Access::tag (*visualRing, frozenPosition, frozenTag);
+    const int beforeFrozenRetry = repaintRequests;
+    Visual::update (vector);
+    check (repaintRequests == beforeFrozenRetry + 1,
+           "scope GUI: rejected paint retries even without another producer push");
+    if (repaintRequests > beforeFrozenRetry) vector.paint (graphics);
+    const int afterFrozenRetry = repaintRequests;
+    Visual::update (vector);
+    check (repaintRequests == afterFrozenRetry,
+           "scope GUI: accepted frozen window stops retrying");
 
     auto processor = std::make_unique<AnamorphAudioProcessor>();
     auto& fftRing = processor->getEngine().getScopeBuffer();

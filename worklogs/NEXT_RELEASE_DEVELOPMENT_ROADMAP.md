@@ -218,7 +218,21 @@ provisioning boundaries remain. Release readiness is evaluated separately under
 NR-021: unchanged draft still requires NR-006 mitigation/risk disposition before
 publication. There is no version/tag/asset/publishing operation.
 
-### Release and next actions
+### #202 rejected-silence paint review — 2026-11-01 (Asia/Shanghai)
+
+Accepted the reported GUI bug independently of the prior green CI. Polling could
+commit silence before a paint rejected, then suppress every subsequent silent
+repaint. The existing dirty flag now persists until a valid window is painted,
+including silent and frozen-publication retries. Seven scheduling assertions in
+State 150 use actual repaint invalidations, not unconditional manual recovery.
+The old scheduler fails three of 34 focused checks; fixed 34/34, full state
+10,987/10,987 and DSP 945/945 pass locally. Retained
+[review evidence](nr006-production/REPAINT_RETRY_REVIEW.md) records validation and
+the corresponding PR discussion tracks corrected-head CI. No ScopeBuffer protocol,
+atomic ordering, audio work or ownership/lifetime contract changed; Accepted ADR-0070
+and its representative cost/native visual/implementation acceptance gates remain.
+
+### Release and next actions (current)
 
 For unchanged 0.10.0, NR-006 disposition is **requires mitigation or additional
 validation before publication**, with a reviewed mitigation or explicit human

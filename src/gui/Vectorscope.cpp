@@ -37,12 +37,14 @@ void Vectorscope::tick()
     if (! isShowing())
         return;
 
+    updateDisplay();
+}
+
+void Vectorscope::updateDisplay()
+{
     pollNewSamples();
     if (frameDirty)
-    {
-        frameDirty = false;
         repaint();
-    }
 }
 
 void Vectorscope::pollNewSamples()
@@ -54,12 +56,13 @@ void Vectorscope::pollNewSamples()
     // so a frame only needs re-rendering when that content can have changed.
     // Two static cases are skipped: the ring is FROZEN (the host stopped
     // calling processBlock), or every frame in the visible window is exactly
-    // zero and the previously painted frame was that same all-zero image
+    // zero and the previously polled window was also all-zero
     // (digital silence: the engine keeps pushing zeros, so the write counter
     // advances while the picture stays put). While ANY non-zero frame remains
     // in the window the tick repaints as before, so the trail scrolls out and
-    // fades exactly as it always did; the final all-zero frame paints once,
-    // then the view goes idle. A persistence change re-arms via setPersistence
+    // fades exactly as it always did. A rejected paint stays dirty, so the final
+    // all-zero image must be accepted before the view goes idle. A persistence
+    // change re-arms via setPersistence
     // (frameDirty); resize/expose repaints bypass the timer entirely.
     if (scope.writeCount() != lastSeenCount)
     {
@@ -184,7 +187,9 @@ void Vectorscope::paint (juce::Graphics& g)
 
     // --- read a decimated window from the lock-free ring buffer ---
     const int wantFrames = windowFrames();
-    snapshot.accept (snapshot.readLatest (scope, wantFrames));
+    // Scheduling a repaint is not acceptance. Keep requesting an ordinary frame
+    // after rejection, even if later activity polls see only silence or no push.
+    frameDirty = ! snapshot.accept (snapshot.readLatest (scope, wantFrames));
     const int got = juce::jmin (wantFrames, snapshot.result().copied);
     const int offset = snapshot.result().copied - got;
     if (got <= 0)

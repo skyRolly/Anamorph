@@ -1,5 +1,16 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Vectorscope rejected-silence repaint review — 2026-11-01
+
+Accepted the #202 review: activity polling could mark silence before paint rejected
+its copy, leaving the old waveform indefinitely. The existing GUI-local dirty flag
+now survives scheduling/rejection and clears only on a valid paint. State 150 uses
+actual repaint invalidations to cover later silent and frozen recovery plus idle
+suppression; old scheduling fails three new assertions. Updated TESTING, the NR-006
+packet and roadmap with retained evidence. This corrects an unreleased branch defect;
+the existing customer scope entry remains accurate. No new architecture, atomic
+ordering, audio path, detector/suppression or release state changed.
+
 ## ADR-0070 live-instruction reconciliation — 2026-11-01
 
 Accepted the #199 review finding: the roadmap's next action and NR-006 detail

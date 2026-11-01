@@ -66,6 +66,7 @@ public:
 private:
     friend struct ScopeVisualTestAccess;
     void tick(); // FrameClock callback (display-rate; no dt-dependent state here)
+    void updateDisplay(); // poll/repaint scheduling, also exercised without a native peer
     void pollNewSamples();
     void drawGrid (juce::Graphics&, juce::Rectangle<float> area, float radius);
     void ensureStaticLayer (juce::Graphics&, juce::Rectangle<float> area);
@@ -98,8 +99,8 @@ private:
     // Idle repaint gate state (message thread only -- see tick()):
     std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
     std::uint64_t lastNonZero   = 0; // newest bound on non-zero ring content
-    bool frameDirty      = true;     // displayed frame is stale -> repaint
-    bool lastFrameSilent = false;    // last painted frame was the all-zero image
+    bool frameDirty      = true;     // needs a successful paint; scheduling does not clear it
+    bool lastFrameSilent = false;    // last successfully polled window was all-zero
 
     // Adaptive refresh (display-rate, capped ~120 Hz): the freshness scan + idle
     // gate below are delta-based (writeCount) and the trail age is positional, so

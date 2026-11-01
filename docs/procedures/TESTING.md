@@ -14,6 +14,18 @@ original-source fixture in temporary storage: original 3/3 contract failures,
 fixed 3/3 successes, removed-validation and missing-invalidation controls detected.
 Schedules execute on one thread, so the original control does not execute a C++ race.
 
+State 150 also observes actual Vectorscope `repaint()` invalidations using a
+headless cached-image observer and the same scheduler called by visible ticks.
+It accepts an active picture, polls 8,000 zeros, rejects the final-silence paint
+after that poll, then requires a scheduled retry on later silent audio. The retry
+must replace the retained waveform with zeros and restore idle suppression.
+A second rejection must retry at a frozen publication and then stop after success.
+Seven assertions supplement the existing checks. The former clear-on-schedule
+implementation fails three of the 34 focused checks; the corrected implementation
+keeps its GUI-local dirty flag until a copy succeeds. No protocol/atomic ordering,
+audio work or new thread is involved. See the retained
+[review evidence](../../worklogs/nr006-production/REPAINT_RETRY_REVIEW.md).
+
 The concurrent harness uses the suite's existing `d2::Pace` for its waiting and
 independent worker loops, outside the production APIs and uniformly in every
 lane. Head `0991b2f` failed its memcheck run after busy `yield()` loops starved

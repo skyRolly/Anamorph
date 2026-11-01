@@ -1,0 +1,7 @@
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667
+  scope reader 0: accepted=86 rejected=6 during-writer=86 bad=0
+  scope reader 1: accepted=89 rejected=1 during-writer=89 bad=0
+34 checks, 0 failure(s)
