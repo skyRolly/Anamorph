@@ -1,5 +1,37 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Integrated #199–#203 and bounded NR-014 metadata correction — 2026-11-02
+
+Drift check: roadmap/README/source authority/ADR-index/risk/readiness records still
+called the approved atomic implementation branch-only and left merged NR-011/012
+pending. Reconciled them with actual merge parents, validated candidate trees and
+final main `425539385ebfcd1ca2bab1befe3de37618ce02d2`; preserved dated history,
+source-scoped data and remaining native cost/visual acceptance. Accepted ADR-0070's
+protocol/criteria are unchanged; separate owner integration approval is recorded,
+not inferred. NR-021 now compares old draft, integrated main and unmerged NR-014
+and recommends publication hold/selected later candidate without release actions.
+
+Source `PluginEditor::setupRotary` now reuses the unchanged visible caption for
+accessibility metadata. State152/header and the ordinary/focused entry points
+cover12 real attachments, captions/titles, delivered keys/modifiers, unrelated
+values and Simple→Advanced→Simple destruction/reopen. The nonshipping Linux/Ninja
+control links the pinned original editor against the same current tests/flags:
+original 36/924 failures, corrected 924/0; full local suites 945/11911. Software
+snapshots at identical geometry show zero changed pixels with titles present,
+cleared/restored, without claiming native assistive-device, global focus or host
+acceptance. The unavailable Xvfb peer probe is disclosed, not suppressed.
+
+Added developer evidence `worklogs/NR014_ROTARY_ACCESSIBILITY.md` and retained
+logs/source hashes/control exits/software observations in its companion directory.
+Updated TESTING and REPOSITORY_MAP for new tests/control, SOURCE_OF_TRUTH and README
+for the new developer record, plus this self-coverage entry. No new/reworded UI copy,
+parameter/state/DSP/latency/threading/build design, warning suppression, release
+identity or acceptance criterion changes. New PR remains separately merge-gated.
+Citation re-anchoring changes only verified source-line anchors where needed.
+Refreshed NR-017 current-main SARIF delta with digest verification:80 source-scoped
+records, historical 257-row CSV preserved, alert-state403 still unavailable. Test
+stack/initializer/constexpr observations remain classified without suppression.
+
 ## Approved ScopeBuffer integration candidate — 2026-11-01 UTC
 
 Inherited synchronized #200/#199 and integrated #203/#201 additively, preserving

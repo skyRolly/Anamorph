@@ -1,5 +1,26 @@
 # TESTING.md
 
+
+## NR-014 rotary metadata and delivered-key coverage
+
+State152 (`tests/gui_accessibility_tests.h`) runs in the normal state suite and
+`--gui-accessibility-probe`. Two host writes identify each of 12 actual rotary
+attachments through Simple→Advanced→Simple editor destruction/reopen. The test
+checks existing captions/titles, attached values, delivered Right/Left and modified
+arrow routing, non-vacuous visible/enabled controls and unrelated normalized
+parameter preservation. Widget lookup/readback alone allows float/double skew
+conversion precision; DSP and unrelated-value expectations are unchanged.
+
+The nonshipping `tests/experiments/nr014_rotary_metadata_control.py` reuses the
+actual Linux/Ninja state compile/link commands and swaps only the pinned original
+editor object in temporary storage. Original36/924 failures are exclusively the
+titles; corrected924/0. Full local suites945 DSP/11911 state. This is component
+metadata/event delivery coverage, not native screen-reader value access, Tab/global
+focus or DAW shortcut dispatch. The wider human UX/assistive-device audit remains
+pending; software-pixel equality does not close it. Reproduction, source hashes,
+negative logs and unavailable Xvfb peer probe are in the
+[NR-014 record](../../worklogs/NR014_ROTARY_ACCESSIBILITY.md).
+
 ## ADR-0070 scope regression and concurrency coverage
 
 State tests **150–151** (`tests/scope_snapshot_tests.h`) run in the normal state

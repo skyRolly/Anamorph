@@ -2,7 +2,8 @@
 
 ## RISK-018 — ScopeBuffer reusable plain payload can race with GUI reads
 
-- **Open, 2026-11-01; mechanism Verified, field incidence Unverified.** The audio
+- **Original exposure mitigated on main / unchanged draft and acceptance still open,
+  2026-11-02 (Asia/Shanghai); original mechanism Verified, field incidence Unverified.** The audio
   producer release-publishes a total after copying samples; no reader-to-next-
   overwrite happens-before relation protects the reusable plain arrays. A lapped
   `readLatest` can conflict with a later push. Individual/stereo/window coherence
@@ -15,10 +16,12 @@
 - **Mitigation:** NR-006 / Accepted ADR-0070 selects generation-validated atomic
   stereo windows and an explicit serialized-GUI affinity contract. Human Architecture
   Review was cleared by explicit owner approval 2026-11-01. The atomic-window
-  correction/regressions are implemented on a separate development branch, with
-  native cost/portability evidence, integration and visual acceptance still pending.
-  This risk remains open on main and the unchanged draft; branch-local source/test
-  evidence does not retroactively fix either candidate.
+  correction/regressions are integrated on main through owner-approved #199/#202,
+  final main `4255393`. Selected current-main CI, native guards and reviewed codegen
+  pass. Representative native costs/owner cost acceptance and native scope/FFT/
+  editor-lifecycle acceptance remain pending. The original plain-storage exposure
+  is absent from this main implementation but still present in unchanged draft
+  source `4c13688`; main validation does not retroactively fix those artifacts.
   Current 0.10.0 requires a reviewed mitigation or explicit human risk disposition
   before publication; draft/tag/assets stay unchanged.
 - Evidence [Verified]: original `00de8c7:src/dsp/ScopeBuffer.h::pushBlock/readLatest`;

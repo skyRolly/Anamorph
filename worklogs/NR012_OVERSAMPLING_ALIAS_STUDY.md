@@ -1,5 +1,17 @@
 # NR-012 — Bounded oversampling alias study
 
+## Integrated study checkpoint — 2026-11-02 (Asia/Shanghai)
+
+Owner-reviewed #203 merged first at`9217fbb`, then #201 at`7c007e7`; final main
+is`4255393`. The study probe, runner, CSV and metadata remain byte-identical to
+the measured original study; all 36 observations and limitations are preserved.
+Selected exact-head and final-main gates completed, including both memcheck
+suites; earlier cancellations remain cancelled, not retroactively passed.
+The dependency/open-PR instructions below are dated historical checkpoints.
+Disposition remains retain current behavioral assertions, with no universal
+quality/monotonicity guarantee or DSP fix justified. Current integration and
+release boundaries are in the [execution register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
 **Date:** 2026-11-01 (Asia/Shanghai). **Source:** integrated main
 `00de8c7796f37d08a338256e01830bb312ba105c`, pinned JUCE9.0.4.
 **Status:** investigated / measured locally; retain existing behavioral assertions.

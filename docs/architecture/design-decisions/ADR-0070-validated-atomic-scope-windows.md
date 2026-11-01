@@ -5,8 +5,10 @@ on 2026-11-01 (Asia/Shanghai), replying “Approve ADR-0070 for implementation�
 the submitted PR #199 architecture question, subject to its native portability,
 performance and validation gates. Originally proposed by the agent on that date,
 against integrated `main` `00de8c7796f37d08a338256e01830bb312ba105c`.
-The architecture approval is **cleared**. Production implementation, validation
-and any new PR merge remain separate milestones. The new scope-affinity contract
+The architecture approval is **cleared**. The owner subsequently separately approved
+integration of #199/#202, now on main via `303d37c`/`4255393` (2026-11-02,
+Asia/Shanghai). Representative performance/owner cost acceptance and targeted native
+visual/editor-lifecycle acceptance remain pending; new PR merges remain separate. The new scope-affinity contract
 is effective for the approved atomic implementation, not an exception permitting
 the old plain-payload race. Existing release objects remain unchanged.
 
@@ -31,8 +33,8 @@ message-thread-only scope policy is not satisfied. Linux/BSD retain CPU painting
 The [research packet](../../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
 contains the source census, lifecycle, alternatives, experiments and limitations.
 The investigated original blob is `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`
-at integrated main `00de8c7`; the implementation branch replaces it as recorded
-in the packet’s production checkpoint. Context above describes that original code.
+at the historical integrated main `00de8c7`; #202 replaces it on actual main as
+recorded in the packet’s integration checkpoint. Context above describes that original code.
 
 ## Required invariants
 
@@ -161,11 +163,11 @@ post-copy attempt to legalize undefined plain-memory reads.
 
 ### GUI affinity and lifecycle
 
-**Recommend preserving current OpenGL component painting.** Permit ScopeBuffer
+**Preserve current OpenGL component painting.** Permit ScopeBuffer
 reads on the message thread or inside pinned JUCE's component-paint path while
 holding the message-manager lock; all GUI consumers remain serialized and keep
-separate destinations/caches. This is an explicit proposed amendment to the scope
-reader-affinity rule upon human acceptance, not a general off-thread permission
+separate destinations/caches. This Accepted amendment to the scope reader-affinity
+rule is effective in the integrated atomic implementation, not a general off-thread permission
 for program state, and not an exception for the old racy representation.
 The audio producer never acquires that lock. No new thread or audio-to-GUI callback.
 
@@ -198,12 +200,12 @@ deadline: inspect native code generation for bounded non-RMW loads/stores on
 every shipping platform. Compiler/library guards must hold on Linux Clang,
 MSVC x64, AppleClang x86-64 and arm64; Linux GCC remains a separate test lane.
 
-After approval, a focused implementation PR may change ScopeBuffer, its three
-consumer paths, regression surfaces and triggered docs. Do not alter DSP topology,
-OpenGL attachment policy, compiler/dependency pins, release objects or unrelated
-state ownership. Policy/architecture/source comments must be reconciled with the
-accepted contract in that PR. The owner has now authorized implementation of this Accepted design. This does
-not authorize merging its implementation PR or any release operation.
+The focused implementation PR #202 changes ScopeBuffer, its three consumer
+paths, regression surfaces and triggered docs. Its integration was separately
+approved by the owner and completed at `4255393`. DSP topology, OpenGL attachment
+policy, compiler/dependency pins, release objects and unrelated state ownership
+remain unchanged. Policies, architecture and source comments implement this
+Accepted contract. This integration grants no release operation or future PR merge.
 
 ## Acceptance and rollback
 
@@ -253,11 +255,14 @@ mitigation. Do not publish or replace 0.10.0 from this decision.
   [bit representation conversion](https://eel.is/c++draft/bit.cast).
   These are living draft references to the relevant standard rules, not a claim
   that lock freedom of every implementation is mandated by C++.
-- **Unverified/pending:** native Windows/macOS prototype cost and compile guards,
-  production implementation/validation and visual
-  audition. No user-visible failure rate or supported-host crash attribution.
+- **Verified for recorded configurations:** integrated production implementation,
+  native compile guards and matching Windows/macOS product/debug codegen,
+  deterministic/concurrent/regression controls and final-main CI.
+- **Unverified/pending:** representative native production and full-engine/GUI
+  costs/owner cost acceptance, and targeted native visual/editor-lifecycle audition.
+  No user-visible failure rate or supported-host crash attribution.
 
-## Production checkpoint — 2026-11-01
+## Historical production checkpoint — 2026-11-01
 
 The focused implementation branch implements the protocol above, typed failure/
 end results, preallocated accepted GUI windows and the explicit serialized paint
@@ -277,3 +282,16 @@ retaining its workload/checks/deadline and requiring fresh final-head validation
 Representative cost acceptance and targeted native visual/lifecycle acceptance
 remain open. Neither codegen inspection nor that test-only correction changes
 the accepted architecture or grants integration/release permission.
+
+## Actual integration checkpoint — 2026-11-02 (Asia/Shanghai)
+
+The owner separately reviewed and authorized both PR integrations. #199 merged
+at `303d37c3b6d469d4c0a67231b19a9a3dcbfb9e1b`; #202 at
+`425539385ebfcd1ca2bab1befe3de37618ce02d2`. The synchronized candidate's tree
+exactly equals final main; shipping scope/consumer/regression source is unchanged
+from the approved `0df1cb8`. Final-main Build41315639676, CodeQL and MSVC analysis
+complete successfully. All required invariants/acceptance criteria above remain
+intact. Representative costs and owner/native visual acceptance are still pending;
+this is integration evidence, not final release sign-off. Existing 0.10.0 objects
+remain unchanged. Detailed identities and gates are in the
+[execution register](../../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).

@@ -1,0 +1,222 @@
+{
+  "source_commit": "425539385ebfcd1ca2bab1befe3de37618ce02d2",
+  "date": "2026-11-02 Asia/Shanghai",
+  "historical_csv_sha256": "d2b5f41a44794c05ddf86d084f74fbac49d44438ec5c69b042086f60240ff302",
+  "historical_records": 257,
+  "current_records": 80,
+  "current_ownership": {
+    "first_party_runtime_src": 0,
+    "first_party_tests": 14,
+    "dependencies": 66
+  },
+  "codeql_cpp_exact_prior_rule_uri_line_message_match": 65,
+  "codeql_actions_records": 0,
+  "prefast_records": 15,
+  "prefast_rows": [
+    {
+      "rule": "C6262",
+      "source_uri": "tests/state_tests.cpp",
+      "line": 18705,
+      "message": "Function uses '275284' bytes of stack.  Consider moving some data to heap.",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26498",
+      "source_uri": "tests/state_tests.cpp",
+      "line": 19312,
+      "message": "The function 'std::numeric_limits<float>::quiet_NaN' is constexpr, mark variable 'nan' constexpr if compile-time evaluation is desired (con.5).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26498",
+      "source_uri": "tests/state_tests.cpp",
+      "line": 19313,
+      "message": "The function 'std::numeric_limits<float>::infinity' is constexpr, mark variable 'inf' constexpr if compile-time evaluation is desired (con.5).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C6262",
+      "source_uri": "tests/state_tests.cpp",
+      "line": 45051,
+      "message": "Function uses '19136' bytes of stack.  Consider moving some data to heap.",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 1625,
+      "message": "Variable 'testForcedSwapNoDropout::Scenario::name' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 1625,
+      "message": "Variable 'testForcedSwapNoDropout::Scenario::minRatio' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 1747,
+      "message": "Variable 'testRapidForcedSwapDryFill::Case::s2at' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 1747,
+      "message": "Variable 'testRapidForcedSwapDryFill::Case::assertSwap2Silent' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 1747,
+      "message": "Variable 'testRapidForcedSwapDryFill::Case::name' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 1747,
+      "message": "Variable 'testRapidForcedSwapDryFill::Case::assertSwap2Present' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26498",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 3785,
+      "message": "The function 'std::numeric_limits<float>::min' is constexpr, mark variable 'fltMin' constexpr if compile-time evaluation is desired (con.5).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26498",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 3945,
+      "message": "The function 'std::numeric_limits<float>::min' is constexpr, mark variable 'fltMin' constexpr if compile-time evaluation is desired (con.5).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C6262",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 7537,
+      "message": "Function uses '20528' bytes of stack.  Consider moving some data to heap.",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "tests/dsp_tests.cpp",
+      "line": 14170,
+      "message": "Variable 'runForcedSwapAuditProbe::Case::name' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain test-harness observation; current native stack/runtime gates pass; no runtime src finding or suppression justified"
+    },
+    {
+      "rule": "C26495",
+      "source_uri": "build/_deps/juce-src/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp",
+      "line": 1826,
+      "message": "Variable 'juce::JuceVST3EditController::EditorContextMenu::getEquivalentPopupMenu::Submenu::enabled' is uninitialized. Always initialize a member variable (type.6).",
+      "disposition": "Retain dependency observation; severity/reachability unassessed"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact": 13088135851,
+      "zip_sha256": "9fe695331c94d45e7e94af78c25688ca2aea902044a12999eef81a4fb19dfa0d",
+      "files": [
+        {
+          "entry": "cpp.sarif",
+          "results": 65,
+          "rules": {
+            "cpp/comparison-with-wider-type": 1,
+            "cpp/unsafe-use-of-this": 1,
+            "cpp/alloca-in-loop": 7,
+            "cpp/integer-multiplication-cast-to-long": 56
+          },
+          "primary_uri_counts": {
+            "build/_deps/juce-src/modules/juce_gui_basics/native/juce_XWindowSystem_linux.cpp": 1,
+            "build/_deps/juce-src/modules/juce_events/interprocess/juce_InterprocessConnection.cpp": 1,
+            "build/_deps/juce-src/modules/juce_audio_devices/native/juce_ALSA_linux.cpp": 1,
+            "build/_deps/juce-src/modules/juce_audio_devices/native/juce_Midi_linux.cpp": 2,
+            "build/_deps/juce-src/modules/juce_audio_formats/codecs/vorbis/lib/vorbisfile.c": 3,
+            "build/_deps/juce-src/modules/juce_graphics/geometry/juce_EdgeTable.cpp": 1,
+            "build/_deps/juce-src/modules/juce_audio_basics/mpe/juce_MPEInstrument.cpp": 1,
+            "build/_deps/juce-src/modules/juce_audio_formats/codecs/flac/libFLAC/lpc_flac.c": 1,
+            "build/_deps/juce-src/modules/juce_audio_formats/codecs/vorbis/lib/envelope.c": 1,
+            "build/_deps/juce-src/modules/juce_audio_formats/codecs/vorbis/lib/psy.c": 5,
+            "build/_deps/juce-src/modules/juce_audio_formats/codecs/vorbis/lib/vorbisenc.c": 2,
+            "build/_deps/juce-src/modules/juce_audio_utils/gui/juce_AudioThumbnail.cpp": 1,
+            "build/_deps/juce-src/modules/juce_core/zip/zlib/zutil.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/fonts/harfbuzz/hb-ot-layout-common.hh": 2,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/jpglib/jdmainct.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/dec/alpha_dec.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/dec/frame_dec.c": 2,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/alpha_enc.c": 2,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/analysis_enc.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/backward_references_enc.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/histogram_enc.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/utils/palette.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/utils/quant_levels_dec_utils.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/utils/quant_levels_utils.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/predictor_enc.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/quant_enc.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/vp8l_enc.c": 1,
+            "build/_deps/juce-src/modules/juce_graphics/image_formats/libwebp/src/enc/webp_enc.c": 2,
+            "build/_deps/juce-src/modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-stb-image.h": 9,
+            "build/_deps/juce-src/modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-stb-truetype.h": 4,
+            "build/_deps/juce-src/modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-stb-image-write.h": 5,
+            "build/_deps/juce-src/modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-surface.c": 2,
+            "build/_deps/juce-src/modules/juce_graphics/fonts/harfbuzz/OT/glyf/glyf-helpers.hh": 1,
+            "build/_deps/juce-src/modules/juce_gui_basics/widgets/juce_Slider.cpp": 1,
+            "build/_deps/juce-src/modules/juce_graphics/fonts/harfbuzz/hb-ot-kern-table.hh": 1,
+            "build/_deps/juce-src/modules/juce_graphics/fonts/harfbuzz/hb-open-type.hh": 1,
+            "build/_deps/juce-src/modules/juce_gui_extra/code_editor/juce_CodeEditorComponent.cpp": 1
+          }
+        }
+      ]
+    },
+    {
+      "artifact": 13086947588,
+      "zip_sha256": "8d9bb531a36c22d11aa015d863d3036520a6843dab98580ce68c543256f3ce15",
+      "files": [
+        {
+          "entry": "actions.sarif",
+          "results": 0,
+          "rules": {},
+          "primary_uri_counts": {}
+        }
+      ]
+    },
+    {
+      "artifact": 13087802363,
+      "zip_sha256": "5d84097173f59c4d5f8d20097970334086fd21f5cfb8e257a7184c86d2811806",
+      "files": [
+        {
+          "entry": "results.sarif",
+          "results": 15,
+          "rules": {
+            "C6262": 3,
+            "C26498": 4,
+            "C26495": 8
+          },
+          "primary_uri_counts": {
+            "file:///D:/a/Anamorph/Anamorph/tests/state_tests.cpp": 4,
+            "file:///D:/a/Anamorph/Anamorph/tests/dsp_tests.cpp": 10,
+            "file:///D:/a/Anamorph/Anamorph/build/_deps/juce-src/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp": 1
+          }
+        }
+      ]
+    }
+  ],
+  "alert_state": {
+    "status": "unavailable",
+    "http": 403,
+    "reason": "Resource not accessible by integration",
+    "route": "gh api; connector fetch endpoint unsupported (HTTP400), not an alert query result"
+  },
+  "limitations": [
+    "Reported diagnostic rows are not bugs, open-alert counts or proof of vulnerability absence",
+    "Native heap fixture changes reduce test stack diagnostics; one remaining inline State36 authoring fixture reports275284 bytes, below unchanged1MB runtime stack cap; estimate is not a runtime measurement",
+    "Current target final-head analyzer evidence remains required for subsequent PRs"
+  ]
+}

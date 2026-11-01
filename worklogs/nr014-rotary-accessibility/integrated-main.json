@@ -1,0 +1,152 @@
+{
+  "as_of": "2026-11-01 16:15:21 UTC",
+  "main": "425539385ebfcd1ca2bab1befe3de37618ce02d2",
+  "tree": "042265b5dc588556a3c83f46d553217a81d326cb",
+  "validated_candidate": "ddc48792baded089618f55701018c9fd6af2b2cc",
+  "merges": {
+    "199": "303d37c3b6d469d4c0a67231b19a9a3dcbfb9e1b",
+    "200": "54da68e754c91b61605e98ea0e53ac02a97acf91",
+    "201": "7c007e7c4f41a0663ea2af2274e784d4d5b9efa1",
+    "202": "425539385ebfcd1ca2bab1befe3de37618ce02d2",
+    "203": "9217fbbff36bcc3ba0c0617aea1525038cd93368"
+  },
+  "workflow_runs": [
+    {
+      "id": 41315639676,
+      "name": "Build & Validate",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 41315639638,
+      "name": "Microsoft C++ Code Analysis",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 41315639648,
+      "name": "CodeQL Advanced",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "build_jobs": [
+    {
+      "id": 124875144150,
+      "name": "windows",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144278,
+      "name": "realtime",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144326,
+      "name": "windows-avx2-ab",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144340,
+      "name": "fuzz",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144341,
+      "name": "macos",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144350,
+      "name": "docs",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144354,
+      "name": "linux-lto-tests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144366,
+      "name": "macos-crossslice",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144383,
+      "name": "linux",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144402,
+      "name": "sanitizers",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144437,
+      "name": "tsan",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144467,
+      "name": "source-lint",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875144502,
+      "name": "macos-intel",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124875145049,
+      "name": "macos-review-coinstallation",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 124875145455,
+      "name": "macos-review-selections",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 124875187105,
+      "name": "merge-check",
+      "status": "completed",
+      "conclusion": "skipped"
+    }
+  ],
+  "memcheck": {
+    "artifact_id": 13087303676,
+    "zip_sha256": "7d3bbd60c373c526f04b808a427dfe331f8298054dd5ca8889e4004cfa04bc14",
+    "dsp": {
+      "state": "completed",
+      "exit_code": 0,
+      "checks": 934,
+      "failures": 0,
+      "errors": 0
+    },
+    "state": {
+      "state": "completed",
+      "exit_code": 0,
+      "checks": 10987,
+      "failures": 0,
+      "errors": 0
+    }
+  }
+}

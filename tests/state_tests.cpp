@@ -45918,6 +45918,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "p1_resolution_tests.h"
 #include "ab_undo_tests.h"
 #include "scope_snapshot_tests.h"
+#include "gui_accessibility_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45932,6 +45933,13 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--gui-accessibility-probe") == 0)
+    {
+        testRotaryAccessibilityMetadataAndKeyboard();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--scope-snapshot-probe") == 0)
     {
@@ -46240,6 +46248,7 @@ int main (int argc, char* argv[])
     testHostAdvancedModeWritesWithTheRealEditor();
     testScopeSnapshotPublication();
     testScopeSnapshotConcurrency();
+    testRotaryAccessibilityMetadataAndKeyboard();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

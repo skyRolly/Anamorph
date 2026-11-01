@@ -1,5 +1,32 @@
 # NR-017 — Static diagnostic baseline and dispositions
 
+## Current integrated-main delta — 2026-11-02 (Asia/Shanghai)
+
+The historical 257-record CSV below remains unchanged and source-scoped to`4c13688`.
+Actual integrated main`4255393` has **80 raw diagnostic records** in digest-verified
+current-head artifacts: CodeQL C++65 (all exactly match the prior rule/URI/line/
+message), Actions0, PREfast15. Primary locations split14 first-party tests /
+66 dependencies /0 first-party runtime source. This is a row inventory, not a bug,
+severity or open-alert count. [Current artifacts, hashes and PREfast rows](nr014-rotary-accessibility/current-analyzer-delta.json).
+
+PREfast retains three C6262 test stack estimates, four constexpr suggestions and
+eight initialization observations (seven test, one dependency). Existing scoped
+heap fixtures eliminate most prior test stack reports; this does not establish177
+fixed product defects. One remaining inline `authoring` processor in State36
+accounts for its 275284-byte estimate; other estimates are19136/20528. All are below
+the unchanged 1 MB runtime stack cap, and native full-suite gates pass. Keep these
+bounded harness observations unless a gate/recurrence demonstrates a need; no
+assertion, diagnostic, baseline or detector is suppressed. Existing test aggregate/
+explicit field assignments and the prior dependency caveat remain the disposition
+basis for initializer/constexpr reports; no first-party runtime defect is asserted.
+
+The connector fetch route does not support the alert endpoint (HTTP400 validation,
+not a GitHub alert result); direct authorized GitHub CLI refresh returns **HTTP403**,
+“Resource not accessible by integration.” Alert state remains unavailable. Analyzer
+success and the smaller row count do not imply zero open alerts or security clearance.
+Subsequent PRs require their own actual-head analyzers. Dated baseline/review details
+below preserve their original scope.
+
 **Recorded:** 2026-10-31 (Asia/Shanghai). **Status:** Completed inventory; review PR
 pending integration. This is an engineering evidence inventory, not a zero-defect
 claim or a vulnerability/severity assessment. Canonical progress is in

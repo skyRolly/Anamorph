@@ -1,0 +1,60 @@
+{
+  "baseline": "425539385ebfcd1ca2bab1befe3de37618ce02d2",
+  "baseline_editor_sha256": "544d14ffeb4198ef0ab9f9d3965bb599e873a2524faecbadd49156d92e66ed48",
+  "current_sha256": {
+    "src/PluginEditor.cpp": "e7d2e26d5ca0c0e47832cb907031a60b23dd897da370ad5823e4834c68c957e6",
+    "tests/state_tests.cpp": "2e1f1090372fa61b7511899fe5df589ff21a1f127bc590742afde4cd4e0bf3f7",
+    "tests/gui_accessibility_tests.h": "7a40bf365524bc4316c6e2fbbf6cfed6b75f1b3f6ebed9ad4fe57c4e6f19a45a"
+  },
+  "results": {
+    "original": {
+      "exit": 1,
+      "checks": 924,
+      "failures": 36,
+      "failed_assertions": [
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption",
+        "[FAIL] GUI metadata: rotary accessibility title matches its existing caption"
+      ]
+    },
+    "corrected": {
+      "exit": 0,
+      "checks": 924,
+      "failures": 0,
+      "failed_assertions": []
+    }
+  }
+}

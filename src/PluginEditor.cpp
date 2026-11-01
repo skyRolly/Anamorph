@@ -836,7 +836,7 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
     // (the draggable/raw-editing ValueBox) -- reparenting doesn't recreate it,
     // which is why drag/edit "didn't take" (feedback #28/#29).
     s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 15);
-
+    s.setTitle (name); // Reuse the visible caption for accessibility metadata.
     l.setText (name, juce::dontSendNotification);
     l.setJustificationType (juce::Justification::centred);
     l.setColour (juce::Label::textColourId, colours::textDim);

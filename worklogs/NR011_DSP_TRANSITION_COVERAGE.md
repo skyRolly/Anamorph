@@ -1,9 +1,20 @@
 # NR-011 — Differential DSP transition coverage
 
+## Integrated coverage checkpoint — 2026-11-02 (Asia/Shanghai)
+
+Owner-reviewed #200 merged at `54da68e754c91b61605e98ea0e53ac02a97acf91`.
+Synchronized head`91e7850` and actual final main`4255393` passed selected current
+CI; local legacy and transition dumps exactly match retained action-fixed outputs.
+All 57 isolated action controls and five compiled mutants are preserved. This
+bounded NR-011 increment is completed/integrated. The baseline and pending-review
+statements below retain their original date/source scope; no new sonic behavior,
+numerical contract or release artifact change is inferred. See the live
+[execution register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
 **Date:** 2026-11-01 (Asia/Shanghai).
 **Baseline:** integrated main `00de8c7796f37d08a338256e01830bb312ba105c`.
-**Status:** implemented / Ready for Review; final-head native CI and human review
-remain separate. No production DSP/latency/threading behavior changed.
+**Status:** Completed / integrated via #200, with native CI and owner review complete
+for the recorded increment. No production DSP/latency/threading behavior changed.
 
 ## Problem and selected scope
 
