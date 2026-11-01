@@ -667,11 +667,11 @@ jobs:
       - name: pluginval acquisition offline regressions
         run: python3 scripts/test-pluginval-acquisition.py
 
-      - name: DSP dump parser and comparison regressions (inert text)
-        run: python3 scripts/check-dsp-dump.py --self-test
-
       - name: Memcheck runner overlap and failure propagation controls
         run: python3 scripts/run-memcheck.py --self-test
+
+      - name: DSP dump parser and comparison regressions (inert text)
+        run: python3 scripts/check-dsp-dump.py --self-test
 
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
