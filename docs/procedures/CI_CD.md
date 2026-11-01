@@ -156,6 +156,22 @@ validation evidence retain their original provenance and are not rewritten as lo
 
 ## Windows DSP dump validation
 
+NR-011 adds a separate `--transitions` instrument mode and
+`check-dsp-dump.py ab --suite transitions` comparison after the original A/B gate.
+Five deterministic transition records carry audio hash, final engine latency and
+before/after-block engine-latency trace hash. Invalid records fail INFRASTRUCTURE;
+audio differences fail NUMERICAL; final/trace latency differences fail
+TRANSITION_LATENCY. The existing A/B executables, toolset/flag liveness and
+same-machine scope are reused. Optional C compares both suites informationally.
+Raw `d-transitions-*.txt` and separate `dsp-dump-transitions-*.json` are retained
+by the existing artifact patterns, including on failure. No legacy 32-row/JSON
+schema or warning-only legacy latency rule is changed.
+
+The instrument always runs its five transition repeatability/inert/sample/latency
+controls, silently on the legacy path. Existing GCC/macOS dump self-check callers
+therefore exercise them too. The parser's same-job inert self-test includes the
+new fixture, malformed/mixed suites and a metadata-bypass mutant before use.
+
 `windows-avx2-ab` invokes `scripts/check-dsp-dump.py ab` on the raw A/B output from
 the existing `tests/dsp_dump.cpp` instrument. The helper's `--self-test` runs in
 that same Windows job before builds/comparison, and in `source-lint` and local
@@ -520,7 +536,8 @@ edge above must not be read as release non-blocking.
   the **GCC-only first-party warning gate** (§The GCC warning baseline), and the liveness builds of
   the two committed instruments: `AnamorphBench` (built and smoke-run, no timing asserted) and, since
   2026-08-21, `AnamorphDspDump` (built and run with `--self-check`, which asserts its 32 scenarios are
-  repeatable and mutually distinct and exits 3 if not). Both are compiled here by the container's
+  repeatable and mutually distinct and exits 3 if not; NR-011 additionally runs five
+  silent transition controls on this existing entry point). Both are compiled here by the container's
   **g++ 16**, not by the Clang that builds the shipped artifact — the `linux` job covers that half
   with a `-fsyntax-only` compile of both translation units under the pinned Clang, so a Clang-only
   break in either still fails a gate.

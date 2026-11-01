@@ -317,6 +317,71 @@ failure remains failed. Existing 0.10.0 tag/draft/11 assets/version are untouche
 post-tag NR-022 and new test work are not in those assets. NR-006's publication
 mitigation/risk review remains separate from the implementation approval.
 
+## Historical #200 action-control review correction — 2026-11-01 (Asia/Shanghai)
+
+Accepted the reported aggregate-oracle finding: comparing the complete action
+schedule with an inert projection does not prove each action matters. Added 57
+independent omission replays with unrelated actions and inputs preserved: 54
+require changed audio, three masked parameter writes require changed actual
+engine adoption without claiming audibility. Granularity is one phase/field,
+crossover ramp segment or reset/transport edge; repeated holds/input epochs are
+not counted. A final stop and edge-only transport calls expose resume effects.
+Legacy 32-row output, record schemas, comparator/latency gates and production
+inputs are preserved. See [NR-011](NR011_DSP_TRANSITION_COVERAGE.md) for the census,
+compiled negative controls and new source/evidence identities. Five individual
+mutants pass the aggregate-only oracle and fail the new named controls.
+Local repeated/no-ISA transition comparisons and legacy byte-preservation checks
+pass, as do parser162, docs700/180 files, citation276/610 anchors, tables/links and
+whitespace. Exact source/log identities are retained in the NR-011 review evidence.
+
+Current dependency order: main ← #199 ← #202, main ← #203 ← #201; #200 is
+independent on main. This correction inherits no unrelated implementation. All
+new PRs remain open/unmerged; prior `104f60e` CI is historical and the discussion
+tracks corrected-head validation. NR-003 remains Deferred. NR-006 architecture
+is already Accepted; its representative cost/native visual/implementation gates
+remain. GCC14 ABI failure, code-scanning alert-state 403 and unchanged 0.10.0
+release objects retain their limitations. No new batch or merge is authorized.
+
+## Historical authorization / independent NR-011 batch — 2026-11-01 (Asia/Shanghai)
+
+The owner explicitly authorized merging #195–#198 and continuing NR-006 research
+and independent roadmap work. The four are **Merged / Integrated**, in order:
+#195 `3df74eab68de85cc3db897b551da7333d9868d3d`,
+#196 `49958aed942a2e5eefb602e151d4d8c2ac461c41`,
+#197 `e426cc2f79e3416591ac153c053020d79972b8f6`,
+#198 `00de8c7796f37d08a338256e01830bb312ba105c`.
+Each actual main tree equaled its reviewed head, and all four heads remain
+ancestors of final main `00de8c7` (tree equals #198 `42ebbbc`). Exact-head mandatory
+push/PR gates passed before merge; new main CI is separate evidence. Fresh local
+integrated suites pass **945 DSP / 10,953 state**. Historical pending-merge
+checkpoints below are superseded, not claims about current integration status.
+
+**Priority update:** NR-006 architecture investigation is first/P1 as requested.
+The owner accepted ADR-0070 in [PR #199](https://github.com/skyRolly/Anamorph/pull/199).
+The selected generation-validated atomic stereo windows/serialized-GUI affinity
+are implemented separately in [#202](https://github.com/skyRolly/Anamorph/pull/202).
+Architecture selection is complete; implementation, representative cost/native
+visual acceptance and merge authorization remain gates. Main/this independent test
+branch retain original ScopeBuffer blob `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+
+**NR-011: implemented / Ready for Review.** This independent branch starts from
+verified main `00de8c7`; it does not depend on the #199/#202 architecture lane. Added five
+bounded transition cases, separate audio/final-engine-latency/latency-trace evidence,
+inert/sample/latency controls and an explicit parser suite. Default 32-row output
+is byte-identical to the pre-change instrument. The Windows comparison adds a
+separate transition A/B gate with optional C; existing GCC/macOS dump self-checks
+exercise silent transition controls. No production DSP or threading change.
+Detailed validation/limits: [NR011_DSP_TRANSITION_COVERAGE.md](NR011_DSP_TRANSITION_COVERAGE.md).
+Native final-head CI and human PR review remain separate; no later PR merge is authorized.
+
+NR-003 stays Deferred; recurrence-triggered NR-004/005/007 remain deferred.
+NR-010 still needs controlled identified hardware, NR-013 a pinned REAPER
+reproducer, NR-018/019 owner/legal/provisioning. NR-017's unavailable GitHub alert
+state remains unknown. The historical GCC14 ABI preflight failure is not repaired
+or waived by these tests. Existing 0.10.0 tag/draft/11 assets/version are unchanged;
+NR-022 and this batch are post-tag development. NR-006 publication mitigation/
+human risk disposition remains separate from earlier manual/ADR approvals.
+
 ## Historical review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
 **Integration gate:** all four PRs remain open and unmerged. No auto-merge, release
@@ -817,8 +882,8 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
 | NR-010 | P2 | Pending | CPU/peak/memory budget — measure | 2 / engineering baseline |
-| NR-011 | P2 | Ready for Review / #200 open | Five transition scenarios and latency evidence; complete exact-head matrix/analyzers pass, new merge unauthorized | 2 / independent test batch |
-| NR-012 | P3 | Investigated / #201 open | Retain assertions; now depends on #203 for completed CI scheduling, fresh exact-head validation required; broader quality grid unmeasured | 2 / bounded DSP study |
+| NR-011 | P2 | Implemented / integration approved | #200 synchronized on #199 for exact-candidate CI; 57 action controls and all legacy/schema gates retained | 2 / approved integration |
+| NR-012 | P3 | Completed / integrated | #201 merged at `7c007e7`; retain behavioral assertions, no universal quality/monotonicity claim | 2 / bounded study complete |
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
@@ -915,7 +980,7 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 with [research evidence](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
 The owner explicitly approved generation-validated atomic stereo windows for
 implementation. #202 implements the selected contract on #199; both remain unmerged.
-Main retains the original mechanism until separately authorized integration.
+Main retains the original mechanism until approved #202 is actually merged.
 Native verification, representative cost evidence and targeted visual acceptance
 are implementation gates, not a pending architecture-selection decision.
 
@@ -1002,6 +1067,11 @@ are implementation gates, not a pending architecture-selection decision.
   required.** Phase 2; future optimization depends on this, not vice versa.
 
 ### NR-011 — Extend differential DSP coverage beyond steady state
+
+**2026-11-01 execution:** implemented in the independent transition-test branch;
+[execution evidence](NR011_DSP_TRANSITION_COVERAGE.md). The original scope below
+remains the acceptance basis. Native CI and human PR review are not inferred from
+local same-configuration results; new PR merge permission is still required.
 
 - **Evidence/status/confidence:** Verified gap: `tests/dsp_dump.cpp`, TESTING §Gaps, ADR-0032.
   Current 32-scenario dump primarily measures engaged steady state; existing behavior tests do
@@ -1383,8 +1453,8 @@ No candidate was installed on a live workstation. No defect ownership is inferre
 location, TSan silence, runner success or a diagnostic timeout.
 
 NR-001/002 are now closed by explicit owner confirmation. The named host scope/matrix (NR-003)
-is Deferred. NR-006's publication contract is Accepted in ADR-0070; its unmerged
-implementation still needs native/cost/visual acceptance and merge authorization.
+is Deferred. NR-006's publication contract is Accepted; #202 integration is now
+explicitly approved, with representative cost/native visual acceptance still open.
 Remaining decisions include
 additional parser restrictions/coherent multiband model only if selected (NR-008/009), and public/
 commercial/signing/product choices (NR-018/019/020). A current supported-host failure would change

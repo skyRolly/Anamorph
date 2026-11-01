@@ -1,0 +1,8 @@
+dsp-dump transition self-check passed: 5 scenarios, all repeatable and discriminating.
+# AnamorphDspDump transitions -- 48000 Hz, 128-sample blocks, 256 blocks
+# scenario fnv1a-64 latency latency-trace-fnv1a-64
+transition-bypass-mix 0000000000000001 4 1111111111111111
+transition-algorithm-os 0000000000000002 0 2222222222222222
+transition-crossover 0000000000000003 0 3333333333333333
+transition-solo-bands 0000000000000004 0 4444444444444444
+transition-reset-idle 0000000000000005 0 5555555555555555

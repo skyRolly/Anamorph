@@ -52,6 +52,10 @@ implementation subject to native portability/performance/validation gates. Its
 production implementation/effectivity and any new PR merge remain separate.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
+The [NR-011 execution record](../worklogs/NR011_DSP_TRANSITION_COVERAGE.md) supports
+the additive transition instrument; it does not expand cross-platform numerical
+compatibility or authorize the separate NR-006 production architecture.
+
 The [NR-012 alias study](../worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md) and raw
 measurement data are bounded developer evidence, not new DSP quality requirements
 or manual/architecture/release acceptance.

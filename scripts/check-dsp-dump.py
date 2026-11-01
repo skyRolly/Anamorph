@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Validate current DSP dump records, then apply ADR-0032's Windows hash gate.
+"""Validate DSP dump records and compare the explicitly selected suite.
 
 Only text is read. The DSP scenario generator remains tests/dsp_dump.cpp.
-Latency is retained and compared as separate metadata; C is informational.
+Legacy latency is warning-only metadata; NR-011 transition latency is separately
+blocking in A/B. C remains informational for both suites.
 Run --self-test before use in each job (TESTING_POLICY rule 4).
 """
 
@@ -24,6 +25,10 @@ EXPECTED_SCENARIOS = frozenset(
     for factor in ("os1", "os2", "os4", "os8")
     for mode in ("lr", "ms")
 )
+TRANSITION_SCENARIOS = frozenset((
+    "transition-bypass-mix", "transition-algorithm-os", "transition-crossover",
+    "transition-solo-bands", "transition-reset-idle",
+))
 HASH = re.compile(r"[0-9a-fA-F]{16}")
 LATENCY = re.compile(r"[0-9]+")
 # The harness emits latency with %d from a C++ int on the supported targets.
@@ -36,29 +41,38 @@ HEADERS = (
                r"[0-9]+\s+silence\s+blocks"),
     re.compile(r"#\s+scenario\s+fnv1a-64\s+latency"),
 )
+TRANSITION_HEADERS = (
+    re.compile(r"dsp-dump transition self-check passed: 5 scenarios, all repeatable and discriminating\."),
+    re.compile(r"# AnamorphDspDump transitions -- 48000 Hz, 128-sample blocks, 256 blocks"),
+    re.compile(r"# scenario fnv1a-64 latency latency-trace-fnv1a-64"),
+)
 
 
 class InvalidDump(ValueError):
     """An input cannot support any numerical verdict."""
 
 
-def parse_dump(text: str) -> dict[str, dict]:
+def parse_dump(text: str, suite: str = "steady") -> dict[str, dict]:
+    expected = TRANSITION_SCENARIOS if suite == "transitions" else EXPECTED_SCENARIOS
+    headers = TRANSITION_HEADERS if suite == "transitions" else HEADERS
+    fields_required = 4 if suite == "transitions" else 3
     records: dict[str, dict] = {}
     for number, raw in enumerate(text.replace("\r\n", "\n").replace("\r", "\n").split("\n"), 1):
         line = raw.strip()
-        if not line or any(header.fullmatch(line) for header in HEADERS):
+        if not line or any(header.fullmatch(line) for header in headers):
             continue
         fields = line.split()
         scenario = fields[0]
         location = f"line {number}, scenario {scenario!r}"
-        if scenario not in EXPECTED_SCENARIOS:
+        if scenario not in expected:
             raise InvalidDump(f"{location}: unknown scenario or unsupported output: {raw!r}")
         if scenario in records:
             raise InvalidDump(f"{location}: duplicate identity (first at line "
                               f"{records[scenario]['line']}); duplicates are ambiguous")
-        if len(fields) != 3:
-            raise InvalidDump(f"{location}: expected exactly scenario, 16-hex hash and latency; "
-                              f"got {len(fields)} fields: {raw!r}")
+        if len(fields) != fields_required:
+            description = "scenario, 16-hex hash and latency" + (", plus 16-hex latency trace" if suite == "transitions" else "")
+            raise InvalidDump(f"{location}: expected exactly {description}; "
+                              f"got {len(fields)} fields (required {fields_required} for {suite}): {raw!r}")
         if not HASH.fullmatch(fields[1]):
             raise InvalidDump(f"{location}: invalid 16-hex hash {fields[1]!r}")
         token = fields[2]
@@ -71,30 +85,35 @@ def parse_dump(text: str) -> dict[str, dict]:
         if len(digits) > 10 or (len(digits) == 10 and digits > str(MAX_LATENCY)):
             raise InvalidDump(f"{location}: latency overflows the harness int (max {MAX_LATENCY})")
         records[scenario] = {"hash": fields[1].lower(), "latency": int(digits), "line": number}
-    missing = sorted(EXPECTED_SCENARIOS - records.keys())
+        if suite == "transitions":
+            if not HASH.fullmatch(fields[3]):
+                raise InvalidDump(f"{location}: invalid 16-hex latency trace {fields[3]!r}")
+            records[scenario]["latency_trace"] = fields[3].lower()
+    missing = sorted(expected - records.keys())
     if missing:
         raise InvalidDump("missing scenarios: " + ", ".join(missing))
     return records
 
 
-def read_dump(path: Path, label: str) -> tuple[dict, str | None]:
+def read_dump(path: Path, label: str, suite: str = "steady") -> tuple[dict, str | None]:
     evidence = {"path": str(path), "sha256": None, "valid": False,
                 "record_count": None, "records": None}
     try:
         raw = path.read_bytes()
         evidence["sha256"] = hashlib.sha256(raw).hexdigest()
-        records = parse_dump(raw.decode("utf-8-sig"))
+        records = parse_dump(raw.decode("utf-8-sig"), suite)
     except (OSError, UnicodeError, InvalidDump) as error:
         return evidence, f"{label} ({path}): {error}"
     evidence.update(valid=True, record_count=len(records), records=records)
     return evidence, None
 
 
-def assess(mode: str, left: Path, right: Path) -> dict:
+def assess(mode: str, left: Path, right: Path, suite: str = "steady") -> dict:
+    expected = TRANSITION_SCENARIOS if suite == "transitions" else EXPECTED_SCENARIOS
     labels = ("A", "B") if mode == "ab" else ("B", "C")
     inputs, errors = {}, []
     for label, path in zip(labels, (left, right)):
-        inputs[label], error = read_dump(path, label)
+        inputs[label], error = read_dump(path, label, suite)
         if error:
             errors.append(error)
     result = {"schema_version": 1, "mode": mode, "inputs": inputs,
@@ -104,25 +123,34 @@ def assess(mode: str, left: Path, right: Path) -> dict:
               "latency": {"status": "NOT_COMPARED", "compared_scenarios": None, "differences": []},
               "errors": errors if mode == "ab" else [],
               "warnings": errors if mode == "c" else []}
+    fields = [("hash", "hashes"), ("latency", "latency")]
+    if suite == "transitions":
+        result.update(schema_version=2, suite=suite,
+                      latency_trace={"status": "NOT_COMPARED", "compared_scenarios": None, "differences": []})
+        fields.append(("latency_trace", "latency_trace"))
     if errors:
         return result
-    for field, output in (("hash", "hashes"), ("latency", "latency")):
+    for field, output in fields:
         differences = [
             {"scenario": name, labels[0]: inputs[labels[0]]["records"][name][field],
              labels[1]: inputs[labels[1]]["records"][name][field]}
-            for name in sorted(EXPECTED_SCENARIOS)
+            for name in sorted(expected)
             if inputs[labels[0]]["records"][name][field] != inputs[labels[1]]["records"][name][field]
         ]
         result[output] = {"status": ("DIFFERENT" if differences else
                                      "IDENTICAL" if field == "hash" else "EQUAL"),
-                          "compared_scenarios": len(EXPECTED_SCENARIOS), "differences": differences}
+                          "compared_scenarios": len(expected), "differences": differences}
     mismatch = bool(result["hashes"]["differences"])
-    result.update(classification=("NUMERICAL" if mismatch else "IDENTICAL") if mode == "ab"
-                  else "INFORMATIONAL", exit_code=1 if mode == "ab" and mismatch else 0)
+    metadata_mismatch = suite == "transitions" and bool(
+        result["latency"]["differences"] or result["latency_trace"]["differences"])
+    result.update(classification=("NUMERICAL" if mismatch else "TRANSITION_LATENCY" if metadata_mismatch
+                                  else "IDENTICAL") if mode == "ab" else "INFORMATIONAL",
+                  exit_code=1 if mode == "ab" and (mismatch or metadata_mismatch) else 0)
     for row in result["latency"]["differences"]:
-        result["warnings"].append(
-            f"METADATA: {row['scenario']} reported latency {labels[0]}={row[labels[0]]}, "
-            f"{labels[1]}={row[labels[1]]}; separate from ADR-0032 hash equality")
+        if not (suite == "transitions" and mode == "ab"):
+            result["warnings"].append(
+                f"METADATA: {row['scenario']} reported latency {labels[0]}={row[labels[0]]}, "
+                f"{labels[1]}={row[labels[1]]}; separate from ADR-0032 hash equality")
     return result
 
 
@@ -143,11 +171,23 @@ def messages(result: dict) -> list[str]:
                    f"{labels[1]}={row[labels[1]]}")
         lines.append(annotation("error", "NUMERICAL: " + message) if result["mode"] == "ab"
                      else "informational C: " + message)
+    if result.get("suite") == "transitions":
+        for field in ("latency", "latency_trace"):
+            if field == "latency" and result["mode"] == "c":
+                continue  # Already retained/emitted as the metadata warning above.
+            for row in result[field]["differences"]:
+                message = (f"{row['scenario']}: {field} {labels[0]}={row[labels[0]]}, "
+                           f"{labels[1]}={row[labels[1]]}")
+                lines.append(annotation("error", "TRANSITION_LATENCY: " + message) if result["mode"] == "ab"
+                             else annotation("warning", "informational C: " + message))
     count = result["hashes"]["compared_scenarios"]
     lines.append(f"{prefix}{'/'.join(labels)} hashes {result['hashes']['status']}: "
                  f"{len(result['hashes']['differences'])}/{count} scenario hashes differ; "
                  f"latency metadata {result['latency']['status']}: "
                  f"{len(result['latency']['differences'])}/{count} scenarios differ.")
+    if result.get("suite") == "transitions":
+        lines.append(f"{prefix}transition latency trace {result['latency_trace']['status']}: "
+                     f"{len(result['latency_trace']['differences'])}/{count} scenarios differ.")
     return lines
 
 
@@ -178,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--right", type=Path, required=True)
         command.add_argument("--report", type=Path, required=True)
         command.add_argument("--summary", type=Path)
+        command.add_argument("--suite", choices=("steady", "transitions"), default="steady")
     args = parser.parse_args(argv)
     if args.self_test:
         return self_test()
@@ -192,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
         prefix = "INFRASTRUCTURE" if args.mode == "ab" else "informational C"
         print(annotation(level, f"{prefix}: unsafe evidence paths: {error}"))
         return 2 if args.mode == "ab" else 0
-    result = assess(args.mode, args.left, args.right)
+    result = assess(args.mode, args.left, args.right, args.suite)
     lines = messages(result)
     try:
         args.report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -238,7 +279,7 @@ def self_test() -> int:
         root = Path(directory)
 
         def run(left: str | bytes, right: str | bytes | None, mode: str = "ab",
-                script: Path = helper) -> tuple[subprocess.CompletedProcess, dict]:
+                script: Path = helper, suite: str = "steady") -> tuple[subprocess.CompletedProcess, dict]:
             nonlocal cases
             cases += 1
             a, b, report = root / "left.txt", root / "right.txt", root / "result.json"
@@ -248,7 +289,7 @@ def self_test() -> int:
             else:
                 b.write_bytes(right.encode("utf-8") if isinstance(right, str) else right)
             process = subprocess.run([sys.executable, str(script), mode, "--left", str(a),
-                                      "--right", str(b), "--report", str(report)],
+                                      "--right", str(b), "--report", str(report), "--suite", suite],
                                      capture_output=True, text=True, timeout=15)
             result = json.loads(report.read_text(encoding="utf-8"))
             assert process.returncode == result["exit_code"], (process, result)
@@ -470,8 +511,70 @@ def self_test() -> int:
             result = json.loads(report.read_text(encoding="utf-8"))
             assert process.returncode == result["exit_code"] == code and f"::{level}::" in process.stdout, process
             assert result["classification"] == ("INFRASTRUCTURE" if mode == "ab" else "INFORMATIONAL_UNAVAILABLE"), result
+        # NR-011's independent text fixture is not generated by the DSP tool.
+        transient = (helper.parent / "fixtures" / "dsp-dump" / "transitions.txt").read_text(encoding="utf-8")
+        transient_rows = [line for line in transient.splitlines() if line.startswith("transition-")]
+        assert len(transient_rows) == 5
+        first_transient = transient_rows[0]
+        trace_change = transient.replace("1111111111111111", "fedcba9876543210", 1)
+        final_change = transient.replace(first_transient, first_transient.replace(" 4 ", " 9 "))
+        audio_change = transient.replace("0000000000000001", "ffffffffffffffff", 1)
+        for text in (transient, "\n".join(reversed(transient_rows)),
+                     "\ufeff\r\n" + "\r\n".join("\t".join(row.split()) for row in transient_rows),
+                     transient.replace("1111111111111111", "ABCDEF0123456789")):
+            process, result = run(text, text, suite="transitions")
+            assert process.returncode == 0 and result["classification"] == "IDENTICAL", result
+            assert result["hashes"]["compared_scenarios"] == 5 and result["schema_version"] == 2, result
+            assert result["latency_trace"]["status"] == "EQUAL", result
+        process, result = run(transient, audio_change, suite="transitions")
+        assert process.returncode == 1 and result["classification"] == "NUMERICAL", result
+        assert result["latency_trace"]["status"] == "EQUAL", result
+        assert len(result["hashes"]["differences"]) == 1 and "::error::NUMERICAL:" in process.stdout
+
+        def transition_metadata_regression(text: str, script: Path = helper) -> dict:
+            process, result = run(transient, text, script=script, suite="transitions")
+            assert process.returncode == 1 and result["classification"] == "TRANSITION_LATENCY", result
+            assert result["hashes"]["status"] == "IDENTICAL" and "::error::TRANSITION_LATENCY:" in process.stdout
+            return result
+
+        assert transition_metadata_regression(trace_change)["latency_trace"]["differences"] == [
+            {"scenario": "transition-bypass-mix", "A": "1111111111111111", "B": "fedcba9876543210"}]
+        assert transition_metadata_regression(final_change)["latency"]["differences"] == [
+            {"scenario": "transition-bypass-mix", "A": 4, "B": 9}]
+        for bad, reason in (("\n".join(transient_rows[:-1]), "missing scenarios"),
+                            (transient + first_transient + "\n", "duplicate identity"),
+                            (transient.replace("1111111111111111", "not-a-trace"), "invalid 16-hex latency trace"),
+                            (transient.replace(first_transient, " ".join(first_transient.split()[:3])), "required 4"),
+                            (transient + first + "\n", "unknown scenario"),
+                            (valid, "unknown scenario"), ("", "missing scenarios")):
+            for mode in ("ab", "c"):
+                process, result = run(transient, bad, mode, suite="transitions")
+                assert process.returncode == (2 if mode == "ab" else 0), result
+                assert result["hashes"]["status"] == result["latency_trace"]["status"] == "NOT_COMPARED"
+                assert reason in "\n".join(result["errors"] + result["warnings"]), result
+                assert "IDENTICAL" not in process.stdout and "NUMERICAL:" not in process.stdout
+        for changed_transient in (audio_change, trace_change, final_change, None):
+            process, result = run(transient, changed_transient, "c", suite="transitions")
+            assert process.returncode == 0 and "::error::" not in process.stdout, result
+        process, result = run(transient, transient)  # no auto-detection or mixed-suite acceptance
+        assert process.returncode == 2 and result["classification"] == "INFRASTRUCTURE", result
+
+        metadata_mutant = root / "transition-metadata-bypass.py"
+        seeded = source.replace('metadata_mismatch = suite == "transitions" and bool(',
+                                'metadata_mismatch = False and suite == "transitions" and bool(', 1)
+        assert seeded != source, "transition metadata mutant was not seeded"
+        metadata_mutant.write_text(seeded, encoding="utf-8")
+        for changed_transient in (trace_change, final_change):
+            try:
+                transition_metadata_regression(changed_transient, metadata_mutant)
+            except AssertionError:
+                result = json.loads((root / "result.json").read_text(encoding="utf-8"))
+                assert result["classification"] == "IDENTICAL" and result["exit_code"] == 0, result
+            else:
+                raise AssertionError("transition metadata bypass survived its production-entry regression")
+
     print(f"DSP dump parser self-test: {cases} production-entry fixtures; "
-          "duplicate-overwrite and evidence-guard-bypass mutants rejected.")
+          "duplicate-overwrite, evidence-guard-bypass and transition-metadata mutants rejected.")
     return 0
 
 

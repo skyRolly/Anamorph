@@ -1,0 +1,68 @@
+{
+  "recorded": "2026-11-01 Asia/Shanghai",
+  "source_base": "00de8c7796f37d08a338256e01830bb312ba105c",
+  "production_src_tree": "c453322ad5a782da8a9661fcea5f8f4cbbb208ff",
+  "environment": "managed Debian13 x86-64, Clang22.1.8/libstdc++14, Release, JUCE9.0.4 pin3fb5cbc",
+  "source_sha256": {
+    "tests/dsp_dump.cpp": "be8d198311d8f8d9ecccfbcfc16f14a13887d05afeffc1c6d3f31ded36b3db2c",
+    "scripts/check-dsp-dump.py": "18e37c962a4d3c059c404ca03821f1a6bd23f490d7817ec4eb65821eed310b24",
+    "scripts/fixtures/dsp-dump/transitions.txt": "92c4efc10528ee7028e5f191fc7d27e68ebaf4ae65ed858f1e1f789b1d9473d5",
+    ".github/workflows/build.yml": "3900bd1c699745b9f193b4634d2430565788a48087c8ea2ec4a65946c879f9c7"
+  },
+  "legacy_stdout_sha256_before": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+  "legacy_stdout_sha256_after": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+  "transition_repeat_sha256": "3ee7fa9fc90c329d1f9e42f564e7e6a83c5d1e7b0c1678a6edaabc7dc7f87762",
+  "transition_restored_sha256": "3ee7fa9fc90c329d1f9e42f564e7e6a83c5d1e7b0c1678a6edaabc7dc7f87762",
+  "independent_configurations": [
+    "ANAMORPH_X86_ISA_BASELINE=OFF",
+    "shipped -march=haswell -ffp-contract=off"
+  ],
+  "comparisons": {
+    "legacy": {
+      "classification": "IDENTICAL",
+      "exit_code": 0,
+      "hashes": {
+        "status": "IDENTICAL",
+        "compared_scenarios": 32,
+        "differences": []
+      },
+      "latency": {
+        "status": "EQUAL",
+        "compared_scenarios": 32,
+        "differences": []
+      }
+    },
+    "transitions": {
+      "classification": "IDENTICAL",
+      "exit_code": 0,
+      "hashes": {
+        "status": "IDENTICAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "latency": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "latency_trace": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      }
+    }
+  },
+  "negative_control": {
+    "mutation": "all transition actions disabled in instrument only",
+    "expected_exit": 3,
+    "observed_exit": 3,
+    "required_diagnostic": "dsp-dump transition self-check FAILED",
+    "source_restored_sha256": "be8d198311d8f8d9ecccfbcfc16f14a13887d05afeffc1c6d3f31ded36b3db2c"
+  },
+  "limits": [
+    "Comparative dated evidence, never golden production hashes",
+    "Native Windows/macOS/ARM CI still required",
+    "No production source, threading, latency or release change",
+    "Local PowerShell unavailable"
+  ]
+}

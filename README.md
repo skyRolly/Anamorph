@@ -31,6 +31,9 @@ Post-tag development is not included in the existing draft assets.
 
 Post-integration research includes the [NR-012 alias study](worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md).
 Its bounded local measurements add no universal quality threshold or release approval.
+
+The [NR-011 execution record](worklogs/NR011_DSP_TRANSITION_COVERAGE.md)
+describes additive transition coverage in the separately approved #200.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.

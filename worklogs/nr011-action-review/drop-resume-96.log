@@ -1,0 +1,1 @@
+dsp-dump action self-check FAILED: transition-reset-idle, transport at block 96 has no audio effect when omitted alone.
