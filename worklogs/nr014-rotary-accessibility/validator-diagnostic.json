@@ -12,7 +12,7 @@
     "libipt2_2.1.2-1_amd64.deb": "33cfc9090194a993bfab1da4a70a03b4a2d2863894c1d4b506dd4ac093a0073e",
     "libsource-highlight4t64_3.1.9-4.3+b1_amd64.deb": "6d69c221c44345f33af52cc849c5d39438590d5b2030224a6fdb3e6e660f815a"
   },
-  "method": "xvfb-run -a gdb --nx --nh --batch -x validator-capture.gdb --args .tools/pluginval --strictness-level10 --random-seed1 --validate <fresh-VST3> --timeout-ms600000 (flags are separate argv tokens; all inferiors followed)",
+  "method": "Three strictness-10 / seed-1 diagnostics under Xvfb; all inferiors followed. Actual argument tokens are recorded below.",
   "runs": [
     {
       "attempt": 1,
@@ -51,5 +51,26 @@
     "job": 124875144383,
     "source": "425539385ebfcd1ca2bab1befe3de37618ce02d2",
     "pluginval": "both modes x3 first attempts; no crash seen; absence is not proof the candidate introduced its intermittent signal"
-  }
+  },
+  "command": [
+    "xvfb-run",
+    "-a",
+    "/workspace/scratch/anamorph-nr014/debugger/root/usr/bin/gdb",
+    "--data-directory=/workspace/scratch/anamorph-nr014/debugger/root/usr/share/gdb",
+    "--nx",
+    "--nh",
+    "--batch",
+    "-x",
+    "/workspace/scratch/anamorph-nr014/debugger/capture.gdb",
+    "--args",
+    "/workspace/Anamorph/.tools/pluginval",
+    "--strictness-level",
+    "10",
+    "--random-seed",
+    "1",
+    "--validate",
+    "/workspace/Anamorph/build/Anamorph_artefacts/Release/VST3/Anamorph.vst3",
+    "--timeout-ms",
+    "600000"
+  ]
 }
