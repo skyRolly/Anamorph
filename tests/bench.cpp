@@ -55,6 +55,9 @@
 #elif JUCE_MAC || JUCE_IOS
  #include <sys/sysctl.h>
 #elif JUCE_WINDOWS
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
  #include <windows.h>
 #endif
 

@@ -30,6 +30,14 @@ sanitizer budgets and release gates are unchanged. The shared container supplies
 tool smoke only; representative costs, actual native GUI/AX observations and
 owner cost/native acceptance remain Pending. New tooling merge remains gated.
 
+Initial tool CI exposed mixed GCC-C/Clang-C++ JUCE-helper configuration on Linux
+and the existing Bench's explicit Windows-header min/max macro pollution. Pair
+native compilers automatically and set NOMINMAX locally before that include;
+no production/CMake flags are altered. Native mode now mirrors the existing
+callback's ScopedNoDenormals, records/requires that FP state and nearest rounding,
+while leaving default Bench behavior intact. Preserve the failed raw artifacts
+and classify them as tool setup/portability, not product regressions or passes.
+
 ## Integrated #199–#203 and bounded NR-014 metadata correction — 2026-11-02
 
 Drift check: roadmap/README/source authority/ADR-index/risk/readiness records still

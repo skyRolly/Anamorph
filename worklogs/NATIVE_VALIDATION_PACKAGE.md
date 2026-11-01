@@ -51,7 +51,10 @@ python scripts\run-native-validation.py collect --build-dir ..\anamorph-native-b
 ```
 
 `--juce-path /path/to/existing/JUCE` reuses an existing checkout, subject to the
-repository's usual dependency verification. `--jobs N` controls build concurrency.
+repository's usual dependency verification. C and C++ compilers are paired
+automatically for clang/gcc/cl; `--cc` selects the C compiler explicitly if needed.
+JUCE's actual commit/clean state and both compiler descriptions are retained.
+`--jobs N` controls build concurrency.
 The collector builds existing Bench, DSP/state test and plugin targets. It does
 not install plugins (`COPY_PLUGIN_AFTER_BUILD FALSE`), run installers, modify
 release objects or automatically run state tests against a live user profile.
@@ -102,6 +105,9 @@ prefix frames. Read cost is normalized by copied frames.
 RSS deltas and original/current deltas, with no invented pass threshold.
 RSS includes allocator/OS effects and is not exact allocated bytes. Bare-engine
 idle/silence costs do not establish actual host suspension or GUI idle cost.
+The native mode mirrors the shipping callback's `ScopedNoDenormals` and records
+denormal handling/default nearest rounding; missing/incorrect FP observations
+are rejected. The existing default benchmark keeps its original environment.
 All acceptance fields remain null until reviewed evidence supports an explicit
 owner decision. A tool-complete run is not an accepted cost budget.
 

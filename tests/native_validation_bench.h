@@ -11,6 +11,7 @@
 #endif
 #include <atomic>
 #include <bit>
+#include <cfenv>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -266,6 +267,13 @@ inline int run (int argc, char* argv[], const std::string& cpu)
     try
     {
         const auto o = parse (argc, argv);
+        // Match the existing shipping callback's FP environment without changing
+        // the default benchmark or any production DSP/host behavior.
+        juce::ScopedNoDenormals noDenormals;
+        const bool denormalsDisabled = juce::FloatVectorOperations::areDenormalsDisabled();
+        const bool roundToNearest = std::fegetround() == FE_TONEAREST;
+        if (! denormalsDisabled || ! roundToNearest)
+            throw std::runtime_error ("native probe requires callback denormal handling and default nearest rounding");
         const auto c = cellFor (o);
         std::vector<std::int64_t> timings;
         std::uint64_t hash = 14695981039346656037ULL;
@@ -366,6 +374,7 @@ inline int run (int argc, char* argv[], const std::string& cpu)
         std::printf ("{\"schema\":1,\"variant\":\"%s\",\"kind\":", legacy ? "original" : "corrected"); quoted (o.kind);
         std::printf (",\"case\":"); quoted (o.scenario); std::printf (",\"reader\":"); quoted (o.reader);
         std::printf (",\"cpu\":"); quoted (cpu);
+        std::printf (",\"fp_denormals_disabled\":%s,\"fp_round_to_nearest\":%s", denormalsDisabled ? "true" : "false", roundToNearest ? "true" : "false");
         std::printf (",\"rate\":%.17g,\"block\":%d,\"window\":%d,\"paced\":%s,\"seconds\":%.17g,\"rep\":%d,\"smoke\":%s,"
                      "\"samples\":%.17g,\"engine_bytes\":%zu,\"scope_bytes\":%zu,"
                      "\"rss_before\":%llu,\"rss_constructed\":%llu,\"rss_prepared\":%llu,\"rss_available\":%s,"

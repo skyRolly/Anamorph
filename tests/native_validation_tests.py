@@ -30,6 +30,7 @@ def observation(req):
     n = 0 if req["kind"] == "memory" else req["iterations"] if req["kind"].startswith("scope-") else __import__("math").ceil(req["seconds"] * req["rate"] / req["block"])
     denominator = req["window"] if req["kind"] == "scope-read" else req["block"]
     return dict(req, schema=1, cpu="PARSER FIXTURE, NOT A MACHINE", block_ns=[10] * n,
+                fp_denormals_disabled=True, fp_round_to_nearest=True,
                 samples=n * denominator, scope_bytes=262152, engine_bytes=1000000,
                 rss_before=100, rss_constructed=110, rss_prepared=150, rss_available=True,
                 reader_accepted=1 if req["reader"] != "none" else 0, reader_rejected=0,
@@ -81,6 +82,10 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(native.path_key(r"CMakeFiles\Bench.dir\Engine.obj", True),
                          native.path_key("cmakefiles/bench.dir/engine.obj", True))
         self.assertNotEqual(native.path_key("Engine.o", False), native.path_key("engine.o", False))
+        self.assertEqual(native.paired_c_compiler("/usr/bin/clang++-22"), "/usr/bin/clang-22")
+        self.assertEqual(native.paired_c_compiler("clang++"), "clang")
+        self.assertEqual(native.paired_c_compiler("cl"), "cl")
+        self.assertIsNone(native.paired_c_compiler("unknown-wrapper"))
 
 
 class EvidenceTests(unittest.TestCase):
@@ -153,7 +158,7 @@ class EvidenceTests(unittest.TestCase):
         changes = [{"block_ns": []}, {"block_ns": [0] * 19}, {"cpu": ""}, {"rep": 2},
                    {"samples": 1}, {"rss_available": None}, {"audio_hash": "bad"},
                    {"audio_hash": "0000000000000001"}, {"clock_min_ns": 3},
-                   {"latency_samples": -1}]
+                   {"latency_samples": -1}, {"fp_denormals_disabled": False}, {"fp_round_to_nearest": None}]
         for change in changes:
             row = observation(req)
             row.update(change)

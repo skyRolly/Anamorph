@@ -40,7 +40,11 @@ native hardware access. A specific owner machine/access question is pending.
 Tool smoke and CI establish operation/portability, not representative costs,
 actual GUI rendering, callback deadlines or manual acceptance. Native data,
 owner cost acceptance and native visual/lifecycle/assistive observations remain
-**Pending**. New tooling PR remains separately merge-gated.
+**Pending**. Tooling source commit`ec450edae1197960dbc02e159cd5b37f04c049b0`
+and follow-up portability corrections are in
+[PR #205](https://github.com/skyRolly/Anamorph/pull/205), **open/unmerged**
+against actual main34cc369. Exact-head CI is tracked in the PR; this new merge
+requires separate owner authorization.
 
 Local package controls:14 Python tests including partial-journal and real owned
 child timeout/log retention;20 paired smoke records with output/latency identity,

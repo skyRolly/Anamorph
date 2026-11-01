@@ -270,6 +270,16 @@ def compiler_supported(description, system=None):
             family == "Clang" and version[0] == 22)
 
 
+def paired_c_compiler(cxx):
+    if not cxx:
+        return None
+    path = Path(cxx)
+    for cpp, c in (("clang++", "clang"), ("g++", "gcc")):
+        if path.name.startswith(cpp):
+            return str(path.with_name(path.name.replace(cpp, c, 1)))
+    return cxx if path.name.lower() in ("cl", "cl.exe") else None
+
+
 def path_key(value, windows=None):
     windows = os.name == "nt" if windows is None else windows
     value = value.replace("\\", "/")
@@ -350,6 +360,8 @@ def validate_record(row, request):
             raise ValueError(f"probe/request mismatch: {key}")
     if row.get("schema") != 1 or not row.get("cpu"):
         raise ValueError("missing schema/CPU")
+    if row.get("fp_denormals_disabled") is not True or row.get("fp_round_to_nearest") is not True:
+        raise ValueError("missing/incorrect callback floating-point environment")
     if type(row.get("rss_available")) is not bool:
         raise ValueError("missing RSS availability disclosure")
     if row["variant"] == "original" and row["reader"] != "none":
@@ -471,7 +483,8 @@ def build_probes(build, output, jobs, skip_plugin_build):
     config_observations = {"release": cache.get("CMAKE_BUILD_TYPE") == "Release",
                            "supported_native_compiler": compiler_supported(compiler),
                            "pinned_clean_juce": juce_identity["commit"] == cache.get("ANAMORPH_JUCE_TAG") and not juce_identity["status"],
-                           "lto": any(x in lower for x in ("-flto", "/gl", "/ltcg")),
+                           "lto": any(x.lower().startswith("-flto") or x.lower() in ("/gl", "-gl", "/ltcg", "-ltcg")
+                                      for x in commands["bench"] + commands["engine"] + commands["link"]),
                            "ndebug": any(x in lower for x in ("-dndebug", "/dndebug")),
                            "isa_baseline": cache.get("ANAMORPH_X86_ISA_BASELINE") == "ON",
                            "unsupported_measurement_flags": [x for x in ("-ffast-math", "/fp:fast", "/fp:contract", "-ffp-contract=fast", "-fsanitize", "--coverage") if x in lower]}
@@ -522,9 +535,10 @@ def build_probes(build, output, jobs, skip_plugin_build):
     derived["link"] = original_link
     save(output / "original-build-commands.json", derived)
     run_logged(original_link, build, output / "original-link.stdout.log", output / "original-link.stderr.log")
-    selected = {k: v for k, v in cache.items() if k.startswith(("CMAKE_CXX_FLAGS", "CMAKE_EXE_LINKER_FLAGS", "ANAMORPH_"))
-                or k in ("CMAKE_BUILD_TYPE", "CMAKE_GENERATOR", "CMAKE_CXX_COMPILER", "CMAKE_OSX_ARCHITECTURES", "CMAKE_SYSTEM_PROCESSOR")}
+    selected = {k: v for k, v in cache.items() if k.startswith(("CMAKE_C_FLAGS", "CMAKE_CXX_FLAGS", "CMAKE_EXE_LINKER_FLAGS", "ANAMORPH_"))
+                or k in ("CMAKE_BUILD_TYPE", "CMAKE_GENERATOR", "CMAKE_C_COMPILER", "CMAKE_CXX_COMPILER", "CMAKE_OSX_ARCHITECTURES", "CMAKE_SYSTEM_PROCESSOR")}
     save(output / "build-identity.json", {"cache": selected, "compiler_description": compiler,
+                                          "c_compiler_description": "\n".join(p.read_text() for p in (build / "CMakeFiles").glob("*/CMakeCCompiler.cmake")),
                                           "juce": juce_identity,
                                           "original_fixture": metadata, "ninja": required(["ninja", "--version"]),
                                           "cmake": required(["cmake", "--version"])})
@@ -558,6 +572,9 @@ def collect(args):
             configure.append("-DANAMORPH_JUCE_PATH=" + str(args.juce_path.resolve()))
         if args.cxx:
             configure.append("-DCMAKE_CXX_COMPILER=" + args.cxx)
+        cc = args.cc or paired_c_compiler(args.cxx)
+        if cc:
+            configure.append("-DCMAKE_C_COMPILER=" + cc)
         run_logged(configure, ROOT, output / "configure.stdout.log", output / "configure.stderr.log")
         binaries = build_probes(build, output, args.jobs, args.skip_plugin_build)
         observations = read(output / "configuration-observations.json")
@@ -684,6 +701,7 @@ def main(argv=None):
     get.add_argument("--output-dir", type=Path, required=True)
     get.add_argument("--juce-path", type=Path)
     get.add_argument("--cxx")
+    get.add_argument("--cc", help="C compiler; defaults to matching clang/gcc/cl when --cxx identifies one")
     get.add_argument("--jobs", type=int, default=3)
     get.add_argument("--repetitions", type=int)
     get.add_argument("--machine-note", default="NOT RECORDED")
