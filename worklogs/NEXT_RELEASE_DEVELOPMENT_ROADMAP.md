@@ -24,7 +24,10 @@ Accepted; the focused atomic-window implementation is recorded below and in
 This is not authorization to merge #199 or a later PR, or operate on a release.
 Independent NR-011 [#200](https://github.com/skyRolly/Anamorph/pull/200) and bounded
 NR-012 [#201](https://github.com/skyRolly/Anamorph/pull/201) are submitted from main,
-with their own validation/review requirements. No new PR is merged.
+with their own validation/review requirements. NR-012 now depends on the independent
+memcheck scheduling repair [#203](https://github.com/skyRolly/Anamorph/pull/203).
+The approved NR-006 implementation is submitted separately as
+[#202](https://github.com/skyRolly/Anamorph/pull/202), based on #199. No new PR is merged.
 
 The owner's new pasted assignment explicitly authorizes merging **#195, #196, #197,
 #198**, then NR-006 investigation/technical selection and independent roadmap work.
@@ -81,7 +84,8 @@ batch**, as explicitly requested, because the cross-thread payload violation is
 confirmed at source level. This does not establish a supported-host crash or
 automatically declare a release-blocking runtime defect. The old NR-011-first
 ordering below is historical; NR-011 becomes the independent implementation lane
-after the architecture proposal is ready, while approval remains pending.
+after the architecture proposal was ready. Architecture approval has since been
+granted; NR-011 is submitted as #200 and does not depend on integrating NR-006.
 
 The [expanded research packet](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
 reconstructs writer/readers, JUCE OpenGL locking, count/payload ordering, wrap,
@@ -92,9 +96,9 @@ seqlock/reclamation variants selects **generation-validated atomic stereo window
 is now **Accepted** by the owner's explicit 2026-11-01 implementation approval.
 Its complete protocol accepts only exact committed
 positions or rejects once, never waits/retries, retains last accepted display,
-and explicitly preserves serialized JUCE OpenGL reads. The implementation branch
-updates that affinity contract; it grants no exception to the original plain shared
-access still on main and in the existing draft.
+and preserves serialized JUCE OpenGL reads in the approved implementation. The
+affinity amendment applies to that atomic implementation; it grants no exception
+to the old plain shared access still on main while #202 is unmerged.
 
 Nonshipping research provides deterministic weaker-contract and order-weakening
 controls, concurrent two-reader tagged / one-reader owned stress, Clang22/GCC14
@@ -224,15 +228,30 @@ tag `1190e455` → `4c13688`, draft 429760301, 11 assets and version stay unchan
 post-tag NR-022 is not in those assets. Prior owner manual/ADR attestations keep
 their original scope. Publication/replacement remains separately unauthorized.
 
-**Next:** review the approved NR-006 implementation and final-head native results,
-then complete representative cost and visual acceptance before any integration
-decision. NR-011 #200 and NR-012 #201 are independently submitted, not integrated.
+**Next:** complete review corrections and final-head verification for #199–#203.
+ADR-0070's architecture selection is Accepted; do not request that decision again.
+#202 still needs its native/performance/validation and targeted visual acceptance
+gates, including representative cost evidence. #200 contains the bounded NR-011
+transition batch; #201 contains the independent NR-012 study and depends on #203.
 No later PR may be merged without separate owner authorization. NR-010 needs
 controlled identified hardware; NR-013 a pinned REAPER reproducer; NR-018/019
 owner/legal/provisioning decisions. NR-004/005/007 recurrence dispositions and
 NR-017's unknown GitHub alert state remain unchanged.
 
-## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
+### Approval-status review correction — 2026-11-01 (Asia/Shanghai)
+
+Accepted the #199 finding at the former next-action line: the live instructions
+contradicted the recorded owner acceptance. Reconciled this section, the NR-006
+register/detail and open-decision list with Accepted ADR-0070. Architecture selection
+is complete; implementation review, native/cost/visual gates and separate merge
+authorization remain. Dated pre-acceptance checkpoints below retain their evidence
+and are historical, not current instructions. The #199 discussion records the
+correction commit and its exact-head validation.
+Local checks: documentation self-test 700 cases / 180 files, citation self-test
+276 cases / 610 anchors against main, Markdown tables/relative links and whitespace
+clean. Earlier #199 CI qualifies `89694f2` only; corrected-head CI must be refreshed.
+
+## Historical review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
 **Integration gate:** all four PRs remain open and unmerged. No auto-merge, release
 operation, version change or next implementation batch is authorized. This checkpoint
@@ -727,7 +746,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Approved / implemented on review branch | ADR-0070 owner-approved; controls/native codegen verified, memcheck harness pacing corrected; final-head CI/performance/manual acceptance and integration pending | 1 / first architecture batch |
+| NR-006 | P1 | Accepted architecture / implementation in review | ADR-0070 approved; #202 unmerged; native, representative cost and visual gates remain | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
@@ -824,7 +843,7 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
   coherence across repeated restore cycles, State 27/148 and TSan. **Human architecture review
   before threading/ordering changes; host test for demonstrated exposure.** Conditional maintenance.
 
-### NR-006 — Decide the ScopeBuffer overwrite contract
+### NR-006 — Validate the approved ScopeBuffer overwrite correction
 
 **Accepted and implemented on review branch:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
 explicit owner implementation approval 2026-11-01. Full alternatives/source proof,
@@ -1289,7 +1308,9 @@ No candidate was installed on a live workstation. No defect ownership is inferre
 location, TSan silence, runner success or a diagnostic timeout.
 
 NR-001/002 are now closed by explicit owner confirmation. The named host scope/matrix (NR-003)
-is Deferred. Remaining decisions include the ScopeBuffer publication contract (NR-006),
+is Deferred. NR-006's publication contract is Accepted in ADR-0070; its unmerged
+implementation still needs native/cost/visual acceptance and merge authorization.
+Remaining decisions include
 additional parser restrictions/coherent multiband model only if selected (NR-008/009), and public/
 commercial/signing/product choices (NR-018/019/020). A current supported-host failure would change
 priorities immediately; none was established by this assignment. The only ongoing API access limit

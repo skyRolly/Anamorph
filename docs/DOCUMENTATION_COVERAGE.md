@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## ADR-0070 live-instruction reconciliation — 2026-11-01
+
+Accepted the #199 review finding: the roadmap's next action and NR-006 detail
+still requested architecture acceptance after the owner had granted it. Reconciled
+the live instructions, register and open-decision list; labeled the old handoff
+historical. Accepted ADR-0070 authorizes implementation, while #202 review,
+native/cost/visual gates and separate PR merge authorization remain. No source,
+architecture decision or release state changed.
+
 ## NR-006 memcheck pacing and native evidence follow-up — 2026-11-01 UTC
 
 Recorded the actual head0991b2f sanitizer failure: state 10,980 / 2 under memcheck,
