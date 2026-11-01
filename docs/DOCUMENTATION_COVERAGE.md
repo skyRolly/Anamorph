@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Memcheck cancellation evidence review — 2026-11-01
+
+Accepted #203's timeout-artifact finding. Replaced the cancellation-excluding
+upload predicate with `always()` plus explicit started-step outcomes. The runner
+checkpoints pending/running/completed/interrupted/start-failed statuses atomically,
+preserves raw logs and handles cancellation with bounded child-group cleanup;
+the workflow execs Python for signal delivery. Signal/checkpoint controls retain a
+completed peer while interrupting a live validator; workflow routing checks 15
+cases and three negative predicates. TESTING/CI_CD, the budget evidence and roadmap
+record the hard-runner-loss limitation. Detector argv, suite assertions, 60-minute
+cap, suppressions, product/build/release inputs and merge gates are unchanged.
+
 ## NR-012 CI dependency reconciliation — 2026-11-01 UTC
 
 Stacked the existing alias-study branch on unmerged #203 after two exact-source
@@ -2496,7 +2508,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3790` and `.github/workflows/build.yml:3875`, this round being
+`.github/workflows/build.yml:3795` and `.github/workflows/build.yml:3880`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare

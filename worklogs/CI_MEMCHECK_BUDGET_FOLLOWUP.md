@@ -90,3 +90,52 @@ must be refreshed in the PR discussion. No main/job success is fabricated; main'
 cancelled run remains cancelled until a separately authorized integration and
 new successful run supersede it. All new PR merges/releases remain separate owner
 decisions. NR-003 stays Deferred; NR-006 performance/manual acceptance stays open.
+
+## Review: cancelled-job artifact retention — 2026-11-01 (Asia/Shanghai)
+
+**Accepted.** The original `!cancelled()` upload condition skipped job timeouts;
+recording JSON only after both futures completed also lost the partial status
+boundary. The corrected upload runs with `always()` only for an actual memcheck
+success/failure/cancelled outcome, excluding absent/skipped steps. Its five-minute
+bound does not extend the unchanged 60-minute job cap; server cancellation grace
+can truncate retention sooner. Python is exec'd from the shell
+so runner INT/TERM cancellation reaches the supervisor.
+
+The runner atomically replaces `results.json` before launch and at each process
+start/finish. Pending/running/completed/interrupted/start-failed states distinguish
+unknown exit codes from zero. Raw combined output flushes per line. INT/TERM
+retains completed results, terminates both child process groups, escalates after
+one second if necessary, joins them and returns nonzero. There is no suite or
+Valgrind-option relaxation and no timeout interpreted as a passing result.
+
+Cancellation semantics were checked against runner v2.338.2
+[StepsRunner.cs](https://github.com/actions/runner/blob/v2.338.2/src/Runner.Worker/StepsRunner.cs):
+its job-cancellation callback reevaluates step predicates; subsequent steps are
+also evaluated against the cancelled status. `always()` allows retention while
+the runner is available. Runner shutdown skips evaluation; a server hard kill,
+runner loss or exhausted cancellation grace can still lose the artifact. This is
+best-effort evidence retention, not a promise to survive unavailable infrastructure.
+No real CI job was deliberately cancelled to manufacture a passing gate.
+
+Local signal controls use a real subprocess supervisor with one completed child
+and one TERM-ignoring child. Before interruption, atomic JSON must already show
+completed/0 and running/null, with partial logs. INT and TERM each must retain
+that completed peer and return nonzero after killing/reaping the incomplete child;
+final JSON must identify interruption and its actual negative OS exit status.
+Normal tests still check actual two-child overlap, all four exit-status pairs,
+unchanged frozen argv, raw stderr/completion and unprefixed warning commands,
+missing validator/binaries. Mutants that ignore the state result, prefix warning
+commands, defer JSON until both finish or serialize workers are rejected.
+`test-workflow-routing.py` checks the actual upload predicate across 15 job/outcome
+cases and rejects the former predicate, unconditional upload and implicit-success
+variants. These are orchestration/scheduling controls, not product memcheck results.
+
+The earlier #203 `2c242e5` exact-head CI passed real DSP934/state10953 memcheck
+with both exit codes and error summaries zero (run41259768976). That is historical;
+the new supervisor/workflow must obtain its own final-head CI/artifact evidence.
+The PR discussion is the stable exact-head ledger. No PR merge/release is performed.
+
+Local verification also passes the 700-case documentation self-test, 180-file
+structural/table/link check, citation self-test/610 retained anchors, Python byte
+compilation and whitespace check. Seven moved workflow citations were mechanically
+re-anchored without changing their cited code. New-head CI remains a separate gate.
