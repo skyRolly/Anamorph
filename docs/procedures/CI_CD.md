@@ -182,6 +182,22 @@ validation evidence retain their original provenance and are not rewritten as lo
 
 ## Windows DSP dump validation
 
+NR-011 adds a separate `--transitions` instrument mode and
+`check-dsp-dump.py ab --suite transitions` comparison after the original A/B gate.
+Five deterministic transition records carry audio hash, final engine latency and
+before/after-block engine-latency trace hash. Invalid records fail INFRASTRUCTURE;
+audio differences fail NUMERICAL; final/trace latency differences fail
+TRANSITION_LATENCY. The existing A/B executables, toolset/flag liveness and
+same-machine scope are reused. Optional C compares both suites informationally.
+Raw `d-transitions-*.txt` and separate `dsp-dump-transitions-*.json` are retained
+by the existing artifact patterns, including on failure. No legacy 32-row/JSON
+schema or warning-only legacy latency rule is changed.
+
+The instrument always runs its five transition repeatability/inert/sample/latency
+controls, silently on the legacy path. Existing GCC/macOS dump self-check callers
+therefore exercise them too. The parser's same-job inert self-test includes the
+new fixture, malformed/mixed suites and a metadata-bypass mutant before use.
+
 `windows-avx2-ab` invokes `scripts/check-dsp-dump.py ab` on the raw A/B output from
 the existing `tests/dsp_dump.cpp` instrument. The helper's `--self-test` runs in
 that same Windows job before builds/comparison, and in `source-lint` and local
@@ -546,7 +562,8 @@ edge above must not be read as release non-blocking.
   the **GCC-only first-party warning gate** (§The GCC warning baseline), and the liveness builds of
   the two committed instruments: `AnamorphBench` (built and smoke-run, no timing asserted) and, since
   2026-08-21, `AnamorphDspDump` (built and run with `--self-check`, which asserts its 32 scenarios are
-  repeatable and mutually distinct and exits 3 if not). Both are compiled here by the container's
+  repeatable and mutually distinct and exits 3 if not; NR-011 additionally runs five
+  silent transition controls on this existing entry point). Both are compiled here by the container's
   **g++ 16**, not by the Clang that builds the shipped artifact — the `linux` job covers that half
   with a `-fsyntax-only` compile of both translation units under the pinned Clang, so a Clang-only
   break in either still fails a gate.
@@ -855,6 +872,40 @@ clean away — and it cannot reach an artifact, because every packaging step nam
 validation coverage and the Intel job's validation scope are settled, not open review items.
 
 ### Job timeouts
+
+**Memcheck scheduling correction — 2026-11-01.** Repeated serial DSP+state
+memcheck work reached the existing sanitizer cap on main and several development
+heads. Main attempt2 even completed both zero-error summaries before GitHub
+recorded cancellation during the finalization boundary. `run-memcheck.py` now
+overlaps those independent processes, streams labelled diagnostics and retains
+raw per-suite logs/argv/exit statuses in `Anamorph-memcheck-results`. Workflow
+commands remain unprefixed so existing coverage warnings retain their GitHub
+annotations; whole output lines are serialized. Both statuses
+are joined; either failure or an unstartable validator fails the step. The source
+lint and sanitizer step exercise overlap and failure-propagation controls first.
+The 60-minute cap, suite commands/options, build flags and detector/assertion
+semantics are unchanged. Final-head real-suite timing is required; see
+`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md` for failed-run evidence and limitations.
+
+**Cancellation evidence correction — 2026-11-01.** The upload now uses `always()`
+and an explicit started-step outcome set (success/failure/cancelled); skipped or
+unstarted memcheck does not attempt an empty upload. `results.json` is atomically
+checkpointed before launch and as each suite starts/finishes, with pending/running/
+completed/interrupted/start-failed states and nullable exit codes. Partial evidence
+never means a suite passed. The real runner is `exec`'d so cancellation reaches
+Python; INT/TERM triggers bounded process-group cleanup and a nonzero runner exit,
+retaining already completed results and flushed raw logs. The artifact action has
+its own five-minute bound; the job limit stays 60 minutes and cancellation grace
+can truncate the upload sooner.
+
+Runner cancellation reevaluates step predicates; `always()` permits this cleanup
+while the runner is available. A server hard kill, lost runner or expired final
+cancellation grace can still prevent upload: an absent artifact remains unavailable
+evidence, not a success. Local signal tests check completed-peer preservation,
+partial statuses/logs, nonzero cancellation and TERM-ignoring child cleanup.
+Workflow routing checks 15 outcome/job-status cases and rejects the former
+cancellation predicate, unconditional empty uploads and implicit-success gating.
+
 
 Every job carries an explicit `timeout-minutes` (10 for the two lint jobs, 30–60 for the build
 jobs). Without one a wedged job runs to **GitHub's 6-hour default** while holding its slot in the

@@ -1,0 +1,280 @@
+{
+  "recorded": "2026-11-01 Asia/Shanghai",
+  "reviewed_parent": "104f60eb2ee246babba739e989f320d1811f73dd",
+  "production_src_tree": "c453322ad5a782da8a9661fcea5f8f4cbbb208ff",
+  "environment": "Debian13 x64 / Clang22.1.8 / libstdc++14 / JUCE9.0.4 pin3fb5cbc / Release; shared uncontrolled machine",
+  "source_sha256": {
+    "tests/dsp_dump.cpp": "653d75709d81fb9a3edbb208385ebcc4b5edef207c839bb146b03376d4469f3c",
+    "scripts/check-dsp-dump.py": "18e37c962a4d3c059c404ca03821f1a6bd23f490d7817ec4eb65821eed310b24",
+    "scripts/fixtures/dsp-dump/transitions.txt": "92c4efc10528ee7028e5f191fc7d27e68ebaf4ae65ed858f1e1f789b1d9473d5"
+  },
+  "action_control_count": 57,
+  "required_audio_controls": 54,
+  "masked_adoption_controls": 3,
+  "masked_actions": [
+    "Bypass phase2 (Mix0)",
+    "Mix phase3 (bypassed)",
+    "Solo phase6 (multiband disabled)"
+  ],
+  "granularity": "one field over a 32-block phase, one crossover-field ramp segment, or one reset/transport edge; holds and input epochs excluded",
+  "legacy_stdout_byte_identical": true,
+  "noisa_legacy_stdout_byte_identical": true,
+  "intended_fixture_change": "Only reset/idle audio changes due to final stop at block240 and edge-only transport; four other records and all five latency/final-trace values preserved",
+  "sha256": {
+    "action-original-legacy.txt": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+    "action-fixed-legacy.txt": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+    "action-original-transitions.txt": "3ee7fa9fc90c329d1f9e42f564e7e6a83c5d1e7b0c1678a6edaabc7dc7f87762",
+    "action-fixed-transitions-a.txt": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+    "action-fixed-transitions-b.txt": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+    "action-noisa-legacy.txt": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+    "action-noisa-transitions.txt": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+    "action-parser-selftest.log": "c44109e70e9019a5656581bac4b67cf8143302bceb9d8b9c8e7687340dff449c",
+    "action-restored.log": "a6d5dd4e55990a2556713b41b230b2fcb773150c612a413042ff66836d0d9aec"
+  },
+  "comparisons": {
+    "repeat": {
+      "schema_version": 2,
+      "mode": "ab",
+      "inputs": {
+        "A": {
+          "path": "/workspace/scratch/anamorph-nr011/action-fixed-transitions-a.txt",
+          "sha256": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+          "valid": true,
+          "record_count": 5,
+          "records": {
+            "transition-bypass-mix": {
+              "hash": "02abc8a6fb52f6cc",
+              "latency": 6,
+              "line": 4,
+              "latency_trace": "b3d16cf31bee8383"
+            },
+            "transition-algorithm-os": {
+              "hash": "183063c2820cc41a",
+              "latency": 0,
+              "line": 5,
+              "latency_trace": "c990beedc3f65783"
+            },
+            "transition-crossover": {
+              "hash": "9c13fcc6836abce4",
+              "latency": 0,
+              "line": 6,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-solo-bands": {
+              "hash": "6298b566896f9494",
+              "latency": 0,
+              "line": 7,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-reset-idle": {
+              "hash": "7b1150370c8b5794",
+              "latency": 0,
+              "line": 8,
+              "latency_trace": "19dbc3365ea56383"
+            }
+          }
+        },
+        "B": {
+          "path": "/workspace/scratch/anamorph-nr011/action-fixed-transitions-b.txt",
+          "sha256": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+          "valid": true,
+          "record_count": 5,
+          "records": {
+            "transition-bypass-mix": {
+              "hash": "02abc8a6fb52f6cc",
+              "latency": 6,
+              "line": 4,
+              "latency_trace": "b3d16cf31bee8383"
+            },
+            "transition-algorithm-os": {
+              "hash": "183063c2820cc41a",
+              "latency": 0,
+              "line": 5,
+              "latency_trace": "c990beedc3f65783"
+            },
+            "transition-crossover": {
+              "hash": "9c13fcc6836abce4",
+              "latency": 0,
+              "line": 6,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-solo-bands": {
+              "hash": "6298b566896f9494",
+              "latency": 0,
+              "line": 7,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-reset-idle": {
+              "hash": "7b1150370c8b5794",
+              "latency": 0,
+              "line": 8,
+              "latency_trace": "19dbc3365ea56383"
+            }
+          }
+        }
+      },
+      "classification": "IDENTICAL",
+      "exit_code": 0,
+      "hashes": {
+        "status": "IDENTICAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "latency": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "errors": [],
+      "warnings": [],
+      "suite": "transitions",
+      "latency_trace": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      }
+    },
+    "noisa": {
+      "schema_version": 2,
+      "mode": "ab",
+      "inputs": {
+        "A": {
+          "path": "/workspace/scratch/anamorph-nr011/action-fixed-transitions-a.txt",
+          "sha256": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+          "valid": true,
+          "record_count": 5,
+          "records": {
+            "transition-bypass-mix": {
+              "hash": "02abc8a6fb52f6cc",
+              "latency": 6,
+              "line": 4,
+              "latency_trace": "b3d16cf31bee8383"
+            },
+            "transition-algorithm-os": {
+              "hash": "183063c2820cc41a",
+              "latency": 0,
+              "line": 5,
+              "latency_trace": "c990beedc3f65783"
+            },
+            "transition-crossover": {
+              "hash": "9c13fcc6836abce4",
+              "latency": 0,
+              "line": 6,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-solo-bands": {
+              "hash": "6298b566896f9494",
+              "latency": 0,
+              "line": 7,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-reset-idle": {
+              "hash": "7b1150370c8b5794",
+              "latency": 0,
+              "line": 8,
+              "latency_trace": "19dbc3365ea56383"
+            }
+          }
+        },
+        "B": {
+          "path": "/workspace/scratch/anamorph-nr011/action-noisa-transitions.txt",
+          "sha256": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+          "valid": true,
+          "record_count": 5,
+          "records": {
+            "transition-bypass-mix": {
+              "hash": "02abc8a6fb52f6cc",
+              "latency": 6,
+              "line": 4,
+              "latency_trace": "b3d16cf31bee8383"
+            },
+            "transition-algorithm-os": {
+              "hash": "183063c2820cc41a",
+              "latency": 0,
+              "line": 5,
+              "latency_trace": "c990beedc3f65783"
+            },
+            "transition-crossover": {
+              "hash": "9c13fcc6836abce4",
+              "latency": 0,
+              "line": 6,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-solo-bands": {
+              "hash": "6298b566896f9494",
+              "latency": 0,
+              "line": 7,
+              "latency_trace": "19dbc3365ea56383"
+            },
+            "transition-reset-idle": {
+              "hash": "7b1150370c8b5794",
+              "latency": 0,
+              "line": 8,
+              "latency_trace": "19dbc3365ea56383"
+            }
+          }
+        }
+      },
+      "classification": "IDENTICAL",
+      "exit_code": 0,
+      "hashes": {
+        "status": "IDENTICAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "latency": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "errors": [],
+      "warnings": [],
+      "suite": "transitions",
+      "latency_trace": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      }
+    }
+  },
+  "mutants": [
+    {
+      "mutant": "drop-mix-5",
+      "aggregate_exit": 0,
+      "action_control_exit": 3,
+      "diagnostic": "dsp-dump action self-check FAILED: transition-bypass-mix, mix at block 160 has no audio effect when omitted alone."
+    },
+    {
+      "mutant": "drop-mid-3",
+      "aggregate_exit": 0,
+      "action_control_exit": 3,
+      "diagnostic": "dsp-dump action self-check FAILED: transition-crossover, mid split at block 96 has no audio effect when omitted alone."
+    },
+    {
+      "mutant": "drop-tail-reset",
+      "aggregate_exit": 0,
+      "action_control_exit": 3,
+      "diagnostic": "dsp-dump action self-check FAILED: transition-reset-idle, tail reset at block 64 has no audio effect when omitted alone."
+    },
+    {
+      "mutant": "drop-resume-96",
+      "aggregate_exit": 0,
+      "action_control_exit": 3,
+      "diagnostic": "dsp-dump action self-check FAILED: transition-reset-idle, transport at block 96 has no audio effect when omitted alone."
+    },
+    {
+      "mutant": "drop-masked-mix-3",
+      "aggregate_exit": 0,
+      "action_control_exit": 3,
+      "diagnostic": "dsp-dump action self-check FAILED: transition-bypass-mix, mix at block 96 has no adopted-parameter effect when omitted alone."
+    }
+  ],
+  "negative_control_recipe": "On the fixed source, independently omit Mix phase5, mid-split phase3, tail-reset block64, resume block96, or masked Mix phase3 globally in the schedule. Build/run --transitions --self-check with actionCases loop present (exit3, named action) and omitted (aggregate-only exit0). Restore source and rebuild (exit0). No production source changes.",
+  "parser_fixture_count": 162,
+  "limitations": [
+    "No cross-platform golden audio/tolerance introduced",
+    "Final-head native/sanitizer/analyzer CI separate",
+    "Historical GCC14 shipping ABI preflight remains failed",
+    "NR006 representative cost/native visual acceptance not supplied by these tests"
+  ]
+}

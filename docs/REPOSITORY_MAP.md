@@ -66,6 +66,8 @@ Anamorph/
 
 Current ScopeBuffer decision/implementation evidence: [`worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md`](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md), supporting NR-006 and owner-Accepted ADR-0070; implementation review and native/performance/manual gates remain separate from integration.
 
+Current CI budget evidence: [`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md`](../worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md), an independent validation-orchestration correction; no product threading change or merge authorization.
+
 Current static-diagnostic evidence: [`worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md`](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) with the source/run-bound CSV; roadmap NR-017 owns progress.
 
 ## `src/` — wrapper + GUI
@@ -144,6 +146,7 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `scripts/pluginval-release.json` | Single ordinary-release authority: exact version/provenance, official assets, lengths and archive/executable SHA-256. |
 | `scripts/acquire-pluginval.py` | Shared standard-library preparation for both wrappers: live digest assertion, bounded official HTTPS, safe private extraction, version/content-specific storage and full cached-tree verification. Never executes downloads. |
 | `scripts/test-pluginval-acquisition.py` | Offline inert ZIP/refusal regressions and real wrapper setup with counting invocation boundaries; source-lint, local preflight and Windows (PowerShell required). |
+| `scripts/run-memcheck.py` | Concurrent independent DSP/state memcheck with unchanged argv, joined exit statuses, live labelled/raw logs and overlap/failure-propagation controls. |
 | `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode + **format** args — `deterministic` \| `randomise` each ×3, `vst3` \| `au`; fixed **nonzero** seed; `ANAMORPH_PLUGINVAL_BUNDLE` overrides discovery for an installed AU; crash-only retry **scoped by `uname -s`** — 3 attempts on Linux for the X11 XEmbed flake, **1 on macOS**, which shares none of that machinery; `classify_pass_exit` + `--self-test` decide what a *crash* is, since macOS traps its own signals and exits 9). |
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3/seed structure; exit code is the sole signal; `--skip-gui-tests` for the GPU-less runner, KI-007). |
 | `scripts/find-windows-vst3.ps1` | Shared Windows pluginval/staging discovery: exactly one bundle with a compiled x86-64 module; ignores JUCE's configure-only icon directories. `-SelfTest` seeds missing, one-built and multiple-built cases. |
@@ -160,6 +163,10 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `src/SerializedXml.h` | Private-copy NaN-safe XML formatting shared by session, A/B and preset writers; existing finite and invalid-token semantics are preserved. |
 | `tests/p1_resolution_tests.h` | State tests 147–148: every processor parameter/ingress/lifecycle, authoritative raw restore windows and complete nested restore callback state/lock admission. |
 | `tests/ab_undo_tests.h` | State test 149: completed unpolled edits across direct/toggle A/B cycles, independent slot history, same-slot no-op and automation/empty-gesture controls; included in the ordinary state suite. |
+| `worklogs/NR011_DSP_TRANSITION_COVERAGE.md` | Additive five-scenario differential transition suite, instrument/parser negative controls, unchanged legacy output and exact validation limitations. |
+| `scripts/fixtures/dsp-dump/transitions.txt` | Independent inert four-field text fixture; synthetic hashes are parser inputs, not golden audio expectations. |
+| `tests/experiments/nr012_aliasing_study.cpp` + `scripts/run-alias-study.py` | Nonshipping calibrated engine alias study and Linux/Ninja reuse of actual dump-target compile/link commands; no product target change. |
+| `worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md` + `worklogs/nr012-alias-study/` | 36 repeated coherent-tone observations, controls/provenance and retain-current-assertions disposition; no universal quality threshold. |
 | `tests/state_hardening_tests.h` | State tests 142–146 and focused non-finite/F9 probes, included after the existing state fixtures in the same console target. |
 | `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
 | `worklogs/RELEASE_READINESS_0.10.0.md` | Original draft provenance, current P1 decision/diagnostic evidence, required approvals and guarded replacement/recovery plan. |

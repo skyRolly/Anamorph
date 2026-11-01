@@ -667,6 +667,9 @@ jobs:
       - name: pluginval acquisition offline regressions
         run: python3 scripts/test-pluginval-acquisition.py
 
+      - name: Memcheck runner overlap and failure propagation controls
+        run: python3 scripts/run-memcheck.py --self-test
+
       - name: DSP dump parser and comparison regressions (inert text)
         run: python3 scripts/check-dsp-dump.py --self-test
 
@@ -1613,14 +1616,28 @@ jobs:
       # only for this step. Every native job asserts the full check, so the
       # DSP_POLICY invariant is still gated on every push on every platform.
       # `tests/dsp_tests.cpp` carries the reasoning at the variable itself.
+      # The independent processes overlap to fit the existing 60-minute cap.
+      # Both statuses are joined; either test/Valgrind failure fails the step.
       - name: valgrind memcheck (both suites)
+        id: memcheck
         env:
           ANAMORPH_TESTS_NO_FTZ: 1
         run: |
-          VG="valgrind --tool=memcheck --track-origins=yes --leak-check=no
-              --error-exitcode=1 --error-limit=no --num-callers=25"
-          $VG ./build-vg/AnamorphTests_artefacts/Release/AnamorphTests
-          $VG ./build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests
+          python3 scripts/run-memcheck.py --self-test
+          exec python3 scripts/run-memcheck.py --build-dir build-vg --log-dir build/valgrind-logs
+
+      - name: Retain individual memcheck logs and exit statuses
+        # Cancellation/timeout must retain partial evidence while the runner is
+        # still available. An unstarted/skipped memcheck has no logs to upload.
+        if: >-
+          always() &&
+          (steps.memcheck.outcome == 'success' || steps.memcheck.outcome == 'failure' || steps.memcheck.outcome == 'cancelled')
+        timeout-minutes: 5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-memcheck-results
+          path: build/valgrind-logs
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
@@ -3322,6 +3339,9 @@ jobs:
   #  failure of the ADR-0032 contract and fails the job. Complete records and the
   #  exact current identity set are validated first; latency is retained and
   #  compared separately as warning-only metadata, not an ADR-0032 hash verdict.
+  #  NR-011 adds a separate five-scenario --transitions comparison. Its audio
+  #  hashes AND engine-latency traces/final values block A/B; this does not
+  #  change the legacy 32-record schema or its warning-only latency contract.
   #
   #  TWO FAILURE CLASSES, DELIBERATELY DISTINGUISHED in the error text so a red
   #  run can never read as the wrong thing:
@@ -3391,12 +3411,14 @@ jobs:
             cmake --build $dir --config Release --target AnamorphDspDump | Out-Null
             return ($LASTEXITCODE -eq 0)
           }
-          function Run-Dump([string]$dir, [string]$out) {
+          function Run-Dump([string]$dir, [string]$out, [string]$suite = 'steady') {
             $exe = Join-Path $dir 'AnamorphDspDump_artefacts/Release/AnamorphDspDump.exe'
             if (-not (Test-Path $exe)) { return 'missing' }
-            & $exe --self-check *> $null
+            [string[]]$dumpArgs = @()
+            if ($suite -eq 'transitions') { $dumpArgs = @('--transitions') }
+            & $exe @dumpArgs --self-check *> $null
             if ($LASTEXITCODE -ne 0) { return 'self-check' }
-            & $exe > $out 2>&1
+            & $exe @dumpArgs > $out 2>&1
             if ($LASTEXITCODE -ne 0) { return 'run' }
             return 'ok'
           }
@@ -3445,6 +3467,15 @@ jobs:
           if ($abExit -eq 2) { Die-Infra 'A/B dump records or evidence are invalid -- see parser diagnostics and raw dumps' }
           if ($abExit -ne 0) { exit 1 }
 
+          $ta = Run-Dump 'build-a' 'd-transitions-a.txt' 'transitions'
+          if ($ta -ne 'ok') { Die-Infra "transition dump A did not execute cleanly ($ta)" }
+          $tb = Run-Dump 'build-b' 'd-transitions-b.txt' 'transitions'
+          if ($tb -ne 'ok') { Die-Infra "transition dump B did not execute cleanly ($tb)" }
+          python scripts/check-dsp-dump.py ab --suite transitions --left d-transitions-a.txt --right d-transitions-b.txt --report dsp-dump-transitions-ab.json --summary $env:GITHUB_STEP_SUMMARY
+          $transitionExit = $LASTEXITCODE
+          if ($transitionExit -eq 2) { Die-Infra 'transition A/B records or evidence are invalid -- see parser diagnostics and raw dumps' }
+          if ($transitionExit -ne 0) { exit 1 }
+
           # C (/arch:AVX2 /fp:contract) -- INFORMATIONAL ONLY, never affects
           # the exit code. 32/32 differing is the expected observation about
           # contraction (ADR-0032 option 3); a C-side failure is a warning.
@@ -3453,6 +3484,11 @@ jobs:
             if ($rc -eq 'ok') {
               python scripts/check-dsp-dump.py c --left d-b.txt --right d-c.txt --report dsp-dump-c.json --summary $env:GITHUB_STEP_SUMMARY
               if ($LASTEXITCODE -ne 0) { Write-Host '::warning::informational C checker did not complete -- the blocking A/B gate above is unaffected' }
+              $tc = Run-Dump 'build-c' 'd-transitions-c.txt' 'transitions'
+              if ($tc -eq 'ok') {
+                python scripts/check-dsp-dump.py c --suite transitions --left d-transitions-b.txt --right d-transitions-c.txt --report dsp-dump-transitions-c.json --summary $env:GITHUB_STEP_SUMMARY
+                if ($LASTEXITCODE -ne 0) { Write-Host '::warning::informational transition C checker did not complete -- blocking A/B gates are unaffected' }
+              } else { Write-Host "::warning::informational transition C did not execute cleanly ($tc) -- blocking A/B gates are unaffected" }
             } else { Write-Host "::warning::informational /fp:contract dump did not execute cleanly ($rc) -- the blocking gate above is unaffected"; Say "- informational /fp:contract run skipped ($rc)" }
           } else { Write-Host "::warning::informational /fp:contract build failed -- the blocking gate above is unaffected"; Say "- informational /fp:contract build skipped" }
           exit 0

@@ -47,6 +47,41 @@ scaffolding, not an audio allocation or a new product owner. Full
 native suites/sanitizers/pluginval remain required; headless GUI checks do not
 replace the targeted native visual/editor-lifecycle acceptance in ADR-0070.
 
+## Nonshipping NR-012 alias measurements
+
+The [bounded study](../../worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md) uses coherent
+high tones through the actual engine, an injected-alias calibration/omission control,
+linear/bypass references and repeated periods/executions. It records selected
+odd-harmonic folded-bin powers normalized to measured carrier power. The Linux/
+Ninja reproduction utility reuses existing engine/JUCE objects and flags; no
+production build target or mandatory quality assertion changes. Native quality
+interpretation and broader grids remain unverified; “the wrap runs” and measured
+alias suppression remain different evidence. No frozen waveform is introduced.
+
+## Concurrent memcheck execution controls
+
+The sanitizer job runs the independent DSP/state Valgrind processes through
+`python3 scripts/run-memcheck.py --build-dir build-vg`. Both must finish with zero
+status. Raw stdout/stderr per suite and command/exit-code JSON are retained;
+labelled output remains live even when the 60-minute job cap cancels execution.
+The upload also runs after cancellation while the runner remains available;
+skipped/unstarted suites do not upload. Atomic status checkpoints retain completed
+peer results and explicitly incomplete statuses before both processes finish.
+SIGINT/SIGTERM tests preserve those partial logs/statuses, require nonzero parent
+exit and join TERM-ignoring validators after bounded process-group cleanup.
+The routing regression covers 15 actual-upload-condition cases across success,
+failure and cancellation, including absent/skipped steps, with three negative
+controls. Hard runner loss can still make an artifact unavailable; never infer a
+suite result from it or a partial log. The upload has its own five-minute bound; the job limit stays 60 minutes
+and server cancellation grace can truncate retention sooner.
+Options, allocation-guard/FTZ instrumentation dispositions and assertions are
+unchanged. `--self-test` requires actual child overlap and catches either/both
+nonzero statuses, missing validators/binaries and lost stderr/completion evidence.
+Warnings/workflow commands must remain at the start of their output line so
+GitHub annotations survive; controls exercise that forwarding as well. These
+controls do not replace real Valgrind or final-head CI. Evidence:
+`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md`.
+
 ## Completed edit before A/B polling — NR-022 / State test 149
 
 `tests/ab_undo_tests.h::testAbSwitchPreservesACompletedUnpolledEdit` runs in the
@@ -5717,6 +5752,59 @@ build B", and only a diff between two runs answers it.
 
 ## Validating Windows A/B DSP dump records
 
+### Additive NR-011 transition suite
+
+`AnamorphDspDump --transitions` emits five separate four-field records:
+scenario, audio hash, final engine latency, and a 16-hex hash of the before/after
+engine-latency observations for every 128-sample block. The five fixed-seed,
+48 kHz scenarios each run 256 blocks: bypass/Mix cycles with selected-but-skipped
+OS, algorithm/factor cycles, crossover glides, solo/topology/enable cycles, and
+reset/transport/silence/zero-length-idle/restart cycles. This is engine-level
+coverage, not measurement of the host's asynchronous latency callbacks.
+
+Every invocation, including the unchanged legacy/default `--self-check` path,
+checks transition repeatability, finite output, phase-end latency adoption,
+distinctness and comparison against an inert-action projection. Seeded one-bit
+sample and one-observation latency controls must change their respective evidence
+only. Silent success in legacy mode preserves its original stdout/32-row schema.
+
+The inert projection proves aggregate scenario activity. Separately, 57 omission
+replays suppress one phase/parameter field, crossover ramp, reset or transport
+edge while leaving other actions/input live. Fifty-four require an audio change;
+three masked writes (dry Bypass, bypassed Mix, disabled Solo) require an observed
+adopted-parameter change and make no audibility claim. Same-value holds and fixed
+input epochs are outside that action count. Edge-only transport calls and a final
+stop at block 240 expose each resume's later effect; only the reset/idle fixture's
+new audio hash changes. The adoption trace is internal and never contaminates
+sample/latency evidence or exported schemas. Five compiled single-action mutants
+pass the aggregate-only oracle but fail their isolated controls; details and exact
+scope are in the NR-011 worklog. All entry points still run these controls.
+
+```bash
+AnamorphDspDump --transitions > transitions-a.txt
+AnamorphDspDump --transitions > transitions-b.txt
+python3 scripts/check-dsp-dump.py --self-test
+python3 scripts/check-dsp-dump.py ab --suite transitions --left transitions-a.txt \
+  --right transitions-b.txt --report transitions-ab.json
+```
+
+The suite must be selected explicitly; neither parser auto-detection nor missing/
+mixed/duplicate records are admitted. Transition A/B audio differences fail as
+NUMERICAL, engine latency/final-trace differences as TRANSITION_LATENCY, malformed
+evidence as INFRASTRUCTURE. Optional C remains nonblocking. The original default
+32-scenario parser/JSON schema and ADR-0032 warning-only latency behavior below
+are unchanged. No cross-platform golden hashes or new Class-B tolerance is imposed.
+Same-machine/configuration comparisons isolate one build variable; intentional
+approved DSP numerical changes still need their existing Class-B evaluation.
+
+The Windows job compares both suites from its existing A/B/C executables and
+retains separate raw/JSON evidence. Existing GCC/macOS dump self-check callers
+also exercise the new silent controls. Local Clang evidence, negative-control
+method and remaining scope are in
+[NR011_DSP_TRANSITION_COVERAGE.md](../../worklogs/NR011_DSP_TRANSITION_COVERAGE.md).
+
+### Legacy 32-scenario contract
+
 The `windows-avx2-ab` gate uses `scripts/check-dsp-dump.py`, with Python's standard
 library. Before use, run its inert production-entry regression suite:
 
@@ -6392,8 +6480,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   — this bullet said "session-local and not committed" for five rounds after that stopped being
   true (ER-TST-05); the method no longer needs re-creating per investigation.
 
-- **The twin dump hashes a fixed engaged steady-state matrix, and everything outside it is
-  outside the bit-identity claim.** Each of the 32 scenarios applies one parameter set, calls
+- **The legacy twin dump hashes a fixed engaged steady-state matrix.** Each of the 32 scenarios applies one parameter set, calls
   `reset()` (which flushes any in-flight switch duck), and hashes 240 settled blocks — so the
   compared surface includes the continuous-smoother glides, the M/S conditioning loop, and all
   four algorithm modules engaged, but **excludes** the switch-duck/adopt machinery, the Bypass
@@ -6404,7 +6491,12 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   census; on MSVC it rests on documented `/fp:precise` semantics plus the toolset ≥ 14.30
   assertion, not on measurement. ADR-0032 hedges with "for this instrument's coverage"; this
   entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
-  matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
+  matrix is now complemented by NR-011's separate five-scenario transition suite
+  above. It exercises selected switch/Bypass/Mix/crossover/solo/band/reset/idle
+  cycles, not every configuration or the host wrapper. The remaining M/S-solo,
+  channel-conditioning and non-finite-heal combinations are outside that new
+  differential set; existing behavioral tests and binary-wide contraction rules
+  retain their separate scope. No whole-engine exhaustive bit-identity claim follows.
 
 - **Installation coverage is platform-specific (reconciled 2026-10-25).** Merged Windows
   installer tests run on disposable hosted VMs. The combined candidate retains actual
