@@ -418,6 +418,46 @@ def release_create_self_test(release):
             'source_target': 'GITHUB_SHA', 'draft': True, 'asset_count': 11}
 
 
+def memcheck_upload_self_test(build):
+    """Check the real upload predicate under ordinary/failure/cancellation states."""
+    body = jobs(build)['sanitizers'].split('      - name: Retain individual memcheck logs and exit statuses\n', 1)[1]
+    body = body.split('\n      - name:', 1)[0]
+    match = re.search(r'^        if: ([^\n]*)\n((?:          [^\n]*\n)*)', body, re.M)
+    condition = match[2].strip() if match[1].strip() == '>-' else match[1].strip()
+
+    def selected(source, outcome, status):
+        # Actions implicitly adds success() only if no status function occurs.
+        functions = {'always()': True, 'success()': status == 'success',
+                     'failure()': status == 'failure', 'cancelled()': status == 'cancelled'}
+        explicit_status = any(name in source for name in functions)
+        for name, value in functions.items():
+            source = source.replace(name, 'true' if value else 'false')
+        return bool(expression(source, {'steps.memcheck.outcome': outcome})
+                    and (explicit_status or status == 'success'))
+
+    def verify_condition(source):
+        records = []
+        for status in ('success', 'failure', 'cancelled'):
+            for outcome in ('success', 'failure', 'cancelled', 'skipped', ''):
+                actual = selected(source, outcome, status)
+                assert actual == (outcome in ('success', 'failure', 'cancelled')), (status, outcome, source)
+                records.append({'job_status': status, 'memcheck_outcome': outcome, 'upload': actual})
+        return records
+
+    records = verify_condition(condition)
+    mutants = ["${{ !cancelled() && steps.memcheck.outcome != 'skipped' }}",
+               'always()', "steps.memcheck.outcome != 'skipped'"]
+    for mutant in mutants:
+        try:
+            verify_condition(mutant)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError('memcheck upload negative control escaped: ' + mutant)
+    assert 'if-no-files-found: error' in body and 'path: build/valgrind-logs' in body
+    return {'cases': records, 'rejected_controls': mutants}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--self-test',action='store_true')
@@ -432,11 +472,13 @@ def main():
                                             (args.release or root/'.github/workflows/release.yml').read_text())
     release_create_liveness = (release_create_self_test((args.release or root/'.github/workflows/release.yml').read_text())
                                if product == 'Anamorph' else None)
+    memcheck_upload_liveness = memcheck_upload_self_test(build_path.read_text()) if product == 'Anamorph' else None
     if args.self_test: return
     result = verify(args.build or root/'.github/workflows/build.yml',args.release or root/'.github/workflows/release.yml',root)
     result['same_run_liveness']=liveness
     result['same_run_permission_liveness']=permission_liveness
     result['same_run_draft_creation_liveness']=release_create_liveness
+    result['same_run_memcheck_upload_liveness']=memcheck_upload_liveness
     if args.report:
         args.report.parent.mkdir(parents=True,exist_ok=True)
         args.report.write_text(json.dumps(result,indent=2)+'\n')

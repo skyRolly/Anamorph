@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Run both existing Valgrind suites concurrently, retaining every exit status."""
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 OPTIONS = ["--tool=memcheck", "--track-origins=yes", "--leak-check=no",
            "--error-exitcode=1", "--error-limit=no", "--num-callers=25"]
@@ -18,19 +21,48 @@ OPTIONS = ["--tool=memcheck", "--track-origins=yes", "--leak-check=no",
 def run_suites(prefix, binaries, directory):
     directory.mkdir(parents=True, exist_ok=True)
     output_lock = threading.Lock()
+    state_lock = threading.Lock()
+    children = {}
+    results = [{"suite": label, "command": [*prefix, *OPTIONS, str(binary)],
+                "exit_code": None, "log": f"{label}.log", "state": "pending"}
+               for label, binary in binaries]
+    interrupted = 0
+
+    def checkpoint():
+        # Called with state_lock held. Readers/upload never see half-written JSON.
+        temporary = directory / "results.json.tmp"
+        temporary.write_text(json.dumps(results, indent=2) + "\n")
+        temporary.replace(directory / "results.json")
+
+    def cancel(signum, _frame):
+        nonlocal interrupted
+        interrupted = interrupted or signum
+
+    checkpoint()
+    previous_handlers = {sig: signal.signal(sig, cancel) for sig in (signal.SIGINT, signal.SIGTERM)}
 
     def emit(message):
         # One complete line at a time, including GitHub workflow commands.
         with output_lock:
             print(message, flush=True)
 
-    def run_one(label, binary):
-        command = [*prefix, *OPTIONS, str(binary)]
-        log_path = directory / f"{label}.log"
+    def run_one(result):
+        label, command = result["suite"], result["command"]
+        log_path = directory / result["log"]
         try:
             with log_path.open("wb") as log:
                 emit(f"memcheck {label}: {json.dumps(command)}")
-                with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
+                with state_lock:
+                    if interrupted:
+                        result.update(state="interrupted", interrupted_by=signal.Signals(interrupted).name)
+                        checkpoint()
+                        return
+                with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                      start_new_session=(os.name == "posix")) as child:
+                    with state_lock:
+                        children[label] = child
+                        result.update(state="running", pid=child.pid)
+                        checkpoint()
                     for line in child.stdout:
                         log.write(line)
                         log.flush()
@@ -42,18 +74,62 @@ def run_suites(prefix, binaries, directory):
                         else:
                             emit(f"[{label}] {text}")
                     code = child.wait()
-            return {"suite": label, "command": command, "exit_code": code, "log": log_path.name}
+            with state_lock:
+                result.update(exit_code=code, state="interrupted" if "interrupted_by" in result else "completed")
+                checkpoint()
         except OSError as error:
             emit(f"::error::memcheck {label} could not run: {error}")
-            return {"suite": label, "command": command, "exit_code": None, "error": str(error)}
+            with state_lock:
+                result.update(state="start_failed", error=str(error))
+                checkpoint()
 
     # Joining both futures is mandatory even if the first suite fails. The
     # commands/options are unchanged; no result is inferred from log text.
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(run_one, label, binary) for label, binary in binaries]
-        results = [future.result() for future in futures]
-    (directory / "results.json").write_text(json.dumps(results, indent=2) + "\n")
-    failed = any(result["exit_code"] != 0 for result in results)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(run_one, result) for result in results]
+            pending = set(futures)
+            termination_started = None
+            terminated = set()
+            killed = set()
+            while pending:
+                _, pending = wait(pending, timeout=0.05)
+                if interrupted:
+                    termination_started = termination_started or time.monotonic()
+                    with state_lock:
+                        for result in results:
+                            label = result["suite"]
+                            child = children.get(label)
+                            if child is None or result["state"] == "completed":
+                                continue
+                            if label not in terminated:
+                                result["interrupted_by"] = signal.Signals(interrupted).name
+                                terminated.add(label)
+                                sig = signal.SIGTERM
+                            elif label not in killed and time.monotonic() - termination_started >= 1:
+                                # A child/grandchild may ignore TERM or retain the
+                                # pipe after its parent exits. Kill the whole group.
+                                killed.add(label)
+                                sig = signal.SIGKILL
+                            else:
+                                continue
+                            try:
+                                if os.name == "posix":
+                                    os.killpg(child.pid, sig)
+                                elif sig == signal.SIGTERM:
+                                    child.terminate()
+                                else:
+                                    child.kill()
+                            except ProcessLookupError:
+                                pass
+                        checkpoint()
+            for future in futures:
+                future.result() # propagate infrastructure exceptions after joining both
+    finally:
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+    failed = bool(interrupted) or any(result["state"] != "completed" or result["exit_code"] != 0
+                                     for result in results)
     if failed:
         print("::error::memcheck suite results: " + json.dumps(results), flush=True)
     return int(failed)
@@ -97,6 +173,7 @@ sys.exit(int(right if label=='state' else left))
             assert code == int(left != 0 or right != 0), (left, right, code)
             report = json.loads((case / "results.json").read_text())
             assert [r["exit_code"] for r in report] == [left, right], report
+            assert all(r["state"] == "completed" for r in report), report
             for label, _ in binaries:
                 assert (case / (label + ".finished")).exists(), label
                 raw = (case / (label + ".log")).read_text()
@@ -111,7 +188,84 @@ sys.exit(int(right if label=='state' else left))
         missing = subprocess.run([sys.executable, __file__, "--build-dir", str(root / "absent")],
                                  capture_output=True, text=True)
         assert missing.returncode == 2 and "required suite binaries missing" in missing.stderr
-    print("memcheck runner: 4 overlap/status, missing-validator and missing-binaries controls passed")
+        if os.name == "posix":
+            cancellation_self_test(root)
+    print("memcheck runner: overlap/status, missing inputs and interruption/checkpoint controls passed")
+
+
+def cancellation_self_test(root):
+    # Real parent signals, not mocked return values: one completed suite must
+    # survive cancellation of its still-running peer. TERM-ignoring children
+    # exercise bounded KILL escalation; the raw partial logs must already exist.
+    stub = root / "interrupt-validator.py"
+    stub.write_text('''import os,signal,sys,time
+from pathlib import Path
+root=Path(sys.argv[1])
+label='state' if 'State' in sys.argv[-1] else 'dsp'
+if label=='state':
+ signal.signal(signal.SIGTERM, signal.SIG_IGN)
+ signal.signal(signal.SIGINT, signal.SIG_IGN)
+print('partial '+label, flush=True)
+(root/(label+'.started')).write_text(str(os.getpid()))
+if label=='dsp': sys.exit(0)
+while True: time.sleep(.05)
+''')
+    driver = '''import runpy,sys
+from pathlib import Path
+runner,stub,root=sys.argv[1:]
+root=Path(root)
+binaries=[('dsp',root/'AnamorphTests'),('state',root/'AnamorphStateTests')]
+sys.exit(runpy.run_path(runner)['run_suites']([sys.executable,stub,str(root)],binaries,root))
+'''
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        case = root / sig.name
+        case.mkdir()
+        with subprocess.Popen([sys.executable, "-c", driver, str(Path(__file__).resolve()),
+                               str(stub), str(case)], stdout=subprocess.DEVNULL,
+                              stderr=subprocess.PIPE) as parent:
+            try:
+                deadline = time.monotonic() + 5
+                while True:
+                    path = case / "results.json"
+                    report = json.loads(path.read_text()) if path.exists() else []
+                    if (len(report) == 2 and report[0]["state"] == "completed"
+                            and report[1]["state"] == "running" and (case / "state.started").exists()):
+                        break
+                    assert parent.poll() is None and time.monotonic() < deadline, report
+                    time.sleep(.01)
+                assert report[0]["exit_code"] == 0 and report[1]["exit_code"] is None, report
+                assert "partial state" in (case / "state.log").read_text()
+                parent.send_signal(sig)
+                _, error = parent.communicate(timeout=4)
+                assert parent.returncode != 0, error
+                report = json.loads(path.read_text())
+                assert report[0]["state"] == "completed" and report[0]["exit_code"] == 0, report
+                assert (report[1]["state"] == "interrupted" and report[1]["exit_code"] == -signal.SIGKILL
+                        and report[1]["interrupted_by"] == sig.name), report
+                for result in report:
+                    try:
+                        os.kill(result["pid"], 0)
+                    except ProcessLookupError:
+                        pass
+                    else:
+                        raise AssertionError(f"unreaped validator: {result}")
+            finally:
+                if parent.poll() is None:
+                    parent.kill()
+                    parent.wait()
+                # Also clean up if a broken/mutated runner loses its children.
+                path = case / "results.json"
+                for result in json.loads(path.read_text()) if path.exists() else []:
+                    if result.get("pid"):
+                        try:
+                            os.killpg(result["pid"], signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                for marker in case.glob("*.started"):
+                    try:
+                        os.kill(int(marker.read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
 
 def main():
