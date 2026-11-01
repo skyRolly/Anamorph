@@ -1,5 +1,29 @@
 # TESTING.md
 
+## Concurrent memcheck execution controls
+
+The sanitizer job runs the independent DSP/state Valgrind processes through
+`python3 scripts/run-memcheck.py --build-dir build-vg`. Both must finish with zero
+status. Raw stdout/stderr per suite and command/exit-code JSON are retained;
+labelled output remains live even when the 60-minute job cap cancels execution.
+The upload also runs after cancellation while the runner remains available;
+skipped/unstarted suites do not upload. Atomic status checkpoints retain completed
+peer results and explicitly incomplete statuses before both processes finish.
+SIGINT/SIGTERM tests preserve those partial logs/statuses, require nonzero parent
+exit and join TERM-ignoring validators after bounded process-group cleanup.
+The routing regression covers 15 actual-upload-condition cases across success,
+failure and cancellation, including absent/skipped steps, with three negative
+controls. Hard runner loss can still make an artifact unavailable; never infer a
+suite result from it or a partial log. The upload has its own five-minute bound; the job limit stays 60 minutes
+and server cancellation grace can truncate retention sooner.
+Options, allocation-guard/FTZ instrumentation dispositions and assertions are
+unchanged. `--self-test` requires actual child overlap and catches either/both
+nonzero statuses, missing validators/binaries and lost stderr/completion evidence.
+Warnings/workflow commands must remain at the start of their output line so
+GitHub annotations survive; controls exercise that forwarding as well. These
+controls do not replace real Valgrind or final-head CI. Evidence:
+`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md`.
+
 ## Completed edit before A/B polling — NR-022 / State test 149
 
 `tests/ab_undo_tests.h::testAbSwitchPreservesACompletedUnpolledEdit` runs in the

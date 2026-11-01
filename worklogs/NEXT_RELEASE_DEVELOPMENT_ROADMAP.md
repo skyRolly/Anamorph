@@ -1,6 +1,51 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** review-and-repair checkpoint; owner merge authorization required.
+## #203 cancellation-evidence review — 2026-11-01 (Asia/Shanghai)
+
+Accepted the reported missing-timeout-artifact finding. The old `!cancelled()`
+predicate excluded the very incomplete runs needing evidence. The upload now
+uses `always()` with explicit started-step outcomes. The runner atomically
+checkpoints partial statuses/logs, preserves completed results and terminates/
+joins its child groups on INT/TERM with bounded escalation. Cancellation is
+nonzero, never a fabricated pass. `exec` delivers signals to Python. The upload has its own five-minute bound; the sanitizer job cap remains
+60 minutes. Server cancellation grace may truncate retention sooner. Hard runner loss
+or final forced termination can still prevent upload and remains unavailable
+rather than passing evidence.
+
+Local controls cover both suite statuses, real overlap, missing inputs, annotation
+forwarding, two signal interruptions/partial journals and child cleanup. Four
+wrapper mutants (ignored state result, prefixed annotations, late journal and
+serial execution) are rejected; routing checks 15 cases plus three negative
+predicates against the actual workflow. See the [budget evidence](CI_MEMCHECK_BUDGET_FOLLOWUP.md).
+The prior successful `2c242e5` matrix/memcheck qualifies only that historical head;
+corrected-head CI/artifacts are tracked in #203’s discussion. Product/test/build
+inputs, detector options and release state are unchanged. Dependency order remains
+main ← #203 ← #201, with an additive descendant synchronization required.
+
+## CI budget follow-up — 2026-11-01 UTC
+
+Actual main remains `00de8c7796f37d08a338256e01830bb312ba105c` after the
+owner-authorized #195→#196→#197→#198 integration. The new PRs remain unmerged:
+#199 records owner-Accepted ADR-0070, #202 implements it (current reviewed source
+2b2fc50; final-head CI pending), and independent #200/#201 cover NR-011/NR-012. Their full execution
+record and stable exact-head ledger are in #202; the older snapshots below
+retain their dated historical scope. Architecture approval does not grant
+new merges, representative performance/visual acceptance or release permission.
+
+[CI_MEMCHECK_BUDGET_FOLLOWUP.md](CI_MEMCHECK_BUDGET_FOLLOWUP.md) records main’s
+repeated 60-minute sanitizer cancellations. The second attempt completed both
+zero-failure suites and zero-error memcheck summaries but is still recorded
+cancelled. Source-identical #199/#200 retries succeeded; #201 and NR-006’s
+native-repaired #202 also exhausted the serial budget. The bounded correction
+on branch `ci/parallel-memcheck-suites` overlaps only the independent memcheck
+processes and joins both statuses. Commands/options, 60-minute cap, assertions,
+strictness and product/build/release inputs stay unchanged. Local orchestration
+controls pass; final-head real CI timing/status must be refreshed in its PR.
+No merge is authorized. NR-003 remains Deferred, NR-006 performance/manual
+acceptance stays open, and prior GCC shipping-ABI failure/403 alert-state limits
+retain their exact scope.
+
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated; #199–#203 open; ADR-0070 owner-Accepted, separate new merge authorization required.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -14,7 +59,7 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
-## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
+## Historical review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
 **Integration gate:** all four PRs remain open and unmerged. No auto-merge, release
 operation, version change or next implementation batch is authorized. This checkpoint
@@ -247,7 +292,7 @@ final stack heads/CI evidence will be recorded in #198's handoff and PR discussi
 All four PRs must remain open and unmerged. No auto-merge, release operation or next
 implementation batch is authorized; explicit owner merge authorization is required.
 
-## Current execution — owner decisions recorded 2026-10-31 (Asia/Shanghai)
+## Historical execution — owner decisions recorded 2026-10-31 (Asia/Shanghai)
 
 Execution base: `6ae102ca72d83eb07c0a84d76465b26c457cdc16` (merged PR #194);
 product/test/packaging/build/workflow inputs equal the investigated `4c13688` candidate.
@@ -509,7 +554,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P2 | Ready for Review | Scope overwrite/thread-contract review packet; runtime decision pending | 1 / architecture phase |
+| NR-006 | P1 | Accepted architecture / implementation in review | Owner accepted ADR-0070 in #199; #202 unmerged; representative cost/visual and implementation gates remain | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
@@ -606,12 +651,15 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
   coherence across repeated restore cycles, State 27/148 and TSan. **Human architecture review
   before threading/ordering changes; host test for demonstrated exposure.** Conditional maintenance.
 
-### NR-006 — Decide the ScopeBuffer overwrite contract
+### NR-006 — Validate the approved overwrite correction
 
-**Packet Ready for Review:** [NR006_SCOPE_PUBLICATION_REVIEW.md](NR006_SCOPE_PUBLICATION_REVIEW.md).
-The original mechanism remains in source; only descriptive overclaims are corrected.
-Packed atomic stereo frames are a conditional candidate, not an approved decision or fix.
-The owner must select best-effort versus whole-window coherence before a new payload protocol.
+**Accepted architecture; implementation in review.** The owner approved ADR-0070
+in [#199](https://github.com/skyRolly/Anamorph/pull/199). Generation-validated atomic
+stereo windows are implemented separately in [#202](https://github.com/skyRolly/Anamorph/pull/202),
+which remains unmerged and subject to representative cost, native visual and
+implementation acceptance. Main and this independent CI branch retain the original
+mechanism. The [original packet](NR006_SCOPE_PUBLICATION_REVIEW.md) is historical
+evidence, not a new request for the already granted architecture selection.
 
 
 - **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
@@ -621,14 +669,14 @@ The owner must select best-effort versus whole-window coherence before a new pay
 - **Impact/risk:** display-only torn scope/FFT windows under a lapped reader; formally a C++ data
   race. No audio corruption/crash or field frequency is established. Calling aligned access
   “benign” is not a language-level race-freedom proof. TSan silence with memcpy is not closure.
-- **Approach/order:** after NR-001, prepare a small architecture decision: honest current-risk
-  documentation versus a bounded race-free publication design. Evaluate atomic sample access or
-  reader-safe fixed buffers without audio locks/allocations or unbounded retries. Do not implement
-  until owner review; a waiver must not describe the code as race-free.
+- **Approach/order:** validate #202 against Accepted ADR-0070 without changing this
+  independent branch’s threading implementation. Design acceptance does not correct
+  main/the release or grant integration permission; do not re-request that decision.
 - **Acceptance/tests:** explicit selected contract; if corrected, a deterministic lapped-reader
   schedule/negative control, buffer-wrap/newest-frame tests, suitable race instrumentation and
-  audio allocation/performance checks. **Human threading review and visual audition required.**
-  Phase 1 architecture work; implementation version chosen after evidence/approval.
+  audio allocation/performance checks. **Architecture selection approved; implementation review, representative costs
+  and targeted native visual audition remain required.** Changes outside Accepted
+  ADR-0070 require a new architecture decision.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 
@@ -1066,7 +1114,9 @@ No candidate was installed on a live workstation. No defect ownership is inferre
 location, TSan silence, runner success or a diagnostic timeout.
 
 NR-001/002 are now closed by explicit owner confirmation. The named host scope/matrix (NR-003)
-is Deferred. Remaining decisions include the ScopeBuffer publication contract (NR-006),
+is Deferred. NR-006’s contract is owner-Accepted in #199; its implementation #202
+remains unmerged and subject to cost/native visual/implementation acceptance.
+Remaining decisions include
 additional parser restrictions/coherent multiband model only if selected (NR-008/009), and public/
 commercial/signing/product choices (NR-018/019/020). A current supported-host failure would change
 priorities immediately; none was established by this assignment. The only ongoing API access limit
