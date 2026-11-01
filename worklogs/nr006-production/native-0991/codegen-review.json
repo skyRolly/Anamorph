@@ -1,0 +1,59 @@
+{
+  "source_head": "0991b2ffbdabc314dd3c0b658b434bc51a6ccfba",
+  "run": 41243991217,
+  "artifacts": [
+    {
+      "name": "Anamorph-Windows",
+      "id": 13058507616,
+      "digest": "sha256:b49eec855c17edf096f7368f9cff02b2a8b81979a3746e4e65ba2e90f62023ef",
+      "source_head": "0991b2ffbdabc314dd3c0b658b434bc51a6ccfba",
+      "run": 41243991217
+    },
+    {
+      "name": "Anamorph-macOS",
+      "id": 13058789641,
+      "digest": "sha256:7b8c5119b4e94eeef5e202681ce4e293a5374f7c4fa0906e9cbb849e2b6ebc87",
+      "source_head": "0991b2ffbdabc314dd3c0b658b434bc51a6ccfba",
+      "run": 41243991217
+    },
+    {
+      "name": "Anamorph-Windows-debug",
+      "id": 13058721915,
+      "digest": "sha256:009aac6532d1e51517d09b748a24ba063afe27a329595033d43a7a7f47f153b4",
+      "source_head": "0991b2ffbdabc314dd3c0b658b434bc51a6ccfba",
+      "run": 41243991217
+    },
+    {
+      "name": "Anamorph-macOS-debug",
+      "id": 13059318641,
+      "digest": "sha256:67529cc566e3b8fdae41223f77569d9db7fce31080858fd18c95eeaa794d48b4",
+      "source_head": "0991b2ffbdabc314dd3c0b658b434bc51a6ccfba",
+      "run": 41243991217
+    }
+  ],
+  "debug_matches": {
+    "windows": "PDB GUID3A6BD8ED-980A-4653-857E-F149D9B22220 age1 matches PE CodeView record",
+    "mac_x64": "ECC1CD48-3577-3A24-B0A6-294EA1C80B4A matches product/dSYM",
+    "mac_arm64": "4E380FF6-8EEE-30D7-A4E8-7EF38F608019 matches product/dSYM"
+  },
+  "inspection": {
+    "windows_x64": "producer18038aee5..18038af77: invalidation, packed stereo, valid tag as aligned MOVQ stores, then one count store. copyAt1801d3bb0..1801d3c7f: two tag loads/checks around payload load, exits on mismatch, bounded loop. No lock/RMW/atomic-library helper. MSVC14.51 from CI.",
+    "mac_arm64": "producer3a095c..3a09c4: STLR invalidation/payload/tag then one countSTLR; retained bound16384. reader9adc8..9ae38: acquired end and tag/payload/tag LDAPR loads, two comparisons, mismatch exits. No exclusive/CAS retry, lock or helper in these protocol slices. AppleClang native output.",
+    "mac_x64": "producer450d4a..450e74: aligned MOVQ stores in order, two-frame unroll and bounded odd suffix, one countstore. Vectorscope paintb34c0..b3564: end/tag/payload/tag loads with checks/mismatch exit. No memory RMW/lock/helper in protocol slices.",
+    "linux_x64": "Native pinned-Clang22.1.8 production API canaries already retained in worklogs/nr006-production/clang-*-assembly.txt, same Haswell/no-contraction flags; no call/lock/memoryRMW. This is local native codegen, not a new CI artifact.",
+    "mac_compiler": "AppleClang21.0.0.21000101 from native CI configure logs"
+  },
+  "slice_sha256": {
+    "windows-push-slice.txt": "fad28e1e6d45d9acf7027ab97d158b1f124d8c4faae810094e4555a2c865d891",
+    "mac-x64-read-slice.txt": "d4c1f19117280c65faafcde9bcb60dde3da3a51c60d78153838f4ba2874a1562",
+    "mac-x64-push-slice.txt": "66fc8a24a9f7a360b7dd5249d46e889b12fc9746bf1ad6b490cc8d4cefad774f",
+    "arm-read-slice.txt": "923f0ade60996143952b0ed116607dc7596b1e99f85d1159ce238432d91ef34b",
+    "windows-read-slice.txt": "492efe055f14e07a6833d2fdc833499f5cc57228380ff226582a83e6fc03e8af",
+    "arm-push-slice.txt": "1cbdcaa0792b19c0784d5e1b2759613eb2c6adb41d82c0c173a4714acb57f0ad"
+  },
+  "limits": [
+    "Code generation/compile guards are structural evidence, not representative native performance/WCET or manual visual acceptance.",
+    "Actual engine/paint functions contain other permitted calls outside the isolated scope protocol; their whole bodies are not described as call-free.",
+    "Valid snapshots/reader progress/lifetime still follow Accepted ADR0070. Matching builds do not retroactively change main/draft."
+  ]
+}

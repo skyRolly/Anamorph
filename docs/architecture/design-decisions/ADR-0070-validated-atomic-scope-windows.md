@@ -267,3 +267,13 @@ local production costs, the repaired test-fixture stack failure and remaining
 native/performance/manual gates. No decision invariant is weakened. Architecture
 approval is complete; implementation integration and cost/visual acceptance are
 not inferred from that approval or local results. The existing draft is unchanged.
+
+Subsequent native guards and matching Windows/macOS product/debug inspection
+verify the ordered 64-bit scope protocol instructions for the reviewed native
+configurations; the packet retains source/artifact identities and slice digests.
+The native test-fixture stack failure is confirmed repaired. A later memcheck
+stress-harness scheduling failure is corrected with existing test-only pacing,
+retaining its workload/checks/deadline and requiring fresh final-head validation.
+Representative cost acceptance and targeted native visual/lifecycle acceptance
+remain open. Neither codegen inspection nor that test-only correction changes
+the accepted architecture or grants integration/release permission.

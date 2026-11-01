@@ -16,5 +16,5 @@
   "stack_estimate_method": "MSVC /analyze C6262 static estimate, not debugger-measured runtime frame",
   "repair": "61 legacy by-value DSP engine locals replaced by scoped heap fixtures;554 original check expressions and guard/destruction scopes unchanged",
   "local_validation": "fullDSP945/0 under original1024KiB limit; inSq unused-set warning remains baseline debt",
-  "native_confirmation": "required on repaired final head, not marked resolved merely by push"
+  "native_confirmation": "Confirmed repaired on0991b2f native Windows:941DSP/10815State zero failures, Test52 completes; independent later memcheck stress scheduling defect tracked separately"
 }

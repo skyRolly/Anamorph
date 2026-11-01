@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 ADR-0070 Accepted and atomic-window correction implemented on its separate review branch; native/performance/manual acceptance and integration remain. NR-011 #200 and NR-012 #201 independently submitted.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated with explicit owner authorization; NR-006 ADR-0070 Accepted and atomic-window correction implemented on its separate review branch; final-head CI/performance/manual acceptance and integration remain. NR-011 #200, NR-012 #201 and CI budget correction #203 independently submitted.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -127,9 +127,10 @@ The first implementation’s Windows DSP gate subsequently failed before Test52�
 entry banner: seven sibling-scope inline engines exceeded the MSVC stack budget
 after the ring grew. The 61 legacy DSP engine fixtures now use scoped heap
 ownership with all 554 check expressions/guard scopes retained; local DSP945/0
-passes at the same 1 MB limit. Final native Windows confirmation remains required,
-as tracked in the #202 ledger; the initial failure is not called an infrastructure
-flake or marked resolved solely on push. No new PR has been merged.
+passes at the same 1 MB limit. Native Windows head `0991b2f` subsequently passed
+DSP 941 / state 10,815, confirming the repair; its separate memcheck harness failure
+is recorded below. The initial failure is not called an infrastructure flake or
+marked resolved solely on push. No new PR has been merged.
 
 | Review unit | Head at submission | Dependency / disposition |
 |---|---|---|
@@ -137,6 +138,58 @@ flake or marked resolved solely on push. No new PR has been merged.
 | [#200](https://github.com/skyRolly/Anamorph/pull/200) / NR-011 | `104f60eb2ee246babba739e989f320d1811f73dd` | main, independent; preserves legacy32 and adds five transition/audio+latency-trace oracles, native CI/review separate |
 | [#201](https://github.com/skyRolly/Anamorph/pull/201) / NR-012 | `2d56eac297300a5ac65ad62efd4d17b40ff65055` | main, independent; 36 repeated alias rows support retaining current DSP assertions; no universal/monotonic dB gate justified |
 | [#202](https://github.com/skyRolly/Anamorph/pull/202) / NR-006 implementation | source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final head/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
+| [#203](https://github.com/skyRolly/Anamorph/pull/203) / bounded CI memcheck scheduling | `2c242e5537636b3c4a0a444030787693bdd8fd1a` | main, independent; both existing suites run concurrently with both exits joined, same options and 60-minute cap; exact-head matrix passes |
+
+### Refreshed native/CI findings — 2026-11-01 UTC
+
+This update supersedes the pending snapshots below; the stable
+[#202 ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
+records the final review SHA and subsequent final-head results without restarting
+CI for every evidence update. #199 and #200 exact-head push matrices/analyzers
+now pass. #201's second sanitizer attempt is **cancelled**, not a pass; its other
+executed mandatory jobs/analyzers pass. Integrated main's second sanitizer job
+printed both complete zero-failure suites and zero memcheck summaries, then
+GitHub finalized it as **cancelled**. That overall status is not relabeled green.
+
+#202 head0991b2f passed all executed push jobs except sanitizers, and its PR
+merge-check plus explicitly dispatched exact-head CodeQL/MSVC passed. Native
+Windows fixture failure is closed by the successful full run; macOS ARM/Rosetta
+counts are 941 / 10,825 each. Matching Windows PE/PDB and macOS product/dSYM review
+verifies the ordered atomic instructions/no hidden lock or RMW fallback in the
+scope protocol slices. Source-head/artifact IDs, ZIP digests, debug identities and
+six slices are committed in `nr006-production/native-0991/`. Product source is
+unchanged by the test-only follow-up. Representative full-engine/GUI/large-block
+cost and targeted native visual/lifecycle acceptance remain unperformed.
+
+The sanitizer retry on `0991b2f`, run 41243991217 attempt 2 / job 124704449433, instead
+found an introduced **test-scheduling defect**: state 10,980 / 2, with zero memcheck
+errors. Busy `yield()` loops can starve the producer/readers under a serializing
+checker, violating the suite's existing pacing rule. Local unpaced probes
+reproduce the completion failure; other schedules pass. Existing `d2::Pace` now
+paces the test's waiting/independent loops uniformly, outside production APIs.
+All 27 checks, two readers, million-frame advance, sample assertions and 10-second
+bound are retained. Five focused memcheck runs pass; full-suite/TSan and fresh
+native CI outcomes are in the #202 ledger. Prior failed/cancelled jobs remain
+recorded; no detector, timeout or expected result is weakened.
+
+The recurring serial memcheck budget is separately corrected in #203, final head
+`2c242e5`, without changing product/test source, options or the 60-minute cap. All 13
+executed final-head push jobs, PR merge-check, CodeQL and dependency review pass.
+Actual concurrent memcheck completes in 28m06s, sanitizer job 36m11s: DSP 934 / 0,
+state 10,953 / 0, both child exits 0 and ERROR SUMMARY 0. Its raw artifact 13065128972
+has verified ZIP SHA256 f8c385315c475ca29ca6de52b1819707fab33267cbee3234bfba2abc29d49ae6.
+The wrapper's initial annotation-prefix drift was also corrected: existing FTZ/
+allocation-guard warnings remain recognized workflow commands, with control and
+mutation coverage. These are observations from one run, not controlled speedup
+or representative timing evidence. See the [#203 ledger](https://github.com/skyRolly/Anamorph/pull/203#issuecomment-6551635744).
+Its success does not retroactively pass main/#201/#202 or authorize its merge.
+
+**Next:** confirm #202's test-pacing repair on its final mandatory matrix; review
+#203 for a separately authorized early integration to address the recurring CI
+budget, then refresh affected final-head gates. Complete representative NR-006
+cost/visual acceptance and human implementation review. All #199–#203 remain
+open/unmerged; dependencies are main ← #199 ← #202, with #200/#201/#203
+independently on main. No further integration or release action is authorized.
 
 NR-011’s mandatory push run `41234815844` also hit the unchanged sanitizer time
 limit during Valgrind state tests; only cancelled job `124636244763` was retried.
@@ -674,7 +727,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Approved / implemented on review branch | ADR-0070 owner-approved; local controls/stress pass, native/performance/manual acceptance and integration pending | 1 / first architecture batch |
+| NR-006 | P1 | Approved / implemented on review branch | ADR-0070 owner-approved; controls/native codegen verified, memcheck harness pacing corrected; final-head CI/performance/manual acceptance and integration pending | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |

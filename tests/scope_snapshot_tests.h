@@ -216,9 +216,10 @@ static void testScopeSnapshotConcurrency()
     {
         std::vector<float> left (8192), right (8192);
         std::uint64_t seen = 0;
+        d2::Pace pace;
         ready.fetch_add (1, std::memory_order_release);
         while (! start.load (std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
-            std::this_thread::yield();
+            pace.rest();
         do
         {
             const auto read = id == 0 ? ring->readLatestSnapshot (left.data(), right.data(), 8192)
@@ -242,11 +243,17 @@ static void testScopeSnapshotConcurrency()
                     observed[static_cast<std::size_t> (id)].store (read.end, std::memory_order_release);
                 }
             }
+            // Like the suite's other long-lived workers, relinquish a bounded
+            // share of the CPU to the operation being observed. yield() need
+            // not schedule another guest thread under serialising memcheck.
+            // Pacing is test-only, uniform across lanes, and outside the APIs.
+            pace.rest();
         } while (! done.load (std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline);
     };
     std::thread first (consume, 0), second (consume, 1);
+    d2::Pace producerPace;
     while (ready.load (std::memory_order_acquire) != 2 && std::chrono::steady_clock::now() < deadline)
-        std::this_thread::yield();
+        producerPace.rest();
     start.store (true, std::memory_order_release);
     constexpr std::uint64_t final = cap + 1048576;
     std::uint64_t pos = cap;
@@ -266,17 +273,20 @@ static void testScopeSnapshotConcurrency()
             // Test-only observation checkpoint: a permanently lapped reader is
             // allowed to reject forever, so nonzero accepted coverage cannot
             // depend on OS fairness. Give both readers one post-advance window,
-            // then continue the remaining stress free-running. No handshake,
+            // then continue the remaining stress in independent paced loops. No handshake,
             // wait or reader state exists inside the production push/read API.
             while ((observed[0].load (std::memory_order_acquire) < pos
                     || observed[1].load (std::memory_order_acquire) < pos)
                    && std::chrono::steady_clock::now() < deadline)
-                std::this_thread::yield();
+                producerPace.rest();
         }
-        else if ((iteration % 4) == 0) std::this_thread::yield();
+        else if ((iteration % 4) == 0) producerPace.rest();
     }
     done.store (true, std::memory_order_release);
     first.join(); second.join();
+    std::printf ("  scope producer: position=%llu target=%llu ready=%d observed=%llu/%llu\n",
+        static_cast<unsigned long long> (pos), static_cast<unsigned long long> (final), ready.load(),
+        static_cast<unsigned long long> (observed[0].load()), static_cast<unsigned long long> (observed[1].load()));
     check (pos == final && ring->writeCount() == final, "scope stress: producer completes with no reader ownership dependency");
     for (std::size_t i = 0; i < stats.size(); ++i)
     {

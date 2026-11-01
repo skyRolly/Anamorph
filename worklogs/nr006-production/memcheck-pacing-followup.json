@@ -1,0 +1,202 @@
+{
+  "failed_head": "0991b2ffbdabc314dd3c0b658b434bc51a6ccfba",
+  "run": 41243991217,
+  "attempt": 2,
+  "job": 124704449433,
+  "classification": "introduced test scheduling defect under a serializing checker; busy yield loops can starve progress, not a demonstrated wrong accepted snapshot",
+  "ci_failures": {
+    "state_checks": 10980,
+    "failures": 2,
+    "assertions": [
+      "producer completes with no reader ownership dependency",
+      "each independent reader observes exact windows during production"
+    ],
+    "memcheck_error_summaries": [
+      0,
+      0
+    ]
+  },
+  "local_before": {
+    "default_first_run": "27/0; schedule-sensitive, not universal failure",
+    "default_second_run": "27/1 producer completion; ERROR SUMMARY0; concurrent compiler load",
+    "enlarged_scheduling_quantum": "10000000:27/1 producer completion; ERROR SUMMARY0; experimental schedule, not CI configuration"
+  },
+  "repair": "Existing d2::Pace in test waiting/reader loops and after four-write groups; cost-scaled blocking outside production APIs, uniform across lanes",
+  "preserved": {
+    "deadline_seconds": 10,
+    "advance_frames": 1048576,
+    "readers": 2,
+    "runtime_checks": 27,
+    "static_check_expressions": 22,
+    "valgrind_options": [
+      "--tool=memcheck",
+      "--track-origins=yes",
+      "--leak-check=no",
+      "--error-exitcode=1",
+      "--error-limit=no",
+      "--num-callers=25"
+    ]
+  },
+  "local_after": [
+    {
+      "run": 1,
+      "status": 0,
+      "seconds": 18.806,
+      "command": [
+        "valgrind",
+        "--tool=memcheck",
+        "--track-origins=yes",
+        "--leak-check=no",
+        "--error-exitcode=1",
+        "--error-limit=no",
+        "--num-callers=25",
+        "/workspace/scratch/anamorph-nr006/ld-linux-with-symbols.so.2",
+        "/workspace/Anamorph/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+        "--scope-snapshot-probe"
+      ],
+      "summary": [
+        "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+        "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667",
+        "  scope reader 0: accepted=121 rejected=4 during-writer=121 bad=0",
+        "  scope reader 1: accepted=63 rejected=0 during-writer=63 bad=0",
+        "27 checks, 0 failure(s)",
+        "==88766== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+      ]
+    },
+    {
+      "run": 2,
+      "status": 0,
+      "seconds": 10.742,
+      "command": [
+        "valgrind",
+        "--tool=memcheck",
+        "--track-origins=yes",
+        "--leak-check=no",
+        "--error-exitcode=1",
+        "--error-limit=no",
+        "--num-callers=25",
+        "/workspace/scratch/anamorph-nr006/ld-linux-with-symbols.so.2",
+        "/workspace/Anamorph/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+        "--scope-snapshot-probe"
+      ],
+      "summary": [
+        "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+        "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667",
+        "  scope reader 0: accepted=135 rejected=0 during-writer=135 bad=0",
+        "  scope reader 1: accepted=61 rejected=0 during-writer=61 bad=0",
+        "27 checks, 0 failure(s)",
+        "==88791== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+      ]
+    },
+    {
+      "run": 3,
+      "status": 0,
+      "seconds": 9.487,
+      "command": [
+        "valgrind",
+        "--tool=memcheck",
+        "--track-origins=yes",
+        "--leak-check=no",
+        "--error-exitcode=1",
+        "--error-limit=no",
+        "--num-callers=25",
+        "/workspace/scratch/anamorph-nr006/ld-linux-with-symbols.so.2",
+        "/workspace/Anamorph/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+        "--scope-snapshot-probe"
+      ],
+      "summary": [
+        "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+        "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667",
+        "  scope reader 0: accepted=129 rejected=0 during-writer=129 bad=0",
+        "  scope reader 1: accepted=62 rejected=0 during-writer=62 bad=0",
+        "27 checks, 0 failure(s)",
+        "==88807== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+      ]
+    },
+    {
+      "run": 4,
+      "status": 0,
+      "seconds": 9.488,
+      "command": [
+        "valgrind",
+        "--tool=memcheck",
+        "--track-origins=yes",
+        "--leak-check=no",
+        "--error-exitcode=1",
+        "--error-limit=no",
+        "--num-callers=25",
+        "/workspace/scratch/anamorph-nr006/ld-linux-with-symbols.so.2",
+        "/workspace/Anamorph/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+        "--scope-snapshot-probe"
+      ],
+      "summary": [
+        "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+        "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667",
+        "  scope reader 0: accepted=126 rejected=0 during-writer=126 bad=0",
+        "  scope reader 1: accepted=61 rejected=0 during-writer=61 bad=0",
+        "27 checks, 0 failure(s)",
+        "==88815== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+      ]
+    },
+    {
+      "run": 5,
+      "status": 0,
+      "seconds": 9.739,
+      "command": [
+        "valgrind",
+        "--tool=memcheck",
+        "--track-origins=yes",
+        "--leak-check=no",
+        "--error-exitcode=1",
+        "--error-limit=no",
+        "--num-callers=25",
+        "/workspace/scratch/anamorph-nr006/ld-linux-with-symbols.so.2",
+        "/workspace/Anamorph/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+        "--scope-snapshot-probe"
+      ],
+      "summary": [
+        "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+        "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667",
+        "  scope reader 0: accepted=126 rejected=0 during-writer=126 bad=0",
+        "  scope reader 1: accepted=61 rejected=0 during-writer=61 bad=0",
+        "27 checks, 0 failure(s)",
+        "==88823== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+      ]
+    }
+  ],
+  "tooling": "Workspace-only signed Debian Valgrind3.24.0/libc6-dbg2.41 packages; eu-unstrip joins exact matching loader symbols for local execution (same build ID86f7eb4ff495ed3f2831c6d3d662e4321762a2a3). No system install, detector fallback or suppression. Entire probe runtime includes startup and State150; the State151 bound stays10s.",
+  "remaining": "Final-head native CI must confirm repair; stable PR202 ledger records final SHA/status. Representative cost/manual acceptance and separate merge authorization remain.",
+  "full_local_suites": {
+    "dsp_checks": 945,
+    "state_checks": 10980,
+    "failures": 0,
+    "stack_limit_kib": 1024,
+    "MALLOC_PERTURB_": 1
+  },
+  "tsan_after": {
+    "canary": "status66 with symbolized seeded data-race report",
+    "focused_runs": 5,
+    "checks_per_run": 27,
+    "failures": 0,
+    "full_state": {
+      "status": 0,
+      "sha256": "98a3a9b72f09ef35149d35b7f3bd087c98884f45b316665f8062311017f43b3c",
+      "summary": [
+        "  gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "  gate (b) manifest edited: 2 checks, 1 failed, dependent checks did not run",
+        "  gate (c) blob edited: 2 checks, 1 failed, dependent checks did not run",
+        "  gate (d) label rewritten, hash re-pinned: 19 checks, 1 failed, dependent checks ran",
+        "10980 checks, 0 failure(s)",
+        "ThreadSanitizer: Matched 4 suppressions (pid=92582):",
+        "1 deadlock:WriteFromInsideAGestureOpen",
+        "1 deadlock:PumpedUserInteraction",
+        "1 deadlock:testNoStateCommandWaitsForAReplacement",
+        "1 deadlock:testThePumpedTimerNeverBaresTheApvtsLock"
+      ]
+    },
+    "suppression_count": 4,
+    "suppression_change": "none",
+    "symbolizer": "explicit matching LLVM22 path; initial automatic-discovery run failed at pre-existing test75 named harness inversion with invalid-symbolizer warning, status66, not counted as a completed suite",
+    "stopped_run_sha256": "26545975a5b7f51120a58fc595d274ad9c71bf4dc82a3ce3006974125c9fc17c"
+  }
+}

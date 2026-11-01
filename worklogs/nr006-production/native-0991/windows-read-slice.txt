@@ -1,0 +1,64 @@
+1801d3bb0:     	pushq	%rbx
+1801d3bb2:     	pushq	%rbp
+1801d3bb3:     	pushq	%rsi
+1801d3bb4:     	pushq	%rdi
+1801d3bb5:     	pushq	%r14
+1801d3bb7:     	pushq	%r15
+1801d3bb9:     	subq	$0x18, %rsp
+1801d3bbd:     	movl	0x70(%rsp), %eax
+1801d3bc1:     	movq	%rcx, %r11
+1801d3bc4:     	movq	0x78(%rsp), %rdi
+1801d3bc9:     	leaq	(%rsp), %rcx
+1801d3bcd:     	testl	%eax, %eax
+1801d3bcf:     	movl	$0x0, (%rsp)
+1801d3bd6:     	movq	%rdx, %r10
+1801d3bd9:     	movl	%edi, %esi
+1801d3bdb:     	leaq	0x70(%rsp), %rdx
+1801d3be0:     	movq	%r8, %r15
+1801d3be3:     	cmovnsq	%rdx, %rcx
+1801d3be7:     	cmpl	$0x4000, %eax           # imm = 0x4000
+1801d3bec:     	leaq	0x536279(%rip), %rdx    # 0x180709e6c
+1801d3bf3:     	cmovgq	%rdx, %rcx
+1801d3bf7:     	movslq	(%rcx), %rcx
+1801d3bfa:     	cmpq	%rdi, %rcx
+1801d3bfd:     	cmovbl	%ecx, %esi
+1801d3c00:     	xorl	%r8d, %r8d
+1801d3c03:     	testl	%esi, %esi
+1801d3c05:     	jle	0x1801d3c55 <.text+0x1d2c55>
+1801d3c07:     	movslq	%esi, %rbp
+1801d3c0a:     	nopw	(%rax,%rax)
+1801d3c10:     	movl	%r8d, %ecx
+1801d3c13:     	subq	%rbp, %rcx
+1801d3c16:     	leaq	(%rcx,%rdi), %rdx
+1801d3c1a:     	andl	$0x3fff, %edx           # imm = 0x3FFF
+1801d3c20:     	addq	%rdx, %rdx
+1801d3c23:     	movq	(%r11,%rdx,8), %rax
+1801d3c27:     	leaq	0x1(%rdi), %rbx
+1801d3c2b:     	addq	%rcx, %rbx
+1801d3c2e:     	cmpq	%rbx, %rax
+1801d3c31:     	jne	0x1801d3c71 <.text+0x1d2c71>
+1801d3c33:     	movq	0x8(%r11,%rdx,8), %rcx
+1801d3c38:     	movq	(%r11,%rdx,8), %rax
+1801d3c3c:     	cmpq	%rbx, %rax
+1801d3c3f:     	jne	0x1801d3c71 <.text+0x1d2c71>
+1801d3c41:     	movl	%ecx, (%r15,%r8,4)
+1801d3c45:     	shrq	$0x20, %rcx
+1801d3c49:     	movl	%ecx, (%r9,%r8,4)
+1801d3c4d:     	incl	%r8d
+1801d3c50:     	cmpl	%esi, %r8d
+1801d3c53:     	jl	0x1801d3c10 <.text+0x1d2c10>
+1801d3c55:     	movb	$0x1, (%r10)
+1801d3c59:     	movl	%esi, 0x4(%r10)
+1801d3c5d:     	movq	%r10, %rax
+1801d3c60:     	movq	%rdi, 0x8(%r10)
+1801d3c64:     	addq	$0x18, %rsp
+1801d3c68:     	popq	%r15
+1801d3c6a:     	popq	%r14
+1801d3c6c:     	popq	%rdi
+1801d3c6d:     	popq	%rsi
+1801d3c6e:     	popq	%rbp
+1801d3c6f:     	popq	%rbx
+1801d3c70:     	retq
+1801d3c71:     	movb	$0x0, (%r10)
+1801d3c75:     	movl	$0x0, 0x4(%r10)
+1801d3c7d:     	jmp	0x1801d3c5d <.text+0x1d2c5d>

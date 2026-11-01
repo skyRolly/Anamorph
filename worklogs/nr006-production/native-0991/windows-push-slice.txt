@@ -1,0 +1,36 @@
+18038aee5:     	movq	0x41280(%rsi), %rax
+18038aeec:     	movslq	%edi, %r13
+18038aeef:     	addq	%rax, %r13
+18038aef2:     	movl	%edi, %r9d
+18038aef5:     	movl	$0x4000, %eax           # imm = 0x4000
+18038aefa:     	cmpl	%eax, %edi
+18038aefc:     	cmovgl	%eax, %r9d
+18038af00:     	movl	%edi, %ebx
+18038af02:     	subl	%r9d, %ebx
+18038af05:     	movl	%r12d, %r8d
+18038af08:     	testl	%r9d, %r9d
+18038af0b:     	jle	0x18038af70 <InitDll+0x1905e0>
+18038af0d:     	movslq	%r9d, %rdi
+18038af10:     	movl	%r8d, %r10d
+18038af13:     	subq	%rdi, %r10
+18038af16:     	addq	%r13, %r10
+18038af19:     	movq	%r10, %r11
+18038af1c:     	andl	$0x3fff, %r11d          # imm = 0x3FFF
+18038af23:     	addq	%r11, %r11
+18038af26:     	movq	%r12, 0x1280(%rsi,%r11,8)
+18038af2e:     	leal	(%r8,%rbx), %eax
+18038af32:     	movslq	%eax, %rcx
+18038af35:     	vmovss	(%r15,%rcx,4), %xmm0
+18038af3b:     	vmovss	(%r14,%rcx,4), %xmm1
+18038af41:     	vmovd	%xmm0, %edx
+18038af45:     	shlq	$0x20, %rdx
+18038af49:     	vmovd	%xmm1, %ecx
+18038af4d:     	orq	%rcx, %rdx
+18038af50:     	movq	%rdx, 0x1288(%rsi,%r11,8)
+18038af58:     	leaq	0x1(%r10), %rax
+18038af5c:     	movq	%rax, 0x1280(%rsi,%r11,8)
+18038af64:     	incl	%r8d
+18038af67:     	cmpl	%r9d, %r8d
+18038af6a:     	jl	0x18038af10 <InitDll+0x190580>
+18038af6c:     	movl	0x54(%rsp), %edi
+18038af70:     	movq	%r13, 0x41280(%rsi)

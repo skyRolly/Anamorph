@@ -515,9 +515,41 @@ only one rejected attempt before the free-running writer completed. ADR-0070
 permits reader starvation under lapping, so requiring successful coverage without
 controlling scheduling was a harness defect, not a wrong accepted window. A
 bounded test-only checkpoint after four writes now lets both readers acknowledge
-one post-advance window before the remaining free-running phase. No handshake
+one post-advance window before the remaining independent phase. No handshake
 exists in `pushBlock`/read APIs; all accepted-data assertions and the 10-second
 completion bound remain. Five final-source probe runs and full suites recheck it.
+
+**Subsequent memcheck scheduling finding:** head `0991b2f` run `41243991217`,
+attempt2/job `124704449433`, completed ASan/UBSan and DSP memcheck but failed
+State151's producer-completion and reader-overlap assertions at its 10-second
+bound. Both memcheck summaries report zero errors; state is **10,980 / 2**, not
+a clean suite. The test used busy `yield()` loops, contrary to this suite's
+documented pacing rule for serializing tools. A local unpaced probe also fails
+producer completion under default memcheck scheduling (one failure, zero memory
+errors); an enlarged scheduling-quantum experiment fails the same check. A
+separate unpaced run passed, confirming schedule sensitivity rather than
+establishing universal failure.
+
+Use existing `d2::Pace` in test waiting/independent reader loops and after each
+four-write producer group, uniformly across lanes. It sleeps in proportion to
+test work, capped at 50 ms, to relinquish the guest CPU. All 27 checks, exact
+sample expectations, two consumers, 1,048,576-frame advance and 10-second bound
+remain; no Valgrind option or production protocol is changed. Local focused
+memcheck/probe/full-suite results and final native CI are recorded in the stable
+#202 ledger and `nr006-production/memcheck-pacing-followup.json`. The prior
+failed job remains failed; a push alone does not close this finding.
+
+After pacing, five focused memcheck runs pass **27/0** with ERROR SUMMARY0;
+the full local suites pass **945 DSP / 10,980 state** under `MALLOC_PERTURB_=1`
+and the unchanged **1 MB** stack limit. Five TSan probes pass **27/0**; the
+fresh full TSan state run passes **10,980/0**, with all four unchanged named
+suppression entries matched once and a symbolized seeded-race canary still live.
+Automatic symbolizer discovery initially stopped at the existing test75 harness
+inversion; explicitly selecting the matching LLVM22 symbolizer repaired tooling,
+without changing suppressions. That stopped run is not counted as a full pass.
+Focused logs (trailing horizontal whitespace trimmed with raw hashes preserved),
+full-state summary/digest and failure classifications are retained beside the
+follow-up JSON. Fresh final-head mandatory CI remains required.
 
 **Local TSan tooling failure:** the initial full run lacked llvm-symbolizer, so
 the unchanged named test-75 re-entrancy suppression could not match. GNU addr2line
@@ -567,8 +599,18 @@ The current scope is **262152 bytes**, previously **131080**; editor buffers add
 **192 KiB** over old scratch. Local x64 disassembly has no helper calls, lock
 prefix or memory RMW; register-only alignment `xchg %ax,%ax` is a NOP.
 
-**Still required:** native shipping guards/generated-code evidence (MSVC x64,
-AppleClang x64/ARM and Linux), final-head mandatory CI, representative ≥5-repeat
+Native shipping guards and generated-code inspection are now verified for the
+reviewed MSVC x64, AppleClang x64/ARM and Linux configurations. Matching
+0991b2f Windows PE/PDB and macOS product/dSYM artifacts, ZIP digests, UUIDs,
+protocol slices and inspection limits are retained in
+[`nr006-production/native-0991/codegen-review.json`](nr006-production/native-0991/codegen-review.json).
+Windows/Apple x64 use ordered aligned 64-bit stores/loads; ARM uses STLR stores
+and LDAPR acquire loads with both tag checks. Scope slices contain no lock,
+memory RMW, exclusive/CAS retry or atomic-library fallback calls. Ordinary calls
+outside those slices are not described as call-free. Product source is unchanged
+by subsequent test-harness pacing; these artifacts do not establish native cost.
+
+**Still required:** final-head mandatory CI, representative ≥5-repeat
 push/read/full-engine active/idle/stalled-GUI and large-block measurements with
 observed worst block/footprint, owner cost acceptance, and targeted native visual/
 editor-lifecycle audition. Shared-runner synthetic measurements cannot discharge
@@ -595,7 +637,9 @@ The same scoped heap technique now covers 61 legacy DSP engine locals. All
 **554 prior DSP check expressions remain byte-identical**, alongside the 3064
 state expressions already preserved. Engine/guard lifetimes and the 1 MB limit
 remain unchanged. Local full DSP945/0 passes at that limit; the final native
-Windows rerun is tracked in the stable #202 ledger. The pre-existing inSq
+Windows run on 0991b2f passed **941 DSP / 10,815 state**, including Test52 and
+both scope consumers, closing that fixture failure with native runtime evidence.
+The subsequent memcheck harness failure above is a separate finding. The pre-existing inSq
 unused-set warning is the one accepted Clang-baseline DSP warning, not suppressed
 or fixed here. No production protocol, engine token stream, parameter/state
 contract, dependency/version or release object changes in this follow-up.

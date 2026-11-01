@@ -14,6 +14,15 @@ original-source fixture in temporary storage: original 3/3 contract failures,
 fixed 3/3 successes, removed-validation and missing-invalidation controls detected.
 Schedules execute on one thread, so the original control does not execute a C++ race.
 
+The concurrent harness uses the suite's existing `d2::Pace` for its waiting and
+independent worker loops, outside the production APIs and uniformly in every
+lane. Head `0991b2f` failed its memcheck run after busy `yield()` loops starved
+progress until the 10-second bound. The unpaced harness also fails locally with
+zero memcheck errors. Blocking, cost-scaled pacing hands serializing checkers
+their CPU share; the million-frame workload, two-reader non-vacuity checks,
+per-sample bit checks, observation checkpoint and 10-second bound are retained.
+This is test scheduling, not a producer wait or an assertion about native WCET.
+
 The state suite’s test-owned processors and the DSP suite’s legacy engines use
 scoped heap fixtures: the new fixed
 ring doubles inline size, and the old inlined fixtures exceeded the existing 1 MB

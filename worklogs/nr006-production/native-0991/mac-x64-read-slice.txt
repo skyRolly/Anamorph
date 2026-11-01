@@ -1,0 +1,38 @@
+   b34c5:      	movq	0x40000(%rdx), %rax
+   b34cc:      	movl	%ecx, %r8d
+   b34cf:      	sarl	$0x1f, %r8d
+   b34d3:      	andnl	%ecx, %r8d, %r8d
+   b34d8:      	cmpl	$0x4000, %r8d           ## imm = 0x4000
+   b34df:      	movl	$0x4000, %ecx           ## imm = 0x4000
+   b34e4:      	cmovll	%r8d, %ecx
+   b34e8:      	cmpq	%rcx, %rax
+   b34eb:      	cmovbq	%rax, %rcx
+   b34ef:      	testq	%rcx, %rcx
+   b34f2:      	je	0xb355f <_GetPluginFactory+0xa728f>
+   b34f4:      	movq	%rax, %r8
+   b34f7:      	subq	%rcx, %r8
+   b34fa:      	leaq	(,%rcx,4), %r9
+   b3502:      	xorl	%r10d, %r10d
+   b3505:      	nopw	%cs:(%rax,%rax)
+   b3510:      	movl	%r8d, %r11d
+   b3513:      	andl	$0x3fff, %r11d          ## imm = 0x3FFF
+   b351a:      	shll	$0x4, %r11d
+   b351e:      	movq	(%rdx,%r11), %r15
+   b3522:      	incq	%r8
+   b3525:      	cmpq	%r15, %r8
+   b3528:      	jne	0xb35ca <_GetPluginFactory+0xa72fa>
+   b352e:      	addq	%rdx, %r11
+   b3531:      	movq	0x8(%r11), %r12
+   b3535:      	movq	(%r11), %r11
+   b3538:      	cmpq	%r15, %r11
+   b353b:      	jne	0xb35ca <_GetPluginFactory+0xa72fa>
+   b3541:      	movl	%r12d, (%rsi,%r10)
+   b3545:      	shrq	$0x20, %r12
+   b3549:      	movl	%r12d, (%rdi,%r10)
+   b354d:      	addq	$0x4, %r10
+   b3551:      	cmpq	%r10, %r9
+   b3554:      	jne	0xb3510 <_GetPluginFactory+0xa7240>
+   b3556:      	shlq	$0x20, %rcx
+   b355a:      	incq	%rcx
+   b355d:      	jmp	0xb3564 <_GetPluginFactory+0xa7294>
+   b355f:      	movl	$0x1, %ecx

@@ -1,0 +1,8 @@
+Final explicit-symbolizer full-state TSan run, status 0
+Full log SHA256: 98a3a9b72f09ef35149d35b7f3bd087c98884f45b316665f8062311017f43b3c
+10980 checks, 0 failure(s)
+ThreadSanitizer: Matched 4 suppressions (pid=92582):
+1 deadlock:WriteFromInsideAGestureOpen
+1 deadlock:PumpedUserInteraction
+1 deadlock:testNoStateCommandWaitsForAReplacement
+1 deadlock:testThePumpedTimerNeverBaresTheApvtsLock

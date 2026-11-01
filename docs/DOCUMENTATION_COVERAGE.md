@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-006 memcheck pacing and native evidence follow-up — 2026-11-01 UTC
+
+Recorded the actual head0991b2f sanitizer failure: state 10,980 / 2 under memcheck,
+both error summaries zero. Corrected test-only busy worker/wait loops using the
+suite's existing uniform cost-scaled pacing, preserving all 27 checks, million
+frames, two readers and 10-second bound. Added reproducible before/after evidence;
+no detector option, suppression, deadline, product lock or retry is introduced.
+Recorded native Windows fixture repair confirmation and matching Windows/macOS
+product/debug codegen artifacts with checked digests, identities and six protocol
+slices. Reconciled testing, packet, ADR/roadmap and provenance; representative
+performance/manual acceptance, final-head CI and new-PR integration remain gates.
+
 ## NR-006 native Windows DSP fixture follow-up — 2026-11-01
 
 Head a3178e9’s native Windows DSP run stopped after Test48 and before Test52’s
@@ -9,8 +21,8 @@ scopes; actual MSVC SARIF estimates a 1,628,304-byte frame (C6262, not a runtime
 measurement). Converted 61 legacy
 DSP test-owned engines to scoped heap fixtures, preserving all 554 previous check
 expressions, guard scopes and destruction order. The 1 MB limit is unchanged.
-Local full DSP945/0 passes; final native Windows validation must confirm the repair
-before this introduced fixture portability finding is closed. Re-anchored shifted
+Local full DSP945/0 passes; the subsequent native Windows run confirms the repair
+with DSP 941 / state 10,815, zero failures. Re-anchored shifted
 DSP test citations; no warning baseline, production protocol/DSP code or release
 input changed. Existing inSq unused-set warning remains declared Clang debt.
 
@@ -28,7 +40,7 @@ concurrency and consumer lifetimes. The new inline footprint exposed a 1 MB test
 stack failure; scoped heap fixtures repair it while preserving all 3064 existing
 check expressions and the gate. A later preflight caught a scheduling-only
 stress failure: a bounded test observation checkpoint now guarantees post-advance
-accepted coverage, with the remaining stress free-running and all sample/timeout
+accepted coverage, with the remaining stress independent and all sample/timeout
 assertions retained. Local TSan’s missing symbolizer was repaired so existing
 named harness suppressions can match; no detector/suppression is changed. Source-lint runs the original/fixed/weakening
 controls; TSan retains its race canary/suppressions and adds the scope probe ×5.

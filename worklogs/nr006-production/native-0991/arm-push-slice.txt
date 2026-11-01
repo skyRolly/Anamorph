@@ -1,0 +1,26 @@
+  3a095c:      	mov	w8, #0x1280             ; =4736
+  3a0960:      	add	x8, x26, x8
+  3a0964:      	ldr	x9, [x19]
+  3a0968:      	add	x9, x9, x21
+  3a096c:      	mov	w10, #0x4000            ; =16384
+  3a0970:      	cmp	w21, #0x4, lsl #12      ; =0x4000
+  3a0974:      	csel	w10, w21, w10, lo
+  3a0978:      	neg	x10, x10
+  3a097c:      	ldr	x11, [sp, #0x58]
+  3a0980:      	lsl	x12, x11, #2
+  3a0984:      	add	x11, x27, x12
+  3a0988:      	add	x12, x1, x12
+  3a098c:      	add	x13, x9, x10
+  3a0990:      	and	x14, x13, #0x3fff
+  3a0994:      	add	x14, x8, x14, lsl #4
+  3a0998:      	stlr	xzr, [x14]
+  3a099c:      	ldr	w15, [x12, x10, lsl #2]
+  3a09a0:      	ldr	w16, [x11, x10, lsl #2]
+  3a09a4:      	add	x17, x14, #0x8
+  3a09a8:      	orr	x15, x15, x16, lsl #32
+  3a09ac:      	stlr	x15, [x17]
+  3a09b0:      	add	x13, x13, #0x1
+  3a09b4:      	stlr	x13, [x14]
+  3a09b8:      	adds	x10, x10, #0x1
+  3a09bc:      	b.lo	0x3a098c <_GetPluginFactory+0x393eec>
+  3a09c0:      	stlr	x9, [x19]
