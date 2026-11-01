@@ -1,0 +1,50 @@
+{
+  "recorded": "2026-11-01 Asia/Shanghai",
+  "production_baseline": "00de8c7796f37d08a338256e01830bb312ba105c",
+  "scope_blob": "ed24ceab5ced2784d9fe96effdc46f8aeb03f472",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+  "environment": "shared managed cloud; not representative controlled production hardware",
+  "allowed_cpus": [
+    0,
+    1,
+    2
+  ],
+  "timing_affinity_cpu": 1,
+  "benchmark_flags": "-std=c++23 -O3 -march=haswell -ffp-contract=off -pthread -Wall -Wextra -Werror",
+  "sanitizer_flags": "Clang22 -std=c++23 -O1 -g -fsanitize=thread -pthread",
+  "compilers": {
+    "clang": "22.1.8",
+    "gcc": "14.2.0"
+  },
+  "library": "libstdc++14",
+  "benchmark_repeats": 7,
+  "calls_per_cell_per_repeat": 2000,
+  "timing": "separate serial push and 8192-frame read; min/median/max ns per call",
+  "source_sha256": {
+    "tests/experiments/nr006_scope_protocol.cpp": "c42d37fead360eab2e9273bf0e64d831f5fd3fe8c9111a780034e47f7bd7c74d",
+    "tests/experiments/nr006_memory_model.py": "e32548674d710a238df7de9015ecdf2a0b1d842160f93b944ba3ab9c95fcb257"
+  },
+  "artifacts_sha256": {
+    "bench-clang-final.txt": "cef392058847e0bd7dcc7a2b251135c68d75a6edee9dda3e0b5d245ae4dc7d78",
+    "bench-gcc-final.txt": "85716bef3f89d9f5c6f655b61a1e50f349b1097fb7052d5fb5e1f5509add0e17",
+    "canary-tsan-final.txt": "300649987a04bdbafa06d06ac77e036b4e164fbecee418561090e736f2b3103e",
+    "memory-model.txt": "e6456e02b1d18f1de8663c6b0ec4268c09d514369215891f19c4552bb1eede7b",
+    "stress-clang-final.txt": "f8548f06cae41d9319c81aef70e11f0f986406bd31bdb0238ab0d901df6468f1",
+    "stress-gcc-final.txt": "7f510fca4e10134b327d51f7cbb0ca932fa8cb10bcf170e9f438da81ace1d4f3",
+    "stress-tsan-final.txt": "8428d0a937252bdb911d5c1d0d30bba93172bb7bdeba61732e59573393ac86f3"
+  },
+  "limits": [
+    "No production implementation",
+    "No native ARM/macOS/MSVC cost or atomic guard proof",
+    "No full-engine or contended timing",
+    "No user-instance or deadline budget",
+    "Prototype stress does not replace production regression tests"
+  ],
+  "artifact_normalization": {
+    "canary-tsan-final.txt": {
+      "change": "trailing whitespace only stripped for repository whitespace gate; diagnostic text retained",
+      "original_sha256": "c9d11a84efd5b7028218f0e36b79eeb7f5ed4903e4ab4064583f417090ebd81e"
+    }
+  }
+}

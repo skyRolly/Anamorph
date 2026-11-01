@@ -46,6 +46,10 @@ a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.
 The NR-006 [ScopeBuffer review packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md)
 is supporting developer evidence, not an approved replacement for the threading policies.
+[Accepted ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+records the selected design, explicitly approved by the owner on 2026-11-01 for
+implementation subject to native portability/performance/validation gates. Its
+production implementation/effectivity and any new PR merge remain separate.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
 The [NR-012 alias study](../worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md) and raw

@@ -23,6 +23,12 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
+PRs #195–#198 are integrated on main as of 2026-11-01 (Asia/Shanghai).
+The [NR-006 architecture recommendation](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+is Accepted for implementation by the owner; production ScopeBuffer remains unchanged
+at this architecture-record checkpoint.
+Post-tag development is not included in the existing draft assets.
+
 Post-integration research includes the [NR-012 alias study](worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md).
 Its bounded local measurements add no universal quality threshold or release approval.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier

@@ -7059,3 +7059,13 @@ final service cleanup incomplete even with unavailable hashes. Only test-owned
 file/OS/process/clock boundaries are mocked; no target, ps or signal executes.
 An in-memory removal of the optional OSError handler must fail the same assertion
 in this source-lint invocation. Prior completion mutants and timing controls remain.
+## Nonshipping NR-006 architecture experiments (2026-11-01)
+
+`tests/experiments/nr006_scope_protocol.cpp` compares atomic samples, packed
+stereo, owned snapshots and generation-validated atomics without changing a
+product target. `nr006_memory_model.py` supplies bounded read-from/coherence and
+weakening controls. Commands, source digests, results and limits are in the
+[research packet](../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md#7-nonshipping-experiments-and-reproducibility).
+These are optional standalone research checks, not replacements for Test 61,
+production-path regressions, same-invocation sanitizer canaries, native CI or
+the human Architecture Review gate. No production threading fix is claimed.

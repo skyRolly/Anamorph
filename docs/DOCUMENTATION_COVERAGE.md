@@ -1,5 +1,62 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Authorized integration reconciliation — 2026-11-01 UTC
+
+Merged approved #203 then #201 with expected heads and verified exact trees.
+Additively reconciled #199 against that main, preserving both research/approval
+and CI/alias-study records in three documentation conflicts. Recorded the new
+five-PR authorization, integration order and binding gate interpretation in the
+forward register. Cost/native visual acceptance remains Pending; no result or
+waiver is invented. Product source, study data, test expectations, detector
+settings and immutable release objects are unchanged by this synchronization.
+
+## ADR-0070 live-instruction reconciliation — 2026-11-01
+
+Accepted the #199 review finding: the roadmap's next action and NR-006 detail
+still requested architecture acceptance after the owner had granted it. Reconciled
+the live instructions, register and open-decision list; labeled the old handoff
+historical. Accepted ADR-0070 authorizes implementation, while #202 review,
+native/cost/visual gates and separate PR merge authorization remain. No source,
+architecture decision or release state changed.
+
+## ADR-0070 owner acceptance — 2026-11-01
+
+The owner explicitly approved ADR-0070 for implementation in response to the
+concrete #199 proposal, subject to native portability/performance/validation gates.
+Recorded **Accepted** status, original proposal history and scope in ADR_INDEX,
+SOURCE_OF_TRUTH, README/map, risk/audit/readiness records and NR-006/roadmap.
+Production implementation is still pending at this decision-record commit; the
+new reader-affinity contract applies to the approved atomic implementation, not
+the old plain-payload race. New PR merges/releases remain separately unauthorized.
+No production source, threading operation, test expectation or release object changed.
+
+## Authorized integration / NR-006 architecture proposal — 2026-11-01
+
+The owner explicitly authorized #195–#198 merges and independent continuation.
+Recorded actual sequential merge commits/trees, exact-head CI and fresh integrated
+945 DSP / 10,953 state checks in the roadmap. Historical pending-merge snapshots
+remain dated history. Corrected the real-time audit's overbroad ScopeBuffer SPSC
+label: bounded fixed copying is not race freedom. Production source stays unchanged.
+
+Added Proposed ADR-0070, registered in ADR_INDEX, after independently comparing
+atomic samples, packed pairs, full owned snapshots and bounded tagged/queue/
+seqlock variants. It recommends generation-validated atomic windows and an explicit
+serialized-GUI affinity contract, conditional on human review and native evidence.
+Expanded the existing research packet with source/lifecycle census, memory-model
+proof/limitations, comparative evidence, implementation/acceptance plan and release
+disposition. Nonshipping prototypes/model, raw seven-repeat results/metadata and
+seeded TSan liveness are indexed in REPOSITORY_MAP/TESTING; README/SOURCE_OF_TRUTH
+distinguish the Proposed decision from current policy. No production architecture,
+DSP, CMake/workflow, release object or Accepted ADR is changed.
+
+The unchanged 0.10.0 readiness record now separates this source-level gap and its
+required mitigation/human disposition from earlier owner approvals.
+RISK-018 records the verified mechanism and unverified field impact, without
+closing historical risks or inventing a crash/severity verdict. Native prototype
+portability/performance, production regressions and visual acceptance remain pending;
+synthetic results are not a machine budget. NR-003 stays Deferred; later PR merges
+and release operations remain unauthorized.
+
 ## Memcheck cancellation evidence review — 2026-11-01
 
 Accepted #203's timeout-artifact finding. Replaced the cancellation-excluding
