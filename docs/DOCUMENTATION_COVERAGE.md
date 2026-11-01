@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## ADR-0070 live-instruction reconciliation — 2026-11-01
+
+Accepted the #199 review finding: the roadmap's next action and NR-006 detail
+still requested architecture acceptance after the owner had granted it. Reconciled
+the live instructions, register and open-decision list; labeled the old handoff
+historical. Accepted ADR-0070 authorizes implementation, while #202 review,
+native/cost/visual gates and separate PR merge authorization remain. No source,
+architecture decision or release state changed.
+
 ## ADR-0070 owner acceptance — 2026-11-01
 
 The owner explicitly approved ADR-0070 for implementation in response to the
