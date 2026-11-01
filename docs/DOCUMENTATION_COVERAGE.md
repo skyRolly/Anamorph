@@ -12,6 +12,31 @@ cases and three negative predicates. TESTING/CI_CD, the budget evidence and road
 record the hard-runner-loss limitation. Detector argv, suite assertions, 60-minute
 cap, suppressions, product/build/release inputs and merge gates are unchanged.
 
+## NR-012 CI dependency reconciliation — 2026-11-01 UTC
+
+Stacked the existing alias-study branch on unmerged #203 after two exact-source
+sanitizer budget cancellations. The additive merge preserves both reviewed heads;
+three insertion conflicts retain both NR-012 and CI control records. The probe,
+CSV/source metadata, DSP/CMake/test expectations and release inputs are unchanged.
+Updated dependency/current-head references and the forward register; final-head
+CI is required separately from #203's successful real concurrent memcheck. No
+GitHub PR was merged, no shared history rewritten and no gate weakened.
+
+## NR-012 — bounded alias evidence (2026-11-01)
+
+Added nonshipping calibrated high-tone engine probe, Linux/Ninja object-reuse
+runner, 36 repeated raw observations and source/provenance metadata. Two rates,
+two normalized tones, four factors, linear/bypass controls and adjacent periods
+separate measured alias bins from simple wrap/latency engagement. Selected-bin
+power is normalized to actual carrier level; known injected alias and omission
+controls prove calibration. Retain current behavioral assertions: no universal
+dB threshold, monotonic factor rule, DSP/filter fix or production change.
+
+The new worklog/data/tool are indexed in REPOSITORY_MAP, SOURCE_OF_TRUTH, README
+and TESTING. The roadmap records #195–#198 actual integration, NR-011 #200, the
+owner's explicit ADR-0070 implementation approval and remaining native/release
+gates. Existing historical evidence and GCC ABI failure remain unchanged.
+
 ## Memcheck scheduling follow-up — 2026-11-01 UTC
 
 Recurring sanitizer cancellations are recorded with actual run/job/source scope,

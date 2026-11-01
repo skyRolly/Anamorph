@@ -23,6 +23,8 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
+Post-integration research includes the [NR-012 alias study](worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md).
+Its bounded local measurements add no universal quality threshold or release approval.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.
