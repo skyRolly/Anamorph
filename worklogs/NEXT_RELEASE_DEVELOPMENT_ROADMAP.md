@@ -1,5 +1,28 @@
 # Next release investigation and development roadmap
 
+## CI budget follow-up — 2026-11-01 UTC
+
+Actual main remains `00de8c7796f37d08a338256e01830bb312ba105c` after the
+owner-authorized #195→#196→#197→#198 integration. The new PRs remain unmerged:
+#199 records owner-Accepted ADR-0070, #202 implements it (current reviewed source
+0991b2f), and independent #200/#201 cover NR-011/NR-012. Their full execution
+record and stable exact-head ledger are in #202; the older snapshots below
+retain their dated historical scope. Architecture approval does not grant
+new merges, representative performance/visual acceptance or release permission.
+
+[CI_MEMCHECK_BUDGET_FOLLOWUP.md](CI_MEMCHECK_BUDGET_FOLLOWUP.md) records main’s
+repeated 60-minute sanitizer cancellations. The second attempt completed both
+zero-failure suites and zero-error memcheck summaries but is still recorded
+cancelled. Source-identical #199/#200 retries succeeded; #201 and NR-006’s
+native-repaired #202 also exhausted the serial budget. The bounded correction
+on branch `ci/parallel-memcheck-suites` overlaps only the independent memcheck
+processes and joins both statuses. Commands/options, 60-minute cap, assertions,
+strictness and product/build/release inputs stay unchanged. Local orchestration
+controls pass; final-head real CI timing/status must be refreshed in its PR.
+No merge is authorized. NR-003 remains Deferred, NR-006 performance/manual
+acceptance stays open, and prior GCC shipping-ABI failure/403 alert-state limits
+retain their exact scope.
+
 **Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** review-and-repair checkpoint; owner merge authorization required.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).

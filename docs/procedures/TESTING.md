@@ -1,5 +1,17 @@
 # TESTING.md
 
+## Concurrent memcheck execution controls
+
+The sanitizer job runs the independent DSP/state Valgrind processes through
+`python3 scripts/run-memcheck.py --build-dir build-vg`. Both must finish with zero
+status. Raw stdout/stderr per suite and command/exit-code JSON are retained;
+labelled output remains live even when the 60-minute job cap cancels execution.
+Options, allocation-guard/FTZ instrumentation dispositions and assertions are
+unchanged. `--self-test` requires actual child overlap and catches either/both
+nonzero statuses, missing validators/binaries and lost stderr/completion evidence.
+These controls do not replace real Valgrind or final-head CI. Evidence:
+`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md`.
+
 ## Completed edit before A/B polling — NR-022 / State test 149
 
 `tests/ab_undo_tests.h::testAbSwitchPreservesACompletedUnpolledEdit` runs in the
