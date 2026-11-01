@@ -121,6 +121,21 @@ or new lifetime owner. Preserve the diagnostic and require current-head native
 CI; a signal with a product stack or recurrence outside this class warrants a
 separate investigation. No retry count, timeout, detector or test is changed.
 
+Follow-up at source head`f42412b`: Linux CI also completed both modes×3 but its
+randomise pass2 exited139 **after SUCCESS**, recovering on attempt2. Its normal
+suites passed945/11911 and executed State152. The baseline main Linux run completed
+six first attempts without a signal; that limited absence does not identify the
+new instance's cause. A scratch-extracted GDB16.3, locked validator and unchanged
+fresh VST3 then ran three strictness10/seed1 diagnostics under Xvfb, following all
+inferiors and trapping fatal signals: all normal exits, no fault caught. Debugger
+pacing can hide an intermittent issue, so this does not exonerate it or establish
+XEmbed/product attribution. No system or product dependency was installed/changed.
+[Hashes, exact outcomes and raw logs](nr014-rotary-accessibility/validator-diagnostic.json)
+and [capture commands](nr014-rotary-accessibility/validator-capture.gdb) preserve
+that bounded diagnostic. Current-head native gates and owner acceptance remain
+separate. A reproducible product stack requires a new targeted investigation.
+
+
 ## Integration, review and continuation
 
 The approved five PRs are integrated on actual main`4255393`; this rotary correction

@@ -1,6 +1,28 @@
 # HANDOVER.md
 
-## NR-006 implementation checkpoint — 2026-11-01
+## Integrated baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
+
+Owner-approved #203→#201, then #199→#200→#202 are merged on actual main
+`425539385ebfcd1ca2bab1befe3de37618ce02d2`. Accepted ADR-0070's atomic stereo/tag
+implementation, serialized GUI affinity and rejected-paint retry are effective on
+main; NR-011's57 isolated controls/five mutants and NR-012's36 retained observations
+are integrated. Final-main Build41315639676, CodeQL and MSVC completed successfully.
+Representative native scope/full-engine/GUI costs, owner cost acceptance and targeted
+native scope/FFT/editor-lifecycle acceptance remain pending, not waived by merge.
+
+[PR #204](https://github.com/skyRolly/Anamorph/pull/204) separately corrects rotary
+accessibility titles using unchanged captions and adds State152's attachment/key/
+lifetime regression. It remains unmerged, with separate merge authorization and
+native UX/assistive-device acceptance outstanding; exact-head CI is in its ledger.
+The0.10.0 tag/draft/11 assets remain unchanged at`4c13688`, lacking NR-022/NR-006.
+Ordinary CI/local validation builds are not release replacement or publication.
+See the live [execution register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
+and [candidate disposition](../worklogs/RELEASE_READINESS_0.10.0.md).
+
+All implementation-pending, old-main and merge-authorization statements below are
+**historical checkpoints** at their recorded dates/sources, not live instructions.
+
+## Historical NR-006 implementation checkpoint — 2026-11-01
 
 ADR-0070 has explicit owner implementation approval. This branch implements atomic
 stereo/tag validation and separate accepted GUI windows; main `00de8c7` and the
@@ -11,7 +33,7 @@ The current evidence and limitations are in `worklogs/NR006_SCOPE_PUBLICATION_RE
 §11 and `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`. Earlier snapshots below
 retain their dates and candidate scope.
 
-**Unreleased NR-022 development:** commit `0e5e644` commits an outgoing slot's
+**Historical pre-integration NR-022 development:** commit `0e5e644` commits an outgoing slot's
 completed edit before an A/B switch clears pending coalescer state. State test 149
 fails 10/126 on the prior processor and passes 126/126 with the correction; local
 Release DSP/state counts are 945/10,953, with locked Linux VST3 strictness-10 modes

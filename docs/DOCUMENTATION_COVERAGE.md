@@ -35,6 +35,12 @@ Citation re-anchoring changes only verified source-line anchors where needed.
 Refreshed NR-017 current-main SARIF delta with digest verification:80 source-scoped
 records, historical 257-row CSV preserved, alert-state403 still unavailable. Test
 stack/initializer/constexpr observations remain classified without suppression.
+A final drift pass also updates HANDOVER's live integrated baseline while keeping
+its old branch/authorization checkpoint explicitly historical. Release-readiness
+wording now distinguishes ordinary validation builds from release assets. Retained
+GDB/raw diagnostic outcomes and Linux CI post-SUCCESS signal/retry leave root-cause
+attribution unresolved; no extra run is presented as native/manual acceptance.
+
 
 ## Approved ScopeBuffer integration candidate — 2026-11-01 UTC
 
