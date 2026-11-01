@@ -532,6 +532,9 @@ jobs:
       - name: macOS integration review fixture checks
         run: python3 scripts/test-macos-integration-review.py --self-test
 
+      - name: Native evidence parser and negative controls
+        run: python3 tests/native_validation_tests.py
+
       - name: Portability lint self-test (the lint still fires, and still stays quiet)
         run: python3 scripts/check-portability.py --self-test
 
@@ -1637,6 +1640,79 @@ jobs:
         with:
           name: Anamorph-memcheck-results
           path: build/valgrind-logs
+          if-no-files-found: error
+
+  # Tool portability only: these runners are never representative cost evidence.
+  # Reuses approved opt-in targets; production gates and timeout budgets below
+  # are unchanged. Separate from shipping builds to avoid altering their flags.
+  native-evidence-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-linux-build
+        with:
+          dependency-profile: headless
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+
+      - name: Collect diagnostic smoke (Linux)
+        id: linux-probe
+        if: runner.os == 'Linux'
+        run: >-
+          python3 scripts/run-native-validation.py collect
+          --build-dir build-native-evidence
+          --output-dir "${{ runner.temp }}/anamorph-native-evidence"
+          --cxx clang++-${{ env.ANAMORPH_CLANG_VERSION }} --smoke --skip-plugin-build
+
+      - name: Collect diagnostic smoke (macOS)
+        id: macos-probe
+        if: runner.os == 'macOS'
+        run: >-
+          python3 scripts/run-native-validation.py collect
+          --build-dir build-native-evidence
+          --output-dir "${{ runner.temp }}/anamorph-native-evidence"
+          --cxx clang++ --smoke --skip-plugin-build
+
+      - name: Collect diagnostic smoke (Windows MSVC Ninja)
+        id: windows-probe
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64
+          if errorlevel 1 exit /b 1
+          python scripts/run-native-validation.py collect --build-dir build-native-evidence --output-dir "${{ runner.temp }}\anamorph-native-evidence" --cxx cl --smoke --skip-plugin-build
+
+      - name: Analyze complete smoke and run parser controls
+        shell: bash
+        run: |
+          native_python=python3
+          if [ "$RUNNER_OS" = Windows ]; then native_python=python; fi
+          "$native_python" tests/native_validation_tests.py
+          "$native_python" scripts/run-native-validation.py analyze --evidence-dir "${{ runner.temp }}/anamorph-native-evidence"
+
+      - name: Retain complete or partial diagnostic evidence
+        if: >-
+          always() &&
+          (steps.linux-probe.outcome == 'success' || steps.linux-probe.outcome == 'failure' || steps.linux-probe.outcome == 'cancelled' ||
+           steps.macos-probe.outcome == 'success' || steps.macos-probe.outcome == 'failure' || steps.macos-probe.outcome == 'cancelled' ||
+           steps.windows-probe.outcome == 'success' || steps.windows-probe.outcome == 'failure' || steps.windows-probe.outcome == 'cancelled')
+        timeout-minutes: 5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-native-evidence-smoke-${{ runner.os }}
+          path: |
+            ${{ runner.temp }}/anamorph-native-evidence
+            !${{ runner.temp }}/anamorph-native-evidence/original-overlay
           if-no-files-found: error
 
   windows:

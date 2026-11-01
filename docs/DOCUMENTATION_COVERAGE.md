@@ -1,5 +1,35 @@
 # DOCUMENTATION_COVERAGE.md
 
+## #204 integration and owner-native validation package — 2026-11-02
+
+Reported stale live #204 merge/next-action instructions, then reconciled roadmap,
+HANDOVER, README, source authority and candidate readiness with actual main
+34cc369, reviewed tree identity and post-merge Build41339340041/CodeQL/MSVC.
+Bounded metadata fix and automated regression are Integrated/Tested; native
+usability acceptance remains Pending. Prior negative controls, native evidence
+limits, signal-only validator exits, historical GCC ABI failure and inaccessible
+alert state retain their recorded classification. Old checkpoints remain dated.
+
+Reused the approved OFF-by-default Bench target for opt-in JSON observations,
+paired legacy/current object overlays, per-call/raw repetitions, memory and
+active/stalled reader-load models. No production/CMake/dependency/protocol changes.
+Immutable legacy storage is never read concurrently. Native compiler/flags,
+machine, source, commands, fixture and binaries are recorded; incomplete/inert/
+unpaired measurements fail closed without adding a synthetic timing threshold.
+Existing default Bench remains. Preserved legacy fixture compiler warnings are
+retained in raw logs without changing that baseline or suppressing diagnostics.
+
+Added developer procedure `worklogs/NATIVE_VALIDATION_PACKAGE.md`, manual JSON
+worksheet and deterministic audio stimulus, with raw log/checksummed archive
+return and separate owner acceptance. Updated REPOSITORY_MAP, SOURCE_OF_TRUTH,
+README navigation, TESTING, PERFORMANCE_BUDGET, CI_CD and this audit. New parser/
+negative-control fixtures run locally/preflight/source-lint; a three-platform
+Ninja smoke tests actual overlay compilation/linking. Started-step artifacts
+retain partial outcomes where the runner survives. Existing strictness, suites,
+sanitizer budgets and release gates are unchanged. The shared container supplies
+tool smoke only; representative costs, actual native GUI/AX observations and
+owner cost/native acceptance remain Pending. New tooling merge remains gated.
+
 ## Integrated #199–#203 and bounded NR-014 metadata correction — 2026-11-02
 
 Drift check: roadmap/README/source authority/ADR-index/risk/readiness records still
@@ -2738,7 +2768,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3817` and `.github/workflows/build.yml:3902`, this round being
+`.github/workflows/build.yml:3893` and `.github/workflows/build.yml:3978`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -2772,7 +2802,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:806` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:809` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -17955,7 +17985,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:568-573` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:571-576` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)

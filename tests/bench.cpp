@@ -271,7 +271,9 @@ namespace
     }
 }
 
-int main()
+#include "native_validation_bench.h"
+
+int main (int argc, char* argv[])
 {
     std::string machine = cpuModel();
     if (machine.empty())
@@ -287,6 +289,9 @@ int main()
                       "ANAMORPH_BENCH_CPU to the model string and re-run.\n");
         return 2;
     }
+
+    if (argc > 1 && std::string (argv[1]) == "--native-json")
+        return native_validation::run (argc, argv, machine);
 
     std::printf ("AnamorphBench -- machine: %s, %d cores, %s %s\n",
                  machine.c_str(), (int) std::thread::hardware_concurrency(),

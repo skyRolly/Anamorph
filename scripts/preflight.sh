@@ -96,6 +96,7 @@ python3 scripts/check-gcc-warnings.py --self-test
 ./scripts/run-pluginval.sh --self-test
 python3 scripts/test-pluginval-acquisition.py
 python3 scripts/check-dsp-dump.py --self-test
+python3 tests/native_validation_tests.py
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 
