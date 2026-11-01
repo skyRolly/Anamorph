@@ -30,7 +30,9 @@ message-thread-only scope policy is not satisfied. Linux/BSD retain CPU painting
 
 The [research packet](../../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
 contains the source census, lifecycle, alternatives, experiments and limitations.
-The production ScopeBuffer blob is still `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+The investigated original blob is `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`
+at integrated main `00de8c7`; the implementation branch replaces it as recorded
+in the packet’s production checkpoint. Context above describes that original code.
 
 ## Required invariants
 
@@ -254,3 +256,24 @@ mitigation. Do not publish or replace 0.10.0 from this decision.
 - **Unverified/pending:** native Windows/macOS prototype cost and compile guards,
   production implementation/validation and visual
   audition. No user-visible failure rate or supported-host crash attribution.
+
+## Production checkpoint — 2026-11-01
+
+The focused implementation branch implements the protocol above, typed failure/
+end results, preallocated accepted GUI windows and the explicit serialized paint
+contract. The [packet §11](../../../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai)
+records source/test evidence, immutable-original and weakened-protocol controls,
+local production costs, the repaired test-fixture stack failure and remaining
+native/performance/manual gates. No decision invariant is weakened. Architecture
+approval is complete; implementation integration and cost/visual acceptance are
+not inferred from that approval or local results. The existing draft is unchanged.
+
+Subsequent native guards and matching Windows/macOS product/debug inspection
+verify the ordered 64-bit scope protocol instructions for the reviewed native
+configurations; the packet retains source/artifact identities and slice digests.
+The native test-fixture stack failure is confirmed repaired. A later memcheck
+stress-harness scheduling failure is corrected with existing test-only pacing,
+retaining its workload/checks/deadline and requiring fresh final-head validation.
+Representative cost acceptance and targeted native visual/lifecycle acceptance
+remain open. Neither codegen inspection nor that test-only correction changes
+the accepted architecture or grants integration/release permission.

@@ -63,6 +63,7 @@
 #endif
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <limits>
@@ -72,6 +73,17 @@ namespace
 {
     int failures = 0;
     int checks   = 0;
+
+    // Processor instances include fixed scope history. Scoped heap ownership
+    // matches createPluginFilter and keeps optimizer-inlined fixture storage
+    // off the 1 MB Windows-parity stack; assertions and destruction order stay.
+    template<class T = AnamorphAudioProcessor>
+    auto heapProcessorFixture()
+    {
+        auto owner = std::make_unique<T>();
+        auto& instance = *owner;
+        return std::pair<std::unique_ptr<T>, T&> { std::move (owner), instance };
+    }
 
     // ADR-0036 round 27 (Devin R640). `saveUser` and `loadFile` no longer return a bool, because
     // `true` used to mean "saved OR merely queued" and the editor read it as "saved". These two
@@ -331,7 +343,7 @@ namespace registry
 static void testSerializedSchemaShape()
 {
     std::printf ("State test 1: serialized schema shape (SERIALIZATION_REGISTRY.md)\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     auto root = stateTreeOf (p);
@@ -377,7 +389,7 @@ static void testSerializedSchemaShape()
 static void testParameterRegistrySnapshot (bool writeSnapshot)
 {
     std::printf ("State test 2: parameter registry snapshot\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     const auto generated = registry::build (p);
     auto file = fixtureDir().getChildFile (registry::kSnapshotFile);
 
@@ -404,7 +416,7 @@ static void testParameterRegistrySnapshot (bool writeSnapshot)
 static void testStateRoundTripExact()
 {
     std::printf ("State test 3: full state round-trip (raw-exact, byte-stable)\n");
-    AnamorphAudioProcessor a;
+    auto [aHeapOwner, a] = heapProcessorFixture();
     a.prepareToPlay (48000.0, 512);
 
     // Drive every parameter to a varied raw value (mid-step for discretes, so
@@ -436,7 +448,7 @@ static void testStateRoundTripExact()
     juce::MemoryBlock blobA;
     a.getStateInformation (blobA);
 
-    AnamorphAudioProcessor b;
+    auto [bHeapOwner, b] = heapProcessorFixture();
     b.prepareToPlay (48000.0, 512);
     // Give b REAL undo history before the restore, so the cleared-on-restore
     // assertion below cannot pass vacuously on a fresh instance.
@@ -501,7 +513,7 @@ static void testStateRoundTripExact()
 static void testLegacyV02BareApvts()
 {
     std::printf ("State test 4: legacy 0.2 bare-APVTS session loads\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
         return;
@@ -572,7 +584,7 @@ static void testLegacyV02BareApvts()
 static void testLegacyPre064AbSlots()
 {
     std::printf ("State test 5: pre-0.6.4 A/B slots + legacy-APVTS settings migrate\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     if (! applyXmlFixture (p, "legacy_pre_0_6_4_ab_slots.xml"))
         return;
@@ -624,7 +636,7 @@ static void testLegacyPre064AbSlots()
     // carries params only, so the slot's metadata must come back as the default rather than
     // as whatever the previous session left attached to abSlot[].
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         q.getPresets().load (1);      // a factory preset that is not "Default"
         q.abSwitchTo (1);             // snapshots the loaded state (name + identity) into slot A
@@ -668,7 +680,7 @@ static void testLegacyPre064AbSlots()
 static void testLegacyPre084InternalMigration()
 {
     std::printf ("State test 6: pre-0.8.4 view-param session migrates to InternalState\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     if (! applyXmlFixture (p, "legacy_pre_0_8_4_view_params.xml"))
         return;
@@ -694,7 +706,7 @@ static void testLegacyPre084InternalMigration()
 static void testCorruptAndForeignState()
 {
     std::printf ("State test 7: corrupt / foreign state robustness\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     setRaw (p, "width", 0.9f);
     const float widthBefore = rawOf (p, "width");
@@ -818,7 +830,7 @@ static void testCorruptAndForeignState()
     // foreign-typed params child that a fresh instance's restore silently
     // skipped -- delayed, silent loss of all parameters.
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         juce::XmlElement root ("AnamorphRoot");
         auto* an  = root.createNewChildElement ("ANAMORPH");
@@ -837,7 +849,7 @@ static void testCorruptAndForeignState()
         check (resaved.getChildWithName ("ANAMORPH").isValid(),
                "APVTS keeps its ANAMORPH type after applying a wrong-typed slot");
 
-        AnamorphAudioProcessor fresh;
+        auto [freshHeapOwner, fresh] = heapProcessorFixture();
         fresh.prepareToPlay (48000.0, 512);
         juce::MemoryBlock mb;
         q.getStateInformation (mb);
@@ -851,7 +863,7 @@ static void testCorruptAndForeignState()
 static void testPresetSaveReloadRoundTrip()
 {
     std::printf ("State test 8: preset save -> reload round-trip + exclusions\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     auto& presets = p.getPresets();
 
@@ -951,7 +963,7 @@ static void testPresetSaveReloadRoundTrip()
 static void testAbAndViewParamPreservation()
 {
     std::printf ("State test 9: A/B slots + view-param preservation across restore\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     setRaw (p, "width", 0.9f);
@@ -966,7 +978,7 @@ static void testAbAndViewParamPreservation()
     juce::MemoryBlock blob;
     p.getStateInformation (blob);
 
-    AnamorphAudioProcessor q;
+    auto [qHeapOwner, q] = heapProcessorFixture();
     q.prepareToPlay (48000.0, 512);
     q.setStateInformation (blob.getData(), (int) blob.getSize());
     check (q.abActiveSlot() == 0, "restored session lands on slot A");
@@ -1059,7 +1071,7 @@ static void testAbAndViewParamPreservation()
 static void testDuplicateNameFactoryVsUserPreset()
 {
     std::printf ("State test 10: factory/user preset identity with a shared name\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     auto& presets = p.getPresets();
 
@@ -1180,7 +1192,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     juce::MemoryBlock blob;
     p.getStateInformation (blob);
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         q.setStateInformation (blob.getData(), (int) blob.getSize());
         checkStr (q.getPresets().currentName(), shared, "restored session remembers the shared name");
@@ -1201,7 +1213,7 @@ static void testDuplicateNameFactoryVsUserPreset()
 static void testFactoryPresetIdIntegrity()
 {
     std::printf ("State test 11: factory-preset id integrity\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     auto& presets = p.getPresets();
 
     // A freshly constructed processor sits on all-parameter defaults and the manager takes
@@ -1273,7 +1285,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
     struct Restored { int index; juce::String name; bool paramsMatch; };
     auto restoreInto = [&] (const juce::MemoryBlock& blob, const std::vector<float>& expectRaw)
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         q.setStateInformation (blob.getData(), (int) blob.getSize());
         return Restored { q.getPresets().currentIndex(), q.getPresets().currentName(),
@@ -1281,7 +1293,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
     };
 
     const juce::String shared = "Wide Master";   // a shipped factory preset
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     auto& presets = p.getPresets();
 
@@ -1403,7 +1415,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
         juce::MemoryBlock abBlob;
         p.getStateInformation (abBlob);
 
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         q.setStateInformation (abBlob.getData(), (int) abBlob.getSize());
         check (q.abActiveSlot() == 1, "the restored session lands on slot B");
@@ -1482,7 +1494,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
                                   "not from the previous project" + tag;
             const auto msgTick  = "...so the drop-down cannot tick the previous project's row" + tag;
 
-            AnamorphAudioProcessor r;
+            auto [rHeapOwner, r] = heapProcessorFixture();
             r.prepareToPlay (48000.0, 512);
             r.getPresets().load (1);                    // project A: a named factory preset
             const auto projectAName = r.getPresets().currentName();
@@ -1543,7 +1555,7 @@ static void testWrapperProcessBlockAudioPath()
         std::printf ("  ::warning::ANAMORPH_TESTS_NO_FTZ=1 -- the DENORMAL half of this "
                      "test is NOT asserted in this run (NaN and Inf still are).\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
 
     // The DSP suite's denormal-provoking configuration (dsp_tests.cpp Test 2):
     // drive 8 dB, width 1.6, Multiband + Level Match engaged -- set through the
@@ -1654,7 +1666,7 @@ static void testGestureIsVoidOnceTopologyMoves()
 {
     std::printf ("State test 68: a gesture whose topology moved writes nothing further (ADR-0038)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -1914,7 +1926,7 @@ static void testGestureOwnsTheTopologyItCreated()
 {
     std::printf ("State test 69: a gesture owns the topology it created, and none it did not\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -2212,7 +2224,7 @@ static void testAuthoritativeSoundChangeVoidsAGesture()
 {
     std::printf ("State test 70: a sound change under a gesture voids it, count or no count\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -2504,7 +2516,7 @@ static void testAGestureWritesOnlyWhatItOwns()
 {
     std::printf ("State test 71: a gesture writes only what it owns, and claims only what it wrote\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -2899,7 +2911,7 @@ static void testTheCheckIsAdjacentToEveryStore()
 {
     std::printf ("State test 72: the check is adjacent to EVERY store, including the ones that open a gesture\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -3129,7 +3141,7 @@ static void testACoupledUpdateIsAllOfItOrNone()
 {
     std::printf ("State test 73: a coupled update is all of it or none of it\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -3442,7 +3454,7 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
 {
     std::printf ("State test 74: a store is not committed until the parameter says so\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -4017,7 +4029,7 @@ static void testACommitWithNoIntentWritesNothing()
 {
     std::printf ("State test 75: a commit that carries no user intent writes nothing\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -4484,7 +4496,7 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
 {
     std::printf ("State test 79: the far side of a coupled commit is covered by its caller\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -4728,7 +4740,7 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
     //      while the first is still alive, so the addresses cannot be recycled), so no
     //      cycle forms, nothing is suppressed, and the detector keeps its teeth.
     {
-        AnamorphAudioProcessor proc2;
+        auto [proc2HeapOwner, proc2] = heapProcessorFixture();
         proc2.prepareToPlay (48000.0, 512);
         auto& apvts2 = proc2.getAPVTS();
         if (auto* a = apvts2.getParameter (pid::advancedMode))
@@ -4880,7 +4892,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
 {
     std::printf ("State test 80: a wheel notch inside a held press belongs to that press\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -5022,7 +5034,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
     //      one, and leg B failed for exactly that reason -- the test was measuring
     //      leg A's history, not its own. A second processor starts with an empty one.
     {
-        AnamorphAudioProcessor proc2;
+        auto [proc2HeapOwner, proc2] = heapProcessorFixture();
         proc2.prepareToPlay (48000.0, 512);
         auto& apvts2 = proc2.getAPVTS();
         if (auto* a = apvts2.getParameter (pid::advancedMode))
@@ -5120,7 +5132,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
     //      negative: whatever else a notch does to a held solo, it must not leave a
     //      latched solo bit behind when the button comes up.
     {
-        AnamorphAudioProcessor proc3;
+        auto [proc3HeapOwner, proc3] = heapProcessorFixture();
         proc3.prepareToPlay (48000.0, 512);
         auto& apvts3 = proc3.getAPVTS();
         if (auto* a = apvts3.getParameter (pid::advancedMode))
@@ -5222,7 +5234,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
     //      EMPTY one -- both axes zero, which is what a host that delivers a spurious wheel event
     //      sends -- and the sideways event gets the opposite assertions, immediately below D1.
     {
-        AnamorphAudioProcessor proc4;
+        auto [proc4HeapOwner, proc4] = heapProcessorFixture();
         proc4.prepareToPlay (48000.0, 512);
         auto& apvts4 = proc4.getAPVTS();
         if (auto* a = apvts4.getParameter (pid::advancedMode))
@@ -5634,7 +5646,7 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
 {
     std::printf ("State test 76: a topology transaction does not commit a layout it does not own\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -6109,7 +6121,7 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
 {
     std::printf ("State test 77: a positional latch is void once its topology moves\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -6463,7 +6475,7 @@ static void testADerivationAnswersUnderTheTopologyItWasGiven()
 {
     std::printf ("State test 78: a derivation answers under the topology it was given\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -6752,7 +6764,7 @@ static void testStaleOutwardDragRemovesNothing()
 {
     std::printf ("State test 67: an outward drag whose split has vanished removes nothing (stale-drag review)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -6950,7 +6962,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
 {
     std::printf ("State test 66: a split the drag never captured keeps its place when Bands rises (Code Scanning follow-up)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -7246,7 +7258,7 @@ static void testAScrollIsOneUndoStep()
 {
     std::printf ("State test 86: a scroll is one undo step, and the next scroll of the same control extends it\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -9008,7 +9020,7 @@ static void testHoldingSoloAndScrollingMovesTheBand()
 {
     std::printf ("State test 87: holding a band's solo and scrolling moves the band\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -9333,7 +9345,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
 {
     std::printf ("State test 88: a wheel notch inside a knob press belongs to that press\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -10322,7 +10334,7 @@ static void testTheABHistoryObeysItsCap()
 {
     std::printf ("State test 89: the A/B copy history obeys ADR-0008's 128-entry cap\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     auto* driveP = apvts.getParameter (pid::drive);
@@ -10407,7 +10419,7 @@ static void testAUserStepsEndpointsBelongToTheUser()
 {
     std::printf ("State test 90: a user step's endpoints belong to the user, per parameter\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     auto* driveP = apvts.getParameter (pid::drive);
@@ -10608,7 +10620,7 @@ static void testAnAttachmentEndpointBelongsToTheUser()
 {
     std::printf ("State test 91: an attachment-driven user endpoint belongs to the user\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -11085,7 +11097,7 @@ static void testARefusedStoreStatesNoEndpoint()
 {
     std::printf ("State test 92: a refused store states no endpoint at all\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -11560,7 +11572,7 @@ static void testACompleteGestureEndpointPrecedesThePoll()
 {
     std::printf ("State test 93: a complete-gesture endpoint is known before the gesture can be polled\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -12110,7 +12122,7 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
 
     // ===== LEG F: the RISK-009 lock cycle, built and then measured =============
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto* driveP = proc.getAPVTS().getParameter (pid::drive);
         check (driveP != nullptr, "leg F: the parameter the gesture runs on exists");
@@ -12119,7 +12131,7 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
         // the blob is a whole sound and the replacement it drives is the production one.
         juce::MemoryBlock blob;
         {
-            AnamorphAudioProcessor author;
+            auto [authorHeapOwner, author] = heapProcessorFixture();
             author.prepareToPlay (48000.0, 512);
             if (auto* d = author.getAPVTS().getParameter (pid::drive))
                 d->setValueNotifyingHost (d->convertTo0to1 (7.5f));
@@ -12187,12 +12199,12 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
     //  the cell and a SECOND one is parked inside its write loop holding the lock; the timer door
     //  must adopt the first without waiting for the second.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
 
         auto author = [] (float drive)
         {
-            AnamorphAudioProcessor a;
+            auto [aHeapOwner, a] = heapProcessorFixture();
             a.prepareToPlay (48000.0, 512);
             if (auto* d = a.getAPVTS().getParameter (pid::drive))
                 d->setValueNotifyingHost (d->convertTo0to1 (drive));
@@ -12239,7 +12251,7 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
     }
 
     // ===== LEGS A-C and H: the three bare stores ==============================
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -12713,7 +12725,7 @@ static void testAPresetFileIsOneWellFormedDocument()
 {
     std::printf ("State test 114: a preset file is ONE well-formed document (ADR-0055)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& pm = proc.getPresets();
     using Op = anamorph::PresetManager::OpResult;
@@ -13661,7 +13673,7 @@ static void testThePresetUnreadableStateExpiresByItself()
 {
     std::printf ("State test 115: PRESET UNREADABLE appears, expires on its own clock, and yields to success\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& pm = proc.getPresets();
 
@@ -13956,7 +13968,7 @@ static void testHostStateIsBoundedBeforeTheParser()
 
     auto restores = [] (const juce::String& sessionText)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         const auto blob = frameHostChunk (sessionText);
         p.setStateInformation (blob.getData(), (int) blob.getSize());
         return (double) rawOf (p, "drive");
@@ -14096,7 +14108,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         // parse, none of these would refuse -- and round 50 measured exactly that failure.
         auto slotA = [] (const juce::String& sessionText)
         {
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto blob = frameHostChunk (sessionText);
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             // The slot the payload was meant for: switch into it and read what arrived. An
@@ -14117,7 +14129,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         checkNear (slotA (sessionCarrying (payloadNestedTo (depth))), 1.6, 1e-4,
                    "leg D: a payload nested exactly 8 deep is still admitted and applied");
         {
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto blob = frameHostChunk (sessionCarrying (payloadNestedTo (depth + 1)));
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             checkNear ((double) rawOf (p, "drive"), 0.0375, 1e-6,
@@ -14161,7 +14173,7 @@ static void testHostStateIsBoundedBeforeTheParser()
             juce::String big ("<ANAMORPH><PARAM id=\"width\" value=\"1.6\"/><!--");
             big << juce::String::repeatedString ("P", cap) << "--></ANAMORPH>";
             check (big.getNumBytesAsUTF8() > (size_t) cap, "leg D: the oversized payload really is oversized");
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto blob = frameHostChunk (sessionCarrying (big));
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             checkNear ((double) rawOf (p, "drive"), 0.0, 1e-9,
@@ -14194,7 +14206,7 @@ static void testHostStateIsBoundedBeforeTheParser()
                                         "</ANAMORPH><AB active=\"0\" slotAParams=\"&lt;ANAMORPH/&gt;\"/>"
                                         "</AnamorphRoot>");
             blob.setSize (blob.getSize() / 2);
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             checkNear ((double) rawOf (p, "drive"), 0.0375, 1e-6,
                        "leg E: a chunk truncated to half its length still loads, as it did before");
@@ -14269,7 +14281,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         // refuse it; a refused payload leaves the slot invalid for `abEnsureInit` to re-seed,
         // which reads 1.0 rather than the payload's 1.6.
         {
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto blob = frameHostChunk (sessionCarrying (
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ANAMORPH><PARAM id=\"width\" value=\"1.6\"/>"
                 "<a \"" + shallow));
@@ -14297,7 +14309,7 @@ static void testHostStateIsBoundedBeforeTheParser()
             if (auto x = juce::parseXML (file))    blob = BlobCodec::wrap (*x);
             else if (! file.loadFileAsData (blob)) { check (false, "leg F: fixture unreadable"); continue; }
 
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto before = juce::String (plainOf (p, "width"), 4);
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             const auto tree = stateTreeOf (p);
@@ -14308,14 +14320,14 @@ static void testHostStateIsBoundedBeforeTheParser()
         }
 
         // ...and a live round trip: what this build writes must survive its own boundary.
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         setPlain (p, "drive", 3.0f);
         p.abCopyToOther();                       // seeds the other slot, so both payloads are real
         juce::MemoryBlock out;
         p.getStateInformation (out);
         check ((juce::int64) out.getSize() <= anamorph::xmlBoundary::maxDocumentBytes,
                "leg F: a session this build writes is inside the cap it now enforces");
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.setStateInformation (out.getData(), (int) out.getSize());
         checkNear ((double) plainOf (q, "drive"), 3.0, 1e-4,
                    "leg F: ...and restores through it unchanged");
@@ -14362,7 +14374,7 @@ static void testHostStateIsBoundedBeforeTheParser()
             // ...and, fed to the real entry point, it APPLIES. `width` is the observable: every
             // one of the three fixtures carries a non-default one, so a seed that decodes to
             // nothing leaves the default standing and fails here.
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const float before = plainOf (p, "width");
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             const float after = plainOf (p, "width");
@@ -14425,7 +14437,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         auto external = dir.getChildFile ("external.dtd");
         check (external.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "leg G4: the DTD is on disk");
         {
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto blob = frameHostChunk (juce::String ("<!DOCTYPE AnamorphRoot SYSTEM \"")
                                               + external.getFileName() + "\"><AnamorphRoot><ANAMORPH>"
                                               "<PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH></AnamorphRoot>");
@@ -14440,7 +14452,7 @@ static void testHostStateIsBoundedBeforeTheParser()
                    "leg G4: ...and the file's text is not in the state either (weaker than G2/G3, not a substitute)");
         }
         {
-            AnamorphAudioProcessor p;
+            auto [pHeapOwner, p] = heapProcessorFixture();
             const auto blob = frameHostChunk (sessionCarrying (m.document));
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             p.abSwitchTo (0);
@@ -14554,7 +14566,7 @@ static void testEditorConstructDestroy()
     std::printf ("  SKIPPED off Linux -- headless construction is unverified there "
                  "(KI-007); every instrument this feeds is a Linux job.\n");
 #else
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
 
     // THE PREMISE, CHECKED LOUDLY AND FIRST. If `createEditor()` ever returns
@@ -14639,7 +14651,7 @@ static void testNonFiniteParameterInStateIsRejected()
     // Author a normal session, then poison one parameter's serialized value.
     juce::MemoryBlock poisoned;
     {
-        AnamorphAudioProcessor authoring;
+        auto [authoringHeapOwner, authoring] = heapProcessorFixture();
         authoring.prepareToPlay (48000.0, 256);
         setRaw (authoring, pid::width, 0.8f);
         juce::MemoryBlock clean;
@@ -14662,7 +14674,7 @@ static void testNonFiniteParameterInStateIsRejected()
         poisoned = BlobCodec::wrap (*xml);
     }
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
 
     const float restored = rawOf (proc, pid::width);
@@ -14700,7 +14712,7 @@ static void testNonFiniteParameterInStateIsRejected()
     // (PresetManager::applySoundTree), which had no gate of its own. Driven
     // end to end through the real loader, on a real file.
     {
-        AnamorphAudioProcessor viaPreset;
+        auto [viaPresetHeapOwner, viaPreset] = heapProcessorFixture();
         viaPreset.prepareToPlay (48000.0, 256);
         auto& pm = viaPreset.getPresets();
 
@@ -14745,7 +14757,7 @@ static void testValuelessParamMeansDefault()
 {
     std::printf ("State test 18: a PARAM with no value means default, not zero\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 256);
     auto& pm = proc.getPresets();
 
@@ -14921,7 +14933,7 @@ static void testFirstActivationUsesRestoredState()
 
     // (a) A plug-in newly inserted on a playing track -- no restore at all.
     {
-        AnamorphAudioProcessor fresh;
+        auto [freshHeapOwner, fresh] = heapProcessorFixture();
         const auto [block0, minEarly] = earlyLevelRatio (fresh, "fresh instance ");
         juce::ignoreUnused (block0); // block 0 charges the default multiband filters
         check (minEarly > 0.85, "a newly activated instance does not duck its first ~60 ms");
@@ -14940,7 +14952,7 @@ static void testFirstActivationUsesRestoredState()
     {
         juce::MemoryBlock project;
         {
-            AnamorphAudioProcessor authoring;
+            auto [authoringHeapOwner, authoring] = heapProcessorFixture();
             authoring.prepareToPlay (kSr, kBlock);
             // ADVANCED on: ParamPointers::toEngine gates the whole input /
             // multiband / output block behind it, so in Simple mode the engine
@@ -14953,7 +14965,7 @@ static void testFirstActivationUsesRestoredState()
             authoring.getStateInformation (project);
         }
 
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.setStateInformation (project.getData(), (int) project.getSize()); // restore FIRST
         // Reported so a failure separates "the restore did not arrive" from
         // "the restore arrived and activation did not honour it".
@@ -14997,7 +15009,7 @@ static int runStateThreadProbe()
     std::printf ("RISK-007 probe: host state thread vs message-thread reads\n");
     std::printf ("  (run under ThreadSanitizer; a report here is the finding, silence refutes it)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
 
     // Give the probe real metadata to race over: a named preset, then an edit so
@@ -15079,7 +15091,7 @@ static int runLatencyRestoreProbe()
     // the apvts.addParameterListener chain that ends in updateLatency()? A restore
     // has too many other things in it to answer that on its own.
     {
-        AnamorphAudioProcessor iso;
+        auto [isoHeapOwner, iso] = heapProcessorFixture();
         iso.getInternal().oversampleValue().setValue (2); // 2x -- predictLatency is 0 when OS is Off
         iso.prepareToPlay (48000.0, 256);
         setRaw (iso, pid::drive, 0.6f);
@@ -15097,7 +15109,7 @@ static int runLatencyRestoreProbe()
     // short of running it answers it: reassertParameters' default branch would
     // otherwise hide the answer behind its own (identical) correction.
     {
-        AnamorphAudioProcessor iso;
+        auto [isoHeapOwner, iso] = heapProcessorFixture();
         iso.getInternal().oversampleValue().setValue (2);
         iso.prepareToPlay (48000.0, 256);
         setRaw (iso, pid::drive, 0.6f);
@@ -15118,7 +15130,7 @@ static int runLatencyRestoreProbe()
     // PARAM node -- the partial-blob shape reassertParameters' default branch exists for.
     juce::MemoryBlock partial;
     {
-        AnamorphAudioProcessor authoring;
+        auto [authoringHeapOwner, authoring] = heapProcessorFixture();
         authoring.getInternal().oversampleValue().setValue (2); // 1-based ComboBox id: 2x
         authoring.prepareToPlay (48000.0, 256);
         setRaw (authoring, pid::drive, 0.6f);
@@ -15141,7 +15153,7 @@ static int runLatencyRestoreProbe()
                      rawOf (authoring, pid::drive));
     }
 
-    AnamorphAudioProcessor live;
+    auto [liveHeapOwner, live] = heapProcessorFixture();
     live.getInternal().oversampleValue().setValue (2); // SAME as the blob: no callback to mask the gap
     live.prepareToPlay (48000.0, 256);
     setRaw (live, pid::drive, 0.6f);
@@ -15170,7 +15182,7 @@ static int runLatencyRestoreProbe()
     // ValueTree::setProperty sees a difference and fires the callback even though the
     // oversampling did not change. Restoring twice removes that type mismatch, which
     // is also the ordinary case -- a host reloading project after project.
-    AnamorphAudioProcessor twice;
+    auto [twiceHeapOwner, twice] = heapProcessorFixture();
     twice.getInternal().oversampleValue().setValue (2);
     twice.prepareToPlay (48000.0, 256);
     twice.setStateInformation (partial.getData(), (int) partial.getSize()); // settle the property TYPES
@@ -15222,7 +15234,7 @@ static void testMalformedValuesRestoreDefaults()
     for (const char* id : ids)
         for (const char* poison : poisons)
         {
-            AnamorphAudioProcessor proc;
+            auto [procHeapOwner, proc] = heapProcessorFixture();
             proc.prepareToPlay (48000.0, 256);
             auto* rp = proc.getAPVTS().getParameter (id);
             if (rp == nullptr) { check (false, "probe parameter exists"); continue; }
@@ -15254,7 +15266,7 @@ static void testMalformedValuesRestoreDefaults()
     {
         juce::MemoryBlock poisoned;
         {
-            AnamorphAudioProcessor authoring;
+            auto [authoringHeapOwner, authoring] = heapProcessorFixture();
             authoring.prepareToPlay (48000.0, 256);
             juce::MemoryBlock clean;
             authoring.getStateInformation (clean);
@@ -15268,7 +15280,7 @@ static void testMalformedValuesRestoreDefaults()
                 }
             poisoned = BlobCodec::wrap (*xml);
         }
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         setRaw (proc, pid::width, 0.9f);            // off the default first
         proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
@@ -15282,7 +15294,7 @@ static void testMalformedValuesRestoreDefaults()
     {
         juce::MemoryBlock poisoned;
         {
-            AnamorphAudioProcessor authoring;
+            auto [authoringHeapOwner, authoring] = heapProcessorFixture();
             authoring.prepareToPlay (48000.0, 256);
             juce::MemoryBlock clean;
             authoring.getStateInformation (clean);
@@ -15293,7 +15305,7 @@ static void testMalformedValuesRestoreDefaults()
                         w->setAttribute ("raw", "inf");
             poisoned = BlobCodec::wrap (*xml);
         }
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         setRaw (proc, pid::width, 0.9f);
         proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
@@ -15325,7 +15337,7 @@ static void testRepairReachesSavedState()
 
     juce::MemoryBlock poisoned;
     {
-        AnamorphAudioProcessor authoring;
+        auto [authoringHeapOwner, authoring] = heapProcessorFixture();
         authoring.prepareToPlay (48000.0, 256);
         juce::MemoryBlock clean;
         authoring.getStateInformation (clean);
@@ -15344,7 +15356,7 @@ static void testRepairReachesSavedState()
         poisoned = BlobCodec::wrap (*xml);
     }
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 256);
     proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
 
@@ -15420,7 +15432,7 @@ static void testAbandonedValueBoxGestureIsReclaimed()
 
     // THE YARDSTICK MUST BE ABLE TO FAIL, or every assertion below is vacuous.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto* held = proc.getAPVTS().getParameter (pid::width);
         held->beginChangeGesture();                   // opened, never closed
@@ -15429,7 +15441,7 @@ static void testAbandonedValueBoxGestureIsReclaimed()
         held->endChangeGesture();
     }
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto* raw = proc.createEditor();
     auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
@@ -15501,7 +15513,7 @@ static void testAbandonedValueBoxGestureIsReclaimed()
     // (5) Editor teardown mid-press: measured NOT to leak, recorded so the
     //     refutation is guarded rather than remembered.
     {
-        AnamorphAudioProcessor proc2;
+        auto [proc2HeapOwner, proc2] = heapProcessorFixture();
         proc2.prepareToPlay (48000.0, 512);
         auto* raw2 = proc2.createEditor();
         if (auto* ed2 = dynamic_cast<AnamorphAudioProcessorEditor*> (raw2))
@@ -15589,7 +15601,7 @@ static int runPresetSemanticsProbe()
 
     for (const auto& tg : targets)
     {
-        AnamorphAudioProcessor probeProc;
+        auto [probeProcHeapOwner, probeProc] = heapProcessorFixture();
         auto* rp = probeProc.getAPVTS().getParameter (tg.id);
         if (rp == nullptr) { std::printf ("   %s: NO SUCH PARAMETER\n", tg.id); continue; }
         const float def = rp->getDefaultValue();
@@ -15597,7 +15609,7 @@ static int runPresetSemanticsProbe()
 
         for (const char* poison : poisons)
         {
-            AnamorphAudioProcessor proc;
+            auto [procHeapOwner, proc] = heapProcessorFixture();
             proc.prepareToPlay (48000.0, 256);
             auto* rp2 = proc.getAPVTS().getParameter (tg.id);
             // Move it OFF the default first, so "landed on the default" cannot be
@@ -15637,7 +15649,7 @@ static int runPresetSemanticsProbe()
     {
         juce::MemoryBlock poisoned;
         {
-            AnamorphAudioProcessor authoring;
+            auto [authoringHeapOwner, authoring] = heapProcessorFixture();
             authoring.prepareToPlay (48000.0, 256);
             juce::MemoryBlock clean;
             authoring.getStateInformation (clean);
@@ -15651,7 +15663,7 @@ static int runPresetSemanticsProbe()
                 }
             poisoned = BlobCodec::wrap (*xml);
         }
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         setRaw (proc, pid::width, 0.9f);          // off the default first
         proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
@@ -15667,7 +15679,7 @@ static int runPresetSemanticsProbe()
     {
         juce::MemoryBlock poisoned;
         {
-            AnamorphAudioProcessor authoring;
+            auto [authoringHeapOwner, authoring] = heapProcessorFixture();
             authoring.prepareToPlay (48000.0, 256);
             juce::MemoryBlock clean;
             authoring.getStateInformation (clean);
@@ -15680,7 +15692,7 @@ static int runPresetSemanticsProbe()
                 }
             poisoned = BlobCodec::wrap (*xml);
         }
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
         std::printf ("      after restore: width norm = %.6f (repaired to default 0.500000?)\n",
@@ -15703,7 +15715,7 @@ static int runPresetSemanticsProbe()
                                  w->hasAttribute ("raw") ? w->getStringAttribute ("raw").toRawUTF8() : "(absent)");
 
         // reload into a fresh instance
-        AnamorphAudioProcessor fresh;
+        auto [freshHeapOwner, fresh] = heapProcessorFixture();
         fresh.prepareToPlay (48000.0, 256);
         fresh.setStateInformation (saved.getData(), (int) saved.getSize());
         std::printf ("      reloaded into a fresh instance: width norm = %.6f\n",
@@ -15716,7 +15728,7 @@ static int runPresetSemanticsProbe()
     {
         juce::MemoryBlock partial;
         {
-            AnamorphAudioProcessor authoring;
+            auto [authoringHeapOwner, authoring] = heapProcessorFixture();
             authoring.prepareToPlay (48000.0, 256);
             juce::MemoryBlock whole;
             authoring.getStateInformation (whole);
@@ -15726,7 +15738,7 @@ static int runPresetSemanticsProbe()
                     params->removeChildElement (w, true);
             partial = BlobCodec::wrap (*xml);
         }
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         auto* rp = proc.getAPVTS().getParameter (pid::width);
         rp->setValueNotifyingHost (atDefault ? rp->getDefaultValue() : 0.9f);
@@ -15795,7 +15807,7 @@ static void testLatencyDeliveryIsDeferredOffMessageThread()
 {
     std::printf ("State test 22: an off-thread latency change is deferred, not delivered (D-1)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 256);
 
     // The Setting is written through its binding on the message thread for the
@@ -16305,7 +16317,7 @@ static int runValueBoxGestureProbe()
     //    "no leak" result below is unfalsifiable -- it would read the same if
     //    canUndo() simply never went false. This proves the yardstick can fail.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto* held = proc.getAPVTS().getParameter (pid::width);
         held->beginChangeGesture();               // opened and never closed
@@ -16317,7 +16329,7 @@ static int runValueBoxGestureProbe()
 
     // -- control: no drag at all. Establishes that the yardstick works. --------
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto* raw = proc.createEditor();
         auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
@@ -16330,7 +16342,7 @@ static int runValueBoxGestureProbe()
 
     // -- leg 1: press a value box, then destroy the editor mid-press. ---------
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto* raw = proc.createEditor();
         auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
@@ -16399,7 +16411,7 @@ static int runValueBoxGestureProbe()
     //    This is the one path the round-3 investigation found survives; legs 1-2
     //    exist to test the disputed claim that editor teardown is another.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto* raw = proc.createEditor();
         auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
@@ -16483,7 +16495,7 @@ static void testRestoreReportsTheRestoredLatency()
 
     juce::MemoryBlock poisoned;
     {
-        AnamorphAudioProcessor authoring;
+        auto [authoringHeapOwner, authoring] = heapProcessorFixture();
         // Oversampling OFF in the authored session: this is the field the restore
         // has to move the report with, and the live instance below sits at 2x.
         authoring.getInternal().oversampleValue().setValue (1);
@@ -16505,7 +16517,7 @@ static void testRestoreReportsTheRestoredLatency()
         poisoned = BlobCodec::wrap (*xml);
     }
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     juce::Value osValue = proc.getInternal().oversampleValue();
     osValue.setValue (2);                                  // live: 2x
     proc.prepareToPlay (48000.0, 256);
@@ -16556,7 +16568,7 @@ static int runRestoreLatencyProbe()
     // surviving invariant, re-instrumented on the Oversampling Setting.
     juce::MemoryBlock poisoned;
     {
-        AnamorphAudioProcessor authoring;
+        auto [authoringHeapOwner, authoring] = heapProcessorFixture();
         authoring.getInternal().oversampleValue().setValue (2); // 2x: latency is nonzero at all
         authoring.prepareToPlay (48000.0, 256);
         juce::MemoryBlock clean;
@@ -16572,7 +16584,7 @@ static int runRestoreLatencyProbe()
         poisoned = BlobCodec::wrap (*xml);
     }
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.getInternal().oversampleValue().setValue (2);
     proc.prepareToPlay (48000.0, 256);
     std::printf ("  before restore: drive norm %.6f, reported latency %d\n",
@@ -16583,7 +16595,7 @@ static int runRestoreLatencyProbe()
                  rawOf (proc, pid::drive), proc.getLatencySamples());
     // What the poisoned value WOULD have predicted, for comparison: drive at max.
     {
-        AnamorphAudioProcessor ref;
+        auto [refHeapOwner, ref] = heapProcessorFixture();
         ref.getInternal().oversampleValue().setValue (2);
         ref.prepareToPlay (48000.0, 256);
         ref.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
@@ -16594,7 +16606,7 @@ static int runRestoreLatencyProbe()
     // If it does, the transient exists and only the final report is repaired; if
     // it does not, there was never a bad report to be stale.
     {
-        AnamorphAudioProcessor iso;
+        auto [isoHeapOwner, iso] = heapProcessorFixture();
         iso.getInternal().oversampleValue().setValue (2);
         iso.prepareToPlay (48000.0, 256);
         auto tree = iso.getAPVTS().copyState();
@@ -16632,7 +16644,7 @@ static int runRestoreLatencyProbe()
     // coincidence -- which is also the ordinary case, a host loading project
     // after project into one instance.
     {
-        AnamorphAudioProcessor twice;
+        auto [twiceHeapOwner, twice] = heapProcessorFixture();
         twice.getInternal().oversampleValue().setValue (2);
         twice.prepareToPlay (48000.0, 256);
         twice.setStateInformation (poisoned.getData(), (int) poisoned.getSize()); // settle types
@@ -16693,7 +16705,7 @@ static void testLegacyRestoreResetsAbSlots()
 
     // --- Leg 1: 0.2 bare APVTS, reused instance, first switch reads B.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         seedPreviousProject (p, 0);
         if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
             return;
@@ -16721,7 +16733,7 @@ static void testLegacyRestoreResetsAbSlots()
     // switch after the restore is the one that reads A. Without this leg slot A is
     // never actually observed -- leg 1's switch to B overwrites A on the way out.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         seedPreviousProject (p, 1);
         check (p.abActiveSlot() == 1, "precondition: the previous project is active on B");
         if (! applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
@@ -16747,7 +16759,7 @@ static void testLegacyRestoreResetsAbSlots()
     // on the restored session -- the same defect with the construction snapshot in
     // the previous project's place. Kept, and no longer described as the easy leg.
     {
-        AnamorphAudioProcessor fresh;
+        auto [freshHeapOwner, fresh] = heapProcessorFixture();
         fresh.prepareToPlay (48000.0, 512);
         if (! applyXmlFixture (fresh, "legacy_0_2_bare_apvts.xml"))
             return;
@@ -16762,7 +16774,7 @@ static void testLegacyRestoreResetsAbSlots()
     // --- Leg 4: an AnamorphRoot with no `AB` child -- the same class of path, on
     // the CURRENT format. `AB` is optional (every field in it is "Required: No").
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         seedPreviousProject (p, 0);
         juce::MemoryBlock mb;
         p.getStateInformation (mb);
@@ -16790,7 +16802,7 @@ static void testLegacyRestoreResetsAbSlots()
     // --- Leg 5: the fix must NOT erase legitimate A/B data. A root that DOES carry
     // an AB node still restores both slots' own sounds.
     {
-        AnamorphAudioProcessor src;
+        auto [srcHeapOwner, src] = heapProcessorFixture();
         src.prepareToPlay (48000.0, 512);
         setRaw (src, "width", 0.80f);
         src.abSwitchTo (1);
@@ -16799,7 +16811,7 @@ static void testLegacyRestoreResetsAbSlots()
         juce::MemoryBlock saved;
         src.getStateInformation (saved);
 
-        AnamorphAudioProcessor dst;             // a REUSED instance with other content
+        auto [dstHeapOwner, dst] = heapProcessorFixture();             // a REUSED instance with other content
         seedPreviousProject (dst, 0);
         dst.setStateInformation (saved.getData(), (int) saved.getSize());
         checkNear ((double) rawOf (dst, "width"), 0.80, 1.0e-4,
@@ -16876,7 +16888,7 @@ static void testRestoreIntegrityGuards()
             }
         };
 
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         // The mover is the Oversampling SETTING, not Drive, since ADR-0034: the
         // reported latency is a function of that selection alone, so no parameter
@@ -16956,7 +16968,7 @@ static void testRestoreIntegrityGuards()
 
     // === ER-STATE-15 ========================================================
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
 
         // Give the live instance a distinguishable identity and sound, so anything
@@ -17010,7 +17022,7 @@ static void testRestoreIntegrityGuards()
     {
         // Build a real save, then corrupt ONLY slot B's payload while leaving its
         // name/baseline/identity intact -- the exact shape the review described.
-        AnamorphAudioProcessor src;
+        auto [srcHeapOwner, src] = heapProcessorFixture();
         src.prepareToPlay (48000.0, 512);
         setRaw (src, "width", 0.20f);
         src.abSwitchTo (1);
@@ -17032,7 +17044,7 @@ static void testRestoreIntegrityGuards()
         ab.setProperty ("slotBParams", "<<< not xml at all >>>", nullptr);   // REJECTED payload
         // slotBName / slotBBase / slotBSource are left exactly as saved.
 
-        AnamorphAudioProcessor dst;
+        auto [dstHeapOwner, dst] = heapProcessorFixture();
         dst.prepareToPlay (48000.0, 512);
         const auto blob = BlobCodec::wrap (*root.createXml());
         dst.setStateInformation (blob.getData(), (int) blob.getSize());
@@ -17062,7 +17074,7 @@ static void testRestoreIntegrityGuards()
 
     // === ER-STATE-16, the other direction: a VALID slot is unaffected ========
     {
-        AnamorphAudioProcessor src;
+        auto [srcHeapOwner, src] = heapProcessorFixture();
         src.prepareToPlay (48000.0, 512);
         setRaw (src, "width", 0.20f);
         src.abSwitchTo (1);
@@ -17072,7 +17084,7 @@ static void testRestoreIntegrityGuards()
         juce::MemoryBlock saved;
         src.getStateInformation (saved);
 
-        AnamorphAudioProcessor dst;
+        auto [dstHeapOwner, dst] = heapProcessorFixture();
         dst.prepareToPlay (48000.0, 512);
         dst.setStateInformation (saved.getData(), (int) saved.getSize());
         dst.abSwitchTo (1);
@@ -17146,7 +17158,7 @@ static void testMalformedLegacySettingsResolveToValid()
     };
     for (const auto& c : osCases)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         restoreV02 (p, "oversample", c.text);
         const int id = (int) internalOf (p)[anamorph::iid::oversample];
         check (id == c.expectId, (juce::String ("oversample=\"") + c.text + "\" -> id " + juce::String (c.expectId)
@@ -17170,7 +17182,7 @@ static void testMalformedLegacySettingsResolveToValid()
     };
     for (const auto& c : uiCases)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         restoreV02 (p, "uiScale", c.text);
         const int id = (int) internalOf (p)[anamorph::iid::uiScale];
         check (id == c.expectId, (juce::String ("uiScale=\"") + c.text + "\" -> id " + juce::String (c.expectId)
@@ -17192,7 +17204,7 @@ static void testMalformedLegacySettingsResolveToValid()
     };
     for (const auto& c : spCases)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         restoreV02 (p, "scopePersist", c.text);
         const double d = (double) internalOf (p)[anamorph::iid::scopePersist];
         checkNear (d, c.expect, 1.0e-9, (juce::String ("scopePersist=\"") + c.text + "\" (" + c.why + ")").toRawUTF8());
@@ -17203,7 +17215,7 @@ static void testMalformedLegacySettingsResolveToValid()
     //     AnamorphRoot whose sound child carries the setting and which has no
     //     ANAMORPH_INTERNAL child. Same predicate, same answer.
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         juce::String xml;
         xml << "<AnamorphRoot presetName=\"x\"><ANAMORPH>"
             << "<PARAM id=\"width\" value=\"1.5\"/><PARAM id=\"uiScale\" value=\"nan\"/>"
@@ -17272,7 +17284,7 @@ static void testMalformedLegacySettingsResolveToValid()
         {
             // (a) untouched -- the fix must not move valid migration on the real file
             {
-                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
                 restoreRoot (p, root);
                 auto t = internalOf (p);
                 check ((int)  t[anamorph::iid::oversample] == 3,   "real fixture untouched: oversample idx 2 -> id 3");
@@ -17292,7 +17304,7 @@ static void testMalformedLegacySettingsResolveToValid()
                 setSetting (bad, "metersOn",     "abc");
                 setSetting (bad, "tooltipsOn",   "nan");
                 setSetting (bad, "uiAnimations", "-inf");
-                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
                 restoreRoot (p, bad);
                 auto t = internalOf (p);
                 check ((int)  t[anamorph::iid::oversample] == 1,   "real fixture, oversample=\"nan\"    -> default id 1");
@@ -17310,7 +17322,7 @@ static void testMalformedLegacySettingsResolveToValid()
                 setSetting (far, "oversample",   "7");
                 setSetting (far, "uiScale",      "7");
                 setSetting (far, "scopePersist", "5");
-                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
                 restoreRoot (p, far);
                 auto t = internalOf (p);
                 check ((int)  t[anamorph::iid::oversample] == 4,   "real fixture, oversample=\"7\"  -> clamped to id 4");
@@ -17335,7 +17347,7 @@ static int runLegacyAbProbe()
     auto widthOf = [] (AnamorphAudioProcessor& p) { return rawOf (p, "width"); };
 
     // --- Step 1: the "previous project", with DISTINGUISHABLE A and B sounds.
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     setRaw (p, "width", 0.90f);                 // slot A sound
@@ -17381,7 +17393,7 @@ static int runLegacyAbProbe()
     // the previous project active on B, so the first switch after the restore is the
     // one that reads A.
     {
-        AnamorphAudioProcessor r;
+        auto [rHeapOwner, r] = heapProcessorFixture();
         r.prepareToPlay (48000.0, 512);
         setRaw (r, "width", 0.90f);            // A
         r.abSwitchTo (1);
@@ -17398,7 +17410,7 @@ static int runLegacyAbProbe()
 
     // --- Step 4: the same question for an AnamorphRoot session with NO AB child.
     std::printf ("\n  --- AnamorphRoot with no AB child (same class of path) ---\n");
-    AnamorphAudioProcessor q;
+    auto [qHeapOwner, q] = heapProcessorFixture();
     q.prepareToPlay (48000.0, 512);
     setRaw (q, "width", 0.90f);
     q.abSwitchTo (1);
@@ -17468,7 +17480,7 @@ static int runLegacyMatchGainProbe()
         return std::sqrt (acc / (double) juce::jmax (1, n));
     };
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (sr, bs);
     juce::Random rng (20260901);
 
@@ -17531,7 +17543,7 @@ static int runLegacyMatchGainProbe()
     // session with no previous project behind it.
     const double contaminated = rmsOf (p, 20, rng);
 
-    AnamorphAudioProcessor q;                 // control: no previous project
+    auto [qHeapOwner, q] = heapProcessorFixture();                 // control: no previous project
     q.prepareToPlay (sr, bs);
     juce::Random rngQ (20260901);
     setRaw (q, "autoGainMatch", 1.0f);
@@ -17560,7 +17572,7 @@ static int runLegacyMatchGainProbe()
     std::printf ("\n  --- discrimination: silent switch, two different previous-project Bs ---\n");
     auto runScenario = [&] (float prevBWidth, const char* label)
     {
-        AnamorphAudioProcessor z;
+        auto [zHeapOwner, z] = heapProcessorFixture();
         z.prepareToPlay (sr, bs);
         juce::Random r (4242);
         setRaw (z, "autoGainMatch", 1.0f);
@@ -17611,7 +17623,7 @@ static int runLegacyMatchGainProbe()
     // loudness history, same parameters, one variable.
     std::printf ("\n  --- matched counterfactual on one instance (params identical across the switch) ---\n");
     {
-        AnamorphAudioProcessor z;
+        auto [zHeapOwner, z] = heapProcessorFixture();
         z.prepareToPlay (sr, bs);
         juce::Random r (77000);
         setRaw (z, "autoGainMatch", 1.0f);
@@ -17660,7 +17672,7 @@ static int runLegacyMatchGainProbe()
     {
         auto worstCase = [&] (bool withPreviousProject, const char* label)
         {
-            AnamorphAudioProcessor z;
+            auto [zHeapOwner, z] = heapProcessorFixture();
             z.prepareToPlay (sr, bs);
             juce::Random r (31337);
             setRaw (z, "autoGainMatch", 1.0f);
@@ -17708,7 +17720,7 @@ static int runLegacyMatchGainProbe()
     // construction snapshot, which predates enabling Match.
     std::printf ("\n  --- round 12: does the switch keep Level Match ON? ---\n");
     {
-        AnamorphAudioProcessor z; z.prepareToPlay (sr, bs);
+        auto [zHeapOwner, z] = heapProcessorFixture(); z.prepareToPlay (sr, bs);
         setRaw (z, "autoGainMatch", 1.0f);
         auto raw = [&] { return z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load(); };
         const float treeBefore = (float) (double) z.getAPVTS().state.getChildWithProperty ("id", pid::autoGainMatch).getProperty ("value");
@@ -17724,7 +17736,7 @@ static int runLegacyMatchGainProbe()
     // flush is needed) -- the state a real host is in.
     std::printf ("\n  --- round 12: matched counterfactual with autoGainMatch baked into the restored session ---\n");
     {
-        AnamorphAudioProcessor z; z.prepareToPlay (sr, bs);
+        auto [zHeapOwner, z] = heapProcessorFixture(); z.prepareToPlay (sr, bs);
         juce::Random r (77000);
         setRaw (z, "autoGainMatch", 1.0f);
         setRaw (z, "width", 0.95f); runBlocks (z, 60, r);
@@ -17806,7 +17818,7 @@ static int runLegacySettingsProbe()
     std::printf ("  %-12s | %-24s | %-13s | %-10s | %s\n", "oversample=", "int_oversample (tree)", "osIndex()", "re-saved", "note");
     for (auto* c : cases)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         restoreV02 (p, "oversample", c);
         const auto v = p.getInternal().copyState()[iid_oversample()];
         std::printf ("  %-12s | %-24s | %-13d | %-10s | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
@@ -17817,7 +17829,7 @@ static int runLegacySettingsProbe()
     std::printf ("\n  %-12s | %-24s | %-13s | %s\n", "uiScale=", "int_uiScale (tree)", "uiScaleIndex()", "note");
     for (auto* c : cases)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         restoreV02 (p, "uiScale", c);
         const auto v = p.getInternal().copyState()[iid_uiScale()];
         std::printf ("  %-12s | %-24s | %-13d | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
@@ -17829,7 +17841,7 @@ static int runLegacySettingsProbe()
     std::printf ("\n  %-12s | %-20s | %-14s | %s\n", "scopePersist=", "tree (double)", "scopePersist()", "note");
     for (auto* c : dcases)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         restoreV02 (p, "scopePersist", c);
         const double d = (double) p.getInternal().copyState()[iid_scopePersist()];
         std::printf ("  %-12s | %-20.6g | %-14.6g | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
@@ -17880,7 +17892,7 @@ static void testPartialSettingsDoNotInherit()
     // plug-in itself wrote, so only the omission is synthetic.
     auto saveOmitting = [] (const juce::Identifier* omit)
     {
-        AnamorphAudioProcessor b; b.prepareToPlay (48000.0, 512);
+        auto [bHeapOwner, b] = heapProcessorFixture(); b.prepareToPlay (48000.0, 512);
         juce::MemoryBlock mb; b.getStateInformation (mb);
         auto xml  = BlobCodec::unwrap (mb);
         auto root = juce::ValueTree::fromXml (*xml);
@@ -17897,7 +17909,7 @@ static void testPartialSettingsDoNotInherit()
     // --- Leg 1: each field in turn, omitted from an otherwise real modern save.
     for (const auto& f : fields)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         seedPreviousProject (p);
         checkMsg (! p.getInternal().copyState()[f.id].equals (f.doc),
                juce::String ("precondition: session A's ") + f.name + " differs from the default");
@@ -17918,13 +17930,13 @@ static void testPartialSettingsDoNotInherit()
     // --- Leg 2: a session that DOES carry the field still restores that value.
     // Without this the fix could pass leg 1 by resetting everything always.
     {
-        AnamorphAudioProcessor src; src.prepareToPlay (48000.0, 512);
+        auto [srcHeapOwner, src] = heapProcessorFixture(); src.prepareToPlay (48000.0, 512);
         juce::ValueTree explicitA ("ANAMORPH_INTERNAL");
         for (const auto& g : fields) explicitA.setProperty (g.id, g.sessionA, nullptr);
         src.getInternal().restoreState (explicitA);
         juce::MemoryBlock saved; src.getStateInformation (saved);
 
-        AnamorphAudioProcessor dst; dst.prepareToPlay (48000.0, 512);   // at defaults
+        auto [dstHeapOwner, dst] = heapProcessorFixture(); dst.prepareToPlay (48000.0, 512);   // at defaults
         dst.setStateInformation (saved.getData(), (int) saved.getSize());
         for (const auto& f : fields)
             checkMsg (dst.getInternal().copyState()[f.id].equals (f.sessionA),
@@ -17936,7 +17948,7 @@ static void testPartialSettingsDoNotInherit()
     // --- Leg 3: the LEGACY path still resets all six, as it already did. This is
     // where the review looked; pinning it keeps the two paths distinguishable.
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         seedPreviousProject (p);
         if (applyXmlFixture (p, "legacy_0_2_bare_apvts.xml"))
             for (const auto& f : fields)
@@ -17948,7 +17960,7 @@ static void testPartialSettingsDoNotInherit()
     // malformed Setting is NOT the absent case and must not be turned into one by
     // this fix; the value is adopted and the consumers clamp it, exactly as before.
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         auto blob = saveOmitting (nullptr);
         auto root = juce::ValueTree::fromXml (*BlobCodec::unwrap (blob));
         root.getChildWithName ("ANAMORPH_INTERNAL")
@@ -17988,7 +18000,7 @@ static int runPartialSettingsProbe()
     // is what the plug-in itself wrote.
     auto sessionBOmitting = [] (const juce::Identifier& omit)
     {
-        AnamorphAudioProcessor b; b.prepareToPlay (48000.0, 512);
+        auto [bHeapOwner, b] = heapProcessorFixture(); b.prepareToPlay (48000.0, 512);
         juce::MemoryBlock mb; b.getStateInformation (mb);
         auto xml  = BlobCodec::unwrap (mb);
         auto root = juce::ValueTree::fromXml (*xml);
@@ -18003,7 +18015,7 @@ static int runPartialSettingsProbe()
     int inherited = 0;
     for (const auto& f : fields)
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         p.getInternal().copyState();                       // touch, no-op
         // Session A: the previous project sets this field to a non-default value.
         juce::ValueTree a ("ANAMORPH_INTERNAL");
@@ -18028,7 +18040,7 @@ static int runPartialSettingsProbe()
     // The LEGACY path, for contrast: a 0.2 blob carrying NO Settings at all.
     std::printf ("  LEGACY path (0.2 bare APVTS -> migrateFromLegacyApvts):\n");
     {
-        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto [pHeapOwner, p] = heapProcessorFixture(); p.prepareToPlay (48000.0, 512);
         juce::ValueTree a ("ANAMORPH_INTERNAL");
         for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
         p.getInternal().restoreState (a);
@@ -18089,7 +18101,7 @@ static void testOffThreadPrepareDefersLatency()
     // synchronously, and that number is what the off-thread prepare must reach.
     int truth = 0;
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.getInternal().oversampleValue().setValue (2);          // 1-based combo id: 2x
         q.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
         check (q.getLatencySamples() == 0, "a never-prepared instance reports 0 (the oversampler does not exist yet)");
@@ -18107,7 +18119,7 @@ static void testOffThreadPrepareDefersLatency()
         q.removeListener (&control);
     }
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.getInternal().oversampleValue().setValue (2);
     p.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
     const int before = p.getLatencySamples();
@@ -18190,7 +18202,7 @@ static int runReprepareRaceProbe()
 
     for (int run = 0; run < kRuns; ++run)
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.getInternal().oversampleValue().setValue (2);
         auto* drive = proc.getAPVTS().getParameter (pid::drive);
         ThreadRecorder rec;
@@ -18352,7 +18364,7 @@ static void testRestoreResetsAbMatchGains()
         // control is only a control if it restores the identical bytes.
         juce::MemoryBlock blob;
         {
-            AnamorphAudioProcessor src;
+            auto [srcHeapOwner, src] = heapProcessorFixture();
             src.prepareToPlay (sr, bs);
             blob = makeBlob (src);
         }
@@ -18377,7 +18389,7 @@ static void testRestoreResetsAbMatchGains()
             return p.getEngine().getMatchGainDb();
         };
 
-        AnamorphAudioProcessor reused;
+        auto [reusedHeapOwner, reused] = heapProcessorFixture();
         float prevA = 0.0f, prevB = 0.0f;
         seedPreviousProject (reused, prevA, prevB);
         const float stale = staleIsSlotB ? prevB : prevA;
@@ -18387,7 +18399,7 @@ static void testRestoreResetsAbMatchGains()
                "non-vacuity: the stale value differs from the 0 dB a fresh instance injects");
         const float injectedReused = restoreSwitchAndRead (reused);
 
-        AnamorphAudioProcessor fresh;
+        auto [freshHeapOwner, fresh] = heapProcessorFixture();
         fresh.prepareToPlay (sr, bs);
         const float injectedFresh = restoreSwitchAndRead (fresh);
 
@@ -18444,7 +18456,7 @@ static void testRestoreResetsAbMatchGains()
         constexpr float kSoundA = 0.88f, kSoundB = 0.12f;
         juce::MemoryBlock valid;
         {
-            AnamorphAudioProcessor src;
+            auto [srcHeapOwner, src] = heapProcessorFixture();
             src.prepareToPlay (sr, bs);
             setRaw (src, "width", kSoundA);
             src.abSwitchTo (1);
@@ -18453,7 +18465,7 @@ static void testRestoreResetsAbMatchGains()
             src.getStateInformation (valid);
         }
 
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         float prevA = 0.0f, prevB = 0.0f;
         seedPreviousProject (p, prevA, prevB);
         p.setStateInformation (valid.getData(), (int) valid.getSize());
@@ -18498,7 +18510,7 @@ static int runModernSettingsProbe()
     // A genuine modern save, used as the carrier for every mutation below.
     juce::MemoryBlock base;
     {
-        AnamorphAudioProcessor src;
+        auto [srcHeapOwner, src] = heapProcessorFixture();
         src.prepareToPlay (48000.0, 512);
         src.getStateInformation (base);
     }
@@ -18533,7 +18545,7 @@ static int runModernSettingsProbe()
         internal->setAttribute (c.field, c.value);
         auto mutated = BlobCodec::wrap (*xml);
 
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         p.setStateInformation (mutated.getData(), (int) mutated.getSize());
 
@@ -18694,7 +18706,7 @@ static void testDefaultValuedCorruptionIsRepairedInState()
 {
     std::printf ("State test 36: a repair equal to the live value still reaches the saved state (ER-STATE-25)\n");
 
-    AnamorphAudioProcessor probe;
+    auto [probeHeapOwner, probe] = heapProcessorFixture();
     probe.prepareToPlay (48000.0, 256);
 
     // Find a parameter for which malformed text and the default coincide.
@@ -18751,7 +18763,7 @@ static void testDefaultValuedCorruptionIsRepairedInState()
         checkStr (savedText (poisoned), juce::String (kPoison),
                   "the input session really does carry the malformed text");
 
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
 
@@ -18779,7 +18791,7 @@ static void testDefaultValuedCorruptionIsRepairedInState()
                "...it emits a plain number");
 
         // (4) Reloading that save reproduces the value and stays canonical.
-        AnamorphAudioProcessor back;
+        auto [backHeapOwner, back] = heapProcessorFixture();
         back.prepareToPlay (48000.0, 256);
         back.setStateInformation (resaved.getData(), (int) resaved.getSize());
         auto* rb = back.getAPVTS().getParameter (victim);
@@ -18802,7 +18814,7 @@ static void testDefaultValuedCorruptionIsRepairedInState()
         check (done, "the control session carries the victim PARAM");
         const auto validBlob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
 
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         proc.setStateInformation (validBlob.getData(), (int) validBlob.getSize());
         auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
@@ -18823,7 +18835,7 @@ static void testDefaultValuedCorruptionIsRepairedInState()
                 if (auto* n = params->getChildByAttribute ("id", victim))
                     n->setAttribute ("raw", "-7");     // usable, far below 0 -> clamps to 0 == default
         const auto blob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         proc.setStateInformation (blob.getData(), (int) blob.getSize());
         auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
@@ -18853,7 +18865,7 @@ static void testDefaultValuedCorruptionIsRepairedInState()
         check (done, "the fallback session carries the victim PARAM");
         const auto blob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
 
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 256);
         proc.setStateInformation (blob.getData(), (int) blob.getSize());
         auto* rb = proc.getAPVTS().getParameter (victim);
@@ -18928,7 +18940,7 @@ static void testRejectedPresetDoesNotDuck()
     // Write the valid harness preset from a settled engaged instance, then the
     // foreign one beside it.
     {
-        AnamorphAudioProcessor seed;
+        auto [seedHeapOwner, seed] = heapProcessorFixture();
         seed.prepareToPlay (sr, block);
         engage (seed);
         auto xml = seed.getAPVTS().copyState().createXml();
@@ -18943,7 +18955,7 @@ static void testRejectedPresetDoesNotDuck()
     // the step(+1) below is that it targets the FOREIGN entry.
     int idxValid = -1, idxForeign = -1;
     {
-        AnamorphAudioProcessor probe;
+        auto [probeHeapOwner, probe] = heapProcessorFixture();
         probe.getPresets().refresh();
         const auto& es = probe.getPresets().entries();
         for (int i = 0; i < es.size(); ++i)
@@ -18984,7 +18996,7 @@ static void testRejectedPresetDoesNotDuck()
     //      refusal half of the invariant moved to arm 1, which is the door that still refuses.
     auto run = [&] (int action, double& outSide, bool& outClicked)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (sr, block);
         engage (p);
         p.getPresets().refresh();
@@ -19049,7 +19061,7 @@ static void testRejectedPresetDoesNotDuck()
     // The other half of the invariant: a SUCCESSFUL load must still duck. Without
     // this, deleting the duck outright would pass everything above.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (sr, block);
         engage (p);
         p.getPresets().refresh();
@@ -19070,7 +19082,7 @@ static void testRejectedPresetDoesNotDuck()
     {
         auto brokenFile = dir.getChildFile (juce::String ("__DuckHarnessC__") + anamorph::PresetManager::fileSuffix());
         check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed harness preset written");
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (sr, block);
         engage (p);
         std::mt19937 rng (24601);
@@ -19115,7 +19127,7 @@ static void testRejectedPresetDoesNotDuck()
 static void testForeignPresetDoesNotResetSound()
 {
     std::printf ("State test 34: a foreign preset never overwrites the current sound (ER-STATE-24)\n");
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     auto& presets = p.getPresets();
 
@@ -19293,7 +19305,7 @@ static void testMalformedScopePersistStaysFinite()
 
     // --- Leg 1: the consumer's own contract, on the real Vectorscope.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         anamorph::gui::Vectorscope vs (proc.getEngine().getScopeBuffer());
 
@@ -19322,7 +19334,7 @@ static void testMalformedScopePersistStaysFinite()
     // A genuine modern save, with only this one field replaced.
     juce::MemoryBlock base;
     {
-        AnamorphAudioProcessor src;
+        auto [srcHeapOwner, src] = heapProcessorFixture();
         src.prepareToPlay (48000.0, 512);
         src.getStateInformation (base);
     }
@@ -19336,7 +19348,7 @@ static void testMalformedScopePersistStaysFinite()
         internal->setAttribute ("int_scopePersist", bad);
         auto mutated = BlobCodec::wrap (*xml);
 
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         proc.setStateInformation (mutated.getData(), (int) mutated.getSize());
 
@@ -19399,7 +19411,7 @@ static void testModernSettingsAreRepairedOnRestore()
     // A genuine modern save, used as the carrier for every mutation.
     juce::MemoryBlock base;
     {
-        AnamorphAudioProcessor src;
+        auto [srcHeapOwner, src] = heapProcessorFixture();
         src.prepareToPlay (48000.0, 512);
         src.getStateInformation (base);
     }
@@ -19480,7 +19492,7 @@ static void testModernSettingsAreRepairedOnRestore()
         auto mutated = BlobCodec::wrap (*xml);
 
         // (1) Restore: the LIVE value must be the repaired one.
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         p.setStateInformation (mutated.getData(), (int) mutated.getSize());
         const double live = (double) p.getInternal().copyState()[juce::Identifier (c.field)];
@@ -19497,7 +19509,7 @@ static void testModernSettingsAreRepairedOnRestore()
                    "...and the malformed text is NOT what the next save writes");
 
         // (3) Reload: the same value comes back, so the repair is stable.
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         q.setStateInformation (resaved.getData(), (int) resaved.getSize());
         const double reloaded = (double) q.getInternal().copyState()[juce::Identifier (c.field)];
@@ -19520,7 +19532,7 @@ static void testModernSettingsAreRepairedOnRestore()
         internal->removeAttribute ("int_uiScale");
         auto stripped = BlobCodec::wrap (*xml);
 
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         p.getInternal().uiScaleValue().setValue (5);      // a distinguishable previous value
         p.setStateInformation (stripped.getData(), (int) stripped.getSize());
@@ -19560,7 +19572,7 @@ static int runRisk008Probe()
     std::printf ("  (synthetic: models the editor-closed state a run-loop detach leaves behind;\n");
     std::printf ("   the wrapper lifecycle that produces it is established by code reading)\n\n");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.getInternal().oversampleValue().setValue (2);      // 2x: latency moves with drive
     auto* drive = p.getAPVTS().getParameter (pid::drive);
 
@@ -19686,7 +19698,7 @@ static int runRestoreFadeProbe()
         // A real non-default session, saved by one instance...
         juce::MemoryBlock blob;
         {
-            AnamorphAudioProcessor src;
+            auto [srcHeapOwner, src] = heapProcessorFixture();
             src.prepareToPlay (sr, bs);
             setPlain (src, pid::algorithm, (float) c.algo);
             setPlain (src, pid::mix, 1.0f);
@@ -19700,7 +19712,7 @@ static int runRestoreFadeProbe()
         }
 
         // ...restored into a FRESH one in the ordinary host order: state, then activate.
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.setStateInformation (blob.getData(), (int) blob.getSize());
         p.prepareToPlay (sr, bs);
 
@@ -19791,7 +19803,7 @@ static int runStatePrepareRaceProbe()
     std::printf ("ER-STATE-23 probe: restore + prepare + editor reads, three threads\n");
     std::printf ("  (run under ThreadSanitizer; compare the report set against the four D-2 records)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     proc.getPresets().load (1);
     setRaw (proc, "width", 0.42f);
@@ -19903,7 +19915,7 @@ namespace d2
 
     static Session author (const char* name, float widthA, float widthB, int active, int oversampleId)
     {
-        AnamorphAudioProcessor a;
+        auto [aHeapOwner, a] = heapProcessorFixture();
         a.prepareToPlay (48000.0, 512);
         a.getInternal().oversampleValue().setValue (oversampleId);
         setRaw (a, "width", widthA);
@@ -20034,7 +20046,7 @@ static void testAbStateCoherentAcrossOffThreadRestores()
     const auto Y = d2::author ("D2-Y", 0.20f, 0.80f, 1, 1);
     check (X.blob != Y.blob, "non-vacuity: the two sessions differ");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     // Real undo history, so "cleared by the adoption" cannot pass vacuously.
@@ -20120,7 +20132,7 @@ static void testRestoreCyclesUnderRunningAudio()
     // Truth: what a message-thread restore reports for each session.
     auto truthFor = [] (const d2::Session& sn)
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         d2::restoreFrom (q, sn.blob);
         q.prepareToPlay (48000.0, 512);
@@ -20129,7 +20141,7 @@ static void testRestoreCyclesUnderRunningAudio()
     const int latB = truthFor (B), latC = truthFor (C);
     check (latB != latC, "non-vacuity: the two sessions report different latencies");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     std::atomic<bool> stopAudio { false };
@@ -20206,7 +20218,8 @@ static void testPresetTransitionsUnderConcurrentSaves()
 {
     std::printf ("State test 39: preset transitions with audio running and a host thread saving (D-2)\n");
 
-    AnamorphAudioProcessor p, control;
+    auto [pHeapOwner, p] = heapProcessorFixture();
+    auto [controlHeapOwner, control] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     control.prepareToPlay (48000.0, 512);
     const int factoryCount = [&]
@@ -20352,7 +20365,7 @@ static void testRestoreAroundReprepare()
 
     const int truth = [&]
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         d2::restoreFrom (q, finalSession.blob);
         q.prepareToPlay (finalRate, finalBlock);
@@ -20370,7 +20383,7 @@ static void testRestoreAroundReprepare()
         }
     };
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
     ThreadRecorder rec;
     p.addListener (&rec);
@@ -20439,7 +20452,7 @@ static void testUndoHistoryIsOwnedByTheMessageThread()
 
     const auto X = d2::author ("D2-U", 0.15f, 0.85f, 0, 1);
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     auto gestureEdit = [&] (const char* id, float raw)
@@ -20565,7 +20578,7 @@ static void testHostSaveNeverPairsRestoredSoundWithOlderProgram()
     const auto Y = d2::author ("D2-F1Y", 0.22f, 0.78f, 1, 1);
     check (X.blob != Y.blob, "non-vacuity: the two sessions differ");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     for (int i = 0; i < 6; ++i)
@@ -20692,7 +20705,7 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     // Truth: what a message-thread restore + prepare of B reports.
     const int latencyB = [&]
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         d2::restoreFrom (q, B.blob);
         q.prepareToPlay (48000.0, 512);
@@ -20700,7 +20713,7 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     }();
     const int latencyA = [&]
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
         d2::restoreFrom (q, A.blob);
         q.prepareToPlay (48000.0, 512);
@@ -20708,7 +20721,7 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     }();
     check (latencyA != latencyB, "non-vacuity: the two sessions report different latencies");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     d2::offMessageThread ([&] { d2::restoreFrom (p, A.blob); });      // A pending
@@ -20842,7 +20855,7 @@ namespace r3
     }
     static juce::MemoryBlock authorSession (const char* name, const SettingsSet& v)
     {
-        AnamorphAudioProcessor a;
+        auto [aHeapOwner, a] = heapProcessorFixture();
         apply (a.getInternal(), v);
         a.getPresets().setMeta (name, "r3-baseline-" + juce::String (name), anamorph::PresetManager::Selection());
         return d2::saveOf (a);
@@ -20850,7 +20863,7 @@ namespace r3
     // What a message-thread restore of the blob yields: the Settings a save carries.
     static SettingsSet settingsOf (const juce::MemoryBlock& blob)
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         d2::restoreFrom (q, blob);
         return read (q.getInternal());
     }
@@ -20881,7 +20894,7 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
     // --- (1) each field alone, edited after the arrival ---------------------
     for (int i = 0; i < 6; ++i)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
         d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // arrived; pending
@@ -20908,7 +20921,7 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
 
     // --- (2) all six edited after the arrival --------------------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
         d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
@@ -20918,7 +20931,7 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
         check (r3::same (r3::settingsOf (d2::saveOf (p)), U), "...and the save carries them");
         check (p.getInternal().oversampleIndex() == U.oversample - 1, "...and the engine word holds the edited Oversampling");
 
-        AnamorphAudioProcessor truth;
+        auto [truthHeapOwner, truth] = heapProcessorFixture();
         truth.prepareToPlay (48000.0, 512);
         r3::apply (truth.getInternal(), U);
         truth.prepareToPlay (48000.0, 512);
@@ -20930,7 +20943,7 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
     // --- (3) edited BEFORE the restore arrived --------------------------------
     for (int i = 0; i < 6; ++i)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
         r3::setField (p.getInternal(), i, U);                          // the edit first
@@ -20942,7 +20955,7 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
 
     // --- (4) two restores around the edits, through the adoption seam --------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
         d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // R1 pending
@@ -20989,7 +21002,7 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
 
     // --- (5) the inline restore is the newest arrival --------------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
         r3::apply (p.getInternal(), U);
@@ -21032,7 +21045,7 @@ static void testActionInHandoffWindowCannotSplitTheSession()
 
     for (int mutator = 0; mutator < 2; ++mutator)   // 0 = A/B switch, 1 = Copy-to-other
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);                 // inline: the outgoing session, whole
         check (d2::View::of (p).matches (P), "the outgoing session is live before the restore arrives");
@@ -21115,7 +21128,7 @@ static void testInlineRestoreAdoptsPendingAgainstItsOwnSound()
     const float w2 = R2.active == 0 ? R2.widthA : R2.widthB;
     check (! juce::exactlyEqual (w1, w2), "non-vacuity: their live sounds differ");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });   // R1 pending
@@ -21191,7 +21204,7 @@ static void testSoundEditWhilePendingSurvivesAdoption()
 
     // --- (a) one edit, one parameter ---------------------------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);
 
@@ -21216,7 +21229,7 @@ static void testSoundEditWhilePendingSurvivesAdoption()
 
         // The published state is that one session plus the newer edit -- a save carries
         // the edited value, and a host-thread save agrees with the owner's.
-        AnamorphAudioProcessor control;
+        auto [controlHeapOwner, control] = heapProcessorFixture();
         control.prepareToPlay (48000.0, 512);
         d2::restoreFrom (control, R.blob);
         editParam (control, "width", edited);
@@ -21229,7 +21242,7 @@ static void testSoundEditWhilePendingSurvivesAdoption()
 
     // --- (b) several edits, two parameters ----------------------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);
         d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });
@@ -21253,7 +21266,7 @@ static void testSoundEditWhilePendingSurvivesAdoption()
 
     // --- (c) the restored sound stands where nothing was edited --------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);
         d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });
@@ -21306,7 +21319,7 @@ static void testOverlappingReplacementIsNotTheRestoresOwnSound()
 
     for (int which = 0; which < 3; ++which)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);                       // inline: the outgoing session, whole
         check (d2::View::of (p).matches (P), "the outgoing session is live before the restore arrives");
@@ -21364,7 +21377,7 @@ static void testOverlappingReplacementIsNotTheRestoresOwnSound()
             // §12: an edit belongs to the restored session and stands.
             checkNear ((double) rawOf (p, "width"), (double) editedWidth, 1.0e-6,
                        "an ordinary edit at that instant survives the adoption (the restored session, edited)");
-            AnamorphAudioProcessor control;
+            auto [controlHeapOwner, control] = heapProcessorFixture();
             control.prepareToPlay (48000.0, 512);
             d2::restoreFrom (control, R.blob);
             auto* rp = control.getAPVTS().getParameter ("width");
@@ -21435,7 +21448,7 @@ static void testReplacementFinishingLastCannotWearRestoredMetadata()
 
     for (int kind = 0; kind < 3; ++kind)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);                       // inline: the outgoing session, whole
 
@@ -21533,7 +21546,7 @@ static void testDrainReachesFixedPointBeforeTheCallerActs()
     const auto R2 = d2::author ("D2-R8-2", 0.42f, 0.58f, 1, 2);   // active slot B
     check (R1.active != R2.active, "non-vacuity: the two sessions sit on different A/B slots");
 
-    AnamorphAudioProcessor p;
+    auto [pHeapOwner, p] = heapProcessorFixture();
     p.prepareToPlay (48000.0, 512);
 
     d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });   // R1 pending
@@ -21574,7 +21587,7 @@ static void testDrainReachesFixedPointBeforeTheCallerActs()
     // preset with a restore pending and then asks whether the preset is still what is playing,
     // which is exactly why deleting that admission killed nothing until this leg existed.
     {
-        AnamorphAudioProcessor q;
+        auto [qHeapOwner, q] = heapProcessorFixture();
         q.prepareToPlay (48000.0, 512);
 
         int factoryIdx = -1;
@@ -21646,7 +21659,7 @@ static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
 
     for (int leg = 0; leg < 2; ++leg)   // 0 = a restore is pending at save time, 1 = the control
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);                                   // inline: the outgoing session
         checkNear ((double) rawOf (p, "width"), (double) outgoingWidth, 1.0e-6, "the outgoing session is live");
@@ -21831,7 +21844,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
 
     // --- (a) ONE mutation inside the capture window --------------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
         int fires = 0;
@@ -21846,7 +21859,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     // settles, its retry gives up, and the pair it writes was never proven coherent --
     // so the bytes hold one of these two values and the baseline names the other.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
         int fires = 0;
@@ -21862,7 +21875,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
 
     // --- (c) SEVERAL parameters mutated inside the window --------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
         const float driveA = rawOf (p, "drive");
@@ -21886,7 +21899,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     // happens to produce, the invariant is the same one. It is also the leg that puts
     // the new capture path under ThreadSanitizer in the tsan lane.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
         int fires = 0;
@@ -21939,7 +21952,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     // went dirty the instant it was reloaded. Both signatures are now built from
     // `normalisedAsRendered` (§17), which is the same defect one level below the window.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "algorithm", 0.66f);        // a mid-step raw, exactly as automation writes it
         // The leg only means anything while RawChoice keeps the raw value UNSNAPPED. If
@@ -21977,7 +21990,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     // uniform THEN pseudo-random, and the random points are generated arithmetically
     // rather than through a std:: distribution, whose point set is implementation-defined.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto& apvts = p.getAPVTS();
 
@@ -22029,7 +22042,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     // `logFreqRange` parameter. Canonicalising the FILE side a second time makes exactly
     // this fail: the star appears on a preset nobody has touched.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "mbFreqLow", 0.381175071f);
         check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds at a custom-mapped frequency value");
@@ -22046,7 +22059,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     // marker ignored it while the coalescer recorded it, the user would get an undo entry
     // that, pressed, moves neither the sound nor the star.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         const float atStart = rawOf (p, "algorithm");
         check (! p.canUndo(), "non-vacuity: a fresh instance has no undo history");
@@ -22092,7 +22105,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     //     is pre-existing (it is the preset format's denormalised round trip and predates
     //     this round entirely); what matters is that it never moves the marker.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto& apvts = p.getAPVTS();
         std::vector<juce::RangedAudioParameter*> ranged;
@@ -22171,7 +22184,7 @@ static void testAbToggleDerivesItsTargetAfterTheDrain()
         const auto R = d2::author ("D2-R10-R", 0.41f, 0.59f, restoredActive, 2);
         check (P.active != R.active, "non-vacuity: the restore flips the active slot");
 
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);                                   // inline: the outgoing session
         check (p.abActiveSlot() == outgoingActive, "the outgoing session's slot is active");
@@ -22209,7 +22222,7 @@ static void testAbToggleDerivesItsTargetAfterTheDrain()
     {
         const auto P = d2::author ("D2-R10-P2", 0.21f, 0.79f, 0, 1);
         const auto R = d2::author ("D2-R10-R2", 0.41f, 0.59f, 1, 2);
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, P.blob);
         d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });
@@ -22262,7 +22275,7 @@ static void testSettingsPublicationIsFieldLevelAndOrderedByObservation()
 
     // --- (B) an unrelated edit while the restore is pending ------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, blobP);
         check (p.getInternal().oversampleIndex() == P.oversample - 1, "the outgoing Oversampling is in force");
@@ -22290,7 +22303,7 @@ static void testSettingsPublicationIsFieldLevelAndOrderedByObservation()
 
     // --- (C.i) edit, THEN a restore arrives: the restore replaces it ----------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, blobP);
         r3::setField (p.getInternal(), 1, SettingsSet { 0, 5, 0.0, false, false, false });   // UI Scale 5
@@ -22303,7 +22316,7 @@ static void testSettingsPublicationIsFieldLevelAndOrderedByObservation()
 
     // --- (C.ii) a restore arrives, THEN the edit: the edit survives -----------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, blobP);
         d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
@@ -22316,7 +22329,7 @@ static void testSettingsPublicationIsFieldLevelAndOrderedByObservation()
 
     // --- (C.iii) the Oversampling field itself, both orders, tree AND word ----
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, blobP);
         p.getInternal().oversampleValue().setValue (2);                 // edit: 2x
@@ -22327,7 +22340,7 @@ static void testSettingsPublicationIsFieldLevelAndOrderedByObservation()
                "edit then restore: the restore's Oversampling stands in the tree and the word");
     }
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, blobP);
         d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // the restore first
@@ -22384,7 +22397,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
     // holds A, so A must read clean and reload as a no-op; B must read DIRTY.
     for (int viaFile = 0; viaFile < 2; ++viaFile)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
         check (opCompleted (p.getPresets().saveUser (name)), "the preset (width A) is on disk");
@@ -22415,7 +22428,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
     // The factory path fixes its baseline from the override table by the same formula;
     // exactness there is asserted, not assumed.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         int factories = 0;
         const auto entries = p.getPresets().entries();
@@ -22433,7 +22446,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
 
     // --- (c) the load-side equality, MEASURED, against the save-side one --------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto& apvts = p.getAPVTS();
         std::vector<juce::RangedAudioParameter*> ranged;
@@ -22517,13 +22530,13 @@ static void testPresetStepDerivesItsTargetAfterTheDrain()
     // old row" and "next from the restored row" cannot coincide.
     auto sessionOnFactoryRow = [] (int row)
     {
-        AnamorphAudioProcessor a;
+        auto [aHeapOwner, a] = heapProcessorFixture();
         a.prepareToPlay (48000.0, 512);
         a.getPresets().load (row);
         a.pollUndoCoalesce();
         return d2::saveOf (a);
     };
-    AnamorphAudioProcessor probe;
+    auto [probeHeapOwner, probe] = heapProcessorFixture();
     const int factories = [&] { int n = 0; for (const auto& e : probe.getPresets().entries()) if (e.isFactory) ++n; return n; }();
     check (factories >= 5, "non-vacuity: enough factory rows to step among");
     const int rowP = 1, rowR = 4;
@@ -22532,7 +22545,7 @@ static void testPresetStepDerivesItsTargetAfterTheDrain()
 
     for (int delta = +1; delta >= -1; delta -= 2)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         d2::restoreFrom (p, blobP);
         check (p.getPresets().currentIndex() == rowP, "the outgoing session's row is selected");
@@ -22550,7 +22563,7 @@ static void testPresetStepDerivesItsTargetAfterTheDrain()
                delta > 0 ? "Next lands on the row after the RESTORED selection, not after the outgoing one"
                          : "Prev lands on the row before the RESTORED selection, not before the outgoing one");
         // The sound is that row's: load the same factory row on a fresh instance and compare.
-        AnamorphAudioProcessor control;
+        auto [controlHeapOwner, control] = heapProcessorFixture();
         control.prepareToPlay (48000.0, 512);
         control.getPresets().load (expected);
         checkStr (anamorph::PresetManager::soundSignatureFor (p.getAPVTS()),
@@ -22729,7 +22742,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
     // adjacent legal settings would print the same signature and one full step of a real
     // control would read clean.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         double smallest = 1.0e30; juce::String smallestId; int grids = 0, continuous = 0;
         for (auto* q : p.getParameters())
         {
@@ -22758,7 +22771,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
                          { "mbFreqLow",     -1, 0.85f, 0.98f } };
     for (const auto& leg : legs)
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (leg.id));
         check (rp != nullptr, "the parameter under test is ranged");
@@ -22823,7 +22836,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
     // baseline from the tree and read no live value -- but only loadFile was covered
     // above, and it is the ordering, not the arithmetic, that a future edit could break.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("mbFreqLow"));
         check (rp != nullptr, "the parameter under test is ranged");
@@ -22860,7 +22873,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
     // cannot reach the signature on a grid parameter" would be false, so it is not claimed.
     for (const char* id : { "amount", "chorusRate" })
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (id));
         check (rp != nullptr, "the grid parameter under test is ranged");
@@ -22924,7 +22937,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
     // MIDDLE of its signature bucket, so the first nudge cannot cross on its own -- without
     // that, a leg labelled "accumulate" can pass having measured a single crossing.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("monoMakerFreq"));
         check (rp != nullptr, "the accumulation parameter is ranged");
@@ -22991,7 +23004,7 @@ static void testARestoreIsAFixedPoint()
 
     // --- (a) one chunk, applied many times, moves nothing ---------------------
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto& apvts = p.getAPVTS();
         std::vector<juce::RangedAudioParameter*> ranged;
@@ -23045,7 +23058,7 @@ static void testARestoreIsAFixedPoint()
     // The user-visible half: the preset marker a project carries must survive the
     // round trip, in a NEW processor, which is what reopening a session is.
     {
-        AnamorphAudioProcessor p;
+        auto [pHeapOwner, p] = heapProcessorFixture();
         p.prepareToPlay (48000.0, 512);
         auto& apvts = p.getAPVTS();
         std::vector<juce::RangedAudioParameter*> ranged;
@@ -23075,7 +23088,7 @@ static void testARestoreIsAFixedPoint()
             juce::MemoryBlock blob;
             p.getStateInformation (blob);
 
-            AnamorphAudioProcessor q;
+            auto [qHeapOwner, q] = heapProcessorFixture();
             q.prepareToPlay (48000.0, 512);
             q.setStateInformation (blob.getData(), (int) blob.getSize());
             q.pollUndoCoalesce();
@@ -24804,7 +24817,7 @@ static int runD2StressProbe()
         d2::author ("D2-S3", 0.50f, 0.50f, 0, 3),
     };
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     proc.getPresets().load (1);
     setRaw (proc, "width", 0.42f);
@@ -25341,7 +25354,7 @@ static void testThePlanAndTheProofAreOneReading()
 {
     std::printf ("State test 81: the plan and the proof are one reading\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -25474,7 +25487,7 @@ static void testTheAddTargetAnswersUnderOneTopology()
 {
     std::printf ("State test 82: the add target and its edges answer under one topology\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode))
@@ -25642,7 +25655,7 @@ static int runSplitSnapshotProbe (int iterations)
     std::printf ("ADR-0047 probe: an automation write against the drag's own capture\n");
     std::printf ("  (a laundered split is one written back to its pre-automation position)\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -25900,7 +25913,7 @@ static int runAddTargetProbe (int iterations)
 {
     std::printf ("add-target probe: the click's band vs the clamp's band\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -26146,7 +26159,7 @@ static int runAddEdgeProbe (int iterations)
 {
     std::printf ("add-edge probe: the click's band vs the clamp's EDGE, at a constant count\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -26373,7 +26386,7 @@ static int runBandMoveProbe (int iterations)
 {
     std::printf ("band-move probe: the plan's extent vs the topology the press proved\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -31196,7 +31209,7 @@ static void testABandMoveDerivesItsOriginsFromTheRecord()
 {
     std::printf ("State test 84: a band move derives its origins from the record it proved\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -31400,7 +31413,7 @@ static void testAPressHitTestAnswersUnderTheTopologyItProved()
 {
     std::printf ("State test 85: a press hit-test answers under the topology the press proved\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -31711,7 +31724,7 @@ static int runBandMoveAdoptProbe (int iterations)
 {
     std::printf ("band-move adopt probe: a foreign write taken INTO the gesture's ownership record\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -32078,7 +32091,7 @@ static void testACancellationClosesEachGestureOnce()
 {
     std::printf ("State test 83: a cancellation closes each open gesture exactly once\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
 
@@ -32467,7 +32480,7 @@ static int runSoloAliasProbe (int iterations)
 {
     std::printf ("solo-alias probe: a press hit-test answering under a transient layout\n");
 
-    AnamorphAudioProcessor proc;
+    auto [procHeapOwner, proc] = heapProcessorFixture();
     proc.prepareToPlay (48000.0, 512);
     auto& apvts = proc.getAPVTS();
     if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
@@ -32677,7 +32690,7 @@ static void testAnamorphsOwnBareBracketsDeclareTheirEndpoint()
     //  round 23 the close read the parameter live and found the host sitting in it, so the host's
     //  value became the user's `after` and therefore the destination of the user's Redo.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto& apvts = proc.getAPVTS();
         auto* ogP = apvts.getParameter (pid::outputGain);
@@ -32728,7 +32741,7 @@ static void testAnamorphsOwnBareBracketsDeclareTheirEndpoint()
 
     // ---- LEG B: the control -- an uninterrupted Apply is still one undoable user step ----
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto& apvts = proc.getAPVTS();
         auto* ogP = apvts.getParameter (pid::outputGain);
@@ -32764,7 +32777,7 @@ static void testAnamorphsOwnBareBracketsDeclareTheirEndpoint()
     //  that value already), and nothing is declared -- the `ep == 1` state. A host lane writing at
     //  the gesture's CLOSE is then the only value the close can see.
     {
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.prepareToPlay (48000.0, 512);
         auto& apvts = proc.getAPVTS();
         auto* raw = proc.createEditor();
@@ -35627,7 +35640,7 @@ namespace
         std::fflush (stdout);                       // a SIGSEGV must not take this line with it
         const auto t0 = std::chrono::steady_clock::now();
 
-        AnamorphAudioProcessor proc;
+        auto [procHeapOwner, proc] = heapProcessorFixture();
         proc.setStateInformation (blob.getData(), (int) blob.getSize());
 
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds> (
@@ -35784,7 +35797,7 @@ namespace
             // proposed cap can be read against it rather than guessed at. Reported for a fresh
             // instance and again after both A/B slots have been seeded, which is the largest
             // shape `writeState` produces.
-            AnamorphAudioProcessor proc;
+            auto [procHeapOwner, proc] = heapProcessorFixture();
             auto report = [] (const char* what, const juce::MemoryBlock& mb)
             {
                 auto xml = BlobCodec::unwrap (mb);
@@ -45904,6 +45917,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "state_hardening_tests.h"
 #include "p1_resolution_tests.h"
 #include "ab_undo_tests.h"
+#include "scope_snapshot_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45918,6 +45932,14 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--scope-snapshot-probe") == 0)
+    {
+        testScopeSnapshotPublication();
+        testScopeSnapshotConcurrency();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--ab-pending-undo-probe") == 0)
     {
@@ -46216,6 +46238,8 @@ int main (int argc, char* argv[])
     testRestoreCommitBeforeLatencyCallbacks();
     testAbSwitchPreservesACompletedUnpolledEdit();
     testHostAdvancedModeWritesWithTheRealEditor();
+    testScopeSnapshotPublication();
+    testScopeSnapshotConcurrency();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

@@ -1,0 +1,28 @@
+   9adc8:      	add	x9, x10, #0x40, lsl #12 ; =0x40000
+   9adcc:      	ldapr	x9, [x9]
+   9add0:      	bic	w13, w13, w13, asr #31
+   9add4:      	mov	w14, #0x4000            ; =16384
+   9add8:      	cmp	w13, #0x4, lsl #12      ; =0x4000
+   9addc:      	csel	w13, w13, w14, lt
+   9ade0:      	cmp	x9, x13
+   9ade4:      	csel	x13, x9, x13, lo
+   9ade8:      	cbz	x13, 0x9ae44 <_GetPluginFactory+0x8e3a4>
+   9adec:      	sub	x14, x9, x13
+   9adf0:      	mov	x15, x13
+   9adf4:      	and	x16, x14, #0x3fff
+   9adf8:      	add	x16, x10, x16, lsl #4
+   9adfc:      	ldapr	x0, [x16]
+   9ae00:      	add	x17, x14, #0x1
+   9ae04:      	cmp	x17, x0
+   9ae08:      	b.ne	0x9ae88 <_GetPluginFactory+0x8e3e8>
+   9ae0c:      	add	x17, x16, #0x8
+   9ae10:      	ldapr	x17, [x17]
+   9ae14:      	ldapr	x16, [x16]
+   9ae18:      	cmp	x16, x0
+   9ae1c:      	b.ne	0x9ae88 <_GetPluginFactory+0x8e3e8>
+   9ae20:      	str	w17, [x11], #0x4
+   9ae24:      	lsr	x16, x17, #32
+   9ae28:      	str	w16, [x12], #0x4
+   9ae2c:      	add	x14, x14, #0x1
+   9ae30:      	subs	x15, x15, #0x1
+   9ae34:      	b.ne	0x9adf4 <_GetPluginFactory+0x8e354>

@@ -1,5 +1,31 @@
 # CI_CD.md
 
+## ADR-0070 scope protocol gates
+
+`source-lint` runs `python3 scripts/check-scope-snapshots.py --self-test`: immutable
+original-source old/fixed schedules and protocol-weakening liveness, compiled in
+temporary storage. The normal state suite includes State 150–151; `tsan` also runs
+`--scope-snapshot-probe` five times after its existing seeded race canary. No TSan
+suppression or detector semantics are changed. Existing native matrix, RTSan,
+allocation guard, leaf effects, 1 MB stack and strictness-10 pluginval gates remain.
+
+The scope ring now occupies 262152 bytes on the local x86-64 toolchain. State tests
+therefore construct their test-owned processors through scoped heap fixtures,
+retaining the old assertions/callbacks and lexical destruction order; the former
+823352-byte optimized main frame plus a 273832-byte registry-test frame exceeded
+1 MB after the inline ring grew. The repaired full suite passes that same limit.
+Native Windows on the first implementation head exposed the DSP counterpart:
+output stopped before Test52’s first banner, with no failed DSP assertion. That
+test has seven inline engines across sibling scopes (at least 7 × 256 KiB of
+scope storage alone); MSVC’s SARIF estimates a 1,628,304-byte frame (C6262 at original line5031);
+this is an analyzer estimate, not a measured runtime frame.
+The DSP suite now uses the same scoped heap pattern for its 61 legacy test-owned
+engine locals, preserving all 554 prior check expressions and guard scopes.
+Local DSP945/0 passes the original 1 MB limit; a fresh native Windows full-suite
+result is required before closing this introduced portability failure.
+Earlier stack sizes/analyzer dispositions below describe their original source
+revisions and are not new measurements. Native MSVC analysis still has to run.
+
 ## Customer release-note content gate (2026-10-30)
 
 Build `source-lint` runs `check-release-notes.py --self-test` before the actual content check.
@@ -1744,8 +1770,8 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
-`tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`, 68%).
+`tests/dsp_tests.cpp:1402`) — 28% of the 1 MB reserve, against the state suite's **709,760**
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1757,7 +1783,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15554` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15566` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when
@@ -1819,7 +1845,7 @@ The probe is opt-in, so the guard step never runs it; `--risk014-probe census` w
 **Re-measured for PR #156's one new claim, and DISPOSED `DO NOT FIX`.** Diffed by *byte value* across
 the `prefast-sarif-*` artifacts: `main` at `659ca0a` carries 179 `C6262`, and every head of this PR
 from `f155978` on carries 180 — **one added, none removed**: `Function uses '20528' bytes of stack` at
-`tests/dsp_tests.cpp:7519`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
+`tests/dsp_tests.cpp:7537`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
 It is absent on `5f28e2b`, the commit before the test landed, and unchanged on every later head. The
 other 127 claims in `state_tests.cpp` each moved by an exact multiple of **64 bytes** — one
 `std::function` (MSVC's size) per stack-allocated `AnamorphAudioProcessor`, the State-test-129 seam

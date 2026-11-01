@@ -1,0 +1,68 @@
+  450d4e:      	cmovbl	%ecx, %r15d
+  450d52:      	movq	%rax, %rdx
+  450d55:      	subq	%r15, %rdx
+  450d58:      	cmpl	$0x1, %ecx
+  450d5b:      	jne	0x450d65 <_GetPluginFactory+0x444a95>
+  450d5d:      	xorl	%r13d, %r13d
+  450d60:      	jmp	0x450e12 <_GetPluginFactory+0x444b42>
+  450d65:      	movl	%r15d, %r8d
+  450d68:      	andl	$0x7ffe, %r8d           ## imm = 0x7FFE
+  450d6f:      	movq	0x250(%rsp), %rdi
+  450d77:      	shlq	$0x2, %rdi
+  450d7b:      	leaq	(,%r15,4), %rsi
+  450d83:      	subq	%rsi, %rdi
+  450d86:      	addq	%rdi, %r9
+  450d89:      	addq	$0x4, %r9
+  450d8d:      	leaq	(%rbx,%rdi), %r10
+  450d91:      	addq	$0x4, %r10
+  450d95:      	xorl	%r13d, %r13d
+  450d98:      	nopl	(%rax,%rax)
+  450da0:      	leaq	(%rdx,%r13), %r11
+  450da4:      	andl	$0x3fff, %r11d          ## imm = 0x3FFF
+  450dab:      	shll	$0x4, %r11d
+  450daf:      	movq	$0x0, (%r12,%r11)
+  450db7:      	movl	-0x4(%r10,%r13,4), %ebx
+  450dbc:      	movl	-0x4(%r9,%r13,4), %r14d
+  450dc1:      	shlq	$0x20, %r14
+  450dc5:      	orq	%rbx, %r14
+  450dc8:      	movq	%r14, 0x8(%r12,%r11)
+  450dcd:      	leaq	(%rdx,%r13), %rbx
+  450dd1:      	incq	%rbx
+  450dd4:      	movq	%rbx, (%r12,%r11)
+  450dd8:      	andl	$0x3fff, %ebx           ## imm = 0x3FFF
+  450dde:      	shll	$0x4, %ebx
+  450de1:      	movq	$0x0, (%r12,%rbx)
+  450de9:      	movl	(%r10,%r13,4), %r11d
+  450ded:      	movl	(%r9,%r13,4), %r14d
+  450df1:      	shlq	$0x20, %r14
+  450df5:      	orq	%r11, %r14
+  450df8:      	movq	%r14, 0x8(%r12,%rbx)
+  450dfd:      	leaq	(%rdx,%r13), %r11
+  450e01:      	addq	$0x2, %r11
+  450e05:      	movq	%r11, (%r12,%rbx)
+  450e09:      	addq	$0x2, %r13
+  450e0d:      	cmpq	%r13, %r8
+  450e10:      	jne	0x450da0 <_GetPluginFactory+0x444ad0>
+  450e12:      	movq	0x18(%rsp), %rbx
+  450e17:      	leaq	0x10c0(%rbx), %r14
+  450e1e:      	testb	$0x1, %r15b
+  450e22:      	movq	0x30(%rsp), %rsi
+  450e27:      	je	0x450e6d <_GetPluginFactory+0x444b9d>
+  450e29:      	movl	%ecx, %r8d
+  450e2c:      	subl	%r15d, %r8d
+  450e2f:      	leaq	0x1(%rdx), %r10
+  450e33:      	movslq	%r8d, %r8
+  450e36:      	addl	%r13d, %edx
+  450e39:      	andl	$0x3fff, %edx           ## imm = 0x3FFF
+  450e3f:      	shll	$0x4, %edx
+  450e42:      	movq	$0x0, (%r12,%rdx)
+  450e4a:      	addq	%r13, %r8
+  450e4d:      	movl	(%rsi,%r8,4), %r9d
+  450e51:      	movq	0x20(%rsp), %r11
+  450e56:      	movl	(%r11,%r8,4), %r8d
+  450e5a:      	shlq	$0x20, %r8
+  450e5e:      	orq	%r9, %r8
+  450e61:      	movq	%r8, 0x8(%r12,%rdx)
+  450e66:      	addq	%r13, %r10
+  450e69:      	movq	%r10, (%r12,%rdx)
+  450e6d:      	movq	%rax, 0x41280(%rbx)

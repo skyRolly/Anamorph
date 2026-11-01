@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <cmath>
 #include "../dsp/ScopeBuffer.h"
+#include "ScopeSnapshotCache.h"
 #include "FrameClock.h"
 
 namespace anamorph::gui
@@ -16,7 +17,7 @@ namespace anamorph::gui
 //  the familiar goniometer the spec asks for (section 8).
 //
 //  The audio thread only writes into a lock-free ScopeBuffer; this component
-//  reads a decimated window of recent samples on a 60 fps timer and draws them
+//  reads validated windows on its FrameClock / serialized JUCE paint path and draws them
 //  with an age-based alpha falloff (the "phosphor" afterglow). When the editor
 //  attaches an OpenGL context, all of this painting is GPU-composited, keeping
 //  CPU usage low. Nothing is ever drawn on the audio thread.
@@ -63,7 +64,10 @@ public:
     float getPersistence() const noexcept { return persistence; }
 
 private:
+    friend struct ScopeVisualTestAccess;
     void tick(); // FrameClock callback (display-rate; no dt-dependent state here)
+    void updateDisplay(); // poll/repaint scheduling, also exercised without a native peer
+    void pollNewSamples();
     void drawGrid (juce::Graphics&, juce::Rectangle<float> area, float radius);
     void ensureStaticLayer (juce::Graphics&, juce::Rectangle<float> area);
 
@@ -79,7 +83,7 @@ private:
     static constexpr float kDefaultPersistence = 0.6f;
     float persistence = kDefaultPersistence;
 
-    std::vector<float> bufL, bufR; // scratch read from the ring buffer
+    ScopeSnapshotCache snapshot { anamorph::ScopeBuffer::capacity };
 
     // Cached static layer (H2, opaque since N2): background gradient + rounded
     // panel + glass edges + grid + axis labels -- everything that is a pure
@@ -92,11 +96,11 @@ private:
     int   staticW = 0, staticH = 0;
     float staticScale = 0.0f;
 
-    // Idle repaint gate state (message thread only -- see tick()):
+    // Idle repaint gate state (JUCE callbacks serialized by the message-manager lock):
     std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
     std::uint64_t lastNonZero   = 0; // newest bound on non-zero ring content
-    bool frameDirty      = true;     // displayed frame is stale -> repaint
-    bool lastFrameSilent = false;    // last painted frame was the all-zero image
+    bool frameDirty      = true;     // needs a successful paint; scheduling does not clear it
+    bool lastFrameSilent = false;    // last successfully polled window was all-zero
 
     // Adaptive refresh (display-rate, capped ~120 Hz): the freshness scan + idle
     // gate below are delta-based (writeCount) and the trail age is positional, so

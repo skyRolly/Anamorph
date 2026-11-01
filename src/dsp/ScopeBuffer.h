@@ -1,93 +1,125 @@
 #pragma once
 
-#include <atomic>
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <bit>
 #include <cstdint>
-#include <cstring>
+#include <limits>
 
 namespace anamorph
 {
 
-// ============================================================================
-//  ScopeBuffer
-//
-//  Lock-free single-producer ring buffer of stereo samples. The audio thread
-//  (producer) only writes; all reads happen on the GUI (message) thread as
-//  stateless peeks (vectorscope + spectrum imager). No locks, no allocation
-//  on either side.
-//
-//  Capacity is a power of two so wrap is a cheap mask.
-// ============================================================================
+// Fixed-capacity single-audio-producer display history (Accepted ADR-0070).
+// Reusable payload/tag accesses are atomic. GUI readers are serialized by the
+// message thread / JUCE paint lock. An attempt returns exact committed positions
+// or rejects once on reuse. No waiting, reservation, allocation or retry.
 class ScopeBuffer
 {
 public:
-    static constexpr int capacity = 1 << 14; // 16384 stereo frames
-    static constexpr int mask     = capacity - 1;
+    static constexpr int capacity = 1 << 14;
+    static constexpr int mask = capacity - 1;
+    static_assert (sizeof (float) == sizeof (std::uint32_t));
+    static_assert (std::numeric_limits<float>::is_iec559);
+    static_assert (std::atomic<std::uint64_t>::is_always_lock_free,
+                   "ScopeBuffer requires native lock-free 64-bit atomic loads/stores");
 
-    ScopeBuffer() { write.store (0, std::memory_order_relaxed); }
-
-    // --- audio thread ----------------------------------------------------
-    // Writes a whole block and publishes it with ONE release-store on the
-    // write index (S9). Readers acquire the index and only copy frames
-    // strictly below it, so a block becomes visible atomically -- partially
-    // committed frames can never be observed. The synchronisation contract is
-    // unchanged: the same single writer, the same single release/acquire pair
-    // on the same atomic, just at block cadence instead of per sample.
-    inline void pushBlock (const float* l, const float* r, int n) noexcept
+    struct ReadResult
     {
-        auto w = write.load (std::memory_order_relaxed);
-        const auto end = w + (uint64_t) n;
-        if (n > capacity) // pathological block: only the newest frames can fit
+        bool valid = false;
+        int copied = 0;
+        std::uint64_t end = 0;
+    };
+
+    // Keep newest min(n,capacity), advance by original n. Three release stores
+    // per retained frame; one index publication. n is nonnegative. No RMW.
+    void pushBlock (const float* l, const float* r, int n) noexcept
+    {
+        pushImpl (l, r, n, NoWriteHook {});
+    }
+
+    std::uint64_t writeCount() const noexcept { return write.load (std::memory_order_acquire); }
+
+    // Rejected scratch may be partially written: never consume it. Valid empty
+    // and rejected copies are distinct. end is the SAME publication used by copy.
+    ReadResult readLatestSnapshot (float* l, float* r, int count) const noexcept
+    {
+        return copyAt (l, r, count, write.load (std::memory_order_acquire), NoReadHook {});
+    }
+
+    // Tail length comes from this publication, not an earlier writeCount hint.
+    ReadResult readLatestSince (float* l, float* r, std::uint64_t since, int limit) const noexcept
+    {
+        const auto end = write.load (std::memory_order_acquire);
+        const auto fresh = end >= since ? end - since : 0;
+        const auto count = std::min (fresh, static_cast<std::uint64_t> (std::clamp (limit, 0, capacity)));
+        return copyAt (l, r, static_cast<int> (count), end, NoReadHook {});
+    }
+
+    // Legacy serial-peek API for Test 61/diagnostics. Concurrent GUI consumers
+    // use the explicit result so rejection cannot be interpreted as silence.
+    int readLatest (float* l, float* r, int count) const noexcept
+    {
+        const auto result = readLatestSnapshot (l, r, count);
+        return result.valid ? result.copied : 0;
+    }
+
+private:
+    friend struct ScopeBufferTestAccess; // test-only deterministic scheduling
+    struct Slot { std::atomic<std::uint64_t> tag { 0 }, stereo { 0 }; };
+    struct NoWriteHook { void operator() (std::uint64_t) const noexcept {} };
+    struct NoReadHook { void operator() (int, bool) const noexcept {} };
+
+    static std::uint64_t pack (float l, float r) noexcept
+    {
+        return static_cast<std::uint64_t> (std::bit_cast<std::uint32_t> (l))
+            | (static_cast<std::uint64_t> (std::bit_cast<std::uint32_t> (r)) << 32);
+    }
+
+    template<class Hook>
+    void pushImpl (const float* l, const float* r, int n, Hook&& afterPayload) noexcept
+    {
+        const auto old = write.load (std::memory_order_relaxed);
+        if (n <= 0) { write.store (old, std::memory_order_release); return; }
+        const auto end = old + static_cast<std::uint64_t> (n);
+        const int retained = std::min (n, capacity);
+        const int skip = n - retained;
+        for (int i = 0; i < retained; ++i)
         {
-            l += n - capacity;
-            r += n - capacity;
-            w = end - (uint64_t) capacity;
-            n = capacity;
-        }
-        // At most two contiguous segments instead of a per-sample masked store
-        // (Wave 4): the ring bytes and the single release-store publication are
-        // identical -- readers only ever copy frames strictly below the index
-        // they acquire, so intra-block store order was never observable.
-        const int idx   = (int) (w & mask);
-        const int first = n < capacity - idx ? n : capacity - idx;
-        std::memcpy (left.data()  + idx, l, (size_t) first * sizeof (float));
-        std::memcpy (right.data() + idx, r, (size_t) first * sizeof (float));
-        if (n > first)
-        {
-            std::memcpy (left.data(),  l + first, (size_t) (n - first) * sizeof (float));
-            std::memcpy (right.data(), r + first, (size_t) (n - first) * sizeof (float));
+            const auto pos = end - static_cast<std::uint64_t> (retained) + static_cast<std::uint64_t> (i);
+            auto& slot = slots[pos & mask];
+            slot.tag.store (0, std::memory_order_release);
+            slot.stereo.store (pack (l[skip + i], r[skip + i]), std::memory_order_release);
+            afterPayload (pos); // NoWriteHook compiles away on production path
+            slot.tag.store (pos + 1, std::memory_order_release);
         }
         write.store (end, std::memory_order_release);
     }
 
-    // --- gui thread ------------------------------------------------------
-    // Monotonic total of frames ever written (uint64 -- never wraps in
-    // practice). The same acquire load readLatest performs; lets a reader
-    // detect "no new frames since last check" without copying any data.
-    // Read-only: never mutates the ring and consumes nothing.
-    uint64_t writeCount() const noexcept { return write.load (std::memory_order_acquire); }
-
-    // Copies up to `count` most-recent frames (oldest first) into the caller's
-    // buffers. Returns the number of frames actually copied.
-    int readLatest (float* dstL, float* dstR, int count) const noexcept
+    template<class Hook>
+    ReadResult copyAt (float* l, float* r, int count, std::uint64_t end, Hook&& hook) const noexcept
     {
-        const auto w = write.load (std::memory_order_acquire);
-        if (count > capacity) count = capacity;
-        const uint64_t available = (w < (uint64_t) count) ? (int) w : count;
-        const uint64_t start = w - available;
-        for (uint64_t i = 0; i < available; ++i)
+        const int copied = static_cast<int> (std::min (end,
+            static_cast<std::uint64_t> (std::clamp (count, 0, capacity))));
+        for (int i = 0; i < copied; ++i)
         {
-            const auto idx = (start + i) & mask;
-            dstL[i] = left [idx];
-            dstR[i] = right[idx];
+            const auto pos = end - static_cast<std::uint64_t> (copied) + static_cast<std::uint64_t> (i);
+            const auto& slot = slots[pos & mask];
+            if (slot.tag.load (std::memory_order_acquire) != pos + 1) return { false, 0, end };
+            hook (i, false);
+            const auto stereo = slot.stereo.load (std::memory_order_acquire);
+            if (slot.tag.load (std::memory_order_acquire) != pos + 1) return { false, 0, end };
+            l[i] = std::bit_cast<float> (static_cast<std::uint32_t> (stereo));
+            r[i] = std::bit_cast<float> (static_cast<std::uint32_t> (stereo >> 32));
+            hook (i, true);
         }
-        return (int) available;
+        return { true, copied, end };
     }
 
-private:
-    std::array<float, capacity> left  {};
-    std::array<float, capacity> right {};
-    std::atomic<uint64_t>       write { 0 };
+    // Unique tags exclude uint64 epoch rollover within a processor lifetime
+    // (>1.5 million years at 384 kHz). Ring wrap is supported. Prepare/reset do
+    // not clear these while GUI readers may exist.
+    std::array<Slot, capacity> slots {};
+    std::atomic<std::uint64_t> write { 0 };
 };
-
 } // namespace anamorph

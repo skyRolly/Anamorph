@@ -1,0 +1,35 @@
+run=1
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=126 rejected=94923 during-writer=125 bad=0
+  scope reader 1: accepted=127 rejected=0 during-writer=126 bad=0
+27 checks, 0 failure(s)
+run=2
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=119 rejected=119037 during-writer=118 bad=0
+  scope reader 1: accepted=124 rejected=1084 during-writer=123 bad=0
+27 checks, 0 failure(s)
+run=3
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=120 rejected=89841 during-writer=119 bad=0
+  scope reader 1: accepted=122 rejected=523 during-writer=121 bad=0
+27 checks, 0 failure(s)
+run=4
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=119 rejected=69027 during-writer=118 bad=0
+  scope reader 1: accepted=126 rejected=1 during-writer=125 bad=0
+27 checks, 0 failure(s)
+run=5
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope reader 0: accepted=64 rejected=398823 during-writer=63 bad=0
+  scope reader 1: accepted=122 rejected=2498 during-writer=121 bad=0
+27 checks, 0 failure(s)

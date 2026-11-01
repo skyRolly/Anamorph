@@ -1,0 +1,10 @@
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+  [FAIL] scope GUI: later silent audio retries a rejected final-silence paint
+  [FAIL] scope GUI: the scheduled retry replaces the old waveform with valid silence
+  [FAIL] scope GUI: rejected paint retries even without another producer push
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope producer: position=1064960 target=1064960 ready=2 observed=1060242/1059667
+  scope reader 0: accepted=59 rejected=5 during-writer=58 bad=0
+  scope reader 1: accepted=57 rejected=6 during-writer=57 bad=0
+34 checks, 3 failure(s)

@@ -1,0 +1,20 @@
+{
+  "failed_head": "a3178e95e3a74c3cc3c06c10028ed2d6b9fff397",
+  "build_run": 41241794891,
+  "windows_job": 124657185678,
+  "prefast_run": 41241930773,
+  "prefast_artifact": 13057634256,
+  "diagnostics": [
+    {
+      "rule": "C6262",
+      "uri": "file:///D:/a/Anamorph/Anamorph/tests/dsp_tests.cpp",
+      "line": 5031,
+      "message": "Function uses '1628304' bytes of stack.  Consider moving some data to heap."
+    }
+  ],
+  "classification": "introduced native test-fixture stack portability failure; exit afterTest48 beforeTest52 entry banner, no failed DSP assertion, state suite not started",
+  "stack_estimate_method": "MSVC /analyze C6262 static estimate, not debugger-measured runtime frame",
+  "repair": "61 legacy by-value DSP engine locals replaced by scoped heap fixtures;554 original check expressions and guard/destruction scopes unchanged",
+  "local_validation": "fullDSP945/0 under original1024KiB limit; inSq unused-set warning remains baseline debt",
+  "native_confirmation": "Confirmed repaired on0991b2f native Windows:941DSP/10815State zero failures, Test52 completes; independent later memcheck stress scheduling defect tracked separately"
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "immutable historical source fixture; comments describe the old implementation, not current guarantees",
+  "source_commit": "00de8c7796f37d08a338256e01830bb312ba105c",
+  "source_path": "src/dsp/ScopeBuffer.h",
+  "git_blob": "ed24ceab5ced2784d9fe96effdc46f8aeb03f472",
+  "sha256": "1be1baed6bbb439ad5b517ea2efe4cacd80fbb849959224c2561c38a84588e60",
+  "instrumentation": "checker injects reader and pre-publication scheduling hooks only; all old storage/index/copy operations retained; single-thread interleavings avoid executing a C++ data race"
+}

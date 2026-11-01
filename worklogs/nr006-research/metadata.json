@@ -46,5 +46,14 @@
       "change": "trailing whitespace only stripped for repository whitespace gate; diagnostic text retained",
       "original_sha256": "c9d11a84efd5b7028218f0e36b79eeb7f5ed4903e4ab4064583f417090ebd81e"
     }
+  },
+  "original_research_commit": "d0e81445ccd2cd7d152dd207deda0d2d48e75187",
+  "reproduction_amendment": {
+    "reason": "production ScopeBuffer changed; pin original serial reference to immutable fixture so comparison labels retain meaning",
+    "change": "include only, no prototype protocol/benchmark change",
+    "current_cpp_sha256": "eac196cb0e621aeaac9de5aa4e97d25c838f5c713b23573011fc4ceafd3178aa",
+    "reference_fixture": "tests/fixtures/scope-legacy/ScopeBuffer.h",
+    "original_git_blob": "ed24ceab5ced2784d9fe96effdc46f8aeb03f472",
+    "original_source_sha256_retained": true
   }
 }

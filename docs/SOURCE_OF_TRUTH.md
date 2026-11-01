@@ -49,7 +49,9 @@ is supporting developer evidence, not an approved replacement for the threading 
 [Accepted ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 records the selected design, explicitly approved by the owner on 2026-11-01 for
 implementation subject to native portability/performance/validation gates. Its
-production implementation/effectivity and any new PR merge remain separate.
+atomic-window implementation updates the live contracts on its development branch;
+main integration, native/performance/manual acceptance and any new PR merge remain
+separate. The unchanged tag/draft retain the original plain-storage exposure.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
 The [NR-011 execution record](../worklogs/NR011_DSP_TRANSITION_COVERAGE.md) supports

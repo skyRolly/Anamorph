@@ -1,0 +1,17 @@
+{
+  "source_parent": "e1e2e18",
+  "toolchain": "Clang 22.1.8 / libstdc++14, Release, shared Linux x64",
+  "source_sha256": {
+    "src/gui/Vectorscope.cpp": "bfb81da9e057ac6c97bf8138ad8dd77fcc8b481a3d4d25a11a9c685f02c925f6",
+    "src/gui/Vectorscope.h": "38a27e9b415a36d9b0a5a0afedaac2e6d80d46f5d94abe46bfac7496f958b653",
+    "tests/scope_snapshot_tests.h": "65c5d92c78b03c91e55f12a62aa96360c6459c58d96bb6ae19b7079540d79472",
+    "src/dsp/ScopeBuffer.h": "2bf1909c302cd7a3e6146670daddf6879c8355babc466a3e10cd9736f895ec46"
+  },
+  "log_sha256": {
+    "repaint-original.log": "ca03509b63aba91df55818b68ca5ca36c84c98d5843217a0edbbdaeba0af6daa",
+    "repaint-fixed.log": "cffee5bb8e289e6d4e0e2a7c3d8866b1fa34bbd7ee9199a5d77608a07b71ea97",
+    "repaint-full-state.log": "84a66089dbc3eb8deac552e90486752406af5b15b9d827dc323508db77c63489",
+    "repaint-full-dsp.log": "2b540b2c2f5ebb8688afafac508920ca2c8b216954c2918c7e327c7cf5b2ca5b",
+    "repaint-protocol-controls.log": "a7271824b8d38facc1a631dc1f5a147a3b456ad9c95bc325ad2d6bfe85434d19"
+  }
+}

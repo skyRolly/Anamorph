@@ -114,8 +114,6 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     // not the APVTS, so the host can't see it). animOnP == nullptr -> animations on.
     enableP   = apvts.getRawParameterValue (pid::mbEnable);
 
-    fifoL.assign ((size_t) fftSize, 0.0f);
-    fifoR.assign ((size_t) fftSize, 0.0f);
     fftData.assign ((size_t) fftSize * 2, 0.0f);
     mags.assign ((size_t) fftSize / 2 + 1, kMinDb);
     magsDb.assign ((size_t) fftSize / 2 + 1, kMinDb); // = gainToDecibels of the all-zero fftData
@@ -1739,7 +1737,7 @@ void SpectrumImager::closeFreqEditor()
 void SpectrumImager::runTransform()
 {
     for (int i = 0; i < fftSize; ++i)
-        fftData[(size_t) i] = 0.5f * (fifoL[(size_t) i] + fifoR[(size_t) i]);
+        fftData[(size_t) i] = 0.5f * (snapshot.left()[(size_t) i] + snapshot.right()[(size_t) i]);
     std::fill (fftData.begin() + fftSize, fftData.end(), 0.0f);
     window.multiplyWithWindowingTable (fftData.data(), (size_t) fftSize);
     // ignoreNegativeFreqs (Wave 3): every consumer reads bins 0..fftSize/2
@@ -1764,57 +1762,69 @@ void SpectrumImager::runTransform()
 // timerCallback has fresh input).
 bool SpectrumImager::pushFFT()
 {
-    const auto count = scope.writeCount();
-    const auto fresh = count - lastSeenCount;
-    if (fresh == 0)
-        return false; // frozen ring: the analysis window is bit-identical
-
-    lastSeenCount = count;
+    JUCE_ASSERT_MESSAGE_MANAGER_IS_LOCKED
+    if (scope.writeCount() == lastSeenCount)
+        return false;
 
     if (! lastWindowSilent)
     {
-        // Window has (or may have) content: read it in full, exactly as
-        // before, scanning just the freshly arrived tail for the silence
-        // tracker (frames older than the window can never re-enter it).
-        const int got    = scope.readLatest (fifoL.data(), fifoR.data(), fftSize);
-        const int freshN = (int) juce::jmin ((std::uint64_t) got, fresh);
-        for (int i = got - freshN; i < got; ++i)
-            if (std::abs (fifoL[(size_t) i]) > 0.0f || std::abs (fifoR[(size_t) i]) > 0.0f)
+        const auto read = snapshot.readLatest (scope, fftSize);
+        if (! read.valid) return false; // no counters, magnitudes or cache commit
+        const auto count = read.end;
+        const auto fresh = count - lastSeenCount;
+        const int freshN = (int) juce::jmin ((std::uint64_t) read.copied, fresh);
+        auto nonZero = lastNonZero;
+        for (int i = read.copied - freshN; i < read.copied; ++i)
+            if (std::abs (snapshot.scratchLeft()[(size_t) i]) > 0.0f
+                || std::abs (snapshot.scratchRight()[(size_t) i]) > 0.0f)
             {
-                lastNonZero = count;
+                nonZero = count;
                 break;
             }
 
-        if (count - lastNonZero >= (std::uint64_t) fftSize)
+        snapshot.accept (read);
+        lastSeenCount = count;
+        lastNonZero = nonZero;
+        if (count - nonZero >= (std::uint64_t) fftSize)
         {
             std::fill (fftData.begin(), fftData.begin() + fftSize / 2 + 1, 0.0f);
             lastWindowSilent = true;
             return true;
         }
-
-        if (got < fftSize)
-            return false; // ring not filled once yet (the old early-return)
-
+        if (read.copied < fftSize) return false;
         runTransform();
         return true;
     }
 
-    // Window was all-zero: peek only at the freshly arrived frames; further
-    // zeros keep the window -- and therefore fftData -- unchanged.
-    const int n   = (int) juce::jmin (fresh, (std::uint64_t) fftSize);
-    const int got = scope.readLatest (fifoL.data(), fifoR.data(), n);
-    for (int i = 0; i < got; ++i)
-        if (std::abs (fifoL[(size_t) i]) > 0.0f || std::abs (fifoR[(size_t) i]) > 0.0f)
+    const auto tail = snapshot.readSince (scope, lastSeenCount);
+    if (! tail.valid) return false;
+    bool nonZero = false;
+    for (int i = 0; i < tail.copied; ++i)
+        if (std::abs (snapshot.scratchLeft()[(size_t) i]) > 0.0f
+            || std::abs (snapshot.scratchRight()[(size_t) i]) > 0.0f)
         {
-            lastNonZero      = count;
-            lastWindowSilent = false;
-            if (scope.readLatest (fifoL.data(), fifoR.data(), fftSize) < fftSize)
-                return false;
-            runTransform(); // audio is back: analyse it this very tick
-            return true;
+            nonZero = true;
+            break;
         }
-    return false;
+    if (! nonZero)
+    {
+        lastSeenCount = tail.end; // accepted silent tail; no transform needed
+        return false;
+    }
+
+    // A valid wakeup tail is not a valid full FFT window. A failed second copy
+    // must leave ALL prior silence/freshness state intact so the next tick retries.
+    const auto read = snapshot.readLatest (scope, fftSize);
+    if (! read.valid) return false;
+    snapshot.accept (read);
+    lastSeenCount = read.end;
+    lastNonZero = read.end; // conservative if the producer advanced after the tail
+    lastWindowSilent = false;
+    if (read.copied < fftSize) return false;
+    runTransform();
+    return true;
 }
+
 float SpectrumImager::magCubic (float binPos) const noexcept
 {
     const int kmax = fftSize / 2;

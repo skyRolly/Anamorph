@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Approved ScopeBuffer integration candidate — 2026-11-01 UTC
+
+Inherited synchronized #200/#199 and integrated #203/#201 additively, preserving
+the approved production protocol/GUI/fixture sources and raw review evidence.
+Six documentation conflicts retain both scope and transition/CI/study records;
+workflow citations are mapped to the combined source. The owner now approves
+integration while representative costs/native visual acceptance remain unmeasured.
+Exact-candidate tests/CI qualify this combined tree before merging; no release,
+architecture invariant, assertion, detector, strictness or deadline changes.
+
 ## NR-011 integration synchronization — 2026-11-01 UTC
 
 Additively inherited the synchronized #199 candidate and actual #203/#201 main.
@@ -18,6 +28,19 @@ forward register. Cost/native visual acceptance remains Pending; no result or
 waiver is invented. Product source, study data, test expectations, detector
 settings and immutable release objects are unchanged by this synchronization.
 
+## Vectorscope rejected-silence repaint review — 2026-11-01
+
+Accepted the #202 review: activity polling could mark silence before paint rejected
+its copy, leaving the old waveform indefinitely. The existing GUI-local dirty flag
+now survives scheduling/rejection and clears only on a valid paint. State 150 uses
+actual repaint invalidations to cover later silent and frozen recovery plus idle
+suppression; old scheduling fails three new assertions. Updated TESTING, the NR-006
+packet and roadmap with retained evidence. This corrects an unreleased branch defect;
+the existing customer scope entry remains accurate. No new architecture, atomic
+ordering, audio path, detector/suppression or release state changed.
+The member-affinity comment explicitly covers both message-thread polling and
+serialized OpenGL paint, because paint now clears the GUI-local pending flag.
+
 ## ADR-0070 live-instruction reconciliation — 2026-11-01
 
 Accepted the #199 review finding: the roadmap's next action and NR-006 detail
@@ -26,6 +49,70 @@ the live instructions, register and open-decision list; labeled the old handoff
 historical. Accepted ADR-0070 authorizes implementation, while #202 review,
 native/cost/visual gates and separate PR merge authorization remain. No source,
 architecture decision or release state changed.
+
+## NR-006 memcheck pacing and native evidence follow-up — 2026-11-01 UTC
+
+Recorded the actual head0991b2f sanitizer failure: state 10,980 / 2 under memcheck,
+both error summaries zero. Corrected test-only busy worker/wait loops using the
+suite's existing uniform cost-scaled pacing, preserving all 27 checks, million
+frames, two readers and 10-second bound. Added reproducible before/after evidence;
+no detector option, suppression, deadline, product lock or retry is introduced.
+Recorded native Windows fixture repair confirmation and matching Windows/macOS
+product/debug codegen artifacts with checked digests, identities and six protocol
+slices. Reconciled testing, packet, ADR/roadmap and provenance; representative
+performance/manual acceptance, final-head CI and new-PR integration remain gates.
+
+## NR-006 native Windows DSP fixture follow-up — 2026-11-01
+
+Head a3178e9’s native Windows DSP run stopped after Test48 and before Test52’s
+entry banner, without a failed assertion; the state suite did not start and
+customer artifacts were withheld. Test52 declares seven inline engines in sibling
+scopes; actual MSVC SARIF estimates a 1,628,304-byte frame (C6262, not a runtime
+measurement). Converted 61 legacy
+DSP test-owned engines to scoped heap fixtures, preserving all 554 previous check
+expressions, guard scopes and destruction order. The 1 MB limit is unchanged.
+Local full DSP945/0 passes; the subsequent native Windows run confirms the repair
+with DSP 941 / state 10,815, zero failures. Re-anchored shifted
+DSP test citations; no warning baseline, production protocol/DSP code or release
+input changed. Existing inSq unused-set warning remains declared Clang debt.
+
+
+## ADR-0070 production implementation — 2026-11-01
+
+Applied owner-Accepted atomic stereo/tag protocol, typed result/end, GUI scratch/
+accepted buffers and failed-copy retention. Reconciled binding threading/real-time/
+testing policies, thread/performance/safety/architecture references, ADR/index,
+source authority/navigation, risk and forward execution records. Historical
+proposal/release/prototype measurements retain their dates/source scope; old
+Wave 4 scope memcpy/instruction saving is historical, not new cost evidence.
+State150–151 and frozen-original controls document exact success/rejection,
+concurrency and consumer lifetimes. The new inline footprint exposed a 1 MB test
+stack failure; scoped heap fixtures repair it while preserving all 3064 existing
+check expressions and the gate. A later preflight caught a scheduling-only
+stress failure: a bounded test observation checkpoint now guarantees post-advance
+accepted coverage, with the remaining stress independent and all sample/timeout
+assertions retained. Local TSan’s missing symbolizer was repaired so existing
+named harness suppressions can match; no detector/suppression is changed. Source-lint runs the original/fixed/weakening
+controls; TSan retains its race canary/suppressions and adds the scope probe ×5.
+The historical prototype reference is pinned to its old fixture; metadata keeps
+original digests and records that reproduction amendment.
+
+Re-anchored moved citations; two stored SpectrumImager re-aim declarations were
+re-derived against the same live symbols after constructor lines moved (no checker
+rules/expectations weakened). Added production source hashes, seven-repeat serial
+cost/codegen artifacts and exact limitations. Full native/performance/manual
+acceptance, integration and new PR merges remain separate from local checks.
+The Unreleased scope/FFT fix cites actual source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`;
+published Keep a Changelog 1.1.0 was read before editing. No tagged release
+section, version metadata, draft/tag or asset was changed.
+
+
+Final implementation review is [#202](https://github.com/skyRolly/Anamorph/pull/202),
+stacked only on #199. Added final-source active-canary/five-probe/full-state TSan
+results (10,980/0, all four unchanged suppression entries live), reproducible input/
+artifact digests, and the stable exact-head ledger to the roadmap/packet. Native
+CI and representative performance/manual gates remain explicitly separate; all
+new PRs remain open. The existing release snapshot is freshly verified unchanged.
 
 ## ADR-0070 owner acceptance — 2026-11-01
 
@@ -2609,7 +2696,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3814` and `.github/workflows/build.yml:3899`, this round being
+`.github/workflows/build.yml:3817` and `.github/workflows/build.yml:3902`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -2643,7 +2730,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:803` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:806` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -10684,7 +10771,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:681) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:679) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -10722,7 +10809,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1424 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1422 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10776,7 +10863,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1740`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1738`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10802,7 +10889,7 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:725)
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:723)
 and `moveBand` (:827). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
@@ -10939,7 +11026,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1424 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1422 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -11578,7 +11665,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:946`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:944`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -11655,7 +11742,7 @@ informational items.
 
 **Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
 three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
-exactly and is described correctly at `src/gui/SpectrumImager.cpp:462-472` and
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:460-470` and
 `src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
 (`src/gui/SpectrumImager.cpp:15-18`) still said `soundMovedUnderGesture` compares against that
 constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
@@ -11718,7 +11805,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2839` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2851` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -11736,7 +11823,7 @@ reversed. [Verified]
 ## Sixteenth pass — the release-and-add topology round (2026-09-09)
 
 **CI first: `source-lint` failed on `ea82eab`, and the failure was mine.** One drifted documentation
-anchor (`src/gui/SpectrumImager.cpp:450-460 -> :410-420`), moved by the twelve lines ADR-0047's
+anchor (`src/gui/SpectrumImager.cpp:448-458 -> :410-420`), moved by the twelve lines ADR-0047's
 overloads added above `ownsSplit`. **Classified a code issue in the change set, not a tooling or
 formatting one** — the gate did its job. The reason it escaped locally is the durable lesson: CI
 compares against the PREVIOUS COMMIT and I had checked against `origin/main`, which cannot see drift a
@@ -14824,7 +14911,7 @@ checks in ADR-0058, which is complete.
    update required)" to "update PARAMETER_REGISTRY.md (and add an ADR where PARAMETER_COMPATIBILITY_POLICY.md
    requires one), then:". Commit `0fd0eb6` (2026-09-28, the 92nd pass).
 2. *The generator changed identically in the same commit.* The header is written by `registry::` in
-   `tests/state_tests.cpp:240-242`; the fixture-workflow comment and the failure note changed with it. The
+   `tests/state_tests.cpp:252-254`; the fixture-workflow comment and the failure note changed with it. The
    header is therefore what `--write-snapshot` emits today, so a regeneration reproduces it byte for byte.
 3. *Why:* the 91st pass reported the old header as drift. It said every regeneration needs an ADR, while
    `PARAMETER_COMPATIBILITY_POLICY.md` rule 2 (and ADR-0002) let a display name change without one. That is
@@ -14834,7 +14921,7 @@ checks in ADR-0058, which is complete.
    parameter ID, name, range, default, choice list, count, order, or the bypass line changed.
 5. *No version or notation content:* the two lines name no version; the ADR-0059 sweep did not touch them.
 6. *No effect on validation:* `registry::compare` skips a line when both sides start with `#`
-   (`tests/state_tests.cpp:301`), so the header cannot make the comparison pass or fail. The State suite passes on
+   (`tests/state_tests.cpp:313`), so the header cannot make the comparison pass or fail. The State suite passes on
    this pass's source.
 7. *Not part of the version-format sweep:* it came in the 92nd pass's documentation corrections, ten commits
    before the ADR-0059 sweep (`bfa9c73`), which does not touch the file.
@@ -16994,16 +17081,16 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22253`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:22266`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
-`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15554` against a real 284,800 — 4.5x — and over its 20 largest
+`tests/dsp_tests.cpp:1402`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
+1,285,476 at `tests/state_tests.cpp:15566` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
 **DO NOT FIX — `C26495` x 7, and the 2026-09-07 entry's reason for them was wrong.** That entry
 said the structs are "aggregate-initialised at every construction site". Two of the three are not:
-`Scenario scenarios[2];` (`tests/dsp_tests.cpp:1611`) and `Case c;` (:5787) are DEFAULT-initialised,
+`Scenario scenarios[2];` (`tests/dsp_tests.cpp:1626`) and `Case c;` (:5787) are DEFAULT-initialised,
 which genuinely leaves `const char* name` and `double minRatio` indeterminate. The correct evidence
 is that every member default-initialisation leaves indeterminate is assigned before the first read —
 checked member by member for both `scenarios` elements and for every `mk()` call. The third site,
@@ -17012,8 +17099,8 @@ what the rule is about: the DECLARATION carrying no default member initialisers,
 writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
-suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19300`, :18381) — identical values either way, no defect, test-only. The JUCE
+suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3785`, :3930,
+`tests/state_tests.cpp:19312`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -17042,7 +17129,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13710` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13722` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -17338,7 +17425,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13710`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13722`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at

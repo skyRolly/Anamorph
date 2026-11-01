@@ -1,5 +1,16 @@
 # HANDOVER.md
 
+## NR-006 implementation checkpoint — 2026-11-01
+
+ADR-0070 has explicit owner implementation approval. This branch implements atomic
+stereo/tag validation and separate accepted GUI windows; main `00de8c7` and the
+0.10.0 draft retain the original storage. PR #199 records the Accepted decision;
+new implementation/NR-011 #200/NR-012 #201 merges are unauthorized. Native
+code-generation/performance/manual gates are separate from source/test completion.
+The current evidence and limitations are in `worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md`
+§11 and `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`. Earlier snapshots below
+retain their dates and candidate scope.
+
 **Unreleased NR-022 development:** commit `0e5e644` commits an outgoing slot's
 completed edit before an A/B switch clears pending coalescer state. State test 149
 fails 10/126 on the prior processor and passes 126/126 with the correction; local

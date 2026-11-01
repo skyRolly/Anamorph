@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "../dsp/ScopeBuffer.h"
+#include "ScopeSnapshotCache.h"
 #include "FrameClock.h"
 #include "LookAndFeel.h"   // anamorph::gui::WheelDragOwner (ADR-0053 round 29)
 #include <optional>
@@ -112,6 +113,7 @@ public:
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }
 
 private:
+    friend struct ScopeVisualTestAccess;
     // ADR-0008 round 24: see `onUserTransaction` above. Non-copyable and non-movable on purpose --
     // the only correct use is a named local at the top of a transaction.
     struct ScopedUserTransaction
@@ -355,7 +357,8 @@ private:
     static constexpr int fftSize  = 1 << fftOrder; // 8192
     juce::dsp::FFT  fft { fftOrder };
     juce::dsp::WindowingFunction<float> window { (size_t) fftSize, juce::dsp::WindowingFunction<float>::hann };
-    std::vector<float> fifoL, fifoR, fftData, mags;
+    ScopeSnapshotCache snapshot { fftSize };
+    std::vector<float> fftData, mags;
     // Per-bin dBFS of the CURRENT fftData (Wave 4): gainToDecibels is a pure
     // function of fftData[k] (norm is a compile-time constant of fftSize), so
     // it is converted once per new transform -- pushFFT() true, the only writer

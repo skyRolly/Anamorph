@@ -1,5 +1,17 @@
 # TESTING_POLICY.md
 
+## Scope publication acceptance (Accepted ADR-0070)
+
+Retain DSP Test 61’s serial contract and run State 150–151 in the normal state
+suite. Deterministic production interleavings and immutable-original negative
+controls must distinguish overwritten/mixed windows, including writes before
+publication. Concurrent production-path stress and active-canary TSan complement
+the source proof; silence alone is not race-freedom evidence. Rejected scratch
+must not advance GUI silence/freshness state or replace accepted paint/FFT data.
+Native atomic64/float32 guards/code-generation inspection, representative cost
+acceptance and targeted visual/lifecycle checks remain ADR-0070 gates, with no
+assumption that earlier manual approval covers this implementation.
+
 Repository Governance Policy. Test acceptance levels and the release gate.
 
 ## Acceptance levels

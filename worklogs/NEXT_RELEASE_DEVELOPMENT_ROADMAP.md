@@ -163,7 +163,8 @@ Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policie
 **Subsequent owner architecture decision:** the owner explicitly replied
 “Approve ADR-0070 for implementation” to PR #199's architecture question,
 subject to its native portability/performance/validation gates. ADR-0070 is now
-Accepted; production implementation/validation follow in a separate focused PR.
+Accepted; the focused atomic-window implementation is recorded below and in
+[packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai).
 This is not authorization to merge #199 or a later PR, or operate on a release.
 Independent NR-011 [#200](https://github.com/skyRolly/Anamorph/pull/200) and bounded
 NR-012 [#201](https://github.com/skyRolly/Anamorph/pull/201) are submitted from main,
@@ -212,9 +213,11 @@ The prior GCC14 shipping ABI failure at CXXABI_1.3.15 > 1.3.14 remains a histori
 failed preflight, not repaired by Clang or by integration. Existing invalid-escape
 Python checker warnings remain. Final-main CI is reported separately from head CI.
 Final-main Build [41231806213](https://github.com/skyRolly/Anamorph/actions/runs/41231806213)
-was in progress at the proposal checkpoint: macOS ARM/Intel, sanitizers, Windows
-and Linux still running; other executed jobs succeeded. This is not a final-main
-pass claim. Proposal-local checks additionally cover 180 documentation files,
+was in progress at the proposal checkpoint. Its first attempt then hit the
+unchanged 60-minute sanitizer limit during Valgrind state tests (ASan/UBSan and
+DSP memcheck passed, state memcheck incomplete). Other executed jobs succeeded.
+Only cancelled sanitizer job `124628545860` was retried; refreshed attempt status
+is in the PR handoff ledger. This is not a final-main pass claim. Proposal-local checks additionally cover 180 documentation files,
 610 citation anchors, 742 table rows, new relative links/headings, source/artifact
 digests and unchanged production/release inputs.
 
@@ -246,10 +249,134 @@ controls, concurrent two-reader tagged / one-reader owned stress, Clang22/GCC14
 compile guards, bit-preservation controls, and active-canary TSan. Seven-repeat
 serial benchmark artifacts/metadata are retained in `nr006-research/`; native
 Mac/Windows/ARM performance/guards and representative production costs remain
-pending. No production threading edits or new implementation acceptance claimed.
-Actual ScopeBuffer blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+pending. The subsequent approved implementation is recorded below; no native/
+representative-cost/manual acceptance is inferred from local evidence. Original
+main scope blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
 
-### Release and next actions
+### Production and independent roadmap checkpoint — 2026-11-01
+
+**NR-006 implemented:** source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`,
+branch `fix/nr006-validated-scope-windows`, based on
+Accepted ADR branch #199 `89694f24c940947fbbf70b9f32c07a6d31a3f07b`.
+The focused diff is atomic scope storage/protocol, three GUI consumers, regression
+surfaces and affected contracts. Main remains `00de8c7`. The approval authorizes
+implementation, not this PR’s merge or acceptance of unmeasured production cost.
+See [packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai)
+for deterministic original/fixed/weakening controls, genuine production-path
+concurrency, 1 MB stack-fixture failure/repair, byte-identical legacy engine dump,
+local safety/pluginval/ABI and measured footprint/synthetic cost. Native/performance/
+manual acceptance are explicitly pending. Final-source TSan full state **10,980/0**
+with all four unchanged suppression entries used, active canary and five scope
+probes are now recorded in `nr006-production/validation.json`. The [#202 exact-head
+ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
+tracks final SHA/CI after evidence-only commits; source commit and initial submitted
+head `ee06f355cd8f14d3fd390b1d8627c8a669bc74a8` are historical checkpoints.
+The first implementation’s Windows DSP gate subsequently failed before Test52’s
+entry banner: seven sibling-scope inline engines exceeded the MSVC stack budget
+after the ring grew. The 61 legacy DSP engine fixtures now use scoped heap
+ownership with all 554 check expressions/guard scopes retained; local DSP945/0
+passes at the same 1 MB limit. Native Windows head `0991b2f` subsequently passed
+DSP 941 / state 10,815, confirming the repair; its separate memcheck harness failure
+is recorded below. The initial failure is not called an infrastructure flake or
+marked resolved solely on push. No new PR has been merged.
+
+| Review unit | Head at submission | Dependency / disposition |
+|---|---|---|
+| [#199](https://github.com/skyRolly/Anamorph/pull/199) / ADR-0070 | `89694f24c940947fbbf70b9f32c07a6d31a3f07b` | main; owner architecture Accepted, PR integration not authorized |
+| [#200](https://github.com/skyRolly/Anamorph/pull/200) / NR-011 | `104f60eb2ee246babba739e989f320d1811f73dd` | main, independent; preserves legacy32 and adds five transition/audio+latency-trace oracles, native CI/review separate |
+| [#201](https://github.com/skyRolly/Anamorph/pull/201) / NR-012 | `2d56eac297300a5ac65ad62efd4d17b40ff65055` | main, independent; 36 repeated alias rows support retaining current DSP assertions; no universal/monotonic dB gate justified |
+| [#202](https://github.com/skyRolly/Anamorph/pull/202) / NR-006 implementation | source commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final head/PR in handoff ledger | depends only on #199; not #200/#201; runtime mitigation unmerged |
+| [#203](https://github.com/skyRolly/Anamorph/pull/203) / bounded CI memcheck scheduling | `2c242e5537636b3c4a0a444030787693bdd8fd1a` | main, independent; both existing suites run concurrently with both exits joined, same options and 60-minute cap; exact-head matrix passes |
+
+### Refreshed native/CI findings — 2026-11-01 UTC
+
+This update supersedes the pending snapshots below; the stable
+[#202 ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
+records the final review SHA and subsequent final-head results without restarting
+CI for every evidence update. #199 and #200 exact-head push matrices/analyzers
+now pass. #201's second sanitizer attempt is **cancelled**, not a pass; its other
+executed mandatory jobs/analyzers pass. Integrated main's second sanitizer job
+printed both complete zero-failure suites and zero memcheck summaries, then
+GitHub finalized it as **cancelled**. That overall status is not relabeled green.
+
+#202 head0991b2f passed all executed push jobs except sanitizers, and its PR
+merge-check plus explicitly dispatched exact-head CodeQL/MSVC passed. Native
+Windows fixture failure is closed by the successful full run; macOS ARM/Rosetta
+counts are 941 / 10,825 each. Matching Windows PE/PDB and macOS product/dSYM review
+verifies the ordered atomic instructions/no hidden lock or RMW fallback in the
+scope protocol slices. Source-head/artifact IDs, ZIP digests, debug identities and
+six slices are committed in `nr006-production/native-0991/`. Product source is
+unchanged by the test-only follow-up. Representative full-engine/GUI/large-block
+cost and targeted native visual/lifecycle acceptance remain unperformed.
+
+The sanitizer retry on `0991b2f`, run 41243991217 attempt 2 / job 124704449433, instead
+found an introduced **test-scheduling defect**: state 10,980 / 2, with zero memcheck
+errors. Busy `yield()` loops can starve the producer/readers under a serializing
+checker, violating the suite's existing pacing rule. Local unpaced probes
+reproduce the completion failure; other schedules pass. Existing `d2::Pace` now
+paces the test's waiting/independent loops uniformly, outside production APIs.
+All 27 checks, two readers, million-frame advance, sample assertions and 10-second
+bound are retained. Five focused memcheck runs pass; full-suite/TSan and fresh
+native CI outcomes are in the #202 ledger. Prior failed/cancelled jobs remain
+recorded; no detector, timeout or expected result is weakened.
+
+The recurring serial memcheck budget is separately corrected in #203, final head
+`2c242e5`, without changing product/test source, options or the 60-minute cap. All 13
+executed final-head push jobs, PR merge-check, CodeQL and dependency review pass.
+Actual concurrent memcheck completes in 28m06s, sanitizer job 36m11s: DSP 934 / 0,
+state 10,953 / 0, both child exits 0 and ERROR SUMMARY 0. Its raw artifact 13065128972
+has verified ZIP SHA256 f8c385315c475ca29ca6de52b1819707fab33267cbee3234bfba2abc29d49ae6.
+The wrapper's initial annotation-prefix drift was also corrected: existing FTZ/
+allocation-guard warnings remain recognized workflow commands, with control and
+mutation coverage. These are observations from one run, not controlled speedup
+or representative timing evidence. See the [#203 ledger](https://github.com/skyRolly/Anamorph/pull/203#issuecomment-6551635744).
+Its success does not retroactively pass main/#201/#202 or authorize its merge.
+
+**Next:** confirm #202's test-pacing repair on its final mandatory matrix; review
+#203 for a separately authorized early integration to address the recurring CI
+budget, then refresh affected final-head gates. Complete representative NR-006
+cost/visual acceptance and human implementation review. All #199–#203 remain
+open/unmerged; dependencies are main ← #199 ← #202, with #200/#201/#203
+independently on main. No further integration or release action is authorized.
+
+NR-011’s mandatory push run `41234815844` also hit the unchanged sanitizer time
+limit during Valgrind state tests; only cancelled job `124636244763` was retried.
+Passing PR-event summary/analyzers do not substitute for the incomplete push
+matrix. Exact-head statuses and subsequent attempts must be read from GitHub.
+#199 and #201 initial push matrices also reached 60-minute sanitizer cancellation.
+#201 printed both full-suite zero failures and zero memcheck errors immediately
+before cancellation, but its **job still did not pass**. Only cancelled jobs were
+retried, with commands, limits, suppressions and criteria unchanged. #202’s initial
+native matrix and manually dispatched exact-head CodeQL/MSVC were running at this
+evidence snapshot; its evidence-only final head is tracked in the ledger. The
+connector does not expose scanning-alert reads; the direct GitHub API freshly
+returns **403**. NR-017 alert state remains unknown, without a clean-alert inference
+from CodeQL workflow success.
+
+**Next evidence/decisions:** native final-head CI/codegen, representative NR-006
+cost/visual acceptance, then explicit new-PR merge authorization. NR-010 remains
+blocked on controlled identified hardware; NR-013 repository issue search found
+no pinned REAPER reproducer, so no host-focus fix/claim is invented. NR-003 stays
+Deferred. NR-004/005/007 recurrence dispositions and NR-018/019 owner/legal/
+provisioning boundaries remain. Release readiness is evaluated separately under
+NR-021: unchanged draft still requires NR-006 mitigation/risk disposition before
+publication. There is no version/tag/asset/publishing operation.
+
+### #202 rejected-silence paint review — 2026-11-01 (Asia/Shanghai)
+
+Accepted the reported GUI bug independently of the prior green CI. Polling could
+commit silence before a paint rejected, then suppress every subsequent silent
+repaint. The existing dirty flag now persists until a valid window is painted,
+including silent and frozen-publication retries. Seven scheduling assertions in
+State 150 use actual repaint invalidations, not unconditional manual recovery.
+The old scheduler fails three of 34 focused checks; fixed 34/34, full state
+10,987/10,987 and DSP 945/945 pass locally. Retained
+[review evidence](nr006-production/REPAINT_RETRY_REVIEW.md) records validation and
+the corresponding PR discussion tracks corrected-head CI. No ScopeBuffer protocol,
+atomic ordering, audio work or ownership/lifetime contract changed; Accepted ADR-0070
+and its representative cost/native visual/implementation acceptance gates remain.
+
+### Release and next actions (current)
 
 For unchanged 0.10.0, NR-006 disposition is **requires mitigation or additional
 validation before publication**, with a reviewed mitigation or explicit human
@@ -976,31 +1103,27 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 ### NR-006 — Validate the approved ScopeBuffer overwrite correction
 
-**Accepted architecture; implementation in review:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
-with [research evidence](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
-The owner explicitly approved generation-validated atomic stereo windows for
-implementation. #202 implements the selected contract on #199; both remain unmerged.
-Main retains the original mechanism until approved #202 is actually merged.
-Native verification, representative cost evidence and targeted visual acceptance
-are implementation gates, not a pending architecture-selection decision.
+**Accepted, implemented and explicitly approved for integration:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
+explicit owner implementation and subsequent five-PR integration approval 2026-11-01. Full alternatives/source proof,
+production tests and limits are in [packet §6–11](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
 
-
-- **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
-  `dsp/ScopeBuffer.h::pushBlock/readLatest`. Release/acquire publishes prior writes; it does not
-  order a reader against the producer's next lap over plain float arrays. Main's THREAD_MODEL
-  descriptions overstate that boundary. This is independent of single-threaded Rosetta Test 61.
-- **Impact/risk:** display-only torn scope/FFT windows under a lapped reader; formally a C++ data
-  race. No audio corruption/crash or field frequency is established. Calling aligned access
-  “benign” is not a language-level race-freedom proof. TSan silence with memcpy is not closure.
-- **Approach/order:** validate #202 against Accepted ADR-0070: bounded tagged atomic
-  stereo storage, exact committed positions or one rejection, no audio locks,
-  allocations or unbounded retries. Preserve the documented old-main risk until
-  integration; acceptance of the design alone does not correct main or the release.
-- **Acceptance/tests:** explicit selected contract; if corrected, a deterministic lapped-reader
-  schedule/negative control, buffer-wrap/newest-frame tests, suitable race instrumentation and
-  audio allocation/performance checks. **Architecture selection is approved; targeted
-  visual audition, representative performance and implementation review remain required.**
-  A protocol/threading change outside ADR-0070 requires a new architecture decision.
+- **Original issue Verified:** release/acquire index publication did not protect
+  reusable plain samples from producer lapping. It is a C++ data-race exposure,
+  separate from serial Rosetta Test 61. Supported-host crash, audible corruption
+  and field frequency are not established.
+- **Selected/implemented correction:** fixed generation-validated atomic stereo
+  slots, exact committed windows or one rejection, no audio wait/allocation/RMW;
+  independent accepted GUI windows and explicit serialized JUCE paint affinity.
+  Original code remains on main/draft until separately authorized integration.
+- **Local validation:** deterministic original 3/3 failures versus fixed 3/3 pass,
+  removed-validation/invalidation controls; State 150–151 concurrent/consumer/lifecycle
+  regressions; 945 DSP / 10,980 state checks and unchanged 1 MB stack gate; TSan
+  preceded by its live race canary, source/leaf effects, pluginval10 modes ×3,
+  pinned-Clang ABI. Production serial costs/footprint retained as synthetic data.
+- **Outstanding:** final-head native matrix/codegen, representative full-engine/GUI
+  costs and owner acceptance, targeted native visual/editor lifecycle audition,
+  implementation PR review/merge authorization. No weakening of accepted protocol.
+  RISK-018 remains open on unchanged main/draft; architecture approval is cleared.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 

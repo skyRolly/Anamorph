@@ -19,7 +19,10 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 ## Permitted
 
 - Reads/writes of pre-allocated buffers and scalar state.
-- Atomic loads/stores (relaxed for published meters; release/acquire for the scope ring).
+- Atomic loads/stores (relaxed for published meters; release/acquire payload,
+  generation tags and block index for the scope ring, Accepted ADR-0070). Scope
+  writes are bounded per frame, without read-modify-write, reader waits or retries;
+  unsupported atomic64/float32 targets fail compile-time guards.
 - The request word's ACQUIRE `exchange`, twice per block, before and after the parameter snapshot is read
   (ADR-0057, Accepted 2026-09-27). It is a single lock-free read-modify-write each time — no wait, no
   spin, no lock, no allocation — and a bulk swap whose completion has not arrived is handled by adopting

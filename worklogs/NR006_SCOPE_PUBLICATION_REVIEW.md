@@ -2,7 +2,8 @@
 
 **Recorded:** 2026-10-31 (Asia/Shanghai). **Updated:** 2026-11-01.
 **Current status:** ADR-0070 Accepted by explicit owner implementation approval
-on 2026-11-01; production implementation/validation next, no runtime fix claimed yet. Sections 1–5 preserve the earlier packet
+on 2026-11-01; atomic-window correction implemented on its separate development branch;
+final-head native/performance/manual acceptance and integration remain pending. Sections 1–5 preserve the earlier packet
 and conditional candidate; the substantive selection is in section 6 onward. Progress remains in
 [NEXT_RELEASE_DEVELOPMENT_ROADMAP.md](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
 
@@ -321,8 +322,9 @@ performance evidence. No native performance target is invented from sandbox time
 ## 7. Nonshipping experiments and reproducibility
 
 `tests/experiments/nr006_scope_protocol.cpp` is a standalone research executable,
-not linked into any product or CMake target. Production ScopeBuffer is used only
-as a **serial** reference / producer-private history in C; the unsafe plain ring
+not linked into any product or CMake target. At the research checkpoint, original
+ScopeBuffer was used only as a **serial** reference / producer-private history in C.
+The harness now pins that immutable original fixture (see §11); the unsafe plain ring
 is never subjected to concurrent runtime access in this experiment.
 
 ```bash
@@ -437,3 +439,213 @@ publication or temporary residual-risk acceptance needs a separate owner decisio
 **Release operation:** none. Continue independent NR-011 transition differential
 coverage while this architecture is reviewed; NR-003 stays Deferred and other
 recurrence/legal/hardware/host prerequisites remain separate.
+
+## 11. Approved production implementation — 2026-11-01 (Asia/Shanghai)
+
+**Architecture approval:** owner reply “Approve ADR-0070 for implementation”,
+recorded in [#199](https://github.com/skyRolly/Anamorph/pull/199#issuecomment-6548395725)
+and commit `89694f2`. **Implemented in [#202](https://github.com/skyRolly/Anamorph/pull/202), on branch:**
+`fix/nr006-validated-scope-windows`, based on that accepted decision branch.
+Source correction commit `7f44bdc699d1509b33f5bdd33d1f50fb017a7a56`; final review head and subsequent
+validation attempts are maintained in the [#202 handoff ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755).
+Main remains `00de8c7`; implementation/research/NR-011/NR-012 PRs are not merged.
+Sections 1–10 are dated original/proposal evidence; statements there about plain
+storage, pending architecture approval or no production edits describe those
+checkpoints, not the implementation described here.
+
+### Protocol and consumers
+
+`ScopeBuffer` implements the selected two-atomic64 slot representation and exact
+release invalidation → release stereo → release tag → block-index publication.
+The reader acquires one end and validates expected tag → acquired stereo → tag,
+with one rejection and no retry. The typed result separates valid empty from
+failure and returns the actual acquired end. Fresh-tail length uses that same
+end. Legacy serial `readLatest` remains for Test 61/diagnostics. Native float32/
+IEC559/always-lock-free atomic64 guards have no fallback. Epoch rollover is
+excluded, ring wrap supported; prepare/reset do not add a writer or clear history.
+
+`ScopeSnapshotCache` preallocates scratch and accepted buffers during GUI
+construction. Vectorscope paint retains the accepted window when copying fails;
+its activity poll retains counters on failure. SpectrumImager retains FFT,
+silence and freshness state on failure, including a valid wakeup tail followed
+by a failed full FFT window. Its next tick can retry that same publication.
+The #202 review found a separate scheduling gap: a successful silent activity
+poll could precede a rejected paint, after which the idle gate suppressed the
+needed retry. Vectorscope now retains `frameDirty` until a paint accepts a window;
+later silent or frozen ticks request another ordinary repaint. State 150 checks
+the actual scheduling and return to idle; the old scheduler fails three checks.
+See [the regression evidence](nr006-production/REPAINT_RETRY_REVIEW.md).
+The source preserves JUCE component painting under its existing message-manager
+serialization; consumer entries assert that contract. No GL attachment change,
+new thread, audio lock/allocation, reader ownership or RMW is introduced.
+
+Binding THREADING_POLICY, THREAD_MODEL, PERFORMANCE_BUDGET, real-time audit/policy,
+TESTING and navigation/risk references now describe the implemented contract.
+The Wave 4 memcpy/−4.9 % result is explicitly historical and not reused as new
+performance evidence. Original scope races remain true of main/draft until an
+authorized integration/replacement changes those actual source/artifact identities.
+
+### Regression strength and test-fixture correction
+
+State **150–151** add **27 checks**: deterministic slot reuse between tag/payload,
+a copied old prefix followed by later-slot reuse, an in-flight overwrite before
+new tag/index publication, bit-exact float patterns, empty/clamp/wrap/oversize,
+prepare/reset history and actual offscreen Vectorscope/FFT failure-retention/retry.
+A producer advances 1,048,576 frames beyond the initial ring while independent
+full-window/tail readers verify each accepted sample and stereo position.
+Accepted/rejected/overlap counters are printed; assertions run after joining.
+
+`check-scope-snapshots.py --self-test` verifies the immutable original blob
+`ed24ceab5ced2784d9fe96effdc46f8aeb03f472`/SHA256 fixture, injects scheduling
+hooks into temporary storage and runs all schedules on **one thread**. Original
+**3/3 failures**; current **3/3 pass**. Removed-validation mutant **3/3 failures**;
+missing-invalidation mutant **1/3 failure**, specifically the in-flight overwrite.
+Both Clang22 and GCC14 run these controls. The earlier bounded memory-order
+model retains the relaxed-payload/invalidation negative controls. The old
+prototype now includes the frozen original fixture, preserving its “Plain”
+reference after production changes; metadata records this reproduction amendment
+and retains original source hashes/results without relabeling them as current.
+
+**Introduced failure and repair:** doubling inline history first overflowed the
+unchanged **1 MB** state stack gate. GNU disassembly showed optimized main reserving
+823352 bytes plus the registry test's 273832-byte frame. The factory already
+heap-allocates product processors. Test-owned scoped processor locals (268) now
+use scoped heap fixtures with the same references, callbacks and lexical destruction.
+All **3,064 existing `check(...)` expressions remain byte-identical**. Full state
+checks pass at the same 1 MB limit; no assertions, negative controls, detector
+suppressions or stack thresholds were weakened. This allocation is test setup,
+not an audio callback or a change to product ownership.
+
+**Stress-harness failure and repair:** a full preflight caught a reader that had
+only one rejected attempt before the free-running writer completed. ADR-0070
+permits reader starvation under lapping, so requiring successful coverage without
+controlling scheduling was a harness defect, not a wrong accepted window. A
+bounded test-only checkpoint after four writes now lets both readers acknowledge
+one post-advance window before the remaining independent phase. No handshake
+exists in `pushBlock`/read APIs; all accepted-data assertions and the 10-second
+completion bound remain. Five final-source probe runs and full suites recheck it.
+
+**Subsequent memcheck scheduling finding:** head `0991b2f` run `41243991217`,
+attempt2/job `124704449433`, completed ASan/UBSan and DSP memcheck but failed
+State151's producer-completion and reader-overlap assertions at its 10-second
+bound. Both memcheck summaries report zero errors; state is **10,980 / 2**, not
+a clean suite. The test used busy `yield()` loops, contrary to this suite's
+documented pacing rule for serializing tools. A local unpaced probe also fails
+producer completion under default memcheck scheduling (one failure, zero memory
+errors); an enlarged scheduling-quantum experiment fails the same check. A
+separate unpaced run passed, confirming schedule sensitivity rather than
+establishing universal failure.
+
+Use existing `d2::Pace` in test waiting/independent reader loops and after each
+four-write producer group, uniformly across lanes. It sleeps in proportion to
+test work, capped at 50 ms, to relinquish the guest CPU. All 27 checks, exact
+sample expectations, two consumers, 1,048,576-frame advance and 10-second bound
+remain; no Valgrind option or production protocol is changed. Local focused
+memcheck/probe/full-suite results and final native CI are recorded in the stable
+#202 ledger and `nr006-production/memcheck-pacing-followup.json`. The prior
+failed job remains failed; a push alone does not close this finding.
+
+After pacing, five focused memcheck runs pass **27/0** with ERROR SUMMARY0;
+the full local suites pass **945 DSP / 10,980 state** under `MALLOC_PERTURB_=1`
+and the unchanged **1 MB** stack limit. Five TSan probes pass **27/0**; the
+fresh full TSan state run passes **10,980/0**, with all four unchanged named
+suppression entries matched once and a symbolized seeded-race canary still live.
+Automatic symbolizer discovery initially stopped at the existing test75 harness
+inversion; explicitly selecting the matching LLVM22 symbolizer repaired tooling,
+without changing suppressions. That stopped run is not counted as a full pass.
+Focused logs (trailing horizontal whitespace trimmed with raw hashes preserved),
+full-state summary/digest and failure classifications are retained beside the
+follow-up JSON. Fresh final-head mandatory CI remains required.
+
+**Local TSan tooling failure:** the initial full run lacked llvm-symbolizer, so
+the unchanged named test-75 re-entrancy suppression could not match. GNU addr2line
+mapped both stacks to `WriteFromInsideAGestureOpen` / `WriteFromInsideAStore`,
+the pair already documented in `tsan-suppressions.txt`. Installed the matching
+Clang22 symbolizer into the workspace toolchain and reran with the same four-entry
+suppression file. No race/deadlock detector or suppression was weakened. The
+initial stopped run is not reported as a full-suite pass.
+
+### Local production evidence and acceptance limits
+
+- Clang22 Release DSP **945** / state **10,980**, zero failures; `MALLOC_PERTURB_=1`.
+  Full state **10,980** and DSP **945** also pass the 1 MB stack constraint.
+- The original 32-row same-configuration engine dump is byte-identical to its
+  saved pre-implementation output, including latency fields; DSP math/order (the metering comment is clarified),
+  parameter/serialization registry, dependencies and version metadata are unchanged.
+  A temporary TU from NR-011 #200 also produces byte-identical five transition
+  audio hashes, final latencies and per-block latency traces against its saved
+  original-scope output. It reuses current target flags/engine objects without
+  changing or importing #200's scenario source into this PR; raw output/provenance
+  are in `nr006-production/transition-twin*`.
+- Existing TSan seeded race canary remains live; five genuine concurrent
+  production scope probes pass without a race report. After the scheduling
+  correction, the final-source full TSan suite passes **10,980 / 0**, with all four
+  unchanged suppression entries matched exactly once. Matching LLVM22 symbolization
+  repairs the initial local tooling gap. Raw canary/probes and full-suite summary/
+  digest are committed in `nr006-production/`; final-head native CI is tracked in
+  the #202 ledger. The initial unsymbolized stopped run is a tooling failure, not a pass.
+- Realtime source lint **97** liveness cases / zero violations; leaf function-effects
+  compile clean and its allocating canary fails with `-Wfunction-effects`.
+  Portability/state-coverage controls and full native mandatory CI remain in force.
+- Rebuilt VST3/Standalone pass pinned-Clang Linux shipping ABI floors; strictness
+  **10** pluginval deterministic **3/3**, randomise **3/3** (no relaxation).
+  The earlier GCC14 **failed** shipping-ABI preflight (CXXABI_1.3.15 > 1.3.14)
+  remains failed historical evidence; it was not reclassified or repaired.
+
+Raw local cost/code-generation artifacts and commands/input digests are in
+[`nr006-production/metadata.json`](nr006-production/metadata.json). The actual
+production API (not the earlier approximation) was built beside the original
+fixture with identical Clang C++23/O3/Haswell/no-contraction flags, affinity CPU1,
+**7 × 2000** calls per cell on shared Xeon 8573C Linux x64. Push medians for
+32/64/512/16401 frames: **26.1/45.6/379.8/11855.4 ns**, versus original
+**12.0/19.1/92.9/3481.9 ns**. Read8192 medians **6.71–6.92 µs**, versus original
+**1.11–2.52 µs** (repeat spread retained). These are repeat-mean serial synthetic
+costs, not individual worst-block time, representative acceptance or a new budget.
+The current scope is **262152 bytes**, previously **131080**; editor buffers add
+**192 KiB** over old scratch. Local x64 disassembly has no helper calls, lock
+prefix or memory RMW; register-only alignment `xchg %ax,%ax` is a NOP.
+
+Native shipping guards and generated-code inspection are now verified for the
+reviewed MSVC x64, AppleClang x64/ARM and Linux configurations. Matching
+0991b2f Windows PE/PDB and macOS product/dSYM artifacts, ZIP digests, UUIDs,
+protocol slices and inspection limits are retained in
+[`nr006-production/native-0991/codegen-review.json`](nr006-production/native-0991/codegen-review.json).
+Windows/Apple x64 use ordered aligned 64-bit stores/loads; ARM uses STLR stores
+and LDAPR acquire loads with both tag checks. Scope slices contain no lock,
+memory RMW, exclusive/CAS retry or atomic-library fallback calls. Ordinary calls
+outside those slices are not described as call-free. Product source is unchanged
+by subsequent test-harness pacing; these artifacts do not establish native cost.
+
+**Still required:** final-head mandatory CI, representative ≥5-repeat
+push/read/full-engine active/idle/stalled-GUI and large-block measurements with
+observed worst block/footprint, owner cost acceptance, and targeted native visual/
+editor-lifecycle audition. Shared-runner synthetic measurements cannot discharge
+those conditions. Architecture approval is cleared; implementation, merge,
+performance/manual acceptance and release authorization remain separate milestones.
+RISK-018 stays open for main and unchanged 0.10.0, with mitigation/additional
+validation required before publication. No release operation is performed.
+
+### Native Windows fixture follow-up
+
+The first submitted implementation’s full native Windows DSP job
+[124657185678](https://github.com/skyRolly/Anamorph/actions/runs/41241794891/job/124657185678)
+failed after Test48, before Test52’s first print, with no failed DSP assertion.
+State tests never started; product artifacts were withheld correctly. Test52
+has seven by-value engines in sibling scopes, each now holding at least 256 KiB
+of inline scope history. MSVC’s actual SARIF artifact `13057634256` from run `41241930773`
+reports C6262 at the original line5031: **1,628,304 bytes**. This is an analyzer
+estimate, not a debugger-measured frame; together with the pre-banner exit it
+supports stack exhaustion. Local Clang’s successful 1 MB run did not discharge that native frame-layout risk.
+This is classified as an introduced test-fixture stack portability failure,
+with fresh native confirmation required, not a demonstrated DSP math failure.
+
+The same scoped heap technique now covers 61 legacy DSP engine locals. All
+**554 prior DSP check expressions remain byte-identical**, alongside the 3064
+state expressions already preserved. Engine/guard lifetimes and the 1 MB limit
+remain unchanged. Local full DSP945/0 passes at that limit; the final native
+Windows run on 0991b2f passed **941 DSP / 10,815 state**, including Test52 and
+both scope consumers, closing that fixture failure with native runtime evidence.
+The subsequent memcheck harness failure above is a separate finding. The pre-existing inSq
+unused-set warning is the one accepted Clang-baseline DSP warning, not suppressed
+or fixed here. No production protocol, engine token stream, parameter/state
+contract, dependency/version or release object changes in this follow-up.

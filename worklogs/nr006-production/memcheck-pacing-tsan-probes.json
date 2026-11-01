@@ -1,0 +1,57 @@
+[
+  {
+    "run": 1,
+    "status": 0,
+    "summary": [
+      "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+      "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1060242",
+      "  scope reader 0: accepted=121 rejected=44 during-writer=121 bad=0",
+      "  scope reader 1: accepted=202 rejected=0 during-writer=202 bad=0",
+      "27 checks, 0 failure(s)"
+    ]
+  },
+  {
+    "run": 2,
+    "status": 0,
+    "summary": [
+      "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+      "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1060242",
+      "  scope reader 0: accepted=150 rejected=305 during-writer=150 bad=0",
+      "  scope reader 1: accepted=221 rejected=0 during-writer=221 bad=0",
+      "27 checks, 0 failure(s)"
+    ]
+  },
+  {
+    "run": 3,
+    "status": 0,
+    "summary": [
+      "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+      "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1060242",
+      "  scope reader 0: accepted=142 rejected=397 during-writer=142 bad=0",
+      "  scope reader 1: accepted=212 rejected=0 during-writer=212 bad=0",
+      "27 checks, 0 failure(s)"
+    ]
+  },
+  {
+    "run": 4,
+    "status": 0,
+    "summary": [
+      "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+      "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1060242",
+      "  scope reader 0: accepted=178 rejected=516 during-writer=178 bad=0",
+      "  scope reader 1: accepted=205 rejected=0 during-writer=205 bad=0",
+      "27 checks, 0 failure(s)"
+    ]
+  },
+  {
+    "run": 5,
+    "status": 0,
+    "summary": [
+      "State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)",
+      "  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1060242",
+      "  scope reader 0: accepted=188 rejected=511 during-writer=188 bad=0",
+      "  scope reader 1: accepted=214 rejected=0 during-writer=214 bad=0",
+      "27 checks, 0 failure(s)"
+    ]
+  }
+]
