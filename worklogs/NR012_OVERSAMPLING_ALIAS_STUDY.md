@@ -5,6 +5,24 @@
 **Status:** investigated / measured locally; retain existing behavioral assertions.
 No DSP correction, new quality gate or release change.
 
+## CI validation dependency — 2026-11-01 UTC
+
+The original study head `2d56eac` is preserved. Its mandatory sanitizer job hit
+the unchanged 60-minute limit twice; cancellation remains an incomplete gate.
+PR #201 now targets unmerged #203 (`2c242e5`) so this study's own final head can
+use the independently validated concurrent memcheck runner. The branch merge is
+additive, preserving both parents; probe/runner/CSV/metadata and engine inputs
+are byte-identical to the measured study. Both required suites, detector argv,
+coverage warnings and job cap are retained. Three documentation insertion
+conflicts preserve both evidence records. This changes validation infrastructure
+dependency, not the alias experiment, product architecture or release contents.
+
+Fresh final-head CI and the final SHA are tracked in the
+[#201 ledger](https://github.com/skyRolly/Anamorph/pull/201#issuecomment-6549206340).
+#203's successful matrix does not pass this new head. No GitHub PR merge is
+authorized or performed; main remains `00de8c7`, and the separate NR-006
+implementation remains in #202 under its own acceptance gates.
+
 ## Question and disposition
 
 R7 §H and NR-012 distinguish proving that oversampling runs from measuring its

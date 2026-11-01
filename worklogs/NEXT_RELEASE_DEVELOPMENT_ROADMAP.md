@@ -1,6 +1,70 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated; NR-011 submitted as #200; NR-012 bounded study recorded; owner approved ADR-0070 for NR-006 implementation, with new merges/releases still unauthorized.
+## NR-012 validation dependency — 2026-11-01 UTC
+
+PR [#201](https://github.com/skyRolly/Anamorph/pull/201) now depends on the
+unmerged CI correction [#203](https://github.com/skyRolly/Anamorph/pull/203),
+head `2c242e5537636b3c4a0a444030787693bdd8fd1a`. Its original independent-main
+head `2d56eac297300a5ac65ad62efd4d17b40ff65055` hit the unchanged 60-minute
+sanitizer limit twice. This is a verified validation dependency: the correction
+joins the independent suite processes concurrently with identical detector argv,
+assertions, warning annotations and job cap. It does not modify the alias probe,
+raw 36-row results, DSP/CMake/version inputs or their recorded provenance.
+The additive branch merge retains both reviewed parent heads; three documentation
+insertion conflicts retain both records. No shared history was rewritten.
+
+#203's complete exact-head matrix, PR merge-check, CodeQL and dependency review
+pass. Real memcheck artifact `13065128972` records both child exits/error summaries
+zero; memcheck28m06s, sanitizer job36m11s. That evidence is **not** #201's new gate:
+fresh final-head CI is required, tracked in the
+[#201 ledger](https://github.com/skyRolly/Anamorph/pull/201#issuecomment-6549206340).
+Previous cancelled runs remain cancelled. This is not a third unchanged retry or
+a timeout/detector/expectation relaxation.
+
+Actual main remains `00de8c7`, after authorized #195→#196→#197→#198 merges.
+New dependencies are **main ← #203 ← #201**, **main ← #199 ← #202**;
+#200 independently targets main. NR-006's current implementation head is
+`89d2d8f32a14a83b756197a1808cbb995aefddaf`: native codegen verified for reviewed
+configurations, test-only memcheck pacing repaired, final-head CI running,
+representative cost and native visual/lifecycle acceptance still open. #199 and
+#200 complete exact-head gates pass. Their current source/validation details are
+in the [#202 ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
+and the [master handoff](https://github.com/skyRolly/Anamorph/pull/198#issuecomment-6546761558).
+
+All five new PRs remain open and unmerged; no auto-merge or release operation is
+authorized. NR-003 remains Deferred; NR-010 needs controlled hardware, NR-013 a
+pinned REAPER reproducer, NR-018/019 owner/legal/provisioning decisions. The prior
+GCC14 shipping ABI preflight remains failed and alert-state API still returns403.
+The unchanged 0.10.0 draft/tag/11 assets/version require a separate release
+decision; NR-006 mitigation/risk disposition remains necessary before publication.
+Older checkpoints below retain their source/date scope, including the initial
+independent-main alias study and pre-implementation NR-006 status.
+
+## CI budget follow-up — 2026-11-01 UTC
+
+Actual main remains `00de8c7796f37d08a338256e01830bb312ba105c` after the
+owner-authorized #195→#196→#197→#198 integration. The new PRs remain unmerged:
+#199 records owner-Accepted ADR-0070, #202 implements it (current reviewed source
+0991b2f), and independent #200/#201 cover NR-011/NR-012. Their full execution
+record and stable exact-head ledger are in #202; the older snapshots below
+retain their dated historical scope. Architecture approval does not grant
+new merges, representative performance/visual acceptance or release permission.
+
+[CI_MEMCHECK_BUDGET_FOLLOWUP.md](CI_MEMCHECK_BUDGET_FOLLOWUP.md) records main’s
+repeated 60-minute sanitizer cancellations. The second attempt completed both
+zero-failure suites and zero-error memcheck summaries but is still recorded
+cancelled. Source-identical #199/#200 retries succeeded; #201 and NR-006’s
+native-repaired #202 also exhausted the serial budget. The bounded correction
+on branch `ci/parallel-memcheck-suites` overlaps only the independent memcheck
+processes and joins both statuses. Commands/options, 60-minute cap, assertions,
+strictness and product/build/release inputs stay unchanged. Local orchestration
+controls pass; final-head real CI timing/status must be refreshed in its PR.
+No merge is authorized. NR-003 remains Deferred, NR-006 performance/manual
+acceptance stays open, and prior GCC shipping-ABI failure/403 alert-state limits
+retain their exact scope.
+
+
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** #195–#198 integrated; NR-011 submitted as #200; NR-012 bounded study now validated on the #203 CI dependency; ADR-0070 owner-Accepted and implemented separately in #202, with final acceptance/new merges/releases still gated.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -14,7 +78,7 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
-## Independent alias study / architecture approval — 2026-11-01 (Asia/Shanghai)
+## Initial independent alias study / architecture approval — 2026-11-01 (Asia/Shanghai)
 
 The owner authorized and the agent integrated #195 → #196 → #197 → #198 using
 merge commits `3df74ea` → `49958ae` → `e426cc2` → `00de8c7`; final main exactly
@@ -544,13 +608,13 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Approved architecture / implementation next | ADR-0070 explicitly approved by owner; production correction and native gates pending | 1 / first architecture batch |
+| NR-006 | P1 | Approved / implemented in open #202 | Owner-Accepted ADR-0070; native codegen verified for reviewed configurations, final-head CI/performance/manual acceptance and integration pending | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
 | NR-010 | P2 | Pending | CPU/peak/memory budget — measure | 2 / engineering baseline |
-| NR-011 | P2 | Ready for Review | Five transition scenarios and latency evidence submitted as #200; native CI/review separate | 2 / independent test batch |
-| NR-012 | P3 | Investigated / locally measured | Bounded alias study supports retaining current assertions; native/broader quality interpretation pending | 2 / optional DSP study |
+| NR-011 | P2 | Ready for Review / #200 open | Five transition scenarios and latency evidence; complete exact-head matrix/analyzers pass, new merge unauthorized | 2 / independent test batch |
+| NR-012 | P3 | Investigated / #201 open | Retain assertions; now depends on #203 for completed CI scheduling, fresh exact-head validation required; broader quality grid unmeasured | 2 / bounded DSP study |
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
