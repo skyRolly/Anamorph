@@ -12,8 +12,10 @@ resets before hashing. It is useful but does not compare multiple live parameter
 transitions, reset/idle cycles or the intermediate engine-latency sequence across
 builds. Existing behavioral tests address different properties; no new sonic
 defect was established. The owner authorized this independent test batch while
-NR-006's architecture recommendation awaits human review in
-[PR #199](https://github.com/skyRolly/Anamorph/pull/199).
+NR-006's architecture recommendation awaited human review at the original
+checkpoint. The owner has since accepted ADR-0070 in
+[PR #199](https://github.com/skyRolly/Anamorph/pull/199); implementation #202 and
+its native/cost/visual acceptance and separate merge authorization remain gated.
 
 Selected an **additive opt-in dump mode**, rather than changing the legacy record
 matrix or creating a second executable/CMake architecture. This preserves old
@@ -43,9 +45,54 @@ Each scenario is rerun, checked finite, checked at phase ends against
 compared with the identical-input **inert-action projection**. All five audio
 hashes must be distinct. Seeded one-bit output changes must move only audio
 evidence; one changed latency observation must move only the latency trace.
-These checks run on every dump invocation; their success is silent on the legacy
+This inert projection is an **aggregate scenario control**: it alone does not
+prove each action is effective. The independent action controls below cover that
+boundary. These checks run on every dump invocation; their success is silent on the legacy
 path so its stdout stays byte-identical. No transition action labels/target
 parameters are mixed into the audio hash to manufacture discrimination.
+
+### Review correction: independent action controls
+
+Accepted #200's reported finding. Each omission replay leaves the input and all
+unrelated actions live, while suppressing exactly one field during one phase,
+one crossover ramp segment, or one reset/transport edge. There are **57 controls**:
+54 require a changed audio hash, while three deliberately masked parameter changes
+require a changed trace of the engine's **adopted** parameters. Those three are
+adoption coverage, not claims of audible effect. Requested values/action labels
+are never mixed into output or latency hashes; the internal adoption trace hashes
+only explicit fields observed through `getAdoptedParameters()`, not struct padding,
+and is not exported as a new record field/schema.
+
+| Action | Omission scope | Controls / required observation |
+|---|---|---|
+| Bypass | Phases 2, 4, 6, 7 | 4; phase 2 is masked by Mix=0 (adoption), others audio |
+| Mix | Phases 1, 3, 5, 7 | 4; phase 3 is bypassed (adoption), others audio |
+| Algorithm / OS factor | Each field separately in phases 1–6 | 12 audio |
+| Low / mid / high crossover | Each field's ramp separately in phases 1–6 | 18 audio |
+| Solo | Phases 1–7 | 7; phase 6 has Multiband disabled (adoption), others audio |
+| Band count | Phases 3, 4, 5 | 3 audio |
+| Multiband enable | Phases 6, 7 | 2 audio |
+| Tail-only / all-state reset | Blocks 64 / 128 | 2 audio |
+| Transport stop/resume | Blocks 64, 96, 160, 224, 240 | 5 audio |
+
+A phase is 32 blocks. Parameter holds with unchanged targets and the fixed
+noise/silence/zero-length input epochs are shared stimulus, not additional
+audibility assertions. The omission granularity is a phase/field or ramp segment,
+not each repeated per-block assignment or each sample. Transport now calls only
+on scheduled edges, so an omitted resume is not repaired by an identical hold
+call. An additional final stop at block 240 exposes the preceding resume's effect
+on Velvet's next falling edge. This intentionally changes only the new reset/idle
+record's audio hash; the other four transition records, all latency evidence and
+the legacy 32-row stdout remain identical to the prior fixture under the same
+configuration. No production DSP/transport/latency behavior changes.
+
+Five compiled single-action mutants separately remove Mix phase 5, the mid split
+in phase 3, tail reset, resume at block 96, and the masked Mix phase 3 write.
+Each passes the original aggregate-only assertions and fails its new named
+action control with exit 3. Restoring the source passes all controls. The
+[review evidence](nr011-action-review-evidence.json) records source/log identities,
+mutant results, comparator checks and legacy byte preservation; the original
+`nr011-transition-evidence.json` remains historical evidence for the earlier fixture.
 
 The suite is deliberately bounded, not a combinatorial matrix. It covers selected
 representative transitions and cycles. M/S-solo/channel-conditioning/non-finite-
@@ -144,5 +191,28 @@ This is not native MSVC or Mac/ARM evidence.
 Local source/evidence digests and comparison summaries are retained in
 `nr011-transition-evidence.json`. Final documentation/citation checks and exact-head
 CI are recorded with the PR after execution. No PR merge
-or release operation is authorized. NR-006 remains Proposed, no production
-threading implementation; NR-003 stays Deferred.
+or release operation is authorized. NR-006's architecture is owner-Accepted in
+#199 and its implementation is separately reviewed in #202; neither is integrated.
+NR-003 stays Deferred.
+
+
+## Action-review validation checkpoint
+
+Corrected fixture passes all five scenario checks, 57 action controls and existing
+sample/latency instrument controls. Default stdout remains byte-identical to
+`104f60e` under the same flags; both shipped Haswell/FP-contract-off and the
+independent no-ISA configuration preserve their own legacy output. Repeated and
+cross-configuration new transition comparisons report identical audio, final
+latency and traces. Only the intended reset/idle audio differs from the earlier
+fixture; four other records and all five latency values/traces are preserved.
+Parser self-test still passes 162 production-entry fixtures and its existing
+negative controls. Five compiled action mutants pass aggregate-only checks and
+fail the new isolated checks; restored source passes. Raw captures and named
+failure diagnostics are retained in [nr011-action-review/](nr011-action-review/).
+
+Documentation self-test 700 cases / 180 files, citation self-test 276 cases /
+610 anchors against main, Markdown tables/links and whitespace checks pass.
+Build emits only the unchanged ScopeBuffer sign-conversion warnings; no baseline
+is suppressed or revised. Production source tree is unchanged. Exact-head native,
+Windows A/B and sanitizer/analyzer CI is recorded separately in the PR discussion;
+the earlier `104f60e` successes do not qualify this correction.

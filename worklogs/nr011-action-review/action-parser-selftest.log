@@ -1,0 +1,1 @@
+DSP dump parser self-test: 162 production-entry fixtures; duplicate-overwrite, evidence-guard-bypass and transition-metadata mutants rejected.

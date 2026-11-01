@@ -1,6 +1,6 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** owner-authorized #195–#198 integrated; NR-006 Proposed ADR review #199 pending; independent NR-011 transition batch implemented for review.
+**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** owner-authorized #195–#198 integrated; NR-006 ADR-0070 owner-Accepted in #199, implementation #202 unmerged; independent NR-011 transition batch implemented for review.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -13,6 +13,31 @@ That readiness worklog remains the release execution/history record; the
 [engineering-review programme](engineering-review/ENGINEERING_REVIEW_PROGRAMME.md) remains the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
+
+## #200 action-control review correction — 2026-11-01 (Asia/Shanghai)
+
+Accepted the reported aggregate-oracle finding: comparing the complete action
+schedule with an inert projection does not prove each action matters. Added 57
+independent omission replays with unrelated actions and inputs preserved: 54
+require changed audio, three masked parameter writes require changed actual
+engine adoption without claiming audibility. Granularity is one phase/field,
+crossover ramp segment or reset/transport edge; repeated holds/input epochs are
+not counted. A final stop and edge-only transport calls expose resume effects.
+Legacy 32-row output, record schemas, comparator/latency gates and production
+inputs are preserved. See [NR-011](NR011_DSP_TRANSITION_COVERAGE.md) for the census,
+compiled negative controls and new source/evidence identities. Five individual
+mutants pass the aggregate-only oracle and fail the new named controls.
+Local repeated/no-ISA transition comparisons and legacy byte-preservation checks
+pass, as do parser162, docs700/180 files, citation276/610 anchors, tables/links and
+whitespace. Exact source/log identities are retained in the NR-011 review evidence.
+
+Current dependency order: main ← #199 ← #202, main ← #203 ← #201; #200 is
+independent on main. This correction inherits no unrelated implementation. All
+new PRs remain open/unmerged; prior `104f60e` CI is historical and the discussion
+tracks corrected-head validation. NR-003 remains Deferred. NR-006 architecture
+is already Accepted; its representative cost/native visual/implementation gates
+remain. GCC14 ABI failure, code-scanning alert-state 403 and unchanged 0.10.0
+release objects retain their limitations. No new batch or merge is authorized.
 
 ## Authorized integration / independent NR-011 batch — 2026-11-01 (Asia/Shanghai)
 
@@ -29,15 +54,15 @@ integrated suites pass **945 DSP / 10,953 state**. Historical pending-merge
 checkpoints below are superseded, not claims about current integration status.
 
 **Priority update:** NR-006 architecture investigation is first/P1 as requested.
-It is completed for owner review in [PR #199](https://github.com/skyRolly/Anamorph/pull/199),
-head `d0e81445ccd2cd7d152dd207deda0d2d48e75187`. The agent recommends Proposed
-ADR-0070's generation-validated atomic stereo windows and explicit serialized-GUI
-affinity after comparing alternatives. Human Architecture Review is **pending**;
-ScopeBuffer production blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
-The proposal's full evidence remains in #199, not silently integrated by this PR.
+The owner accepted ADR-0070 in [PR #199](https://github.com/skyRolly/Anamorph/pull/199).
+The selected generation-validated atomic stereo windows/serialized-GUI affinity
+are implemented separately in [#202](https://github.com/skyRolly/Anamorph/pull/202).
+Architecture selection is complete; implementation, representative cost/native
+visual acceptance and merge authorization remain gates. Main/this independent test
+branch retain original ScopeBuffer blob `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
 
 **NR-011: implemented / Ready for Review.** This independent branch starts from
-verified main `00de8c7`, not from the unapproved architecture proposal. Added five
+verified main `00de8c7`; it does not depend on the #199/#202 architecture lane. Added five
 bounded transition cases, separate audio/final-engine-latency/latency-trace evidence,
 inert/sample/latency controls and an explicit parser suite. Default 32-row output
 is byte-identical to the pre-change instrument. The Windows comparison adds a
@@ -54,7 +79,7 @@ or waived by these tests. Existing 0.10.0 tag/draft/11 assets/version are unchan
 NR-022 and this batch are post-tag development. NR-006 publication mitigation/
 human risk disposition remains separate from earlier manual/ADR approvals.
 
-## Review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
+## Historical review-and-repair handoff — 2026-11-01 (Asia/Shanghai)
 
 **Integration gate:** all four PRs remain open and unmerged. No auto-merge, release
 operation, version change or next implementation batch is authorized. This checkpoint
@@ -287,7 +312,7 @@ final stack heads/CI evidence will be recorded in #198's handoff and PR discussi
 All four PRs must remain open and unmerged. No auto-merge, release operation or next
 implementation batch is authorized; explicit owner merge authorization is required.
 
-## Current execution — owner decisions recorded 2026-10-31 (Asia/Shanghai)
+## Historical execution — owner decisions recorded 2026-10-31 (Asia/Shanghai)
 
 Execution base: `6ae102ca72d83eb07c0a84d76465b26c457cdc16` (merged PR #194);
 product/test/packaging/build/workflow inputs equal the investigated `4c13688` candidate.
@@ -549,7 +574,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Proposed / Ready for Review | Selected generation-validated atomic windows; ADR-0070 pending human review, no production change | 1 / first architecture batch |
+| NR-006 | P1 | Accepted architecture / implementation in review | ADR-0070 owner-approved in #199; #202 unmerged; representative cost/native visual/implementation gates remain | 1 / first architecture batch |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
@@ -646,12 +671,14 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
   coherence across repeated restore cycles, State 27/148 and TSan. **Human architecture review
   before threading/ordering changes; host test for demonstrated exposure.** Conditional maintenance.
 
-### NR-006 — Decide the ScopeBuffer overwrite contract
+### NR-006 — Validate the approved overwrite correction
 
-**Packet Ready for Review:** [NR006_SCOPE_PUBLICATION_REVIEW.md](NR006_SCOPE_PUBLICATION_REVIEW.md).
-The original mechanism remains in source; only descriptive overclaims are corrected.
-Packed atomic stereo frames are a conditional candidate, not an approved decision or fix.
-The owner must select best-effort versus whole-window coherence before a new payload protocol.
+**Accepted architecture; implementation in review.** The owner approved ADR-0070
+in #199; its generation-validated atomic stereo implementation #202 remains
+unmerged with representative cost/native visual/implementation acceptance gates.
+Main and this independent branch retain the original mechanism. The
+[original packet](NR006_SCOPE_PUBLICATION_REVIEW.md) preserves historical evidence,
+not a new request for the already granted architecture-selection decision.
 
 
 - **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
@@ -661,14 +688,14 @@ The owner must select best-effort versus whole-window coherence before a new pay
 - **Impact/risk:** display-only torn scope/FFT windows under a lapped reader; formally a C++ data
   race. No audio corruption/crash or field frequency is established. Calling aligned access
   “benign” is not a language-level race-freedom proof. TSan silence with memcpy is not closure.
-- **Approach/order:** after NR-001, prepare a small architecture decision: honest current-risk
-  documentation versus a bounded race-free publication design. Evaluate atomic sample access or
-  reader-safe fixed buffers without audio locks/allocations or unbounded retries. Do not implement
-  until owner review; a waiver must not describe the code as race-free.
+- **Approach/order:** validate #202 against Accepted ADR-0070 without altering
+  this independent branch’s production threading. Design approval does not correct
+  main/the release or authorize integration; no repeated selection request is needed.
 - **Acceptance/tests:** explicit selected contract; if corrected, a deterministic lapped-reader
   schedule/negative control, buffer-wrap/newest-frame tests, suitable race instrumentation and
-  audio allocation/performance checks. **Human threading review and visual audition required.**
-  Phase 1 architecture work; implementation version chosen after evidence/approval.
+  audio allocation/performance checks. **Architecture selection approved; representative costs, targeted native
+  visual audition and implementation review remain required.** A change outside
+  Accepted ADR-0070 requires a new architecture decision.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 
@@ -1111,7 +1138,9 @@ No candidate was installed on a live workstation. No defect ownership is inferre
 location, TSan silence, runner success or a diagnostic timeout.
 
 NR-001/002 are now closed by explicit owner confirmation. The named host scope/matrix (NR-003)
-is Deferred. Remaining decisions include the ScopeBuffer publication contract (NR-006),
+is Deferred. NR-006’s contract is owner-Accepted in #199; implementation #202
+still requires representative cost/native visual/implementation acceptance and
+merge authorization. Remaining decisions include
 additional parser restrictions/coherent multiband model only if selected (NR-008/009), and public/
 commercial/signing/product choices (NR-018/019/020). A current supported-host failure would change
 priorities immediately; none was established by this assignment. The only ongoing API access limit

@@ -5684,6 +5684,18 @@ distinctness and comparison against an inert-action projection. Seeded one-bit
 sample and one-observation latency controls must change their respective evidence
 only. Silent success in legacy mode preserves its original stdout/32-row schema.
 
+The inert projection proves aggregate scenario activity. Separately, 57 omission
+replays suppress one phase/parameter field, crossover ramp, reset or transport
+edge while leaving other actions/input live. Fifty-four require an audio change;
+three masked writes (dry Bypass, bypassed Mix, disabled Solo) require an observed
+adopted-parameter change and make no audibility claim. Same-value holds and fixed
+input epochs are outside that action count. Edge-only transport calls and a final
+stop at block 240 expose each resume's later effect; only the reset/idle fixture's
+new audio hash changes. The adoption trace is internal and never contaminates
+sample/latency evidence or exported schemas. Five compiled single-action mutants
+pass the aggregate-only oracle but fail their isolated controls; details and exact
+scope are in the NR-011 worklog. All entry points still run these controls.
+
 ```bash
 AnamorphDspDump --transitions > transitions-a.txt
 AnamorphDspDump --transitions > transitions-b.txt

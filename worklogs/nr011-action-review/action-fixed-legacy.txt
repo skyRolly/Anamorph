@@ -1,0 +1,36 @@
+dsp-dump self-check passed: 32 scenarios, all repeatable and all distinct.
+
+# AnamorphDspDump -- 48000 Hz, 512-sample blocks, 120 noise + 120 silence blocks
+# scenario                 fnv1a-64            latency
+haas-os1-lr               2c17208e09a4ca0c        0
+haas-os1-ms               29fef291deab6853        0
+haas-os2-lr               1059c3204be4d176        4
+haas-os2-ms               f7591d9006d37c81        4
+haas-os4-lr               8ba86883cc1ff4a4        6
+haas-os4-ms               e5435f19aae55ab4        6
+haas-os8-lr               4b044f4ba72c6d07        6
+haas-os8-ms               486f6f1adebd2872        6
+velvet-os1-lr             72458fc3bf20ce75        0
+velvet-os1-ms             f3d02955c4b12b08        0
+velvet-os2-lr             f01034759f3cea53        4
+velvet-os2-ms             d7753eeebdf5fd02        4
+velvet-os4-lr             9d36f9ef29a5470b        6
+velvet-os4-ms             962af38ea4b44271        6
+velvet-os8-lr             07520c06f2f20c0e        6
+velvet-os8-ms             506332d7a90861c4        6
+chorus-os1-lr             0d6c0c60fce95d35        0
+chorus-os1-ms             75fafa9aa9c56f28        0
+chorus-os2-lr             11ff0955ea27820b        4
+chorus-os2-ms             8669e84171d6ab58        4
+chorus-os4-lr             b6047777fe6e9835        6
+chorus-os4-ms             3c9c1eee2ba4ec0b        6
+chorus-os8-lr             bd5ee10304bc9715        6
+chorus-os8-ms             42a346d11b53056f        6
+dimensional-os1-lr        489c56315712750d        0
+dimensional-os1-ms        3ca988f812c0dc98        0
+dimensional-os2-lr        534dea7680ea039d        4
+dimensional-os2-ms        5d6c6c3dfa0d6433        4
+dimensional-os4-lr        7dd4bb5da8489d54        6
+dimensional-os4-ms        d22fbffd2b728838        6
+dimensional-os8-lr        0dc9bdea082a2433        6
+dimensional-os8-ms        1d8403e5e4f6592d        6

@@ -249,6 +249,57 @@ namespace
     constexpr int kTransitionBlocks = 8 * kPhaseBlocks;
     enum class Transition { BypassMix, AlgorithmOs, Crossover, SoloBands, ResetIdle };
     enum class Control { Normal, Inert, ChangedSample, ChangedLatency };
+    enum class Action { None, Bypass, Mix, Algorithm, Os, Low, Mid, High, Bands, Solo,
+                        Enable, ResetTails, ResetAll, Transport };
+    constexpr std::array<const char*, 14> actionNames { "none", "bypass", "mix", "algorithm", "OS",
+        "low split", "mid split", "high split", "band count", "solo", "multiband enable",
+        "tail reset", "all reset", "transport" };
+    struct OmittedAction
+    {
+        Action action = Action::None;
+        int first = 0, end = 0; // half-open block range; unrelated actions remain live
+    };
+    struct ActionCase
+    {
+        OmittedAction omit;
+        bool requireAudio = true; // masked parameter changes use actual adoption instead
+    };
+
+    std::vector<ActionCase> actionCases (Transition kind)
+    {
+        std::vector<ActionCase> cases;
+        const auto phase = [&] (Action action, int at, bool audible = true)
+        { cases.push_back ({ { action, at * kPhaseBlocks, (at + 1) * kPhaseBlocks }, audible }); };
+        switch (kind)
+        {
+            case Transition::BypassMix:
+                for (int at : { 2, 4, 6, 7 }) phase (Action::Bypass, at, at != 2); // Mix=0 masks phase 2
+                for (int at : { 1, 3, 5, 7 }) phase (Action::Mix, at, at != 3);   // bypass masks phase 3
+                break;
+            case Transition::AlgorithmOs:
+                for (int at = 1; at <= 6; ++at)
+                { phase (Action::Algorithm, at); phase (Action::Os, at); }
+                break;
+            case Transition::Crossover:
+                for (int at = 1; at <= 6; ++at)
+                    for (auto action : { Action::Low, Action::Mid, Action::High }) phase (action, at);
+                break;
+            case Transition::SoloBands:
+                for (int at = 1; at <= 7; ++at) phase (Action::Solo, at, at != 6); // disabled in phase 6
+                for (int at : { 3, 4, 5 }) phase (Action::Bands, at);
+                for (int at : { 6, 7 }) phase (Action::Enable, at);
+                break;
+            case Transition::ResetIdle:
+                cases.push_back ({ { Action::ResetTails, 64, 65 }, true });
+                cases.push_back ({ { Action::ResetAll, 128, 129 }, true });
+                // Only edges call setTransportPlaying. A missing resume stays
+                // missing until the next edge; repeated holds cannot repair it.
+                for (int block : { 64, 96, 160, 224, 240 })
+                    cases.push_back ({ { Action::Transport, block, block + 1 }, true });
+                break;
+        }
+        return cases;
+    }
     constexpr std::array<Transition, 5> transitions { Transition::BypassMix, Transition::AlgorithmOs,
         Transition::Crossover, Transition::SoloBands, Transition::ResetIdle };
     constexpr std::array<const char*, 5> transitionNames { "transition-bypass-mix", "transition-algorithm-os",
@@ -256,12 +307,13 @@ namespace
 
     struct TransitionResult
     {
-        std::uint64_t audio = 0, latencyTrace = 0;
+        std::uint64_t audio = 0, latencyTrace = 0, adoptedParameters = 0;
         int finalLatency = 0;
         bool valid = true;
     };
 
-    TransitionResult runTransition (Transition kind, Control control = Control::Normal)
+    TransitionResult runTransition (Transition kind, Control control = Control::Normal,
+                                    OmittedAction omitted = {})
     {
         anamorph::EngineParameters p;
         p.algorithm = kind == Transition::ResetIdle ? Algorithm::Velvet : Algorithm::Haas;
@@ -282,9 +334,10 @@ namespace
         engine.prepare (kSampleRate, kTransitionBlock);
         juce::AudioBuffer<float> audio (2, kTransitionBlock), empty (2, 0);
         Lcg lcg;
-        Fnv samples, latency;
+        Fnv samples, latency, adoption;
         TransitionResult result;
         const bool active = control != Control::Inert;
+        bool previousTransportTarget = false;
         const auto feedLatency = [&] (int value)
         {
             // Explicit little-endian metadata encoding, separate from samples.
@@ -298,12 +351,14 @@ namespace
         for (int block = 0; block < kTransitionBlocks; ++block)
         {
             const int phase = block / kPhaseBlocks;
+            const auto apply = [&] (Action action)
+            { return active && ! (omitted.action == action && block >= omitted.first && block < omitted.end); };
             if (active && kind == Transition::BypassMix)
             {
                 constexpr std::array<bool, 8> bypass { false, false, true, true, false, false, true, false };
                 constexpr std::array<float, 8> mix { 0.8f, 0.0f, 0.0f, 1.0f, 1.0f, 0.35f, 0.35f, 0.8f };
-                p.bypass = bypass[static_cast<std::size_t> (phase)];
-                p.mix = mix[static_cast<std::size_t> (phase)];
+                if (apply (Action::Bypass)) p.bypass = bypass[static_cast<std::size_t> (phase)];
+                if (apply (Action::Mix)) p.mix = mix[static_cast<std::size_t> (phase)];
             }
             if (active && kind == Transition::AlgorithmOs)
             {
@@ -313,8 +368,8 @@ namespace
                 constexpr std::array<OversampleFactor, 8> factor { OversampleFactor::Off,
                     OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8,
                     OversampleFactor::Off, OversampleFactor::x4, OversampleFactor::Off, OversampleFactor::Off };
-                p.algorithm = algo[static_cast<std::size_t> (phase)];
-                p.oversample = factor[static_cast<std::size_t> (phase)];
+                if (apply (Action::Algorithm)) p.algorithm = algo[static_cast<std::size_t> (phase)];
+                if (apply (Action::Os)) p.oversample = factor[static_cast<std::size_t> (phase)];
             }
             if (active && kind == Transition::Crossover)
             {
@@ -324,25 +379,32 @@ namespace
                 const auto at = static_cast<std::size_t> (phase);
                 const auto prior = at == 0 ? at : at - 1;
                 const float t = static_cast<float> (block % kPhaseBlocks + 1) / static_cast<float> (kPhaseBlocks);
-                p.mbFreqLow = low[prior] + t * (low[at] - low[prior]);
-                p.mbFreqMid = mid[prior] + t * (mid[at] - mid[prior]);
-                p.mbFreqHigh = high[prior] + t * (high[at] - high[prior]);
+                if (apply (Action::Low)) p.mbFreqLow = low[prior] + t * (low[at] - low[prior]);
+                if (apply (Action::Mid)) p.mbFreqMid = mid[prior] + t * (mid[at] - mid[prior]);
+                if (apply (Action::High)) p.mbFreqHigh = high[prior] + t * (high[at] - high[prior]);
             }
             if (active && kind == Transition::SoloBands)
             {
                 constexpr std::array<int, 8> bands { 4, 4, 4, 2, 3, 4, 4, 4 };
                 constexpr std::array<int, 8> solo { 0, 1, 0, 2, 4, 8, 0, 1 };
-                p.mbBands = bands[static_cast<std::size_t> (phase)];
-                p.mbSolo = solo[static_cast<std::size_t> (phase)];
-                p.mbEnable = phase != 6; // clear, disable, then repeat cold low-band engage
+                if (apply (Action::Bands)) p.mbBands = bands[static_cast<std::size_t> (phase)];
+                if (apply (Action::Solo)) p.mbSolo = solo[static_cast<std::size_t> (phase)];
+                if (apply (Action::Enable)) p.mbEnable = phase != 6; // clear, disable, repeat cold engage
             }
             const bool idle = kind == Transition::ResetIdle && (phase == 2 || phase == 6);
             const bool silent = kind == Transition::ResetIdle && (phase == 1 || phase == 5);
-            if (active && kind == Transition::ResetIdle && (block == 64 || block == 128))
+            if (kind == Transition::ResetIdle && ((block == 64 && apply (Action::ResetTails))
+                                                 || (block == 128 && apply (Action::ResetAll))))
                 engine.reset (block == 64 ? anamorph::AnamorphEngine::ResetScope::audioTailsOnly
                                          : anamorph::AnamorphEngine::ResetScope::everything);
-            engine.setTransportPlaying (! active || kind != Transition::ResetIdle
-                || ! (phase == 2 || phase == 5 || phase == 6));
+            // The last stop makes the preceding resume observable as well: if
+            // resume is omitted, Velvet sees no subsequent falling edge. No
+            // action labels/targets are hashed into the audio evidence.
+            const bool playing = ! active || kind != Transition::ResetIdle
+                || ! (phase == 2 || phase == 5 || phase == 6 || block >= 240);
+            if (block == 0 || playing != previousTransportTarget)
+                if (block == 0 || apply (Action::Transport)) engine.setTransportPlaying (playing);
+            previousTransportTarget = playing;
             engine.setParameters (p);
             feedLatency (engine.getLatencySamples());
             auto& buffer = idle ? empty : audio;
@@ -350,6 +412,16 @@ namespace
                 for (int i = 0; i < buffer.getNumSamples(); ++i)
                     buffer.setSample (ch, i, silent ? 0.0f : lcg.next() * 0.5f);
             engine.process (buffer);
+            // An independent engine observation for deliberately audio-masked
+            // writes. Hash named adopted fields, never requested targets/padding.
+            const auto& adopted = engine.getAdoptedParameters();
+            const std::array<std::uint32_t, 10> fields {
+                static_cast<std::uint32_t> (adopted.bypass), std::bit_cast<std::uint32_t> (adopted.mix),
+                static_cast<std::uint32_t> (adopted.algorithm), static_cast<std::uint32_t> (adopted.oversample),
+                std::bit_cast<std::uint32_t> (adopted.mbFreqLow), std::bit_cast<std::uint32_t> (adopted.mbFreqMid),
+                std::bit_cast<std::uint32_t> (adopted.mbFreqHigh), static_cast<std::uint32_t> (adopted.mbBands),
+                static_cast<std::uint32_t> (adopted.mbSolo), static_cast<std::uint32_t> (adopted.mbEnable) };
+            adoption.feed (fields.data(), fields.size() * sizeof (std::uint32_t)); // internal control only
             // Seeded instrument controls alter evidence only, never engine code.
             if (control == Control::ChangedSample && block == 96)
             {
@@ -374,6 +446,7 @@ namespace
         }
         result.audio = samples.h;
         result.latencyTrace = latency.h;
+        result.adoptedParameters = adoption.h;
         result.finalLatency = engine.getLatencySamples();
         return result;
     }
@@ -391,6 +464,7 @@ namespace
             if (! a.valid || ! repeat.valid || ! inert.valid || ! sample.valid || ! metadata.valid
                 || a.audio != repeat.audio || a.latencyTrace != repeat.latencyTrace
                 || a.finalLatency != repeat.finalLatency || a.audio == inert.audio
+                || a.adoptedParameters != repeat.adoptedParameters
                 || a.audio == sample.audio || a.latencyTrace != sample.latencyTrace
                 || a.audio != metadata.audio || a.latencyTrace == metadata.latencyTrace
                 || ! distinct.emplace (a.audio, transitionNames[i]).second)
@@ -398,6 +472,19 @@ namespace
                 std::fprintf (stderr, "dsp-dump transition self-check FAILED: %s is invalid, inert, "
                     "not repeatable or its sample/latency controls are dead.\n", transitionNames[i]);
                 return 3;
+            }
+            for (const auto& action : actionCases (transitions[i]))
+            {
+                const auto without = runTransition (transitions[i], Control::Normal, action.omit);
+                if (! without.valid || (action.requireAudio ? a.audio == without.audio
+                                                          : a.adoptedParameters == without.adoptedParameters))
+                {
+                    std::fprintf (stderr, "dsp-dump action self-check FAILED: %s, %s at block %d "
+                        "has no %s effect when omitted alone.\n", transitionNames[i],
+                        actionNames[static_cast<std::size_t> (action.omit.action)], action.omit.first,
+                        action.requireAudio ? "audio" : "adopted-parameter");
+                    return 3;
+                }
             }
             if (transitions[i] == Transition::AlgorithmOs && a.latencyTrace == inert.latencyTrace)
             {

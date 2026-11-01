@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-011 action-specific review controls — 2026-11-01
+
+Accepted #200's aggregate-inert-control finding. Added 57 independent omission
+replays: 54 audio checks and three explicitly masked adopted-parameter checks.
+Each isolates one phase/field, ramp, reset or transport edge; same-value holds/
+input epochs are not represented as audible actions. Edge-only transport and a
+final stop expose resume effects. Five compiled mutants pass the old aggregate
+oracle but fail the new controls. TESTING/NR-011 evidence and the roadmap record
+scope, schema/legacy preservation and exact-source validation limits. Reconciled
+stale NR-006 approval instructions with owner-Accepted #199 / unmerged #202.
+No production DSP, threading, latency, CMake/dependency or release input changed.
+
 ## NR-011 — additive differential transition coverage (2026-11-01)
 
 Added a separate five-record transition mode to the existing DSP dump executable;
