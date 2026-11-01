@@ -60,8 +60,9 @@ attachment identification, metadata, delivered-arrow and modifier routing,
 unrelated parameter preservation and Simple→Advanced→Simple editor lifetimes.
 The pinned original editor fails36/924 checks; corrected code passes924/924.
 Local full suites are **945 DSP / 11,911 state** after this new test. This work is
-on `fix/nr014-rotary-accessibility-titles`, **not integrated**; its new PR requires
-separate review/merge authorization. [Evidence and limitations](NR014_ROTARY_ACCESSIBILITY.md).
+in [PR #204](https://github.com/skyRolly/Anamorph/pull/204), source commit
+`d49736e9a496cfb83db67804a8439daa55200f26`, **not integrated**; its final-head
+CI is tracked in that PR, and separate merge authorization remains required. [Evidence and limitations](NR014_ROTARY_ACCESSIBILITY.md).
 
 **Priority/dependency adjustment:** promote this bounded NR-014 correction to P2;
 it does not need the deferred NR-003 matrix or unpinned NR-013 host reproduction.
@@ -1058,7 +1059,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-011 | P2 | Completed / integrated | #200 merged at `54da68e`; 57 isolated action controls, five mutants and legacy/schema gates retained | 2 / coverage complete |
 | NR-012 | P3 | Completed / integrated | #201 merged at `7c007e7`; retain behavioral assertions, no universal quality/monotonicity claim | 2 / bounded study complete |
 | NR-013 | P2 | Blocked | Pinned REAPER/OS reproduction unavailable; preserve focus behavior | 1 / bounded UX maintenance |
-| NR-014 | P2 | Partial implementation / review | Rotary title correction and State152 on separate branch; native UX/assistive-device audit pending | 1 bounded fix / 3 broader audit |
+| NR-014 | P2 | Partial implementation / review | #204 rotary title correction and State152; native UX/assistive-device audit pending | 1 bounded fix / 3 broader audit |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
 | NR-016 | P2 | Completed | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
 | NR-017 | P2 | Completed | Main-baseline diagnostic inventory/dispositions; alert state unavailable | 2 / engineering debt |
@@ -1304,7 +1305,11 @@ covers metadata, real attachments, delivered keys/modifiers, unrelated parameter
 and editor destruction/reopen. Original 36/924 failures, corrected924/924; full
 local suites 945/11911. [Reproduction and limits](NR014_ROTARY_ACCESSIBILITY.md).
 No new/reworded UI copy, focus policy, DSP/parameter/state contract or rendering
-path is introduced. Broader human UX/assistive-device acceptance remains pending.
+path is introduced. Local strictness10 pluginval modes ×3 completed; deterministic
+pass3 recovered on attempt2 after exit139 during Automatable Parameters under the
+unchanged Linux signal-retry policy. That instance's cause is unattributed;
+[retained logs/limits](NR014_ROTARY_ACCESSIBILITY.md#local-pluginval-outcome-and-unresolved-crash-attribution)
+are not a first-attempt-only pass claim. Broader human UX/assistive-device acceptance remains pending.
 
 - **Evidence/status/confidence:** KI-006/011 fixes exist but specific visual retests remain
   recorded as pending; KI-008/017/018/019/020 describe external/limited behavior. Custom-drawn

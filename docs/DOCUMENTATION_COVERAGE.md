@@ -26,7 +26,11 @@ logs/source hashes/control exits/software observations in its companion director
 Updated TESTING and REPOSITORY_MAP for new tests/control, SOURCE_OF_TRUTH and README
 for the new developer record, plus this self-coverage entry. No new/reworded UI copy,
 parameter/state/DSP/latency/threading/build design, warning suppression, release
-identity or acceptance criterion changes. New PR remains separately merge-gated.
+identity or acceptance criterion changes. New PR #204 remains separately merge-gated. The Unreleased accessibility entry
+cites actual source commit `d49736e9a496cfb83db67804a8439daa55200f26` after auditing
+tagged0.9.9/0.10.0 omission and the published Keep a Changelog1.1 spec. Retained
+pluginval logs disclose the deterministic exit139/retry without attributing its
+cause or changing the established Linux crash-only policy.
 Citation re-anchoring changes only verified source-line anchors where needed.
 Refreshed NR-017 current-main SARIF delta with digest verification:80 source-scoped
 records, historical 257-row CSV preserved, alert-state403 still unavailable. Test

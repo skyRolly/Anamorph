@@ -57,5 +57,26 @@
   "incremental_build_log": {
     "storage": "incremental-build.log.gz",
     "uncompressed_sha256": "6ae02d179a954eb803ae65427c951363c396047c5ceef0f8aef75cb0a3942966"
+  },
+  "pluginval": {
+    "deterministic": {
+      "strictness": 10,
+      "successful_passes": 3,
+      "log": "pluginval-deterministic.log.gz",
+      "uncompressed_sha256": "5c2b1b09d6eab57296e38e59d842889f77c8b48b58bfb19ee9eab98360c35a2a",
+      "retry": {
+        "pass": 3,
+        "first_exit": 139,
+        "successful_attempt": 2,
+        "cause": "unattributed signal-classified local validator crash during Automatable Parameters; existing Linux retry policy unchanged"
+      }
+    },
+    "randomise": {
+      "strictness": 10,
+      "successful_passes": 3,
+      "log": "pluginval-randomise.log.gz",
+      "uncompressed_sha256": "7d66350cfa70153538698b2618eca3148b243c2877128edc556d86d38a334f81",
+      "retry": null
+    }
   }
 }

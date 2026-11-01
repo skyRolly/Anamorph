@@ -2,7 +2,9 @@
 
 ## Decision and source — 2026-11-02 (Asia/Shanghai)
 
-**Confirmed metadata defect; correction implemented on a separate review branch.**
+**Confirmed metadata defect; correction submitted in [PR #204](https://github.com/skyRolly/Anamorph/pull/204).**
+Source/test/evidence commit: `d49736e9a496cfb83db67804a8439daa55200f26`;
+subsequent documentation commits add provenance and exact-head review evidence.
 Integrated main `425539385ebfcd1ca2bab1befe3de37618ce02d2` supplies all 12 rotary
 captions through `PluginEditor::setupRotary` but assigns no accessibility title.
 The omission is also present in tagged 0.9.9/0.10.0 source. Pinned JUCE9.0.4's
@@ -100,12 +102,31 @@ ordinary window flags. Cause is unestablished: this is an unavailable probe surf
 not proof of a product regression, native acceptance or an excuse to suppress X11
 errors. No native assistive-device or host keyboard outcome is marked passed.
 
+## Local pluginval outcome and unresolved crash attribution
+
+The freshly built shipping-Clang VST3 completed strictness10 deterministic ×3 and
+randomise ×3 using the unchanged repository runner. Deterministic pass3's first
+attempt exited139 during “Automatable Parameters”, after Editor Automation; its
+second attempt passed. The other five passes succeeded on first attempts. Retained
+[deterministic log](nr014-rotary-accessibility/pluginval-deterministic.log.gz) and
+[randomised log](nr014-rotary-accessibility/pluginval-randomise.log.gz) preserve
+all output, including the crash and retry; raw digests are in validation.json.
+
+The runner classifies the signal under its existing Linux-only crash policy,
+historically established for pluginval/JUCE XEmbed. This occurrence has no stack,
+so its root cause is **unattributed**, not proved to be that historical flake or
+an introduced product defect. The changed JUCE `Component::setTitle` path is only
+a message-thread String assignment, without an accessibility callback, DSP work
+or new lifetime owner. Preserve the diagnostic and require current-head native
+CI; a signal with a product stack or recurrence outside this class warrants a
+separate investigation. No retry count, timeout, detector or test is changed.
+
 ## Integration, review and continuation
 
 The approved five PRs are integrated on actual main`4255393`; this rotary correction
 is separate branch `fix/nr014-rotary-accessibility-titles` and remains **unmerged**.
-Its review PR/commit and final-head gates are recorded in the execution register
-and PR discussion. New merge authorization and native UX/assistive-device acceptance
+Its [review PR #204](https://github.com/skyRolly/Anamorph/pull/204), source commit
+and final-head gate ledger are recorded in the execution register and PR discussion. New merge authorization and native UX/assistive-device acceptance
 remain outstanding. No 0.10.0 tag/draft/asset/version/release operation is performed.
 
 Keep NR-006/010 representative costs blocked on identified controlled hardware,
