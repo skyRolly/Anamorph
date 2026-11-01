@@ -9,7 +9,9 @@ labelled output remains live even when the 60-minute job cap cancels execution.
 Options, allocation-guard/FTZ instrumentation dispositions and assertions are
 unchanged. `--self-test` requires actual child overlap and catches either/both
 nonzero statuses, missing validators/binaries and lost stderr/completion evidence.
-These controls do not replace real Valgrind or final-head CI. Evidence:
+Warnings/workflow commands must remain at the start of their output line so
+GitHub annotations survive; controls exercise that forwarding as well. These
+controls do not replace real Valgrind or final-head CI. Evidence:
 `worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md`.
 
 ## Completed edit before A/B polling — NR-022 / State test 149

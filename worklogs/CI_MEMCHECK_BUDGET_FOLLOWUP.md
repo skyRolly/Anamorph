@@ -59,6 +59,16 @@ first fails. Missing binaries/validators fail closed. The parent completes only
 after its children; it schedules no check-in or persistent background task.
 The existing sanitizer job invokes it and retains `Anamorph-memcheck-results`.
 
+**Annotation drift found before handoff:** runner v2.338.2's
+[`ActionCommand.TryParseV2`](https://github.com/actions/runner/blob/v2.338.2/src/Runner.Common/ActionCommand.cs)
+requires `::` at the beginning after leading whitespace. Ordinary `[suite]`
+prefixes would hide existing C++ coverage-warning annotations. The wrapper now
+forwards modern/legacy workflow commands unprefixed, and serializes complete
+output lines. Six status/overlap controls also assert raw stderr and both emitted
+warning commands at column0; a prefix-all-commands mutant must fail. The initial
+prefix-only revision is not represented as preserving annotation behavior.
+
+
 ## Validation and remaining work
 
 `python3 scripts/run-memcheck.py --self-test` exercises both-success, DSP-failure,

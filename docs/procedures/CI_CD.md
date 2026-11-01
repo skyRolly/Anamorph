@@ -835,7 +835,9 @@ memcheck work reached the existing sanitizer cap on main and several development
 heads. Main attempt2 even completed both zero-error summaries before GitHub
 recorded cancellation during the finalization boundary. `run-memcheck.py` now
 overlaps those independent processes, streams labelled diagnostics and retains
-raw per-suite logs/argv/exit statuses in `Anamorph-memcheck-results`. Both statuses
+raw per-suite logs/argv/exit statuses in `Anamorph-memcheck-results`. Workflow
+commands remain unprefixed so existing coverage warnings retain their GitHub
+annotations; whole output lines are serialized. Both statuses
 are joined; either failure or an unstartable validator fails the step. The source
 lint and sanitizer step exercise overlap and failure-propagation controls first.
 The 60-minute cap, suite commands/options, build flags and detector/assertion

@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 
 OPTIONS = ["--tool=memcheck", "--track-origins=yes", "--leak-check=no",
            "--error-exitcode=1", "--error-limit=no", "--num-callers=25"]
@@ -16,22 +17,34 @@ OPTIONS = ["--tool=memcheck", "--track-origins=yes", "--leak-check=no",
 
 def run_suites(prefix, binaries, directory):
     directory.mkdir(parents=True, exist_ok=True)
+    output_lock = threading.Lock()
+
+    def emit(message):
+        # One complete line at a time, including GitHub workflow commands.
+        with output_lock:
+            print(message, flush=True)
 
     def run_one(label, binary):
         command = [*prefix, *OPTIONS, str(binary)]
         log_path = directory / f"{label}.log"
         try:
             with log_path.open("wb") as log:
-                print(f"memcheck {label}: {json.dumps(command)}", flush=True)
+                emit(f"memcheck {label}: {json.dumps(command)}")
                 with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
                     for line in child.stdout:
                         log.write(line)
                         log.flush()
-                        print(f"[{label}] {line.decode('utf-8', errors='replace').rstrip()}", flush=True)
+                        text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                        # Runner v2 commands must begin the line after whitespace.
+                        # Prefixing coverage warnings would hide their annotations.
+                        if line.lstrip().startswith((b"::", b"##[")):
+                            emit(text)
+                        else:
+                            emit(f"[{label}] {text}")
                     code = child.wait()
             return {"suite": label, "command": command, "exit_code": code, "log": log_path.name}
         except OSError as error:
-            print(f"::error::memcheck {label} could not run: {error}", flush=True)
+            emit(f"::error::memcheck {label} could not run: {error}")
             return {"suite": label, "command": command, "exit_code": None, "error": str(error)}
 
     # Joining both futures is mandatory even if the first suite fails. The
@@ -64,6 +77,7 @@ deadline=time.monotonic()+5
 while not (root/(other+'.started')).exists():
  if time.monotonic()>deadline:sys.exit(90)
  time.sleep(.01)
+print('::warning::seeded-'+label+'-annotation')
 print('child '+label+' stderr', file=sys.stderr)
 print('child '+label+' finished')
 (root/(label+'.finished')).touch()
@@ -77,16 +91,20 @@ sys.exit(int(right if label=='state' else left))
             case = root / str(index)
             case.mkdir()
             binaries = [("dsp", case / "AnamorphTests"), ("state", case / "AnamorphStateTests")]
-            with contextlib.redirect_stdout(io.StringIO()):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
                 code = run_suites([sys.executable, str(stub), str(left), str(right), str(case)], binaries, case)
             assert code == int(left != 0 or right != 0), (left, right, code)
             report = json.loads((case / "results.json").read_text())
             assert [r["exit_code"] for r in report] == [left, right], report
             for label, _ in binaries:
                 assert (case / (label + ".finished")).exists(), label
-                output = (case / (label + ".log")).read_text()
-                assert "child " + label + " finished" in output
-                assert "child " + label + " stderr" in output
+                raw = (case / (label + ".log")).read_text()
+                assert "child " + label + " finished" in raw
+                assert "child " + label + " stderr" in raw
+                annotation = "::warning::seeded-" + label + "-annotation"
+                assert annotation in raw
+                assert annotation in output.getvalue().splitlines(), output.getvalue()
         # An unstartable validator is an infrastructure failure, never green.
         with contextlib.redirect_stdout(io.StringIO()):
             assert run_suites([str(root / "missing-validator")], binaries, root / "missing") == 1

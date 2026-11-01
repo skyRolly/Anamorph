@@ -8,6 +8,8 @@ still being recorded cancelled. Overlapped the independent DSP/state processes
 with identical detector argv and a joined status for both; retained live labelled
 output, raw per-suite logs and command/status JSON. Six orchestration controls
 cover overlap, either/both failures, missing validator and missing binaries.
+Verified the runner’s starts-with command parser and preserved unprefixed
+coverage-warning annotations with serialized complete output lines and controls.
 Synced CI_CD/TESTING, repository map, source-authority/worklog navigation and the
 forward execution register. No product/CMake/dependency/test expectation, timeout,
 warning baseline, strictness or release/version change; actual final-head CI and
