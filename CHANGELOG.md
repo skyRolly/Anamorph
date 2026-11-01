@@ -24,6 +24,8 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Rotary controls expose accessibility titles matching their visible captions.**
+  Evidence: commit `d49736e9a496cfb83db67804a8439daa55200f26`; PR #204; State test 152. [Verified]
 - **A completed edit remains undoable after switching A/B before the editor's next update.**
   The edit stays in its original slot's history; switching itself adds no Undo step,
   and later host automation remains outside the edit.

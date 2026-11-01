@@ -1,5 +1,53 @@
 # Release readiness — 0.10.0 (draft only)
 
+## Current source/candidate disposition — 2026-11-02 (Asia/Shanghai)
+
+**Publication recommendation: hold the existing draft unchanged.** Owner-approved
+#199–#203 are now integrated on main`425539385ebfcd1ca2bab1befe3de37618ce02d2`.
+That source is distinct from the existing tag/draft. Integration approval is not
+release replacement/publication or an assertion of new native acceptance.
+
+| Candidate | Actual content/evidence | Remaining disposition |
+|---|---|---|
+| Existing 0.10.0 tag/draft source`4c136881f245470577d66a7603f15b177ddcf3dc` | Linux #193 and processor #187; original owner attestations;11 previously built assets | Lacks post-tag NR-022 Undo and NR-006 scope corrections; original plain-storage exposure requires reviewed mitigation/additional validation or explicit owner risk disposition before publication |
+| Integrated main`425539385ebfcd1ca2bab1befe3de37618ce02d2` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, unchanged NR-012 study and parallel/interruption evidence; final-main Build41315639676 and CodeQL/MSVC succeed | Representative native scope/full-engine/GUI costs and owner cost acceptance, targeted native scope/FFT/editor lifecycle acceptance, exact candidate selection and later release gates still pending; no release assets rebuilt |
+| Separate NR-014 review branch | Rotary accessibility titles and bounded component/key/lifetime regression | Unmerged; native UX/assistive-device acceptance and separate PR merge approval pending; absent from integrated main and draft |
+
+**Recommended candidate decision:** select a source containing the integrated
+NR-022/NR-006 corrections after outstanding native acceptance. Current main is the
+verified integration baseline; a future approved NR-014 merge would change that
+source and require its applicable candidate gates. Do not substitute current-main
+CI for the old draft's bytes or silently claim the draft includes these fixes.
+The owner must separately select replacement versus another version and explicitly
+authorize any build/tag/asset/publication operation. No version choice is made here.
+
+**Available current evidence:** every approved merge retains expected parents and
+the validated candidate tree; final main equals reviewed head`ddc4879` exactly.
+[Build41315639676](https://github.com/skyRolly/Anamorph/actions/runs/41315639676)
+completed all 13 selected jobs, with 3 intentional skips (push merge-check and two
+optional native installer-review jobs). Both memcheck suites completed exit0 with
+zero errors in digest-verified artifact13087303676. Local combined suites945/10987,
+legacy/transition dump identity and original/fixed/weakened scope controls pass.
+Optional selections/co-installation remain unexecuted; successful CodeQL is not
+GitHub alert-state clearance (API403 remains unknown). Historical GCC14 ABI
+preflight remains failed; shipping-Clang/current CI does not rewrite that result.
+
+**Acceptance still required:** ADR-0070 representative costs and owner acceptance,
+then targeted native scope/FFT/editor lifecycle and candidate-specific compatibility/
+Level5 acceptance for selected changed surfaces. The integrated implementation's
+Architecture Review and five named merge approvals are cleared, while native cost/
+visual acceptance and TESTING_POLICY final release sign-off are not waived.
+NR-003 remains Deferred by owner decision, without inventing named host outcomes.
+NR-018/019 retain distribution/legal/signing/provisioning boundaries.
+
+**Preserved release identity:** annotated tag`1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
+peels to`4c13688`; draft429760301 remains unpublished with 11 assets from normal
+Release7/run41173229942. No tag, draft body, assets, version metadata or release
+workflow is modified by integration or this continuation. The older sections below
+retain their dates and source scopes; their branch/main pending statements are
+historical, not current instructions. Live item states and merge identities are in
+the [execution register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
 ## NR-006 publication disposition — 2026-11-01 (Asia/Shanghai)
 
 After authorized #195–#198 integration, NR-006's expanded source investigation
@@ -11,8 +59,8 @@ with the formal policy gap needing a reviewed mitigation or explicit human
 architecture/risk disposition; clean tests alone do not legalize it.
 [Accepted ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 is approved for implementation by the owner. Its correction is implemented on
-a separate review branch ([packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai));
-it remains absent from main and this draft. This approval does not authorize publication/replacement or
+main via #202 at`4255393` ([packet §11](NR006_SCOPE_PUBLICATION_REVIEW.md#11-approved-production-implementation--2026-11-01-asiashanghai));
+it remains absent from this draft. This approval does not authorize publication/replacement or
 waive native/performance/manual acceptance. Earlier owner approvals retain their scope.
 No tag, version, draft body or asset is changed. Integrated NR-022 is post-tag
 development and is not retroactively present in these 11 already-built assets.

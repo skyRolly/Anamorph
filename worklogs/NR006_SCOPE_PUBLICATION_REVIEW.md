@@ -1,5 +1,19 @@
 # NR-006 — ScopeBuffer publication review packet
 
+## Integrated production checkpoint — 2026-11-02 (Asia/Shanghai)
+
+Owner-approved #199/#202 merged at `303d37c`/`4255393`; the atomic implementation
+and policy/affinity contracts are now on main. Final-main Build41315639676 and
+CodeQL/MSVC analysis completed successfully; deterministic, concurrent, ordering,
+codegen and repaint controls retain their recorded source/artifact provenance.
+Representative native performance and owner cost acceptance, plus targeted native
+scope/FFT visual/editor-lifecycle acceptance remain pending. They were not claimed
+or waived by integration approval. The original race exposure is corrected on main,
+still present in unchanged 0.10.0 draft source`4c13688`. Sections below describe their
+dated source/review checkpoints; earlier “main/unmerged/integration pending” text
+is historical. Current identities, release hold and next tasks are in the
+[execution register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
 **Recorded:** 2026-10-31 (Asia/Shanghai). **Updated:** 2026-11-01.
 **Current status:** ADR-0070 Accepted by explicit owner implementation approval
 on 2026-11-01; atomic-window correction implemented on its separate development branch;

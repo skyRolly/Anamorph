@@ -1,0 +1,82 @@
+{
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "compiler": "Debian clang version 22.1.8 (1~deb13u4)",
+  "juce_commit": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+  "operating_point": {
+    "sample_rate": 48000,
+    "block": 128,
+    "views": [
+      "Simple",
+      "Advanced",
+      "Simple"
+    ]
+  },
+  "full_suite_logs": {
+    "dsp": {
+      "sha256": "2b540b2c2f5ebb8688afafac508920ca2c8b216954c2918c7e327c7cf5b2ca5b",
+      "summary": [
+        "",
+        "945 checks, 0 failures",
+        "ALL TESTS PASSED"
+      ]
+    },
+    "state": {
+      "sha256": "2c5b30649ea4595a41598f48e7dda1b0687b0c6019a62ae272df98e3c999b749",
+      "summary": [
+        "State test 152: rotary captions and delivered keys survive editor reopen (NR-014)",
+        "",
+        "11911 checks, 0 failure(s)"
+      ]
+    },
+    "focused": {
+      "sha256": "bf31f64737b788bc31fc775b34aecdc855cd68adcf0f999ec89d7982965ded3f",
+      "summary": [
+        "State test 152: rotary captions and delivered keys survive editor reopen (NR-014)",
+        "924 checks, 0 failure(s)"
+      ]
+    }
+  },
+  "software_image_sha256": {
+    "view-0.png": "a41e5c7337345ff323325584008d500836002f5ec590772dcffd969919cd7243",
+    "view-1.png": "948ed3cca75a20d9bbdabbbb397f112a39c29f29bbeaf88a607cb4ebbef92e7a",
+    "view-2.png": "a41e5c7337345ff323325584008d500836002f5ec590772dcffd969919cd7243"
+  },
+  "limitations": [
+    "shared container, not representative performance hardware",
+    "no native peer, screen-reader client, global keyboard traversal or host dispatch acceptance",
+    "separate Xvfb native-peer probe failed with X11 BadAtom before interactions; cause unestablished"
+  ],
+  "preflight": {
+    "exit": 0,
+    "dsp_checks": 945,
+    "state_checks": 11911,
+    "shipping_clang_abi": "passed GLIBC_2.38 GLIBCXX_3.4.31 CXXABI_1.3.14",
+    "warnings": "no new first-party Clang22 sites in incremental build; existing baseline unchanged",
+    "documentation": "185 files clean;606 citation anchors retain original text"
+  },
+  "incremental_build_log": {
+    "storage": "incremental-build.log.gz",
+    "uncompressed_sha256": "6ae02d179a954eb803ae65427c951363c396047c5ceef0f8aef75cb0a3942966"
+  },
+  "pluginval": {
+    "deterministic": {
+      "strictness": 10,
+      "successful_passes": 3,
+      "log": "pluginval-deterministic.log.gz",
+      "uncompressed_sha256": "5c2b1b09d6eab57296e38e59d842889f77c8b48b58bfb19ee9eab98360c35a2a",
+      "retry": {
+        "pass": 3,
+        "first_exit": 139,
+        "successful_attempt": 2,
+        "cause": "unattributed signal-classified local validator crash during Automatable Parameters; existing Linux retry policy unchanged"
+      }
+    },
+    "randomise": {
+      "strictness": 10,
+      "successful_passes": 3,
+      "log": "pluginval-randomise.log.gz",
+      "uncompressed_sha256": "7d66350cfa70153538698b2618eca3148b243c2877128edc556d86d38a334f81",
+      "retry": null
+    }
+  }
+}

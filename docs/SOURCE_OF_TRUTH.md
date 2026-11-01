@@ -49,9 +49,12 @@ is supporting developer evidence, not an approved replacement for the threading 
 [Accepted ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 records the selected design, explicitly approved by the owner on 2026-11-01 for
 implementation subject to native portability/performance/validation gates. Its
-atomic-window implementation updates the live contracts on its development branch;
-main integration, native/performance/manual acceptance and any new PR merge remain
-separate. The unchanged tag/draft retain the original plain-storage exposure.
+atomic-window implementation and live contracts are integrated on main via
+#199 (`303d37c`) and #202 (`4255393`) under separate explicit owner merge approval.
+Current native CI/compile guards and reviewed codegen are complete; representative
+native costs/owner cost acceptance and targeted visual/editor-lifecycle acceptance
+remain pending. New PR merges remain separately gated. The unchanged tag/draft
+retain the original plain-storage exposure.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
 The [NR-011 execution record](../worklogs/NR011_DSP_TRANSITION_COVERAGE.md) supports
@@ -60,7 +63,11 @@ compatibility or authorize the separate NR-006 production architecture.
 
 The [NR-012 alias study](../worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md) and raw
 measurement data are bounded developer evidence, not new DSP quality requirements
-or manual/architecture/release acceptance.
+or manual/architecture/release acceptance. NR-011/#200 and NR-012/#201 are integrated;
+their original measured data, controls and numerical limitations retain their scope.
+The [NR-014 component record](../worklogs/NR014_ROTARY_ACCESSIBILITY.md) and its
+retained controls are supporting developer evidence for rotary metadata and directly
+delivered component keys, not native screen-reader, global focus or host acceptance.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).
