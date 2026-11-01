@@ -10,6 +10,8 @@ suppression; old scheduling fails three new assertions. Updated TESTING, the NR-
 packet and roadmap with retained evidence. This corrects an unreleased branch defect;
 the existing customer scope entry remains accurate. No new architecture, atomic
 ordering, audio path, detector/suppression or release state changed.
+The member-affinity comment explicitly covers both message-thread polling and
+serialized OpenGL paint, because paint now clears the GUI-local pending flag.
 
 ## ADR-0070 live-instruction reconciliation — 2026-11-01
 

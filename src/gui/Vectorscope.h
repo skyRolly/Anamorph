@@ -96,7 +96,7 @@ private:
     int   staticW = 0, staticH = 0;
     float staticScale = 0.0f;
 
-    // Idle repaint gate state (message thread only -- see tick()):
+    // Idle repaint gate state (JUCE callbacks serialized by the message-manager lock):
     std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
     std::uint64_t lastNonZero   = 0; // newest bound on non-zero ring content
     bool frameDirty      = true;     // needs a successful paint; scheduling does not clear it

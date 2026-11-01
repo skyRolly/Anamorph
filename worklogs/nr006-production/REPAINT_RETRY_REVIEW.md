@@ -58,3 +58,8 @@ to #199), tables/links and whitespace checks pass.
 Exact-head native/sanitizer/CodeQL/MSVC CI is tracked in the PR discussion; older
 head successes do not qualify this correction. Headless coverage does not replace
 targeted native visual/editor-lifecycle or representative cost acceptance.
+
+The source/log digest snapshot identifies behavior commit `2b2fc507303b41a9072c02cb9c7507a136a68d2f`.
+A subsequent member-comment clarification names message-manager serialization
+for the dirty flag (poll plus OpenGL paint), matching Accepted ADR-0070. It changes
+no C++ tokens, test expectation or validation result; final-head CI is refreshed.
