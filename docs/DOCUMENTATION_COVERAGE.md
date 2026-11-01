@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Authorized integration reconciliation — 2026-11-01 UTC
+
+Merged approved #203 then #201 with expected heads and verified exact trees.
+Additively reconciled #199 against that main, preserving both research/approval
+and CI/alias-study records in three documentation conflicts. Recorded the new
+five-PR authorization, integration order and binding gate interpretation in the
+forward register. Cost/native visual acceptance remains Pending; no result or
+waiver is invented. Product source, study data, test expectations, detector
+settings and immutable release objects are unchanged by this synchronization.
+
 ## ADR-0070 live-instruction reconciliation — 2026-11-01
 
 Accepted the #199 review finding: the roadmap's next action and NR-006 detail
@@ -46,6 +56,58 @@ closing historical risks or inventing a crash/severity verdict. Native prototype
 portability/performance, production regressions and visual acceptance remain pending;
 synthetic results are not a machine budget. NR-003 stays Deferred; later PR merges
 and release operations remain unauthorized.
+
+## Memcheck cancellation evidence review — 2026-11-01
+
+Accepted #203's timeout-artifact finding. Replaced the cancellation-excluding
+upload predicate with `always()` plus explicit started-step outcomes. The runner
+checkpoints pending/running/completed/interrupted/start-failed statuses atomically,
+preserves raw logs and handles cancellation with bounded child-group cleanup;
+the workflow execs Python for signal delivery. Signal/checkpoint controls retain a
+completed peer while interrupting a live validator; workflow routing checks 15
+cases and three negative predicates. TESTING/CI_CD, the budget evidence and roadmap
+record the hard-runner-loss limitation. Detector argv, suite assertions, 60-minute
+cap, suppressions, product/build/release inputs and merge gates are unchanged.
+
+## NR-012 CI dependency reconciliation — 2026-11-01 UTC
+
+Stacked the existing alias-study branch on unmerged #203 after two exact-source
+sanitizer budget cancellations. The additive merge preserves both reviewed heads;
+three insertion conflicts retain both NR-012 and CI control records. The probe,
+CSV/source metadata, DSP/CMake/test expectations and release inputs are unchanged.
+Updated dependency/current-head references and the forward register; final-head
+CI is required separately from #203's successful real concurrent memcheck. No
+GitHub PR was merged, no shared history rewritten and no gate weakened.
+
+## NR-012 — bounded alias evidence (2026-11-01)
+
+Added nonshipping calibrated high-tone engine probe, Linux/Ninja object-reuse
+runner, 36 repeated raw observations and source/provenance metadata. Two rates,
+two normalized tones, four factors, linear/bypass controls and adjacent periods
+separate measured alias bins from simple wrap/latency engagement. Selected-bin
+power is normalized to actual carrier level; known injected alias and omission
+controls prove calibration. Retain current behavioral assertions: no universal
+dB threshold, monotonic factor rule, DSP/filter fix or production change.
+
+The new worklog/data/tool are indexed in REPOSITORY_MAP, SOURCE_OF_TRUTH, README
+and TESTING. The roadmap records #195–#198 actual integration, NR-011 #200, the
+owner's explicit ADR-0070 implementation approval and remaining native/release
+gates. Existing historical evidence and GCC ABI failure remain unchanged.
+
+## Memcheck scheduling follow-up — 2026-11-01 UTC
+
+Recurring sanitizer cancellations are recorded with actual run/job/source scope,
+including main’s second attempt completing both tests/memcheck summaries while
+still being recorded cancelled. Overlapped the independent DSP/state processes
+with identical detector argv and a joined status for both; retained live labelled
+output, raw per-suite logs and command/status JSON. Six orchestration controls
+cover overlap, either/both failures, missing validator and missing binaries.
+Verified the runner’s starts-with command parser and preserved unprefixed
+coverage-warning annotations with serialized complete output lines and controls.
+Synced CI_CD/TESTING, repository map, source-authority/worklog navigation and the
+forward execution register. No product/CMake/dependency/test expectation, timeout,
+warning baseline, strictness or release/version change; actual final-head CI and
+real Valgrind timing remain required.
 
 ## PR #198 independent inventory review — 2026-11-01 (Asia/Shanghai)
 
@@ -2503,7 +2565,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3778` and `.github/workflows/build.yml:3863`, this round being
+`.github/workflows/build.yml:3795` and `.github/workflows/build.yml:3880`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -2537,7 +2599,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:800` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:803` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the

@@ -667,6 +667,9 @@ jobs:
       - name: pluginval acquisition offline regressions
         run: python3 scripts/test-pluginval-acquisition.py
 
+      - name: Memcheck runner overlap and failure propagation controls
+        run: python3 scripts/run-memcheck.py --self-test
+
       - name: DSP dump parser and comparison regressions (inert text)
         run: python3 scripts/check-dsp-dump.py --self-test
 
@@ -1610,14 +1613,28 @@ jobs:
       # only for this step. Every native job asserts the full check, so the
       # DSP_POLICY invariant is still gated on every push on every platform.
       # `tests/dsp_tests.cpp` carries the reasoning at the variable itself.
+      # The independent processes overlap to fit the existing 60-minute cap.
+      # Both statuses are joined; either test/Valgrind failure fails the step.
       - name: valgrind memcheck (both suites)
+        id: memcheck
         env:
           ANAMORPH_TESTS_NO_FTZ: 1
         run: |
-          VG="valgrind --tool=memcheck --track-origins=yes --leak-check=no
-              --error-exitcode=1 --error-limit=no --num-callers=25"
-          $VG ./build-vg/AnamorphTests_artefacts/Release/AnamorphTests
-          $VG ./build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests
+          python3 scripts/run-memcheck.py --self-test
+          exec python3 scripts/run-memcheck.py --build-dir build-vg --log-dir build/valgrind-logs
+
+      - name: Retain individual memcheck logs and exit statuses
+        # Cancellation/timeout must retain partial evidence while the runner is
+        # still available. An unstarted/skipped memcheck has no logs to upload.
+        if: >-
+          always() &&
+          (steps.memcheck.outcome == 'success' || steps.memcheck.outcome == 'failure' || steps.memcheck.outcome == 'cancelled')
+        timeout-minutes: 5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Anamorph-memcheck-results
+          path: build/valgrind-logs
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
