@@ -847,6 +847,40 @@ validation coverage and the Intel job's validation scope are settled, not open r
 
 ### Job timeouts
 
+**Memcheck scheduling correction — 2026-11-01.** Repeated serial DSP+state
+memcheck work reached the existing sanitizer cap on main and several development
+heads. Main attempt2 even completed both zero-error summaries before GitHub
+recorded cancellation during the finalization boundary. `run-memcheck.py` now
+overlaps those independent processes, streams labelled diagnostics and retains
+raw per-suite logs/argv/exit statuses in `Anamorph-memcheck-results`. Workflow
+commands remain unprefixed so existing coverage warnings retain their GitHub
+annotations; whole output lines are serialized. Both statuses
+are joined; either failure or an unstartable validator fails the step. The source
+lint and sanitizer step exercise overlap and failure-propagation controls first.
+The 60-minute cap, suite commands/options, build flags and detector/assertion
+semantics are unchanged. Final-head real-suite timing is required; see
+`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md` for failed-run evidence and limitations.
+
+**Cancellation evidence correction — 2026-11-01.** The upload now uses `always()`
+and an explicit started-step outcome set (success/failure/cancelled); skipped or
+unstarted memcheck does not attempt an empty upload. `results.json` is atomically
+checkpointed before launch and as each suite starts/finishes, with pending/running/
+completed/interrupted/start-failed states and nullable exit codes. Partial evidence
+never means a suite passed. The real runner is `exec`'d so cancellation reaches
+Python; INT/TERM triggers bounded process-group cleanup and a nonzero runner exit,
+retaining already completed results and flushed raw logs. The artifact action has
+its own five-minute bound; the job limit stays 60 minutes and cancellation grace
+can truncate the upload sooner.
+
+Runner cancellation reevaluates step predicates; `always()` permits this cleanup
+while the runner is available. A server hard kill, lost runner or expired final
+cancellation grace can still prevent upload: an absent artifact remains unavailable
+evidence, not a success. Local signal tests check completed-peer preservation,
+partial statuses/logs, nonzero cancellation and TERM-ignoring child cleanup.
+Workflow routing checks 15 outcome/job-status cases and rejects the former
+cancellation predicate, unconditional empty uploads and implicit-success gating.
+
+
 Every job carries an explicit `timeout-minutes` (10 for the two lint jobs, 30–60 for the build
 jobs). Without one a wedged job runs to **GitHub's 6-hour default** while holding its slot in the
 `concurrency` group, and because `release.yml` reuses this workflow whole, it would hold a release

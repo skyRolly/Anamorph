@@ -23,10 +23,17 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
-PRs #195–#198 were integrated on 2026-11-01 (Asia/Shanghai). The
-[NR-011 execution record](worklogs/NR011_DSP_TRANSITION_COVERAGE.md) describes additive
-transition differential coverage; NR-006's [Proposed ADR review](https://github.com/skyRolly/Anamorph/pull/199)
-remains separate. Post-tag development is not included in the existing draft assets.
+PRs #195–#198 are integrated on main as of 2026-11-01 (Asia/Shanghai).
+The [NR-006 architecture recommendation](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+is Accepted for implementation by the owner; production ScopeBuffer remains unchanged
+at this architecture-record checkpoint.
+Post-tag development is not included in the existing draft assets.
+
+Post-integration research includes the [NR-012 alias study](worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md).
+Its bounded local measurements add no universal quality threshold or release approval.
+
+The [NR-011 execution record](worklogs/NR011_DSP_TRANSITION_COVERAGE.md)
+describes additive transition coverage in the separately approved #200.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.
@@ -163,7 +170,7 @@ The documentation falls into **four classes**, kept deliberately separate:
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
 | **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
 | **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
-| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement/planning records under [`worklogs/`](worklogs/) (including the [ScopeBuffer review packet](worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md), [diagnostic inventory](worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md), [next-release execution register](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md), [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md) and [native icon integration](worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), measurement/planning records under [`worklogs/`](worklogs/) (including the [ScopeBuffer review packet](worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md), [diagnostic inventory](worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md), [CI memcheck budget follow-up](worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md), [next-release execution register](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md), [0.9.10 state/host decisions](worklogs/STATE_HOST_HARDENING_0.9.10.md) and [native icon integration](worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md)), plus [`AGENTS.md`](AGENTS.md) (primary contributor/agent instructions), [`CLAUDE.md`](CLAUDE.md) (Claude-compatible import), and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as

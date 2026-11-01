@@ -66,6 +66,8 @@ Anamorph/
 
 Current ScopeBuffer decision evidence: [`worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md`](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md), supporting roadmap NR-006; no runtime implementation or architecture approval.
 
+Current CI budget evidence: [`worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md`](../worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md), an independent validation-orchestration correction; no product threading change or merge authorization.
+
 Current static-diagnostic evidence: [`worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md`](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) with the source/run-bound CSV; roadmap NR-017 owns progress.
 
 ## `src/` — wrapper + GUI
@@ -143,6 +145,7 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `scripts/pluginval-release.json` | Single ordinary-release authority: exact version/provenance, official assets, lengths and archive/executable SHA-256. |
 | `scripts/acquire-pluginval.py` | Shared standard-library preparation for both wrappers: live digest assertion, bounded official HTTPS, safe private extraction, version/content-specific storage and full cached-tree verification. Never executes downloads. |
 | `scripts/test-pluginval-acquisition.py` | Offline inert ZIP/refusal regressions and real wrapper setup with counting invocation boundaries; source-lint, local preflight and Windows (PowerShell required). |
+| `scripts/run-memcheck.py` | Concurrent independent DSP/state memcheck with unchanged argv, joined exit statuses, live labelled/raw logs and overlap/failure-propagation controls. |
 | `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode + **format** args — `deterministic` \| `randomise` each ×3, `vst3` \| `au`; fixed **nonzero** seed; `ANAMORPH_PLUGINVAL_BUNDLE` overrides discovery for an installed AU; crash-only retry **scoped by `uname -s`** — 3 attempts on Linux for the X11 XEmbed flake, **1 on macOS**, which shares none of that machinery; `classify_pass_exit` + `--self-test` decide what a *crash* is, since macOS traps its own signals and exits 9). |
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3/seed structure; exit code is the sole signal; `--skip-gui-tests` for the GPU-less runner, KI-007). |
 | `scripts/find-windows-vst3.ps1` | Shared Windows pluginval/staging discovery: exactly one bundle with a compiled x86-64 module; ignores JUCE's configure-only icon directories. `-SelfTest` seeds missing, one-built and multiple-built cases. |
@@ -161,6 +164,8 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `tests/ab_undo_tests.h` | State test 149: completed unpolled edits across direct/toggle A/B cycles, independent slot history, same-slot no-op and automation/empty-gesture controls; included in the ordinary state suite. |
 | `worklogs/NR011_DSP_TRANSITION_COVERAGE.md` | Additive five-scenario differential transition suite, instrument/parser negative controls, unchanged legacy output and exact validation limitations. |
 | `scripts/fixtures/dsp-dump/transitions.txt` | Independent inert four-field text fixture; synthetic hashes are parser inputs, not golden audio expectations. |
+| `tests/experiments/nr012_aliasing_study.cpp` + `scripts/run-alias-study.py` | Nonshipping calibrated engine alias study and Linux/Ninja reuse of actual dump-target compile/link commands; no product target change. |
+| `worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md` + `worklogs/nr012-alias-study/` | 36 repeated coherent-tone observations, controls/provenance and retain-current-assertions disposition; no universal quality threshold. |
 | `tests/state_hardening_tests.h` | State tests 142–146 and focused non-finite/F9 probes, included after the existing state fixtures in the same console target. |
 | `worklogs/STATE_HOST_HARDENING_0.9.10.md` | State/host implementation evidence from the original development version, RISK-015 owner decision package, conditional payload bounds and validation limits. |
 | `worklogs/RELEASE_READINESS_0.10.0.md` | Original draft provenance, current P1 decision/diagnostic evidence, required approvals and guarded replacement/recovery plan. |
@@ -176,6 +181,9 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 | `docs/architecture/design-decisions/ADR-0067-finite-processor-parameter-snapshots.md` | Accepted finite processor parameter contract, implemented and validated in PR #187 / 0.10.0. |
 | `docs/architecture/design-decisions/ADR-0068-restore-latency-notification-commit-boundary.md` | Accepted restore/latency callback completion contract, implemented and validated in PR #187 / 0.10.0; distinct lock residual retained. |
 | `docs/architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md` | Accepted corrected 0.10.0 Linux installer/legacy-preservation decision; effective via PR #193. |
+| `docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md` | Accepted NR-006 generation-validated atomic stereo windows and explicit GUI affinity; owner implementation approval recorded, production correction pending. |
+| `tests/experiments/nr006_scope_protocol.cpp` + `tests/experiments/nr006_memory_model.py` | Nonshipping standalone protocol stress/benchmark and bounded memory-model controls; never linked into product targets. |
+| `worklogs/nr006-research/` | Source-digested prototype results, seeded TSan liveness, model controls and seven-repeat synthetic timing/metadata; not native production acceptance. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |

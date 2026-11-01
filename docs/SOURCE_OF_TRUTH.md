@@ -46,11 +46,19 @@ a developer worklog, not a new authority class or architecture approval.
 Historical ADR-0065 and prior release approval/evidence records remain dated history.
 The NR-006 [ScopeBuffer review packet](../worklogs/NR006_SCOPE_PUBLICATION_REVIEW.md)
 is supporting developer evidence, not an approved replacement for the threading policies.
+[Accepted ADR-0070](architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+records the selected design, explicitly approved by the owner on 2026-11-01 for
+implementation subject to native portability/performance/validation gates. Its
+production implementation/effectivity and any new PR merge remain separate.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
 The [NR-011 execution record](../worklogs/NR011_DSP_TRANSITION_COVERAGE.md) supports
 the additive transition instrument; it does not expand cross-platform numerical
 compatibility or authorize the separate NR-006 production architecture.
+
+The [NR-012 alias study](../worklogs/NR012_OVERSAMPLING_ALIAS_STUDY.md) and raw
+measurement data are bounded developer evidence, not new DSP quality requirements
+or manual/architecture/release acceptance.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).
@@ -61,6 +69,11 @@ Accepted on the owner's explicit 2026-10-30 approval and effective on main via P
 owner-attested separately. The new unpublished draft and archived original identities are recorded there. The worklog does not replace binding policies.
 
 `AGENTS.md` is the primary root-level contributor/agent guide and belongs to the developer documentation class. It points readers to binding policies and does not override the authority order above. `CLAUDE.md` is retained as a Claude-compatible import of `AGENTS.md`; it is a compatibility pointer, not a separate source of rules.
+
+The [memcheck budget follow-up](../worklogs/CI_MEMCHECK_BUDGET_FOLLOWUP.md)
+is supporting developer evidence for CI orchestration and actual job outcomes.
+Its parallel-process correction does not change the product thread model,
+accept source-level races or confer merge/release approval.
 
 ## Scope: the other three documentation classes
 

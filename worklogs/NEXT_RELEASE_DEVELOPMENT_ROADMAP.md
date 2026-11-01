@@ -1,6 +1,150 @@
 # Next release investigation and development roadmap
 
-**Investigated:** 2026-10-31 UTC. **Original investigation status:** reviewed/merged as PR #194. **Current status:** owner-authorized #195–#198 integrated; NR-006 ADR-0070 owner-Accepted in #199, implementation #202 unmerged; independent NR-011 transition batch implemented for review.
+## Approved integration and continuation — 2026-11-01 UTC
+
+**Current authorization:** the owner manually reviewed and explicitly authorized
+integration of #199, #200, #201, #202 and #203, followed by independent roadmap
+work. This supersedes the dated pending-merge instructions below. Future PR merges,
+version changes and all 0.10.0 tag/draft/asset/publication operations remain
+unauthorized. NR-003 stays Deferred. The older checkpoints retain their source/date
+scope and are historical evidence, not live instructions.
+
+**Actual integration so far:** #203 merged as
+`9217fbbff36bcc3ba0c0617aea1525038cd93368`, then #201 as
+`7c007e7c4f41a0663ea2af2274e784d4d5b9efa1`. Each merge uses the expected approved
+head, retains both parents and exactly equals that head's tree. Retargeting #201
+to main changed no source/tree or validation scope. Main is now `7c007e7`.
+All five original heads passed all selected current-head CI before integration;
+newly synchronized heads will receive their own checks. No test/diagnostic gate,
+Valgrind option, pluginval strictness or timeout was weakened.
+
+**Order adjustment:** land the already validated #203→#201 chain first. Reconcile
+#199 against that main; then use a temporary integration dependency #199→#200→#202
+so each independently reviewable diff excludes its already approved parents and
+its exact candidate can be validated concurrently. Retarget each child to actual
+main after its parent lands. This is integration sequencing, not a new product
+architecture dependency. Original reviewed commits and raw evidence remain intact.
+
+**NR-006 gate interpretation:** Architecture Review is cleared and the owner has
+now separately reviewed/approved implementation integration. Accepted ADR-0070
+keeps integration and cost/visual acceptance distinct; TESTING_POLICY's Level 5 is
+required for final sign-off in its hard release gate, not a stated pre-merge
+requirement. No binding text explicitly makes those remaining measurements a
+pre-merge prerequisite. Integration therefore proceeds under the new authorization,
+with representative native costs/owner cost acceptance and targeted native
+scope/FFT visual/editor-lifecycle acceptance still **Pending**, never passed or
+waived. Existing native compile guards/codegen, deterministic/mutation/stress,
+TSan/RTSan/full-suite/pluginval evidence is preserved. The unchanged draft retains
+the old mechanism until a separately authorized release decision.
+
+NR-012 is **Completed / integrated investigation**: 36 retained observations,
+calibration/repeats and limitations support retaining current behavioral assertions;
+no universal alias dB/monotonic-factor guarantee or production DSP fix is justified.
+NR-011 is implemented in approved #200 and awaits actual integration; preserve its
+57 action controls, five compiled mutants and legacy/schema contracts.
+After integration, reassess executable NR-014/015 coverage and NR-021 release
+readiness while recording the NR-006/010 hardware, NR-013 pinned-host and
+NR-018/019 owner/provisioning limitations. Do not stop solely on those blockers.
+
+**Investigation checkpoint:** 2026-10-31 UTC; PR #194 merged. **Historical checkpoint status:** #195–#198 integrated with explicit owner authorization; NR-006 ADR-0070 explicitly approved for implementation; native/performance/validation gates remain. NR-011 #200 and NR-012 #201 independently submitted.
+
+## NR-012 parent synchronization — 2026-11-01 (Asia/Shanghai)
+
+Inherited #203 cancellation-evidence correction `a70ba452adea0af8e5209b851ec359f0ade6b9b7`
+by additive merge, preserving the prior `c7225be` study head and both histories.
+Dependency remains **main ← #203 ← #201**. Alias probe/script/raw data and source
+metadata are byte-identical to `c7225be`; no result was regenerated or reclassified.
+The earlier successful #201 run41265770494 qualifies that historical head only;
+this merge needs fresh CI, recorded in the #201 ledger. Local supervisor, routing,
+docs/citations and whitespace checks cover the inherited repair. No PR merge,
+auto-merge, release operation or additional roadmap batch is authorized.
+
+## #203 cancellation-evidence review — 2026-11-01 (Asia/Shanghai)
+
+Accepted the reported missing-timeout-artifact finding. The old `!cancelled()`
+predicate excluded the very incomplete runs needing evidence. The upload now
+uses `always()` with explicit started-step outcomes. The runner atomically
+checkpoints partial statuses/logs, preserves completed results and terminates/
+joins its child groups on INT/TERM with bounded escalation. Cancellation is
+nonzero, never a fabricated pass. `exec` delivers signals to Python. The upload has its own five-minute bound; the sanitizer job cap remains
+60 minutes. Server cancellation grace may truncate retention sooner. Hard runner loss
+or final forced termination can still prevent upload and remains unavailable
+rather than passing evidence.
+
+Local controls cover both suite statuses, real overlap, missing inputs, annotation
+forwarding, two signal interruptions/partial journals and child cleanup. Four
+wrapper mutants (ignored state result, prefixed annotations, late journal and
+serial execution) are rejected; routing checks 15 cases plus three negative
+predicates against the actual workflow. See the [budget evidence](CI_MEMCHECK_BUDGET_FOLLOWUP.md).
+The prior successful `2c242e5` matrix/memcheck qualifies only that historical head;
+corrected-head CI/artifacts are tracked in #203’s discussion. Product/test/build
+inputs, detector options and release state are unchanged. Dependency order remains
+main ← #203 ← #201; this branch has inherited the additive synchronization.
+
+## Historical NR-012 validation dependency — 2026-11-01 UTC
+
+PR [#201](https://github.com/skyRolly/Anamorph/pull/201) now depends on the
+unmerged CI correction [#203](https://github.com/skyRolly/Anamorph/pull/203),
+head `2c242e5537636b3c4a0a444030787693bdd8fd1a`. Its original independent-main
+head `2d56eac297300a5ac65ad62efd4d17b40ff65055` hit the unchanged 60-minute
+sanitizer limit twice. This is a verified validation dependency: the correction
+joins the independent suite processes concurrently with identical detector argv,
+assertions, warning annotations and job cap. It does not modify the alias probe,
+raw 36-row results, DSP/CMake/version inputs or their recorded provenance.
+The additive branch merge retains both reviewed parent heads; three documentation
+insertion conflicts retain both records. No shared history was rewritten.
+
+#203's complete exact-head matrix, PR merge-check, CodeQL and dependency review
+pass. Real memcheck artifact `13065128972` records both child exits/error summaries
+zero; memcheck28m06s, sanitizer job36m11s. That evidence is **not** #201's new gate:
+fresh final-head CI is required, tracked in the
+[#201 ledger](https://github.com/skyRolly/Anamorph/pull/201#issuecomment-6549206340).
+Previous cancelled runs remain cancelled. This is not a third unchanged retry or
+a timeout/detector/expectation relaxation.
+
+Actual main remains `00de8c7`, after authorized #195→#196→#197→#198 merges.
+New dependencies are **main ← #203 ← #201**, **main ← #199 ← #202**;
+#200 independently targets main. NR-006's current implementation head is
+`89d2d8f32a14a83b756197a1808cbb995aefddaf`: native codegen verified for reviewed
+configurations, test-only memcheck pacing repaired, final-head CI running,
+representative cost and native visual/lifecycle acceptance still open. #199 and
+#200 complete exact-head gates pass. Their current source/validation details are
+in the [#202 ledger](https://github.com/skyRolly/Anamorph/pull/202#issuecomment-6549093755)
+and the [master handoff](https://github.com/skyRolly/Anamorph/pull/198#issuecomment-6546761558).
+
+All five new PRs remain open and unmerged; no auto-merge or release operation is
+authorized. NR-003 remains Deferred; NR-010 needs controlled hardware, NR-013 a
+pinned REAPER reproducer, NR-018/019 owner/legal/provisioning decisions. The prior
+GCC14 shipping ABI preflight remains failed and alert-state API still returns403.
+The unchanged 0.10.0 draft/tag/11 assets/version require a separate release
+decision; NR-006 mitigation/risk disposition remains necessary before publication.
+Older checkpoints below retain their source/date scope, including the initial
+independent-main alias study and pre-implementation NR-006 status.
+
+## CI budget follow-up — 2026-11-01 UTC
+
+Actual main remains `00de8c7796f37d08a338256e01830bb312ba105c` after the
+owner-authorized #195→#196→#197→#198 integration. The new PRs remain unmerged:
+#199 records owner-Accepted ADR-0070, #202 implements it (current reviewed source
+2b2fc50; final-head CI pending), and independent #200/#201 cover NR-011/NR-012. Their full execution
+record and stable exact-head ledger are in #202; the older snapshots below
+retain their dated historical scope. Architecture approval does not grant
+new merges, representative performance/visual acceptance or release permission.
+
+[CI_MEMCHECK_BUDGET_FOLLOWUP.md](CI_MEMCHECK_BUDGET_FOLLOWUP.md) records main’s
+repeated 60-minute sanitizer cancellations. The second attempt completed both
+zero-failure suites and zero-error memcheck summaries but is still recorded
+cancelled. Source-identical #199/#200 retries succeeded; #201 and NR-006’s
+native-repaired #202 also exhausted the serial budget. The bounded correction
+on branch `ci/parallel-memcheck-suites` overlaps only the independent memcheck
+processes and joins both statuses. Commands/options, 60-minute cap, assertions,
+strictness and product/build/release inputs stay unchanged. Local orchestration
+controls pass; final-head real CI timing/status must be refreshed in its PR.
+No merge is authorized. NR-003 remains Deferred, NR-006 performance/manual
+acceptance stays open, and prior GCC shipping-ABI failure/403 alert-state limits
+retain their exact scope.
+
+**Investigation checkpoint:** 2026-10-31 UTC; PR #194 merged. **Historical checkpoint status:** #195–#198 integrated; #199–#203 open; ADR-0070 owner-Accepted, separate new merge authorization required.
 **Repository:** `skyRolly/Anamorph`. **Baseline:** `main` at
 `4c136881f245470577d66a7603f15b177ddcf3dc` (PR #193).
 **Original investigation scope:** documentation, read-only inspection and existing checkers;
@@ -14,7 +158,166 @@ That readiness worklog remains the release execution/history record; the
 historical finding register. Update the NR IDs here as subsequent assignments execute.
 Worklogs do not override [source authority](../docs/SOURCE_OF_TRUTH.md), policies or Accepted ADRs.
 
-## #200 action-control review correction — 2026-11-01 (Asia/Shanghai)
+## Historical authorization and architecture selection — 2026-11-01 (Asia/Shanghai)
+
+**Subsequent owner architecture decision:** the owner explicitly replied
+“Approve ADR-0070 for implementation” to PR #199's architecture question,
+subject to its native portability/performance/validation gates. ADR-0070 is now
+Accepted; production implementation/validation follow in a separate focused PR.
+This is not authorization to merge #199 or a later PR, or operate on a release.
+Independent NR-011 [#200](https://github.com/skyRolly/Anamorph/pull/200) and bounded
+NR-012 [#201](https://github.com/skyRolly/Anamorph/pull/201) are submitted from main,
+with their own validation/review requirements. NR-012 now depends on the independent
+memcheck scheduling repair [#203](https://github.com/skyRolly/Anamorph/pull/203).
+The approved NR-006 implementation is submitted separately as
+[#202](https://github.com/skyRolly/Anamorph/pull/202), based on #199. No new PR is merged.
+
+The owner's new pasted assignment explicitly authorizes merging **#195, #196, #197,
+#198**, then NR-006 investigation/technical selection and independent roadmap work.
+It does **not** approve a new threading design, later PR merges or release operations.
+This section supersedes the earlier pending-merge checkpoints below without rewriting
+their historical evidence. NR-003 remains Deferred.
+
+### Actual integration
+
+Refreshed heads, full conversations, reviews, threads, push/PR workflows and
+repository merge state before integration. No new reviews or inline threads were
+returned. Each exact approved head's mandatory push matrix and PR merge-check
+completed successfully; optional review-job and duplicate PR matrix skips were
+kept distinct. #195 dependency review and #196 exact-source CodeQL/MSVC also
+succeeded. Main branch metadata reported `protected:false`/checks off and rulesets
+`[]`; the administrative protection endpoint still returned 403. Merge endpoints
+reported CLEAN/MERGEABLE, with no required review decision outstanding. No gate was
+changed or bypassed.
+
+| PR | Reviewed head | Actual merge commit | Exact-head Build push / PR run |
+|---|---|---|---|
+| [#195](https://github.com/skyRolly/Anamorph/pull/195) | `e038f23f8912a8ee591b04bec8062c493ad42052` | `3df74eab68de85cc3db897b551da7333d9868d3d` | [41224491946](https://github.com/skyRolly/Anamorph/actions/runs/41224491946) / [41224494636](https://github.com/skyRolly/Anamorph/actions/runs/41224494636) |
+| [#196](https://github.com/skyRolly/Anamorph/pull/196) | `31ae5366eecf60e783e86051b4403df08186288c` | `49958aed942a2e5eefb602e151d4d8c2ac461c41` | [41224607380](https://github.com/skyRolly/Anamorph/actions/runs/41224607380) / [41224612982](https://github.com/skyRolly/Anamorph/actions/runs/41224612982) |
+| [#197](https://github.com/skyRolly/Anamorph/pull/197) | `b63dd65f418caab8146b7b441390f45f21fc278a` | `e426cc2f79e3416591ac153c053020d79972b8f6` | [41227858250](https://github.com/skyRolly/Anamorph/actions/runs/41227858250) / [41227862824](https://github.com/skyRolly/Anamorph/actions/runs/41227862824) |
+| [#198](https://github.com/skyRolly/Anamorph/pull/198) | `42ebbbc6bce5f68f60d93942f894a63b022f4f39` | `00de8c7796f37d08a338256e01830bb312ba105c` | [41227975494](https://github.com/skyRolly/Anamorph/actions/runs/41227975494) / [41227979254](https://github.com/skyRolly/Anamorph/actions/runs/41227979254) |
+
+Merged sequentially using merge commits and expected-head leases. After each
+merge, fetched actual main, checked both parents and exact tree equality with
+that PR's reviewed head. Retargeted only the next PR to main; its computed merge
+tree equaled its already validated head. No shared history rewrite, conflict,
+source correction or duplicate patch application. All four reviewed heads are
+ancestors of final main **`00de8c7`**, whose tree exactly equals final #198 `42ebbbc`.
+All four are now closed/merged, not merely ready for review.
+
+Fresh integrated local checks: docs self-test **700** / **179** files; citation
+self-test **276** / **610** anchors against pre-stack main; whitespace/ancestry/tree
+checks; full `MALLOC_PERTURB_=1` suites **945 DSP / 10,953 state**, zero failures.
+The prior GCC14 shipping ABI failure at CXXABI_1.3.15 > 1.3.14 remains a historical
+failed preflight, not repaired by Clang or by integration. Existing invalid-escape
+Python checker warnings remain. Final-main CI is reported separately from head CI.
+Final-main Build [41231806213](https://github.com/skyRolly/Anamorph/actions/runs/41231806213)
+was in progress at the proposal checkpoint: macOS ARM/Intel, sanitizers, Windows
+and Linux still running; other executed jobs succeeded. This is not a final-main
+pass claim. Proposal-local checks additionally cover 180 documentation files,
+610 citation anchors, 742 table rows, new relative links/headings, source/artifact
+digests and unchanged production/release inputs.
+
+### NR-006 selection and changed priority
+
+**Priority decision:** promote NR-006's investigation to **P1 / first architecture
+batch**, as explicitly requested, because the cross-thread payload violation is
+confirmed at source level. This does not establish a supported-host crash or
+automatically declare a release-blocking runtime defect. The old NR-011-first
+ordering below is historical; NR-011 becomes the independent implementation lane
+after the architecture proposal was ready. Architecture approval has since been
+granted; NR-011 is submitted as #200 and does not depend on integrating NR-006.
+
+The [expanded research packet](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation)
+reconstructs writer/readers, JUCE OpenGL locking, count/payload ordering, wrap,
+oversized pushes and editor/prepare/reset lifetimes. Independent comparison of
+atomic samples, packed pairs, owned snapshots, tagged atomics and bounded queue/
+seqlock/reclamation variants selects **generation-validated atomic stereo windows**.
+[ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+is now **Accepted** by the owner's explicit 2026-11-01 implementation approval.
+Its complete protocol accepts only exact committed
+positions or rejects once, never waits/retries, retains last accepted display,
+and preserves serialized JUCE OpenGL reads in the approved implementation. The
+affinity amendment applies to that atomic implementation; it grants no exception
+to the old plain shared access still on main while #202 is unmerged.
+
+Nonshipping research provides deterministic weaker-contract and order-weakening
+controls, concurrent two-reader tagged / one-reader owned stress, Clang22/GCC14
+compile guards, bit-preservation controls, and active-canary TSan. Seven-repeat
+serial benchmark artifacts/metadata are retained in `nr006-research/`; native
+Mac/Windows/ARM performance/guards and representative production costs remain
+pending. No production threading edits or new implementation acceptance claimed.
+Actual ScopeBuffer blob remains `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`.
+
+### Release and next actions
+
+For unchanged 0.10.0, NR-006 disposition is **requires mitigation or additional
+validation before publication**, with a reviewed mitigation or explicit human
+architecture/risk disposition required for the source-level policy gap. More clean
+runs alone do not legalize it. No field failure rate/crash is established. Existing
+tag `1190e455` → `4c13688`, draft 429760301, 11 assets and version stay unchanged;
+post-tag NR-022 is not in those assets. Prior owner manual/ADR attestations keep
+their original scope. Publication/replacement remains separately unauthorized.
+
+**Next:** complete review corrections and final-head verification for #199–#203.
+ADR-0070's architecture selection is Accepted; do not request that decision again.
+#202 still needs its native/performance/validation and targeted visual acceptance
+gates, including representative cost evidence. #200 contains the bounded NR-011
+transition batch; #201 contains the independent NR-012 study and depends on #203.
+No later PR may be merged without separate owner authorization. NR-010 needs
+controlled identified hardware; NR-013 a pinned REAPER reproducer; NR-018/019
+owner/legal/provisioning decisions. NR-004/005/007 recurrence dispositions and
+NR-017's unknown GitHub alert state remain unchanged.
+
+### Approval-status review correction — 2026-11-01 (Asia/Shanghai)
+
+Accepted the #199 finding at the former next-action line: the live instructions
+contradicted the recorded owner acceptance. Reconciled this section, the NR-006
+register/detail and open-decision list with Accepted ADR-0070. Architecture selection
+is complete; implementation review, native/cost/visual gates and separate merge
+authorization remain. Dated pre-acceptance checkpoints below retain their evidence
+and are historical, not current instructions. The #199 discussion records the
+correction commit and its exact-head validation.
+Local checks: documentation self-test 700 cases / 180 files, citation self-test
+276 cases / 610 anchors against main, Markdown tables/relative links and whitespace
+clean. Earlier #199 CI qualifies `89694f2` only; corrected-head CI must be refreshed.
+
+## Initial independent alias study / architecture approval — 2026-11-01 (Asia/Shanghai)
+
+The owner authorized and the agent integrated #195 → #196 → #197 → #198 using
+merge commits `3df74ea` → `49958ae` → `e426cc2` → `00de8c7`; final main exactly
+equals reviewed #198 and retains all four heads. Prior pending-merge snapshots
+below are historical. New main CI and future PR checks are separate evidence.
+
+The NR-006 architecture investigation/recommendation is [PR #199](https://github.com/skyRolly/Anamorph/pull/199).
+The owner explicitly answered **“Approve ADR-0070 for implementation”**, subject to
+its native portability/performance/validation gates. Record human acceptance in
+that ADR, then implement the selected generation-validated atomic stereo protocol
+in a focused PR. This approves the architecture, not a new PR merge or release.
+Production ScopeBuffer remains unchanged at this measurement checkpoint.
+
+Independent NR-011 is submitted as [PR #200](https://github.com/skyRolly/Anamorph/pull/200),
+head `104f60eb2ee246babba739e989f320d1811f73dd`; five transition cases and separate
+latency traces preserve default 32-row behavior. Native final-head CI remains a
+distinct gate. This NR-012 branch is independently based on verified main `00de8c7`.
+
+[NR-012 measurements](NR012_OVERSAMPLING_ALIAS_STUDY.md) now cover actual Drive
+through Off/2×/4×/8× with coherent high tones, calibrated folded-bin analysis,
+linear/bypass controls, two rates and repeated captures. All 36 observations
+repeat exactly locally; no universal alias dB or monotonic-factor assertion is
+justified. **Disposition: retain existing behavioral assertions; no DSP fix**.
+The new research utility reuses existing built engine/JUCE objects without changing
+the build architecture. No production, parameter, latency or release edit.
+
+NR-003 remains Deferred. NR-010 needs controlled identified hardware; NR-013 a
+pinned reproducer (a fresh REAPER issue search returned none). NR-004/005/007 retain
+recurrence triggers; NR-018/019 owner/legal/provisioning gates remain. NR-017 alert
+state is still unavailable, not inferred fixed. The historical GCC14 ABI preflight
+failure remains failed. Existing 0.10.0 tag/draft/11 assets/version are untouched;
+post-tag NR-022 and new test work are not in those assets. NR-006's publication
+mitigation/risk review remains separate from the implementation approval.
+
+## Historical #200 action-control review correction — 2026-11-01 (Asia/Shanghai)
 
 Accepted the reported aggregate-oracle finding: comparing the complete action
 schedule with an inert projection does not prove each action matters. Added 57
@@ -39,7 +342,7 @@ is already Accepted; its representative cost/native visual/implementation gates
 remain. GCC14 ABI failure, code-scanning alert-state 403 and unchanged 0.10.0
 release objects retain their limitations. No new batch or merge is authorized.
 
-## Authorized integration / independent NR-011 batch — 2026-11-01 (Asia/Shanghai)
+## Historical authorization / independent NR-011 batch — 2026-11-01 (Asia/Shanghai)
 
 The owner explicitly authorized merging #195–#198 and continuing NR-006 research
 and independent roadmap work. The four are **Merged / Integrated**, in order:
@@ -574,13 +877,13 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Accepted architecture / implementation in review | ADR-0070 owner-approved in #199; #202 unmerged; representative cost/native visual/implementation gates remain | 1 / first architecture batch |
+| NR-006 | P1 | Accepted / integration authorized | #199/#202 synchronization pending; representative cost and native visual/lifecycle acceptance remain open | 1 / accepted implementation |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
 | NR-010 | P2 | Pending | CPU/peak/memory budget — measure | 2 / engineering baseline |
-| NR-011 | P2 | Implemented / Ready for Review | Five additive differential transition scenarios, controls and CI comparison; final-head validation/review separate | 2 / independent test batch |
-| NR-012 | P3 | Pending | Oversampling alias reduction — measure before adding assertions | 2 / optional DSP study |
+| NR-011 | P2 | Implemented / integration approved | #200 synchronized on #199 for exact-candidate CI; 57 action controls and all legacy/schema gates retained | 2 / approved integration |
+| NR-012 | P3 | Completed / integrated | #201 merged at `7c007e7`; retain behavioral assertions, no universal quality/monotonicity claim | 2 / bounded study complete |
 | NR-013 | P2 | Pending | REAPER preset-focus report — reproduce before fixing | 1 / bounded UX maintenance |
 | NR-014 | P3 | Pending | Visual/keyboard/accessibility audit — validate/polish | 3 / product evaluation |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
@@ -671,31 +974,33 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
   coherence across repeated restore cycles, State 27/148 and TSan. **Human architecture review
   before threading/ordering changes; host test for demonstrated exposure.** Conditional maintenance.
 
-### NR-006 — Validate the approved overwrite correction
+### NR-006 — Validate the approved ScopeBuffer overwrite correction
 
-**Accepted architecture; implementation in review.** The owner approved ADR-0070
-in #199; its generation-validated atomic stereo implementation #202 remains
-unmerged with representative cost/native visual/implementation acceptance gates.
-Main and this independent branch retain the original mechanism. The
-[original packet](NR006_SCOPE_PUBLICATION_REVIEW.md) preserves historical evidence,
-not a new request for the already granted architecture-selection decision.
+**Accepted architecture; implementation in review:** [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md),
+with [research evidence](NR006_SCOPE_PUBLICATION_REVIEW.md#6-post-integration-investigation).
+The owner explicitly approved generation-validated atomic stereo windows for
+implementation. #202 implements the selected contract on #199; both remain unmerged.
+Main retains the original mechanism until approved #202 is actually merged.
+Native verification, representative cost evidence and targeted visual acceptance
+are implementation gates, not a pending architecture-selection decision.
 
 
 - **Evidence/status/confidence:** Verified source-level issue: R7_PRODUCTION_PATH_COVERAGE §E and
   `dsp/ScopeBuffer.h::pushBlock/readLatest`. Release/acquire publishes prior writes; it does not
-  order a reader against the producer's next lap over plain float arrays. Current THREAD_MODEL
+  order a reader against the producer's next lap over plain float arrays. Main's THREAD_MODEL
   descriptions overstate that boundary. This is independent of single-threaded Rosetta Test 61.
 - **Impact/risk:** display-only torn scope/FFT windows under a lapped reader; formally a C++ data
   race. No audio corruption/crash or field frequency is established. Calling aligned access
   “benign” is not a language-level race-freedom proof. TSan silence with memcpy is not closure.
-- **Approach/order:** validate #202 against Accepted ADR-0070 without altering
-  this independent branch’s production threading. Design approval does not correct
-  main/the release or authorize integration; no repeated selection request is needed.
+- **Approach/order:** validate #202 against Accepted ADR-0070: bounded tagged atomic
+  stereo storage, exact committed positions or one rejection, no audio locks,
+  allocations or unbounded retries. Preserve the documented old-main risk until
+  integration; acceptance of the design alone does not correct main or the release.
 - **Acceptance/tests:** explicit selected contract; if corrected, a deterministic lapped-reader
   schedule/negative control, buffer-wrap/newest-frame tests, suitable race instrumentation and
-  audio allocation/performance checks. **Architecture selection approved; representative costs, targeted native
-  visual audition and implementation review remain required.** A change outside
-  Accepted ADR-0070 requires a new architecture decision.
+  audio allocation/performance checks. **Architecture selection is approved; targeted
+  visual audition, representative performance and implementation review remain required.**
+  A protocol/threading change outside ADR-0070 requires a new architecture decision.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 
@@ -783,6 +1088,11 @@ local same-configuration results; new PR merge permission is still required.
   no frozen golden waveform and no cross-architecture bit-identity target.
 
 ### NR-012 — Measure the oversampling quality claim
+
+**2026-11-01 result:** [bounded study](NR012_OVERSAMPLING_ALIAS_STUDY.md) measured
+36 calibrated/repeated local cells. Retain behavioral coverage; do not invent
+a universal quality threshold or monotonic factor assertion. No DSP fix justified.
+Native/broader-grid interpretation remains separate from these local observations.
 
 - **Evidence/status/confidence:** Verified coverage distinction in R7 §H: latency/wrap-running
   tests do not measure alias reduction. An aliasing defect is **Unverified**.
@@ -962,7 +1272,12 @@ This baseline does not substitute for new NR-022 branch CI. Original scope/accep
 
 ### NR-022 — Preserve completed Undo across a direct A/B switch
 
-- **Ready for Review / Verified:** reproduced against current unchanged processor code
+- **Merged / Integrated — 2026-11-01:** #196 merged at `49958ae`; final stack main
+  `00de8c7` contains implementation, regression and documentation. Exact-head mandatory
+  native/sanitizer/RTSan/TSan/LTO, CodeQL/MSVC and PR checks succeeded. Fresh integrated
+  local suites pass 945 DSP / 10,953 state. Historical reproduction below was against
+  the pre-fix processor, not current main.
+- **Original reproduction / Verified:** reproduced against the then-unchanged processor code
   (`f64f9d1`, runtime equal to `4c13688`). A completed gesture followed by A→B→A before a
   coalescer poll retains the sound but loses its Undo step. State test 149 fails **10/126**;
   the matching polled controls pass. The earlier global-review candidate is confirmed.
@@ -978,9 +1293,9 @@ This baseline does not substitute for new NR-022 branch CI. Original scope/accep
   checks under `MALLOC_PERTURB_=1`; locked Linux VST3 pluginval strictness 10, deterministic
   and randomise ×3, all first attempts. Controls cover repeated cycles, relative/absolute
   switches, exact step counts, separate B history, later host writes, same-slot and empty edits.
-- **Remaining validation/review:** required native CI/sanitizer/RTSan/TSan/LTO gates and human
-  PR review. Local container uses GCC 14.2.0 Release, not the pinned shipping Clang; its ABI
-  floor result must not be waived. Source citations and four historical target declarations
+- **Validation distinction:** the first local container used GCC 14.2.0 Release; its failed ABI
+  preflight was not waived. Later fresh shipping-Clang checks and mandatory native CI
+  passed, as recorded above; neither repairs that historical GCC result. Source citations and four historical target declarations
   are re-anchored with unchanged expected tokens/checker behavior. No version bump/release
   change; this is Unreleased maintenance work, not part of the existing 0.10.0 draft.
 
@@ -1138,9 +1453,9 @@ No candidate was installed on a live workstation. No defect ownership is inferre
 location, TSan silence, runner success or a diagnostic timeout.
 
 NR-001/002 are now closed by explicit owner confirmation. The named host scope/matrix (NR-003)
-is Deferred. NR-006’s contract is owner-Accepted in #199; implementation #202
-still requires representative cost/native visual/implementation acceptance and
-merge authorization. Remaining decisions include
+is Deferred. NR-006's publication contract is Accepted; #202 integration is now
+explicitly approved, with representative cost/native visual acceptance still open.
+Remaining decisions include
 additional parser restrictions/coherent multiband model only if selected (NR-008/009), and public/
 commercial/signing/product choices (NR-018/019/020). A current supported-host failure would change
 priorities immediately; none was established by this assignment. The only ongoing API access limit

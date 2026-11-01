@@ -1,5 +1,122 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-011 integration synchronization — 2026-11-01 UTC
+
+Additively inherited the synchronized #199 candidate and actual #203/#201 main.
+Five documentation conflicts preserve the NR-011 instrument and architecture/
+CI/study records; moved workflow citations are re-anchored. No DSP dump/parser/
+fixture, production source, raw study evidence or acceptance expectation changes.
+Temporary PR ancestry isolates each approved diff while exact candidates run CI.
+
+## Authorized integration reconciliation — 2026-11-01 UTC
+
+Merged approved #203 then #201 with expected heads and verified exact trees.
+Additively reconciled #199 against that main, preserving both research/approval
+and CI/alias-study records in three documentation conflicts. Recorded the new
+five-PR authorization, integration order and binding gate interpretation in the
+forward register. Cost/native visual acceptance remains Pending; no result or
+waiver is invented. Product source, study data, test expectations, detector
+settings and immutable release objects are unchanged by this synchronization.
+
+## ADR-0070 live-instruction reconciliation — 2026-11-01
+
+Accepted the #199 review finding: the roadmap's next action and NR-006 detail
+still requested architecture acceptance after the owner had granted it. Reconciled
+the live instructions, register and open-decision list; labeled the old handoff
+historical. Accepted ADR-0070 authorizes implementation, while #202 review,
+native/cost/visual gates and separate PR merge authorization remain. No source,
+architecture decision or release state changed.
+
+## ADR-0070 owner acceptance — 2026-11-01
+
+The owner explicitly approved ADR-0070 for implementation in response to the
+concrete #199 proposal, subject to native portability/performance/validation gates.
+Recorded **Accepted** status, original proposal history and scope in ADR_INDEX,
+SOURCE_OF_TRUTH, README/map, risk/audit/readiness records and NR-006/roadmap.
+Production implementation is still pending at this decision-record commit; the
+new reader-affinity contract applies to the approved atomic implementation, not
+the old plain-payload race. New PR merges/releases remain separately unauthorized.
+No production source, threading operation, test expectation or release object changed.
+
+## Authorized integration / NR-006 architecture proposal — 2026-11-01
+
+The owner explicitly authorized #195–#198 merges and independent continuation.
+Recorded actual sequential merge commits/trees, exact-head CI and fresh integrated
+945 DSP / 10,953 state checks in the roadmap. Historical pending-merge snapshots
+remain dated history. Corrected the real-time audit's overbroad ScopeBuffer SPSC
+label: bounded fixed copying is not race freedom. Production source stays unchanged.
+
+Added Proposed ADR-0070, registered in ADR_INDEX, after independently comparing
+atomic samples, packed pairs, full owned snapshots and bounded tagged/queue/
+seqlock variants. It recommends generation-validated atomic windows and an explicit
+serialized-GUI affinity contract, conditional on human review and native evidence.
+Expanded the existing research packet with source/lifecycle census, memory-model
+proof/limitations, comparative evidence, implementation/acceptance plan and release
+disposition. Nonshipping prototypes/model, raw seven-repeat results/metadata and
+seeded TSan liveness are indexed in REPOSITORY_MAP/TESTING; README/SOURCE_OF_TRUTH
+distinguish the Proposed decision from current policy. No production architecture,
+DSP, CMake/workflow, release object or Accepted ADR is changed.
+
+The unchanged 0.10.0 readiness record now separates this source-level gap and its
+required mitigation/human disposition from earlier owner approvals.
+RISK-018 records the verified mechanism and unverified field impact, without
+closing historical risks or inventing a crash/severity verdict. Native prototype
+portability/performance, production regressions and visual acceptance remain pending;
+synthetic results are not a machine budget. NR-003 stays Deferred; later PR merges
+and release operations remain unauthorized.
+
+## Memcheck cancellation evidence review — 2026-11-01
+
+Accepted #203's timeout-artifact finding. Replaced the cancellation-excluding
+upload predicate with `always()` plus explicit started-step outcomes. The runner
+checkpoints pending/running/completed/interrupted/start-failed statuses atomically,
+preserves raw logs and handles cancellation with bounded child-group cleanup;
+the workflow execs Python for signal delivery. Signal/checkpoint controls retain a
+completed peer while interrupting a live validator; workflow routing checks 15
+cases and three negative predicates. TESTING/CI_CD, the budget evidence and roadmap
+record the hard-runner-loss limitation. Detector argv, suite assertions, 60-minute
+cap, suppressions, product/build/release inputs and merge gates are unchanged.
+
+## NR-012 CI dependency reconciliation — 2026-11-01 UTC
+
+Stacked the existing alias-study branch on unmerged #203 after two exact-source
+sanitizer budget cancellations. The additive merge preserves both reviewed heads;
+three insertion conflicts retain both NR-012 and CI control records. The probe,
+CSV/source metadata, DSP/CMake/test expectations and release inputs are unchanged.
+Updated dependency/current-head references and the forward register; final-head
+CI is required separately from #203's successful real concurrent memcheck. No
+GitHub PR was merged, no shared history rewritten and no gate weakened.
+
+## NR-012 — bounded alias evidence (2026-11-01)
+
+Added nonshipping calibrated high-tone engine probe, Linux/Ninja object-reuse
+runner, 36 repeated raw observations and source/provenance metadata. Two rates,
+two normalized tones, four factors, linear/bypass controls and adjacent periods
+separate measured alias bins from simple wrap/latency engagement. Selected-bin
+power is normalized to actual carrier level; known injected alias and omission
+controls prove calibration. Retain current behavioral assertions: no universal
+dB threshold, monotonic factor rule, DSP/filter fix or production change.
+
+The new worklog/data/tool are indexed in REPOSITORY_MAP, SOURCE_OF_TRUTH, README
+and TESTING. The roadmap records #195–#198 actual integration, NR-011 #200, the
+owner's explicit ADR-0070 implementation approval and remaining native/release
+gates. Existing historical evidence and GCC ABI failure remain unchanged.
+
+## Memcheck scheduling follow-up — 2026-11-01 UTC
+
+Recurring sanitizer cancellations are recorded with actual run/job/source scope,
+including main’s second attempt completing both tests/memcheck summaries while
+still being recorded cancelled. Overlapped the independent DSP/state processes
+with identical detector argv and a joined status for both; retained live labelled
+output, raw per-suite logs and command/status JSON. Six orchestration controls
+cover overlap, either/both failures, missing validator and missing binaries.
+Verified the runner’s starts-with command parser and preserved unprefixed
+coverage-warning annotations with serialized complete output lines and controls.
+Synced CI_CD/TESTING, repository map, source-authority/worklog navigation and the
+forward execution register. No product/CMake/dependency/test expectation, timeout,
+warning baseline, strictness or release/version change; actual final-head CI and
+real Valgrind timing remain required.
+
 ## NR-011 action-specific review controls — 2026-11-01
 
 Accepted #200's aggregate-inert-control finding. Added 57 independent omission
@@ -2492,7 +2609,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3797` and `.github/workflows/build.yml:3882`, this round being
+`.github/workflows/build.yml:3814` and `.github/workflows/build.yml:3899`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -2526,7 +2643,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:800` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:803` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the

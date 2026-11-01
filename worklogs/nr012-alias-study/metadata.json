@@ -1,0 +1,31 @@
+{
+  "recorded": "2026-11-01 Asia/Shanghai",
+  "baseline": "00de8c7796f37d08a338256e01830bb312ba105c",
+  "dsp_source_blob": "a07699b7ded3cc9134964953bbcd3ad248a83261",
+  "compiler": "Clang22.1.8, libstdc++14",
+  "platform": "managed Debian13 x86-64",
+  "juce_commit": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+  "method": "coherent N=32768, 256-frame blocks, three warmup periods, two captures; Haas amount0, Drive12dB, stereo mono input peak0.4",
+  "source_sha256": {
+    "tests/experiments/nr012_aliasing_study.cpp": "e4f122c3ea91bdb28cd58c1aa5e432005547db89b9f3045f65b056199a9324b7",
+    "scripts/run-alias-study.py": "1306ed942760561b66526188169569a0fb291ec0d436dd4a1811259bfbc0cb3d"
+  },
+  "csv_sha256": "dfdf17dbf42f4b656513664ed9b1671524a054d8ba26a4a42c47b40a1909ac6a",
+  "rows": 36,
+  "repeated_executions_byte_identical": true,
+  "maximum_adjacent_period_sample_delta": 0.0,
+  "controls": [
+    "known injected alias amplitude ratio calibrated within0.02dB; omission fails same calibration",
+    "linear Off/2x/4x/8x carrier0.4 control",
+    "bypass/Drive12 carrier control",
+    "Drive-Off alias energy above measured linear floor",
+    "finite/stereo/predicted-latency controls"
+  ],
+  "limits": [
+    "selected odd-harmonic folded bins3..31 plus neighbor bins, not full-band alias metric",
+    "two normalized tones at two rates, one drive/input level",
+    "Linux/Clang only; no human audio-quality or commercial release verdict",
+    "No asserted universal dB threshold or monotonic factor ordering",
+    "No production or release change"
+  ]
+}

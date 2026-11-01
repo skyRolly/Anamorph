@@ -1,0 +1,3 @@
+stress,D-tagged,readers=2,accepted=214,during-writer=213,bad=0
+stress,C-owned,readers=1,accepted=19057,during-writer=19057,bad=0
+nr006-research: 0 failures; production ScopeBuffer unchanged

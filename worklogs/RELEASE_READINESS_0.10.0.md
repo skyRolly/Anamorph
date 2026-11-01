@@ -1,5 +1,23 @@
 # Release readiness — 0.10.0 (draft only)
 
+## NR-006 publication disposition — 2026-11-01 (Asia/Shanghai)
+
+After authorized #195–#198 integration, NR-006's expanded source investigation
+confirms the reusable plain-sample race exposure also exists in this draft's
+source `4c13688` (ScopeBuffer blob `ed24ceab5ced2784d9fe96effdc46f8aeb03f472`).
+No supported-host crash, audible corruption or field rate is established.
+**Recommendation: requires mitigation or additional validation before publication**,
+with the formal policy gap needing a reviewed mitigation or explicit human
+architecture/risk disposition; clean tests alone do not legalize it.
+[Accepted ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+is now approved for implementation by the owner, but remains unimplemented at this
+record checkpoint. This approval does not authorize publication/replacement or
+waive native/performance/manual acceptance. Earlier owner approvals retain their scope.
+No tag, version, draft body or asset is changed. Integrated NR-022 is post-tag
+development and is not retroactively present in these 11 already-built assets.
+Publication/replacement remains a separate owner decision. Detailed evidence:
+[NR-006 packet](NR006_SCOPE_PUBLICATION_REVIEW.md#9-current-candidate-release-disposition).
+
 ## Owner continuation decisions — 2026-10-31 (Asia/Shanghai)
 
 The owner instructs continuation from merged PR #194 and states:

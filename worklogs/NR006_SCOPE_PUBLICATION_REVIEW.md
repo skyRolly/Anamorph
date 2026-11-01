@@ -1,7 +1,9 @@
 # NR-006 — ScopeBuffer publication review packet
 
-**Recorded:** 2026-10-31 (Asia/Shanghai). **Status:** Ready for Review — decision packet,
-not an implemented fix or an Accepted ADR. Progress remains in
+**Recorded:** 2026-10-31 (Asia/Shanghai). **Updated:** 2026-11-01.
+**Current status:** ADR-0070 Accepted by explicit owner implementation approval
+on 2026-11-01; production implementation/validation next, no runtime fix claimed yet. Sections 1–5 preserve the earlier packet
+and conditional candidate; the substantive selection is in section 6 onward. Progress remains in
 [NEXT_RELEASE_DEVELOPMENT_ROADMAP.md](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
 
 Execution parent: NR-022 review head `4a431cac2e32493b1d2290fb9fd8d6570b41393f`.
@@ -191,3 +193,247 @@ The binding gate is
 It requires human Architecture Review, even with green tests. This is a new decision
 about the payload handoff; it does not reopen the existing ADR-0069 approval. Independent
 work such as NR-017's read-only diagnostic inventory can proceed while it is reviewed.
+
+## 6. Post-integration investigation
+
+**Baseline:** `00de8c7796f37d08a338256e01830bb312ba105c`, after owner-authorized
+integration of #195 → #196 → #197 → #198 on 2026-11-01 (Asia/Shanghai).
+All four original heads are ancestors; the final tree exactly equals #198 `42ebbbc`.
+Fresh integrated local suites: **945 DSP / 10,953 state**, zero failures, under
+`MALLOC_PERTURB_=1`. Existing checker warnings remain unchanged.
+
+**Selected decision:** [Accepted ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md).
+Choose a generation-validated ring of atomic stereo words, accepting only exact
+committed-position windows and rejecting a reused copy once, without retry.
+Keep current OpenGL component painting, with an explicit proposed serialized-GUI
+reader contract. This replaces the earlier request for the owner to make the
+technical selection: the agent has selected and specified D below; the owner must
+review/approve that recommendation. The owner has now explicitly approved that design for implementation, subject to
+its native portability/performance/validation gates. Production implementation
+is still pending; no later PR merge is authorized. No ScopeBuffer or GUI production code changed.
+
+### Source census and lifecycle
+
+| Surface | Verified current execution / ownership |
+|---|---|
+| Writer | `AnamorphEngine::process` final `scope.pushBlock(L,R,n)`; one audio producer, post-output processing. No other production push site. |
+| Storage | Two initialized `array<float,16384>` members; uint64 atomic total. Two segments per channel on wrap; oversized input skips its prefix and publishes the original total increment. |
+| `writeCount` | Acquire-loads only the total; does not touch payload or consume frames. Its separate observation need not equal a subsequent read's index. |
+| Vectorscope | Constructor reads the hint. Message-thread FrameClock tick scans newest fresh data; paint separately reads the current 1200–8000-frame persistence window, decimating to about 3000 points. Both use its private scratch vectors. |
+| SpectrumImager | Message-thread tick invokes `pushFFT`; active window copies 8192 frames, idle window scans fresh tail, wakeup may perform a second full read. `lastSeenCount` currently advances before these copies. Each copy acquires its own index. |
+| GUI serialization | FrameClock uses VBlankAttachment/message-thread callbacks. JUCE pin `3fb5cbc` OpenGL `CachedImage::renderFrame` acquires its message-manager lock before `paintComponent` → `paintOwner` → `paintEntireComponent`. Mac/Windows paint can run on that GL thread; lock serializes it against message-thread consumers, never against audio. |
+| Editor open/hidden/close | Private GUI buffers allocate during construction; hidden vectorscope tick skips work. Editor first stops meterVBlank/timer and detaches OpenGL; child destructors stop FrameClock. The ring lives in the processor engine and reserves nothing for an editor. |
+| Prepare/reset | Host excludes concurrent audio processing. Neither prepare nor reset clears scope arrays/count; history survives re-prepare/reset. GUI can remain open. Preserve this, rather than adding a live plain reset or another writer. |
+| Destruction | Existing processor lifetime requires stopped audio and destroyed editors. No proposed payload reclamation or deferred free. |
+
+Evidence [Verified]: named source functions, `ScopeBuffer.h`, engine header's owned
+`ScopeBuffer`, GUI headers' capacities; pinned JUCE `juce_OpenGLContext.cpp` and
+FrameClock. Static source census was repeated after integration. Test 61 covers
+serial empty/newest/wrap/clamp/oversized behavior only. Historical Rosetta equality
+and AU teardown findings remain independent and retain their recurrence triggers.
+
+### Memory-model and impact finding
+
+Example at capacity 16384: publish W=16384; the reader acquires W and copies
+positions 8192–16383. The producer can next overwrite physical slot 8192 while
+the reader loads it. There is writer-to-reader ordering for the first publication,
+but no reader-to-next-writer ordering or storage ownership. Plain conflicting
+float accesses are a C++ data race regardless of hardware float atomicity.
+Independent L/R copies can mix pairs; a ring copy can mix windows. Atomic index
+validation afterward cannot undo undefined behavior already incurred.
+
+The historical ~170 ms headroom estimate is conditional on an 8192-frame window,
+48 kHz and regular short pushes. It is not a safety proof or universal required
+stall: larger blocks can overwrite a selected window during a single push, and
+higher sample rates shorten the interval. `n>capacity` writes every physical slot.
+Object storage lives long enough; lifetime alone supplies no exclusive access.
+
+The language violation is confirmed. Field incidence, supported-host crash and
+audible output corruption remain **unverified**. Display data are not fed back
+into the DSP output, but C++ undefined behavior is not formally contained to a
+display artifact. No sanitizer or headless test retroactively approves this risk.
+
+### Alternatives evaluated independently
+
+The earlier preferred packed-word candidate was not presumed selected. The new
+comparison includes the following complete alternatives and bounded variants:
+
+- **A, atomic individual samples:** payload race freedom with compile-time
+  lock-freedom guards; ordinary release/acquire index. Split stereo pairs and
+  window epochs remain possible. More payload operations than B and weaker pair
+  semantics; not preferred. No claim that atomics alone make a snapshot coherent.
+- **B, packed atomic stereo:** bit-preserving 32+32-bit representation, one
+  relaxed atomic word per frame and existing release/acquire total. Good pair
+  coherence, smallest atomic footprint, no window guarantee. A deterministic
+  lapping control produces old first frame plus new following frames while every
+  L/R pair is intact. Feasible if that lower contract were explicitly selected;
+  it is not the recommendation after considering the FFT/fresh-tail consumers.
+- **C, owned snapshots:** producer-private ordinary ring plus three full snapshot
+  buffers. Producer fills its writable snapshot, publishes its index/dirty bit
+  through one acq_rel middle exchange, then owns the returned middle buffer.
+  Consumer exchanges its previous private buffer only after finishing that read.
+  The three indices stay distinct; publication transfers visibility, return
+  transfers reuse permission. A stalled reader holds one buffer; producer keeps
+  cycling the other two. No waiting or unsafe reclamation, and successful whole
+  windows are immutable. Full-history copies every push have high small-block
+  cost; dropping a publication with two buffers is safe but changes freshness.
+- **C variants:** request-only snapshots reduce average copies but can miss the
+  final stopped-audio window; maintaining full rolling snapshots in multiple
+  buffers copies more, while page ownership needs additional metadata and safe
+  exhaustion handling. A slow GUI cannot be allowed to pin the producer's only
+  reusable storage. None has a demonstrated benefit sufficient to select it here.
+- **D, generation-validated atomic stereo:** two 64-bit atomic words/slot;
+  invalidation → release payload → valid absolute tag; reader acquire tag →
+  acquire payload → acquire tag. Unique expected tags and atomic coherence
+  establish exact positions on success. Failed partial scratch is discarded,
+  caches/freshness retained, one attempt only. Protocol/proof/lifetime and every
+  memory order are fully specified in ADR-0070. No reader-driven producer state.
+- **Other D protocols:** a bounded SPSC queue is safe if full drops are explicit,
+  but FIFO retention during a stall conflicts with newest-history recovery unless
+  another handoff is added. Hazard/RCU requires bounded reuse permission; unbounded
+  retired buffers or waiting for GUI is inadmissible. A correctly ordered
+  all-atomic block seqlock can be race-free, but rejects on any push, even without
+  physical reuse; a retry bound and immutable scratch rules would still be needed.
+- **E, retain/narrow current behavior:** temporary known-gap disposition only.
+  Documentation cannot satisfy binding non-atomic access policy. A plain-payload
+  seqlock, reader index recheck, mutex, allocating queue or unbounded spin is rejected.
+
+**Ranking:** D, then B if a future review deliberately accepts weaker windows,
+then C if native cost or a stricter immutable-storage requirement changes the
+tradeoff. A is dominated for this stereo use; E is not a compliant fix.
+The agent recommends D conditionally on native lock-free/code-generation and
+performance evidence. No native performance target is invented from sandbox time.
+
+### Comparative criteria and GUI recommendation
+
+| Criterion | Selected D versus viable B/C |
+|---|---|
+| Memory/lifetime | All ring data/tags atomic; fixed lifetime. C additionally proves exclusive ownership. B is race-free but admits mixed epochs. |
+| Audio/RT | D has three bounded ordinary atomic stores per retained frame, no RMW/retry/wait; B one. C does an entire available-history copy and one exchange per push. No design may depend on GUI responsiveness. |
+| DSP/latency | All are display-side proposals. Engine samples/order/latency must stay unchanged and be verified; no current result is attributed to an implementation. |
+| Display | D succeeds with exact committed positions or rejects; retain last accepted display and counters on failure. C always reads an immutable published snapshot; B can transform mixed windows. |
+| GUI/threading | Recommend retaining OpenGL and its existing message-manager serialization. Explicit acceptance would amend only the scope affinity rule for this safe payload path. Moving reads into ticks adds cache/refresh behavior; removing GL is wider than this fix. |
+| Footprint/cache | D's shared 256 KiB versus B 128 KiB / C approximately 512 KiB. Preallocated acceptance/scratch buffering can add 192 KiB per open GUI. Native cache and contention cost is still unmeasured. |
+| Portability | C++ does not mandate all 64-bit atomics lock-free. Compile-time guards plus native library/code-generation evidence required on MSVC x64 and AppleClang Intel/ARM, not inferred from x86 Linux. |
+| Complexity/testing | D avoids ownership reclamation and generation retries. Its acquire/release proof is essential; both invalidation and payload acquire are discriminating model controls. C has a three-index ownership invariant and one logical consumer. |
+| Maintenance | A selected result must carry its own end/count/status. Independent earlier `writeCount` hints cannot commit freshness for another snapshot. Rejected scratch must never reach FFT/silence/paint consumers. |
+
+## 7. Nonshipping experiments and reproducibility
+
+`tests/experiments/nr006_scope_protocol.cpp` is a standalone research executable,
+not linked into any product or CMake target. Production ScopeBuffer is used only
+as a **serial** reference / producer-private history in C; the unsafe plain ring
+is never subjected to concurrent runtime access in this experiment.
+
+```bash
+# From repository root, with an installed C++23 compiler/library:
+c++ -std=c++23 -O3 -march=haswell -ffp-contract=off -pthread -Wall -Wextra -Werror \
+  tests/experiments/nr006_scope_protocol.cpp -o /tmp/nr006-protocol
+/tmp/nr006-protocol
+/tmp/nr006-protocol --bench
+python3 tests/experiments/nr006_memory_model.py
+```
+
+Use `-march=haswell` only on an x86-64 machine supporting it; native ARM experiments
+must record their own supported shipping flags. The local managed environment
+activates its retained tools with `source /workspace/.cloud-setup/env.sh`.
+For TSan, build the prototype and `tests/tsan_canary.cpp` with
+`-std=c++23 -O1 -g -fsanitize=thread -pthread`. Run the canary first and require
+nonzero exit **and** `ThreadSanitizer: data race`; only then trust a clean prototype
+run. A failed instrumentation/environment precondition is not a clean sanitizer run.
+
+The prototype includes serial wrap/clamp/oversized controls, exact pack/unpack
+signed-zero/infinity/NaN-bit controls, scheduled A split-pair and B mixed-window
+controls, and a D reuse-between-tag-and-payload rejection/recovery control. Its
+real concurrent stress pushes 1,048,576 frames in 64-frame blocks. D has two
+independent readers with private 8192-frame destinations; C one logical reader.
+Accepted windows are checked against absolute-position samples, with observations
+counted while the writer is active. This does not authorize concurrent production
+GUI reads or replace production-path regression coverage after approval.
+
+The Python bounded read-from model enumerates one slot's next reuse, enforcing
+sequenced-before, release/acquire synchronization and per-atomic coherence.
+Proposed ordering: 10 legal observations, 1 accepted, **0 wrong accepted**.
+Relaxing the payload load admits 1 wrong accepted observation; removing
+invalidation also admits 1. These non-vacuity controls explain why D's proof
+requires more than a relaxed packed word plus index. This is a small sanity
+model, not exhaustive verification of arbitrary C++ implementations.
+
+Local compiler/native stress, active-canary TSan, raw seven-repeat timing and
+machine metadata are retained under [nr006-research/](nr006-research/).
+The benchmark prints min/median/max **nanoseconds per call**, measures serial
+pushes separately from fixed 8192-frame reads, and keeps outputs observable.
+It is not a contended engine benchmark or a user-instance/dropout budget.
+Machine: shared managed x86-64 Linux, Xeon Platinum 8573C; Clang 22.1.8 and
+GCC 14.2.0 / libstdc++14; `-O3 -march=haswell -ffp-contract=off`, one CPU affinity
+for timed runs, 7×2000 calls per cell. Shared frequency/cache/scheduler effects
+remain uncontrolled. Native Mac/Windows/ARM and representative modest-machine
+measurements are **pending**. Historical Wave 4 −4.9% is not a new-design result.
+
+Representative local **64-frame** median cell, retained with all min/max values
+in the raw files (nanoseconds/call; 8192-frame read):
+
+| Candidate | Local bytes | Clang push / read | GCC push / read |
+|---|---|---|---|
+| Plain serial reference | 131080 | 19.2 / 8002.1 | 17.7 / 8147.6 |
+| A split atomics | 131080 | 60.2 / 8385.9 | 60.5 / 8511.2 |
+| B packed pairs | 131080 | 30.2 / 7895.3 | 43.5 / 8176.5 |
+| C owned full snapshots | 524336 | 16899.6 / 1801.7 | 16642.7 / 1790.2 |
+| D tagged pairs | 262152 | 46.9 / 9991.5 | 48.9 / 9383.6 |
+
+These results support investigating D's modest extra fixed per-frame work before
+accepting B's mixed-window semantics, and rejecting per-push full-copy C for this
+small-block use. They do not establish a percentage of engine cost or acceptance
+on other CPUs. Generated atomics must still be checked natively on each platform.
+
+## 8. Implementation and validation plan after human acceptance
+
+1. Implement ADR-0070's fixed atomic representation and explicit read result in
+   one production PR. Correct source overclaims, preserve serial Test 61, add no
+   other DSP/state/build changes. Never treat post-copy plain-memory validation
+   as the fix.
+2. Update each read site to commit end/count/caches only for a valid complete
+   attempt. Preallocate scratch away from audio; retain last accepted waveform/
+   magnitudes and silence/freshness state on rejection. Cover the imager's
+   second full read after a silent-tail wakeup. Preserve editor detach/stop order.
+3. Add deterministic first/second-tag overwrite, later-slot reuse, wrap, boundary,
+   stereo/window, count, staleness, slow/stalled/independent consumer, oversized
+   push, re-prepare/reset and invalid-scratch tests. Meaningful old/weak-order/
+   removed-validation controls must fail. No timing sleeps as sole oracle.
+4. Run actual concurrent production-path stress and TSan with the seeded canary,
+   RTSan/effect canary, allocation guards, source scans, full suites/native
+   pluginval and unchanged shipping ABI gates. Native compile guards and
+   generated instructions must prove no hidden lock/RMW retry. Lock-free alone
+   does not establish wait-free WCET.
+5. Measure native push/read, full-engine cost and memory on controlled identified
+   hardware (at least five repeats, rates/normal/large blocks, active/hidden/
+   stalled GUI, median/spread/worst observed block). Obtain owner review of cost;
+   do not create a numeric budget from synthetic results. Confirm unchanged
+   same-configuration engine output and latency; preserve Class-B/cross-platform rules.
+6. Reconcile THREAD_MODEL, THREADING_POLICY, PERFORMANCE_BUDGET, real-time audit,
+   tests and source comments with the **Accepted** decision in that implementation
+   PR. Native visual/editor lifecycle audition is required and remains unperformed.
+
+## 9. Current-candidate release disposition
+
+**NR-021 recommendation: requires mitigation or additional validation before
+publication**, with the source-level violation requiring a reviewed mitigation or
+an explicit human architecture/risk disposition; more clean runs alone do not
+legalize the plain accesses. The selected 0.10.0 source `4c13688` contains the same
+ScopeBuffer blob, so the new finding applies to that draft's source. No new
+supported-host crash or automatic severity escalation is established.
+
+Keep the existing 0.10.0 tag, draft, 11 asset identities/digests and version
+unchanged. Neither the post-tag NR-022 integration nor this proposal changes
+already-built assets. Earlier manual acceptance and ADR-0069 approval do not approve
+NR-006's new architecture or waive its binding policy gap. Any replacement,
+publication or temporary residual-risk acceptance needs a separate owner decision.
+
+## 10. Current milestone
+
+**Investigated:** yes. **Selected design:** D / Accepted ADR-0070.
+**Human architecture approval:** explicit owner approval received 2026-11-01.
+**Production implementation/validation:** not started at this decision-record checkpoint.
+**Release operation:** none. Continue independent NR-011 transition differential
+coverage while this architecture is reviewed; NR-003 stays Deferred and other
+recurrence/legal/hardware/host prerequisites remain separate.

@@ -1,0 +1,4 @@
+proposed: 10 legal observations, 1 accepted, 0 wrong accepted
+negative: relaxed payload load: 11 legal observations, 2 accepted, 1 wrong accepted
+negative: missing invalidation: 5 legal observations, 2 accepted, 1 wrong accepted
+Model and both weakening controls passed; production code unchanged.
