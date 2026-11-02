@@ -1040,7 +1040,7 @@
   "citation_targets_moved": 15,
   "checker_logic_or_expected_tokens_changed": false,
   "final_validation": {
-    "state": "Complete final preflight and refresh exact-head CI before declaring readiness",
+    "state": "Local final preflight complete; exact-head remote CI pending final publication",
     "native_acceptance": "Owner-deferred, not passed",
     "initial_preflight": {
       "exit": 1,
@@ -1048,6 +1048,25 @@
       "subsequent_suites": "not executed by this attempt",
       "log_sha256": "51dfab7fa17e954a8c37abc5c594b75e674b1cb23ecc18ff361cbb51347aeea1",
       "correction": "Both numeric citation-only fixes included in documentation commit; rerun all gates without weakening comparisons."
-    }
+    },
+    "preflight": {
+      "exit": 0,
+      "dsp_checks": 945,
+      "state_checks": 12026,
+      "python_controls": 18,
+      "shipping_clang_abi": "Passed; unchanged declared floor",
+      "docs_self_tests": 700,
+      "citation_self_tests": 276,
+      "citation_bases": [
+        "origin/main",
+        "c560a72 (dirty-tree push predecessor)"
+      ],
+      "log_sha256": "d1facb6f018412186122326fe6123099c9fc33b59d7181f0c63f23ab7d180821"
+    },
+    "focused": {
+      "checks": 115,
+      "failures": 0
+    },
+    "full_local_instrumentation": "Only actual editor translation unit instrumented for three ASan positive/negative/mutant probes; full sanitizer CI separate"
   }
 }

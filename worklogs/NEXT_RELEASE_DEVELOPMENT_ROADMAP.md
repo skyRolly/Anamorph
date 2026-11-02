@@ -42,8 +42,12 @@ a bounded review, not a certification of every path.
   with UAF: the weak pointer must be copied onto the stack before the command,
   because the component-owned callback itself may be destroyed during it.
 
-NR-024 code`bdeeadb7f4430107223f374b748075e4dc37180e` is **implemented on an
-independent review branch, not integrated**. [Controls/provenance](engineering-review/editor-command-lifetime.json).
+NR-024 code `bdeeadb7f4430107223f374b748075e4dc37180e` is **implemented on an
+independent review branch, not integrated**. Local preflight completes **945 DSP /
+12,026 state / 18 Python** checks, documentation/citation liveness and pinned-Clang
+shipping ABI. Configured pluginval strictness 10 completes three deterministic
+and three randomized passes, all first attempts. Exact-head remote CI is pending
+final publication. [Controls/provenance](engineering-review/editor-command-lifetime.json).
 Keep the processor action and history transition; skip only accesses to the dead
 editor. Normal live callbacks still refresh preset metadata, and recreated editors
 show the result. No parameter, serialization, latency, DSP graph/numerics, thread
@@ -1421,9 +1425,11 @@ alternatives and source/model/production evidence remain in
   shared infrastructure cannot close these. No protocol invariant or release gate
   is waived. The original exposure is corrected on main, still present in the
   unchanged draft; RISK-018 retains the draft and acceptance distinctions.
-- **Prepared next action:** run the [native evidence package](NATIVE_VALIDATION_PACKAGE.md)
-  integrated via #205 at`109d183` on identified owner hardware, return raw logs/host observations and review
-  costs against ADR-0070; do not substitute reader-load models for native GUI acceptance.
+- **Retained procedure when the owner resumes native testing:** run the
+  [native evidence package](NATIVE_VALIDATION_PACKAGE.md), integrated via #205,
+  on identified owner hardware; preserve raw logs/host observations and review
+  costs against ADR-0070. Execution is owner-deferred this round. Reader-load
+  models do not establish native GUI acceptance.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 
