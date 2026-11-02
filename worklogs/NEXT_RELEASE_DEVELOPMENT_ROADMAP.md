@@ -6,8 +6,9 @@ The integrated baseline remains `29150f312ec4a43ec85f35e61028d8338057d927`.
 The owner has deferred native/manual host, GUI, accessibility and performance
 acceptance; those gates remain pending and are not substituted by this work.
 
-**NR-029 / KI-035 is confirmed on current main and corrected on an unmerged
-review branch.** A synchronous parameter listener can destroy the editor while
+**NR-029 / KI-035 is confirmed on current main and corrected in unmerged
+[PR #212](https://github.com/skyRolly/Anamorph/pull/212), head
+`af8edfddd3a88fceaee9f672cb753548a35403b6`.** A synchronous parameter listener can destroy the editor while
 real `SpectrumImager` mouse callbacks are in progress. The original/fixed
 controls cover width gesture begin, width value store and end, crossover-handle
 begin, topology-add Bands begin and value dispatch, and the first pin begin of
@@ -19,9 +20,12 @@ raw log hashes, command, and limitations are recorded in
 The latest corrected candidate passes the full sanitizer-enabled state suite:
 **12,337 checks, zero failures**, and all seven focused selectors pass (**109
 checks**). This is a locally built component/state harness, not full sanitizer
-coverage of every linked object and not native host/visual acceptance. CI and
-human review of the new PR remain pending. Do not merge it without separate
-owner authorization.
+coverage of every linked object and not native host/visual acceptance. At the
+first exact-head refresh, Build run `41544974630` had Linux, Windows/macOS,
+sanitizer, source-lint and native-evidence smoke jobs in progress; merge-check,
+CodeQL and dependency review were queued. Recheck the final PR head before
+reporting validation. Human review remains pending. Do not merge without
+separate owner authorization.
 
 The callback audit is bounded rather than universal. Reset/inline-frequency,
 solo-toggle/removal, and standalone/held-wheel mutation paths remain to be
@@ -1960,7 +1964,7 @@ The owner separately authorized integration; native acceptance remains deferred.
   controls report ASan heap-use-after-free; original width/crossover begin
   controls expose the processor having missed the close and a later Undo being
   lost. Raw evidence identities are in the JSON ledger.
-- **Correction candidate:** hold `SafePointer` checks across synchronous
+- **Correction candidate in PR #212:** hold `SafePointer` checks across synchronous
   notifications, copy callback objects and processor-targeting closures onto
   the stack where the component may die, defer cancellation until a begin
   dispatch returns, and close only gestures the processor has observed. Preserve

@@ -22,7 +22,12 @@
       "solo toggle and delete/remove transactions",
       "held and standalone wheel parameter writes"
     ],
-    "change_boundary": "Message-thread component lifetime and gesture/history cleanup only. No DSP, parameter ID/range, serialization, latency, audio-thread protocol, dependency, version, or release object changes. Native host/visual/accessibility acceptance remains owner-deferred."
+    "change_boundary": "Message-thread component lifetime and gesture/history cleanup only. No DSP, parameter ID/range, serialization, latency, audio-thread protocol, dependency, version, or release object changes. Native host/visual/accessibility acceptance remains owner-deferred.",
+    "pull_request": {
+      "url": "https://github.com/skyRolly/Anamorph/pull/212",
+      "head": "af8edfddd3a88fceaee9f672cb753548a35403b6",
+      "state": "open, unmerged"
+    }
   },
   "reproduction": {
     "fixture": "AnamorphAudioProcessorEditor and its production SpectrumImager, production hit-testing, a real APVTS parameter listener, and deterministic synchronous editor destruction.",
@@ -88,7 +93,11 @@
   "validation_status": {
     "local_sanitizer_state_suite": "passed",
     "focused_original_and_fixed_controls": "original witnesses retained; corrected seven selectors pass",
-    "exact_head_ci": "not started; PR not yet created",
+    "exact_head_ci": {
+      "head": "af8edfddd3a88fceaee9f672cb753548a35403b6",
+      "build_run": "41544974630",
+      "snapshot": "Linux, Windows/macOS, sanitizers, source-lint, and native-evidence smoke in progress; PR merge-check, CodeQL and dependency review queued; skipped jobs are not passes"
+    },
     "native_host_visual_accessibility": "deferred by owner; not run",
     "release_objects": "unchanged"
   }

@@ -1335,7 +1335,8 @@ observer/runner/controller optional-hash self-tests.
 ## KI-035 — SpectrumImager mouse callbacks can resume after synchronous editor destruction
 
 - **Status:** Confirmed on integrated main `29150f312ec4a43ec85f35e61028d8338057d927`;
-  correction candidate NR-029 is under review and is not integrated.
+  correction candidate NR-029 is in [PR #212](https://github.com/skyRolly/Anamorph/pull/212)
+  and is not integrated.
 - **Severity/confidence:** High, deterministic source-level use-after-free or
   unbalanced Undo gesture under a reachable parameter-listener interleaving.
   Native host incidence and field rate are not measured.

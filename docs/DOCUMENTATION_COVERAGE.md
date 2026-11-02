@@ -3,7 +3,8 @@
 ## NR-029 SpectrumImager callback lifetime investigation — 2026-11-02
 
 Record the confirmed main-baseline use-after-free/gesture-balance defect and its
-unmerged correction candidate. Preserve actual-editor hit-test reproducers,
+unmerged correction candidate in [PR #212](https://github.com/skyRolly/Anamorph/pull/212).
+Preserve actual-editor hit-test reproducers,
 original ASan witnesses, seven corrected ASan/UBSan/LSan controls and the full
 12,337-check sanitizer-enabled state-suite result with raw identities. The
 coverage is bounded to the enumerated width, crossover-handle, topology-add and
