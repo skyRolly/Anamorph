@@ -1038,5 +1038,16 @@
     "limits": "No attribution of earlier source-independent unconfigured exit139 to this callback bug; historical failures remain separate."
   },
   "citation_targets_moved": 15,
-  "checker_logic_or_expected_tokens_changed": false
+  "checker_logic_or_expected_tokens_changed": false,
+  "final_validation": {
+    "state": "Complete final preflight and refresh exact-head CI before declaring readiness",
+    "native_acceptance": "Owner-deferred, not passed",
+    "initial_preflight": {
+      "exit": 1,
+      "stopped_at": "citation gate; two previously unstaged reanchors in PRIVACY.md and src/PluginEditor.h omitted from documentation commit",
+      "subsequent_suites": "not executed by this attempt",
+      "log_sha256": "51dfab7fa17e954a8c37abc5c594b75e674b1cb23ecc18ff361cbb51347aeea1",
+      "correction": "Both numeric citation-only fixes included in documentation commit; rerun all gates without weakening comparisons."
+    }
+  }
 }
