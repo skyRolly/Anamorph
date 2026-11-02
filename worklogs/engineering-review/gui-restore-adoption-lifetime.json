@@ -79,7 +79,9 @@
   },
   "review_status": {
     "branch": "fix/gui-restore-adoption-lifetime",
-    "pr": "Pending creation after final repository checks",
+    "pr": "https://github.com/skyRolly/Anamorph/pull/211",
+    "reviewed_head": "02ddeee03b84373a74170c6beb1997df0623d7fb",
+    "state": "Open; exact-head checks pending",
     "merge": "Not authorized; separate owner approval required"
   }
 }
