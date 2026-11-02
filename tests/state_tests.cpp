@@ -6967,7 +6967,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2654),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2681),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -30050,7 +30050,7 @@ static void testARefusedPressEstablishesNothing()
     //      continuation must still match its own reference.
     {
         // `ABControl` is a private nested type, so it is found by the tooltip the editor gives it
-        // (`src/PluginEditor.cpp:345`) -- and the two negative casts state what makes it the case
+        // (`src/PluginEditor.cpp:356`) -- and the two negative casts state what makes it the case
         // §5 asks about: it is neither a `juce::Slider` nor a `WheelDragOwner`, so it holds no drag
         // state and never calls `claimDragWheel`.
         juce::Component* ab = nullptr;
@@ -45919,6 +45919,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "ab_undo_tests.h"
 #include "scope_snapshot_tests.h"
 #include "gui_accessibility_tests.h"
+#include "editor_command_lifetime_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45933,6 +45934,21 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--editor-command-lifetime-probe") == 0)
+    {
+        int command = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "undo") == 0) command = 0;
+            else if (std::strcmp (argv[2], "redo") == 0) command = 1;
+            else if (std::strcmp (argv[2], "ab") == 0) command = 2;
+            else { std::fprintf (stderr, "Unknown editor command probe\n"); return 2; }
+        }
+        testEditorCommandLifetimes (command);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--gui-accessibility-probe") == 0)
     {
@@ -46249,6 +46265,7 @@ int main (int argc, char* argv[])
     testScopeSnapshotPublication();
     testScopeSnapshotConcurrency();
     testRotaryAccessibilityMetadataAndKeyboard();
+    testEditorCommandLifetimes();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

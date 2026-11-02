@@ -341,7 +341,18 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // The destination is the PROCESSOR's to derive, after it has adopted any pending
     // host restore: computing it here from abActiveSlot() read a slot the restore was
     // about to change and made the toggle a no-op (D-2 round 10, ADR-0036 §18).
-    abControl.onToggle  = [this] { processor.abToggle(); knobSweepTime = 0.45; refreshPresetDisplay(); repaint(); };
+    abControl.onToggle = [weakThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+    {
+        // The command may synchronously destroy the editor and this callback.
+        // Keep the weak reference itself alive on the stack across the call.
+        const auto safeThis = weakThis;
+        if (safeThis == nullptr) return;
+        safeThis->processor.abToggle();
+        if (safeThis == nullptr) return;
+        safeThis->knobSweepTime = 0.45;
+        safeThis->refreshPresetDisplay();
+        if (safeThis != nullptr) safeThis->repaint();
+    };
     abControl.setTooltip ("A/B Compare"); // #17 (no period)
     addAndMakeVisible (abControl);
     copyButton.onClick = [this] { processor.abCopyToOther(); };
@@ -459,8 +470,24 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     redoButton.setComponentID ("icon");
     undoButton.setTooltip ("Undo");
     redoButton.setTooltip ("Redo");
-    undoButton.onClick = [this] { processor.undo(); knobSweepTime = 0.45; refreshPresetDisplay(); };
-    redoButton.onClick = [this] { processor.redo(); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    undoButton.onClick = [weakThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+    {
+        const auto safeThis = weakThis;
+        if (safeThis == nullptr) return;
+        safeThis->processor.undo();
+        if (safeThis == nullptr) return;
+        safeThis->knobSweepTime = 0.45;
+        safeThis->refreshPresetDisplay();
+    };
+    redoButton.onClick = [weakThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+    {
+        const auto safeThis = weakThis;
+        if (safeThis == nullptr) return;
+        safeThis->processor.redo();
+        if (safeThis == nullptr) return;
+        safeThis->knobSweepTime = 0.45;
+        safeThis->refreshPresetDisplay();
+    };
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 

@@ -1110,8 +1110,8 @@ private:
         // `Rotary` -- the angle-steered style -- is NOT one of them: its mapping is not affine in
         // the cursor, so a constant pixel shift is not a constant value shift and this returns a
         // zero offset for it. That is recorded rather than guarded because it is unreachable in this
-        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:545`,
-        // `:687`, `:812`) and none of them names `Rotary`. The assertion is what would notice if a
+        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:572`,
+        // `src/PluginEditor.cpp:718`, `src/PluginEditor.cpp:855`) and none names `Rotary`. The assertion notices if a
         // fourth call ever did.
         [[nodiscard]] juce::Point<float> wheelDragShift() const
         {

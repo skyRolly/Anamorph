@@ -2,6 +2,12 @@
 
 ## Scope and current disposition
 
+**Owner-deferred execution — 2026-11-02 (Asia/Shanghai).** Keep this package and
+all acceptance/provenance requirements for a later assignment. Do not request
+native hardware, access, measurements or manual observations in the current
+engineering-review round. The instructions below remain the preserved procedure;
+preparation and automated smoke are not native acceptance.
+
 PR #202's Accepted [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 implementation, PR #204's rotary titles and PR #205's validation package are
 integrated on main `109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6`.

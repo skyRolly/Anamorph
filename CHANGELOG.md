@@ -24,6 +24,9 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Undo, Redo and A/B no longer access an editor destroyed during the command.**
+  The processor completes the action while callbacks skip updates to the closed editor.
+  Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; NR-024/KI-033; State154. [Verified]
 - **Rotary controls expose accessibility titles matching their visible captions.**
   Evidence: commit `d49736e9a496cfb83db67804a8439daa55200f26`; PR #204; State test 152. [Verified]
 - **A completed edit remains undoable after switching A/B before the editor's next update.**

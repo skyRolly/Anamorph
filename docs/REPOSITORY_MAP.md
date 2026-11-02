@@ -5,6 +5,11 @@ Directory and file map with per-component responsibilities. Architecture rationa
 
 ## Top level
 
+Current independent engineering review follows `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`.
+NR-024's original/fixed/captured-reference ASan provenance is
+[`worklogs/engineering-review/editor-command-lifetime.json`](../worklogs/engineering-review/editor-command-lifetime.json);
+the historical standing programme retains its dated scope.
+
 ```
 Anamorph/
 ├── CMakeLists.txt          Build: JUCE FetchContent (9.0.4, pinned by commit SHA), AnamorphDSP INTERFACE lib,
