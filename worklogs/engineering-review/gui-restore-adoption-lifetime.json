@@ -80,8 +80,9 @@
   "review_status": {
     "branch": "fix/gui-restore-adoption-lifetime",
     "pr": "https://github.com/skyRolly/Anamorph/pull/211",
-    "reviewed_head": "02ddeee03b84373a74170c6beb1997df0623d7fb",
-    "state": "Open; exact-head checks pending",
+    "head_when_opened": "02ddeee03b84373a74170c6beb1997df0623d7fb",
+    "evidence_ledger_commit": "59486b4",
+    "state": "Open; exact-head CI status is reported on the pull request",
     "merge": "Not authorized; separate owner approval required"
   }
 }
