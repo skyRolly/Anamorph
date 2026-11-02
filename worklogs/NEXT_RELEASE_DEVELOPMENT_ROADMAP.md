@@ -23,7 +23,10 @@ retains exact run/artifact hashes and post-merge outcomes. Historical successes
 remain source-scoped, never substitutes for current-head gates.
 
 Post-merge local preflight completed **945 DSP /11,911 state** checks and the
-pinned-Clang shipping ABI gate; all18 Python controls remain live. Main's
+pinned-Clang shipping ABI gate; all18 Python controls remain live. Main's three
+tool packets independently verify the new source identity,20 synthetic records
+each, equal summaries, pending acceptance fields and every repacked file hash.
+These validate the integrated collector, not native cost or GUI acceptance. Main's
 [Build41402900891](https://github.com/skyRolly/Anamorph/actions/runs/41402900891),
 [CodeQL41402900875](https://github.com/skyRolly/Anamorph/actions/runs/41402900875) and
 [MSVC41402900872](https://github.com/skyRolly/Anamorph/actions/runs/41402900872)
@@ -60,6 +63,9 @@ The old draft still lacks post-tag corrections. Native/owner acceptance, candida
 selection and separate release authorization remain required. Any new PR stays
 unmerged until separately authorized; this section supersedes the dated checkpoints
 below and the live item register supplies per-NR acceptance details.
+The documentation reconciliation and pinned handoff are in
+[#206](https://github.com/skyRolly/Anamorph/pull/206), open and unmerged; its CI and
+separate owner merge review are distinct from the completed #205 integration.
 
 ## Historical #205 reported evidence review — 2026-11-02 (Asia/Shanghai)
 

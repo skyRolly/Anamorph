@@ -1344,7 +1344,7 @@
       "local_unavailable": "PowerShell acquisition integration skipped because pwsh is unavailable; Windows CI covers separately"
     },
     "remaining_implementation_disposition": "No new independent implementation justified; execute existing native procedure when machine/access or results become available.",
-    "post_merge_snapshot_utc": "2026-11-02 07:05:10 UTC",
+    "post_merge_snapshot_utc": "2026-11-02 07:08:08 UTC",
     "post_merge_artifacts": [
       {
         "id": 13122721267,
@@ -1361,6 +1361,76 @@
         "name": "Anamorph-native-evidence-smoke-macOS",
         "digest": "sha256:c29661e640c01ba1f3bb6a224d06ceafc9e49460c9be42e44100b1c3695ddca9"
       }
-    ]
+    ],
+    "post_merge_packet_reanalysis": [
+      {
+        "artifact": 13122332716,
+        "platform": "Linux",
+        "sha256": "267d69ec6c2c40079c6f6d42a75c7b0179d282fb1308ac7e1d66d25fe9a690e2",
+        "source_commit": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+        "records": 20,
+        "classification": "synthetic",
+        "collection_analysis_equal": true,
+        "manifest_verified": true,
+        "packed_files": 103,
+        "repacked_sha256": "95041ed61f165cbaf588fadcce6f849a93db0ad3811876f5aad081df16ded011",
+        "lifetime_control": {
+          "state": "completed",
+          "classification": "synthetic failure control, not performance evidence",
+          "sanitizer_options": "detect_leaks=1:halt_on_error=1:symbolize=1",
+          "results": [
+            {
+              "variant": "fixed",
+              "exit": 2,
+              "heap_use_after_free": false,
+              "header_sha256": "35875d6c722b3864d45bd9b4b00aa4556b2fefef3c568f5b2e916663e97ed3d9",
+              "binary_sha256": "0053a5e6d5575b5ab679d15fd9b4d8f33f438b8bdaf51efbf8360f7056988746"
+            },
+            {
+              "variant": "invalid-owner",
+              "exit": 1,
+              "heap_use_after_free": true,
+              "header_sha256": "45f39b81aa2431c0b2a8482d281c33af9c943a94b72aeed7b205143439adfb85",
+              "binary_sha256": "87fa8ebbd05075a5a4b9ebffc33d8026b1e49250ddd24cf1017c7afa00ed8c80"
+            }
+          ],
+          "source_commit": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+          "source_header_sha256": "de5449d66803cb602dacdfb3527b9e006ad1ddf528db318be19381ec89d3c3e9",
+          "control_script_sha256": "c3f288b333a919521a09f2c3c92288fe29ae362d27e9d9bdbf96a619939ab5ed"
+        }
+      },
+      {
+        "artifact": 13121449165,
+        "platform": "macOS",
+        "sha256": "c29661e640c01ba1f3bb6a224d06ceafc9e49460c9be42e44100b1c3695ddca9",
+        "source_commit": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+        "records": 20,
+        "classification": "synthetic",
+        "collection_analysis_equal": true,
+        "manifest_verified": true,
+        "packed_files": 88,
+        "repacked_sha256": "382172c52665f9652fbafa99b4f38397814d701fa8c19f61865ccfbd8eeeaa28"
+      },
+      {
+        "artifact": 13122721267,
+        "platform": "Windows",
+        "sha256": "1400ea1f51390a113648098af098b33eb6737e39ea3de5b72b1077e830e24ed1",
+        "source_commit": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+        "records": 20,
+        "classification": "synthetic",
+        "collection_analysis_equal": true,
+        "manifest_verified": true,
+        "packed_files": 88,
+        "repacked_sha256": "cafd74f11f65db77853d782a404e1cf3dbbef80206ffcd01ccf0e1fd740528d4"
+      }
+    ],
+    "documentation_follow_up": {
+      "pr": 206,
+      "url": "https://github.com/skyRolly/Anamorph/pull/206",
+      "branch": "docs/pr205-integration-native-handoff",
+      "state": "open/unmerged",
+      "scope": "Integration evidence and pinned native execution handoff; no collector/production changes",
+      "merge_authorization": "Not granted"
+    }
   }
 }
