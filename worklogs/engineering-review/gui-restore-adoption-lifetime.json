@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "date": "2026-11-02 UTC",
+  "id": "NR-028",
+  "known_issue": "KI-034",
+  "priority": "P1",
+  "baseline_main": "29150f312ec4a43ec85f35e61028d8338057d927",
+  "baseline_editor_blob": "3c6c59c5b9883678e656eceabed1140af9d7b70f",
+  "corrected_source": "src/PluginEditor.cpp",
+  "corrected_source_sha256": "8c8ba57032406d05d1baa4d1d44c006dcb40d12d0b4627481abb6269412c9f00",
+  "corrected_source_blob": "6fffd1a2e67992829cbed2d905e90bbf47274501",
+  "regression_source": "tests/editor_restore_lifetime_tests.h",
+  "regression_source_sha256": "b13dcb21aa5d3efd8b509414af9bf169ee63f380fd1aec817316c96793effef8",
+  "state_driver_blob": "de5c114cb4dcc71523d56cc5092838b0ed349f26",
+  "finding": {
+    "expected_contract": "A synchronous restore adoption may complete processor state changes while an editor listener destroys the GUI; no callback may access the editor or component-owned callback state after destruction.",
+    "mechanism": "A host restore installs sound and pauses before metadata handoff. An A/B switch changes the live sound. Message-thread adoption reinstalls the restore, synchronously notifying parameters. A listener destroys the editor while the timer or preset-name callback is still active.",
+    "paths": [
+      {
+        "entry": "AnamorphAudioProcessorEditor::timerCallback",
+        "processor_call": "pollUndoCoalesceFromTimer",
+        "baseline_asan": "heap-use-after-free at the post-call undoButton access (PluginEditor.cpp:1674 on baseline)",
+        "corrected_guard": "Stack-owned Component::SafePointer; return before the following control update when nulled."
+      },
+      {
+        "entry": "presetname button onClick -> showPresetMenu",
+        "processor_call": "adoptPendingHostState(false)",
+        "baseline_asan": "heap-use-after-free after adoption resumes (PluginEditor.cpp:2206 on baseline)",
+        "corrected_guard": "The component-owned onClick closure copies its SafePointer to its stack; showPresetMenu also keeps a stack-owned SafePointer across adoption."
+      }
+    ],
+    "user_impact_evidence": "Deterministic source-level memory-safety defect. No supported-host incidence or field crash rate is claimed."
+  },
+  "regression": {
+    "test": "State157",
+    "driver": "tests/state_tests.cpp",
+    "focused_cli": "AnamorphStateTests --editor-restore-lifetime-probe [timer|preset]",
+    "fixture": "A real editor and callback, off-thread restore held after sound installation, intervening A/B sound change, synchronous parameter listener, live and editor-destruction controls.",
+    "controls": [
+      "The restored and outgoing sessions differ; A/B changes the live sound before adoption.",
+      "The listener verifies message-thread delivery and synchronous notification.",
+      "The live-editor case retains the editor and completes the same processor transition.",
+      "The destruction case destroys exactly once; processor metadata and restored parameter values still complete."
+    ],
+    "headless_limit": "The preset callback adds in-memory JUCE display-placement metadata only; no peer, native window, visual, host or accessibility acceptance is claimed."
+  },
+  "sanitizer": {
+    "configuration": "GCC 14, RelWithDebInfo (-O2 -g), ASan+UBSan, leak detection enabled; existing JUCE 9.0.4 dependency and state-test target.",
+    "baseline": {
+      "timer": "Confirmed heap-use-after-free, exit 1",
+      "preset": "Confirmed heap-use-after-free, exit 1"
+    },
+    "corrected": {
+      "timer_checks": 24,
+      "timer_failures": 0,
+      "preset_checks": 24,
+      "preset_failures": 0,
+      "both_exit": 0
+    },
+    "full_state_suite": {
+      "checks": 12276,
+      "failures": 11,
+      "classification": "Filesystem exhaustion while creating preset-copy and synthetic write-failure fixtures. No sanitizer memory-safety diagnostic was reported by these eleven failures; this is not a passing full suite.",
+      "workspace_condition": "Shared filesystem reached 100% during the run; generated sanitizer target was cleaned afterward.",
+      "focused_probes_repeated_afterward": "Both corrected focused selectors passed 24/24."
+    },
+    "later_refresh_build_attempt": {
+      "command": "ninja -C <fresh ASan+UBSan build> -j2 AnamorphStateTests",
+      "result": "Incomplete; manually stopped at 29/65 compilation steps after 12m38s while JUCE GUI translation units were still compiling. No test executable ran and this attempt is not validation evidence.",
+      "reason": "The clean rebuild had not reached the state test target and was taking substantially longer than the focused evidence warranted; exact-head CI remains required.",
+      "partial_log_sha256": "e40bc90d90c5d640682d47d0806cafe0210f4739fe15c63a0a8b69cb74b3c497"
+    }
+  },
+  "architecture_and_compatibility": {
+    "processor_state_transition": "Continues to completion even when the editor is destroyed.",
+    "changed_contracts": [],
+    "native_host_or_visual_acceptance": false,
+    "release_objects_modified": false
+  },
+  "review_status": {
+    "branch": "fix/gui-restore-adoption-lifetime",
+    "pr": "Pending creation after final repository checks",
+    "merge": "Not authorized; separate owner approval required"
+  }
+}

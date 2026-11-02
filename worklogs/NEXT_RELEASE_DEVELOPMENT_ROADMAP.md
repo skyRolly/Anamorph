@@ -1,6 +1,53 @@
 # Next release investigation and development roadmap
 
-## Current execution: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+## Current execution: NR-028 restore-adoption editor lifetime — 2026-11-02 (UTC)
+
+The current integrated baseline is `29150f312ec4a43ec85f35e61028d8338057d927`.
+The owner-authorized integrations are complete: #208 merged at
+`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`; #207 merged at the current-main
+commit `29150f312ec4a43ec85f35e61028d8338057d927` (merged head
+`ab7998804a2b2161a532ff1e3de26a8ec6e8039b`). #209 remains open and outside
+the named merge authorization. #210 remains open at `2859a946d5cf11757ae7e035ca8e0c6775a13ea8`;
+its refreshed current-head checks completed successfully, with conditional jobs
+intentionally skipped. It has not been merged.
+
+The bounded callback investigation confirmed **NR-028 / KI-034 (P1)** on the
+unchanged main source. A pending host restore installs its sound before publishing
+metadata; an intervening A/B action makes later adoption reinstall that sound and
+synchronously notify parameters. A listener then destroys the editor while either
+the editor timer (`pollUndoCoalesceFromTimer`) or the preset-name callback
+(`adoptPendingHostState`) is active. ASan reports UAF at
+`PluginEditor.cpp:1674` and `:2206` respectively. The exact control, callback,
+root cause and source evidence are recorded in
+[`engineering-review/gui-restore-adoption-lifetime.json`](engineering-review/gui-restore-adoption-lifetime.json).
+
+The focused correction is implemented on branch `fix/gui-restore-adoption-lifetime`:
+copy a `Component::SafePointer` onto the timer/member stack before adoption, return
+if synchronous notification destroyed the editor, and make the preset button
+callback copy its weak handle onto its own stack before invoking the component-owned
+closure. Processor restore and metadata transitions remain complete. No thread,
+DSP, parameter, serialization, latency, dependency or build contract changed.
+Under ASan+UBSan with leak detection, State157 passes **24/24** for the live and
+destructive timer path and **24/24** for the live and destructive preset path.
+The original main-source controls reproduce both UAFs. The full sanitizer state
+suite completed **12,276 checks / 11 failures** while the shared filesystem was
+out of space; all eleven are file-operation/setup assertions (preset copying and
+controlled write-failure cases), not callback or memory-safety failures. This is
+an environment limitation, not a passing full suite. The temporary sanitizer
+build was cleaned after recording its binary identities. A later clean rebuild
+attempt was manually stopped at 29/65 compile steps after 12m38s, while large
+JUCE GUI units were still compiling; it never ran tests and is not validation
+evidence. Exact-head CI for a new PR is still required.
+
+KI-034 remains an issue on integrated main until the correction is reviewed and
+merged. The correction is not yet merged or authorized for merge. After opening
+the focused PR, continue the remaining GUI callback inventory from source: inspect
+other parameter-notifying commands and component-owned closures for post-call
+member access and self-destruction, requiring a separate witness before expanding
+scope. Preserve the owner's native/manual test deferral and the unchanged 0.10.0
+release objects. New PR merges require separate authorization.
+
+## Historical checkpoint: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly authorized both #208 and #207. #208 reviewed head
 `e12e1a5b8a3480341627d714aebf3a2d2340c805` is integrated at

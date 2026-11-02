@@ -24,6 +24,7 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Host-state restoration no longer lets timer or preset callbacks access an editor destroyed by a synchronous parameter notification.** The processor restore completes while UI follow-up stops safely. Evidence: PR #211; NR-028/KI-034; State test 157. [Verified]
 - **Undo, Redo and A/B no longer access an editor destroyed during the command.**
   The processor completes the action while callbacks skip updates to the closed editor.
   Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; NR-024/KI-033; State154. [Verified]

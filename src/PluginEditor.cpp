@@ -380,7 +380,14 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // list, not merely the next row.
     presetPrev.onClick = [this] { stepPreset (-1); };
     presetNext.onClick = [this] { stepPreset (+1); };
-    presetName.onClick = [this] { showPresetMenu(); };
+    presetName.onClick = [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+    {
+        // The parameter notification inside showPresetMenu may destroy this button and
+        // its onClick closure while it is executing. Keep a copy independent of that
+        // component-owned closure on the callback's stack.
+        const auto safeThisCopy = safeThis;
+        if (safeThisCopy != nullptr) safeThisCopy->showPresetMenu();
+    };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
     addAndMakeVisible (presetName);
@@ -1669,8 +1676,13 @@ void AnamorphAudioProcessorEditor::timerCallback()
         if (dimOverlay.isVisible()) dimOverlay.toFront (false);
     }
 
+    // Host-state adoption can synchronously notify parameter listeners. A listener may
+    // destroy this editor before the processor call returns, so keep the weak reference
+    // on this stack frame and stop before the following control updates touch members.
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> safeThis (this);
     processor.pollUndoCoalesceFromTimer(); // fold settled sound edits into undo steps (#10-12)
                                            // ...through the door that never blocks (ADR-0036 round 21)
+    if (safeThis == nullptr) return;
     undoButton.setEnabled (processor.canUndo());
     redoButton.setEnabled (processor.canRedo());
     // Wave 4: re-format the readout only when the raw published float changed.
@@ -2201,7 +2213,9 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // answer: a refused drain leaves the tick on the outgoing row for the life of THIS popup and
     // the 20 Hz adopt repairs it before the next one. Display only, bounded to one opening, and
     // strictly better than the wait.
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> safeThis (this);
     processor.adoptPendingHostState (/*mayBlock*/ false);
+    if (safeThis == nullptr) return;
 
     auto& pm = processor.getPresets();
     pm.refresh();

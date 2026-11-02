@@ -32,6 +32,23 @@ The display oracle finds the existing `presetname` component ID; it permits
 abbreviated/empty captions and asserts the dirty-state change instead of assuming
 an unabridged Default caption.
 
+## Reentrant restore-adoption editor destruction — State157 / NR-028
+
+`tests/editor_restore_lifetime_tests.h` invokes the actual editor timer override
+and preset-name button callback. A controlled off-thread restore installs its
+sound and pauses before metadata handoff; an A/B action changes the live sound,
+then adoption restores the host sound and synchronously notifies a real parameter
+listener. The live and destructive controls verify notification thread, completed
+processor state, restored sound, and editor lifetime. Run the full state suite or
+`AnamorphStateTests --editor-restore-lifetime-probe [timer|preset]`; unknown
+selectors fail. Each focused path passes 24 checks under ASan+UBSan with leak
+detection; the original integrated source reports heap-use-after-free in both
+paths. The preset callback supplies only in-memory display placement metadata to
+JUCE in a headless process; it creates no peer and is not native visual
+acceptance. The full sanitizer suite also encountered 11 filesystem assertions
+after the workspace ran out of space; see the linked evidence record for exact
+classification. Full CI remains required.
+
 **Owner direction, 2026-11-02:** native performance, GUI/host/editor/assistive and
 hardware-dependent installation execution is deferred this round. Acceptance
 requirements and worksheets remain outstanding; continue independent automated work.

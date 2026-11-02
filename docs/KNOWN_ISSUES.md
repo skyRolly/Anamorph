@@ -3,6 +3,9 @@
 KI-033 is resolved on main through #208 at `a78b733`; see INC-022 in
 [POSTMORTEMS.md](POSTMORTEMS.md). The unchanged draft retains the old callbacks.
 
+KI-034 is confirmed on integrated main `29150f3`; its source correction is in
+open PR #211 and remains unmerged. No native host incidence is asserted.
+
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
@@ -170,6 +173,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-030 | ~~After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back~~ | — | **RESOLVED 2026-09-24** (ADR-0007, Amendment of 2026-09-24, F13(2)). An A/B switch whose slots differ in anything the Level-Match measurement reads now re-arms the analysis where the slot's gain is restored, and a re-prepare at an unchanged sample rate keeps the match instead of rebuilding it, once Level Match has caught up with the latest change to the sound (Test 67, State test 131; Test 69, State test 133). An A/B slot's remembered gain counts as caught up only if it was a confirmed measurement when the slot was left (ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134), and it stays caught up through the fade-in of a switch made during another switch's fade-out (ADR-0007, Note of 2026-09-26; Test 72, State test 136), and when Velvet Density holds a NaN the Velvet ignores (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). The engage cases recorded with it are decided behaviour, not defects: see the entry |
 | KI-031 | ~~**Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after (+2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10)~~ | — | **RESOLVED 2026-09-24** (owner ruling O4g; ADR-0007, Amendment 2026-09-24). A switch that turns Level Match on and changes nothing its measurement reads now starts at the matched level (Test 66, State test 130). Outside an A/B switch, an engage that also changes the sound still glides from unity: a measurement-staleness case, kept by the F13(2) decision (KI-030) |
 | KI-032 | ~~An **A/B switch, undo, redo or preset load made while the host processes much faster than real time** — an offline render, a host that renders ahead, one that splits its callback into small blocks — or while the message thread stalls for ~10 ms or more (at 256-sample buffers), can adopt a **partly written sound**: some of the destination's settings with the rest of the previous sound's, or the previous sound whole. It plays that into the switch's fade-in, then glides (or ducks a second time) to the destination, and a same-rate re-prepare before the destination's level is re-measured throws its matched level away~~ | — | **RESOLVED 2026-09-27** (ADR-0057, **Accepted** on the repository owner's approval and implemented; 0.9.9). A bulk swap's completion is now published after its last parameter store and acquired by the audio thread, which keeps the previous sound playing until then and lands the swap whole (Test 75, State tests 139 and 140; worklog §V) |
+| KI-034 | Editor timer and preset-menu callbacks resume after synchronous restore notification destroys their editor | High | Confirmed source-level UAF on main `29150f3`; focused correction in open, unmerged PR #211 |
 
 ---
 
@@ -349,13 +353,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2433-2441; declared src/PluginEditor.h:585). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2447-2455; declared src/PluginEditor.h:585). This shipped in
   the 0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2389 (the on-open call) / src/PluginEditor.cpp:2433-2441 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2403 (the on-open call) / src/PluginEditor.cpp:2447-2455 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -663,7 +667,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:396-406 (the field), src/PluginEditor.cpp:2371-2441 (show + focus);
+  src/PluginEditor.cpp:403-413 (the field), src/PluginEditor.cpp:2385-2455 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2442-2481`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -1330,3 +1334,30 @@ handler and retain service-survivor refusal. This closes that first-party regres
 without a new native session or any claim about the original attach/DSP cause.
 Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its production
 observer/runner/controller optional-hash self-tests.
+
+## KI-034 — Editor callbacks resume after synchronous restore notification destroys the editor
+
+- **Confirmed baseline:** integrated main `29150f312ec4a43ec85f35e61028d8338057d927`.
+  This is a deterministic controlled-source finding; no DAW crash rate or native
+  occurrence is claimed.
+- **Mechanism:** an off-message-thread host restore installs sound and pauses before
+  publishing its decoded metadata. An A/B switch changes that sound in the handoff
+  window. Message-thread adoption reinstalls the restore and synchronously emits
+  parameter notifications. A listener can destroy the editor during either
+  `timerCallback()`'s `pollUndoCoalesceFromTimer()` or `showPresetMenu()`'s
+  `adoptPendingHostState(false)` call. Original ASan controls report heap-use-after-free
+  at `PluginEditor.cpp:1674` and `:2206` respectively.
+- **Correction:** open PR #211 keeps a stack-owned `Component::SafePointer` across each
+  synchronous call and returns before further editor access if it was destroyed. The
+  component-owned preset-button closure also copies its weak reference onto its own
+  stack before entering the method. The processor restore and state transition finish;
+  only UI follow-up stops.
+- **Evidence:** State157 uses the actual editor timer override and preset button callback,
+  distinct restore/A-B sounds, live controls, and a synchronous parameter listener that
+  destroys the editor. Corrected ASan+UBSan runs pass 24/24 checks for each path with leak
+  detection enabled. The complete local sanitizer state suite's 11 file-operation
+  failures occurred while the workspace was full; they are classified separately in
+  [`gui-restore-adoption-lifetime.json`](../worklogs/engineering-review/gui-restore-adoption-lifetime.json).
+- **Status:** fixed on the review branch, **not integrated**. Keep this issue open until
+  PR #211 is approved and merged. Native/manual acceptance remains deferred and is not
+  required to validate the source-level memory-safety correction.
