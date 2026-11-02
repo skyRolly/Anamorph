@@ -6967,7 +6967,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2681),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2686),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -45921,6 +45921,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "gui_accessibility_tests.h"
 #include "transport_position_tests.h"
 #include "editor_command_lifetime_tests.h"
+#include "spectrum_imager_lifetime_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45954,6 +45955,25 @@ int main (int argc, char* argv[])
             else { std::fprintf (stderr, "Unknown editor command probe\n"); return 2; }
         }
         testEditorCommandLifetimes (command);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--spectrum-imager-lifetime-probe") == 0)
+    {
+        int path = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "begin") == 0) path = 0;
+            else if (std::strcmp (argv[2], "store") == 0) path = 1;
+            else if (std::strcmp (argv[2], "end") == 0) path = 2;
+            else if (std::strcmp (argv[2], "split-begin") == 0) path = 3;
+            else if (std::strcmp (argv[2], "add-begin") == 0) path = 4;
+            else if (std::strcmp (argv[2], "add-value") == 0) path = 5;
+            else if (std::strcmp (argv[2], "band-move-begin") == 0) path = 6;
+            else { std::fprintf (stderr, "Unknown SpectrumImager lifetime path probe\n"); return 2; }
+        }
+        testSpectrumImagerCallbackLifetimes (path);
         std::printf ("%d checks, %d failure(s)\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -46275,6 +46295,7 @@ int main (int argc, char* argv[])
     testScopeSnapshotConcurrency();
     testRotaryAccessibilityMetadataAndKeyboard();
     testEditorCommandLifetimes();
+    testSpectrumImagerCallbackLifetimes();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

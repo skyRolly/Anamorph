@@ -157,6 +157,14 @@ void SpectrumImager::visibilityChanged()
 SpectrumImager::~SpectrumImager()
 {
     frameClock.stop();
+    // A host notification can destroy the editor from inside any of the three
+    // mouse-event dispatches that bracket an active drag. Close that gesture
+    // while its parameter and this component's callbacks are still available;
+    // in particular, a width press may be destroyed synchronously from inside
+    // beginChangeGesture() before mouseDown can return to its caller.
+    if (! parameterBeginDispatch
+        && (dragBand >= 0 || dragHandle >= 0 || soloPressBand >= 0 || pressDeleteBand >= 0))
+        cancelActiveDrag();
     if (onClearSoloPreview) onClearSoloPreview();
 }
 
@@ -509,6 +517,7 @@ bool SpectrumImager::ownsWidth (int b, float norm) const noexcept
 bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, float& ownedNorm) noexcept
 {
     if (p == nullptr) return false;
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
     const float norm   = p->convertTo0to1 (plain);
     const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
     // ADR-0008, round 17: what the parameter held before THIS store. It is the step's `before` for
@@ -516,13 +525,18 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     // with nothing bracketed, so there is no gesture open here to have read it.
     const float was    = p->getValue();
     anamorph::param::setValueNotifyingHost (p, norm);
+    // Parameter listeners run synchronously and may close the editor. The
+    // caller's `ownedNorm` reference can then name destroyed component storage.
+    if (safeThis == nullptr) return false;
     if (! juce::exactlyEqual (p->getValue(), expect))
     {
         // ADR-0008 round 19. THE REFUSAL IS REPORTED, not merely returned. Returning false tells
         // this function's CALLER to stop; it told the undo batch nothing, so the batch could not
         // tell "a store that did not stand" from "a control that has not written yet" and closed
         // on a live read of somebody else's value.
-        if (onOwnedRefused) onOwnedRefused (p);
+        const auto notifyRefused = onOwnedRefused;
+        if (notifyRefused) notifyRefused (p);
+        if (safeThis == nullptr) return false;
         return false;
     }
     // ADR-0008 round 14, corrected in round 15. THE DECLARATION IS MADE BY A STORE THAT STOOD, AND
@@ -532,7 +546,9 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     // read the ending value back. Made here, with `expect`, the step learns both halves from the
     // one store that actually committed: `spreadSplits` runs after the primary's gesture has
     // closed, so this is the only place the pushed neighbour's ending value can come from.
-    if (onOwnedWrite) onOwnedWrite (p, was, expect);
+    const auto notifyWrite = onOwnedWrite;
+    if (notifyWrite) notifyWrite (p, was, expect);
+    if (safeThis == nullptr) return false;
     ownedNorm = expect;
     return true;
 }
@@ -787,7 +803,11 @@ void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { anamorph::pa
 void SpectrumImager::endGesture   (juce::RangedAudioParameter* p)
 {
     if (p == nullptr) return;
-    if (onOwnedRefused) onOwnedRefused (p);
+    // Keep the callback object alive on this stack: its owner can be destroyed
+    // by a synchronous listener reached from the callback or the following
+    // host gesture notification.
+    const auto notifyRefused = onOwnedRefused;
+    if (notifyRefused) notifyRefused (p);
     anamorph::param::endChangeGesture (p);
 }
 namespace
@@ -799,11 +819,13 @@ namespace
 // claim when the OUTERMOST scope exits, which is the only correct answer once nesting is possible.
 struct ScopedGestureAction
 {
-    explicit ScopedGestureAction (int& d) noexcept : depth (d) { ++depth; }
-    ~ScopedGestureAction() noexcept { --depth; }
+    ScopedGestureAction (SpectrumImager& owner, int& d) noexcept
+        : safeOwner (&owner), depth (&d) { ++d; }
+    ~ScopedGestureAction() noexcept { if (safeOwner != nullptr) --*depth; }
     ScopedGestureAction (const ScopedGestureAction&) = delete;
     ScopedGestureAction& operator= (const ScopedGestureAction&) = delete;
-    int& depth;
+    juce::Component::SafePointer<SpectrumImager> safeOwner;
+    int* depth;
 };
 // ADR-0053: names the control a standalone scroll is editing for the length of its change gesture
 // and un-names it on every exit path, so a later gesture of some other kind can never inherit the
@@ -932,8 +954,27 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
     auto* p = bandsP;
     if (p == nullptr) return false;
     const int want = juce::jlimit (1, 4, n);
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
     bool stored = false;
+    parameterBeginDispatch = true;
     anamorph::param::beginChangeGesture (p);
+    if (safeThis == nullptr)
+    {
+        if (notifyRefused) notifyRefused (p);
+        anamorph::param::endChangeGesture (p);
+        return false;
+    }
+    parameterBeginDispatch = false;
+    if (cancelAfterParameterBegin)
+    {
+        cancelAfterParameterBegin = false;
+        if (notifyRefused) notifyRefused (p);
+        anamorph::param::endChangeGesture (p);
+        if (safeThis != nullptr) cancelActiveDrag();
+        return false;
+    }
     // ADR-0044. `expectedMask` is why this guard is more than a repeat of the caller's. The count
     // is the store that REINTERPRETS the solo word (`SoloMonitor::process` masks it with
     // ((1 << bands) - 1)), and `beginChangeGesture` above dispatches to every listener BEFORE this
@@ -948,18 +989,47 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
         const float norm   = p->convertTo0to1 ((float) want);
         const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
         anamorph::param::setValueNotifyingHost (p, norm);
+        if (safeThis == nullptr)
+        {
+            if (juce::exactlyEqual (p->getValue(), expect))
+            {
+                if (notifyWrite) notifyWrite (p, was, expect);
+            }
+            else if (notifyRefused) notifyRefused (p);
+            anamorph::param::endChangeGesture (p);
+            return false;
+        }
         if (! juce::exactlyEqual (p->getValue(), expect))
         {
-            if (onOwnedRefused) onOwnedRefused (p);
+            if (notifyRefused) notifyRefused (p);
+            if (safeThis == nullptr)
+            {
+                anamorph::param::endChangeGesture (p);
+                return false;
+            }
         }
         else
         {
-            if (onOwnedWrite) onOwnedWrite (p, was, expect);
+            if (notifyWrite) notifyWrite (p, was, expect);
+            if (safeThis == nullptr)
+            {
+                anamorph::param::endChangeGesture (p);
+                return false;
+            }
             stored = true;
         }
     }
-    else if (onOwnedRefused) onOwnedRefused (p);
+    else if (notifyRefused)
+    {
+        notifyRefused (p);
+        if (safeThis == nullptr)
+        {
+            anamorph::param::endChangeGesture (p);
+            return false;
+        }
+    }
     anamorph::param::endChangeGesture (p);
+    if (safeThis == nullptr) return false;
     // WHAT THIS FAR SIDE DOES NOT PROVE, and why that is enough (review round 2026-09-08).
     // It re-reads the COUNT only. A listener that moves mbSolo from inside the store's own
     // dispatch, or from inside `endChangeGesture`, is invisible here and this still returns true --
@@ -1123,7 +1193,7 @@ void SpectrumImager::beginBandMove (int b, int n)
     // them. Nothing here needs the cancellation to happen NOW -- `moveBand`, one statement later,
     // re-proves the count and every split it writes, and `tick`'s next reconcile still fires -- so
     // declining costs a few instructions of latency and nothing else.
-    const ScopedGestureAction ownStartup (gestureActionDepth);
+    const ScopedGestureAction ownStartup (*this, gestureActionDepth);
     const int N = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount());
 
     // Anchor the move: the band translates RIGIDLY by T = clamp(cursor - anchor) so each
@@ -1184,8 +1254,41 @@ void SpectrumImager::beginBandMove (int b, int n)
     bandTmin        = plan.tmin;
     bandTmax        = plan.tmax;
 
-    if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);
-    if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const auto notifyRefused = onOwnedRefused;
+    auto* const leftParameter = soloMoveLeft >= 0 ? freqP[soloMoveLeft] : nullptr;
+    auto* const rightParameter = soloMoveRight >= 0 ? freqP[soloMoveRight] : nullptr;
+    if (leftParameter != nullptr)
+    {
+        beginGesture (leftParameter);
+        if (safeThis == nullptr)
+        {
+            // The action scope above keeps the destructor from ending a gesture
+            // while JUCE is still walking begin listeners. Close only after the
+            // processor has observed this begin; the second pin was not opened.
+            if (notifyRefused) notifyRefused (leftParameter);
+            anamorph::param::endChangeGesture (leftParameter);
+            return;
+        }
+    }
+    if (rightParameter != nullptr)
+    {
+        beginGesture (rightParameter);
+        if (safeThis == nullptr)
+        {
+            // The left pin's begin already completed before this dispatch. End
+            // the current pin first, then the earlier one, after the right
+            // begin has reached the processor.
+            if (notifyRefused) notifyRefused (rightParameter);
+            anamorph::param::endChangeGesture (rightParameter);
+            if (leftParameter != nullptr)
+            {
+                if (notifyRefused) notifyRefused (leftParameter);
+                anamorph::param::endChangeGesture (leftParameter);
+            }
+            return;
+        }
+    }
 }
 bool SpectrumImager::moveBand (float mouseX, int n)
 {
@@ -2881,7 +2984,25 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         seedDragOrigins();
         // ADR-0047: the anchor comes from the capture, not from a third read of the same parameter.
         dragGrabDX = p.x - dragOrigX[h]; // keep the line under the cursor with this offset (#10)
-        beginGesture (freqP[h]); repaint(); return;
+        auto* const splitParameter = freqP[h];
+        const auto notifyRefused = onOwnedRefused;
+        const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+        parameterBeginDispatch = true;
+        beginGesture (splitParameter);
+        if (safeThis == nullptr)
+        {
+            if (notifyRefused) notifyRefused (splitParameter);
+            anamorph::param::endChangeGesture (splitParameter);
+            return;
+        }
+        parameterBeginDispatch = false;
+        if (cancelAfterParameterBegin)
+        {
+            cancelAfterParameterBegin = false;
+            cancelActiveDrag();
+            return;
+        }
+        repaint(); return;
     }
 
     const int b = bandAtX (p.x, gestureBands, pressF);
@@ -2902,7 +3023,28 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         dragBand = b; dragHandle = -1;
         widthPressY = p.y;          // for the 3 px drag-engage threshold
         widthHoldActive = false;    // value stays put until the threshold is crossed
-        beginGesture (widthP[b]);
+        auto* const widthParameter = widthP[b];
+        const auto notifyRefused = onOwnedRefused;
+        const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+        parameterBeginDispatch = true;
+        beginGesture (widthParameter);
+        if (safeThis == nullptr)
+        {
+            // External parameter listeners run before the processor's listener.
+            // If one destroys this editor, an end dispatched from the destructor
+            // arrives too early and the processor ignores it. Finish the pair
+            // only after beginChangeGesture has returned to this stack frame.
+            if (notifyRefused) notifyRefused (widthParameter);
+            anamorph::param::endChangeGesture (widthParameter);
+            return;
+        }
+        parameterBeginDispatch = false;
+        if (cancelAfterParameterBegin)
+        {
+            cancelAfterParameterBegin = false;
+            cancelActiveDrag();
+            return;
+        }
         repaint();
         return;
     }
@@ -2913,7 +3055,9 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (bandAddTarget (b, p.x, ax, gestureBands, pressF))
     {
         int addedBands = gestureBands;
+        const juce::Component::SafePointer<SpectrumImager> safeThis (this);
         const int idx = addBandAt (xToFreq (ax), addedBands);
+        if (safeThis == nullptr) return;
         if (idx >= 0)
         {
             // ADR-0039, review finding 2. THE PRESS'S OWN ADD IS PART OF THE GESTURE. `addBandAt`
@@ -2958,11 +3102,25 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     {
         if (soloMovedBand || std::abs (e.position.x - soloDownX) > 4.0f)
         {
-            if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand, gestureBands); }
-            if (! soloHoldActive) { soloHoldActive = true; if (onSoloPreview) onSoloPreview (1 << soloPressBand); }
+            const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+            if (! soloMovedBand)
+            {
+                soloMovedBand = true;
+                beginBandMove (soloPressBand, gestureBands);
+                if (safeThis == nullptr) return;
+            }
+            if (! soloHoldActive)
+            {
+                soloHoldActive = true;
+                const auto notifyPreview = onSoloPreview;
+                if (notifyPreview) notifyPreview (1 << soloPressBand);
+                if (safeThis == nullptr) return;
+            }
             // ADR-0040: the move abandons its burst the moment a split stops being ours, and a
             // gesture that has lost ownership is void -- the same answer the entry guard gives.
-            if (! moveBand ((float) e.position.x, gestureBands)) { cancelActiveDrag(); return; }
+            const bool moved = moveBand ((float) e.position.x, gestureBands);
+            if (safeThis == nullptr) return;
+            if (! moved) { cancelActiveDrag(); return; }
         }
         return;
     }
@@ -3013,8 +3171,12 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         }
         if (widthHoldActive)
         {
-            if (! storeOwned (widthP[dragBand], yToWidth ((float) e.position.y - dragGrabDY),
-                              gestureW[dragBand]))
+            const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+            const bool stored = storeOwned (widthP[dragBand],
+                                            yToWidth ((float) e.position.y - dragGrabDY),
+                                            gestureW[dragBand]);
+            if (safeThis == nullptr) return;
+            if (! stored)
             { cancelActiveDrag(); return; }
         }
     }
@@ -3076,7 +3238,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // past. The flag makes the nested call decline outright, so the ownership this handler is still
     // proving against survives until the branch drops it itself, one line before each return.
     // Scoped so every exit path clears it, including the ones that return from inside a branch.
-    const ScopedGestureAction ownRecord (gestureActionDepth);
+    const ScopedGestureAction ownRecord (*this, gestureActionDepth);
     const int pressBands = gestureBands;
     // ADR-0051: the press's split row, derived from the stamp `mouseDown` took rather than read
     // again. `convertFrom0to1` is pure arithmetic on the value `captureGestureSound` already read,
@@ -3226,7 +3388,14 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // second time while the first is on the stack. Cleared first, that reconcile takes the cheap
     // exit. This window was NOT open before this ADR -- the clear used to happen at the top of the
     // handler -- so closing it here is paying for what the ADR opened, not fixing an old defect.
-    if (dragBand >= 0) { const int wb = dragBand; dragBand = -1; endGesture (widthP[wb]); }
+    if (dragBand >= 0)
+    {
+        const int wb = dragBand;
+        dragBand = -1;
+        const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+        endGesture (widthP[wb]);
+        if (safeThis == nullptr) return;
+    }
     gestureBands = -1;                 // ADR-0050: after the on-release actions, not before them
     dragHandle = dragBand = -1;
     dragRemovePending = false;
@@ -3248,6 +3417,15 @@ void SpectrumImager::cancelActiveDrag()
     // ADR-0053 round 29: whatever ends the press, ends this. Same statement as `mouseUp`'s, and
     // since round 32 the same call: this display's gesture is over.
     anamorph::gui::releaseDragWheel (*this);
+    // The processor is later in JUCE's listener walk than external listeners.
+    // A nested cancellation from one of those listeners must wait until the
+    // outer beginChangeGesture dispatch returns, or its end is ignored before
+    // the processor has counted the begin.
+    if (parameterBeginDispatch)
+    {
+        cancelAfterParameterBegin = true;
+        return;
+    }
     // BEFORE EVERYTHING ELSE (ADR-0050, applied to this function). A release action that has already
     // taken its identifiers into locals owns the record until it finishes, and re-entering here
     // while it runs must change NOTHING -- not the identifiers, which are already gone, and not
@@ -3601,7 +3779,7 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
     // act is the clear one line above. That clear is the record `writeCrossovers` proves every store
     // against. Declining for the length of the burst costs nothing, because nothing is in flight for
     // a cancellation to cancel.
-    const ScopedGestureAction ownBurst (gestureActionDepth);
+    const ScopedGestureAction ownBurst (*this, gestureActionDepth);
     // ADR-0046. ONE TOPOLOGY READING DECIDES THE WHOLE TICK. This handler used to take THREE --
     // this one, a second inside the staleness test below, a third at the stamp -- and let
     // `handleNearX` / `bandAtX` take a fourth of their own. Between any two of them an

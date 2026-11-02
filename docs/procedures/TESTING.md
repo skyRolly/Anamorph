@@ -32,6 +32,26 @@ The display oracle finds the existing `presetname` component ID; it permits
 abbreviated/empty captions and asserts the dirty-state change instead of assuming
 an unabridged Default caption.
 
+## SpectrumImager callback lifetime — NR-029
+
+The ordinary state suite and
+`AnamorphStateTests --spectrum-imager-lifetime-probe [begin|store|end|split-begin|add-begin|add-value|band-move-begin]`
+drive production `SpectrumImager` hit-testing with an actual editor. A parameter
+listener synchronously destroys that editor during width gesture begin/store/end,
+crossover-handle begin, topology-add Bands begin/value, or the first pin of an
+interior band-move startup. The probes retain live-editor controls, gesture
+balance checks, completed-Undo checks, exact topology restoration after an
+interrupted add, and a later normal edit that must remain undoable.
+
+On the pre-fix source, the width store/end, topology-add Bands begin and
+band-move begin controls produce ASan heap-use-after-free; width/crossover
+gesture-begin controls also expose an unbalanced processor gesture and missing
+Undo on the next edit. The corrected focused controls pass with ASan, UBSan and
+leak detection enabled. Run the full state suite and mandatory sanitizer CI as
+well; the focused instrumented build does not claim every linked object was
+sanitized. This is message-thread component-lifetime coverage, not a native host,
+visual or accessibility acceptance result.
+
 **Owner direction, 2026-11-02:** native performance, GUI/host/editor/assistive and
 hardware-dependent installation execution is deferred this round. Acceptance
 requirements and worksheets remain outstanding; continue independent automated work.

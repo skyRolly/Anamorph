@@ -403,7 +403,7 @@ DELIBERATE_REAIMS = {
     # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
-     "src/gui/SpectrumImager.cpp:723"): "bandCount",
+     "src/gui/SpectrumImager.cpp:739"): "bandCount",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
@@ -500,6 +500,10 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:426-565",
      'src/PluginProcessor.cpp:576-1036'): "syncCommitted",
 
+    # 2026-11-02 (NR-029): the PluginEditor.cpp and SpectrumImager.cpp target
+    # spellings below follow this change's callback captures and lifetime guards.
+    # The cited behavior did not change; targets were checked in the current tree.
+    #
     # ROUND 30 (d75a4c8 -> this push), and the same shape as the round-28 entries above: the SOURCE
     # did not move within this push, so every re-anchor below is indistinguishable from drift to the
     # push-predecessor check. Rounds 29 and 30 moved `PluginEditor.cpp`, `PluginEditor.h` and
@@ -515,7 +519,7 @@ DELIBERATE_REAIMS = {
      "src/PluginEditor.h:1366"): "aboutLink",
     ("PRIVACY.md",
      "src/PluginEditor.cpp:2221",
-     'src/PluginEditor.cpp:2335'): "createDirectory",
+     'src/PluginEditor.cpp:2340'): "createDirectory",
     ("TRADEMARKS.md",
      "src/PluginEditor.h:1021",
      "src/PluginEditor.h:1366"): "aboutLink",
@@ -530,7 +534,7 @@ DELIBERATE_REAIMS = {
      "src/gui/LookAndFeel.cpp:482"): "Rectangle",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2221",
-     'src/PluginEditor.cpp:2335'): "createDirectory",
+     'src/PluginEditor.cpp:2340'): "createDirectory",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.h:1021",
      "src/PluginEditor.h:1366"): "aboutLink",
@@ -539,40 +543,40 @@ DELIBERATE_REAIMS = {
      "src/gui/LookAndFeel.cpp:780-783"): "getPopupMenuFont",
     ("docs/KNOWN_ISSUES.md",
      "src/PluginEditor.cpp:2319-2327",
-     'src/PluginEditor.cpp:2433-2441'): "focusSaveNameField",
+     'src/PluginEditor.cpp:2438-2446'): "focusSaveNameField",
     ("docs/KNOWN_ISSUES.md",
      "src/PluginEditor.cpp:2275",
-     'src/PluginEditor.cpp:2389'): "focusSaveNameField",
+     'src/PluginEditor.cpp:2394'): "focusSaveNameField",
     ("docs/KNOWN_ISSUES.md",
      "src/PluginEditor.cpp:2257-2327",
-     'src/PluginEditor.cpp:2371-2441'): "focusSaveNameField",
+     'src/PluginEditor.cpp:2376-2446'): "focusSaveNameField",
     ("docs/POSTMORTEMS.md",
      "src/PluginEditor.cpp:1865-1869",
-     'src/PluginEditor.cpp:1921-1925'): "cursorOverPopup",
+     'src/PluginEditor.cpp:1926-1930'): "cursorOverPopup",
     ("docs/POSTMORTEMS.md",
      "src/PluginEditor.cpp:1577-1580",
-     'src/PluginEditor.cpp:1617-1620'): "cursorOverPopup",
+     'src/PluginEditor.cpp:1622-1625'): "cursorOverPopup",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:759",
-     'src/PluginEditor.cpp:802'): "startTimerHz",
+     'src/PluginEditor.cpp:807'): "startTimerHz",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:1981-1982",
-     'src/PluginEditor.cpp:2037-2038'): "triggerRepaint",
+     'src/PluginEditor.cpp:2042-2043'): "triggerRepaint",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:762-768",
-     'src/PluginEditor.cpp:805-811'): "VBlankAttachment",
+     'src/PluginEditor.cpp:810-816'): "VBlankAttachment",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:759, 1497-1677",
-     'src/PluginEditor.cpp:802, 1537-1717'): "abortAbandonedDragGestures",
+     'src/PluginEditor.cpp:807, 1542-1722'): "abortAbandonedDragGestures",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:776-778",
-     'src/PluginEditor.cpp:819-821'): "meterVBlank",
+     'src/PluginEditor.cpp:824-826'): "meterVBlank",
     ("docs/procedures/CI_CD.md",
      "src/gui/LookAndFeel.cpp:328",
      "src/gui/LookAndFeel.cpp:482"): "Rectangle",
     ("tests/state_tests.cpp",
      "src/PluginEditor.cpp:2567",
-     'src/PluginEditor.cpp:2681'): "multiBar",
+     'src/PluginEditor.cpp:2686'): "multiBar",
 
     # ROUND 28, SECOND PUSH (71d3614), and the entries below exist because a re-anchor is
     # INDISTINGUISHABLE FROM DRIFT when the SOURCE did not move. `a6773cd` shipped the round-28
@@ -584,10 +588,10 @@ DELIBERATE_REAIMS = {
     # so a number that was wrong when it was written fails here rather than going quiet.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2373-2398",
-     'src/PluginEditor.cpp:2530-2555'): "oversampleBox",
+     'src/PluginEditor.cpp:2535-2560'): "oversampleBox",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2175",
-     'src/PluginEditor.cpp:2335'): "createDirectory",
+     'src/PluginEditor.cpp:2340'): "createDirectory",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1247-1424",
      'src/PluginProcessor.cpp:1460-1637'): "parameterGestureChanged",
@@ -642,7 +646,7 @@ DELIBERATE_REAIMS = {
      'src/PluginProcessor.cpp:1168'): "viewParams",
     ("docs/FUTURE_RISKS.md",
      "src/gui/SpectrumImager.cpp:898-913",
-     "src/gui/SpectrumImager.cpp:897-912"): "beginChangeGesture",
+     "src/gui/SpectrumImager.cpp:919-934"): "beginChangeGesture",
     # ...and ADR-0010's, whose anchor is a PAIR: the notifying write the wrapper replaced, and the
     # poll's gesture guard, which merely moved. One end edited is enough to make the whole anchor
     # unmappable, so the entry carries both ends at their re-derived spellings. The two entries

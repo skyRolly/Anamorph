@@ -1111,7 +1111,7 @@ private:
         // the cursor, so a constant pixel shift is not a constant value shift and this returns a
         // zero offset for it. That is recorded rather than guarded because it is unreachable in this
         // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:572`,
-        // `src/PluginEditor.cpp:718`, `src/PluginEditor.cpp:855`) and none names `Rotary`. The assertion notices if a
+        // `src/PluginEditor.cpp:723`, `src/PluginEditor.cpp:860`) and none names `Rotary`. The assertion notices if a
         // fourth call ever did.
         [[nodiscard]] juce::Point<float> wheelDragShift() const
         {

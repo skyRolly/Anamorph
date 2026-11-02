@@ -1,6 +1,43 @@
 # Next release investigation and development roadmap
 
-## Current execution: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+## Current execution: NR-029 SpectrumImager callback lifetime — 2026-11-02 (Asia/Shanghai)
+
+The integrated baseline remains `29150f312ec4a43ec85f35e61028d8338057d927`.
+The owner has deferred native/manual host, GUI, accessibility and performance
+acceptance; those gates remain pending and are not substituted by this work.
+
+**NR-029 / KI-035 is confirmed on current main and corrected on an unmerged
+review branch.** A synchronous parameter listener can destroy the editor while
+real `SpectrumImager` mouse callbacks are in progress. The original/fixed
+controls cover width gesture begin, width value store and end, crossover-handle
+begin, topology-add Bands begin and value dispatch, and the first pin begin of
+an interior-band move. Original-source controls reproduce unbalanced gesture
+state and ASan UAFs; corrected focused controls pass. The exact source scopes,
+raw log hashes, command, and limitations are recorded in
+[`spectrum-imager-lifetime.json`](engineering-review/spectrum-imager-lifetime.json).
+
+The latest corrected candidate passes the full sanitizer-enabled state suite:
+**12,337 checks, zero failures**, and all seven focused selectors pass (**109
+checks**). This is a locally built component/state harness, not full sanitizer
+coverage of every linked object and not native host/visual acceptance. CI and
+human review of the new PR remain pending. Do not merge it without separate
+owner authorization.
+
+The callback audit is bounded rather than universal. Reset/inline-frequency,
+solo-toggle/removal, and standalone/held-wheel mutation paths remain to be
+individually tested for destruction during their own parameter notifications;
+no safety claim is made for those paths. Continue with real event probes before
+closing the broader audit. PR #211 also remains open at reviewed head
+`ed635fbd3a1baf5a4cb8df17a749e2819bf0adb8`; its exact-head `linux` and
+`source-lint` jobs fail (one newly emitted shadow warning and stale citation
+self-test anchors). Other reported required jobs passed; the skipped jobs are
+not passes. Those issues are independent and have not been modified here.
+
+NR-023/#207 and NR-024/#208 remain as recorded below. The existing 0.10.0
+tag/draft/assets/version are unchanged. No native evidence or release operation
+is claimed.
+
+## Historical checkpoint: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly authorized both #208 and #207. #208 reviewed head
 `e12e1a5b8a3480341627d714aebf3a2d2340c805` is integrated at
@@ -1415,6 +1452,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 | NR-023 | P2 | Implemented / unmerged #207 | Bound transport clock arithmetic; verified original/fixed wrapper controls and exact-head CI | Independent correctness fix |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
+| NR-029 | P1 | Corrected / unmerged review PR | SpectrumImager callback paths can resume after synchronous editor destruction; focused original/fixed ASan controls | Independent GUI lifetime fix; other notifying paths still require bounded probes |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1908,6 +1946,37 @@ The owner separately authorized integration; native acceptance remains deferred.
   detection enabled. Targeted TU controls are separate from full sanitizer CI.
 - **Limits:** native host incidence unknown; fixes and new PR merges require review,
   native/manual execution stays owner-deferred, all release gates remain.
+
+### NR-029 — SpectrumImager mouse callbacks survive synchronous editor destruction
+
+- **Baseline / confidence:** confirmed at integrated main
+  `29150f312ec4a43ec85f35e61028d8338057d927`. A real parameter listener can
+  synchronously destroy the actual editor from production `SpectrumImager`
+  mouse callbacks; source execution then resumes in the destroyed component.
+  This is a deterministic memory-lifetime defect; host incidence is unmeasured.
+- **Reproduced paths:** width begin/store/end, crossover-handle begin,
+  topology-add Bands begin/value, and the first pin begin of an interior-band
+  move. The original width store/end, add Bands begin, and band-move begin
+  controls report ASan heap-use-after-free; original width/crossover begin
+  controls expose the processor having missed the close and a later Undo being
+  lost. Raw evidence identities are in the JSON ledger.
+- **Correction candidate:** hold `SafePointer` checks across synchronous
+  notifications, copy callback objects and processor-targeting closures onto
+  the stack where the component may die, defer cancellation until a begin
+  dispatch returns, and close only gestures the processor has observed. Preserve
+  completed parameter/history operations and use the existing processor-owned
+  transaction callback for multi-store edits. No DSP, parameter identity,
+  serialization, latency, threading protocol, or realtime processing changes.
+- **Validation:** focused corrected controls pass 109/109 under ASan/UBSan/LSan;
+  the complete locally built state suite passes 12,337/12,337 with those
+  sanitizers enabled. These checks instrument the test harness and selected
+  production translation units, not every linked object. Exact-head remote CI
+  and human review are pending in the new PR; do not merge without authorization.
+- **Audit limits / next:** actual reset/reset-crossover, inline frequency commit,
+  solo-toggle/removal and held/standalone wheel paths have not received their own
+  controlled destruction probes. They remain unverified, not cleared. Continue
+  the callback inventory against actual call paths and add a separate correction
+  only with a reproducer. Native/host GUI acceptance remains owner-deferred.
 
 ## 5. Version and release strategy
 

@@ -639,35 +639,40 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupToggle (mbEnableToggle, pid::mbEnable, "On", "Apply the per-band stereo widths to the sound");
     imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
                                                               processor.getAPVTS());
+    auto* const imagerProcessor = &processor;
     imager->setAnimationSource (processor.getInternal().animationsFloatPtr()); // host-hidden UI-anim flag
     // Per-control tooltips live in the imager; idle areas show none (0.6.10 #13).
     imager->setTooltip ({});
     // Momentary solo audition is a non-undoable engine override (#8); the split / width
     // lines travel on a reset / preset / A-B / undo via the shared sweep window (#1).
-    imager->onSoloPreview      = [this] (int mask) { processor.setSoloPreview (mask); };
-    imager->onClearSoloPreview = [this] { processor.clearSoloPreview(); };
+    imager->onSoloPreview      = [imagerProcessor] (int mask) { imagerProcessor->setSoloPreview (mask); };
+    imager->onClearSoloPreview = [imagerProcessor] { imagerProcessor->clearSoloPreview(); };
     imager->onSweep            = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
     // ADR-0053: a scroll over the multiband display names the split or the band it edits, so the
     // processor keeps the whole scroll as one undo step instead of one per notch.
-    imager->onWheelStep        = [this] (const juce::AudioProcessorParameter* wheelParam)
-                                 { processor.setWheelStepKey (AnamorphAudioProcessor::wheelStepKeyFor (wheelParam)); };
+    imager->onWheelStep        = [imagerProcessor] (const juce::AudioProcessorParameter* wheelParam)
+                                 { imagerProcessor->setWheelStepKey (AnamorphAudioProcessor::wheelStepKeyFor (wheelParam)); };
     // ADR-0008 as amended (round 14): the imager's two unbracketed stores declare the parameters
     // they write as the user's own, so a pushed neighbour belongs to the step that moved it.
     // Round 15: with the value the store installed, because a spread that runs after the primary's
     // gesture has closed is past the snapshot that would otherwise have read it back.
-    imager->onOwnedWrite       = [this] (const juce::AudioProcessorParameter* owned,
-                                         float was, float now)
-                                 { processor.noteOwnedParamWrite (owned, was, now); };
+    imager->onOwnedWrite       = [imagerProcessor] (const juce::AudioProcessorParameter* owned,
+                                                     float was, float now)
+                                 { imagerProcessor->noteOwnedParamWrite (owned, was, now); };
     // Round 19: and the refusal, which is the same sentence's other half -- a store that did not
     // stand states no endpoint, and the batch's close must not invent one from the live value.
-    imager->onOwnedRefused     = [this] (const juce::AudioProcessorParameter* refused)
-                                 { processor.noteOwnedParamRefused (refused); };
+    // A width gesture can be destroyed by a listener before its begin dispatch
+    // reaches the processor listener. The mouse callback finishes the matching
+    // close from its stack after that dispatch returns, when the editor (and
+    // this callback's owning component) is already gone.
+    imager->onOwnedRefused     = [imagerProcessor] (const juce::AudioProcessorParameter* refused)
+                                 { imagerProcessor->noteOwnedParamRefused (refused); };
     // ADR-0008 round 24 (Devin R1092): and the LIFETIME of a multi-store user action, so the undo
     // poll cannot commit half a topology change when a host pumps the loop from the inner gesture
     // close in the middle of one.
-    imager->onUserTransaction  = [this] (bool begin)
-                                 { if (begin) processor.beginUserTransaction();
-                                   else       processor.endUserTransaction(); };
+    imager->onUserTransaction  = [imagerProcessor] (bool begin)
+                                 { if (begin) imagerProcessor->beginUserTransaction();
+                                   else       imagerProcessor->endUserTransaction(); };
     imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 

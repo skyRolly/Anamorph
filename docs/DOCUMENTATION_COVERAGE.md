@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-029 SpectrumImager callback lifetime investigation — 2026-11-02
+
+Record the confirmed main-baseline use-after-free/gesture-balance defect and its
+unmerged correction candidate. Preserve actual-editor hit-test reproducers,
+original ASan witnesses, seven corrected ASan/UBSan/LSan controls and the full
+12,337-check sanitizer-enabled state-suite result with raw identities. The
+coverage is bounded to the enumerated width, crossover-handle, topology-add and
+interior-band-move paths; reset, inline frequency, solo/removal and wheel paths
+remain for separate probes. TESTING, KI-035 and the execution roadmap retain
+this scope. No native GUI/host acceptance, 0.10.0 release change, architecture
+approval or PR merge is inferred.
+
 ## #208 integration and #207 overlap reconciliation — 2026-11-02
 
 Record actual #208 merge `a78b733`, retain both independent control records and
@@ -1989,7 +2001,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2530-2555`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2535-2560`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -2460,7 +2472,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1763-1771`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1768-1776`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -2499,7 +2511,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1720` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1725` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -2509,7 +2521,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2335"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2340"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -2586,7 +2598,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:686`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:691`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -9608,13 +9620,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:680` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:685` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:709`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:714`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the
@@ -10951,7 +10963,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:679) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:695) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -10989,7 +11001,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1422 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1525 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -11043,7 +11055,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1738`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1841`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -11069,7 +11081,7 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:723)
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:739)
 and `moveBand` (:827). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
@@ -11206,7 +11218,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1422 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1525 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -11845,7 +11857,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:944`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:985`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -11922,7 +11934,7 @@ informational items.
 
 **Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
 three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
-exactly and is described correctly at `src/gui/SpectrumImager.cpp:460-470` and
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:468-478` and
 `src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
 (`src/gui/SpectrumImager.cpp:15-18`) still said `soundMovedUnderGesture` compares against that
 constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
@@ -12003,7 +12015,7 @@ reversed. [Verified]
 ## Sixteenth pass — the release-and-add topology round (2026-09-09)
 
 **CI first: `source-lint` failed on `ea82eab`, and the failure was mine.** One drifted documentation
-anchor (`src/gui/SpectrumImager.cpp:448-458 -> :410-420`), moved by the twelve lines ADR-0047's
+anchor (`src/gui/SpectrumImager.cpp:456-466 -> :410-420`), moved by the twelve lines ADR-0047's
 overloads added above `ownsSplit`. **Classified a code issue in the change set, not a tooling or
 formatting one** — the gate did its job. The reason it escaped locally is the durable lesson: CI
 compares against the PREVIOUS COMMIT and I had checked against `origin/main`, which cannot see drift a
