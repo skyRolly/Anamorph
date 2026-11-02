@@ -45919,6 +45919,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "ab_undo_tests.h"
 #include "scope_snapshot_tests.h"
 #include "gui_accessibility_tests.h"
+#include "editor_command_lifetime_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45933,6 +45934,21 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--editor-command-lifetime-probe") == 0)
+    {
+        int command = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "undo") == 0) command = 0;
+            else if (std::strcmp (argv[2], "redo") == 0) command = 1;
+            else if (std::strcmp (argv[2], "ab") == 0) command = 2;
+            else { std::fprintf (stderr, "Unknown editor command probe\n"); return 2; }
+        }
+        testEditorCommandLifetimes (command);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--gui-accessibility-probe") == 0)
     {
@@ -46249,6 +46265,7 @@ int main (int argc, char* argv[])
     testScopeSnapshotPublication();
     testScopeSnapshotConcurrency();
     testRotaryAccessibilityMetadataAndKeyboard();
+    testEditorCommandLifetimes();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;
