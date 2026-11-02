@@ -45919,6 +45919,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "ab_undo_tests.h"
 #include "scope_snapshot_tests.h"
 #include "gui_accessibility_tests.h"
+#include "transport_position_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45933,6 +45934,13 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--transport-position-probe") == 0)
+    {
+        testTransportPositionArithmetic();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--gui-accessibility-probe") == 0)
     {
@@ -46195,6 +46203,7 @@ int main (int argc, char* argv[])
     testAHostNanParameterDoesNotLatchTheChain();
     testTheDocumentedIoContract();
     testTheTransportMachineWithoutASampleClock();
+    testTransportPositionArithmetic();
     testAHostResetKeepsTheConfiguredChorusSound();
     testAHostResetInsideAForcedSwapLandsSettled();
     testANonFiniteVelvetDensityDoesNotFreezeTheDensity();

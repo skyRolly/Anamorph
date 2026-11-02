@@ -444,7 +444,14 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             else if (auto ppq = pos->getPpqPosition())
             {
                 const double bpm = pos->getBpm().orFallback (120.0);
-                nowOpt = (juce::int64) (*ppq * 60.0 / juce::jmax (1.0, bpm) * getSampleRate());
+                if (std::isfinite (*ppq) && std::isfinite (bpm))
+                {
+                    const double samples = *ppq * 60.0 / juce::jmax (1.0, bpm) * getSampleRate();
+                    // INT64_MAX rounds up to 2^63 as a double: the upper bound
+                    // must be exclusive. Invalid clocks act like absent metadata.
+                    if (std::isfinite (samples) && samples >= -0x1p63 && samples < 0x1p63)
+                        nowOpt = static_cast<juce::int64> (samples);
+                }
             }
 
             if (nowOpt)
@@ -454,9 +461,23 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 {
                     // Playing continuously, the transport advances by exactly one block;
                     // anything else (forward jump, rewind, loop wrap) is a reposition.
-                    const juce::int64 expected = prevPosSamples + (prevPlaying ? (juce::int64) prevPosBlock : 0);
-                    if (std::abs (now - expected) > (juce::int64) buffer.getNumSamples())
-                        seeked = true;
+                    // Unsigned differences represent the full signed-clock
+                    // distance without overflowing either expected or abs(delta).
+                    const auto advance = static_cast<juce::uint64> (prevPlaying ? prevPosBlock : 0);
+                    const auto tolerance = static_cast<juce::uint64> (buffer.getNumSamples());
+                    if (now >= prevPosSamples)
+                    {
+                        const auto distance = static_cast<juce::uint64> (now)
+                                            - static_cast<juce::uint64> (prevPosSamples);
+                        seeked = distance >= advance ? distance - advance > tolerance
+                                                     : advance - distance > tolerance;
+                    }
+                    else
+                    {
+                        const auto distance = static_cast<juce::uint64> (prevPosSamples)
+                                            - static_cast<juce::uint64> (now);
+                        seeked = distance > tolerance || advance > tolerance - distance;
+                    }
                 }
                 prevPosSamples = now;
                 prevPosBlock   = buffer.getNumSamples();
