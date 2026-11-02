@@ -2,8 +2,8 @@
 
 ## Integrated baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
 
-Owner-approved #203→#201, then #199→#200→#202, #204 and #205 are merged on actual main
-`109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6`. Accepted ADR-0070's atomic stereo/tag
+Owner-approved #203→#201, then #199→#200→#202 and #204–#206 are merged on actual main
+`06527b1f5f56e60068818c65d1af0b6d29f9e468`. Accepted ADR-0070's atomic stereo/tag
 implementation, serialized GUI affinity and rejected-paint retry are effective on
 main; NR-011's57 isolated controls/five mutants and NR-012's36 retained observations
 are integrated. Post-#204 Build41339340041, CodeQL41339340007 and MSVC41339340000
@@ -19,14 +19,19 @@ The [native validation package](../worklogs/NATIVE_VALIDATION_PACKAGE.md) reuses
 the opt-in Bench for paired raw timings/provenance, memory, reader-load models
 and host/AX worksheets. #205's merge retains approved head`014a24a` exactly,
 including overlay pruning and collection/analysis consistency controls. Its
-exact-head gates completed; post-merge Build41402900891/CodeQL41402900875/
-MSVC41402900872 are in progress at this checkpoint. Integrated local preflight
+exact-head and post-merge Build41402900891/CodeQL41402900875/MSVC41402900872 gates
+completed. #206's reviewed tree3670e7d equals main; exact-head Build41404429212,
+PR41404435805 and dependency41404435802 passed. Its post-merge Build41422157397
+is recorded separately. Integrated local preflight
 passes 945/11911 and 18 Python controls. Shared-container smoke is diagnostic only; no native
-machine is configured. Owner hardware/access information and actual evidence are
-pending. Use the existing package's pinned clean-source handoff; no further
-tooling or product change is justified absent a defect or new evidence. New PR
-merges require separate authorization; no optimization or
-Accepted protocol change is selected.
+machine is configured. The owner now defers native performance, GUI/host/lifecycle,
+accessibility and hardware installation execution for this assignment. Retain
+the package and all outstanding acceptance requirements; do not request hardware.
+Independent engineering review proceeds: NR-023 transport overflow/invalid casts
+are reproduced and corrected on an unmerged branch (137ad08, State153);
+NR-024 editor command callback UAF is confirmed for a separate fix. No DSP,
+parameter, serialization, latency or threading architecture change is selected.
+New PR merges require separate authorization.
 The0.10.0 tag/draft/11 assets remain unchanged at`4c13688`, lacking NR-022/NR-006.
 Ordinary CI/local validation builds are not release replacement or publication.
 See the live [execution register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)

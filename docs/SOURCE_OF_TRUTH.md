@@ -75,6 +75,9 @@ are developer test procedures/data templates supporting NR-006/010/014, integrat
 via owner-approved #205 at`109d183`. Their
 scripts, smoke runs and reader-load models do not confer representative cost,
 native visual/assistive-device, architecture, merge or release acceptance.
+The owner's 2026-11-02 continuation defers native/hardware execution for this
+engineering round without waiving acceptance. The roadmap records independent
+source investigations; unmerged corrections are not main or release content.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).

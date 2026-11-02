@@ -1,5 +1,24 @@
 # DOCUMENTATION_COVERAGE.md
 
+## #206 integration, owner native deferral and transport UB — 2026-11-02
+
+Reported stale native-first instructions, then applied the owner's explicit
+deferral without changing ADR-0070 acceptance or release gates. Reconcile actual
+#206 main06527b1/reviewed tree and refreshed #205/#206 exact-head CI; introduce an
+independently executable engineering phase and NR-023/024 without reusing IDs.
+State153 adds real-wrapper clock/peak-hold controls. Original33/208 failures and
+actual-TU UBSan add/subtract/abs/cast reports distinguish the scalar correction;
+corrected208/208 with no reports. No DSP graph/numerical/parameter/serialization/
+latency/threading mechanism changes. Sync TESTING, API_REFERENCE, unreleased
+notes, handover/readiness and evidence references; preserve old checkpoints.
+Re-anchor moved source citations and18 existing declaration targets without
+altering expected tokens, checker logic or liveness cases. Preserve failed local
+unconfigured pluginval and original-wrapper controls separately from the six
+configured first-attempt passes; the exact signal cause remains unattributed.
+Separate editor callback UAF witness is recorded for an independent correction,
+not mixed into the transport implementation. Native and hardware work stays
+unperformed/deferred; no new hardware request or release operation.
+
 ## #205 integration and native execution handoff — 2026-11-02
 
 Reported live drift that still called #205 unmerged, then reconciled the roadmap,
@@ -9242,7 +9261,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2236`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2257`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -9275,7 +9294,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2894`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2915`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -9365,7 +9384,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2709`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2730`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -10939,7 +10958,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1147`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1168`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -11763,7 +11782,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1439-1615`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1460-1636`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -13286,7 +13305,7 @@ empty-directory mistake and MB1–MB6);
 
 **Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
 program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
-write-back, `src/PluginProcessor.cpp:1147` (line 960 in the pre-fix file, which is the line the
+write-back, `src/PluginProcessor.cpp:1168` (line 960 in the pre-fix file, which is the line the
 alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
 second is a false positive, and was removed rather than dismissed.
 
@@ -17101,7 +17120,7 @@ suppression. One new file (`ADR-0056`, **Proposed**), one new opt-in instrument
 (`--risk014-probe`), and four documents corrected to the measurements.
 
 **The two call graphs, from the API rather than the names.** `setStateInformation` →
-`decodeRestore` (`src/PluginProcessor.cpp:2906-2914`) → `AudioProcessor::getXmlFromBinary` →
+`decodeRestore` (`src/PluginProcessor.cpp:2927-2935`) → `AudioProcessor::getXmlFromBinary` →
 `juce::parseXML`; and, inside the same decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) →
 `juce::parseXML (slotPayload)` on a string attribute value of the already-parsed session document —
 a second, independently framed document. `getXmlFromBinary` validates exactly two things: chunk
@@ -17696,7 +17715,7 @@ occurrence only where source and context prove it describes the CURRENT reposito
   `clang::nonblocking` / `clang::nonallocating` occurrences across `modules/`. ADR-0029's rule and the
   52-warning figure stand.
 
-**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1258` records a dated act of checking
+**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1279` records a dated act of checking
 ("CORRECTED 2026-08-31 … after checking the pinned JUCE 9.0.1"); `build.yml:1210` records the
 2026-08-18 leak retest on the configuration it names; `build.yml:2682` already says "the JUCE 9.0.1
 pin this repository carried until ADR-0054"; `README.md:28` describes the 0.9.4 release;

@@ -1,6 +1,65 @@
 # Next release investigation and development roadmap
 
-## Current execution: #205 integrated; native execution pending — 2026-11-02 (Asia/Shanghai)
+## Current execution: #206 integrated; independent engineering review — 2026-11-02 (Asia/Shanghai)
+
+The owner explicitly authorized #206. Reviewed head`3670e7d81e4f89aa706cbda6fbe8b44dd96e09d5`
+merged as **`06527b1f5f56e60068818c65d1af0b6d29f9e468`**, current integrated main.
+Parents are `109d183`/`3670e7d`; tree`e575cdf04a7cef1be13815902c4ac28cc5ff2c9c`
+equals the reviewed head. Exact-head Build41404429212 completed16 jobs/3 intentional
+skips; PR41404435805's merge check and dependency41404435802 passed. No reviews,
+inline threads or new blocking findings were present. #205 main's previously
+incomplete Build41402900891, CodeQL41402900875 and MSVC41402900872 also completed
+successfully. Post-#206 local preflight completed945 DSP/11911 state and18 Python
+controls with the shipping-Clang ABI gate. Post-merge Build41422157397 is tracked
+separately; documentation-only changes did not trigger CodeQL/MSVC.
+
+**New owner direction:** defer native execution for this assignment. NR-006/010
+representative measurements, native scope/FFT/editor/host and NR-014 assistive
+acceptance, hardware-dependent installation and NR-003 host matrices are not this
+round's work. Preserve the package, worksheets, provenance, Accepted ADR-0070 and
+all outstanding human/release gates. Deferred means unperformed, not passed or
+waived. Do not ask again for hardware/access/results. Native prerequisites do
+not block independently testable engineering fixes.
+
+**Selected work: reproduce first, then correct bounded defects on separate PRs.**
+The current review examined wrapper transport arithmetic, state admission/Undo,
+preset failure handling, DSP buffer boundaries, editor callbacks and existing
+diagnostic/CI evidence. It is a bounded review, not a whole-codebase certification.
+
+| Candidate | New evidence and disposition |
+|---|---|
+| NR-023, P2, transport arithmetic | Confirmed: real-wrapper State153 fails33/208 on main's code; actual-TU UBSan reports signed add/subtract/abs overflow and NaN-to-int conversion. Fix only scalar metadata handling; corrected208/208 and no UBSan reports. |
+| NR-024, P1, editor command lifetime | Confirmed separately: closing the real editor from a Width notification during its Undo callback yields ASan heap-use-after-free at PluginEditor.cpp's post-Undo animation assignment. Proceed next on an independent branch; no supported-host incidence is asserted. |
+| Restore/Undo admission | Retain: StateCommandGate checks refusal before nested admission, drains before replacement locking and queues on failed try-enter. Existing restore/transaction regressions and NR-022 are not reopened without a new witness. |
+| Preset write failures | Retain: TemporaryFile write, flush/status, byte count and final replacement failures precede metadata adoption; State117 covers real failed writes. No new defect established in the inspected path. |
+| DSP large/empty blocks | Retain inspected guards/slicing and existing tests; no allocation, graph, numerical, parameter, state or latency change is justified. No universal correctness claim. |
+| Native-only/recurrence items | Preserve owner deferral and documented triggers. No host-focus or install correction without the required reproducer/environment. |
+
+NR-023 code commit`137ad083be4a5b2a34c9654ba072f383aeffe5b3` is **implemented on its
+review branch, not integrated**. [Raw control/provenance](engineering-review/transport-arithmetic.json).
+The PPQ arithmetic for ordinary finite clocks is unchanged. Reject invalid or
+unrepresentable derived positions before casting; compare full-range integer
+distances without signed overflow. Missing tempo keeps120 BPM, the existing finite
+tempo floor remains1 BPM, sample clocks retain priority, and valid seek/restart
+controls remain live. Test/CI/realtime and human PR review remain mandatory.
+
+Local pluginval initially failed all3 permitted deterministic Editor attempts
+with exit139 under the unconfigured runtime. An otherwise equivalent bundle
+containing main's original processor object fails the same way. With the existing
+toolchain environment sourced, both corrected strictness10 modes complete3 passes
+on first attempts. Resolved X11/GL/PNG library paths differ between environments;
+the exact signal cause remains unattributed. Preserve both failures and controls,
+not an external/product attribution inferred from a later pass. No retry budget,
+strictness or requirement changed. Source movement also re-anchors citations and
+18 declaration targets; their expected tokens and checker logic are unchanged.
+
+**Release remains held:** existing0.10.0 tag`1190e455`→`4c13688`, draft429760301
+and11 assets are unchanged. The old draft contains the same unchecked transport
+body as main's baseline, in addition to its prior post-tag gaps. No supported-host
+crash or field rate is inferred. New fixes require separate merge approval; native
+deferral does not authorize release or remove acceptance requirements.
+
+## Historical #205 integration and native handoff — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly accepted both #205 review corrections and authorized its
 merge. Approved head **`014a24a6424e7d3f58be50cea5bcc82d5620a7bd`** merged as
@@ -1000,19 +1059,20 @@ No PR merge, tag change, release modification or publication is authorized.
 ## 1. Recommendation
 
 Hold the already-built 0.10.0 draft unchanged. NR-001/002, the approved five-PR
-stack and #204/#205
+stack and #204/#205/#206
 integration are complete; do not repeat them. Current main contains the atomic
 scope correction and NR-022 Undo fix, while the draft does not. NR-021 therefore
 recommends selecting a later source/candidate under separate authorization after
 remaining NR-006 native performance/manual acceptance, rather than publishing the
 old bytes on the strength of current-main CI.
 
-Continue with the prepared [native evidence package](NATIVE_VALIDATION_PACKAGE.md);
-the bounded NR-014 correction/test is already integrated. Controlled-hardware NR-006/010 measurements,
-pinned-host NR-013 reproduction and native NR-015 experiments require their actual
-inputs; retain explicit blockers instead of inventing completion. NR-018/019 remain
-owner-dependent. The 22 stable IDs are decisions, validation, enhancement work and
-investigations, not 22 confirmed defects. No confirmed P0 is established.
+Continue the independently executable engineering review and focused NR-023/024
+corrections. Native NR-006/010/014 execution is owner-deferred this round; retain the
+[package](NATIVE_VALIDATION_PACKAGE.md) for a later assignment without requesting
+hardware. NR-013's pinned-host reproduction, NR-015's isolated environment and
+NR-018/019/020 owner decisions retain their boundaries. Stable NR IDs describe
+decisions, validation, enhancements and defects; they are not all confirmed bugs.
+No confirmed P0 is established.
 
 ## 2. Verified baseline
 
@@ -1238,15 +1298,15 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Integrated / acceptance pending | Accepted ADR-0070 and #202 on main; representative cost and native visual/lifecycle evidence remain open | 1 / native acceptance |
+| NR-006 | P1 | Integrated / native execution owner-deferred | Accepted ADR-0070 and #202 on main; cost/visual/lifecycle acceptance outstanding, not waived | Later native acceptance |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
-| NR-010 | P2 | Tooling integrated / native execution pending | #205 merged at109d183; use existing paired/raw package on controlled identified hardware, then owner budget review | 2 / engineering baseline |
+| NR-010 | P2 | Tooling integrated / native execution owner-deferred | #205 integrated; retain >=5-repeat package and outstanding representative measurements/owner budget acceptance | Later engineering baseline |
 | NR-011 | P2 | Completed / integrated | #200 merged at `54da68e`; 57 isolated action controls, five mutants and legacy/schema gates retained | 2 / coverage complete |
 | NR-012 | P3 | Completed / integrated | #201 merged at `7c007e7`; retain behavioral assertions, no universal quality/monotonicity claim | 2 / bounded study complete |
 | NR-013 | P2 | Blocked | Pinned REAPER/OS reproduction unavailable; preserve focus behavior | 1 / bounded UX maintenance |
-| NR-014 | P2 | Bounded correction integrated / acceptance pending | #204 merged at34cc369; State152 complete; native UX/assistive-device audit pending | 1 bounded fix / 3 broader audit |
+| NR-014 | P2 | Bounded correction integrated / native execution owner-deferred | #204/State152 complete; native UX/assistive-device acceptance outstanding | Later native audit |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
 | NR-016 | P2 | Completed | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
 | NR-017 | P2 | Completed | Main-baseline diagnostic inventory/dispositions; alert state unavailable | 2 / engineering debt |
@@ -1255,6 +1315,8 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
+| NR-023 | P2 | Implemented / unmerged | Bound host transport arithmetic; State153 and actual-wrapper UBSan distinguish the original | Independent correctness fix |
+| NR-024 | P1 | Confirmed / next independent fix | ASan proves editor command callback writes after a parameter listener destroys the editor | Independent lifetime fix |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1337,6 +1399,10 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 ### NR-006 — Complete native acceptance of the integrated ScopeBuffer correction
 
+**Execution owner-deferred for this assignment.** Acceptance remains outstanding;
+preserve the existing protocol, tools and worksheet for a later assignment. No
+hardware request or substitute shared-runner acceptance this round.
+
 **Accepted and integrated:** architecture #199 merge`303d37c`, implementation
 #202 merge`4255393`. The owner separately approved both integration and ADR-0070;
 do not request the already-cleared Architecture Review again. Full protocol,
@@ -1414,6 +1480,10 @@ alternatives and source/model/production evidence remain in
   Depends on trigger/owner decision; Phase 2 architecture, no incidental load-order weakening.
 
 ### NR-010 — Produce a reproducible CPU, peak-block and memory budget
+
+**Native execution owner-deferred.** The integrated collector is retained; do not
+rebuild its framework or select an optimization without measurements. Outstanding
+cost/budget acceptance still blocks release disposition where applicable.
 
 **Tooling integrated via #205 at`109d183` / native results Pending:** the [native package](NATIVE_VALIDATION_PACKAGE.md)
 extends the existing opt-in Bench without a new target or shipping change. It
@@ -1494,6 +1564,9 @@ Native/broader-grid interpretation remains separate from these local observation
   required; dependency changes need architecture approval.** Phase 1 bounded maintenance.
 
 ### NR-014 — Audit visual, keyboard and accessibility behavior
+
+**Native/manual execution owner-deferred this round.** Component-level tests
+retain their scope; native usability and human acceptance remain outstanding.
 
 **P2 bounded correction integrated via #204 at`34cc369`:** all 12 rotary
 controls now reuse their existing captions as accessibility titles. State152
@@ -1695,6 +1768,39 @@ a later source does not authorize a rebuild, retag, version or release operation
   change; this is Unreleased maintenance work, not part of the existing 0.10.0 draft.
 
 
+### NR-023 — Bound transport metadata before meter seek detection
+
+- **Verified mechanism:** `processBlock` casts PPQ-derived non-finite/out-of-range
+  doubles to int64, adds a block to signed sample time and computes signed absolute
+  differences. Actual-wrapper UBSan reproduces all four undefined operations.
+  State153 observes false/missed held-peak resets on unchanged source. No supported
+  DAW occurrence, audio corruption or crash rate is established.
+- **Decision:** preserve ordinary conversion/tempo and meter contracts, reject unusable
+  derived clock observations, and compare distances using defined unsigned arithmetic.
+  Saturating/casting invalid values to a clock endpoint would invent a seek; floating
+  comparisons would lose low sample bits near int64 limits. No such substitute.
+- **Implemented:** commit`137ad08`; State153 exercises full-range jumps, invalid PPQ/
+  tempo, recovery, valid negative/variable-block PPQ playback, missing tempo,
+  sample-clock priority, stop/restart and bit-exact transparent audio.
+- **Evidence:** original33/208 failures; corrected208/208; original four UBSan
+  categories versus none corrected. Instrumented-wrapper controls are not a claim
+  that every linked dependency was sanitized; required full CI remains separate.
+  [Raw identities/log hashes](engineering-review/transport-arithmetic.json).
+- **Remaining:** focused PR/mandatory final-head gates, separate owner merge review.
+  No architecture, serialization, latency, parameter or realtime mechanism changes.
+
+### NR-024 — Keep editor command callbacks within editor lifetime
+
+- **Verified new witness:** a synchronous parameter listener deletes the real editor
+  while its copied production Undo callback calls `processor.undo()`. ASan reports
+  the following `knobSweepTime` write at PluginEditor.cpp:462 as heap-use-after-free.
+  Processor and callback remain alive; no native screen or host simulation is claimed.
+- **Next action:** examine the same post-command pattern in Undo/Redo/A-B, add a real
+  callback/lifecycle regression, and preserve processor action completion while
+  skipping editor updates after destruction. Independent source/PR from NR-023.
+- **Limits/gates:** native incidence unknown; no new thread, event routing or architecture
+  decision is selected. Keep human PR merge review and all existing acceptance gates.
+
 ## 5. Version and release strategy
 
 1. **Existing draft: 0.10.0, held unchanged.** It includes #187/#191/#193 but lacks
@@ -1719,20 +1825,21 @@ a later source does not authorize a rebuild, retag, version or release operation
 
 ### Phase 0 — Completed approval records; remaining owner decisions
 
-NR-001/002/016 and #199–#205 integrations are complete. Preserve the actual
+NR-001/002/016 and #199–#206 integrations are complete. Preserve the actual
 merge and owner-attestation evidence; do not repeat that batch. NR-018/019 remain
 separate owner/legal/provisioning decisions. Unknown distribution rights keep all
 artifacts private/draft. New PRs require their own merge authorization.
 
-### Phase 1 — Integrated reliability work and bounded component correction
+### Phase 1 — Independent engineering discovery and corrections
 
-NR-022 and NR-006 source corrections are on main. Complete NR-006 native cost and
-visual/lifecycle acceptance when suitable systems exist. The current independent
-batch is executing the integrated NR-006/010 owner-native collection package; NR-014 rotary metadata
-and attachment/key/lifetime regression are integrated. Remaining native
-UX/assistive-device checks remain explicit. NR-013 requires a
-pinned host reproduction, and NR-003 remains Deferred. NR-004/005/007 reopen only
-on their documented recurrence triggers.
+NR-022/006 and bounded NR-014 source corrections are integrated. Owner-defer their
+remaining native/manual execution for this round, preserving acceptance. Review
+state/preset/Undo, DSP/RT boundaries, publications/lifetimes, component callbacks
+and validation oracles for new reproducible findings. Establish unchanged-source
+controls before fixing; prioritize demonstrated harm and keep separate reviewable
+PRs. Start with NR-023 transport UB and NR-024 editor callback UAF. NR-013 still
+needs a pinned host reproducer; NR-003 is Deferred and NR-004/005/007 retain their
+recurrence triggers. Independent source correctness does not wait for native costs.
 
 ### Phase 2 — Measurement inputs before optimization or expanded installation
 

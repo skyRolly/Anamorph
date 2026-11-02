@@ -68,7 +68,7 @@ Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cp
 | `outputBalance` | Whole-plugin output balance (signed %). |
 | `autoGainMatch` (Level Match) | Real-time BS.1770 loudness match for fair A/B. "Apply" locks the measured gain into Output Gain. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1589-1661; src/PluginProcessor.cpp:486-552 (`applyAutoGain`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1589-1661; src/PluginProcessor.cpp:507-573 (`applyAutoGain`).
 
 ## Bypass / view
 

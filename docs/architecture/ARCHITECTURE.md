@@ -43,7 +43,7 @@ bound once beside the atomic pointers; finite values and the ADR-0057 ordering s
 
 Evidence [Verified]:
 - Source: src/PluginParameters.cpp:350-437 (`toEngine`)
-- Source: src/PluginProcessor.cpp:475-482 (per-block read inside `engine.setParametersFrom` → `engine.process`)
+- Source: src/PluginProcessor.cpp:496-503 (per-block read inside `engine.setParametersFrom` → `engine.process`)
 
 ## 3. Module inventory
 

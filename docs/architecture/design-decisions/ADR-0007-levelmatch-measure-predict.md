@@ -93,7 +93,7 @@ path: a host reset clears **audio**, and leaves **display and the user's own lat
 same pass found `levels.reset()` on this path wiping `peakHoldL/R` — a held peak `LevelMeters.h`
 documents as "never falls", with its reset rule stated in the same header: *"on a number click or a
 playback restart"*. The product has exactly two such paths and a transport stop is neither
-(`src/gui/LevelMeter.h:27`, `src/PluginProcessor.cpp:468`). Measured, a transport stop turned a held
+(`src/gui/LevelMeter.h:27`, `src/PluginProcessor.cpp:489`). Measured, a transport stop turned a held
 −0.92 dB into −100.00 dB — destroying the reading at the moment the user stopped to read it.
 `correlation` and `levels` are now cleared under `ResetScope::everything` only, and the play-edge
 and seek clears are measured intact (−0.92 dB kept across the stop, −33.98 dB after the next play).
@@ -226,7 +226,7 @@ against a fresh instance at the destination state:
   input sample and the self-heal's `loudness.reset()` (ADR-0009), and `applyAutoGain`'s `jlimit`
   passes NaN: Output Gain became NaN (silence through a host reset and a re-prepare, `value="nan"`
   saved, Undo to 0 dB instead of the user's value). "Apply locks the measured gain" has nothing to
-  lock there, so Apply now does nothing (`src/PluginProcessor.cpp:500`); every finite Apply is
+  lock there, so Apply now does nothing (`src/PluginProcessor.cpp:521`); every finite Apply is
   unchanged. State test 129.
 
 **Recorded for the owner, not decided here** (each is a change to this ADR, not a defect of it):
@@ -1644,7 +1644,7 @@ the consumers `src/dsp/AnamorphEngine.h:130-138` (the prime) and `src/dsp/Anamor
   amendments of 2026-09-25 and the revision of 2026-09-26), `:82-95` (`restoreUnmeasured`)
 - `src/dsp/AnamorphEngine.cpp:2011-2012` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
   (silence-edge snap), `:611-692` (the A/B record: request, forget, capture, restore)
-- `src/PluginProcessor.cpp:486` (`applyAutoGain`)
+- `src/PluginProcessor.cpp:507` (`applyAutoGain`)
 
 Evidence [Verified]:
 - Source: src/dsp/LoudnessMatch.cpp:16-289

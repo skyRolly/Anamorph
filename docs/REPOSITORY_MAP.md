@@ -5,6 +5,11 @@ Directory and file map with per-component responsibilities. Architecture rationa
 
 ## Top level
 
+Current engineering review follows `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`;
+NR-023's raw wrapper/sanitizer control provenance is
+[`worklogs/engineering-review/transport-arithmetic.json`](../worklogs/engineering-review/transport-arithmetic.json).
+Historical standing-programme rounds retain their own scope and evidence.
+
 ```
 Anamorph/
 ├── CMakeLists.txt          Build: JUCE FetchContent (9.0.4, pinned by commit SHA), AnamorphDSP INTERFACE lib,

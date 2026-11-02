@@ -24,6 +24,9 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Invalid host transport timing no longer causes false meter peak resets or overflows seek detection.**
+  Ordinary playback, valid seeks, restarts and audio samples retain their behavior.
+  Evidence: commit `137ad083be4a5b2a34c9654ba072f383aeffe5b3`; NR-023; State test153. [Verified]
 - **Rotary controls expose accessibility titles matching their visible captions.**
   Evidence: commit `d49736e9a496cfb83db67804a8439daa55200f26`; PR #204; State test 152. [Verified]
 - **A completed edit remains undoable after switching A/B before the editor's next update.**
