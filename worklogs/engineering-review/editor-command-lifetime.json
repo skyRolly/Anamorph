@@ -1067,7 +1067,13 @@
       "checks": 115,
       "failures": 0
     },
-    "full_local_instrumentation": "Only actual editor translation unit instrumented for three ASan positive/negative/mutant probes; full sanitizer CI separate"
+    "full_local_instrumentation": "Only actual editor translation unit instrumented for three ASan positive/negative/mutant probes; full sanitizer CI separate",
+    "manual_citation_review": {
+      "finding": "Two stale shorthand references in wheelDragShift source comment were not tracked by the citation gate",
+      "correction": "All three setSliderStyle references now explicitly name their source file and actual call line:572,718,855",
+      "scope": "Numeric source comments only; shipping Editor.cpp and regression header content hashes unchanged",
+      "ci": "Refresh exact updated head; prior-head outcomes remain historical"
+    }
   },
   "pull_request": {
     "number": 208,
