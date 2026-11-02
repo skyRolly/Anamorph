@@ -1,5 +1,19 @@
 # DOCUMENTATION_COVERAGE.md
 
+## #205 integration and native execution handoff — 2026-11-02
+
+Reported live drift that still called #205 unmerged, then reconciled the roadmap,
+README, HANDOVER, source authority, native procedure and candidate readiness with
+owner-approved merge109d183, approved head014a24a and their equal tree. Retain the
+dated review/development checkpoints and original control identities. Record
+exact-head CI, digest-verified synthetic packets/memcheck, post-merge checks and
+native hardware/access limits in the existing integration/control JSON.
+The existing collector is integrated/tested; native measurements and GUI/AX/cost
+acceptance remain Pending. Add only an immutable clean-checkout handoff to the
+existing procedure, with no new framework, target, production change, numerical
+threshold, release action or speculative host/focus correction. NR-011/012 remain
+closed for their defined scope; other native/owner/recurrence gates are preserved.
+
 ## #205 evidence archive and analysis review — 2026-11-02
 
 Confirmed both supplied findings against df1ede2 despite its completed CI: pack

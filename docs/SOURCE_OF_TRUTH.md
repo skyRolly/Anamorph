@@ -71,7 +71,8 @@ delivered component keys, not native screen-reader, global focus or host accepta
 The bounded correction is integrated via #204 at`34cc369`. The
 [native validation package](../worklogs/NATIVE_VALIDATION_PACKAGE.md) and
 [manual worksheet](../worklogs/native-validation/manual-acceptance-template.json)
-are developer test procedures/data templates supporting NR-006/010/014. Their
+are developer test procedures/data templates supporting NR-006/010/014, integrated
+via owner-approved #205 at`109d183`. Their
 scripts, smoke runs and reader-load models do not confer representative cost,
 native visual/assistive-device, architecture, merge or release acceptance.
 
