@@ -18,6 +18,12 @@ UBSan passes208; actual-editor ASan passes Undo/Redo/A-B. Re-running the origina
 wrapper yields33 failures/four UBSan categories; original and captured-reference
 editor variants each reproduce all three UAFs with the combined driver.
 
+The initial discovery/inventory records name `ab799880` because they ran on the
+validated integration candidate before the merge. Its complete tree equals
+`29150f3`; the new State155 original controls separately compile the editor taken
+directly from `29150f3`. Preserve those actual identities instead of relabeling
+earlier executions as post-merge tests.
+
 The synchronized head's five workflows completed; main's separate CI ledger is
 in the roadmap. Memcheck artifact13159780263 independently verifies completed
 DSP/state, exit0/zero errors; existing leak checking is disabled. Native DSP945

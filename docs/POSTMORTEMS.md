@@ -467,7 +467,7 @@ results; original owner attestations are not retroactively assigned to new code.
 ## INC-023 — Restore callouts resumed after the editor closed
 
 - **Date:** 2026-11-03. **Source baseline:** integrated main`29150f3`.
-  **Correction:** commit`f8da821`, developed on an **unmerged** branch; KI-034
+  **Correction:** commit`b537596`, developed on an **unmerged** branch; KI-034
   remains an integrated-main limitation until the owner approves integration.
   **Severity:** High; deterministic source-level UAF, native incidence unmeasured.
 - **Evidence [Verified]:** NR-025, State155 and the

@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-11-03 Asia/Shanghai",
   "baseline": "29150f312ec4a43ec85f35e61028d8338057d927",
-  "code_commit": "f8da821d391fa8dd36fad0c18381f98a800f5c39",
+  "code_commit": "b5375963e3ce52d32aea1678812a725811a17a67",
   "ids": [
     "NR-025 / KI-034",
     "NR-026 / KI-035"
@@ -2834,5 +2834,218 @@
     "state": 12313,
     "failures": 0,
     "log_sha256": "afe4252f12989021ba600afa1d986393a602c09e90b13c4a029cc33a19d8ac25"
+  },
+  "local_citation_preflight_note": "Initial unpushed code/doc split failed the immediate-predecessor citation check. Consolidated the local unpublished commit so citation moves and source moves are reviewed together; retained first local code ref in archive/nr025-first-code. No shared history rewrite or new detector exceptions.",
+  "combined_main_integration": {
+    "main": "29150f312ec4a43ec85f35e61028d8338057d927",
+    "pr208_merge": "a78b73334dbbbd70dc6ab6de9fd155643983d1f6",
+    "pr207_merge": "29150f312ec4a43ec85f35e61028d8338057d927",
+    "main_tree": "2f34eb248a1131f755809bae565bc8963ec5716a",
+    "validated_head": "ab7998804a2b2161a532ff1e3de26a8ec6e8039b",
+    "merge_tree_equals_validated_tree": true,
+    "build": 41480257211,
+    "codeql": 41480257255,
+    "msvc": 41480257258,
+    "all_three_workflows": "completed/success",
+    "jobs": [
+      {
+        "id": 125396368866,
+        "name": "docs",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369122,
+        "name": "sanitizers",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369209,
+        "name": "native-evidence-smoke (windows-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369243,
+        "name": "source-lint",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369322,
+        "name": "native-evidence-smoke (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369405,
+        "name": "linux",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369417,
+        "name": "tsan",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369421,
+        "name": "macos",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369467,
+        "name": "windows",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369484,
+        "name": "native-evidence-smoke (macos-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369504,
+        "name": "windows-avx2-ab",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369531,
+        "name": "macos-intel",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369668,
+        "name": "realtime",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369703,
+        "name": "linux-lto-tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396369718,
+        "name": "macos-crossslice",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396370261,
+        "name": "fuzz",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125396371187,
+        "name": "merge-check",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 125396371217,
+        "name": "macos-review-coinstallation",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 125396372499,
+        "name": "macos-review-selections",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ],
+    "memcheck": {
+      "artifact_id": 13161163476,
+      "zip_sha256": "54ee950752d7a137c8d1bc37b33047f7d6e2bc3251ae25fd0e4cc8f69eb0fed9",
+      "results": [
+        {
+          "suite": "dsp",
+          "command": [
+            "valgrind",
+            "--tool=memcheck",
+            "--track-origins=yes",
+            "--leak-check=no",
+            "--error-exitcode=1",
+            "--error-limit=no",
+            "--num-callers=25",
+            "build-vg/AnamorphTests_artefacts/Release/AnamorphTests"
+          ],
+          "exit_code": 0,
+          "log": "dsp.log",
+          "state": "completed",
+          "pid": 7876,
+          "error_summary_counts": [
+            0
+          ],
+          "log_sha256": "c0afe32ae9530398946383dcbf0fbc9117992046735e3b462cc03865c3c6f5d0",
+          "check_summaries": [
+            "934 checks, 0 failures"
+          ]
+        },
+        {
+          "suite": "state",
+          "command": [
+            "valgrind",
+            "--tool=memcheck",
+            "--track-origins=yes",
+            "--leak-check=no",
+            "--error-exitcode=1",
+            "--error-limit=no",
+            "--num-callers=25",
+            "build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+          ],
+          "exit_code": 0,
+          "log": "state.log",
+          "state": "completed",
+          "pid": 7877,
+          "error_summary_counts": [
+            0
+          ],
+          "log_sha256": "93a5b3a729fed3612d3f7d9ff96f424d527acadc37adc0e81bb0b868a07f971a",
+          "check_summaries": [
+            "12234 checks, 0 failure(s)"
+          ]
+        }
+      ],
+      "leak_checking": "disabled by existing configuration; zero errors is not leak clearance"
+    }
+  },
+  "configured_local_pluginval": {
+    "strictness": 10,
+    "modes": {
+      "deterministic": {
+        "passes": 3,
+        "first_attempt_all": false,
+        "log_sha256": "f383895123d61e2bfcba2feba1fe58f6425333e4b522cc60936459d57b715688"
+      },
+      "randomise": {
+        "passes": 3,
+        "first_attempt_all": true,
+        "log_sha256": "99a4afe1585b3fbb2762e03fd2d632b995d3ac4b795d6d0482aab8c21bc1198f"
+      }
+    }
+  },
+  "pinned_preflight": {
+    "exit": 0,
+    "sha256": "e3abdb7668aa508e0d31b37150f3dfb11c3f493c144c77597de3409594ecf388",
+    "dsp": 945,
+    "state": 12313,
+    "native_tool_controls": 18,
+    "scope": "Pinned-Clang environment, existing ABI/source/RT/portability/docs/citation checks and existing full suites. Full compiler-warning baselines require CI build logs."
+  },
+  "markdown_validation": {
+    "changed_markdown_files": 20,
+    "relative_file_links": 180,
+    "tables": 118,
+    "problems": []
   }
 }

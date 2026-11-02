@@ -17,8 +17,10 @@ Final #207-head Build41472583420 (16 successful jobs/3 intentional skips),
 PR41472595108, CodeQL41472595084, MSVC41472595111 and dependency41472595092
 completed. Independently verified memcheck artifact13159780263 records both
 suites completed/exit0/zero errors, with leak checking disabled by the existing
-configuration. Actual main Build41480257211 and MSVC41480257258 were running at
-this observation; CodeQL41480257255 completed. Pending is not passing. The prior
+configuration. Actual main Build41480257211 (16 successful jobs/3 intentional
+skips), MSVC41480257258 and CodeQL41480257255 subsequently completed successfully.
+Main memcheck artifact13161163476 was independently downloaded/digest-verified:
+both suites completed/exit0/zero errors, existing leak checking disabled. The prior
 #208-main Build41469471520 attempt1 lost two unacquired macOS hosted jobs (no steps
 or runner); annotations explicitly report capacity acquisition failure. Attempt2
 completed without changing checks. Preserve that infrastructure history.
@@ -1953,7 +1955,7 @@ The owner separately authorized integration; native acceptance remains deferred.
 
 Confirmed on combined main`29150f3`: actual menu adoption and timer poll can
 synchronously notify latency, close the editor, then resume through freed fields.
-Correction`f8da821` uses stack-local weak guards and a weak/stack-owned preset
+Correction`b537596` uses stack-local weak guards and a weak/stack-owned preset
 click; it preserves the completed processor restoration and existing scheduling.
 State155 executes79 headless checks plus32 explicit displayed-popup controls.
 Original ASan fails2/2; independently removed menu/timer guards and the raw stale
