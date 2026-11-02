@@ -38,7 +38,7 @@ diagnostic/CI evidence. It is a bounded review, not a whole-codebase certificati
 | Native-only/recurrence items | Preserve owner deferral and documented triggers. No host-focus or install correction without the required reproducer/environment. |
 
 NR-023 code commit`137ad083be4a5b2a34c9654ba072f383aeffe5b3` is **implemented on its
-review branch, not integrated**. [Raw control/provenance](engineering-review/transport-arithmetic.json).
+review branch, not integrated** in [#207](https://github.com/skyRolly/Anamorph/pull/207). [Raw control/provenance](engineering-review/transport-arithmetic.json).
 The PPQ arithmetic for ordinary finite clocks is unchanged. Reject invalid or
 unrepresentable derived positions before casting; compare full-range integer
 distances without signed overflow. Missing tempo keeps120 BPM, the existing finite
