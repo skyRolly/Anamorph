@@ -1554,12 +1554,14 @@ void AnamorphAudioProcessorEditor::timerCallback()
     dismissOrphanedPopupMenus();
     refreshPopupShield();
 
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> scaleAlive (this);
     // Sync cached view-state with the (possibly externally changed) parameters.
     if (advancedToggle.getToggleState() != advanced)
     {
         advanced = advancedToggle.getToggleState();
         updateModeVisibility();      // visibility first -- see advancedToggle.onClick
         applyUiScale();              // then resize for / against the Multiband bar (#2)
+        if (scaleAlive == nullptr) return; // a synchronous host resize can close the editor
     }
     if (metersToggle.getToggleState() != metersOn)
         metersOn = metersToggle.getToggleState(); // layoutScopeArea owns visibility (#2)
@@ -1591,7 +1593,10 @@ void AnamorphAudioProcessorEditor::timerCallback()
 
     // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
     if (uiScaleBox.getSelectedItemIndex() != lastScaleIdx)
+    {
         applyUiScale();
+        if (scaleAlive == nullptr) return;
+    }
 
     refreshPresetDisplay(); // preset name + dirty dot track outside edits (F2)
 
@@ -2032,8 +2037,11 @@ void AnamorphAudioProcessorEditor::applyUiScale()
     // mode; the XS..XL transform scales it, COMPOSED with the host's display/DPI
     // scale so the user scale and the host DPI cooperate instead of overwriting each
     // other (the Windows window-size bug). hostScale is 1.0 unless the host set it.
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> scaleAlive (this);
     setSize (kWidth, advanced ? kAdvHeight : kHeight);
+    if (scaleAlive == nullptr) return;
     setTransform (juce::AffineTransform::scale (hostScale * scales[idx]));
+    if (scaleAlive == nullptr) return;
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
 }
