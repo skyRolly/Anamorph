@@ -23,7 +23,8 @@ authorize any build/tag/asset/publication operation. No version choice is made h
 **Available current evidence:** every approved merge retains expected parents and
 the validated candidate tree; current main equals reviewed #206 head`3670e7d`
 exactly. #206 exact-head Build41404429212, PR41404435805 and dependency41404435802
-completed; post-merge Build41422157397 remains separately tracked. Exact-head #205
+completed; post-merge Build41422157397 completed16 jobs/3 skips and both memcheck
+suites (digest-verified artifact13131618856, exits0/zero errors). Exact-head #205
 and its previously incomplete post-merge gates completed, including three-platform
 analysis/pack and18 controls. Post-merge local preflight passes945/11911 with the
 pinned-Clang ABI. Raw prior identities/outcomes remain in the

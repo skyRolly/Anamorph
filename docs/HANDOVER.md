@@ -22,7 +22,8 @@ including overlay pruning and collection/analysis consistency controls. Its
 exact-head and post-merge Build41402900891/CodeQL41402900875/MSVC41402900872 gates
 completed. #206's reviewed tree3670e7d equals main; exact-head Build41404429212,
 PR41404435805 and dependency41404435802 passed. Its post-merge Build41422157397
-is recorded separately. Integrated local preflight
+completed16 selected jobs/3 skips, with digest-verified completed zero-error
+memcheck. Integrated local preflight
 passes 945/11911 and 18 Python controls. Shared-container smoke is diagnostic only; no native
 machine is configured. The owner now defers native performance, GUI/host/lifecycle,
 accessibility and hardware installation execution for this assignment. Retain

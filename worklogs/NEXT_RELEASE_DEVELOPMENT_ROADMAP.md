@@ -10,8 +10,10 @@ skips; PR41404435805's merge check and dependency41404435802 passed. No reviews,
 inline threads or new blocking findings were present. #205 main's previously
 incomplete Build41402900891, CodeQL41402900875 and MSVC41402900872 also completed
 successfully. Post-#206 local preflight completed945 DSP/11911 state and18 Python
-controls with the shipping-Clang ABI gate. Post-merge Build41422157397 is tracked
-separately; documentation-only changes did not trigger CodeQL/MSVC.
+controls with the shipping-Clang ABI gate. Post-merge Build41422157397 completed
+16 jobs/3 intentional skips. Its digest-verified memcheck artifact13131618856
+records both suites completed, exit0, zero errors. Documentation-only changes
+did not trigger CodeQL/MSVC; prior main's analysis remains separately source-scoped.
 
 **New owner direction:** defer native execution for this assignment. NR-006/010
 representative measurements, native scope/FFT/editor/host and NR-014 assistive
@@ -52,6 +54,9 @@ the exact signal cause remains unattributed. Preserve both failures and controls
 not an external/product attribution inferred from a later pass. No retry budget,
 strictness or requirement changed. Source movement also re-anchors citations and
 18 declaration targets; their expected tokens and checker logic are unchanged.
+Corrected full preflight completes **945 DSP /12119 state /18 Python** checks,
+shipping-Clang ABI, citation liveness276 and documentation liveness700/checks.
+Final-head CI remains a distinct requirement; no local signal failure is erased.
 
 **Release remains held:** existing0.10.0 tag`1190e455`→`4c13688`, draft429760301
 and11 assets are unchanged. The old draft contains the same unchecked transport
