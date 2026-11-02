@@ -60,7 +60,7 @@ production menu/timer action adopts it and delivers the synchronous notification
 Original ASan reports post-adoption UAF in both actions. This does not establish
 named-DAW incidence or the cause of historical validator signal exits.
 
-**Correction selected:** method-local `Component::SafePointer` on the stack,
+**Correction in [PR #209](https://github.com/skyRolly/Anamorph/pull/209), unmerged:** method-local `Component::SafePointer` on the stack,
 checked immediately after each processor callout. The preset click additionally
 captures weak ownership and copies it onto the stack before invoking the method;
 a stale copied callback cannot adopt another pending restore after editor death.
@@ -134,7 +134,7 @@ records are separate scopes. Historical GCC ABI failures, unattributed validator
 signal exits, native Intel AU risk and GitHub alert-state403 stay unresolved in
 their original classifications. CodeQL workflow success does not clear alerts.
 
-Next: finish NR-025 validation and human PR review; investigate remaining actual
+Next: complete NR-025 final-head CI and human PR review (new merge authorization required); investigate remaining actual
 Settings/resize and attachment teardown entry points with consistent instrumentation.
 NR-026's production dependency decision remains human-gated. Native performance,
 host/editor visual and assistive acceptance remain deferred without waiver.

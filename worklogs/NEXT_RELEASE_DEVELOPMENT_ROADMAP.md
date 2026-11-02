@@ -27,7 +27,8 @@ completed without changing checks. Preserve that infrastructure history.
 
 **New source evidence:** NR-025/P1 confirms preset-menu and timer post-restore
 use-after-free through real latency notification and editor teardown. Implement
-only message-thread lifetime guards; State155 includes live, reopen, completed
+only message-thread lifetime guards in [PR #209](https://github.com/skyRolly/Anamorph/pull/209),
+**open and unmerged**; State155 includes live, reopen, completed
 restore and stale-copy controls. Native/manual work remains owner-deferred.
 NR-026/P1 separately confirms a pinned-JUCE wheel-scope destructor reading a
 deleted Slider; editor-only instrumentation missed it, actual GUI-module ASan
@@ -1454,7 +1455,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport clock arithmetic; combined regression/UBSan and source-scoped CI retained | Completed source correction |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
-| NR-025 | P1 | Correction developed / unmerged | Restore menu/timer lifetime guards; real adoption, live/reopen/stale-copy controls | Current independent lifetime fix |
+| NR-025 | P1 | Correction in open PR #209 / unmerged | Restore menu/timer lifetime guards; real adoption, live/reopen/stale-copy controls | Current independent lifetime fix |
 | NR-026 | P1 | Confirmed / gated review needed | Pinned JUCE wheel-scope teardown UAF; preserve repro, no dependency change yet | Architecture/dependency decision |
 
 ### NR-001 — Close the Linux architecture/approval record
@@ -1961,8 +1962,9 @@ State155 executes79 headless checks plus32 explicit displayed-popup controls.
 Original ASan fails2/2; independently removed menu/timer guards and the raw stale
 callback each reproduce UAF. Always-return mutants fail live continuation.
 Corrected targeted ASan passes all four selections. Full current local suites
-execute945 DSP/12,313 state. New PR review/CI and explicit merge approval remain
-separate. [Investigation, alternatives and scope](GUI_CALLBACK_LIFETIME_REVIEW.md).
+execute945 DSP/12,313 state. PR #209 review/current-head CI and explicit merge approval remain
+separate. Configured Linux pluginval strictness10 passes both modes ×3;
+all first attempts, with historical unrelated signal exits still unattributed. [Investigation, alternatives and scope](GUI_CALLBACK_LIFETIME_REVIEW.md).
 
 ### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
 
