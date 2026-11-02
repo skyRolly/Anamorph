@@ -363,7 +363,7 @@ def validate_record(row, request):
     for key in ("kind", "case", "variant", "rate", "block", "window", "reader", "paced", "rep", "seconds", "smoke"):
         if row.get(key) != request[key]:
             raise ValueError(f"probe/request mismatch: {key}")
-    if row.get("schema") != 1 or not row.get("cpu"):
+    if row.get("schema") != 2 or not row.get("cpu"):
         raise ValueError("missing schema/CPU")
     if row.get("fp_denormals_disabled") is not True or row.get("fp_round_to_nearest") is not True:
         raise ValueError("missing/incorrect callback floating-point environment")
@@ -391,8 +391,14 @@ def validate_record(row, request):
             raise ValueError("missing data-consumption control hash")
     if row["kind"] == "engine" and row["case"] == "working" and row["audio_hash"] == row["input_hash"]:
         raise ValueError("working engine is inert")
+    if row["kind"].startswith("scope-"):
+        expected_end = 16384 + (request["iterations"] * row["block"] if row["kind"] == "scope-push" else 0)
+        if row.get("scope_start") != 16384 or row.get("scope_end") != expected_end:
+            raise ValueError("scope publication control failed")
+        if row["audio_hash"] == "cbf29ce484222325":
+            raise ValueError("scope data consumption control is inert")
     for key in ("engine_bytes", "scope_bytes", "rss_before", "rss_constructed", "rss_prepared",
-                "reader_accepted", "reader_rejected", "stall_frames", "clock_min_ns", "clock_max_ns", "latency_samples"):
+                "reader_accepted", "reader_rejected", "stall_frames", "clock_min_ns", "clock_max_ns", "latency_samples", "scope_start", "scope_end"):
         if type(row.get(key)) is not int or row[key] < 0:
             raise ValueError(f"invalid numeric observation: {key}")
     if row["clock_min_ns"] > row["clock_max_ns"]:

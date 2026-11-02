@@ -100,6 +100,12 @@ generation, hash consumption, pacing and sleeps are outside the measured
 and not subtracted. These are observed peaks, not WCET/deadline guarantees.
 Oversized push cost is normalized by requested input frames, including discarded
 prefix frames. Read cost is normalized by copied frames.
+Primitive liveness is independent of the engine control: pushes start from zero
+storage, verify publication progress and check the retained new-data tail; each
+read poisons both outputs and consumes/checks every copied sample. Preparation,
+checks and hashing remain outside the timed call. Raw probe schema2 includes
+publication counts and rejects the former empty consumption hash. Earlier
+schema1 smoke data is historical and cannot satisfy the new primitive controls.
 
 `summary.json` reports repetition median, range/spread, worst observed call,
 RSS deltas and original/current deltas, with no invented pass threshold.

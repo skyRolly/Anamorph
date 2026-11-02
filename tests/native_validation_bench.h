@@ -280,6 +280,7 @@ inline int run (int argc, char* argv[], const std::string& cpu)
         std::uint64_t inputHash = hash;
         int latencySamples = 0;
         std::uint64_t rssBefore = 0, rssConstructed = 0, rssPrepared = 0;
+        std::uint64_t scopeStart = 0, scopeEnd = 0;
         Reader reader;
         double measuredSamples = 0;
         // Report an un-subtracted empty clock-pair calibration. Clock cost
@@ -297,25 +298,61 @@ inline int run (int argc, char* argv[], const std::string& cpu)
             auto ring = std::make_unique<anamorph::ScopeBuffer>();
             std::vector<float> left (static_cast<std::size_t> (std::max (o.block, anamorph::ScopeBuffer::capacity)), 0.25f);
             std::vector<float> right (left.size(), -0.5f), outL (static_cast<std::size_t> (o.window)), outR (outL.size());
-            ring->pushBlock (left.data(), right.data(), anamorph::ScopeBuffer::capacity);
+            // Push starts from distinguishable old storage; read starts from
+            // known data and poisons both output planes before every attempt.
+            std::vector<float> zero (left.size(), 0.0f);
+            ring->pushBlock (o.kind == "scope-push" ? zero.data() : left.data(),
+                             o.kind == "scope-push" ? zero.data() : right.data(), anamorph::ScopeBuffer::capacity);
+            scopeStart = ring->writeCount();
             timings.resize (static_cast<std::size_t> (o.iterations));
             for (auto& duration : timings)
             {
+                if (o.kind == "scope-read")
+                {
+                    std::fill (outL.begin(), outL.end(), std::numeric_limits<float>::quiet_NaN());
+                    std::fill (outR.begin(), outR.end(), std::numeric_limits<float>::quiet_NaN());
+                }
                 escape (ring.get());
+                escape (outL.data()); escape (outR.data());
                 const auto a = Clock::now();
                 if (o.kind == "scope-push") ring->pushBlock (left.data(), right.data(), o.block);
                 else if (ring->readLatest (outL.data(), outR.data(), o.window) != o.window)
                     throw std::runtime_error ("serial read did not return a complete window");
                 const auto b = Clock::now();
                 duration = std::chrono::duration_cast<std::chrono::nanoseconds> (b - a).count();
-                escape (ring.get()); escape (outL.data());
+                escape (ring.get()); escape (outL.data()); escape (outR.data());
+                if (o.kind == "scope-read")
+                    for (std::size_t i = 0; i < outL.size(); ++i)
+                    {
+                        const auto l = std::bit_cast<std::uint32_t> (outL[i]);
+                        const auto r = std::bit_cast<std::uint32_t> (outR[i]);
+                        if (l != std::bit_cast<std::uint32_t> (0.25f) || r != std::bit_cast<std::uint32_t> (-0.5f))
+                            throw std::runtime_error ("scope read data control failed");
+                        hash = (hash ^ l) * 1099511628211ULL;
+                        hash = (hash ^ r) * 1099511628211ULL;
+                    }
             }
-            if (ring->readLatest (outL.data(), outR.data(), o.window) != o.window)
-                throw std::runtime_error ("missing final scope window");
-            for (std::size_t i = 0; i < outL.size(); ++i)
-                if (std::bit_cast<std::uint32_t> (outL[i]) != std::bit_cast<std::uint32_t> (0.25f)
-                    || std::bit_cast<std::uint32_t> (outR[i]) != std::bit_cast<std::uint32_t> (-0.5f))
-                    throw std::runtime_error ("scope data control failed");
+            scopeEnd = ring->writeCount();
+            const auto pushed = o.kind == "scope-push" ? static_cast<std::uint64_t> (o.block) * static_cast<std::uint64_t> (o.iterations) : 0;
+            if (scopeEnd != scopeStart + pushed)
+                throw std::runtime_error ("scope publication control failed");
+            if (o.kind == "scope-push")
+            {
+                if (ring->readLatest (outL.data(), outR.data(), o.window) != o.window)
+                    throw std::runtime_error ("missing final scope window");
+                const auto writtenTail = std::min (pushed, static_cast<std::uint64_t> (o.window));
+                const auto prefix = outL.size() - static_cast<std::size_t> (writtenTail);
+                for (std::size_t i = 0; i < outL.size(); ++i)
+                {
+                    const auto l = std::bit_cast<std::uint32_t> (outL[i]);
+                    const auto r = std::bit_cast<std::uint32_t> (outR[i]);
+                    if (l != std::bit_cast<std::uint32_t> (i < prefix ? 0.0f : 0.25f)
+                        || r != std::bit_cast<std::uint32_t> (i < prefix ? 0.0f : -0.5f))
+                        throw std::runtime_error ("scope push data control failed");
+                    hash = (hash ^ l) * 1099511628211ULL;
+                    hash = (hash ^ r) * 1099511628211ULL;
+                }
+            }
             measuredSamples = static_cast<double> (o.kind == "scope-read" ? o.window : o.block) * o.iterations;
         }
         else
@@ -371,10 +408,11 @@ inline int run (int argc, char* argv[], const std::string& cpu)
             }
             latencySamples = engine->getLatencySamples();
         }
-        std::printf ("{\"schema\":1,\"variant\":\"%s\",\"kind\":", legacy ? "original" : "corrected"); quoted (o.kind);
+        std::printf ("{\"schema\":2,\"variant\":\"%s\",\"kind\":", legacy ? "original" : "corrected"); quoted (o.kind);
         std::printf (",\"case\":"); quoted (o.scenario); std::printf (",\"reader\":"); quoted (o.reader);
         std::printf (",\"cpu\":"); quoted (cpu);
         std::printf (",\"fp_denormals_disabled\":%s,\"fp_round_to_nearest\":%s", denormalsDisabled ? "true" : "false", roundToNearest ? "true" : "false");
+        std::printf (",\"scope_start\":%llu,\"scope_end\":%llu", static_cast<unsigned long long> (scopeStart), static_cast<unsigned long long> (scopeEnd));
         std::printf (",\"rate\":%.17g,\"block\":%d,\"window\":%d,\"paced\":%s,\"seconds\":%.17g,\"rep\":%d,\"smoke\":%s,"
                      "\"samples\":%.17g,\"engine_bytes\":%zu,\"scope_bytes\":%zu,"
                      "\"rss_before\":%llu,\"rss_constructed\":%llu,\"rss_prepared\":%llu,\"rss_available\":%s,"

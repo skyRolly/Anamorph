@@ -3,7 +3,7 @@
 import copy
 import importlib.util
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import sys
 import tempfile
@@ -29,7 +29,10 @@ def request(**changes):
 def observation(req):
     n = 0 if req["kind"] == "memory" else req["iterations"] if req["kind"].startswith("scope-") else __import__("math").ceil(req["seconds"] * req["rate"] / req["block"])
     denominator = req["window"] if req["kind"] == "scope-read" else req["block"]
-    return dict(req, schema=1, cpu="PARSER FIXTURE, NOT A MACHINE", block_ns=[10] * n,
+    start = 16384 if req["kind"].startswith("scope-") else 0
+    end = start + (req["iterations"] * req["block"] if req["kind"] == "scope-push" else 0)
+    return dict(req, schema=2, cpu="PARSER FIXTURE, NOT A MACHINE", block_ns=[10] * n,
+                scope_start=start, scope_end=end,
                 fp_denormals_disabled=True, fp_round_to_nearest=True,
                 samples=n * denominator, scope_bytes=262152, engine_bytes=1000000,
                 rss_before=100, rss_constructed=110, rss_prepared=150, rss_available=True,
@@ -93,7 +96,14 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(native.path_key(r"CMakeFiles\Bench.dir\Engine.obj", True),
                          native.path_key("cmakefiles/bench.dir/engine.obj", True))
         self.assertNotEqual(native.path_key("Engine.o", False), native.path_key("engine.o", False))
-        self.assertEqual(native.paired_c_compiler("/usr/bin/clang++-22"), "/usr/bin/clang-22")
+        # Assert each native path flavor explicitly, including an unchanged
+        # parent containing "clang++". A Windows path need not use POSIX '/'.
+        for path_class, cpp, c in (
+            (PurePosixPath, "/opt/clang++ tools/clang++-22", "/opt/clang++ tools/clang-22"),
+            (PureWindowsPath, r"C:\clang++ tools\clang++-22.exe", r"C:\clang++ tools\clang-22.exe"),
+        ):
+            with mock.patch.object(native, "Path", path_class), self.subTest(cpp=cpp):
+                self.assertEqual(native.paired_c_compiler(cpp), c)
         self.assertEqual(native.paired_c_compiler("clang++"), "clang")
         self.assertEqual(native.paired_c_compiler("cl"), "cl")
         self.assertIsNone(native.paired_c_compiler("unknown-wrapper"))
@@ -163,6 +173,10 @@ class EvidenceTests(unittest.TestCase):
         row["samples"] = req["block"] * req["iterations"]
         with self.assertRaisesRegex(ValueError, "normalization"):
             native.validate_record(row, req)
+        for change in ({"scope_start": 0}, {"scope_end": 0}, {"audio_hash": "cbf29ce484222325"}, {"schema": 1}):
+            row = dict(observation(req), **change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                native.validate_record(row, req)
 
     def test_negative_record_controls(self):
         req = request()

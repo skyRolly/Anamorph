@@ -43,6 +43,18 @@ quoted form, retain raw Ninja commands and redirect the temporary import library
 CMake cache-reset errors now require a fresh build directory explicitly; no
 automatic retry silently changes measurement configuration.
 
+A compiled audit confirmed independent primitive no-ops were masked by static
+prefilled data despite the engine control. Start push storage at zero, check its
+publication/new-data tail, poison both read outputs per call and consume/check
+all copied samples outside the timer. Both former no-op passes now exit2; retain
+before/after controls. Probe schema2 discloses counts/consumption and prevents
+old schema1 primitive smoke from being promoted to current evidence. Updated
+TESTING, PERFORMANCE_BUDGET, native procedure and execution register; no shipping
+source, default benchmark matrix, fixture, strictness or acceptance gate changes.
+Windows subsequently collected all20 rows; its test step exposed a fixture
+assuming POSIX separators. Test both explicit path flavors, preserving parent
+and compiler basename assertions, instead of imposing '/' on native Windows.
+
 ## Integrated #199–#203 and bounded NR-014 metadata correction — 2026-11-02
 
 Drift check: roadmap/README/source authority/ADR-index/risk/readiness records still

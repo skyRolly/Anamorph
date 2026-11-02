@@ -21,6 +21,13 @@ are rejected. Three-platform `native-evidence-smoke` exercises actual compiler/
 linker overlays and short paired measurements; partial logs are retained on
 started-step failure/cancellation. Synthetic runs cannot pass native acceptance.
 
+Primitive controls are independent: skipped timed pushes and read copies both
+passed the former static-data checks in compiled mutants, and now exit2 through
+publication/data checks respectively. Push old storage differs from new input;
+read output planes are poisoned and consumed after every timed copy. Raw probe
+schema2 records publication progress and requires a nonempty consumption hash.
+Retain earlier schema1 smoke as historical tool evidence, not current acceptance.
+
 ## NR-014 rotary metadata and delivered-key coverage
 
 State152 (`tests/gui_accessibility_tests.h`) runs in the normal state suite and

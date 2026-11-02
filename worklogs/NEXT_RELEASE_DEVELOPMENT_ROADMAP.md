@@ -63,6 +63,16 @@ successful compilation. Retain these as tool defects; final-head status is in
 #205, not inferred from earlier runs. A local compiler change reset opt-in cache
 options in one preparation attempt; the failed journal is preserved and the
 workflow now directs a fresh build directory.
+Final tool audit confirmed that skipped timed pushes/read copies were masked by
+the static prefill in two compiled mutants (both exit0, old validator accepted).
+Independent publication/new-tail and poisoned-output consumption controls now
+reject both with exit2. Raw probe schema2 records these controls; earlier schema1
+primitive smoke is historical, superseded for current acceptance. No production
+protocol, tests or performance target changed. See the retained before/after
+records and source hashes in the package control/provenance record.
+Windows completed all20 schema1 collection rows ate2eadd0 but its parser-test
+step failed a POSIX-separator expectation; the fixture now tests POSIX and Windows
+path flavors explicitly, preserving exact parent/basename expectations.
 
 **Reassessment:** NR-006 integrated/acceptance Pending; NR-010 measurement workflow
 prepared/native execution and numerical budget review Pending; NR-011/012 closed
