@@ -98,6 +98,10 @@ callback. Real GUI-visible/hidden/idle overhead must be observed below. Input
 generation, hash consumption, pacing and sleeps are outside the measured
 `process()` interval. Raw call times include clock overhead, which is reported
 and not subtracted. These are observed peaks, not WCET/deadline guarantees.
+Linux tool CI additionally checks exception cleanup with an ASan fault and
+invalid-owner control: the reader must join before engine storage is destroyed.
+These instrumented variants and intentional failures are diagnostic evidence,
+never performance measurements; existing sanitizer gates remain unchanged.
 Oversized push cost is normalized by requested input frames, including discarded
 prefix frames. Read cost is normalized by copied frames.
 Primitive liveness is independent of the engine control: pushes start from zero

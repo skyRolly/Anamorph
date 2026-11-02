@@ -122,6 +122,8 @@ archive handling. [Owner-native instructions](../worklogs/NATIVE_VALIDATION_PACK
 and [worksheet](../worklogs/native-validation/manual-acceptance-template.json)
 are developer records; shared-runner `native-evidence-smoke` is tool portability,
 never representative performance or native/manual acceptance.
+`scripts/test-native-reader-lifetime.py` runs Linux/Clang ASan failure-path and
+owner-scope mutation controls using the actual built Bench, without tracked edits.
 
 Native-icon integration evidence is in `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`;
 `scripts/check-icons.py` validates sources and actual native resources (with matching-platform

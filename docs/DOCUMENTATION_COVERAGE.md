@@ -55,6 +55,15 @@ Windows subsequently collected all20 rows; its test step exposed a fixture
 assuming POSIX separators. Test both explicit path flavors, preserving parent
 and compiler basename assertions, instead of imposing '/' on native Windows.
 
+Exception-path audit confirmed a benchmark-only lifetime defect: the inner engine
+owner could free storage before the outer reader joined. Declare storage before
+the reader so reverse destruction joins first; normal timed work is unchanged.
+An injected producer exception/pending shutdown read reproduces real ASan UAF
+with the old scope. Added an actual-source Linux/Clang fault/mutation control to
+tool CI, retaining full ASan/leak diagnostics and excluding only temporary build
+outputs from evidence upload. Updated TESTING/CI_CD/map/native procedure/roadmap;
+no product thread model, protocol, DSP, existing sanitizer budget or gate changes.
+
 ## Integrated #199–#203 and bounded NR-014 metadata correction — 2026-11-02
 
 Drift check: roadmap/README/source authority/ADR-index/risk/readiness records still
@@ -2793,7 +2802,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3893` and `.github/workflows/build.yml:3978`, this round being
+`.github/workflows/build.yml:3901` and `.github/workflows/build.yml:3986`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare

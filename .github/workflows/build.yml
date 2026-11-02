@@ -1692,6 +1692,13 @@ jobs:
           if errorlevel 1 exit /b 1
           python scripts/run-native-validation.py collect --build-dir build-native-evidence --output-dir "${{ runner.temp }}\anamorph-native-evidence" --cxx cl --smoke --skip-plugin-build
 
+      - name: Reader shutdown lifetime and ASan negative control (Linux)
+        if: runner.os == 'Linux'
+        run: >-
+          python3 scripts/test-native-reader-lifetime.py
+          --build-dir build-native-evidence
+          --output-dir "${{ runner.temp }}/anamorph-native-evidence/reader-lifetime-control"
+
       - name: Analyze complete smoke and run parser controls
         shell: bash
         run: |
@@ -1713,6 +1720,7 @@ jobs:
           path: |
             ${{ runner.temp }}/anamorph-native-evidence
             !${{ runner.temp }}/anamorph-native-evidence/original-overlay
+            !${{ runner.temp }}/anamorph-native-evidence/reader-lifetime-control/original-overlay
           if-no-files-found: error
 
   windows:

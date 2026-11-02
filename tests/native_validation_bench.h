@@ -281,6 +281,9 @@ inline int run (int argc, char* argv[], const std::string& cpu)
         int latencySamples = 0;
         std::uint64_t rssBefore = 0, rssConstructed = 0, rssPrepared = 0;
         std::uint64_t scopeStart = 0, scopeEnd = 0;
+        // Reverse destruction order must join the reader before freeing the
+        // referenced scope, including exceptions during a measurement.
+        std::unique_ptr<anamorph::AnamorphEngine> engine;
         Reader reader;
         double measuredSamples = 0;
         // Report an un-subtracted empty clock-pair calibration. Clock cost
@@ -358,7 +361,7 @@ inline int run (int argc, char* argv[], const std::string& cpu)
         else
         {
             rssBefore = rssBytes();
-            auto engine = std::make_unique<anamorph::AnamorphEngine>();
+            engine = std::make_unique<anamorph::AnamorphEngine>();
             rssConstructed = rssBytes();
             engine->prepare (o.rate, o.block); engine->setParameters (c.p); engine->reset();
             engine->setTransportPlaying (o.scenario != "silence");

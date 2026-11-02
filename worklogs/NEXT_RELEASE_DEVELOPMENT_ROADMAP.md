@@ -73,6 +73,12 @@ records and source hashes in the package control/provenance record.
 Windows completed all20 schema1 collection rows ate2eadd0 but its parser-test
 step failed a POSIX-separator expectation; the fixture now tests POSIX and Windows
 path flavors explicitly, preserving exact parent/basename expectations.
+An exception-path audit then confirmed a benchmark-only ownership defect: the
+inner engine could be destroyed before its outer reader joined. Storage now
+outlives the reader under reverse destruction; an actual-source ASan fault and
+old-scope mutation test covers the shutdown read. This strengthens the nonshipping
+tool; accepted production threading/DSP and measured work are unchanged. Existing
+sanitizer gates/budgets remain. Final-head results remain in the #205 ledger.
 
 **Reassessment:** NR-006 integrated/acceptance Pending; NR-010 measurement workflow
 prepared/native execution and numerical budget review Pending; NR-011/012 closed

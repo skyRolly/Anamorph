@@ -10,6 +10,10 @@ unset; there is no timing threshold. Parser/negative controls also run in
 `source-lint`. Started-step complete/partial logs survive via bounded `always()`
 uploads where the runner remains available; hard runner loss can still prevent
 retention. The sanitizer/pluginval requirements and their budgets are unchanged.
+Linux tool smoke additionally compiles an ASan fault variant and the invalid
+owner-scope control, requiring joined readers before storage destruction. These
+derived test flags never alter shipping or measured binaries; their logs/hashes
+are retained and temporary binaries excluded from the artifact.
 See [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md). This is
 nonshipping tool portability, not representative native hardware/host evidence.
 

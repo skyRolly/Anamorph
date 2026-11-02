@@ -27,6 +27,11 @@ publication/data checks respectively. Push old storage differs from new input;
 read output planes are poisoned and consumed after every timed copy. Raw probe
 schema2 records publication progress and requires a nonempty consumption hash.
 Retain earlier schema1 smoke as historical tool evidence, not current acceptance.
+Linux smoke also runs `scripts/test-native-reader-lifetime.py` against the actual
+benchmark/Ninja commands. It injects a producer exception and a pending read
+finishing at shutdown: ASan must accept the fixed lifetime (controlled exit2) and
+detect heap-use-after-free with the former owner scope. Derived instrumented
+binaries are diagnostic only; raw logs/options/hashes are retained, not timings.
 
 ## NR-014 rotary metadata and delivered-key coverage
 
