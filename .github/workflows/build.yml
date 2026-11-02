@@ -1699,13 +1699,14 @@ jobs:
           --build-dir build-native-evidence
           --output-dir "${{ runner.temp }}/anamorph-native-evidence/reader-lifetime-control"
 
-      - name: Analyze complete smoke and run parser controls
+      - name: Analyze and pack complete smoke; run parser controls
         shell: bash
         run: |
           native_python=python3
           if [ "$RUNNER_OS" = Windows ]; then native_python=python; fi
           "$native_python" tests/native_validation_tests.py
           "$native_python" scripts/run-native-validation.py analyze --evidence-dir "${{ runner.temp }}/anamorph-native-evidence"
+          "$native_python" scripts/run-native-validation.py pack --evidence-dir "${{ runner.temp }}/anamorph-native-evidence" --archive "${{ runner.temp }}/anamorph-native-evidence.zip"
 
       - name: Retain complete or partial diagnostic evidence
         if: >-

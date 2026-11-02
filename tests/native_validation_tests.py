@@ -42,6 +42,30 @@ def observation(req):
                 input_hash="0000000000000001", audio_hash="0000000000000002", reader_hash="0000000000000003")
 
 
+def completed_packet(directory):
+    """Complete inert parser fixture; never a hardware measurement."""
+    plan = native.make_plan(True, 1)
+    (directory / "raw").mkdir()
+    rows = []
+    for index, req in enumerate(plan):
+        stem = f"{index:04d}"
+        row = observation(req)
+        native.save(directory / "raw" / (stem + ".request.json"), req)
+        native.save(directory / "raw" / (stem + ".stdout.jsonl"), row)
+        rows.append(row)
+    source = "a" * 40
+    native.save(directory / "plan.json", plan)
+    native.save(directory / "run-status.json", {"state": "measurements_completed", "completed": list(range(len(plan))), "source_commit": source})
+    native.save(directory / "source.json", {"commit": source, "status": "", "files_sha256": {"parser-fixture": "0" * 64}})
+    native.save(directory / "machine.json", {"os": "PARSER FIXTURE", "cpu_model": "NOT A MACHINE", "virtualization_observations": ["fixture"]})
+    native.save(directory / "build-identity.json", {"compiler_description": "PARSER FIXTURE, NOT A COMPILER"})
+    native.save(directory / "configuration-observations.json", {})
+    summary = native.summarize(rows, 1, True)
+    summary["hardware_classification"] = "synthetic"
+    native.save(directory / "summary.json", summary)
+    return plan, summary
+
+
 class CommandTests(unittest.TestCase):
     def test_windows_round_trip(self):
         cases = [["cl.exe", "/O2", "/GL", r'/IC:\Program Files\JUCE', '/DNAME="value"'],
@@ -110,6 +134,94 @@ class CommandTests(unittest.TestCase):
 
 
 class EvidenceTests(unittest.TestCase):
+    def symlink(self, link, target, directory=False):
+        try:
+            link.symlink_to(target, target_is_directory=directory)
+        except OSError as error:
+            if sys.platform == "win32" and getattr(error, "winerror", None) == 1314:
+                self.skipTest("Windows account lacks symlink creation privilege; Linux symlink checks remain required")
+            raise
+
+    def test_analyzer_preserves_summary_and_rejects_raw_timing_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            plan, expected = completed_packet(directory)
+            summary_bytes = (directory / "summary.json").read_bytes()
+            self.assertEqual(native.analyze(directory), expected)
+            analysis_bytes = (directory / "analysis.json").read_bytes()
+            row = native.read(directory / "raw/0000.stdout.jsonl")
+            row["block_ns"][0] += 5
+            native.validate_record(row, plan[0])  # Still individually valid.
+            native.save(directory / "raw/0000.stdout.jsonl", row)
+            with self.assertRaisesRegex(ValueError, "collection summary"):
+                native.analyze(directory)
+            self.assertEqual((directory / "summary.json").read_bytes(), summary_bytes)
+            self.assertEqual((directory / "analysis.json").read_bytes(), analysis_bytes)
+
+    def test_analyzer_rejects_changed_or_missing_collection_summary(self):
+        for mutation in ("metric", "hardware", "acceptance", "missing"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                _, summary = completed_packet(directory)
+                if mutation == "missing":
+                    (directory / "summary.json").unlink()
+                    error = FileNotFoundError
+                else:
+                    if mutation == "metric": summary["metrics"][0]["worst_observed_call_ns"] += 1
+                    if mutation == "hardware": summary["hardware_classification"] = "unsubstantiated representative claim"
+                    if mutation == "acceptance": summary["performance_acceptance"] = True
+                    native.save(directory / "summary.json", summary)
+                    error = ValueError
+                with self.assertRaises(error):
+                    native.analyze(directory)
+                self.assertFalse((directory / "analysis.json").exists())
+
+    def test_archive_prunes_nested_lifetime_overlay_before_symlink_checks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            evidence = root / "evidence"
+            overlay = evidence / "reader-lifetime-control/original-overlay"
+            (overlay / "fixed").mkdir(parents=True)
+            (overlay / "invalid-owner").mkdir()
+            source = root / "source"
+            source.mkdir()
+            (source / "never-archive.cpp").write_text("excluded source fixture\n")
+            self.symlink(overlay / "fixed/src", source, directory=True)
+            self.symlink(overlay / "invalid-owner/src", source, directory=True)
+            (overlay / "fixed/probe.exe").write_bytes(b"excluded executable fixture")
+            native.save(evidence / "run-status.json", {"state": "measurements_completed"})
+            native.save(evidence / "reader-lifetime-control/results.json", {"state": "completed"})
+            archive = root / "packet.zip"
+            # Traversal itself must prune the overlay, not merely filter files.
+            scandir = native.os.scandir
+            def retained_only(path):
+                self.assertNotEqual(Path(path).name, "original-overlay", "traversed an excluded build tree")
+                return scandir(path)
+            with mock.patch.object(native.os, "scandir", side_effect=retained_only):
+                native.pack(evidence, archive)
+            with zipfile.ZipFile(archive) as zipped:
+                expected = {"run-status.json", "reader-lifetime-control/results.json"}
+                self.assertEqual(set(zipped.namelist()), expected | {"SHA256.json"})
+                manifest = json.loads(zipped.read("SHA256.json"))
+                self.assertEqual(set(manifest), expected)
+                for name in expected:
+                    self.assertEqual(manifest[name], native.digest(evidence / name))
+
+    def test_archive_rejects_symlinks_in_retained_paths(self):
+        for kind in ("file", "directory", "broken"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                evidence = root / "evidence"
+                evidence.mkdir()
+                target = root / "target"
+                if kind == "directory": target.mkdir()
+                elif kind == "file": target.write_text("outside data\n")
+                self.symlink(evidence / "retained-link", target, directory=kind == "directory")
+                archive = root / "packet.zip"
+                with self.assertRaisesRegex(ValueError, "symlinks"):
+                    native.pack(evidence, archive)
+                self.assertFalse(archive.exists())
+
     def test_preparation_failure_is_journaled(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "evidence"

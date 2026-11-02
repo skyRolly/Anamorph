@@ -1,5 +1,28 @@
 # Next release investigation and development roadmap
 
+## #205 reported evidence review — 2026-11-02 (Asia/Shanghai)
+
+Accepted both findings supplied in chat; GitHub currently has no inline review
+threads. Baseline df1ede2's exact-head Build41387826769, PR/dependency, CodeQL and
+MSVC gates completed successfully, but did not exercise combined packet packing
+or compare analysis against the collection summary. Passing CI did not disprove
+the findings. The actual Linux packet reproduces the excluded-src symlink error;
+a valid raw timing edit produces two unequal summaries with the old analyzer.
+
+Corrections on the existing #205 branch: prune every excluded original-overlay
+tree before traversal/symlink inspection, preserve rejection of retained links,
+and reject missing/drifting collection summaries before writing analysis. Preserve
+raw/collected/prior-analysis evidence on rejection. Tests distinguish all6 old
+failures; the corrected Python suite passes18 tests. The three-platform smoke
+now invokes the documented pack command, including the actual Linux lifetime
+control. [Native procedure](NATIVE_VALIDATION_PACKAGE.md#return-and-evaluate-evidence).
+
+Final correction-head CI is tracked in the #205 discussion; the baseline success
+above does not qualify that head. #205 remains open/unmerged with separate owner
+merge authorization required. NR-006/010 representative costs/owner acceptance
+and native GUI/AX acceptance remain Pending; NR-003 remains Deferred. No production
+DSP/threading, numerical target, release/tag/assets/version or approval changes.
+
 ## Current execution: #204 integrated; native evidence collection — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly approved #204. After refreshing its reviewed head

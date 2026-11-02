@@ -681,5 +681,44 @@
     "exit": 1,
     "http_status": "403",
     "alert_state": "unavailable"
+  },
+  "reported_archive_analysis_review": {
+    "baseline_head": "df1ede248245200da838e0db37897b4f412f23fc",
+    "findings": [
+      {
+        "finding": "Lifetime control blocks evidence archiving",
+        "disposition": "accepted/fixed",
+        "before": "actual combined Linux packet rejected its excluded src symlink",
+        "after": "top-down traversal prunes root/nested original-overlay trees; retained file/directory/broken links still rejected"
+      },
+      {
+        "finding": "Analysis can diverge from collection summary",
+        "disposition": "accepted/fixed",
+        "before": "individually valid timing edit accepted; analysis.json differed from summary.json",
+        "after": "full recomputed summary/classification must match collection; missing/mismatched evidence rejects before analysis output changes"
+      }
+    ],
+    "negative_control": {
+      "baseline_tests": 18,
+      "baseline_failed_subcases": 6,
+      "before_log_sha256": "a22fb0427f0471422daefec0540c2c0b5eb24559803e2576e746c98be2f6c5e9"
+    },
+    "corrected_tests": {
+      "tests": 18,
+      "failures": 0,
+      "log_sha256": "9e65d709b0db3eb674d4e0b8baea0aaa56cdc06f1e4f75038b9d3d7b42a48a8f"
+    },
+    "real_packet": {
+      "source_head": "df1ede248245200da838e0db37897b4f412f23fc",
+      "synthetic": true,
+      "records": 20,
+      "retained_files": 103,
+      "all_zip_manifest_hashes_verified": true,
+      "summary_equals_analysis": true,
+      "archive_sha256": "d19b23d24ebbc0699daa2bd1d53f93c9c3a0bc5cb4214b749302db84ea9cb834"
+    },
+    "rejected_packet_files_preserved": true,
+    "ci": "Correction-head gates tracked in #205 discussion; baseline success does not qualify corrected head",
+    "limits": "Archive/analysis fixes only; no production, benchmark protocol, native acceptance, merge or release changes"
   }
 }

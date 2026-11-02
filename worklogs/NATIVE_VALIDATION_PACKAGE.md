@@ -197,8 +197,13 @@ python3 scripts/run-native-validation.py pack --evidence-dir ../anamorph-native-
 Use `python` on Windows. Analysis rejects incomplete/modified matrices, missing
 repetitions/provenance, inert work, original concurrent reads, output/latency
 disagreement and unsupported normal builds. It does not accept performance or
-manual checks. Pack also retains failed/interrupted collections, excludes
-temporary original objects/executables, writes a SHA256 file manifest and prints
+manual checks. Recomputed metrics/classification must match `summary.json` from
+collection. A mismatch or missing collection summary fails before writing or
+replacing `analysis.json`; preserve the raw data, original summary and any prior
+analysis for investigation, and recollect into a new directory when needed.
+Pack also retains failed/interrupted collections, prunes root and nested
+`original-overlay` build trees (including lifetime-control source links), rejects
+symlinks in retained evidence, writes a SHA256 file manifest and prints
 the archive SHA256. Return the zip plus that digest and exact host details for
 review; retain the build and original evidence locally until reviewed. Inspect
 paths/machine/host details before sharing. Do not edit raw measurements to hide

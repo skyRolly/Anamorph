@@ -686,6 +686,8 @@ def analyze(directory):
     if not smoke and not environment.get("supported_product_platform"):
         raise ValueError("normal collection requires supported platform provenance")
     summary["hardware_classification"] = "synthetic" if smoke or environment["virtualization_observations"] else "requires_owner_context_and_review"
+    if read(directory / "summary.json") != summary:
+        raise ValueError("collection summary differs from raw records/provenance; preserve the evidence and investigate before recollecting")
     save(directory / "analysis.json", summary)
     return summary
 
@@ -695,11 +697,20 @@ def pack(directory, destination):
     if destination.is_relative_to(directory):
         raise ValueError("archive must be outside evidence directory")
     manifest = {}
-    for path in directory.rglob("*"):
-        if path.is_symlink():
-            raise ValueError("evidence symlinks are not archived")
-        if path.is_file() and "original-overlay" not in path.relative_to(directory).parts:
-            manifest[path.relative_to(directory).as_posix()] = digest(path)
+    def walk_error(error):
+        raise error
+    for parent, directories, files in os.walk(directory, topdown=True, followlinks=False, onerror=walk_error):
+        # Prune temporary builds before inspecting entries: their src links are
+        # intentionally excluded, while every retained symlink still fails.
+        directories[:] = [name for name in directories if name != "original-overlay"]
+        for name in directories + files:
+            if name == "original-overlay":
+                continue
+            path = Path(parent) / name
+            if path.is_symlink():
+                raise ValueError("evidence symlinks are not archived")
+            if path.is_file():
+                manifest[path.relative_to(directory).as_posix()] = digest(path)
     with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(manifest):
             archive.write(directory / name, name)

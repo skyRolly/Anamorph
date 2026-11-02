@@ -20,6 +20,13 @@ vacuous readers, incomplete matrices, changed audio/latency and partial journals
 are rejected. Three-platform `native-evidence-smoke` exercises actual compiler/
 linker overlays and short paired measurements; partial logs are retained on
 started-step failure/cancellation. Synthetic runs cannot pass native acceptance.
+Evidence review controls cover the lifetime test's nested `original-overlay/src`
+links: packing prunes excluded build trees before traversal, while retained file,
+directory and broken symlinks still fail. Complete parser packets also verify
+that analysis reproduces the saved collection summary. Valid timing edits or
+changed/missing summaries fail without replacing prior analysis or collection
+evidence. Tool CI now runs the documented pack command after analysis on all
+three platforms, including the combined Linux lifetime-control packet.
 
 Primitive controls are independent: skipped timed pushes and read copies both
 passed the former static-data checks in compiled mutants, and now exit2 through

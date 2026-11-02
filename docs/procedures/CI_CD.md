@@ -14,6 +14,10 @@ Linux tool smoke additionally compiles an ASan fault variant and the invalid
 owner-scope control, requiring joined readers before storage destruction. These
 derived test flags never alter shipping or measured binaries; their logs/hashes
 are retained and temporary binaries excluded from the artifact.
+The common step analyzes and packs the combined evidence directory. This reaches
+the Linux control's nested temporary source links; excluded overlays are pruned,
+retained symlinks remain rejected, and archive creation must succeed. Analysis
+must match the original collection summary before writing derived metrics.
 See [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md). This is
 nonshipping tool portability, not representative native hardware/host evidence.
 
