@@ -1,16 +1,18 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
+## Current candidate boundary after #207/#208 integration — 2026-11-02 (Asia/Shanghai)
 
-Current main is `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`, containing the
-NR-024/KI-033 editor lifetime correction through owner-approved #208. NR-023/#207
-is authorized but still unmerged while its combined candidate is validated. The
-unchanged 0.10.0 tag `1190e455` points to `4c13688`; unpublished draft429760301
-and all11 asset identities/digests are preserved. That source still has both
-original defects, plus the earlier post-tag gaps. Native execution is owner-deferred
-without accepting cost, usability or release readiness. Candidate selection, native
-acceptance and explicit release authorization remain required. No rebuild, retag,
-version or publication operation is authorized.
+Current main is `29150f312ec4a43ec85f35e61028d8338057d927`, including owner-approved
+#207/#208. The #207 transport correction and #208 Undo/Redo/A-B lifetime correction
+are integrated; PR #209/NR-025 and the new NR-027 scale callback correction remain
+unmerged. The unchanged 0.10.0 tag `1190e455` points to `4c13688`; unpublished draft
+429760301 and its 11 asset IDs, names, sizes and SHA-256 digests are unchanged. The
+draft predates NR-023/024 and contains the original scale methods implicated by
+NR-027. Its source/artifacts therefore do not include these later fixes.
+
+Native execution remains owner-deferred, without accepting cost, usability or release
+readiness. Candidate selection, native acceptance and explicit release authorization
+remain required. No rebuild, retag, version or publication operation is authorized.
 
 ## Historical #206 source/candidate disposition — 2026-11-02 (Asia/Shanghai)
 

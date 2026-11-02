@@ -24,6 +24,10 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Scale and mode changes stop safely if a synchronous parent resize callback closes the editor.**
+  The editor no longer resumes its scale or timer work through freed component state.
+  Evidence: commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`; NR-027/KI-036;
+  State156 and original/fixed ASan controls. [Verified]
 - **Undo, Redo and A/B no longer access an editor destroyed during the command.**
   The processor completes the action while callbacks skip updates to the closed editor.
   Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; NR-024/KI-033; State154. [Verified]

@@ -1,14 +1,32 @@
 # HANDOVER.md
 
-## Current integration and engineering continuation — 2026-11-02 (Asia/Shanghai)
+## Current engineering continuation — 2026-11-02 (Asia/Shanghai)
 
-Owner-authorized #208 merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`,
-with the reviewed e12e1a5 tree unchanged. NR-024/KI-033 is integrated (INC-022).
-Owner-authorized #207 is being synchronized and validated against that main;
-retain both regression/control sets and execute actual combined checks. Next: a
-bounded inventory and controlled teardown probes for remaining notifying GUI
-entry points. Native/manual/hardware acceptance is owner-deferred, not waived.
-New PR merges and all release/version operations remain separately authorized.
+Owner-authorized #208 (`e12e1a5`) is integrated at `a78b733`; owner-authorized #207
+(`5e10d26`) is integrated at current main `29150f312ec4a43ec85f35e61028d8338057d927`.
+Combined post-merge Build41480257211, CodeQL41480257255 and MSVC41480257258 passed;
+digest-verified memcheck artifact13161163476 records both suites completed with exit0
+and zero errors. The combined local suite now passes 945 DSP / 12,975 state checks,
+including the new State156 scale lifetime regression.
+
+PR #209 / NR-025 remains open and unmerged at `2ac19a67e7c7a673c5aab9cf84c0ba78f684be86`.
+Its refreshed Build run41488872878, PR merge-check41488879744, CodeQL, MSVC/PREfast and
+dependency review pass; three optional review jobs were skipped. No merge authorization
+is recorded for #209.
+
+NR-027/KI-036 is a confirmed scale/resize callback use-after-free at main `29150f3`.
+Implementation commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7` adds guards after
+synchronous `setSize`/`setTransform` parent notifications and after timer scale calls.
+State156 passes741/741; original actual-editor ASan reproduces all four close paths,
+corrected ASan passes four close/four live paths, and guard-removal controls restore
+sanitizer failures. Raw identities are in
+[`gui-scale-callback-lifetime.json`](../worklogs/engineering-review/gui-scale-callback-lifetime.json).
+The correction is not integrated; new PR merges require separate owner authorization.
+
+Native/manual/hardware acceptance for NR-006/010/014 and NR-003 remains owner-deferred,
+not passed or waived. The 0.10.0 tag/draft/assets remain unchanged and predate the
+NR-023/024/027 fixes. Continue the source-backed callback lifetime inventory and
+independent engineering review; do not request native inputs.
 
 ## Historical #206 baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
 

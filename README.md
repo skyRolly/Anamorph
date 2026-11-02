@@ -23,9 +23,10 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
-PRs #195–#206 and #208 are integrated on main as of 2026-11-02 (Asia/Shanghai),
-through `a78b733`. NR-024 protects Undo/Redo/A-B editor lifetime; owner-authorized
-NR-023/#207 is being validated against that baseline. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+PRs #195–#208 are integrated on main as of 2026-11-02 (Asia/Shanghai),
+through `29150f3`. NR-023 protects host transport arithmetic and NR-024 protects
+Undo/Redo/A-B editor lifetime. PR #209 (NR-025) and PR #210 (NR-027) remain open
+and unmerged; their source fixes are not integrated. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 is Accepted and its atomic-window implementation is on main. Current native
 CI/compile guards and reviewed codegen are complete; representative performance,
 owner cost acceptance and targeted native visual/editor-lifecycle acceptance remain

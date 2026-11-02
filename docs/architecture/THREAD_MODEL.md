@@ -38,7 +38,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:307-321 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:2037-2038 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:2045-2046 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
@@ -47,7 +47,7 @@ Evidence [Verified]:
 | Mechanism | Rate | Work | Source |
 |---|---|---|---|
 | `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:805-811 |
-| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:802, 1537-1717 |
+| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:802, 1537-1722 |
 | `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
 | `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
 | `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |

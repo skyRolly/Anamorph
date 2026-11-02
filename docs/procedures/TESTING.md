@@ -32,6 +32,26 @@ The display oracle finds the existing `presetname` component ID; it permits
 abbreviated/empty captions and asserts the dirty-state change instead of assuming
 an unabridged Default caption.
 
+## Synchronous scale/resize teardown — State156 / NR-027
+
+`tests/gui_scale_lifetime_tests.h` drives the real host-DPI `setScaleFactor`, timer
+scale and Advanced-mode paths, and the component-owned Advanced button callback.
+A real JUCE parent callback may synchronously destroy the actual editor during its
+`setSize` or `setTransform`; live-editor controls check ordinary layout and scale
+composition, while destroyed-editor controls check that parameter values, latency,
+dispatch state and the processor's reopened view remain valid. The focused selector
+is `AnamorphStateTests --gui-scale-lifetime-probe [dpi|timer-scale|timer-mode|advanced]`;
+unknown selectors fail. State156's full fixture runs in the ordinary state suite.
+
+At baseline `29150f3`, State156 passes 741/741 checks. The original production
+translation unit reproduces ASan heap-use-after-free in all four destroy cases.
+Separately removing the post-`setSize`, post-`setTransform`, or timer-return guard
+restores sanitizer failures; suppressing scale/layout work fails the live controls.
+Corrected actual-editor and JUCE OpenGL translation units pass all eight ASan
+destroy/live cases with leak detection enabled. Other linked objects are not
+instrumented in this focused control, and this is not native host or visual
+acceptance; full repository sanitizer CI remains required.
+
 **Owner direction, 2026-11-02:** native performance, GUI/host/editor/assistive and
 hardware-dependent installation execution is deferred this round. Acceptance
 requirements and worksheets remain outstanding; continue independent automated work.

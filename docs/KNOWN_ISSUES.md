@@ -3,6 +3,22 @@
 KI-033 is resolved on main through #208 at `a78b733`; see INC-022 in
 [POSTMORTEMS.md](POSTMORTEMS.md). The unchanged draft retains the old callbacks.
 
+## KI-036 — Scale updates can resume after a parent destroys the editor
+
+**Confirmed on main `29150f3`; correction is implemented on the unmerged NR-027 review branch.**
+Host DPI changes, UI Scale changes, and the Advanced-mode resize call `setSize` or
+`setTransform`. JUCE synchronously notifies the parent; a parent may close and destroy
+its editor child during that callback. The old scale path then accessed the destroyed
+editor's OpenGL context, or the timer resumed into destroyed controls. State156 and
+actual-editor ASan controls reproduce the use-after-free in all four entry paths.
+
+The controlled parent is a real JUCE `Component`, but this does not establish that a
+supported DAW triggers the sequence or its field incidence. The correction, regression
+and source-scoped controls are recorded in
+[`gui-scale-callback-lifetime.json`](../worklogs/engineering-review/gui-scale-callback-lifetime.json).
+The existing 0.10.0 draft also contains the original scaling methods; its artifact remains
+unchanged. Remove this entry only after the correction is integrated.
+
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
@@ -349,13 +365,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2433-2441; declared src/PluginEditor.h:585). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2441-2449; declared src/PluginEditor.h:585). This shipped in
   the 0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2389 (the on-open call) / src/PluginEditor.cpp:2433-2441 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2397 (the on-open call) / src/PluginEditor.cpp:2441-2449 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -663,7 +679,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:396-406 (the field), src/PluginEditor.cpp:2371-2441 (show + focus);
+  src/PluginEditor.cpp:396-406 (the field), src/PluginEditor.cpp:2379-2449 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2442-2481`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,

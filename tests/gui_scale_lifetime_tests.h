@@ -96,7 +96,8 @@ static void testGuiScaleLifetimes (int selected = -1)
                     // Compose an existing user scale with the host's DPI scale.
                     scale->setSelectedId (4, juce::dontSendNotification);
                     (static_cast<AnamorphAudioProcessorEditor*> (editor.get())->*getTimerEntry (TimerEntry{}))();
-                    check (juce::approximatelyEqual (editor->getTransform().getScaleFactor(), 1.25f),
+                    check (juce::approximatelyEqual (editor->getTransform().mat00, 1.25f)
+                           && juce::approximatelyEqual (editor->getTransform().mat11, 1.25f),
                            "156 DPI control: the user scale was really installed first");
                 }
                 else if (action == 1)
@@ -129,7 +130,8 @@ static void testGuiScaleLifetimes (int selected = -1)
                     if (editor != nullptr)
                     {
                         const float expectedScale = action == 0 ? 1.4f * 1.25f : action == 1 ? 1.25f : 1.0f;
-                        check (juce::approximatelyEqual (editor->getTransform().getScaleFactor(), expectedScale),
+                        check (juce::approximatelyEqual (editor->getTransform().mat00, expectedScale)
+                               && juce::approximatelyEqual (editor->getTransform().mat11, expectedScale),
                                "156: host/user scale composition and ordinary transforms are preserved");
                         check (editor->getWidth() == width && (action < 2 ? editor->getHeight() == simpleHeight
                                                                         : editor->getHeight() > simpleHeight),
@@ -149,8 +151,12 @@ static void testGuiScaleLifetimes (int selected = -1)
                 check (editor != nullptr && editor->getWidth() == width && editor->getHeight() == simpleHeight,
                        "156: fresh editor reflects processor mode, not the destroyed view's cached toggle");
                 if (editor != nullptr)
-                    check (juce::approximatelyEqual (editor->getTransform().getScaleFactor(), action < 2 ? 1.25f : 1.0f),
+                {
+                    const float expectedScale = action < 2 ? 1.25f : 1.0f;
+                    check (juce::approximatelyEqual (editor->getTransform().mat00, expectedScale)
+                           && juce::approximatelyEqual (editor->getTransform().mat11, expectedScale),
                            "156: fresh editor retains user scale, while host DPI belongs to each editor");
+                }
                 dispose();
             }
         }

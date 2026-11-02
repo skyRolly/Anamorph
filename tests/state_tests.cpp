@@ -6967,7 +6967,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2681),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2689),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
