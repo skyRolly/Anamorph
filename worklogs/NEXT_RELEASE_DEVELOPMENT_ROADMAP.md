@@ -21,6 +21,13 @@ entries and immutable control records. Conflict reconciliation changes no review
 processor/editor implementation. Rebuild and execute the combined candidate;
 record actual counts, focused sanitizer results and exact-head CI before merging.
 
+Combined source at integration commit `52039ae` now executes **945 DSP / 12,234
+state / 18 Python** controls in the complete local preflight, exit0. Both focused
+CLI paths remain in the normal suite. Documentation/citation liveness, whitespace,
+source-policy gates and the shipping-Clang ABI pass. Preflight log SHA256
+`909b183ac70aaa6dfedcbf43c42c14aef4ffa0d080273ebd5c386ce97c0d8243`. Focused combined-source sanitizers and
+exact final-head CI are tracked in the #207 discussion; pending jobs are not passes.
+
 After both authorized integrations, inventory remaining parameter-notifying GUI
 entry points and use actual callbacks plus deterministic editor destruction.
 Require a witness before selecting another correction. New PR merges remain
