@@ -52,6 +52,15 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(native.command_args(': && c++ "a b.o" -o app && :', False), ["c++", "a b.o", "-o", "app"])
         self.assertEqual(native.command_args('cmd.exe /C "cd . && cl.exe /O2 /Fofoo.obj foo.cpp && cd ."', True),
                          ["cl.exe", "/O2", "/Fofoo.obj", "foo.cpp"])
+        # Real Ninja form from the Windows failed artifact: the launcher is an
+        # absolute path and its outer quote encloses quoted paths with spaces.
+        for launcher in (r'C:\Windows\system32\cmd.exe', r'"C:\Windows\system32\cmd.exe"'):
+            command = launcher + r' /C "cd . && "C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe -- "C:\Program Files\VS\link.exe" CMakeFiles\Bench.dir\bench.obj /out:Bench.exe && cd ."'
+            self.assertEqual(native.command_args(command, True),
+                             [r'C:\Program Files\CMake\bin\cmake.exe', '-E', 'vs_link_exe', '--',
+                              r'C:\Program Files\VS\link.exe', r'CMakeFiles\Bench.dir\bench.obj', '/out:Bench.exe'])
+        with self.assertRaisesRegex(ValueError, 'unsupported cmd'):
+            native.command_args(r'C:\Windows\system32\cmd.exe /D /C echo-me', True)
         for command in ("c++ foo.cpp && execute-me", "c++ @unexpanded.rsp", "c++ foo.cpp ; surprise"):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 native.command_args(command, False)
@@ -68,6 +77,8 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(new[:4], msvc[:4])
         self.assertIn("/Fooriginal.obj", new)
         self.assertIn("/Fdoriginal.obj.pdb", new)
+        linked = native.with_output(["link.exe", "/out:existing.exe", "/pdb:existing.pdb", "/implib:existing.lib"], "original.exe")
+        self.assertIn("/implib:original.exe.lib", linked)
 
     def test_native_compiler_scope_and_windows_object_identity(self):
         def description(name, version):

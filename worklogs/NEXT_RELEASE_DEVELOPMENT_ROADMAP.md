@@ -55,6 +55,14 @@ signedness warnings and the unchanged engine switch-enum warning are retained,
 not suppressed. An initial command-selection preparation failure was a tooling
 defect, repaired before collection; its failed journal is preserved. Detailed
 [control/provenance record](native-validation/integration-and-tool-controls.json).
+Portability follow-up: pair C/C++ compilers (JUCE helper), isolate Windows header
+min/max macros, mirror/record the callback FP environment, and parse CMake's
+absolute Windows cmd wrapper without launching a shell. Linux/macOS tool smoke
+completed atdc48c19; Windows initially failed in link-command parsing after
+successful compilation. Retain these as tool defects; final-head status is in
+#205, not inferred from earlier runs. A local compiler change reset opt-in cache
+options in one preparation attempt; the failed journal is preserved and the
+workflow now directs a fresh build directory.
 
 **Reassessment:** NR-006 integrated/acceptance Pending; NR-010 measurement workflow
 prepared/native execution and numerical budget review Pending; NR-011/012 closed

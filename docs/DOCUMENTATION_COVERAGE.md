@@ -37,6 +37,11 @@ no production/CMake flags are altered. Native mode now mirrors the existing
 callback's ScopedNoDenormals, records/requires that FP state and nearest rounding,
 while leaving default Bench behavior intact. Preserve the failed raw artifacts
 and classify them as tool setup/portability, not product regressions or passes.
+The second Windows attempt exposed the absolute cmd.exe wrapper around CMake's
+link helper. Strip that known wrapper without executing a shell, test the actual
+quoted form, retain raw Ninja commands and redirect the temporary import library.
+CMake cache-reset errors now require a fresh build directory explicitly; no
+automatic retry silently changes measurement configuration.
 
 ## Integrated #199–#203 and bounded NR-014 metadata correction — 2026-11-02
 

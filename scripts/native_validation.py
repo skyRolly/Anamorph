@@ -14,7 +14,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import platform
 import re
 import shlex
@@ -102,8 +102,9 @@ def command_args(command, windows=None):
     windows = os.name == "nt" if windows is None else windows
     command = command.strip()
     # Remove only CMake/Ninja's known no-op shell wrappers. Never run a shell.
-    if windows and command.lower().startswith("cmd.exe /c "):
-        command = command[len("cmd.exe /c "):].strip()
+    launcher = re.match(r'^(?:"([^"]+)"|(\S+))\s+/[cC]\s+([\s\S]+)$', command) if windows else None
+    if launcher and PureWindowsPath(launcher[1] or launcher[2]).name.lower() == "cmd.exe":
+        command = launcher[3].strip()
         if command.startswith('"') and command.endswith('"'):
             command = command[1:-1]
     for prefix in (": && ", "cd . && "):
@@ -115,6 +116,8 @@ def command_args(command, windows=None):
     args = windows_words(command) if windows else shlex.split(command)
     if not args or any(x in ("&&", "||", ";", "|") or x.startswith("@") for x in args):
         raise ValueError("unexpected shell/response-file command; require Ninja compdb -x")
+    if windows and PureWindowsPath(args[0]).name.lower() == "cmd.exe":
+        raise ValueError("unsupported cmd launcher: do not execute a shell")
     return args
 
 
@@ -151,6 +154,8 @@ def with_output(command, output):
             result[i] = "--intdir=" + str(directory)
         elif value.startswith("--dependency-file="):
             result[i] = "--dependency-file=" + str(output) + ".d"
+        elif value.lower().startswith("/implib:"):
+            result[i] = "/implib:" + str(output) + ".lib"
     return result
 
 
@@ -299,7 +304,7 @@ def plugin_identities(build):
 
 def cache_values(build):
     result = {}
-    for line in (Path(build) / "CMakeCache.txt").read_text().splitlines():
+    for line in (Path(build) / "CMakeCache.txt").read_text(encoding="utf-8").splitlines():
         if not line.startswith(("#", "//")) and "=" in line and ":" in line.split("=", 1)[0]:
             name, value = line.split("=", 1)
             result[name.split(":", 1)[0]] = value
@@ -453,6 +458,8 @@ def build_probes(build, output, jobs, skip_plugin_build):
     cache = cache_values(build)
     if cache.get("CMAKE_GENERATOR") != "Ninja" or cache.get("CMAKE_BUILD_TYPE") != "Release":
         raise ValueError("use a Release Ninja build (existing CMake options; no generator migration)")
+    if any(cache.get(k) != "ON" for k in ("ANAMORPH_BUILD_BENCH", "ANAMORPH_BUILD_TESTS")):
+        raise ValueError("CMake reset the requested opt-in targets; use a fresh build directory after a compiler change")
     targets = ["AnamorphBench", "AnamorphTests", "AnamorphStateTests"]
     if not skip_plugin_build:
         targets += ["Anamorph_VST3", "Anamorph_Standalone"]
@@ -470,13 +477,14 @@ def build_probes(build, output, jobs, skip_plugin_build):
     bench = find(lambda x: "AnamorphBench.dir" in x.get("output", "") and x.get("file", "").replace("\\", "/").endswith("tests/bench.cpp"))
     engine = find(lambda x: "AnamorphBench.dir" in x.get("output", "") and x.get("file", "").replace("\\", "/").endswith("src/dsp/AnamorphEngine.cpp"))
     link = find(lambda x: bool(x.get("command")) and x.get("output", "").replace("\\", "/").split("/")[-1] in ("AnamorphBench", "AnamorphBench.exe"))
+    save(output / "ninja-owned-commands.json", {"bench": bench, "engine": engine, "link": link})
     commands = {"bench": command_args(bench["command"]), "engine": command_args(engine["command"]),
                 "link": command_args(link["command"])}
     save(output / "actual-build-commands.json", commands)
     flags = " ".join(commands["bench"] + commands["engine"] + commands["link"])
     lower = flags.lower()
     compiler_files = list((build / "CMakeFiles").glob("*/CMakeCXXCompiler.cmake"))
-    compiler = "\n".join(p.read_text() for p in compiler_files)
+    compiler = "\n".join(p.read_text(encoding="utf-8") for p in compiler_files)
     juce = Path(cache["ANAMORPH_JUCE_PATH"]) if cache.get("ANAMORPH_JUCE_PATH") else build / "_deps/juce-src"
     juce_identity = {"path": str(juce), "commit": required(["git", "rev-parse", "HEAD"], juce),
                      "status": required(["git", "status", "--porcelain"], juce)}
@@ -538,7 +546,7 @@ def build_probes(build, output, jobs, skip_plugin_build):
     selected = {k: v for k, v in cache.items() if k.startswith(("CMAKE_C_FLAGS", "CMAKE_CXX_FLAGS", "CMAKE_EXE_LINKER_FLAGS", "ANAMORPH_"))
                 or k in ("CMAKE_BUILD_TYPE", "CMAKE_GENERATOR", "CMAKE_C_COMPILER", "CMAKE_CXX_COMPILER", "CMAKE_OSX_ARCHITECTURES", "CMAKE_SYSTEM_PROCESSOR")}
     save(output / "build-identity.json", {"cache": selected, "compiler_description": compiler,
-                                          "c_compiler_description": "\n".join(p.read_text() for p in (build / "CMakeFiles").glob("*/CMakeCCompiler.cmake")),
+                                          "c_compiler_description": "\n".join(p.read_text(encoding="utf-8") for p in (build / "CMakeFiles").glob("*/CMakeCCompiler.cmake")),
                                           "juce": juce_identity,
                                           "original_fixture": metadata, "ninja": required(["ninja", "--version"]),
                                           "cmake": required(["cmake", "--version"])})

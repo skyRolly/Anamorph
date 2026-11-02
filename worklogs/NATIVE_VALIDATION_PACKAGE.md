@@ -119,6 +119,10 @@ architecture, format, actual loaded module path/hash, source/build, audio device
 driver, rate/buffer, display scaling/refresh and tool versions. Confirm the host
 loaded this build, not the unchanged 0.10.0 draft. Match
 `plugin-build-identity.json`; store screenshots/video/logs under `manual/`.
+Keep a separate worksheet for each host/format/rate/buffer/display configuration.
+Save the disposable test session or its parameter-state/preset evidence, and keep
+parameters unchanged across comparisons; host defaults are not assumed to equal
+the benchmark's working cell. Do not overwrite earlier observations.
 Use a disposable session and ordinary monitor-safe gain. Add the generated
 14-second stereo `playback-fixture.wav` (active 0–4 s, silent 4–7 s, active 7–11 s,
 silent 11–14 s); its exact bytes/hash/segments are recorded. Host resampling and
@@ -143,6 +147,8 @@ and hidden, then reopen/restore. After warm-up record **five** equal-duration
 observations (at least ten seconds each) with host CPU and observed longest-block/
 real-time-peak metric where available, underruns and process RSS. Include raw
 host meter captures/logs, durations and units in `host_performance_repetitions`.
+Loop fixture 0–4 seconds for continuous active input, or 4–7 seconds for
+continuous zero input while transport runs; transport-stopped is a separate cell.
 Define whether each metric covers the plugin, track, audio thread or whole host;
 host-wide peaks must not be attributed entirely to this plugin. If the host
 does not expose longest-block timing, record it unavailable. Do not infer a peak
