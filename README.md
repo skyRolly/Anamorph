@@ -23,8 +23,8 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
-PRs #195–#204 are integrated on main as of 2026-11-02 (Asia/Shanghai),
-through `34cc369`. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+PRs #195–#205 are integrated on main as of 2026-11-02 (Asia/Shanghai),
+through `109d183`. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 is Accepted and its atomic-window implementation is on main. Current native
 CI/compile guards and reviewed codegen are complete; representative performance,
 owner cost acceptance and targeted native visual/editor-lifecycle acceptance remain

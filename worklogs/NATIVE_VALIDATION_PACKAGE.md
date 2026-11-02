@@ -3,8 +3,8 @@
 ## Scope and current disposition
 
 PR #202's Accepted [ADR-0070](../docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
-implementation and PR #204's rotary titles are integrated on main
-`34cc369669a01e9f5f242dfaf2c226686572e4f1`.
+implementation, PR #204's rotary titles and PR #205's validation package are
+integrated on main `109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6`.
 This package prepares remaining measurements and native observations; it does
 not record their completion. Available execution is a shared Linux container.
 Its smoke results establish tool operation only. Representative hardware,
@@ -25,6 +25,33 @@ Ninja, normal platform/JUCE build dependencies and a clean checkout containing
 this package. Normal collection requires Linux Clang 22, macOS AppleClang or
 Windows MSVC 19.30+, Release, LTO, existing ISA settings and no sanitizer/coverage/
 fast-math overrides. Exact compiler version and expanded commands are retained.
+
+### Pin the integrated test source
+
+Use an unused working directory on the identified native machine. These Git
+commands also work in the Windows native-tools prompt; do not reset an existing
+working checkout or replace existing evidence:
+
+```sh
+git clone --no-checkout https://github.com/skyRolly/Anamorph.git Anamorph-native-109d183
+cd Anamorph-native-109d183
+git checkout --detach 109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6
+git rev-parse HEAD
+git status --porcelain
+```
+
+Confirm the exact commit above and empty status before collecting. Use the
+platform command below with new sibling build/evidence directories. Defaults
+retain five repetitions; do not add smoke or skip-plugin flags to an acceptance
+run. The generated `source.json`, `plugin-build-identity.json` and manual worksheet
+bind the evidence to this test build. Loading the old draft is a different test.
+
+No native workstation/access is currently configured for the agent. The pending
+handoff needs only OS/version, CPU/model/architecture, and whether authorized
+execution access or owner-returned files will be supplied. Once available, run
+collection, the existing host/accessibility checklists and the analysis/pack
+commands below; return the ZIP and printed SHA256. Preserve incomplete attempts
+alongside retries. Preparing these steps is not a native test result.
 
 From the repository root, use **new build/evidence directories**. Evidence must
 be outside the checkout. Linux example (install prerequisites per README):

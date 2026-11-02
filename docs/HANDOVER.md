@@ -2,8 +2,8 @@
 
 ## Integrated baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
 
-Owner-approved #203→#201, then #199→#200→#202 and #204 are merged on actual main
-`34cc369669a01e9f5f242dfaf2c226686572e4f1`. Accepted ADR-0070's atomic stereo/tag
+Owner-approved #203→#201, then #199→#200→#202, #204 and #205 are merged on actual main
+`109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6`. Accepted ADR-0070's atomic stereo/tag
 implementation, serialized GUI affinity and rejected-paint retry are effective on
 main; NR-011's57 isolated controls/five mutants and NR-012's36 retained observations
 are integrated. Post-#204 Build41339340041, CodeQL41339340007 and MSVC41339340000
@@ -17,9 +17,15 @@ lifetime regression. Its merge tree equals reviewed head5b4b506; native
 UX/assistive-device acceptance remains outstanding.
 The [native validation package](../worklogs/NATIVE_VALIDATION_PACKAGE.md) reuses
 the opt-in Bench for paired raw timings/provenance, memory, reader-load models
-and host/AX worksheets. Shared-container smoke is diagnostic only; no native
+and host/AX worksheets. #205's merge retains approved head`014a24a` exactly,
+including overlay pruning and collection/analysis consistency controls. Its
+exact-head gates completed; post-merge Build41402900891/CodeQL41402900875/
+MSVC41402900872 are in progress at this checkpoint. Integrated local preflight
+passes 945/11911 and 18 Python controls. Shared-container smoke is diagnostic only; no native
 machine is configured. Owner hardware/access information and actual evidence are
-pending. New tooling merges require separate authorization; no optimization or
+pending. Use the existing package's pinned clean-source handoff; no further
+tooling or product change is justified absent a defect or new evidence. New PR
+merges require separate authorization; no optimization or
 Accepted protocol change is selected.
 The0.10.0 tag/draft/11 assets remain unchanged at`4c13688`, lacking NR-022/NR-006.
 Ordinary CI/local validation builds are not release replacement or publication.

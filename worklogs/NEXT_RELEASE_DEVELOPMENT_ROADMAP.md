@@ -1,6 +1,67 @@
 # Next release investigation and development roadmap
 
-## #205 reported evidence review — 2026-11-02 (Asia/Shanghai)
+## Current execution: #205 integrated; native execution pending — 2026-11-02 (Asia/Shanghai)
+
+The owner explicitly accepted both #205 review corrections and authorized its
+merge. Approved head **`014a24a6424e7d3f58be50cea5bcc82d5620a7bd`** merged as
+**`109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6`**, the current integrated main.
+Its parents are `34cc369` and `014a24a`; tree
+`ada904cd526243a19414c44ef756ede0757bda7e` equals the approved head and PR test
+merge `5335844` exactly. All six approved branch commits are ancestors; production
+`src/`, CMake, dependency pins, version metadata and release workflow are unchanged.
+
+Before merging, exact-head Build41398574252 completed **16 jobs / 3 intentional
+skips**, PR41398580114's merge check, CodeQL41398580160, MSVC41398580193 and
+dependency41398580083 completed successfully. Three native smoke jobs ran all18
+Python controls, analysis and packing; Linux also ran the real ASan lifetime
+control. Digest-verified platform packets each reproduce20 synthetic records,
+equal collection/analysis metrics and paired outputs/latency. Repacked manifests
+verify all103 Linux /88 macOS /88 Windows retained files with overlays absent.
+Memcheck artifact13121139534 records both suites completed, exit0, zero errors.
+The [integration/control record](native-validation/integration-and-tool-controls.json)
+retains exact run/artifact hashes and post-merge outcomes. Historical successes
+remain source-scoped, never substitutes for current-head gates.
+
+Post-merge local preflight completed **945 DSP /11,911 state** checks and the
+pinned-Clang shipping ABI gate; all18 Python controls remain live. Main's
+[Build41402900891](https://github.com/skyRolly/Anamorph/actions/runs/41402900891),
+[CodeQL41402900875](https://github.com/skyRolly/Anamorph/actions/runs/41402900875) and
+[MSVC41402900872](https://github.com/skyRolly/Anamorph/actions/runs/41402900872)
+are in progress at this checkpoint; incomplete work is not counted as passing.
+
+**Next action: execute the existing package, not develop another instrument.**
+The [owner-native handoff](NATIVE_VALIDATION_PACKAGE.md#pin-the-integrated-test-source)
+pins a clean checkout to `109d183`, uses fresh build/evidence directories and
+preserves the >=5-repeat raw collection, manual worksheet and checksummed return.
+The integrated CLI and three-platform workflow are executable; no remaining
+collector defect or new optimization target is established. Available execution
+is still the shared Linux container: no native workstation, VPN, remote identity
+or authorized native execution endpoint is configured. Previously requested
+OS/version, CPU/model/architecture and access-versus-owner-return information is
+still missing; do not assume workstation access or repeat the pending request.
+No representative measurements or native visual/assistive observations were made.
+
+**Disposition after source/roadmap review:** NR-006 implemented/integrated,
+representative cost and native scope/FFT/lifecycle acceptance Pending; NR-010
+tooling integrated/tested, native measurements and owner cost/budget acceptance
+Pending; NR-014 bounded correction integrated/tested, native acceptance Pending.
+NR-011/012 remain completed for their defined scope. NR-017's approved-tree SARIF
+retains65 dependency C++ /0 Actions /15 PREfast observations, with no new diagnostic
+set; inaccessible alert state remains unknown. NR-013 stays Blocked on pinned
+REAPER/OS reproduction; NR-015 stays Deferred without useful scope and an
+authorized disposable native system. NR-003 remains owner-Deferred; recurrence
+triggers and NR-018/019/020 decisions are unchanged. No independent product change
+is justified by current evidence. Continue with native evidence analysis when
+the machine/access information or result packet arrives.
+
+**NR-021 / release:** tag`1190e455`→`4c13688`, unpublished draft429760301 and all11
+asset digests remain unchanged. #205 adds test tooling, not a replacement release.
+The old draft still lacks post-tag corrections. Native/owner acceptance, candidate
+selection and separate release authorization remain required. Any new PR stays
+unmerged until separately authorized; this section supersedes the dated checkpoints
+below and the live item register supplies per-NR acceptance details.
+
+## Historical #205 reported evidence review — 2026-11-02 (Asia/Shanghai)
 
 Accepted both findings supplied in chat; GitHub currently has no inline review
 threads. Baseline df1ede2's exact-head Build41387826769, PR/dependency, CodeQL and
@@ -23,7 +84,7 @@ merge authorization required. NR-006/010 representative costs/owner acceptance
 and native GUI/AX acceptance remain Pending; NR-003 remains Deferred. No production
 DSP/threading, numerical target, release/tag/assets/version or approval changes.
 
-## Current execution: #204 integrated; native evidence collection — 2026-11-02 (Asia/Shanghai)
+## Historical #204 integration and native package development — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly approved #204. After refreshing its reviewed head
 `5b4b506ad5a6745d76e1740af3b7b80bf707a7c2`, all current-head gates, reviews,
@@ -933,7 +994,7 @@ No PR merge, tag change, release modification or publication is authorized.
 ## 1. Recommendation
 
 Hold the already-built 0.10.0 draft unchanged. NR-001/002, the approved five-PR
-stack and #204
+stack and #204/#205
 integration are complete; do not repeat them. Current main contains the atomic
 scope correction and NR-022 Undo fix, while the draft does not. NR-021 therefore
 recommends selecting a later source/candidate under separate authorization after
@@ -1175,7 +1236,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
-| NR-010 | P2 | Tooling prepared / native execution pending | Owner-run paired/raw package prepared; controlled identified hardware and owner budget review required | 2 / engineering baseline |
+| NR-010 | P2 | Tooling integrated / native execution pending | #205 merged at109d183; use existing paired/raw package on controlled identified hardware, then owner budget review | 2 / engineering baseline |
 | NR-011 | P2 | Completed / integrated | #200 merged at `54da68e`; 57 isolated action controls, five mutants and legacy/schema gates retained | 2 / coverage complete |
 | NR-012 | P3 | Completed / integrated | #201 merged at `7c007e7`; retain behavioral assertions, no universal quality/monotonicity claim | 2 / bounded study complete |
 | NR-013 | P2 | Blocked | Pinned REAPER/OS reproduction unavailable; preserve focus behavior | 1 / bounded UX maintenance |
@@ -1295,7 +1356,7 @@ alternatives and source/model/production evidence remain in
   is waived. The original exposure is corrected on main, still present in the
   unchanged draft; RISK-018 retains the draft and acceptance distinctions.
 - **Prepared next action:** run the [native evidence package](NATIVE_VALIDATION_PACKAGE.md)
-  on identified owner hardware, return raw logs/host observations and review
+  integrated via #205 at`109d183` on identified owner hardware, return raw logs/host observations and review
   costs against ADR-0070; do not substitute reader-load models for native GUI acceptance.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
@@ -1348,7 +1409,7 @@ alternatives and source/model/production evidence remain in
 
 ### NR-010 — Produce a reproducible CPU, peak-block and memory budget
 
-**Tooling prepared / native results Pending:** the [native package](NATIVE_VALIDATION_PACKAGE.md)
+**Tooling integrated via #205 at`109d183` / native results Pending:** the [native package](NATIVE_VALIDATION_PACKAGE.md)
 extends the existing opt-in Bench without a new target or shipping change. It
 records per-repetition/raw paired timings, observed peaks, provenance, memory and
 native host worksheet. Synthetic smoke only verifies collection; numerical
@@ -1496,11 +1557,13 @@ The original investigation/acceptance criteria below explain the scope of that c
 
 **Completed inventory:** [NR017_STATIC_DIAGNOSTIC_INVENTORY.md](NR017_STATIC_DIAGNOSTIC_INVENTORY.md)
 and its 257-row [baseline CSV](NR017_BASELINE_DIAGNOSTICS.csv). That historical inventory
-source is `4c13688`, runtime/build-equivalent to then-main `6ae102c`. Current main
-`4255393` has 80 rows:65 identical dependency C++ CodeQL,0 Actions,15 PREfast
+source is `4c13688`, runtime/build-equivalent to then-main `6ae102c`. The retained
+`4255393` comparison has 80 rows:65 identical dependency C++ CodeQL,0 Actions,15 PREfast
 (14 test/1 dependency), with no first-party runtime source location. The
 [current delta](nr014-rotary-accessibility/current-analyzer-delta.json) retains
-hashes/rows and bounded harness dispositions; alert refresh still returns403. The historical baseline
+hashes/rows and bounded harness dispositions. #205's approved-tree refresh retains
+the same diagnostic set; its hashes are in the native integration/control record.
+The last alert-state request returned403; it remains unavailable. The historical baseline
 artifacts contain 65 dependency C++ CodeQL / 0 Actions / 192 PREfast results, split
 191 first-party tests / 66 dependencies / 0 first-party runtime src locations. Source-context
 review selects retain/investigate-on-delta dispositions, not blanket code or suppression changes.
@@ -1650,7 +1713,7 @@ a later source does not authorize a rebuild, retag, version or release operation
 
 ### Phase 0 — Completed approval records; remaining owner decisions
 
-NR-001/002/016, #199–#203 and #204 integrations are complete. Preserve the actual
+NR-001/002/016 and #199–#205 integrations are complete. Preserve the actual
 merge and owner-attestation evidence; do not repeat that batch. NR-018/019 remain
 separate owner/legal/provisioning decisions. Unknown distribution rights keep all
 artifacts private/draft. New PRs require their own merge authorization.
@@ -1659,7 +1722,7 @@ artifacts private/draft. New PRs require their own merge authorization.
 
 NR-022 and NR-006 source corrections are on main. Complete NR-006 native cost and
 visual/lifecycle acceptance when suitable systems exist. The current independent
-batch is the NR-006/010 owner-native collection package; NR-014 rotary metadata
+batch is executing the integrated NR-006/010 owner-native collection package; NR-014 rotary metadata
 and attachment/key/lifetime regression are integrated. Remaining native
 UX/assistive-device checks remain explicit. NR-013 requires a
 pinned host reproduction, and NR-003 remains Deferred. NR-004/005/007 reopen only

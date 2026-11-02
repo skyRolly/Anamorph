@@ -720,5 +720,647 @@
     "rejected_packet_files_preserved": true,
     "ci": "Correction-head gates tracked in #205 discussion; baseline success does not qualify corrected head",
     "limits": "Archive/analysis fixes only; no production, benchmark protocol, native acceptance, merge or release changes"
+  },
+  "pr205_integration": {
+    "pr": 205,
+    "approved_head": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+    "merge_commit": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+    "parents": [
+      "34cc369669a01e9f5f242dfaf2c226686572e4f1",
+      "014a24a6424e7d3f58be50cea5bcc82d5620a7bd"
+    ],
+    "tree": "ada904cd526243a19414c44ef756ede0757bda7e",
+    "reviewed_head_and_pr_test_merge_trees_equal": true,
+    "approved_branch_commit_count": 6,
+    "production_source_cmake_dependencies_version_and_release_workflow_unchanged": true,
+    "authorization": "Owner explicitly accepted both review corrections and authorized #205 merge; no future PR merge or release authorization",
+    "merge_requirements": {
+      "reviews": [],
+      "inline_threads": [],
+      "new_findings": [],
+      "branch_main_protected": false,
+      "rulesets": [],
+      "protection_administration_endpoint": "403; normal server merge used without bypass",
+      "mergeable_state": "clean",
+      "expected_head_lease_enforced": true,
+      "merge_strategy": "merge"
+    },
+    "approved_head_runs": [
+      {
+        "id": 41398580083,
+        "name": "Dependency review",
+        "event": "pull_request",
+        "head_sha": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41398580114,
+        "name": "Build & Validate",
+        "event": "pull_request",
+        "head_sha": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41398580193,
+        "name": "Microsoft C++ Code Analysis",
+        "event": "pull_request",
+        "head_sha": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41398580160,
+        "name": "CodeQL Advanced",
+        "event": "pull_request",
+        "head_sha": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 41398574252,
+        "name": "Build & Validate",
+        "event": "push",
+        "head_sha": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "approved_head_build_jobs": [
+      {
+        "id": 125125185817,
+        "name": "source-lint",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186018,
+        "name": "linux",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186090,
+        "name": "native-evidence-smoke (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186101,
+        "name": "native-evidence-smoke (macos-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186102,
+        "name": "sanitizers",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186109,
+        "name": "fuzz",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186116,
+        "name": "macos",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186119,
+        "name": "macos-crossslice",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186121,
+        "name": "macos-intel",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186144,
+        "name": "windows-avx2-ab",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186153,
+        "name": "docs",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186178,
+        "name": "linux-lto-tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186182,
+        "name": "tsan",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186183,
+        "name": "windows",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186186,
+        "name": "native-evidence-smoke (windows-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125186867,
+        "name": "realtime",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125125187015,
+        "name": "macos-review-coinstallation",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 125125187475,
+        "name": "merge-check",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 125125187734,
+        "name": "macos-review-selections",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ],
+    "approved_head_artifacts": [
+      {
+        "id": 13121139534,
+        "name": "Anamorph-memcheck-results",
+        "digest": "sha256:6dea40d59be343ef2f13dc813a477d84882d2f6cbb53242b7713365d4a0c1e7e"
+      },
+      {
+        "id": 13120276968,
+        "name": "Anamorph-native-evidence-smoke-macOS",
+        "digest": "sha256:282738a84da657e83df61e9c760b6063fd60446844defae3839129cb73a719a8"
+      },
+      {
+        "id": 13120187314,
+        "name": "Anamorph-native-evidence-smoke-Windows",
+        "digest": "sha256:029047d93e8dc25dacea14b71f05dfd2c75f61610a399174676318b176243763"
+      },
+      {
+        "id": 13120064274,
+        "name": "Anamorph-native-evidence-smoke-Linux",
+        "digest": "sha256:48ceebe21b9af974f7b83528fafa89b235b2f2a1e6eda5968b4bb7cc3d8e1623"
+      }
+    ],
+    "post_merge_runs": [
+      {
+        "id": 41402900891,
+        "name": "Build & Validate",
+        "head_sha": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 41402900872,
+        "name": "Microsoft C++ Code Analysis",
+        "head_sha": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 41402900875,
+        "name": "CodeQL Advanced",
+        "head_sha": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+        "status": "in_progress",
+        "conclusion": null
+      }
+    ],
+    "post_merge_build_jobs": [
+      {
+        "id": 125138410054,
+        "name": "docs",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410275,
+        "name": "sanitizers",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 125138410284,
+        "name": "source-lint",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410367,
+        "name": "native-evidence-smoke (macos-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410418,
+        "name": "linux",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410421,
+        "name": "macos-crossslice",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410435,
+        "name": "realtime",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410483,
+        "name": "linux-lto-tests",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410500,
+        "name": "windows",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 125138410523,
+        "name": "macos",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 125138410541,
+        "name": "native-evidence-smoke (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410578,
+        "name": "native-evidence-smoke (windows-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410629,
+        "name": "fuzz",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410656,
+        "name": "windows-avx2-ab",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138410812,
+        "name": "tsan",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": 125138411085,
+        "name": "macos-intel",
+        "status": "in_progress",
+        "conclusion": null
+      },
+      {
+        "id": 125138411543,
+        "name": "macos-review-coinstallation",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 125138411702,
+        "name": "merge-check",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "id": 125138412140,
+        "name": "macos-review-selections",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ],
+    "native_execution": {
+      "environment": "Shared Linux x86-64 container only",
+      "native_machine_configured": false,
+      "vpn_configured": false,
+      "authorized_native_endpoint": null,
+      "representative_measurements_collected": false,
+      "host_gui_observations_collected": false,
+      "assistive_device_observations_collected": false,
+      "missing_information": [
+        "Native OS and version",
+        "CPU/model and architecture",
+        "Authorized agent execution endpoint or owner-returned result files"
+      ],
+      "previous_machine_question": "Pending; not reissued",
+      "source_for_owner_run": "109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6",
+      "collector": "Existing integrated workflow; no new instrument or benchmark framework",
+      "repetitions": 5,
+      "owner_cost_acceptance": null,
+      "native_gui_acceptance": null,
+      "native_accessibility_acceptance": null
+    },
+    "diagnostic_refresh": {
+      "artifact_source": "PR test merge 5335844b04bad89af5c8552848ec459d8f359848, exact same tree as approved/integrated source",
+      "artifacts": [
+        {
+          "id": 13120774798,
+          "name": "codeql-sarif-c-cpp-5335844b04bad89af5c8552848ec459d8f359848",
+          "digest": "sha256:8c4ca3203637fbb44f953c3291c09240360a58828abdd9c5296bb5100ed70d62"
+        },
+        {
+          "id": 13119824896,
+          "name": "codeql-sarif-actions-5335844b04bad89af5c8552848ec459d8f359848",
+          "digest": "sha256:9ef4b3b57db1027f308aa65649674977674475ceafa43307eb0e0b6dae071b6c"
+        },
+        {
+          "id": 13119934957,
+          "name": "prefast-sarif-5335844b04bad89af5c8552848ec459d8f359848",
+          "digest": "sha256:f99b19536db0ffca4030d0ff469aac896704b89ec883e28ab4aec673426499ab"
+        }
+      ],
+      "codeql_cpp": 65,
+      "codeql_cpp_exact_historical_rule_uri_line_message_match": true,
+      "codeql_actions": 0,
+      "prefast": 15,
+      "prefast_exact_previous_rule_uri_line_message_match": true,
+      "ownership": {
+        "runtime_src": 0,
+        "tests": 14,
+        "dependencies": 66
+      },
+      "disposition": "Retain existing diagnostic dispositions; no new set or suppression change",
+      "alert_state": "Unavailable; last direct request returned403, workflow success is not alert clearance"
+    },
+    "roadmap_dispositions": {
+      "NR006": "Implemented/integrated; representative cost and native visual/lifecycle acceptance Pending",
+      "NR010": "Tooling integrated/tested; measurements and owner budget acceptance Pending",
+      "NR011": "Completed/integrated",
+      "NR012": "Completed/integrated for defined study",
+      "NR013": "Blocked on pinned REAPER/OS reproduction; preserve focus behavior",
+      "NR014": "Rotary correction integrated/tested; native assistive/UX acceptance Pending",
+      "NR015": "Deferred without useful scope and authorized disposable native system",
+      "NR003": "Owner-Deferred",
+      "NR017": "Retain refreshed diagnostic set; alert state unavailable",
+      "NR018": "Owner/legal decision required",
+      "NR019": "Owner provisioning/signing decision required",
+      "NR020": "Deferred/unselected product scope",
+      "NR021": "Hold existing draft; selected candidate/native acceptance/new release authorization required"
+    },
+    "release_read_only_audit": {
+      "id": 429760301,
+      "tag_name": "0.10.0",
+      "annotated_tag": "1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0",
+      "peeled_source": "4c136881f245470577d66a7603f15b177ddcf3dc",
+      "draft": true,
+      "published_at": null,
+      "updated_at": "2026-10-31T06:17:44Z",
+      "assets": [
+        {
+          "id": 694562397,
+          "name": "Anamorph-0.10.0-Linux.zip",
+          "size": 5746098,
+          "digest": "sha256:033188e31a1d53c78141cbfdf15f19e4b3c99cb439cb97104df088219c3ad9a3",
+          "updated_at": "2026-10-31T06:17:43Z"
+        },
+        {
+          "id": 694562392,
+          "name": "Anamorph-0.10.0-macOS.pkg",
+          "size": 16529579,
+          "digest": "sha256:75a458f212375e45311459351f4e1f923c6093fe4650df4f17f3b902f70a47ca",
+          "updated_at": "2026-10-31T06:17:43Z"
+        },
+        {
+          "id": 694562398,
+          "name": "Anamorph-0.10.0-macOS.zip",
+          "size": 16506029,
+          "digest": "sha256:80f90e98af5b80f0ba0d527159724540a0a3c434c4cd8c0bc11287eec18c7dd0",
+          "updated_at": "2026-10-31T06:17:43Z"
+        },
+        {
+          "id": 694562450,
+          "name": "Anamorph-0.10.0-NOTICE.txt",
+          "size": 17369,
+          "digest": "sha256:ffc0e6d6e3dbce4355325805f50e25d8a5b6322e0a52143304a988de403be7f2",
+          "updated_at": "2026-10-31T06:17:44Z"
+        },
+        {
+          "id": 694562453,
+          "name": "Anamorph-0.10.0-SUPPORT.md",
+          "size": 8841,
+          "digest": "sha256:00ebf8f6ebc80888a999cee28b500f4f11d132b06b19a12fd3e3fa86cdd9dd92",
+          "updated_at": "2026-10-31T06:17:44Z"
+        },
+        {
+          "id": 694562452,
+          "name": "Anamorph-0.10.0-THIRD_PARTY_LICENSES.md",
+          "size": 19226,
+          "digest": "sha256:47f623c519505dc9c7ba02ba27c8f360c19b67f7633a3e56e2714f7a69ddf081",
+          "updated_at": "2026-10-31T06:17:44Z"
+        },
+        {
+          "id": 694562451,
+          "name": "Anamorph-0.10.0-UserManual.md",
+          "size": 39261,
+          "digest": "sha256:074ff9c913aa1bfe12fa21e0e805ee044a6ff24d76781b060df34ac5e3de5610",
+          "updated_at": "2026-10-31T06:17:44Z"
+        },
+        {
+          "id": 694562393,
+          "name": "Anamorph-0.10.0-Windows-Installer.exe",
+          "size": 7340756,
+          "digest": "sha256:cfb47d01ff00bb6c26fff4ffb377a69fd6065313a5115dc186e8b7ac52b6b46e",
+          "updated_at": "2026-10-31T06:17:43Z"
+        },
+        {
+          "id": 694562396,
+          "name": "Anamorph-0.10.0-Windows.zip",
+          "size": 7562327,
+          "digest": "sha256:beef3082c9bc83b320d67ed456292134292a44ccf809b4c6b2a4f08210075c22",
+          "updated_at": "2026-10-31T06:17:43Z"
+        },
+        {
+          "id": 694562461,
+          "name": "RELEASE_MANIFEST.txt",
+          "size": 1187,
+          "digest": "sha256:b61646ee91443d55e0e18e33f0db948c6f9982c0a5a3b8723f4d321ed7570beb",
+          "updated_at": "2026-10-31T06:17:44Z"
+        },
+        {
+          "id": 694562454,
+          "name": "SHA256SUMS.txt",
+          "size": 862,
+          "digest": "sha256:5531e19b4ab20a3781aa0fcc40fddd8334c92fb702ba77d116287180263d86d1",
+          "updated_at": "2026-10-31T06:17:44Z"
+        }
+      ],
+      "operations": "Read-only; no release/tag/asset/version changes",
+      "asset_digests_match_previous_audit": true
+    },
+    "approved_head_artifact_reanalysis": [
+      {
+        "artifact_id": 13120064274,
+        "platform": "Linux",
+        "artifact_sha256": "48ceebe21b9af974f7b83528fafa89b235b2f2a1e6eda5968b4bb7cc3d8e1623",
+        "measurement_records": 20,
+        "summaries_equal": true,
+        "collection_summary_bytes_preserved": true,
+        "hardware_classification": "synthetic",
+        "packed_files": 103,
+        "repacked_sha256": "902cc48be345829ed3c78d48759ed3f648bd6175576e52398134d3fcc14456bf",
+        "manifest_verified": true,
+        "lifetime_control": {
+          "state": "completed",
+          "classification": "synthetic failure control, not performance evidence",
+          "sanitizer_options": "detect_leaks=1:halt_on_error=1:symbolize=1",
+          "results": [
+            {
+              "variant": "fixed",
+              "exit": 2,
+              "heap_use_after_free": false,
+              "header_sha256": "35875d6c722b3864d45bd9b4b00aa4556b2fefef3c568f5b2e916663e97ed3d9",
+              "binary_sha256": "0053a5e6d5575b5ab679d15fd9b4d8f33f438b8bdaf51efbf8360f7056988746"
+            },
+            {
+              "variant": "invalid-owner",
+              "exit": 1,
+              "heap_use_after_free": true,
+              "header_sha256": "45f39b81aa2431c0b2a8482d281c33af9c943a94b72aeed7b205143439adfb85",
+              "binary_sha256": "87fa8ebbd05075a5a4b9ebffc33d8026b1e49250ddd24cf1017c7afa00ed8c80"
+            }
+          ],
+          "source_commit": "014a24a6424e7d3f58be50cea5bcc82d5620a7bd",
+          "source_header_sha256": "de5449d66803cb602dacdfb3527b9e006ad1ddf528db318be19381ec89d3c3e9",
+          "control_script_sha256": "c3f288b333a919521a09f2c3c92288fe29ae362d27e9d9bdbf96a619939ab5ed"
+        }
+      },
+      {
+        "artifact_id": 13120276968,
+        "platform": "macOS",
+        "artifact_sha256": "282738a84da657e83df61e9c760b6063fd60446844defae3839129cb73a719a8",
+        "measurement_records": 20,
+        "summaries_equal": true,
+        "collection_summary_bytes_preserved": true,
+        "hardware_classification": "synthetic",
+        "packed_files": 88,
+        "repacked_sha256": "7abdf395047d731534f8810b3b5440e3c14dfec19aa3c49fd46709abccdf9507",
+        "manifest_verified": true
+      },
+      {
+        "artifact_id": 13120187314,
+        "platform": "Windows",
+        "artifact_sha256": "029047d93e8dc25dacea14b71f05dfd2c75f61610a399174676318b176243763",
+        "measurement_records": 20,
+        "summaries_equal": true,
+        "collection_summary_bytes_preserved": true,
+        "hardware_classification": "synthetic",
+        "packed_files": 88,
+        "repacked_sha256": "9e297e65d9b900e2c71b79269b014a750ec2aa77baded26a4801a0ba49c8469b",
+        "manifest_verified": true
+      },
+      {
+        "artifact_id": 13121139534,
+        "platform": "memcheck",
+        "artifact_sha256": "6dea40d59be343ef2f13dc813a477d84882d2f6cbb53242b7713365d4a0c1e7e",
+        "results": [
+          {
+            "suite": "dsp",
+            "command": [
+              "valgrind",
+              "--tool=memcheck",
+              "--track-origins=yes",
+              "--leak-check=no",
+              "--error-exitcode=1",
+              "--error-limit=no",
+              "--num-callers=25",
+              "build-vg/AnamorphTests_artefacts/Release/AnamorphTests"
+            ],
+            "exit_code": 0,
+            "log": "dsp.log",
+            "state": "completed",
+            "pid": 7387
+          },
+          {
+            "suite": "state",
+            "command": [
+              "valgrind",
+              "--tool=memcheck",
+              "--track-origins=yes",
+              "--leak-check=no",
+              "--error-exitcode=1",
+              "--error-limit=no",
+              "--num-callers=25",
+              "build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+            ],
+            "exit_code": 0,
+            "log": "state.log",
+            "state": "completed",
+            "pid": 7386
+          }
+        ],
+        "error_summaries": {
+          "state.log": [
+            "==7386== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+          ],
+          "dsp.log": [
+            "==7387== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+          ]
+        }
+      }
+    ],
+    "cross_platform_reanalysis_note": "Collection summaries remain byte-identical. Successful reanalysis preserves metrics; derived analysis JSON may use the analyzing OS newline convention. Mismatch/failure preservation is covered by regression controls.",
+    "post_merge_local_preflight": {
+      "exit": 0,
+      "dsp_checks": 945,
+      "state_checks": 11911,
+      "python_tests": 18,
+      "log_sha256": "1e65a04a6c38fad6cca7c1eb84f4412042dd873d516ce15d2c4075d78b3f61d0",
+      "shipping_clang_abi": "passed; historical GCC failure remains unrepaired",
+      "local_unavailable": "PowerShell acquisition integration skipped because pwsh is unavailable; Windows CI covers separately"
+    },
+    "remaining_implementation_disposition": "No new independent implementation justified; execute existing native procedure when machine/access or results become available.",
+    "post_merge_snapshot_utc": "2026-11-02 07:05:10 UTC",
+    "post_merge_artifacts": [
+      {
+        "id": 13122721267,
+        "name": "Anamorph-native-evidence-smoke-Windows",
+        "digest": "sha256:1400ea1f51390a113648098af098b33eb6737e39ea3de5b72b1077e830e24ed1"
+      },
+      {
+        "id": 13122332716,
+        "name": "Anamorph-native-evidence-smoke-Linux",
+        "digest": "sha256:267d69ec6c2c40079c6f6d42a75c7b0179d282fb1308ac7e1d66d25fe9a690e2"
+      },
+      {
+        "id": 13121449165,
+        "name": "Anamorph-native-evidence-smoke-macOS",
+        "digest": "sha256:c29661e640c01ba1f3bb6a224d06ceafc9e49460c9be42e44100b1c3695ddca9"
+      }
+    ]
   }
 }
