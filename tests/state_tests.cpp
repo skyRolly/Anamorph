@@ -23396,7 +23396,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2709).
+//  baseline", src/PluginProcessor.cpp:2730).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -23629,7 +23629,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2236).
+//  targets", src/PluginProcessor.cpp:2257).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -24006,7 +24006,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2894).
+//  mixed sound", src/PluginProcessor.cpp:2915).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -36491,7 +36491,7 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
     //     rule outright: "on a number click or a playback RESTART". There are exactly
     //     two paths in the product, and neither is a transport stop --
     //     `src/gui/LevelMeter.h:27` (mouseDown on the readout) and
-    //     `src/PluginProcessor.cpp:468` (a PLAY edge or a seek).
+    //     `src/PluginProcessor.cpp:489` (a PLAY edge or a seek).
     //
     //     So a stop must KEEP the reading -- stopping to look at it is what the latch
     //     is for -- while the next play must still clear it. Leg 3 asserts the first
@@ -45919,6 +45919,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "ab_undo_tests.h"
 #include "scope_snapshot_tests.h"
 #include "gui_accessibility_tests.h"
+#include "transport_position_tests.h"
 #include "editor_command_lifetime_tests.h"
 
 int main (int argc, char* argv[])
@@ -45934,6 +45935,13 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--transport-position-probe") == 0)
+    {
+        testTransportPositionArithmetic();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--editor-command-lifetime-probe") == 0)
     {
@@ -46211,6 +46219,7 @@ int main (int argc, char* argv[])
     testAHostNanParameterDoesNotLatchTheChain();
     testTheDocumentedIoContract();
     testTheTransportMachineWithoutASampleClock();
+    testTransportPositionArithmetic();
     testAHostResetKeepsTheConfiguredChorusSound();
     testAHostResetInsideAForcedSwapLandsSettled();
     testANonFiniteVelvetDensityDoesNotFreezeTheDensity();

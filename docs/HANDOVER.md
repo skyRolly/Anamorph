@@ -1,6 +1,16 @@
 # HANDOVER.md
 
-## Integrated baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
+## Current integration and engineering continuation — 2026-11-02 (Asia/Shanghai)
+
+Owner-authorized #208 merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`,
+with the reviewed e12e1a5 tree unchanged. NR-024/KI-033 is integrated (INC-022).
+Owner-authorized #207 is being synchronized and validated against that main;
+retain both regression/control sets and execute actual combined checks. Next: a
+bounded inventory and controlled teardown probes for remaining notifying GUI
+entry points. Native/manual/hardware acceptance is owner-deferred, not waived.
+New PR merges and all release/version operations remain separately authorized.
+
+## Historical #206 baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
 
 Owner-approved #203→#201, then #199→#200→#202 and #204–#206 are merged on actual main
 `06527b1f5f56e60068818c65d1af0b6d29f9e468`. Accepted ADR-0070's atomic stereo/tag

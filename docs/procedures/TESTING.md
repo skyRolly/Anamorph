@@ -1,5 +1,18 @@
 # TESTING.md
 
+## Transport metadata arithmetic — State153 / NR-023
+
+`tests/transport_position_tests.h` runs through the real `processBlock` in the
+ordinary state suite and `AnamorphStateTests --transport-position-probe`.
+208 checks distinguish int64 add/subtract/absolute-value overflows, invalid or
+unrepresentable PPQ conversions and invalid tempo. Assert held-peak behavior,
+clock recovery, ordinary negative/variable-block playback, missing tempo and
+the existing finite-tempo floor, sample-clock priority, stop/restart and exact
+transparent audio. Original production source fails33 checks; corrected passes208.
+An actual-wrapper-TU UBSan control independently reports four fault categories
+on the original and none corrected. Full existing sanitizer CI still applies;
+this targeted control instruments the wrapper, not every linked object.
+
 ## Reentrant editor command destruction — State154 / NR-024
 
 `tests/editor_command_lifetime_tests.h` invokes actual component-owned Undo/Redo
@@ -2873,7 +2886,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
   the preset boundary now guards. Investigation first, and the investigation changed the entry in
   both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
-  (`src/PluginProcessor.cpp:2906-2914`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  (`src/PluginProcessor.cpp:2927-2935`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
   decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
   attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
   things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not

@@ -623,10 +623,10 @@ preset completion point; the A/B completion point after the Bypass / view write-
 
 ## Related code
 
-- `src/PluginProcessor.cpp:2235-2258` (`abSwitchToAdopted`: the guard, the request, the capture, the apply, the
-  completion); `src/PluginProcessor.cpp:2110-2151`, `src/PluginProcessor.cpp:2153-2178` (undo, redo);
-  `src/PluginProcessor.cpp:2096-2108` (`beginBulkApply`, `endBulkApply`); `src/PluginProcessor.cpp:86-87` (the
-  preset hooks); `src/PluginProcessor.cpp:240` (`prepareFrom`); `src/PluginProcessor.cpp:475-481` (`setParametersFrom`).
+- `src/PluginProcessor.cpp:2256-2279` (`abSwitchToAdopted`: the guard, the request, the capture, the apply, the
+  completion); `src/PluginProcessor.cpp:2131-2172`, `src/PluginProcessor.cpp:2174-2199` (undo, redo);
+  `src/PluginProcessor.cpp:2117-2129` (`beginBulkApply`, `endBulkApply`); `src/PluginProcessor.cpp:86-87` (the
+  preset hooks); `src/PluginProcessor.cpp:240` (`prepareFrom`); `src/PluginProcessor.cpp:496-502` (`setParametersFrom`).
 - `src/PluginProcessor.h:185` (`readEngineSnapshot`); `src/PluginProcessor.h:972-1003` (the handshake block and
   `BulkApply`).
 - `src/PresetManager.cpp:64-84` (`SoundAppliedGuard`); `src/PresetManager.cpp:867`, `src/PresetManager.cpp:895`,

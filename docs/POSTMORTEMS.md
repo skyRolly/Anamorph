@@ -411,6 +411,10 @@ use the fix-commit date or mark `[Unverified]`.
 
 ## INC-021 — A direct A/B switch discarded a completed edit's Undo step
 
+**Integration follow-up:** NR-022 is integrated through #196 at `49958aed942a2e5eefb602e151d4d8c2ac461c41`.
+The implementation-pending status below is its historical 2026-10-31 checkpoint;
+the existing 0.10.0 draft remains unchanged.
+
 **Status:** implemented and locally validated on the NR-022 review branch;
 not yet merged or included in the existing 0.10.0 draft. Recorded 2026-10-31
 (Asia/Shanghai). Evidence: commit `0e5e644`, roadmap NR-022, State test 149.
@@ -432,3 +436,30 @@ remain outside user Undo. All 126 checks pass; full local Release suites pass
 The coverage lesson is that a correct deferred-transaction close is not proof of
 a correct direct command. Native CI and review are independent of these local
 results; original owner attestations are not retroactively assigned to new code.
+
+## INC-022 — Editor command resumed after synchronous editor destruction
+
+- **Date:** 2026-11-02 (fix `bdeeadb7f4430107223f374b748075e4dc37180e`).
+  **Integrated:** owner-approved #208 at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`.
+  **Affected source:** baseline `06527b1` and unchanged 0.10.0 draft `4c13688`.
+  **Severity:** High; deterministic source-level use-after-free, native host incidence unmeasured.
+- **Evidence [Verified]:** NR-024 / former KI-033, State154,
+  [source/control provenance](../worklogs/engineering-review/editor-command-lifetime.json)
+  and [final-head validation](https://github.com/skyRolly/Anamorph/pull/208#issuecomment-6578269855).
+- **Problem/symptom:** Undo, Redo and A/B called processor actions that notify parameter
+  listeners synchronously. A listener could destroy the editor before the action returned;
+  the callbacks then wrote animation/display fields through freed `this`.
+- **Root cause/formation:** the component-owned closure also dies with the editor. A weak
+  pointer kept only inside that closure is insufficient once execution resumes; a reference
+  to its captured handle still dangles. Original and captured-reference-mutant probes each
+  produce ASan UAF for all three commands while the processor remains alive.
+- **Fix/why:** copy a weak editor handle onto the callback's stack before calling out,
+  check it before the processor action and again before subsequent UI accesses. Preserve
+  the completed processor/history transition; cancelling it or changing event scheduling
+  would alter unrelated behavior. No new threading, state, parameter, DSP or latency contract.
+- **Prevention:** State154's115 focused checks drive actual component-owned callbacks,
+  ordinary display refresh, synchronous close, stale copies and repeated reopen/history
+  cycles. Corrected ASan probes exit0 with leak detection enabled. Full source-scoped CI
+  and completed memcheck remain separate evidence; native/manual acceptance is owner-deferred.
+  The old draft is not repaired by this integration. Continue bounded teardown probes at
+  other notifying GUI entry points without assuming they share the defect.

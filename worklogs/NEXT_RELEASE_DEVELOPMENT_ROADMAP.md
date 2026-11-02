@@ -1,6 +1,105 @@
 # Next release investigation and development roadmap
 
-## Current execution: #206 integrated; independent lifetime correction — 2026-11-02 (Asia/Shanghai)
+## Current execution: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+
+The owner explicitly authorized both #208 and #207. #208 reviewed head
+`e12e1a5b8a3480341627d714aebf3a2d2340c805` is integrated at
+**`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`**, current main. Its two parents
+are `06527b1` and `e12e1a5`; tree `ba4419210a4a04b92815c9a889e936e064a0bc0b`
+equals the reviewed source. Exact-head Build41455335960 (16 successful jobs / 3
+intentional skips), PR41455345331, CodeQL41455345414, MSVC41455345368 and
+dependency41455345481 completed. Verified memcheck artifact13146899246 records
+both suites completed, exit0/zero errors. These are #208 source-scoped outcomes,
+not proof of combined-main validation.
+
+NR-024/KI-033 is **integrated**, with original/fixed/reference-mutant ASan controls
+and State154 retained. Its resolved record is POSTMORTEMS INC-022. NR-023/#207
+remains **open and unmerged**, preserving reviewed head `5e10d26` as an ancestor.
+Merge current main into its original branch without rewriting shared history;
+retain both test headers, CLI probes and ordinary-suite calls, both unreleased
+entries and immutable control records. Conflict reconciliation changes no reviewed
+processor/editor implementation. Rebuild and execute the combined candidate;
+record actual counts, focused sanitizer results and exact-head CI before merging.
+
+Combined source at integration commit `52039ae` now executes **945 DSP / 12,234
+state / 18 Python** controls in the complete local preflight, exit0. Both focused
+CLI paths remain in the normal suite. Documentation/citation liveness, whitespace,
+source-policy gates and the shipping-Clang ABI pass. Preflight log SHA256
+`909b183ac70aaa6dfedcbf43c42c14aef4ffa0d080273ebd5c386ce97c0d8243`. Focused combined-source sanitizers and
+exact final-head CI are tracked in the #207 discussion; pending jobs are not passes.
+
+After both authorized integrations, inventory remaining parameter-notifying GUI
+entry points and use actual callbacks plus deterministic editor destruction.
+Require a witness before selecting another correction. New PR merges remain
+separately owner-gated. NR-006/010/native NR-014/manual host and hardware execution
+remain owner-deferred without waiving acceptance; NR-003 remains Deferred. Do not
+request machines or native results. The 0.10.0 tag/draft/assets/version stay unchanged.
+
+## Historical NR-023 independent-branch checkpoint: #206 integrated; independent engineering review — 2026-11-02 (Asia/Shanghai)
+
+The owner explicitly authorized #206. Reviewed head`3670e7d81e4f89aa706cbda6fbe8b44dd96e09d5`
+merged as **`06527b1f5f56e60068818c65d1af0b6d29f9e468`**, current integrated main.
+Parents are `109d183`/`3670e7d`; tree`e575cdf04a7cef1be13815902c4ac28cc5ff2c9c`
+equals the reviewed head. Exact-head Build41404429212 completed16 jobs/3 intentional
+skips; PR41404435805's merge check and dependency41404435802 passed. No reviews,
+inline threads or new blocking findings were present. #205 main's previously
+incomplete Build41402900891, CodeQL41402900875 and MSVC41402900872 also completed
+successfully. Post-#206 local preflight completed945 DSP/11911 state and18 Python
+controls with the shipping-Clang ABI gate. Post-merge Build41422157397 completed
+16 jobs/3 intentional skips. Its digest-verified memcheck artifact13131618856
+records both suites completed, exit0, zero errors. Documentation-only changes
+did not trigger CodeQL/MSVC; prior main's analysis remains separately source-scoped.
+
+**New owner direction:** defer native execution for this assignment. NR-006/010
+representative measurements, native scope/FFT/editor/host and NR-014 assistive
+acceptance, hardware-dependent installation and NR-003 host matrices are not this
+round's work. Preserve the package, worksheets, provenance, Accepted ADR-0070 and
+all outstanding human/release gates. Deferred means unperformed, not passed or
+waived. Do not ask again for hardware/access/results. Native prerequisites do
+not block independently testable engineering fixes.
+
+**Selected work: reproduce first, then correct bounded defects on separate PRs.**
+The current review examined wrapper transport arithmetic, state admission/Undo,
+preset failure handling, DSP buffer boundaries, editor callbacks and existing
+diagnostic/CI evidence. It is a bounded review, not a whole-codebase certification.
+
+| Candidate | New evidence and disposition |
+|---|---|
+| NR-023, P2, transport arithmetic | Confirmed: real-wrapper State153 fails33/208 on main's code; actual-TU UBSan reports signed add/subtract/abs overflow and NaN-to-int conversion. Fix only scalar metadata handling; corrected208/208 and no UBSan reports. |
+| NR-024, P1, editor command lifetime | Confirmed separately: closing the real editor from a Width notification during its Undo callback yields ASan heap-use-after-free at PluginEditor.cpp's post-Undo animation assignment. Proceed next on an independent branch; no supported-host incidence is asserted. |
+| Restore/Undo admission | Retain: StateCommandGate checks refusal before nested admission, drains before replacement locking and queues on failed try-enter. Existing restore/transaction regressions and NR-022 are not reopened without a new witness. |
+| Preset write failures | Retain: TemporaryFile write, flush/status, byte count and final replacement failures precede metadata adoption; State117 covers real failed writes. No new defect established in the inspected path. |
+| DSP large/empty blocks | Retain inspected guards/slicing and existing tests; no allocation, graph, numerical, parameter, state or latency change is justified. No universal correctness claim. |
+| Native-only/recurrence items | Preserve owner deferral and documented triggers. No host-focus or install correction without the required reproducer/environment. |
+
+NR-023 code commit`137ad083be4a5b2a34c9654ba072f383aeffe5b3` is **implemented on its
+review branch, not integrated** in [#207](https://github.com/skyRolly/Anamorph/pull/207). [Raw control/provenance](engineering-review/transport-arithmetic.json).
+The PPQ arithmetic for ordinary finite clocks is unchanged. Reject invalid or
+unrepresentable derived positions before casting; compare full-range integer
+distances without signed overflow. Missing tempo keeps120 BPM, the existing finite
+tempo floor remains1 BPM, sample clocks retain priority, and valid seek/restart
+controls remain live. Test/CI/realtime and human PR review remain mandatory.
+
+Local pluginval initially failed all3 permitted deterministic Editor attempts
+with exit139 under the unconfigured runtime. An otherwise equivalent bundle
+containing main's original processor object fails the same way. With the existing
+toolchain environment sourced, both corrected strictness10 modes complete3 passes
+on first attempts. Resolved X11/GL/PNG library paths differ between environments;
+the exact signal cause remains unattributed. Preserve both failures and controls,
+not an external/product attribution inferred from a later pass. No retry budget,
+strictness or requirement changed. Source movement also re-anchors citations and
+18 declaration targets; their expected tokens and checker logic are unchanged.
+Corrected full preflight completes **945 DSP /12119 state /18 Python** checks,
+shipping-Clang ABI, citation liveness276 and documentation liveness700/checks.
+Final-head CI remains a distinct requirement; no local signal failure is erased.
+
+**Release remains held:** existing0.10.0 tag`1190e455`→`4c13688`, draft429760301
+and11 assets are unchanged. The old draft contains the same unchecked transport
+body as main's baseline, in addition to its prior post-tag gaps. No supported-host
+crash or field rate is inferred. New fixes require separate merge approval; native
+deferral does not authorize release or remove acceptance requirements.
+
+## Historical NR-024 independent-branch checkpoint: #206 integrated; independent lifetime correction — 2026-11-02 (Asia/Shanghai)
 
 The owner-approved #206 reviewed head`3670e7d81e4f89aa706cbda6fbe8b44dd96e09d5`
 is merged at **`06527b1f5f56e60068818c65d1af0b6d29f9e468`**, current integrated main.
@@ -1315,7 +1414,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 | NR-023 | P2 | Implemented / unmerged #207 | Bound transport clock arithmetic; verified original/fixed wrapper controls and exact-head CI | Independent correctness fix |
-| NR-024 | P1 | Implemented / unmerged #208 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
+| NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1767,18 +1866,33 @@ a later source does not authorize a rebuild, retag, version or release operation
   change; this is Unreleased maintenance work, not part of the existing 0.10.0 draft.
 
 
-### NR-023 — Bound host transport arithmetic
+### NR-023 — Bound transport metadata before meter seek detection
 
-Implemented and validated in independent [#207](https://github.com/skyRolly/Anamorph/pull/207),
-unmerged at5e10d26. Real-wrapper State153 and actual-TU UBSan distinguish invalid
-conversions/overflow from the corrected metadata handling. Ordinary timing/audio
-contracts remain; no supported-host incidence is asserted. Preserve its source,
-controls and exact-head results without marking them integrated here.
+- **Verified mechanism:** `processBlock` casts PPQ-derived non-finite/out-of-range
+  doubles to int64, adds a block to signed sample time and computes signed absolute
+  differences. Actual-wrapper UBSan reproduces all four undefined operations.
+  State153 observes false/missed held-peak resets on unchanged source. No supported
+  DAW occurrence, audio corruption or crash rate is established.
+- **Decision:** preserve ordinary conversion/tempo and meter contracts, reject unusable
+  derived clock observations, and compare distances using defined unsigned arithmetic.
+  Saturating/casting invalid values to a clock endpoint would invent a seek; floating
+  comparisons would lose low sample bits near int64 limits. No such substitute.
+- **Implemented:** commit`137ad08`; State153 exercises full-range jumps, invalid PPQ/
+  tempo, recovery, valid negative/variable-block PPQ playback, missing tempo,
+  sample-clock priority, stop/restart and bit-exact transparent audio.
+- **Evidence:** original33/208 failures; corrected208/208; original four UBSan
+  categories versus none corrected. Instrumented-wrapper controls are not a claim
+  that every linked dependency was sanitized; required full CI remains separate.
+  [Raw identities/log hashes](engineering-review/transport-arithmetic.json).
+- **Remaining:** refreshed combined-candidate gates and actual #207 integration.
+  The owner authorized #207 and #208, not future PRs.
+  No architecture, serialization, latency, parameter or realtime mechanism changes.
 
 ### NR-024 — Editor command callbacks survive reentrant destruction
 
 Review [#208](https://github.com/skyRolly/Anamorph/pull/208), independent of #207;
-implementation `bdeeadb`, open/unmerged. Separate owner merge review is required.
+implementation `bdeeadb`, integrated at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`.
+The owner separately authorized integration; native acceptance remains deferred.
 
 - **Mechanism Verified / P1:** parameter notifications are synchronous and may
   close the editor while `processor.undo/redo/abToggle` is running. The three

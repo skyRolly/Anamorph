@@ -1,25 +1,7 @@
 # KNOWN_ISSUES.md
 
-## KI-033 — Editor command callback can outlive its editor
-
-**Confirmed mechanism / fix implemented, integration pending (NR-024).**
-Review [#208](https://github.com/skyRolly/Anamorph/pull/208), open/unmerged. Undo,
-Redo and A/B call the processor, which synchronously notifies parameter listeners.
-A listener can close the editor before that call returns; the old handlers then
-write animation/display fields through freed `this`. The real editor and parameter
-surface reproduce UAF with ASan for all three commands. Native host incidence and
-field crash rate are unmeasured; no saved-data loss is asserted.
-
-Correction`bdeeadb7f4430107223f374b748075e4dc37180e` keeps a stack-owned weak editor
-handle across the command and skips post-command access after destruction. The
-callback's captured weak handle alone is insufficient if the component-owned
-std::function is destroyed mid-call: a borrowed-reference mutant reproduces UAF.
-State154 preserves command completion, history, normal display refresh and
-close/reopen/repeat behavior. Source: `src/PluginEditor.cpp` constructor command
-handlers; `tests/editor_command_lifetime_tests.h`;
-[controls](../worklogs/engineering-review/editor-command-lifetime.json).
-The original0.10.0 draft contains these callbacks. Source fixes do not change its
-assets; native execution remains owner-deferred and release gates remain outstanding.
+KI-033 is resolved on main through #208 at `a78b733`; see INC-022 in
+[POSTMORTEMS.md](POSTMORTEMS.md). The unchanged draft retains the old callbacks.
 
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
@@ -161,7 +143,6 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
-| KI-033 | Undo/Redo/A-B callback accesses a reentrantly destroyed editor | High lifetime risk; native incidence unmeasured | Confirmed; fix implemented under NR-024, separate merge review pending |
 | KI-001 | Concurrent Multiband-Enable + other discrete change cold-starts the crossover bank | Low | Confirmed, masked (inaudible) |
 | KI-002 | macOS artifacts not notarized (Gatekeeper prompt on the `.pkg`; manual de-quarantine on the zip route) | Medium | Confirmed (distribution) |
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
