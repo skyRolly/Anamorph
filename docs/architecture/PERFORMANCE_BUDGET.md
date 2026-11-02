@@ -321,6 +321,22 @@ a measurement of total process RSS, allocator overhead or cache/WCET cost.
 
 ## How to produce those numbers — required benchmark procedure
 
+**Native evidence collection (2026-11-02):** the
+[owner-run package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md) extends the
+existing opt-in Bench with paired original/current ScopeBuffer measurements,
+raw per-call/repetition timings, clock overhead, source/compiler/build/machine
+identity, RSS/struct observations and checksummed evidence. Original access is
+serial only. Current-only active/stalled reader models do not include GUI/FFT,
+host callback or render overhead; actual host visible/hidden/idle observations
+use the separate worksheet. Five repetitions/ten seconds, shipping-class flags,
+representative context and owner cost review remain required. Tool-complete or
+CI smoke results do not populate the unresolved numerical budgets or
+establish WCET. No acceptance criterion or target is changed by this package.
+Native probe schema2 adds independent primitive publication/copy-consumption
+controls. Scratch poisoning, validation and data hashing are outside the clock;
+these cache conditions belong to the recorded methodology. Do not combine its
+measurements with earlier schema1 smoke or the separate historical serial study.
+
 This section was written when **no repeatable benchmark was committed to this repository**:
 `scripts/` had no bench entry point, `tests/` measured correctness only, and every number quoted
 in the Wave 3-6 worklogs came from a *session-local* scratch harness that was never checked in

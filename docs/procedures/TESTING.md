@@ -1,6 +1,45 @@
 # TESTING.md
 
 
+## Owner-native evidence collection — NR-006 / NR-010 / NR-014
+
+Follow the [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md) for
+platform commands and the exact host/AX procedure. The existing opt-in Bench's
+`--native-json` mode retains per-call timings and consumption/latency controls;
+the collector rebuilds only the original Engine/Bench objects against the
+immutable original ring. Original access stays serial. Current-only paced
+active/stalled reader models are not native rendering or audio callbacks.
+Normal collection requires five repetitions/ten seconds, identifiable native
+compiler/configuration and complete raw provenance; manual acceptance and owner
+cost review remain separate. No timing threshold is imposed in CI.
+
+Run `python3 tests/native_validation_tests.py` for command parsing/output
+rewrites, compiler/platform boundaries, plan and archive controls. Missing/zero
+timings, inert engine work, wrong read normalization, unsafe legacy concurrency,
+vacuous readers, incomplete matrices, changed audio/latency and partial journals
+are rejected. Three-platform `native-evidence-smoke` exercises actual compiler/
+linker overlays and short paired measurements; partial logs are retained on
+started-step failure/cancellation. Synthetic runs cannot pass native acceptance.
+Evidence review controls cover the lifetime test's nested `original-overlay/src`
+links: packing prunes excluded build trees before traversal, while retained file,
+directory and broken symlinks still fail. Complete parser packets also verify
+that analysis reproduces the saved collection summary. Valid timing edits or
+changed/missing summaries fail without replacing prior analysis or collection
+evidence. Tool CI now runs the documented pack command after analysis on all
+three platforms, including the combined Linux lifetime-control packet.
+
+Primitive controls are independent: skipped timed pushes and read copies both
+passed the former static-data checks in compiled mutants, and now exit2 through
+publication/data checks respectively. Push old storage differs from new input;
+read output planes are poisoned and consumed after every timed copy. Raw probe
+schema2 records publication progress and requires a nonempty consumption hash.
+Retain earlier schema1 smoke as historical tool evidence, not current acceptance.
+Linux smoke also runs `scripts/test-native-reader-lifetime.py` against the actual
+benchmark/Ninja commands. It injects a producer exception and a pending read
+finishing at shutdown: ASan must accept the fixed lifetime (controlled exit2) and
+detect heap-use-after-free with the former owner scope. Derived instrumented
+binaries are diagnostic only; raw logs/options/hashes are retained, not timings.
+
 ## NR-014 rotary metadata and delivered-key coverage
 
 State152 (`tests/gui_accessibility_tests.h`) runs in the normal state suite and

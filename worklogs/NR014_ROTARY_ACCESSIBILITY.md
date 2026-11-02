@@ -138,11 +138,14 @@ separate. A reproducible product stack requires a new targeted investigation.
 
 ## Integration, review and continuation
 
-The approved five PRs are integrated on actual main`4255393`; this rotary correction
-is separate branch `fix/nr014-rotary-accessibility-titles` and remains **unmerged**.
-Its [review PR #204](https://github.com/skyRolly/Anamorph/pull/204), source commit
-and final-head gate ledger are recorded in the execution register and PR discussion. New merge authorization and native UX/assistive-device acceptance
-remain outstanding. No 0.10.0 tag/draft/asset/version/release operation is performed.
+The owner subsequently approved [PR #204](https://github.com/skyRolly/Anamorph/pull/204),
+merged at`34cc369669a01e9f5f242dfaf2c226686572e4f1`; its tree equals reviewed
+head`5b4b506` exactly. Post-merge Build41339340041, CodeQL41339340007 and
+MSVC41339340000 completed, with local945 DSP/11911 state checks. Native
+UX/assistive-device acceptance remains outstanding. The
+[native worksheet/procedure](NATIVE_VALIDATION_PACKAGE.md#nr-014-native-accessibility-procedure)
+covers the actual integrated controls and preserves that distinction.
+No 0.10.0 tag/draft/asset/version/release operation is performed.
 
 Keep NR-006/010 representative costs blocked on identified controlled hardware,
 NR-013 on a pinned REAPER/OS reproduction, and NR-015 on useful scope/authorized

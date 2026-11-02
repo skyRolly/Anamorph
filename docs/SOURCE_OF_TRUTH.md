@@ -68,6 +68,12 @@ their original measured data, controls and numerical limitations retain their sc
 The [NR-014 component record](../worklogs/NR014_ROTARY_ACCESSIBILITY.md) and its
 retained controls are supporting developer evidence for rotary metadata and directly
 delivered component keys, not native screen-reader, global focus or host acceptance.
+The bounded correction is integrated via #204 at`34cc369`. The
+[native validation package](../worklogs/NATIVE_VALIDATION_PACKAGE.md) and
+[manual worksheet](../worklogs/native-validation/manual-acceptance-template.json)
+are developer test procedures/data templates supporting NR-006/010/014. Their
+scripts, smoke runs and reader-load models do not confer representative cost,
+native visual/assistive-device, architecture, merge or release acceptance.
 
 The dated release audit and execution evidence are in
 [`worklogs/RELEASE_READINESS_0.10.0.md`](../worklogs/RELEASE_READINESS_0.10.0.md).

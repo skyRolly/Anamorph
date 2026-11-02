@@ -3,31 +3,32 @@
 ## Current source/candidate disposition — 2026-11-02 (Asia/Shanghai)
 
 **Publication recommendation: hold the existing draft unchanged.** Owner-approved
-#199–#203 are now integrated on main`425539385ebfcd1ca2bab1befe3de37618ce02d2`.
+#199–#204 are now integrated on main`34cc369669a01e9f5f242dfaf2c226686572e4f1`.
 That source is distinct from the existing tag/draft. Integration approval is not
 release replacement/publication or an assertion of new native acceptance.
 
 | Candidate | Actual content/evidence | Remaining disposition |
 |---|---|---|
 | Existing 0.10.0 tag/draft source`4c136881f245470577d66a7603f15b177ddcf3dc` | Linux #193 and processor #187; original owner attestations;11 previously built assets | Lacks post-tag NR-022 Undo and NR-006 scope corrections; original plain-storage exposure requires reviewed mitigation/additional validation or explicit owner risk disposition before publication |
-| Integrated main`425539385ebfcd1ca2bab1befe3de37618ce02d2` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, unchanged NR-012 study and parallel/interruption evidence; final-main Build41315639676 and CodeQL/MSVC succeed | Representative native scope/full-engine/GUI costs and owner cost acceptance, targeted native scope/FFT/editor lifecycle acceptance, exact candidate selection and later release gates still pending; no release assets rebuilt |
-| Separate NR-014 review branch | Rotary accessibility titles and bounded component/key/lifetime regression | Unmerged; native UX/assistive-device acceptance and separate PR merge approval pending; absent from integrated main and draft |
+| Integrated main`34cc369669a01e9f5f242dfaf2c226686572e4f1` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, unchanged NR-012 study, parallel/interruption evidence and #204 rotary accessibility titles; final-main Build41339340041 and CodeQL/MSVC complete | Representative native scope/full-engine/GUI costs and owner cost acceptance, targeted native scope/FFT/editor lifecycle/accessibility acceptance, exact candidate selection and later release gates still pending; no release assets rebuilt |
 
 **Recommended candidate decision:** select a source containing the integrated
 NR-022/NR-006 corrections after outstanding native acceptance. Current main is the
-verified integration baseline; a future approved NR-014 merge would change that
-source and require its applicable candidate gates. Do not substitute current-main
+verified integration baseline including NR-014's bounded correction; broader
+native acceptance remains pending. Do not substitute current-main
 CI for the old draft's bytes or silently claim the draft includes these fixes.
 The owner must separately select replacement versus another version and explicitly
 authorize any build/tag/asset/publication operation. No version choice is made here.
 
 **Available current evidence:** every approved merge retains expected parents and
-the validated candidate tree; final main equals reviewed head`ddc4879` exactly.
-[Build41315639676](https://github.com/skyRolly/Anamorph/actions/runs/41315639676)
+the validated candidate tree; final main equals reviewed #204 head`5b4b506` exactly.
+[Build41339340041](https://github.com/skyRolly/Anamorph/actions/runs/41339340041)
 completed all 13 selected jobs, with 3 intentional skips (push merge-check and two
-optional native installer-review jobs). Both memcheck suites completed exit0 with
-zero errors in digest-verified artifact13087303676. Local combined suites945/10987,
-legacy/transition dump identity and original/fixed/weakened scope controls pass.
+optional native installer-review jobs). Current-main memcheck suites completed
+exit0 with zero errors in digest-verified artifact13097646593 (SHA256
+`0cbef2730633a219f23c66aa9dd83d06c8537bd3aa6e2296fc8b9fa3c54fd614`). Current integrated local
+suites945/11911 retain the additional924 State152 checks; legacy/transition dump
+identity and original/fixed/weakened scope controls retain their recorded scope.
 Optional selections/co-installation remain unexecuted; successful CodeQL is not
 GitHub alert-state clearance (API403 remains unknown). Historical GCC14 ABI
 preflight remains failed; shipping-Clang/current CI does not rewrite that result.
@@ -39,6 +40,9 @@ Architecture Review and five named merge approvals are cleared, while native cos
 visual acceptance and TESTING_POLICY final release sign-off are not waived.
 NR-003 remains Deferred by owner decision, without inventing named host outcomes.
 NR-018/019 retain distribution/legal/signing/provisioning boundaries.
+The [owner-native package](NATIVE_VALIDATION_PACKAGE.md) prepares reproducible
+collection and actual host/AX worksheets; shared-container tool smoke is not
+representative measurement, visual observation or owner acceptance.
 
 **Preserved release identity:** annotated tag`1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
 peels to`4c13688`; draft429760301 remains unpublished with 11 assets from normal
