@@ -1,0 +1,548 @@
+{
+  "schema": 1,
+  "date": "2026-11-02 Asia/Shanghai",
+  "integration": {
+    "pr": 204,
+    "reviewed_head": "5b4b506ad5a6745d76e1740af3b7b80bf707a7c2",
+    "main": "34cc369669a01e9f5f242dfaf2c226686572e4f1",
+    "parents": [
+      "425539385ebfcd1ca2bab1befe3de37618ce02d2",
+      "5b4b506ad5a6745d76e1740af3b7b80bf707a7c2"
+    ],
+    "tree": "9b7a71dbf62c3bb5d4dd375e657866eabf5c4611",
+    "build_run": 41339340041,
+    "codeql_run": 41339340007,
+    "msvc_run": 41339340000,
+    "build_jobs": {
+      "success": 13,
+      "intentional_skip": 3
+    },
+    "local_suites": {
+      "dsp": 945,
+      "state": 11911
+    },
+    "memcheck_artifact": 13097646593,
+    "memcheck_sha256": "0cbef2730633a219f23c66aa9dd83d06c8537bd3aa6e2296fc8b9fa3c54fd614",
+    "memcheck": {
+      "dsp": {
+        "state": "completed",
+        "exit": 0,
+        "errors": 0
+      },
+      "state": {
+        "state": "completed",
+        "exit": 0,
+        "errors": 0
+      }
+    }
+  },
+  "tool_controls": {
+    "unit_tests": 14,
+    "unit_log_sha256": "afbc062b97b1da380e7ee13812cf319da4632420f5db1ac8cb578ae60164601e",
+    "smoke": {
+      "records": 20,
+      "repetitions": 1,
+      "hardware": "shared Linux container; not representative",
+      "classification": "synthetic",
+      "status": "measurements_completed",
+      "source": {
+        "commit": "34cc369669a01e9f5f242dfaf2c226686572e4f1",
+        "status": "M .github/workflows/build.yml\n M README.md\n M docs/DOCUMENTATION_COVERAGE.md\n M docs/HANDOVER.md\n M docs/KNOWN_ISSUES.md\n M docs/REPOSITORY_MAP.md\n M docs/SOURCE_OF_TRUTH.md\n M docs/architecture/COMPATIBILITY_MATRIX.md\n M docs/architecture/PERFORMANCE_BUDGET.md\n M docs/policies/RELEASE_POLICY.md\n M docs/procedures/CI_CD.md\n M docs/procedures/TESTING.md\n M scripts/preflight.sh\n M tests/bench.cpp\n M worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md\n M worklogs/NR014_ROTARY_ACCESSIBILITY.md\n M worklogs/RELEASE_READINESS_0.10.0.md\n?? scripts/native_validation.py\n?? scripts/run-native-validation.py\n?? tests/native_validation_bench.h\n?? tests/native_validation_tests.py\n?? worklogs/NATIVE_VALIDATION_PACKAGE.md\n?? worklogs/native-validation/",
+        "files_sha256": {
+          "CMakeLists.txt": "97184e55c01832ea7e9cce609693e437e3ff02c448412e7f8e27e796c9e09d19",
+          "cmake/CheckJuceCache.cmake": "3b9e8908fbe5f120d9b63b047628c886edcf53bb4e83475ae16e58ccd15cba92",
+          "cmake/GenerateMacIcon.cmake": "c6505efa1f76493ef5c2957d39200d9589782d225d27192ebcf846f9ff48ceb1",
+          "cmake/MacIcon.cmake": "11a9b3f981b6a14fcb9e1b15ea77ffe902cb8e1f1190cf99eb23ce5ceaff0785",
+          "scripts/native_validation.py": "d61158c16084e944ba8ad3736e96374b08a21e88ed3620bafc6d987939c4ec86",
+          "scripts/run-native-validation.py": "9b67016aa976e779d16058c4c8bee2ad96c600508631baab698c9caac5649464",
+          "src/AbSlotIndex.h": "2f79137cd321b63fc32733428e9efed5ef94f081d0f70a226d6b09fc6766de3e",
+          "src/InternalState.h": "f84080c522a8fcf331d8aded9f24b9aa2cd0472d6282c1489e0316aea47cc684",
+          "src/ParameterDispatch.h": "6edb1d8366e619284a6a34c6bc4f4698cbc0e31a797277b0f35e3a6d41a16f9a",
+          "src/PluginEditor.cpp": "e7d2e26d5ca0c0e47832cb907031a60b23dd897da370ad5823e4834c68c957e6",
+          "src/PluginEditor.h": "c2b733451c936c97cd426a168599f3f0ace85b20250c00ef5c7b8c3dc6387704",
+          "src/PluginParameters.cpp": "41b7ec329ed831a0c0c4c027cb11d5be53e59081ec110f4abf805adeb84fed5a",
+          "src/PluginParameters.h": "3264988c64ee5ad946f70192399f672b30125aa9c1d8d8779f7e3682548e1d9c",
+          "src/PluginProcessor.cpp": "45b6e36450a1b1c64bbff32599a9b1cc6ad3e3fa49cce4ad7cde01b18350dfd2",
+          "src/PluginProcessor.h": "2d2322381bac9d8692ab3b1f088e428ce8e42b2b7819012603a2c90edb1a19c8",
+          "src/PresetManager.cpp": "c502e26a284a33bec8c49ad4f9c33a017b25cfb1f090cc5f4a20e992196612de",
+          "src/PresetManager.h": "b25b73858708292ba7b43e05e5dde73d3b9cda43a64ac29f40f132ef7b01d152",
+          "src/SerializedNumber.h": "29ba72a3ef9bc38344c93bd72aa3eae4be99f572fb7d25244fcb2e4885748ea1",
+          "src/SerializedXml.h": "2da523b59b6335c878e31f8e9e4842a85d500614c632daf4d0c437ab5e445837",
+          "src/StateCommandGate.h": "68eba5b9b515f7aad1fea47f8108e6f6145ca4cf223bcf86c8deb4c05c945a38",
+          "src/XmlBoundary.h": "e3bf537b5f55ba50736ba5876c96bd96caa008595890892b5b739fd5eff81b23",
+          "src/dsp/AnamorphEngine.cpp": "db4cc43b01294848d54bfcfb332b0570972aeaaf128003a075494b2b07349808",
+          "src/dsp/AnamorphEngine.h": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+          "src/dsp/ChorusEngine.cpp": "ee7c3af457e7c782202105e170cfe8bd0b98289a258dcad290b1a10a091335e3",
+          "src/dsp/ChorusEngine.h": "ffa15e2543a24dbdfcc3723c82ad3caae7084dfcfea557f5df471da6215ad918",
+          "src/dsp/Correlation.h": "13c36e6e7cde75850670209b6d623dd8c504e349c0d50ae702b38bc5c8db6359",
+          "src/dsp/EngineParameters.h": "a1567f6b37e1c29785becc4bf818cea39c5892c7357b08fadc650de1832d8a11",
+          "src/dsp/HaasProcessor.cpp": "77b164b752fb9f1905fc3d31985d91ab8fb6e2fdf6cfa7907af74cf50e01e997",
+          "src/dsp/HaasProcessor.h": "80fd061b74364abda61fcdec67339759e5adb2c8a490c7e6d11ad3edb9bf34b5",
+          "src/dsp/LR4Xover.h": "e1e26b9dc1505e4441a910f1a544539cc964c9407414c53d6f407c433b89ceff",
+          "src/dsp/LevelMeters.h": "07c2236704146ddaecb51d97ebde7a87a0aebb6d085adbbda6369e9a58069395",
+          "src/dsp/LoudnessMatch.cpp": "36ed7249a1aa7a7ad36bf73927c25ac9007628251161fc6c6ba3552a37e87883",
+          "src/dsp/LoudnessMatch.h": "949eeefec41393f4cccacc94ac4547f748a06c940f0e58956d72d091e88dc125",
+          "src/dsp/MidSide.h": "9931b103fb76b103f6097fa3e8b479c49deb792a7aac4b46231f2f6823ecc45d",
+          "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+          "src/dsp/MonoMaker.h": "0523615233465761401a6487e9c3b8205d416812397b278119adc76b7e8ca6fa",
+          "src/dsp/MultibandWidth.cpp": "1274a734a1f99aeff3ba507b00c62b49cc69bd17e9acd9f7ff011c3cac0249ba",
+          "src/dsp/MultibandWidth.h": "90cb5b1968ef2b36ac613ce2794359c96d0d32e63a1c4b96837ec6f40c419482",
+          "src/dsp/RealtimeAnnotations.h": "09ea7d4f4f205efce19e628ce4c99fe991dd384d3c348f2577d41f306cad720f",
+          "src/dsp/ScopeBuffer.h": "2bf1909c302cd7a3e6146670daddf6879c8355babc466a3e10cd9736f895ec46",
+          "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12",
+          "src/dsp/SoloMonitor.h": "6d7dbb28f46893130cb0c8298672e2883350abca4cb6c9edbc8047eb9ce2f081",
+          "src/dsp/VelvetNoise.cpp": "5c46d3be0a6efb304e8564d7e41afb369d54f8d7c7b4dc0a9c978af052e7ae4d",
+          "src/dsp/VelvetNoise.h": "ae289861df580639a5914c19b1a3b1f3df8d439b3e6b3f89e47a41825ea1a5ed",
+          "src/gui/CorrelationMeter.cpp": "a46fe0fbf7a95e5d8ee39b8c387177f6cb6d01f4244b8588bbe3f69f01a1e72c",
+          "src/gui/CorrelationMeter.h": "4c51c4dcf368a8683d88ccf68750b155930ef370ece13d238a3ffb404009f588",
+          "src/gui/FrameClock.h": "bc761be32ef714bfa37f51158976b6be7db8f1936d12170e82abf081040beb18",
+          "src/gui/LevelMeter.cpp": "695a979ef8767098137835ef23fbd462515289aab1d6cd1cad6717a9b4417d21",
+          "src/gui/LevelMeter.h": "e12c2e81d54a2b91a68e543891894f92cecf0b017d480a9accae6262d3eb86b6",
+          "src/gui/LookAndFeel.cpp": "0986431cf3673894ee724b4eed20cdecd2423afa3042f079b164ed793fa43c97",
+          "src/gui/LookAndFeel.h": "545722402da1698223ac4e8365edae4d91b0ace24e4f6fac093fcb08d3a1bf72",
+          "src/gui/PhysicalMouseButtons.cpp": "3a10a59ed924c3f39afa9e456222a97579552a62b301359cc8102f1f611c07ac",
+          "src/gui/PhysicalMouseButtons.h": "d17762eb1c4882c71ef431b2c5c57c78c436056edb917a16e3c5e502d03a6f7c",
+          "src/gui/PhysicalMouseButtons_mac.mm": "e5c7d237956c4ed429bebf3ee66a3af15144bb678a77e9fba95b02cea51e1c8b",
+          "src/gui/ScopeSnapshotCache.h": "d6c67869037eea56293b736de61d6271051014369dad25ad69d03ba9c33f96fa",
+          "src/gui/SpectrumImager.cpp": "a60c80e78313024c39984c73508db37a89512a34a397c263564d7f937bd4a155",
+          "src/gui/SpectrumImager.h": "bd7bf923e8019749d2826e890c4f5c1a2885e29a1581550545691deb5cdf7705",
+          "src/gui/Vectorscope.cpp": "bfb81da9e057ac6c97bf8138ad8dd77fcc8b481a3d4d25a11a9c685f02c925f6",
+          "src/gui/Vectorscope.h": "0984ad06e29f7a560ab5410b1e6d08676ccfc76669ec98c295d09c1d0dfd919f",
+          "tests/bench.cpp": "5cc82b1bed99e4d73ca07855c0f9e5e393637cc498d0064fa1042faa05e2e761",
+          "tests/native_validation_bench.h": "e333495e72565f853a5392f1f44e0c173c616b1a9952cc58fa98c0fa8e45473b",
+          "worklogs/native-validation/manual-acceptance-template.json": "bb10bf939a249ce9c9b4f71e0552ab05cabb9a8738a282d935038773be6c82d9"
+        }
+      },
+      "summary_sha256": "159b17c06a902b0e5ca51f1b30a0513a75858e95183feb60ca2f4d35d95d7ec8",
+      "notes": "Paired output/latency equal; active/stalled corrected readers nonvacuous; legacy serial only"
+    },
+    "compiled_negative_controls": {
+      "classification": "tool-liveness-only",
+      "omitted_measured_process_exit": 2,
+      "omitted_measured_process_stderr": "native validation probe: working engine control is inert (output equals its input)\n",
+      "unsafe_legacy_reader_exit": 2,
+      "unsafe_legacy_reader_stderr": "native validation probe: legacy ScopeBuffer is serial-only: concurrent reads would be a data race\n",
+      "mutant_header_sha256": "3e0bc516d244fd1c15c1165c3628267196bb48c1d94c64ae52d15ebd5c6a9f07",
+      "mutant_binary_sha256": "b8b8de7a9c73abafd4baab3f2b5dd01288e127fa6e274f7255aa9bb68e0428f3"
+    },
+    "historical_preparation_failure": {
+      "directory": "smoke-01",
+      "classification": "tooling command-selection defect",
+      "state": "failed",
+      "completed_measurements": 0,
+      "fixed": "ignore empty Ninja phony link command"
+    },
+    "retained_warnings": [
+      "Immutable legacy ScopeBuffer.h line76 signedness (two per original TU)",
+      "Unchanged AnamorphEngine.cpp oversample switch-enum warning in original overlay"
+    ],
+    "archive": {
+      "name": "smoke-04-complete.zip",
+      "sha256": "6397b0bf4498f57bae25839206ad989c6769d01611ce2ac88e6f793f690b7760",
+      "contents": "raw observations, machine/source/build, logs, playback/manual worksheet, compiled mutant commands and controls; no native acceptance"
+    },
+    "preflight": {
+      "exit": 0,
+      "local_compiler": "Clang 22.1.8",
+      "dsp_checks": 945,
+      "state_checks": 11911,
+      "log_sha256": "9275fd3a2a16d22465503f04811b9c0c9e6a8077e044d7f4c294d3cc38e67df7",
+      "notes": [
+        "Pinned-Clang shipping ABI gate passed; historical GCC failure is not repaired",
+        "PowerShell acquisition integration unavailable locally; required Windows CI remains",
+        "Existing checker SyntaxWarnings and archive fixture duplicate-name UserWarning retained"
+      ]
+    },
+    "native_ci_at_dc48c19": [
+      {
+        "platform": "Linux",
+        "run": 41346545910,
+        "artifact": 13099392569,
+        "sha256": "81e007fd9f85ce5861d3646249f4870b7d93d89bccd61ca792e4cc91089b0116",
+        "status": "measurements_completed",
+        "source_commit": "dc48c19cfb18e88b458938ed070aa2704447fc44",
+        "records": 20,
+        "classification": "synthetic",
+        "performance_acceptance": null
+      },
+      {
+        "platform": "macOS",
+        "run": 41346545910,
+        "artifact": 13099157998,
+        "sha256": "9a39b4ee5b3a9d1239d2f3af8bd77403869abad7a205c871056f3d36bff8d07c",
+        "status": "measurements_completed",
+        "source_commit": "dc48c19cfb18e88b458938ed070aa2704447fc44",
+        "records": 20,
+        "classification": "synthetic",
+        "performance_acceptance": null
+      },
+      {
+        "platform": "Windows",
+        "run": 41346545910,
+        "artifact": 13099418978,
+        "sha256": "98e67112dab1409776311c3da37704de6643ed38c4e0c36db3f6544cd11a1b24",
+        "status": "failed",
+        "source_commit": "dc48c19cfb18e88b458938ed070aa2704447fc44",
+        "completed": 0,
+        "error": "original link must replace each owned object exactly once",
+        "classification": "tool Windows linker-wrapper parse defect; corrected in follow-up"
+      }
+    ],
+    "fp_mode_smoke": {
+      "source": {
+        "commit": "dc48c19cfb18e88b458938ed070aa2704447fc44",
+        "status": "",
+        "files_sha256": {
+          "CMakeLists.txt": "97184e55c01832ea7e9cce609693e437e3ff02c448412e7f8e27e796c9e09d19",
+          "cmake/CheckJuceCache.cmake": "3b9e8908fbe5f120d9b63b047628c886edcf53bb4e83475ae16e58ccd15cba92",
+          "cmake/GenerateMacIcon.cmake": "c6505efa1f76493ef5c2957d39200d9589782d225d27192ebcf846f9ff48ceb1",
+          "cmake/MacIcon.cmake": "11a9b3f981b6a14fcb9e1b15ea77ffe902cb8e1f1190cf99eb23ce5ceaff0785",
+          "scripts/native_validation.py": "f868cd3a7ffbdf818471729ded14c382f6a39cc52a9ec7bfae0264f81d93b048",
+          "scripts/run-native-validation.py": "9b67016aa976e779d16058c4c8bee2ad96c600508631baab698c9caac5649464",
+          "src/AbSlotIndex.h": "2f79137cd321b63fc32733428e9efed5ef94f081d0f70a226d6b09fc6766de3e",
+          "src/InternalState.h": "f84080c522a8fcf331d8aded9f24b9aa2cd0472d6282c1489e0316aea47cc684",
+          "src/ParameterDispatch.h": "6edb1d8366e619284a6a34c6bc4f4698cbc0e31a797277b0f35e3a6d41a16f9a",
+          "src/PluginEditor.cpp": "e7d2e26d5ca0c0e47832cb907031a60b23dd897da370ad5823e4834c68c957e6",
+          "src/PluginEditor.h": "c2b733451c936c97cd426a168599f3f0ace85b20250c00ef5c7b8c3dc6387704",
+          "src/PluginParameters.cpp": "41b7ec329ed831a0c0c4c027cb11d5be53e59081ec110f4abf805adeb84fed5a",
+          "src/PluginParameters.h": "3264988c64ee5ad946f70192399f672b30125aa9c1d8d8779f7e3682548e1d9c",
+          "src/PluginProcessor.cpp": "45b6e36450a1b1c64bbff32599a9b1cc6ad3e3fa49cce4ad7cde01b18350dfd2",
+          "src/PluginProcessor.h": "2d2322381bac9d8692ab3b1f088e428ce8e42b2b7819012603a2c90edb1a19c8",
+          "src/PresetManager.cpp": "c502e26a284a33bec8c49ad4f9c33a017b25cfb1f090cc5f4a20e992196612de",
+          "src/PresetManager.h": "b25b73858708292ba7b43e05e5dde73d3b9cda43a64ac29f40f132ef7b01d152",
+          "src/SerializedNumber.h": "29ba72a3ef9bc38344c93bd72aa3eae4be99f572fb7d25244fcb2e4885748ea1",
+          "src/SerializedXml.h": "2da523b59b6335c878e31f8e9e4842a85d500614c632daf4d0c437ab5e445837",
+          "src/StateCommandGate.h": "68eba5b9b515f7aad1fea47f8108e6f6145ca4cf223bcf86c8deb4c05c945a38",
+          "src/XmlBoundary.h": "e3bf537b5f55ba50736ba5876c96bd96caa008595890892b5b739fd5eff81b23",
+          "src/dsp/AnamorphEngine.cpp": "db4cc43b01294848d54bfcfb332b0570972aeaaf128003a075494b2b07349808",
+          "src/dsp/AnamorphEngine.h": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+          "src/dsp/ChorusEngine.cpp": "ee7c3af457e7c782202105e170cfe8bd0b98289a258dcad290b1a10a091335e3",
+          "src/dsp/ChorusEngine.h": "ffa15e2543a24dbdfcc3723c82ad3caae7084dfcfea557f5df471da6215ad918",
+          "src/dsp/Correlation.h": "13c36e6e7cde75850670209b6d623dd8c504e349c0d50ae702b38bc5c8db6359",
+          "src/dsp/EngineParameters.h": "a1567f6b37e1c29785becc4bf818cea39c5892c7357b08fadc650de1832d8a11",
+          "src/dsp/HaasProcessor.cpp": "77b164b752fb9f1905fc3d31985d91ab8fb6e2fdf6cfa7907af74cf50e01e997",
+          "src/dsp/HaasProcessor.h": "80fd061b74364abda61fcdec67339759e5adb2c8a490c7e6d11ad3edb9bf34b5",
+          "src/dsp/LR4Xover.h": "e1e26b9dc1505e4441a910f1a544539cc964c9407414c53d6f407c433b89ceff",
+          "src/dsp/LevelMeters.h": "07c2236704146ddaecb51d97ebde7a87a0aebb6d085adbbda6369e9a58069395",
+          "src/dsp/LoudnessMatch.cpp": "36ed7249a1aa7a7ad36bf73927c25ac9007628251161fc6c6ba3552a37e87883",
+          "src/dsp/LoudnessMatch.h": "949eeefec41393f4cccacc94ac4547f748a06c940f0e58956d72d091e88dc125",
+          "src/dsp/MidSide.h": "9931b103fb76b103f6097fa3e8b479c49deb792a7aac4b46231f2f6823ecc45d",
+          "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+          "src/dsp/MonoMaker.h": "0523615233465761401a6487e9c3b8205d416812397b278119adc76b7e8ca6fa",
+          "src/dsp/MultibandWidth.cpp": "1274a734a1f99aeff3ba507b00c62b49cc69bd17e9acd9f7ff011c3cac0249ba",
+          "src/dsp/MultibandWidth.h": "90cb5b1968ef2b36ac613ce2794359c96d0d32e63a1c4b96837ec6f40c419482",
+          "src/dsp/RealtimeAnnotations.h": "09ea7d4f4f205efce19e628ce4c99fe991dd384d3c348f2577d41f306cad720f",
+          "src/dsp/ScopeBuffer.h": "2bf1909c302cd7a3e6146670daddf6879c8355babc466a3e10cd9736f895ec46",
+          "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12",
+          "src/dsp/SoloMonitor.h": "6d7dbb28f46893130cb0c8298672e2883350abca4cb6c9edbc8047eb9ce2f081",
+          "src/dsp/VelvetNoise.cpp": "5c46d3be0a6efb304e8564d7e41afb369d54f8d7c7b4dc0a9c978af052e7ae4d",
+          "src/dsp/VelvetNoise.h": "ae289861df580639a5914c19b1a3b1f3df8d439b3e6b3f89e47a41825ea1a5ed",
+          "src/gui/CorrelationMeter.cpp": "a46fe0fbf7a95e5d8ee39b8c387177f6cb6d01f4244b8588bbe3f69f01a1e72c",
+          "src/gui/CorrelationMeter.h": "4c51c4dcf368a8683d88ccf68750b155930ef370ece13d238a3ffb404009f588",
+          "src/gui/FrameClock.h": "bc761be32ef714bfa37f51158976b6be7db8f1936d12170e82abf081040beb18",
+          "src/gui/LevelMeter.cpp": "695a979ef8767098137835ef23fbd462515289aab1d6cd1cad6717a9b4417d21",
+          "src/gui/LevelMeter.h": "e12c2e81d54a2b91a68e543891894f92cecf0b017d480a9accae6262d3eb86b6",
+          "src/gui/LookAndFeel.cpp": "0986431cf3673894ee724b4eed20cdecd2423afa3042f079b164ed793fa43c97",
+          "src/gui/LookAndFeel.h": "545722402da1698223ac4e8365edae4d91b0ace24e4f6fac093fcb08d3a1bf72",
+          "src/gui/PhysicalMouseButtons.cpp": "3a10a59ed924c3f39afa9e456222a97579552a62b301359cc8102f1f611c07ac",
+          "src/gui/PhysicalMouseButtons.h": "d17762eb1c4882c71ef431b2c5c57c78c436056edb917a16e3c5e502d03a6f7c",
+          "src/gui/PhysicalMouseButtons_mac.mm": "e5c7d237956c4ed429bebf3ee66a3af15144bb678a77e9fba95b02cea51e1c8b",
+          "src/gui/ScopeSnapshotCache.h": "d6c67869037eea56293b736de61d6271051014369dad25ad69d03ba9c33f96fa",
+          "src/gui/SpectrumImager.cpp": "a60c80e78313024c39984c73508db37a89512a34a397c263564d7f937bd4a155",
+          "src/gui/SpectrumImager.h": "bd7bf923e8019749d2826e890c4f5c1a2885e29a1581550545691deb5cdf7705",
+          "src/gui/Vectorscope.cpp": "bfb81da9e057ac6c97bf8138ad8dd77fcc8b481a3d4d25a11a9c685f02c925f6",
+          "src/gui/Vectorscope.h": "0984ad06e29f7a560ab5410b1e6d08676ccfc76669ec98c295d09c1d0dfd919f",
+          "tests/bench.cpp": "a4358869a9706d37c009b4d074a02e1c2019ccecda9ee7068089f7870d6ed674",
+          "tests/native_validation_bench.h": "a8c2a9502be0ed878c2ad571203f3be97539e3e3164e4733cc107a60f24219fe",
+          "worklogs/native-validation/manual-acceptance-template.json": "bb10bf939a249ce9c9b4f71e0552ab05cabb9a8738a282d935038773be6c82d9"
+        }
+      },
+      "records": 20,
+      "classification": "synthetic",
+      "summary_sha256": "c980724a7f55570510e3ca9e8d311171fddd985238b5686736680ccea35b98a8",
+      "fp_denormals_disabled": true,
+      "fp_round_to_nearest": true,
+      "archive": {
+        "name": "smoke-06-complete.zip",
+        "sha256": "ecf9ae76fb46d0c74fe4f903f4a235aaa597bbf421fe3ea6443d141764c680dd",
+        "contains": "raw observations, machine/build/source, pending manual worksheet, playback fixture, preflight and compiled FP-mutant controls"
+      }
+    },
+    "compiled_fp_negative_controls": {
+      "classification": "tool-liveness-only",
+      "omitted_measured_process_exit": 2,
+      "omitted_measured_process_stderr": "native validation probe: working engine control is inert (output equals its input)\n",
+      "unsafe_legacy_reader_exit": 2,
+      "unsafe_legacy_reader_stderr": "native validation probe: legacy ScopeBuffer is serial-only: concurrent reads would be a data race\n",
+      "mutant_header_sha256": "692b2c6698dd8d4c79db787bc1cf6137edd35bf642b5f20bbe4b30ee44027ca4",
+      "mutant_binary_sha256": "59208f91231bc66f682db533066f68eab22007dedf433d788edd0655cab4d455"
+    },
+    "local_compiler_cache_reset": {
+      "directory": "smoke-05",
+      "state": "failed",
+      "cause": "CMake compiler change cleared opt-in target flags; preparing failed, no measurements; retry used an explicitly configured cache",
+      "current_action": "use a fresh build directory; collector checks requested targets before build"
+    },
+    "current_local_preflight": {
+      "exit": 0,
+      "dsp": 945,
+      "state": 11911,
+      "unit_tests": 14,
+      "log_sha256": "54aa4198ea99aa4313ad39f82e616b338af261acd4db452324a07ca579f80618",
+      "unit_log_sha256": "d6c07a2509c573eacbbae19362f6e43ec6bb2c8f79fe0d377a6878cfe675e51c",
+      "default_bench_smoke_exit": 0,
+      "default_bench_log_sha256": "63e1ef27b94033dcf67a65fc42a6c932e3acf37691dd4234934afd1059ec95f7"
+    },
+    "primitive_liveness_correction": {
+      "before_source_commit": "e2eadd0bc7dc82955bf12128516f22368c01b525",
+      "before_raw_probe_schema": 1,
+      "current_raw_probe_schema": 2,
+      "compiled_controls": {
+        "primitive-before": {
+          "classification": "tool-liveness only",
+          "expected_exit": 0,
+          "results": [
+            {
+              "kind": "scope-push",
+              "exit": 0,
+              "stderr": "",
+              "old_validator_accepts_inert_measurement": true
+            },
+            {
+              "kind": "scope-read",
+              "exit": 0,
+              "stderr": "",
+              "old_validator_accepts_inert_measurement": true
+            }
+          ],
+          "header_sha256": "3e6752575b5c24e24de4a75bee2a098bcf19312d745c1d806926468e00b11b55",
+          "binary_sha256": "a8a19d5cfbab59bf9b92b4d3d5d9a9501e689bf1260d03cc87d3fb99a7d2ac13"
+        },
+        "primitive-after": {
+          "classification": "tool-liveness only",
+          "expected_exit": 2,
+          "results": [
+            {
+              "kind": "scope-push",
+              "exit": 2,
+              "stderr": "native validation probe: scope publication control failed\n",
+              "old_validator_accepts_inert_measurement": false
+            },
+            {
+              "kind": "scope-read",
+              "exit": 2,
+              "stderr": "native validation probe: scope read data control failed\n",
+              "old_validator_accepts_inert_measurement": false
+            }
+          ],
+          "header_sha256": "7d05e76a61979ab004444c301e46afbf1064a8abed52232781ffafa9a24d5222",
+          "binary_sha256": "be1120c6b3e31d7887a431170ca6ea5c6cf50286732f342e42f3dc84f0cad33e"
+        },
+        "primitive-wrong-payload": {
+          "classification": "tool-liveness only",
+          "expected_exit": 2,
+          "results": [
+            {
+              "kind": "scope-push",
+              "exit": 2,
+              "stderr": "native validation probe: scope push data control failed\n",
+              "old_validator_accepts_inert_measurement": false
+            }
+          ],
+          "header_sha256": "424d0cf3e4d963d8e65dcbc426918ec9a0002325f5f307f9f332cae3c7966e58",
+          "binary_sha256": "5a5fe7d738b1ee0b34ceff5dabded521fabae2f726a92f0936d295ac40528818"
+        }
+      },
+      "positive_smoke": {
+        "source": {
+          "commit": "e2eadd0bc7dc82955bf12128516f22368c01b525",
+          "status": "M scripts/native_validation.py\n M tests/native_validation_bench.h\n M tests/native_validation_tests.py",
+          "files_sha256": {
+            "CMakeLists.txt": "97184e55c01832ea7e9cce609693e437e3ff02c448412e7f8e27e796c9e09d19",
+            "cmake/CheckJuceCache.cmake": "3b9e8908fbe5f120d9b63b047628c886edcf53bb4e83475ae16e58ccd15cba92",
+            "cmake/GenerateMacIcon.cmake": "c6505efa1f76493ef5c2957d39200d9589782d225d27192ebcf846f9ff48ceb1",
+            "cmake/MacIcon.cmake": "11a9b3f981b6a14fcb9e1b15ea77ffe902cb8e1f1190cf99eb23ce5ceaff0785",
+            "scripts/native_validation.py": "91fae94505d7af517d2228e1f10dd61b3022ac45ca377dfe9cdff40275203171",
+            "scripts/run-native-validation.py": "9b67016aa976e779d16058c4c8bee2ad96c600508631baab698c9caac5649464",
+            "src/AbSlotIndex.h": "2f79137cd321b63fc32733428e9efed5ef94f081d0f70a226d6b09fc6766de3e",
+            "src/InternalState.h": "f84080c522a8fcf331d8aded9f24b9aa2cd0472d6282c1489e0316aea47cc684",
+            "src/ParameterDispatch.h": "6edb1d8366e619284a6a34c6bc4f4698cbc0e31a797277b0f35e3a6d41a16f9a",
+            "src/PluginEditor.cpp": "e7d2e26d5ca0c0e47832cb907031a60b23dd897da370ad5823e4834c68c957e6",
+            "src/PluginEditor.h": "c2b733451c936c97cd426a168599f3f0ace85b20250c00ef5c7b8c3dc6387704",
+            "src/PluginParameters.cpp": "41b7ec329ed831a0c0c4c027cb11d5be53e59081ec110f4abf805adeb84fed5a",
+            "src/PluginParameters.h": "3264988c64ee5ad946f70192399f672b30125aa9c1d8d8779f7e3682548e1d9c",
+            "src/PluginProcessor.cpp": "45b6e36450a1b1c64bbff32599a9b1cc6ad3e3fa49cce4ad7cde01b18350dfd2",
+            "src/PluginProcessor.h": "2d2322381bac9d8692ab3b1f088e428ce8e42b2b7819012603a2c90edb1a19c8",
+            "src/PresetManager.cpp": "c502e26a284a33bec8c49ad4f9c33a017b25cfb1f090cc5f4a20e992196612de",
+            "src/PresetManager.h": "b25b73858708292ba7b43e05e5dde73d3b9cda43a64ac29f40f132ef7b01d152",
+            "src/SerializedNumber.h": "29ba72a3ef9bc38344c93bd72aa3eae4be99f572fb7d25244fcb2e4885748ea1",
+            "src/SerializedXml.h": "2da523b59b6335c878e31f8e9e4842a85d500614c632daf4d0c437ab5e445837",
+            "src/StateCommandGate.h": "68eba5b9b515f7aad1fea47f8108e6f6145ca4cf223bcf86c8deb4c05c945a38",
+            "src/XmlBoundary.h": "e3bf537b5f55ba50736ba5876c96bd96caa008595890892b5b739fd5eff81b23",
+            "src/dsp/AnamorphEngine.cpp": "db4cc43b01294848d54bfcfb332b0570972aeaaf128003a075494b2b07349808",
+            "src/dsp/AnamorphEngine.h": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+            "src/dsp/ChorusEngine.cpp": "ee7c3af457e7c782202105e170cfe8bd0b98289a258dcad290b1a10a091335e3",
+            "src/dsp/ChorusEngine.h": "ffa15e2543a24dbdfcc3723c82ad3caae7084dfcfea557f5df471da6215ad918",
+            "src/dsp/Correlation.h": "13c36e6e7cde75850670209b6d623dd8c504e349c0d50ae702b38bc5c8db6359",
+            "src/dsp/EngineParameters.h": "a1567f6b37e1c29785becc4bf818cea39c5892c7357b08fadc650de1832d8a11",
+            "src/dsp/HaasProcessor.cpp": "77b164b752fb9f1905fc3d31985d91ab8fb6e2fdf6cfa7907af74cf50e01e997",
+            "src/dsp/HaasProcessor.h": "80fd061b74364abda61fcdec67339759e5adb2c8a490c7e6d11ad3edb9bf34b5",
+            "src/dsp/LR4Xover.h": "e1e26b9dc1505e4441a910f1a544539cc964c9407414c53d6f407c433b89ceff",
+            "src/dsp/LevelMeters.h": "07c2236704146ddaecb51d97ebde7a87a0aebb6d085adbbda6369e9a58069395",
+            "src/dsp/LoudnessMatch.cpp": "36ed7249a1aa7a7ad36bf73927c25ac9007628251161fc6c6ba3552a37e87883",
+            "src/dsp/LoudnessMatch.h": "949eeefec41393f4cccacc94ac4547f748a06c940f0e58956d72d091e88dc125",
+            "src/dsp/MidSide.h": "9931b103fb76b103f6097fa3e8b479c49deb792a7aac4b46231f2f6823ecc45d",
+            "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+            "src/dsp/MonoMaker.h": "0523615233465761401a6487e9c3b8205d416812397b278119adc76b7e8ca6fa",
+            "src/dsp/MultibandWidth.cpp": "1274a734a1f99aeff3ba507b00c62b49cc69bd17e9acd9f7ff011c3cac0249ba",
+            "src/dsp/MultibandWidth.h": "90cb5b1968ef2b36ac613ce2794359c96d0d32e63a1c4b96837ec6f40c419482",
+            "src/dsp/RealtimeAnnotations.h": "09ea7d4f4f205efce19e628ce4c99fe991dd384d3c348f2577d41f306cad720f",
+            "src/dsp/ScopeBuffer.h": "2bf1909c302cd7a3e6146670daddf6879c8355babc466a3e10cd9736f895ec46",
+            "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12",
+            "src/dsp/SoloMonitor.h": "6d7dbb28f46893130cb0c8298672e2883350abca4cb6c9edbc8047eb9ce2f081",
+            "src/dsp/VelvetNoise.cpp": "5c46d3be0a6efb304e8564d7e41afb369d54f8d7c7b4dc0a9c978af052e7ae4d",
+            "src/dsp/VelvetNoise.h": "ae289861df580639a5914c19b1a3b1f3df8d439b3e6b3f89e47a41825ea1a5ed",
+            "src/gui/CorrelationMeter.cpp": "a46fe0fbf7a95e5d8ee39b8c387177f6cb6d01f4244b8588bbe3f69f01a1e72c",
+            "src/gui/CorrelationMeter.h": "4c51c4dcf368a8683d88ccf68750b155930ef370ece13d238a3ffb404009f588",
+            "src/gui/FrameClock.h": "bc761be32ef714bfa37f51158976b6be7db8f1936d12170e82abf081040beb18",
+            "src/gui/LevelMeter.cpp": "695a979ef8767098137835ef23fbd462515289aab1d6cd1cad6717a9b4417d21",
+            "src/gui/LevelMeter.h": "e12c2e81d54a2b91a68e543891894f92cecf0b017d480a9accae6262d3eb86b6",
+            "src/gui/LookAndFeel.cpp": "0986431cf3673894ee724b4eed20cdecd2423afa3042f079b164ed793fa43c97",
+            "src/gui/LookAndFeel.h": "545722402da1698223ac4e8365edae4d91b0ace24e4f6fac093fcb08d3a1bf72",
+            "src/gui/PhysicalMouseButtons.cpp": "3a10a59ed924c3f39afa9e456222a97579552a62b301359cc8102f1f611c07ac",
+            "src/gui/PhysicalMouseButtons.h": "d17762eb1c4882c71ef431b2c5c57c78c436056edb917a16e3c5e502d03a6f7c",
+            "src/gui/PhysicalMouseButtons_mac.mm": "e5c7d237956c4ed429bebf3ee66a3af15144bb678a77e9fba95b02cea51e1c8b",
+            "src/gui/ScopeSnapshotCache.h": "d6c67869037eea56293b736de61d6271051014369dad25ad69d03ba9c33f96fa",
+            "src/gui/SpectrumImager.cpp": "a60c80e78313024c39984c73508db37a89512a34a397c263564d7f937bd4a155",
+            "src/gui/SpectrumImager.h": "bd7bf923e8019749d2826e890c4f5c1a2885e29a1581550545691deb5cdf7705",
+            "src/gui/Vectorscope.cpp": "bfb81da9e057ac6c97bf8138ad8dd77fcc8b481a3d4d25a11a9c685f02c925f6",
+            "src/gui/Vectorscope.h": "0984ad06e29f7a560ab5410b1e6d08676ccfc76669ec98c295d09c1d0dfd919f",
+            "tests/bench.cpp": "a4358869a9706d37c009b4d074a02e1c2019ccecda9ee7068089f7870d6ed674",
+            "tests/native_validation_bench.h": "452d16e13961b41a9db6a9b13b67bd610f7f8c80b74aa9af0f15689786159a3c",
+            "worklogs/native-validation/manual-acceptance-template.json": "bb10bf939a249ce9c9b4f71e0552ab05cabb9a8738a282d935038773be6c82d9"
+          }
+        },
+        "records": 20,
+        "classification": "synthetic",
+        "summary_sha256": "8a957b7db25ed2c35866ef0315ae497c6b2c6f28c263185a4884a55bef423f88",
+        "archive": "smoke-07-complete.zip",
+        "archive_sha256": "24e9d7bb6c2fee42bb95a1cf9f4adf9cb8759668bc2caa347d6512b7e6a09c7f"
+      },
+      "unit_tests": 14,
+      "unit_log_sha256": "53358a7462f4bc6bdbee6a8e196c9082540f866a20121b06e755c286afd2830d",
+      "prior_scope_smoke_disposition": "Historical tool operation only; schema1 primitives cannot satisfy current liveness/acceptance"
+    },
+    "windows_fixture_followup": {
+      "source_commit": "e2eadd0bc7dc82955bf12128516f22368c01b525",
+      "run": 41381878921,
+      "job": 125074243609,
+      "collector": "20 rows completed; schema1 historical tool data",
+      "test": "native path separator fixture incorrectly required POSIX / on Windows",
+      "correction": "Explicit PurePosixPath/PureWindowsPath cases preserve exact parent and compiler basename expectations"
+    }
+  },
+  "acceptance": {
+    "representative_hardware": null,
+    "performance_cost_owner": null,
+    "native_gui": null,
+    "native_accessibility": null
+  },
+  "limitations": [
+    "Tool smoke is not representative measurement, actual GUI/FFT, callback WCET or manual acceptance",
+    "Historical GCC ABI failures and unexplained validator signal exits remain unrepaired/unattributed",
+    "GitHub code-scanning alert-state access remains unavailable; CodeQL execution is separate"
+  ],
+  "release_read_only_audit": {
+    "id": 429760301,
+    "name": "Anamorph 0.10.0",
+    "tag_name": "0.10.0",
+    "target_commitish": "4c136881f245470577d66a7603f15b177ddcf3dc",
+    "draft": true,
+    "prerelease": false,
+    "published_at": null,
+    "updated_at": "2026-10-31T06:17:44Z",
+    "assets": [
+      {
+        "id": 694562397,
+        "name": "Anamorph-0.10.0-Linux.zip",
+        "size": 5746098,
+        "digest": "sha256:033188e31a1d53c78141cbfdf15f19e4b3c99cb439cb97104df088219c3ad9a3",
+        "updated_at": "2026-10-31T06:17:43Z"
+      },
+      {
+        "id": 694562392,
+        "name": "Anamorph-0.10.0-macOS.pkg",
+        "size": 16529579,
+        "digest": "sha256:75a458f212375e45311459351f4e1f923c6093fe4650df4f17f3b902f70a47ca",
+        "updated_at": "2026-10-31T06:17:43Z"
+      },
+      {
+        "id": 694562398,
+        "name": "Anamorph-0.10.0-macOS.zip",
+        "size": 16506029,
+        "digest": "sha256:80f90e98af5b80f0ba0d527159724540a0a3c434c4cd8c0bc11287eec18c7dd0",
+        "updated_at": "2026-10-31T06:17:43Z"
+      },
+      {
+        "id": 694562450,
+        "name": "Anamorph-0.10.0-NOTICE.txt",
+        "size": 17369,
+        "digest": "sha256:ffc0e6d6e3dbce4355325805f50e25d8a5b6322e0a52143304a988de403be7f2",
+        "updated_at": "2026-10-31T06:17:44Z"
+      },
+      {
+        "id": 694562453,
+        "name": "Anamorph-0.10.0-SUPPORT.md",
+        "size": 8841,
+        "digest": "sha256:00ebf8f6ebc80888a999cee28b500f4f11d132b06b19a12fd3e3fa86cdd9dd92",
+        "updated_at": "2026-10-31T06:17:44Z"
+      },
+      {
+        "id": 694562452,
+        "name": "Anamorph-0.10.0-THIRD_PARTY_LICENSES.md",
+        "size": 19226,
+        "digest": "sha256:47f623c519505dc9c7ba02ba27c8f360c19b67f7633a3e56e2714f7a69ddf081",
+        "updated_at": "2026-10-31T06:17:44Z"
+      },
+      {
+        "id": 694562451,
+        "name": "Anamorph-0.10.0-UserManual.md",
+        "size": 39261,
+        "digest": "sha256:074ff9c913aa1bfe12fa21e0e805ee044a6ff24d76781b060df34ac5e3de5610",
+        "updated_at": "2026-10-31T06:17:44Z"
+      },
+      {
+        "id": 694562393,
+        "name": "Anamorph-0.10.0-Windows-Installer.exe",
+        "size": 7340756,
+        "digest": "sha256:cfb47d01ff00bb6c26fff4ffb377a69fd6065313a5115dc186e8b7ac52b6b46e",
+        "updated_at": "2026-10-31T06:17:43Z"
+      },
+      {
+        "id": 694562396,
+        "name": "Anamorph-0.10.0-Windows.zip",
+        "size": 7562327,
+        "digest": "sha256:beef3082c9bc83b320d67ed456292134292a44ccf809b4c6b2a4f08210075c22",
+        "updated_at": "2026-10-31T06:17:43Z"
+      },
+      {
+        "id": 694562461,
+        "name": "RELEASE_MANIFEST.txt",
+        "size": 1187,
+        "digest": "sha256:b61646ee91443d55e0e18e33f0db948c6f9982c0a5a3b8723f4d321ed7570beb",
+        "updated_at": "2026-10-31T06:17:44Z"
+      },
+      {
+        "id": 694562454,
+        "name": "SHA256SUMS.txt",
+        "size": 862,
+        "digest": "sha256:5531e19b4ab20a3781aa0fcc40fddd8334c92fb702ba77d116287180263d86d1",
+        "updated_at": "2026-10-31T06:17:44Z"
+      }
+    ],
+    "annotated_tag": "1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0",
+    "peeled_source": "4c136881f245470577d66a7603f15b177ddcf3dc",
+    "asset_digests_match_retained_roadmap": true,
+    "operations": "read-only; no release/tag/asset/version writes"
+  }
+}

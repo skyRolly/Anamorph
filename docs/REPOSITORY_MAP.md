@@ -114,6 +114,15 @@ Current static-diagnostic evidence: [`worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY
 
 ## `tests/`, `scripts/`, `packaging/`, `.github/`
 
+Native validation: `tests/native_validation_bench.h` is an opt-in JSON mode of
+the existing Bench; `scripts/run-native-validation.py` / `native_validation.py`
+collect/analyze/archive paired evidence without shipping changes or installs.
+`tests/native_validation_tests.py` tests parsers, incomplete/inert controls and
+archive handling. [Owner-native instructions](../worklogs/NATIVE_VALIDATION_PACKAGE.md)
+and [worksheet](../worklogs/native-validation/manual-acceptance-template.json)
+are developer records; shared-runner `native-evidence-smoke` is tool portability,
+never representative performance or native/manual acceptance.
+
 Native-icon integration evidence is in `worklogs/NATIVE_ICON_INTEGRATION_ROUND1.md`;
 `scripts/check-icons.py` validates sources and actual native resources (with matching-platform
 good/bad fixtures); `scripts/test-icon-preflight.py` guards the actual local shell entry point,

@@ -2,18 +2,25 @@
 
 ## Integrated baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
 
-Owner-approved #203→#201, then #199→#200→#202 are merged on actual main
-`425539385ebfcd1ca2bab1befe3de37618ce02d2`. Accepted ADR-0070's atomic stereo/tag
+Owner-approved #203→#201, then #199→#200→#202 and #204 are merged on actual main
+`34cc369669a01e9f5f242dfaf2c226686572e4f1`. Accepted ADR-0070's atomic stereo/tag
 implementation, serialized GUI affinity and rejected-paint retry are effective on
 main; NR-011's57 isolated controls/five mutants and NR-012's36 retained observations
-are integrated. Final-main Build41315639676, CodeQL and MSVC completed successfully.
+are integrated. Post-#204 Build41339340041, CodeQL41339340007 and MSVC41339340000
+completed; integrated local suites are945 DSP/11911 state.
 Representative native scope/full-engine/GUI costs, owner cost acceptance and targeted
 native scope/FFT/editor-lifecycle acceptance remain pending, not waived by merge.
 
-[PR #204](https://github.com/skyRolly/Anamorph/pull/204) separately corrects rotary
+[PR #204](https://github.com/skyRolly/Anamorph/pull/204) corrects rotary
 accessibility titles using unchanged captions and adds State152's attachment/key/
-lifetime regression. It remains unmerged, with separate merge authorization and
-native UX/assistive-device acceptance outstanding; exact-head CI is in its ledger.
+lifetime regression. Its merge tree equals reviewed head5b4b506; native
+UX/assistive-device acceptance remains outstanding.
+The [native validation package](../worklogs/NATIVE_VALIDATION_PACKAGE.md) reuses
+the opt-in Bench for paired raw timings/provenance, memory, reader-load models
+and host/AX worksheets. Shared-container smoke is diagnostic only; no native
+machine is configured. Owner hardware/access information and actual evidence are
+pending. New tooling merges require separate authorization; no optimization or
+Accepted protocol change is selected.
 The0.10.0 tag/draft/11 assets remain unchanged at`4c13688`, lacking NR-022/NR-006.
 Ordinary CI/local validation builds are not release replacement or publication.
 See the live [execution register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)

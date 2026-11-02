@@ -1,5 +1,18 @@
 # CI_CD.md
 
+## Native evidence tool portability
+
+`native-evidence-smoke` builds the existing opt-in Bench and test targets with
+Ninja on Linux Clang22, native macOS AppleClang and Windows MSVC. It exercises
+actual original/current compile/link overlays, raw-result controls and short
+reader models. All output is synthetic, with performance/manual acceptance
+unset; there is no timing threshold. Parser/negative controls also run in
+`source-lint`. Started-step complete/partial logs survive via bounded `always()`
+uploads where the runner remains available; hard runner loss can still prevent
+retention. The sanitizer/pluginval requirements and their budgets are unchanged.
+See [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md). This is
+nonshipping tool portability, not representative native hardware/host evidence.
+
 ## ADR-0070 scope protocol gates
 
 `source-lint` runs `python3 scripts/check-scope-snapshots.py --self-test`: immutable
@@ -301,6 +314,7 @@ jobs that guard classes the build matrix cannot see:
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint; the checkout fetches the full history, every branch and every tag, `fetch-depth: 0` and `fetch-tags: true`, because the `CHANGELOG.md` link check reads which versions were released from the git tags on the release line — the tags `origin/main` holds but those cut after `HEAD`, since a same-repo PR is checked at its tip — and requires an entry for each — `CHANGELOG_POLICY.md` rule 8) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, `check-realtime.py`, `check-dispatch.py`, `check-state-coverage.py`, then `check-citations.py --check`; plus `check-dsp-dump.py --self-test`, `test-pluginval-acquisition.py` and the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
+| **native-evidence-smoke** | `ubuntu-latest`, `macos-latest`, `windows-latest` | Existing opt-in Bench/DSP/state targets, Ninja Release; original/current overlays and parser controls | Complete/partial diagnostic logs only; synthetic, no cost threshold or native acceptance |
 | **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below), the six blocking race probes, and the **XML boundary differential** (`tests/xml_boundary_differential.cpp`, ADR-0056 — compiled here like the two realtime canaries, Linux-only because it contains its parses in forked children on 1 MB `pthread` stacks) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
