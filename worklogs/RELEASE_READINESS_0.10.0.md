@@ -3,14 +3,14 @@
 ## Current source/candidate disposition — 2026-11-02 (Asia/Shanghai)
 
 **Publication recommendation: hold the existing draft unchanged.** Owner-approved
-#199–#205 are now integrated on main`109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6`.
+#199–#206 are now integrated on main`06527b1f5f56e60068818c65d1af0b6d29f9e468`.
 That source is distinct from the existing tag/draft. Integration approval is not
 release replacement/publication or an assertion of new native acceptance.
 
 | Candidate | Actual content/evidence | Remaining disposition |
 |---|---|---|
 | Existing 0.10.0 tag/draft source`4c136881f245470577d66a7603f15b177ddcf3dc` | Linux #193 and processor #187; original owner attestations;11 previously built assets | Lacks post-tag NR-022 Undo and NR-006 scope corrections; original plain-storage exposure requires reviewed mitigation/additional validation or explicit owner risk disposition before publication |
-| Integrated main`109d1830a946d16e0a1d2f3f8eb2fd4ad71de0f6` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, unchanged NR-012 study, parallel/interruption evidence, #204 rotary titles and #205 native validation package; production source remains identical to34cc369 | Representative native scope/full-engine/GUI costs and owner cost acceptance, targeted native scope/FFT/editor lifecycle/accessibility acceptance, exact candidate selection and later release gates still pending; no release assets rebuilt |
+| Integrated main`06527b1f5f56e60068818c65d1af0b6d29f9e468` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, NR-012 study, CI interruption evidence, rotary titles, native package and #206 reconciliation; production source remains identical to34cc369 | Native execution is owner-deferred; representative costs and human/native acceptance remain outstanding, with candidate selection and later release gates required; no release assets rebuilt |
 
 **Recommended candidate decision:** select a source containing the integrated
 NR-022/NR-006 corrections after outstanding native acceptance. Current main is the
@@ -21,11 +21,12 @@ The owner must separately select replacement versus another version and explicit
 authorize any build/tag/asset/publication operation. No version choice is made here.
 
 **Available current evidence:** every approved merge retains expected parents and
-the validated candidate tree; current main equals reviewed #205 head`014a24a`
-exactly. Exact-head #205 gates completed before integration, including three-platform
+the validated candidate tree; current main equals reviewed #206 head`3670e7d`
+exactly. Its exact-head gates and post-merge Build41422157397 completed, including
+digest-verified memcheck artifact13131618856 (both suites completed, exit0/zero
+errors). #205's exact-head and formerly incomplete post-merge gates also completed, including three-platform
 analysis/pack and18 controls. Post-merge local preflight passes945/11911 with the
-pinned-Clang ABI; main Build41402900891, CodeQL41402900875 and MSVC41402900872 are
-in progress at this checkpoint. Raw identities/outcomes remain in the
+pinned-Clang ABI. Raw prior identities/outcomes remain in the
 [integration record](native-validation/integration-and-tool-controls.json).
 The preceding #204
 [Build41339340041](https://github.com/skyRolly/Anamorph/actions/runs/41339340041)
@@ -42,13 +43,18 @@ preflight remains failed; shipping-Clang/current CI does not rewrite that result
 **Acceptance still required:** ADR-0070 representative costs and owner acceptance,
 then targeted native scope/FFT/editor lifecycle and candidate-specific compatibility/
 Level5 acceptance for selected changed surfaces. The integrated implementation's
-Architecture Review and named #199–#205 merge approvals are cleared, while native cost/
+Architecture Review and named #199–#206 merge approvals are cleared, while native cost/
 visual acceptance and TESTING_POLICY final release sign-off are not waived.
 NR-003 remains Deferred by owner decision, without inventing named host outcomes.
 NR-018/019 retain distribution/legal/signing/provisioning boundaries.
 The [owner-native package](NATIVE_VALIDATION_PACKAGE.md) prepares reproducible
 collection and actual host/AX worksheets; shared-container tool smoke is not
 representative measurement, visual observation or owner acceptance.
+Native execution is now owner-deferred for this engineering assignment, preserving
+those requirements. Newly confirmed NR-024/KI-033 callback UAF also exists in this
+draft's original three command handlers. Correctionbdeeadb is on an independent
+unmerged review branch; NR-023/#207 is separately unmerged. No native host crash
+rate is inferred and neither fix is retroactively present in release assets.
 
 **Preserved release identity:** annotated tag`1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
 peels to`4c13688`; draft429760301 remains unpublished with 11 assets from normal

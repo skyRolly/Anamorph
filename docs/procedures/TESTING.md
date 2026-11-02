@@ -1,5 +1,27 @@
 # TESTING.md
 
+## Reentrant editor command destruction — State154 / NR-024
+
+`tests/editor_command_lifetime_tests.h` invokes actual component-owned Undo/Redo
+callbacks and A/B mouse-down. A synchronous real parameter listener destroys the
+editor during each processor action.115 checks cover ordinary live display
+refresh, completed processor/history endpoints, A↔B, destruction/reopen/repeat and
+copied dead-editor callbacks. No timer pumping, sleeps, native host or visual
+acceptance is substituted. Run the full state suite, or
+`AnamorphStateTests --editor-command-lifetime-probe [undo|redo|ab]`; unknown selectors fail.
+
+An earlier uninstrumented repro aborts134 with allocator corruption. Instrumenting
+the actual editor TU reports UAF for each command; corrected probes exit0. A
+mutant borrowing the callback's captured weak handle instead of owning a stack
+copy also reports UAF for all three. Full existing sanitizer CI remains required;
+these targeted controls do not claim every linked object was instrumented.
+The display oracle finds the existing `presetname` component ID; it permits
+abbreviated/empty captions and asserts the dirty-state change instead of assuming
+an unabridged Default caption.
+
+**Owner direction, 2026-11-02:** native performance, GUI/host/editor/assistive and
+hardware-dependent installation execution is deferred this round. Acceptance
+requirements and worksheets remain outstanding; continue independent automated work.
 
 ## Owner-native evidence collection — NR-006 / NR-010 / NR-014
 

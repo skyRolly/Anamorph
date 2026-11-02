@@ -1,5 +1,25 @@
 # KNOWN_ISSUES.md
 
+## KI-033 — Editor command callback can outlive its editor
+
+**Confirmed mechanism / fix implemented, integration pending (NR-024).** Undo,
+Redo and A/B call the processor, which synchronously notifies parameter listeners.
+A listener can close the editor before that call returns; the old handlers then
+write animation/display fields through freed `this`. The real editor and parameter
+surface reproduce UAF with ASan for all three commands. Native host incidence and
+field crash rate are unmeasured; no saved-data loss is asserted.
+
+Correction`bdeeadb7f4430107223f374b748075e4dc37180e` keeps a stack-owned weak editor
+handle across the command and skips post-command access after destruction. The
+callback's captured weak handle alone is insufficient if the component-owned
+std::function is destroyed mid-call: a borrowed-reference mutant reproduces UAF.
+State154 preserves command completion, history, normal display refresh and
+close/reopen/repeat behavior. Source: `src/PluginEditor.cpp` constructor command
+handlers; `tests/editor_command_lifetime_tests.h`;
+[controls](../worklogs/engineering-review/editor-command-lifetime.json).
+The original0.10.0 draft contains these callbacks. Source fixes do not change its
+assets; native execution remains owner-deferred and release gates remain outstanding.
+
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
@@ -140,6 +160,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
+| KI-033 | Undo/Redo/A-B callback accesses a reentrantly destroyed editor | High lifetime risk; native incidence unmeasured | Confirmed; fix implemented under NR-024, separate merge review pending |
 | KI-001 | Concurrent Multiband-Enable + other discrete change cold-starts the crossover bank | Low | Confirmed, masked (inaudible) |
 | KI-002 | macOS artifacts not notarized (Gatekeeper prompt on the `.pkg`; manual de-quarantine on the zip route) | Medium | Confirmed (distribution) |
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
@@ -346,13 +367,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2406-2414; declared src/PluginEditor.h:585). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2433-2441; declared src/PluginEditor.h:585). This shipped in
   the 0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2362 (the on-open call) / src/PluginEditor.cpp:2406-2414 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2389 (the on-open call) / src/PluginEditor.cpp:2433-2441 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -660,7 +681,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:385-395 (the field), src/PluginEditor.cpp:2344-2414 (show + focus);
+  src/PluginEditor.cpp:396-406 (the field), src/PluginEditor.cpp:2371-2441 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2442-2481`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
