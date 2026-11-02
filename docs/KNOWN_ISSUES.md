@@ -2,7 +2,8 @@
 
 ## KI-033 — Editor command callback can outlive its editor
 
-**Confirmed mechanism / fix implemented, integration pending (NR-024).** Undo,
+**Confirmed mechanism / fix implemented, integration pending (NR-024).**
+Review [#208](https://github.com/skyRolly/Anamorph/pull/208), open/unmerged. Undo,
 Redo and A/B call the processor, which synchronously notifies parameter listeners.
 A listener can close the editor before that call returns; the old handlers then
 write animation/display fields through freed `this`. The real editor and parameter

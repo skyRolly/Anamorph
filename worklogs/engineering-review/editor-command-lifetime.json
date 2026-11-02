@@ -1040,7 +1040,7 @@
   "citation_targets_moved": 15,
   "checker_logic_or_expected_tokens_changed": false,
   "final_validation": {
-    "state": "Local final preflight complete; exact-head remote CI pending final publication",
+    "state": "Local final preflight complete; remote CI must be checked on the final pushed PR head, recorded in the PR discussion",
     "native_acceptance": "Owner-deferred, not passed",
     "initial_preflight": {
       "exit": 1,
@@ -1068,5 +1068,13 @@
       "failures": 0
     },
     "full_local_instrumentation": "Only actual editor translation unit instrumented for three ASan positive/negative/mutant probes; full sanitizer CI separate"
+  },
+  "pull_request": {
+    "number": 208,
+    "url": "https://github.com/skyRolly/Anamorph/pull/208",
+    "branch": "fix/editor-command-lifetime",
+    "base": "main",
+    "state": "open/unmerged; separate owner merge authorization required",
+    "implementation_commit": "bdeeadb7f4430107223f374b748075e4dc37180e"
   }
 }

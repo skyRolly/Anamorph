@@ -27,12 +27,12 @@ passes 945/11911 and 18 Python controls. Shared-container smoke is diagnostic on
 machine is configured. The owner defers native/hardware/manual execution for this
 engineering round; acceptance remains outstanding. Do not request native inputs.
 Independent engineering review reproduces NR-023 transport UB ([#207](https://github.com/skyRolly/Anamorph/pull/207),
-unmerged5e10d26, exact-head gates passed) and NR-024/KI-033 editor command UAF.
+unmerged5e10d26, exact-head gates passed) and NR-024/KI-033 editor command UAF ([#208](https://github.com/skyRolly/Anamorph/pull/208), unmerged).
 The latter is corrected independently atbdeeadb with State154's115 component checks,
 original/fixed/reference-mutant ASan controls. Its local preflight completes
 945 DSP / 12,026 state / 18 Python checks and the shipping-Clang ABI gate;
 configured pluginval strictness 10 completes both modes, three passes each.
-Exact-head remote CI is pending final publication. No Accepted architecture change is
+Exact-head remote CI is tracked in #208's discussion. No Accepted architecture change is
 selected; new PR merges require separate authorization.
 The0.10.0 tag/draft/11 assets remain unchanged at`4c13688`, lacking NR-022/NR-006.
 Ordinary CI/local validation builds are not release replacement or publication.

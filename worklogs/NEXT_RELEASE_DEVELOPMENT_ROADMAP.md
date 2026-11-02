@@ -34,7 +34,7 @@ a bounded review, not a certification of every path.
   Build41429415372, PR41429422386, CodeQL41429422430, MSVC41429422403 and
   dependency41429422458. Source and raw evidence remain on that independent PR;
   this branch does not include its processor correction or State153.
-- **NR-024 / KI-033:** all three editor Undo/Redo/A-B post-command callbacks write
+- **NR-024 / KI-033 / [#208](https://github.com/skyRolly/Anamorph/pull/208):** all three editor Undo/Redo/A-B post-command callbacks write
   after destruction by a synchronous parameter listener. Earlier uninstrumented probe
   aborts134 with allocator corruption; actual-editor-TU ASan independently reports
   UAF for each command, exits1. Corrected115/115 component checks and all three
@@ -42,12 +42,12 @@ a bounded review, not a certification of every path.
   with UAF: the weak pointer must be copied onto the stack before the command,
   because the component-owned callback itself may be destroyed during it.
 
-NR-024 code `bdeeadb7f4430107223f374b748075e4dc37180e` is **implemented on an
-independent review branch, not integrated**. Local preflight completes **945 DSP /
+NR-024 code `bdeeadb7f4430107223f374b748075e4dc37180e` is **implemented in
+[#208](https://github.com/skyRolly/Anamorph/pull/208), not integrated**. Local preflight completes **945 DSP /
 12,026 state / 18 Python** checks, documentation/citation liveness and pinned-Clang
 shipping ABI. Configured pluginval strictness 10 completes three deterministic
-and three randomized passes, all first attempts. Exact-head remote CI is pending
-final publication. [Controls/provenance](engineering-review/editor-command-lifetime.json).
+and three randomized passes, all first attempts. Exact-head remote CI is tracked
+in #208's discussion; incomplete jobs are not passing evidence. [Controls/provenance](engineering-review/editor-command-lifetime.json).
 Keep the processor action and history transition; skip only accesses to the dead
 editor. Normal live callbacks still refresh preset metadata, and recreated editors
 show the result. No parameter, serialization, latency, DSP graph/numerics, thread
@@ -1315,7 +1315,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 | NR-023 | P2 | Implemented / unmerged #207 | Bound transport clock arithmetic; verified original/fixed wrapper controls and exact-head CI | Independent correctness fix |
-| NR-024 | P1 | Implemented / unmerged | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
+| NR-024 | P1 | Implemented / unmerged #208 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1776,6 +1776,9 @@ contracts remain; no supported-host incidence is asserted. Preserve its source,
 controls and exact-head results without marking them integrated here.
 
 ### NR-024 — Editor command callbacks survive reentrant destruction
+
+Review [#208](https://github.com/skyRolly/Anamorph/pull/208), independent of #207;
+implementation `bdeeadb`, open/unmerged. Separate owner merge review is required.
 
 - **Mechanism Verified / P1:** parameter notifications are synchronous and may
   close the editor while `processor.undo/redo/abToggle` is running. The three
