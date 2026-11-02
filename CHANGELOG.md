@@ -24,6 +24,9 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Opening the preset menu or polling a restored session no longer accesses an editor closed by a latency notification.**
+  Restoration completes; a closed editor skips subsequent display updates.
+  Evidence: commit `f8da821`; NR-025/KI-034; State155. [Verified]
 - **Undo, Redo and A/B no longer access an editor destroyed during the command.**
   The processor completes the action while callbacks skip updates to the closed editor.
   Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; NR-024/KI-033; State154. [Verified]

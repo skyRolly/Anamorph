@@ -942,6 +942,12 @@ jobs:
           MALLOC_PERTURB_: 1
         run: ./scripts/run-tests.sh
 
+      # The headless suite covers both teardown paths and the live timer.
+      # Opening the real popup needs a display; this positive control rejects
+      # an unconditional return masquerading as an editor-lifetime correction.
+      - name: Restore lifetime surviving popup control (virtual display)
+        run: xvfb-run -a ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --gui-restore-lifetime-probe popup-live
+
       # WINDOWS-PARITY STACK GUARD (D-2 round 13). Linux and macOS give the main
       # thread 8 MB; Windows gives a console EXE 1 MB. `AnamorphAudioProcessor` is
       # ~138 kB, and a compiler gives each of a function's sibling-scope locals its

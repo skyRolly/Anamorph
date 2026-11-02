@@ -1,5 +1,19 @@
 # DOCUMENTATION_COVERAGE.md
 
+## #208/#207 combined main and callback investigation — 2026-11-03
+
+Reconcile actual merge commits/source tree and executed combined counts; retain
+the original/fixed/reference controls, exact-head versus post-merge CI distinction
+and unacquired-runner annotations. The earlier integration audit is historical.
+NR-025 adds real menu/timer restore teardown, restoration/readback/reopen/stale-copy
+and live continuation controls. Linux's separate Xvfb popup control is automated,
+not manual visual acceptance. Sync TESTING/CI_CD, roadmap, handover, readiness,
+map/authority/README and the callback review evidence. NR-026 retains a separate
+dependency-review boundary and full-module instrumentation witness. Source-level
+corrections change no DSP/state/parameter/latency/threading contract or dependency
+pin. Preserve all native deferrals, existing diagnostic limitations and release
+objects; pending checks remain pending.
+
 ## #208 integration and #207 overlap reconciliation — 2026-11-02
 
 Record actual #208 merge `a78b733`, retain both independent control records and
@@ -1989,7 +2003,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2530-2555`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2541-2566`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -2460,7 +2474,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1763-1771`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1772-1780`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -2499,7 +2513,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1720` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1729` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -2509,7 +2523,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2335"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2346"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -2586,7 +2600,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:686`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:691`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -2876,7 +2890,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3902` and `.github/workflows/build.yml:3987`, this round being
+`.github/workflows/build.yml:3908` and `.github/workflows/build.yml:3993`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9608,13 +9622,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:680` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:685` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:709`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:714`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the

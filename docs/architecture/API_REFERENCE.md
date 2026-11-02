@@ -32,6 +32,13 @@ action even if a parameter listener destroys the editor; post-command UI work
 requires the editor still alive. State154 covers this message-thread reentrancy,
 not arbitrary off-thread component access or native host acceptance.
 
+Restore callout lifetime: the preset-menu adoption and editor timer's undo poll
+also keep method-local weak handles across processor-owned restore/latency work.
+State155 verifies that a synchronous latency listener can close the editor while
+restoration finishes; only later accesses to the dead GUI are suppressed. The
+preset click rejects stale copied callbacks. No latency-notification scheduling,
+processor ownership, parameter semantics or serialization contract changes.
+
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
 Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
