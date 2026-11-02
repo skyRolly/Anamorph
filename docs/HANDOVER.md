@@ -1,6 +1,16 @@
 # HANDOVER.md
 
-## Integrated baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
+## Current integration and engineering continuation — 2026-11-02 (Asia/Shanghai)
+
+Owner-authorized #208 merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`,
+with the reviewed e12e1a5 tree unchanged. NR-024/KI-033 is integrated (INC-022).
+Owner-authorized #207 is being synchronized and validated against that main;
+retain both regression/control sets and execute actual combined checks. Next: a
+bounded inventory and controlled teardown probes for remaining notifying GUI
+entry points. Native/manual/hardware acceptance is owner-deferred, not waived.
+New PR merges and all release/version operations remain separately authorized.
+
+## Historical #206 baseline and active maintenance — 2026-11-02 (Asia/Shanghai)
 
 Owner-approved #203→#201, then #199→#200→#202 and #204–#206 are merged on actual main
 `06527b1f5f56e60068818c65d1af0b6d29f9e468`. Accepted ADR-0070's atomic stereo/tag
@@ -20,19 +30,20 @@ the opt-in Bench for paired raw timings/provenance, memory, reader-load models
 and host/AX worksheets. #205's merge retains approved head`014a24a` exactly,
 including overlay pruning and collection/analysis consistency controls. Its
 exact-head and post-merge Build41402900891/CodeQL41402900875/MSVC41402900872 gates
-completed. #206's reviewed tree3670e7d equals main; exact-head Build41404429212,
-PR41404435805 and dependency41404435802 passed. Its post-merge Build41422157397
-completed16 selected jobs/3 skips, with digest-verified completed zero-error
-memcheck. Integrated local preflight
+completed. #206's reviewed3670e7d tree equals main; exact-head gates and post-merge
+Build41422157397 (16 selected jobs/3 skips) passed, with verified zero-error
+completed memcheck artifact13131618856. Integrated local preflight
 passes 945/11911 and 18 Python controls. Shared-container smoke is diagnostic only; no native
-machine is configured. The owner now defers native performance, GUI/host/lifecycle,
-accessibility and hardware installation execution for this assignment. Retain
-the package and all outstanding acceptance requirements; do not request hardware.
-Independent engineering review proceeds: NR-023 transport overflow/invalid casts
-are reproduced and corrected on an unmerged branch (137ad08, State153);
-NR-024 editor command callback UAF is confirmed for a separate fix. No DSP,
-parameter, serialization, latency or threading architecture change is selected.
-New PR merges require separate authorization.
+machine is configured. The owner defers native/hardware/manual execution for this
+engineering round; acceptance remains outstanding. Do not request native inputs.
+Independent engineering review reproduces NR-023 transport UB ([#207](https://github.com/skyRolly/Anamorph/pull/207),
+unmerged5e10d26, exact-head gates passed) and NR-024/KI-033 editor command UAF ([#208](https://github.com/skyRolly/Anamorph/pull/208), unmerged).
+The latter is corrected independently atbdeeadb with State154's115 component checks,
+original/fixed/reference-mutant ASan controls. Its local preflight completes
+945 DSP / 12,026 state / 18 Python checks and the shipping-Clang ABI gate;
+configured pluginval strictness 10 completes both modes, three passes each.
+Exact-head remote CI is tracked in #208's discussion. No Accepted architecture change is
+selected; new PR merges require separate authorization.
 The0.10.0 tag/draft/11 assets remain unchanged at`4c13688`, lacking NR-022/NR-006.
 Ordinary CI/local validation builds are not release replacement or publication.
 See the live [execution register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)

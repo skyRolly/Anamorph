@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## #208 integration and #207 overlap reconciliation — 2026-11-02
+
+Record actual #208 merge `a78b733`, retain both independent control records and
+combine State153/154 headers, CLI probes, suite calls and unreleased entries.
+Move integrated KI-033 to INC-022; transport integration and combined validation
+remain pending. Reconcile current forward records without rewriting historical
+source-scoped outcomes. Correct the stale VBlank citation while preserving all
+checker rules, expected tokens and release/native acceptance boundaries.
+
+The following two dated audits retain their independent pre-integration source
+scopes; current integration states are in the execution register.
+
 ## #206 integration, owner native deferral and transport UB — 2026-11-02
 
 Reported stale native-first instructions, then applied the owner's explicit
@@ -18,6 +30,20 @@ configured first-attempt passes; the exact signal cause remains unattributed.
 Separate editor callback UAF witness is recorded for an independent correction,
 not mixed into the transport implementation. Native and hardware work stays
 unperformed/deferred; no new hardware request or release operation.
+
+## #206 integration, native deferral and editor command lifetime — 2026-11-02
+
+Reconcile actual main06527b1 and completed exact-head/post-merge gates, and apply
+the owner's native-execution deferral while retaining acceptance. The engineering
+review confirms NR-024/KI-033: real parameter notification destroys the editor
+inside Undo/Redo/A-B, then their callbacks access freed fields. Preserve original
+ASan3/3 failures, corrected3/3 exits0 and capture-reference mutant3/3 UAF controls.
+State154 uses actual component-owned callbacks plus live display/reopen/history
+controls; no private seam or native visual result is invented. Stack ownership of
+the weak guard survives destruction of the callback itself. Update TESTING/API,
+known issues, unreleased notes, roadmap, handover/readiness and raw provenance.
+The transport fix/#207 remains independent and unmerged. No source graph, numerical,
+parameter, schema, latency, thread model, dependency or release contract changes.
 
 ## #205 integration and native execution handoff — 2026-11-02
 
@@ -1963,7 +1989,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2503-2528`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2530-2555`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -2434,7 +2460,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1736-1744`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1763-1771`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -2473,7 +2499,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1693` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1720` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -2483,7 +2509,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2308"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2335"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -2560,7 +2586,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:659`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:686`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -9582,13 +9608,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:653` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:680` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:682`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:709`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the

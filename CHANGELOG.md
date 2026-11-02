@@ -24,6 +24,9 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Undo, Redo and A/B no longer access an editor destroyed during the command.**
+  The processor completes the action while callbacks skip updates to the closed editor.
+  Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; NR-024/KI-033; State154. [Verified]
 - **Invalid host transport timing no longer causes false meter peak resets or overflows seek detection.**
   Ordinary playback, valid seeks, restarts and audio samples retain their behavior.
   Evidence: commit `137ad083be4a5b2a34c9654ba072f383aeffe5b3`; NR-023; State test153. [Verified]

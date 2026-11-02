@@ -26,6 +26,12 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 
 Evidence [Verified]: src/PluginProcessor.h:25-592.
 
+Editor command lifetime: the Undo/Redo/A-B handlers keep a stack-owned weak
+editor handle across synchronous processor calls. The processor finishes its
+action even if a parameter listener destroys the editor; post-command UI work
+requires the editor still alive. State154 covers this message-thread reentrancy,
+not arbitrary off-thread component access or native host acceptance.
+
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
 Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.

@@ -1,6 +1,34 @@
 # Next release investigation and development roadmap
 
-## Current execution: #206 integrated; independent engineering review — 2026-11-02 (Asia/Shanghai)
+## Current execution: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+
+The owner explicitly authorized both #208 and #207. #208 reviewed head
+`e12e1a5b8a3480341627d714aebf3a2d2340c805` is integrated at
+**`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`**, current main. Its two parents
+are `06527b1` and `e12e1a5`; tree `ba4419210a4a04b92815c9a889e936e064a0bc0b`
+equals the reviewed source. Exact-head Build41455335960 (16 successful jobs / 3
+intentional skips), PR41455345331, CodeQL41455345414, MSVC41455345368 and
+dependency41455345481 completed. Verified memcheck artifact13146899246 records
+both suites completed, exit0/zero errors. These are #208 source-scoped outcomes,
+not proof of combined-main validation.
+
+NR-024/KI-033 is **integrated**, with original/fixed/reference-mutant ASan controls
+and State154 retained. Its resolved record is POSTMORTEMS INC-022. NR-023/#207
+remains **open and unmerged**, preserving reviewed head `5e10d26` as an ancestor.
+Merge current main into its original branch without rewriting shared history;
+retain both test headers, CLI probes and ordinary-suite calls, both unreleased
+entries and immutable control records. Conflict reconciliation changes no reviewed
+processor/editor implementation. Rebuild and execute the combined candidate;
+record actual counts, focused sanitizer results and exact-head CI before merging.
+
+After both authorized integrations, inventory remaining parameter-notifying GUI
+entry points and use actual callbacks plus deterministic editor destruction.
+Require a witness before selecting another correction. New PR merges remain
+separately owner-gated. NR-006/010/native NR-014/manual host and hardware execution
+remain owner-deferred without waiving acceptance; NR-003 remains Deferred. Do not
+request machines or native results. The 0.10.0 tag/draft/assets/version stay unchanged.
+
+## Historical NR-023 independent-branch checkpoint: #206 integrated; independent engineering review — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly authorized #206. Reviewed head`3670e7d81e4f89aa706cbda6fbe8b44dd96e09d5`
 merged as **`06527b1f5f56e60068818c65d1af0b6d29f9e468`**, current integrated main.
@@ -63,6 +91,65 @@ and11 assets are unchanged. The old draft contains the same unchecked transport
 body as main's baseline, in addition to its prior post-tag gaps. No supported-host
 crash or field rate is inferred. New fixes require separate merge approval; native
 deferral does not authorize release or remove acceptance requirements.
+
+## Historical NR-024 independent-branch checkpoint: #206 integrated; independent lifetime correction — 2026-11-02 (Asia/Shanghai)
+
+The owner-approved #206 reviewed head`3670e7d81e4f89aa706cbda6fbe8b44dd96e09d5`
+is merged at **`06527b1f5f56e60068818c65d1af0b6d29f9e468`**, current integrated main.
+Parents109d183/3670e7d and tree`e575cdf04a7cef1be13815902c4ac28cc5ff2c9c` match
+the reviewed change. Exact-head Build41404429212 (16 jobs/3 skips), PR41404435805
+merge check and dependency41404435802 completed. Post-merge Build41422157397 also
+completed16 jobs/3 intentional skips; digest-verified memcheck artifact13131618856
+records both suites completed, exit0/zero errors. Local integrated baseline
+preflight passed945 DSP/11911 state/18 Python controls and shipping-Clang ABI.
+Earlier #205-main Build41402900891/CodeQL41402900875/MSVC41402900872 finished;
+documentation-only #206 did not trigger new CodeQL/MSVC analyses.
+
+**Owner direction:** defer native/hardware/manual execution for this round,
+including NR-006/010 representative costs, native scope/FFT/editor/DAW/NR-014
+assistive acceptance, installation/co-installation and NR-003 matrices. Preserve
+the collector, worksheets, ADR-0070 acceptance and release requirements; deferred
+tests are not passed. Do not request machines, access, measurements or worksheets.
+These deferrals do not block independent source/test investigations.
+
+**New engineering evidence:** wrapper transport arithmetic, state/Undo admission,
+preset failure paths, DSP buffer boundaries, GUI callbacks and validation evidence
+were reviewed. Retain existing state gate/failed-write/large-block safeguards and
+documented recurrence dispositions where no new violation is established; this is
+a bounded review, not a certification of every path.
+
+- **NR-023 / [#207](https://github.com/skyRolly/Anamorph/pull/207):** transport
+  overflow/invalid-cast correction is implemented but **unmerged**, head
+  `5e10d262535dc422c0db51e3cc444456e2fb96f1`. Original33/208 versus corrected208/208,
+  actual-wrapper UBSan four categories versus none; local945/12119/18 and six
+  configured strictness10 passes. All five exact-head workflows passed:
+  Build41429415372, PR41429422386, CodeQL41429422430, MSVC41429422403 and
+  dependency41429422458. Source and raw evidence remain on that independent PR;
+  this branch does not include its processor correction or State153.
+- **NR-024 / KI-033 / [#208](https://github.com/skyRolly/Anamorph/pull/208):** all three editor Undo/Redo/A-B post-command callbacks write
+  after destruction by a synchronous parameter listener. Earlier uninstrumented probe
+  aborts134 with allocator corruption; actual-editor-TU ASan independently reports
+  UAF for each command, exits1. Corrected115/115 component checks and all three
+  ASan probes exit0. A seeded captured-reference mutant again fails all three
+  with UAF: the weak pointer must be copied onto the stack before the command,
+  because the component-owned callback itself may be destroyed during it.
+
+NR-024 code `bdeeadb7f4430107223f374b748075e4dc37180e` is **implemented in
+[#208](https://github.com/skyRolly/Anamorph/pull/208), not integrated**. Local preflight completes **945 DSP /
+12,026 state / 18 Python** checks, documentation/citation liveness and pinned-Clang
+shipping ABI. Configured pluginval strictness 10 completes three deterministic
+and three randomized passes, all first attempts. Exact-head remote CI is tracked
+in #208's discussion; incomplete jobs are not passing evidence. [Controls/provenance](engineering-review/editor-command-lifetime.json).
+Keep the processor action and history transition; skip only accesses to the dead
+editor. Normal live callbacks still refresh preset metadata, and recreated editors
+show the result. No parameter, serialization, latency, DSP graph/numerics, thread
+model, event-routing, dependency or build contract changes. Full CI and human PR
+merge review remain separate; native occurrence/visual acceptance is not inferred.
+
+The0.10.0 tag`1190e455`→`4c13688`, unpublished draft429760301, all11 asset digests
+and version metadata are unchanged. Its original callbacks also contain this
+defect; no native host crash rate is established. Native deferral does not waive
+release acceptance or authorize release replacement/publication.
 
 ## Historical #205 integration and native handoff — 2026-11-02 (Asia/Shanghai)
 
@@ -1071,13 +1158,12 @@ recommends selecting a later source/candidate under separate authorization after
 remaining NR-006 native performance/manual acceptance, rather than publishing the
 old bytes on the strength of current-main CI.
 
-Continue the independently executable engineering review and focused NR-023/024
-corrections. Native NR-006/010/014 execution is owner-deferred this round; retain the
-[package](NATIVE_VALIDATION_PACKAGE.md) for a later assignment without requesting
-hardware. NR-013's pinned-host reproduction, NR-015's isolated environment and
-NR-018/019/020 owner decisions retain their boundaries. Stable NR IDs describe
-decisions, validation, enhancements and defects; they are not all confirmed bugs.
-No confirmed P0 is established.
+Continue independently executable engineering review and the focused NR-023/024
+corrections. Native/manual/hardware execution is owner-deferred for this round;
+preserve the [package](NATIVE_VALIDATION_PACKAGE.md) and outstanding acceptance.
+Do not request native inputs. NR-013 still requires a pinned host reproducer and
+NR-015 useful scope/authorized isolation when resumed. NR-018/019/020 remain
+owner-dependent. Stable NR IDs include decisions and investigations, not just bugs.
 
 ## 2. Verified baseline
 
@@ -1303,15 +1389,15 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Integrated / native execution owner-deferred | Accepted ADR-0070 and #202 on main; cost/visual/lifecycle acceptance outstanding, not waived | Later native acceptance |
+| NR-006 | P1 | Integrated / native execution owner-deferred | Accepted ADR-0070/#202; cost/visual/lifecycle acceptance outstanding, not waived | Later native acceptance |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
-| NR-010 | P2 | Tooling integrated / native execution owner-deferred | #205 integrated; retain >=5-repeat package and outstanding representative measurements/owner budget acceptance | Later engineering baseline |
+| NR-010 | P2 | Tooling integrated / native execution owner-deferred | Retain five-repeat package; representative measurements and owner budget acceptance outstanding | Later engineering baseline |
 | NR-011 | P2 | Completed / integrated | #200 merged at `54da68e`; 57 isolated action controls, five mutants and legacy/schema gates retained | 2 / coverage complete |
 | NR-012 | P3 | Completed / integrated | #201 merged at `7c007e7`; retain behavioral assertions, no universal quality/monotonicity claim | 2 / bounded study complete |
 | NR-013 | P2 | Blocked | Pinned REAPER/OS reproduction unavailable; preserve focus behavior | 1 / bounded UX maintenance |
-| NR-014 | P2 | Bounded correction integrated / native execution owner-deferred | #204/State152 complete; native UX/assistive-device acceptance outstanding | Later native audit |
+| NR-014 | P2 | Bounded correction integrated / native execution owner-deferred | #204/State152 complete; broader native UX/assistive acceptance outstanding | Later native audit |
 | NR-015 | P2 | Deferred | macOS selections/upgrades/co-installation — expand if needed | 2 / distribution coverage |
 | NR-016 | P2 | Completed | Remaining documentation drift — correct narrowly | 0 then 2 / docs-only |
 | NR-017 | P2 | Completed | Main-baseline diagnostic inventory/dispositions; alert state unavailable | 2 / engineering debt |
@@ -1320,8 +1406,8 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
-| NR-023 | P2 | Implemented / unmerged | Bound host transport arithmetic; State153 and actual-wrapper UBSan distinguish the original | Independent correctness fix |
-| NR-024 | P1 | Confirmed / next independent fix | ASan proves editor command callback writes after a parameter listener destroys the editor | Independent lifetime fix |
+| NR-023 | P2 | Implemented / unmerged #207 | Bound transport clock arithmetic; verified original/fixed wrapper controls and exact-head CI | Independent correctness fix |
+| NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1404,9 +1490,8 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 ### NR-006 — Complete native acceptance of the integrated ScopeBuffer correction
 
-**Execution owner-deferred for this assignment.** Acceptance remains outstanding;
-preserve the existing protocol, tools and worksheet for a later assignment. No
-hardware request or substitute shared-runner acceptance this round.
+**Execution owner-deferred this round; human acceptance remains outstanding.**
+Preserve all existing requirements and tooling without requesting hardware.
 
 **Accepted and integrated:** architecture #199 merge`303d37c`, implementation
 #202 merge`4255393`. The owner separately approved both integration and ADR-0070;
@@ -1432,9 +1517,11 @@ alternatives and source/model/production evidence remain in
   shared infrastructure cannot close these. No protocol invariant or release gate
   is waived. The original exposure is corrected on main, still present in the
   unchanged draft; RISK-018 retains the draft and acceptance distinctions.
-- **Prepared next action:** run the [native evidence package](NATIVE_VALIDATION_PACKAGE.md)
-  integrated via #205 at`109d183` on identified owner hardware, return raw logs/host observations and review
-  costs against ADR-0070; do not substitute reader-load models for native GUI acceptance.
+- **Retained procedure when the owner resumes native testing:** run the
+  [native evidence package](NATIVE_VALIDATION_PACKAGE.md), integrated via #205,
+  on identified owner hardware; preserve raw logs/host observations and review
+  costs against ADR-0070. Execution is owner-deferred this round. Reader-load
+  models do not establish native GUI acceptance.
 
 ### NR-007 — Preserve distinct Rosetta assertion and debugger unknowns
 
@@ -1486,9 +1573,8 @@ alternatives and source/model/production evidence remain in
 
 ### NR-010 — Produce a reproducible CPU, peak-block and memory budget
 
-**Native execution owner-deferred.** The integrated collector is retained; do not
-rebuild its framework or select an optimization without measurements. Outstanding
-cost/budget acceptance still blocks release disposition where applicable.
+**Native execution owner-deferred this round.** Do not replace the integrated
+collector or invent an optimization/target; acceptance and later budget review remain open.
 
 **Tooling integrated via #205 at`109d183` / native results Pending:** the [native package](NATIVE_VALIDATION_PACKAGE.md)
 extends the existing opt-in Bench without a new target or shipping change. It
@@ -1570,8 +1656,8 @@ Native/broader-grid interpretation remains separate from these local observation
 
 ### NR-014 — Audit visual, keyboard and accessibility behavior
 
-**Native/manual execution owner-deferred this round.** Component-level tests
-retain their scope; native usability and human acceptance remain outstanding.
+**Native/manual execution owner-deferred this round.** Automated component
+coverage is retained; broader usability and assistive acceptance are outstanding.
 
 **P2 bounded correction integrated via #204 at`34cc369`:** all 12 rotary
 controls now reuse their existing captions as accessibility titles. State152
@@ -1791,20 +1877,30 @@ a later source does not authorize a rebuild, retag, version or release operation
   categories versus none corrected. Instrumented-wrapper controls are not a claim
   that every linked dependency was sanitized; required full CI remains separate.
   [Raw identities/log hashes](engineering-review/transport-arithmetic.json).
-- **Remaining:** focused PR/mandatory final-head gates, separate owner merge review.
+- **Remaining:** refreshed combined-candidate gates and actual #207 integration.
+  The owner authorized #207 and #208, not future PRs.
   No architecture, serialization, latency, parameter or realtime mechanism changes.
 
-### NR-024 — Keep editor command callbacks within editor lifetime
+### NR-024 — Editor command callbacks survive reentrant destruction
 
-- **Verified new witness:** a synchronous parameter listener deletes the real editor
-  while its copied production Undo callback calls `processor.undo()`. ASan reports
-  the following `knobSweepTime` write at PluginEditor.cpp:462 as heap-use-after-free.
-  Processor and callback remain alive; no native screen or host simulation is claimed.
-- **Next action:** examine the same post-command pattern in Undo/Redo/A-B, add a real
-  callback/lifecycle regression, and preserve processor action completion while
-  skipping editor updates after destruction. Independent source/PR from NR-023.
-- **Limits/gates:** native incidence unknown; no new thread, event routing or architecture
-  decision is selected. Keep human PR merge review and all existing acceptance gates.
+Review [#208](https://github.com/skyRolly/Anamorph/pull/208), independent of #207;
+implementation `bdeeadb`, integrated at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`.
+The owner separately authorized integration; native acceptance remains deferred.
+
+- **Mechanism Verified / P1:** parameter notifications are synchronous and may
+  close the editor while `processor.undo/redo/abToggle` is running. The three
+  callbacks then wrote animation/display fields through freed `this`.
+- **Correction:** capture a weak editor handle, copy it to stack ownership on entry,
+  and check it before and after the processor command. A captured handle alone can
+  itself die with the callback; the seeded reference mutant proves this boundary.
+  No processor action, sound/state/history contract, gesture or UI wording changes.
+- **Tests:** State154 exercises actual component-owned callbacks, real listener
+  destruction, Undo/Redo endpoints, A↔B, display refresh, reopen/repeat cycles and
+  copied dead-editor callbacks.115 checks; no sleeps or native host claims.
+  Original and reference-mutant ASan each fail3/3; corrected3/3 exit0 with leak
+  detection enabled. Targeted TU controls are separate from full sanitizer CI.
+- **Limits:** native host incidence unknown; fixes and new PR merges require review,
+  native/manual execution stays owner-deferred, all release gates remain.
 
 ## 5. Version and release strategy
 
@@ -1835,16 +1931,15 @@ merge and owner-attestation evidence; do not repeat that batch. NR-018/019 remai
 separate owner/legal/provisioning decisions. Unknown distribution rights keep all
 artifacts private/draft. New PRs require their own merge authorization.
 
-### Phase 1 — Independent engineering discovery and corrections
+### Phase 1 — Independently executable engineering discovery
 
-NR-022/006 and bounded NR-014 source corrections are integrated. Owner-defer their
-remaining native/manual execution for this round, preserving acceptance. Review
-state/preset/Undo, DSP/RT boundaries, publications/lifetimes, component callbacks
-and validation oracles for new reproducible findings. Establish unchanged-source
-controls before fixing; prioritize demonstrated harm and keep separate reviewable
-PRs. Start with NR-023 transport UB and NR-024 editor callback UAF. NR-013 still
-needs a pinned host reproducer; NR-003 is Deferred and NR-004/005/007 retain their
-recurrence triggers. Independent source correctness does not wait for native costs.
+NR-022/006 and bounded NR-014 source work is integrated; native/manual execution
+is owner-deferred without waiving acceptance. Review state/preset/Undo, DSP/RT
+boundaries, publications/lifetimes, component callbacks and verification oracles
+for new reproducible evidence. Establish original/negative controls before fixing;
+use focused independent PRs and preserve Accepted contracts. NR-023/024 are this
+round's confirmed corrections. NR-003/013/015 and recurrence/owner gates remain;
+unrelated source correctness does not wait for physical-machine performance.
 
 ### Phase 2 — Measurement inputs before optimization or expanded installation
 

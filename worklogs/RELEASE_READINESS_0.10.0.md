@@ -1,6 +1,18 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current source/candidate disposition — 2026-11-02 (Asia/Shanghai)
+## Current candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
+
+Current main is `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`, containing the
+NR-024/KI-033 editor lifetime correction through owner-approved #208. NR-023/#207
+is authorized but still unmerged while its combined candidate is validated. The
+unchanged 0.10.0 tag `1190e455` points to `4c13688`; unpublished draft429760301
+and all11 asset identities/digests are preserved. That source still has both
+original defects, plus the earlier post-tag gaps. Native execution is owner-deferred
+without accepting cost, usability or release readiness. Candidate selection, native
+acceptance and explicit release authorization remain required. No rebuild, retag,
+version or publication operation is authorized.
+
+## Historical #206 source/candidate disposition — 2026-11-02 (Asia/Shanghai)
 
 **Publication recommendation: hold the existing draft unchanged.** Owner-approved
 #199–#206 are now integrated on main`06527b1f5f56e60068818c65d1af0b6d29f9e468`.
@@ -10,7 +22,7 @@ release replacement/publication or an assertion of new native acceptance.
 | Candidate | Actual content/evidence | Remaining disposition |
 |---|---|---|
 | Existing 0.10.0 tag/draft source`4c136881f245470577d66a7603f15b177ddcf3dc` | Linux #193 and processor #187; original owner attestations;11 previously built assets | Lacks post-tag NR-022 Undo and NR-006 scope corrections; original plain-storage exposure requires reviewed mitigation/additional validation or explicit owner risk disposition before publication |
-| Integrated main`06527b1f5f56e60068818c65d1af0b6d29f9e468` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, NR-012 study, CI interruption evidence, rotary titles, native package and #206 reconciliation; production source remains identical to34cc369 | Native execution now owner-deferred; representative costs and human/native acceptance remain outstanding, with candidate selection and later release gates still required; no release assets rebuilt |
+| Integrated main`06527b1f5f56e60068818c65d1af0b6d29f9e468` | NR-022, Accepted ADR-0070/atomic implementation/repaint retry, NR-011 controls, NR-012 study, CI interruption evidence, rotary titles, native package and #206 reconciliation; production source remains identical to34cc369 | Native execution is owner-deferred; representative costs and human/native acceptance remain outstanding, with candidate selection and later release gates required; no release assets rebuilt |
 
 **Recommended candidate decision:** select a source containing the integrated
 NR-022/NR-006 corrections after outstanding native acceptance. Current main is the
@@ -22,10 +34,9 @@ authorize any build/tag/asset/publication operation. No version choice is made h
 
 **Available current evidence:** every approved merge retains expected parents and
 the validated candidate tree; current main equals reviewed #206 head`3670e7d`
-exactly. #206 exact-head Build41404429212, PR41404435805 and dependency41404435802
-completed; post-merge Build41422157397 completed16 jobs/3 skips and both memcheck
-suites (digest-verified artifact13131618856, exits0/zero errors). Exact-head #205
-and its previously incomplete post-merge gates completed, including three-platform
+exactly. Its exact-head gates and post-merge Build41422157397 completed, including
+digest-verified memcheck artifact13131618856 (both suites completed, exit0/zero
+errors). #205's exact-head and formerly incomplete post-merge gates also completed, including three-platform
 analysis/pack and18 controls. Post-merge local preflight passes945/11911 with the
 pinned-Clang ABI. Raw prior identities/outcomes remain in the
 [integration record](native-validation/integration-and-tool-controls.json).
@@ -51,12 +62,11 @@ NR-018/019 retain distribution/legal/signing/provisioning boundaries.
 The [owner-native package](NATIVE_VALIDATION_PACKAGE.md) prepares reproducible
 collection and actual host/AX worksheets; shared-container tool smoke is not
 representative measurement, visual observation or owner acceptance.
-The owner defers native execution in this engineering assignment, preserving those
-requirements and the release hold. New NR-023 transport UB is confirmed on the
-baseline: this draft has the exact same processBlock body. Its correction137ad08
-is unmerged. NR-024 has a separate real-editor callback UAF witness; native host
-incidence is unknown. Review fixes on their own PRs; do not infer replacement
-assets or publication clearance from source-level validation.
+Native execution is now owner-deferred for this engineering assignment, preserving
+those requirements. Newly confirmed NR-024/KI-033 callback UAF also exists in this
+draft's original three command handlers. Correctionbdeeadb is on an independent
+unmerged review branch; NR-023/#207 is separately unmerged. No native host crash
+rate is inferred and neither fix is retroactively present in release assets.
 
 **Preserved release identity:** annotated tag`1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
 peels to`4c13688`; draft429760301 remains unpublished with 11 assets from normal

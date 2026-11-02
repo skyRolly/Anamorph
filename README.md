@@ -23,8 +23,9 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
-PRs #195–#206 are integrated on main as of 2026-11-02 (Asia/Shanghai),
-through `06527b1`. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
+PRs #195–#206 and #208 are integrated on main as of 2026-11-02 (Asia/Shanghai),
+through `a78b733`. NR-024 protects Undo/Redo/A-B editor lifetime; owner-authorized
+NR-023/#207 is being validated against that baseline. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 is Accepted and its atomic-window implementation is on main. Current native
 CI/compile guards and reviewed codegen are complete; representative performance,
 owner cost acceptance and targeted native visual/editor-lifecycle acceptance remain
@@ -40,8 +41,8 @@ rotary accessibility-title correction and bounded metadata/key regression; nativ
 assistive-device and global focus acceptance remain pending.
 The [owner-native validation package](worklogs/NATIVE_VALIDATION_PACKAGE.md)
 prepares representative performance and host/accessibility evidence collection;
-tool smoke does not close those acceptance gaps. The owner defers native/hardware
-execution for the current independent engineering-review round; acceptance remains outstanding.
+tool smoke does not close those acceptance gaps. Native/hardware/manual execution
+is owner-deferred for the current independent engineering-review round; acceptance remains outstanding.
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.

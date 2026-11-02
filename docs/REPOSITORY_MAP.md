@@ -5,10 +5,11 @@ Directory and file map with per-component responsibilities. Architecture rationa
 
 ## Top level
 
-Current engineering review follows `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`;
-NR-023's raw wrapper/sanitizer control provenance is
-[`worklogs/engineering-review/transport-arithmetic.json`](../worklogs/engineering-review/transport-arithmetic.json).
-Historical standing-programme rounds retain their own scope and evidence.
+Current engineering review follows `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`.
+NR-023 transport controls and NR-024 callback controls retain independent provenance:
+[`transport-arithmetic.json`](../worklogs/engineering-review/transport-arithmetic.json) and
+[`editor-command-lifetime.json`](../worklogs/engineering-review/editor-command-lifetime.json).
+Historical standing-programme rounds retain their dated source scopes.
 
 ```
 Anamorph/
