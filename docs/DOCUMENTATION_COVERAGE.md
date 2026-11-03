@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-029 changelog provenance correction
+
+The multiband Unreleased note added by `8779db97` omitted the Evidence Source
+required by CHANGELOG_POLICY rule 2. Cite the actual implementation commits
+`af8edfddd3a88fceaee9f672cb753548a35403b6` and
+`05b207e34ff9920e39abfc22be31ee35c5baaa33`, both contained in unmerged PR #212.
+Retain NR-029/KI-037, the existing callback/gesture/Undo regression evidence and
+the explicit review-branch status. No production or test change resolves this
+documentation finding; final combined-head validation follows synchronization.
+
 ## NR-029 coverage-description review — 2026-11-03
 
 Accepted finding: the PR body understated the production reset, inline-frequency,
