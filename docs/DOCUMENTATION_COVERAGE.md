@@ -18890,3 +18890,15 @@ first local full-suite run retains eleven preset filesystem failures because the
 legacy JUCE resolver ignores the XDG environment override. The isolated rerun
 binds an empty writable temporary directory at the real preset configuration
 path without altering production code, assertions, sanitizer options or HOME.
+
+
+## JUCE 9.0.5 review packet — 2026-11-04 (Asia/Shanghai)
+
+Register Proposed ADR-0071; add the independent upstream/source/licensing/cache/CI review,
+validation limitations and exact Pending Human Acceptance worksheet in `worklogs/JUCE905_UPGRADE_REVIEW.md`
+and its source/baseline ledgers. Synchronize README, repository map, source-of-truth, dependency
+policy and build/CI/testing navigation. Current 9.0.4 declarations, NOTICE/licence inventory,
+historical decisions/attestations, tests, workflow gates, product version and release records
+remain factual and unchanged. No changelog entry claims an unimplemented upgrade. Architecture
+approval is required before pin/cache/source modifications; target DSP/state/native validation
+is unexecuted because configuration is blocked on missing Linux development prerequisites.

@@ -1,5 +1,9 @@
 # BUILD.md
 
+JUCE 9.0.5 is under [Proposed ADR-0071](../architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md).
+Current defaults remain 9.0.4. The [review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md)
+records acquisition checks and missing local development prerequisites; it does not authorize a pin change.
+
 How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; no IDE/Projucer).
 
 ## Product icon inputs

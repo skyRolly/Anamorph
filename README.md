@@ -167,6 +167,11 @@ Mono Maker (post-Mix) → Output → Band Solo monitor (post-everything) → met
 only the nonlinear stages. Full detail: `docs/architecture/`.
 
 ## Documentation
+
+The [JUCE 9.0.5 review packet](worklogs/JUCE905_UPGRADE_REVIEW.md) supports
+[Proposed ADR-0071](docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md).
+It is developer investigation evidence; the configured dependency remains 9.0.4 pending human Architecture Review.
+
 The full technical documentation lives in **[`docs/`](docs/)**:
 - **Start here:** [`docs/SOURCE_OF_TRUTH.md`](docs/SOURCE_OF_TRUTH.md) · [`docs/HANDOVER.md`](docs/HANDOVER.md) · [`docs/REPOSITORY_MAP.md`](docs/REPOSITORY_MAP.md)
 - **For users:** [`docs/user/`](docs/user/) (installation guide, user manual)

@@ -329,3 +329,13 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   This does not execute Rosetta, DSP, an installer or a debugger.
 - `tests/scope_ring_diagnostic.cpp`: separately instrumented single-threaded
   newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.
+
+
+## JUCE 9.0.5 proposal (2026-11-04)
+
+- `docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md` — Proposed decision; registered locally, not Accepted.
+- [`worklogs/JUCE905_UPGRADE_REVIEW.md`](../worklogs/JUCE905_UPGRADE_REVIEW.md) — investigation/review packet and native acceptance worksheet.
+- `worklogs/juce905-review/evidence.json` — source/acquisition/local-check evidence.
+- `worklogs/juce905-review/baseline-ci.json` — captured 9.0.4 baseline jobs/statuses, not target validation.
+
+The worklog/ledgers are supporting investigation evidence under SOURCE_OF_TRUTH, not a new authority class.

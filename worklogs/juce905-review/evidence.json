@@ -1,0 +1,731 @@
+{
+  "product": "Anamorph",
+  "recorded_date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "baseline_main": "82c98e45984f5c7bc0f953340622f90523957780",
+  "branch": "codex/juce-905-upgrade",
+  "initial_worktree_clean": true,
+  "initial_open_prs": [],
+  "implementation_status": "blocked_pending_human_architecture_review",
+  "adr_status": "Proposed",
+  "product_dependency_unchanged": true,
+  "source_and_validation": {
+    "previous": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+    "target": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+    "commit_count": "75",
+    "attribution_inventory": {
+      "previous_files": 47,
+      "target_files": 47,
+      "changed": [],
+      "removed": [],
+      "added": []
+    },
+    "third_party_spdx_changes": [
+      {
+        "id": "SPDXRef-build-system",
+        "before": {
+          "name": "build-system",
+          "SPDXID": "SPDXRef-build-system",
+          "versionInfo": "9.0.4",
+          "supplier": "Organization: Raw Material Software Limited",
+          "downloadLocation": "git+https://github.com/juce-framework/JUCE.git",
+          "filesAnalyzed": false,
+          "licenseConcluded": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "licenseDeclared": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "copyrightText": "Copyright (c) Raw Material Software Limited",
+          "sourceInfo": "The JUCE build system in the JUCE source tree"
+        },
+        "after": {
+          "name": "build-system",
+          "SPDXID": "SPDXRef-build-system",
+          "versionInfo": "9.0.5",
+          "supplier": "Organization: Raw Material Software Limited",
+          "downloadLocation": "git+https://github.com/juce-framework/JUCE.git",
+          "filesAnalyzed": false,
+          "licenseConcluded": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "licenseDeclared": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "copyrightText": "Copyright (c) Raw Material Software Limited",
+          "sourceInfo": "The JUCE build system in the JUCE source tree"
+        }
+      },
+      {
+        "id": "SPDXRef-build-system.gradle-wrapper",
+        "before": {
+          "name": "Gradle wrapper",
+          "SPDXID": "SPDXRef-build-system.gradle-wrapper",
+          "versionInfo": "8.14.5",
+          "supplier": "Organization: Gradle Inc.",
+          "downloadLocation": "https://gradle.org",
+          "filesAnalyzed": false,
+          "licenseConcluded": "Apache-2.0",
+          "licenseDeclared": "Apache-2.0",
+          "copyrightText": "NOASSERTION",
+          "sourceInfo": "Vendored at examples/DemoRunner/Builds/Android/gradle/wrapper in the JUCE source tree",
+          "externalRefs": [
+            {
+              "referenceCategory": "PACKAGE-MANAGER",
+              "referenceType": "purl",
+              "referenceLocator": "pkg:github/gradle/gradle@8.14.5"
+            },
+            {
+              "referenceCategory": "SECURITY",
+              "referenceType": "cpe23Type",
+              "referenceLocator": "cpe:2.3:a:gradle:gradle:8.14.5:*:*:*:*:*:*:*"
+            }
+          ]
+        },
+        "after": {
+          "name": "Gradle wrapper",
+          "SPDXID": "SPDXRef-build-system.gradle-wrapper",
+          "versionInfo": "9.5.1",
+          "supplier": "Organization: Gradle Inc.",
+          "downloadLocation": "https://gradle.org",
+          "filesAnalyzed": false,
+          "licenseConcluded": "Apache-2.0",
+          "licenseDeclared": "Apache-2.0",
+          "copyrightText": "NOASSERTION",
+          "sourceInfo": "Vendored at examples/DemoRunner/Builds/Android/gradle/wrapper in the JUCE source tree",
+          "externalRefs": [
+            {
+              "referenceCategory": "PACKAGE-MANAGER",
+              "referenceType": "purl",
+              "referenceLocator": "pkg:github/gradle/gradle@9.5.1"
+            },
+            {
+              "referenceCategory": "SECURITY",
+              "referenceType": "cpe23Type",
+              "referenceLocator": "cpe:2.3:a:gradle:gradle:9.5.1:*:*:*:*:*:*:*"
+            }
+          ]
+        }
+      },
+      {
+        "id": "SPDXRef-examples",
+        "before": {
+          "name": "examples",
+          "SPDXID": "SPDXRef-examples",
+          "versionInfo": "9.0.4",
+          "supplier": "Organization: Raw Material Software Limited",
+          "downloadLocation": "git+https://github.com/juce-framework/JUCE.git",
+          "filesAnalyzed": false,
+          "licenseConcluded": "ISC",
+          "licenseDeclared": "ISC",
+          "copyrightText": "Copyright (c) Raw Material Software Limited",
+          "sourceInfo": "The JUCE example projects in the JUCE source tree"
+        },
+        "after": {
+          "name": "examples",
+          "SPDXID": "SPDXRef-examples",
+          "versionInfo": "9.0.5",
+          "supplier": "Organization: Raw Material Software Limited",
+          "downloadLocation": "git+https://github.com/juce-framework/JUCE.git",
+          "filesAnalyzed": false,
+          "licenseConcluded": "ISC",
+          "licenseDeclared": "ISC",
+          "copyrightText": "Copyright (c) Raw Material Software Limited",
+          "sourceInfo": "The JUCE example projects in the JUCE source tree"
+        }
+      },
+      {
+        "id": "SPDXRef-extras",
+        "before": {
+          "name": "extras",
+          "SPDXID": "SPDXRef-extras",
+          "versionInfo": "9.0.4",
+          "supplier": "Organization: Raw Material Software Limited",
+          "downloadLocation": "git+https://github.com/juce-framework/JUCE.git",
+          "filesAnalyzed": false,
+          "licenseConcluded": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "licenseDeclared": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "copyrightText": "Copyright (c) Raw Material Software Limited",
+          "sourceInfo": "The bundled JUCE applications in the JUCE source tree"
+        },
+        "after": {
+          "name": "extras",
+          "SPDXID": "SPDXRef-extras",
+          "versionInfo": "9.0.5",
+          "supplier": "Organization: Raw Material Software Limited",
+          "downloadLocation": "git+https://github.com/juce-framework/JUCE.git",
+          "filesAnalyzed": false,
+          "licenseConcluded": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "licenseDeclared": "AGPL-3.0-only OR LicenseRef-JUCE-Commercial",
+          "copyrightText": "Copyright (c) Raw Material Software Limited",
+          "sourceInfo": "The bundled JUCE applications in the JUCE source tree"
+        }
+      },
+      {
+        "id": "SPDXRef-juce-graphics.harfbuzz",
+        "before": {
+          "name": "HarfBuzz",
+          "SPDXID": "SPDXRef-juce-graphics.harfbuzz",
+          "versionInfo": "14.2.1",
+          "supplier": "Organization: HarfBuzz Project",
+          "downloadLocation": "https://harfbuzz.github.io",
+          "filesAnalyzed": false,
+          "licenseConcluded": "MIT-Modern-Variant",
+          "licenseDeclared": "MIT-Modern-Variant",
+          "copyrightText": "NOASSERTION",
+          "sourceInfo": "Vendored at modules/juce_graphics/fonts/harfbuzz in the JUCE source tree",
+          "externalRefs": [
+            {
+              "referenceCategory": "PACKAGE-MANAGER",
+              "referenceType": "purl",
+              "referenceLocator": "pkg:github/harfbuzz/harfbuzz@14.2.1"
+            },
+            {
+              "referenceCategory": "SECURITY",
+              "referenceType": "cpe23Type",
+              "referenceLocator": "cpe:2.3:a:harfbuzz_project:harfbuzz:14.2.1:*:*:*:*:*:*:*"
+            }
+          ]
+        },
+        "after": {
+          "name": "HarfBuzz",
+          "SPDXID": "SPDXRef-juce-graphics.harfbuzz",
+          "versionInfo": "15.0.0",
+          "supplier": "Organization: HarfBuzz Project",
+          "downloadLocation": "https://harfbuzz.github.io",
+          "filesAnalyzed": false,
+          "licenseConcluded": "MIT-Modern-Variant",
+          "licenseDeclared": "MIT-Modern-Variant",
+          "copyrightText": "NOASSERTION",
+          "sourceInfo": "Vendored at modules/juce_graphics/fonts/harfbuzz in the JUCE source tree",
+          "externalRefs": [
+            {
+              "referenceCategory": "PACKAGE-MANAGER",
+              "referenceType": "purl",
+              "referenceLocator": "pkg:github/harfbuzz/harfbuzz@15.0.0"
+            },
+            {
+              "referenceCategory": "SECURITY",
+              "referenceType": "cpe23Type",
+              "referenceLocator": "cpe:2.3:a:harfbuzz_project:harfbuzz:15.0.0:*:*:*:*:*:*:*"
+            }
+          ]
+        }
+      }
+    ],
+    "apvts_sha256": {
+      "JUCE-904": "94760f6858acf7fcf52915504cc24702cdea9c031d9a9593919de108884a1ad6",
+      "JUCE-review": "94760f6858acf7fcf52915504cc24702cdea9c031d9a9593919de108884a1ad6"
+    },
+    "module_graph": {
+      "product": "Anamorph",
+      "direct_targets": [
+        "juce_audio_basics",
+        "juce_audio_utils",
+        "juce_data_structures",
+        "juce_dsp",
+        "juce_opengl"
+      ],
+      "modules": [
+        {
+          "module": "juce_audio_basics",
+          "changed_files": 1,
+          "substantive_files": 0,
+          "substantive_paths": []
+        },
+        {
+          "module": "juce_audio_devices",
+          "changed_files": 4,
+          "substantive_files": 3,
+          "substantive_paths": [
+            "modules/juce_audio_devices/native/juce_Audio_ios.cpp",
+            "modules/juce_audio_devices/native/juce_CoreMidi_mac.mm",
+            "modules/juce_audio_devices/native/juce_Midi_windows.cpp"
+          ]
+        },
+        {
+          "module": "juce_audio_formats",
+          "changed_files": 5,
+          "substantive_files": 4,
+          "substantive_paths": [
+            "modules/juce_audio_formats/codecs/juce_AiffAudioFormat.cpp",
+            "modules/juce_audio_formats/codecs/juce_WavAudioFormat.cpp",
+            "modules/juce_audio_formats/format/juce_AudioFormatReader.cpp",
+            "modules/juce_audio_formats/format/juce_AudioFormatWriter.cpp"
+          ]
+        },
+        {
+          "module": "juce_audio_processors",
+          "changed_files": 5,
+          "substantive_files": 4,
+          "substantive_paths": [
+            "modules/juce_audio_processors/format_types/juce_VST3PluginFormat.cpp",
+            "modules/juce_audio_processors/processors/juce_AudioProcessorEditor.cpp",
+            "modules/juce_audio_processors/processors/juce_AudioProcessorEditor.h",
+            "modules/juce_audio_processors/scanning/juce_PluginListComponent.cpp"
+          ]
+        },
+        {
+          "module": "juce_audio_processors_headless",
+          "changed_files": 2,
+          "substantive_files": 1,
+          "substantive_paths": [
+            "modules/juce_audio_processors_headless/format_types/juce_VST3Headers.h"
+          ]
+        },
+        {
+          "module": "juce_audio_utils",
+          "changed_files": 2,
+          "substantive_files": 1,
+          "substantive_paths": [
+            "modules/juce_audio_utils/gui/juce_AudioDeviceSelectorComponent.cpp"
+          ]
+        },
+        {
+          "module": "juce_core",
+          "changed_files": 20,
+          "substantive_files": 19,
+          "substantive_paths": [
+            "modules/juce_core/containers/juce_AbstractFifo.h",
+            "modules/juce_core/containers/juce_Variant.cpp",
+            "modules/juce_core/containers/juce_Variant.h",
+            "modules/juce_core/files/juce_File.cpp",
+            "modules/juce_core/files/juce_File.h",
+            "modules/juce_core/json/juce_JSON.cpp",
+            "modules/juce_core/json/juce_JSON.h",
+            "modules/juce_core/native/juce_JNIHelpers_android.h",
+            "modules/juce_core/native/juce_Threads_windows.cpp",
+            "modules/juce_core/system/juce_StandardHeader.h",
+            "modules/juce_core/text/juce_CharPointer_ASCII.h",
+            "modules/juce_core/text/juce_CharPointer_UTF32.h",
+            "modules/juce_core/text/juce_CharPointer_UTF8.h",
+            "modules/juce_core/text/juce_CharacterFunctions.h",
+            "modules/juce_core/text/juce_String.cpp",
+            "modules/juce_core/xml/juce_XmlDocument.cpp",
+            "modules/juce_core/xml/juce_XmlDocument.h",
+            "modules/juce_core/zip/juce_ZipFile.cpp",
+            "modules/juce_core/zip/juce_ZipFile.h"
+          ]
+        },
+        {
+          "module": "juce_data_structures",
+          "changed_files": 3,
+          "substantive_files": 2,
+          "substantive_paths": [
+            "modules/juce_data_structures/values/juce_ValueTree.cpp",
+            "modules/juce_data_structures/values/juce_ValueTree.h"
+          ]
+        },
+        {
+          "module": "juce_dsp",
+          "changed_files": 1,
+          "substantive_files": 0,
+          "substantive_paths": []
+        },
+        {
+          "module": "juce_events",
+          "changed_files": 1,
+          "substantive_files": 0,
+          "substantive_paths": []
+        },
+        {
+          "module": "juce_graphics",
+          "changed_files": 534,
+          "substantive_files": 533,
+          "substantive_paths": [
+            "See upstream tree/diff; includes HarfBuzz update"
+          ]
+        },
+        {
+          "module": "juce_gui_basics",
+          "changed_files": 58,
+          "substantive_files": 58,
+          "substantive_paths": [
+            "See upstream tree/diff; includes HarfBuzz update"
+          ]
+        },
+        {
+          "module": "juce_gui_extra",
+          "changed_files": 4,
+          "substantive_files": 3,
+          "substantive_paths": [
+            "modules/juce_gui_extra/documents/juce_FileBasedDocument.cpp",
+            "modules/juce_gui_extra/misc/juce_KeyMappingEditorComponent.cpp",
+            "modules/juce_gui_extra/misc/juce_LiveConstantEditor.cpp"
+          ]
+        },
+        {
+          "module": "juce_opengl",
+          "changed_files": 1,
+          "substantive_files": 0,
+          "substantive_paths": []
+        },
+        {
+          "module": "juce_audio_plugin_client",
+          "mechanism": "Implicit generated plugin-format module",
+          "substantive_paths": [
+            "modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp",
+            "modules/juce_audio_plugin_client/LV2/juce_LV2ManifestHelper.cpp"
+          ],
+          "note": "LV2 not built; AU and Standalone wrapper implementation files unchanged"
+        }
+      ]
+    },
+    "licence_scan_method": "Recursive modules/ regular files with basename matching (licen[cs]e|copying|copyright|notice|readme|ftl\\.txt), case-insensitive, plus root LICENSE.md. Counts include root LICENSE.md; embedded header grants reviewed separately.",
+    "licence_files": {
+      "modules/juce_audio_formats/codecs/vorbis/README.md": "d408e3a8d5eeb70e4dec13fffefbd21c4d4c0b584ae3d6fe4245ef7673a2a739",
+      "modules/juce_audio_formats/codecs/vorbis/COPYING": "ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a",
+      "modules/juce_audio_formats/codecs/ogg/COPYING": "ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a",
+      "modules/juce_audio_formats/codecs/flac/Flac Licence.txt": "2b1e486c89568be966b49545b0f96767248e3cddd9f1bc3aa17a20609d3a6565",
+      "modules/juce_audio_formats/codecs/opus/opus/LICENSE_PLEASE_READ.txt": "7efb4989e0cd1b256229bdf2f09300c5d14e35db0e7476bfb87fac243498273d",
+      "modules/juce_audio_formats/codecs/opus/opus/COPYING": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+      "modules/juce_audio_formats/codecs/opus/opusfile/COPYING": "0267ae795ab744c4e0f9c45e249440fdf2e75dac8c804f36066b28649bf74aaf",
+      "modules/juce_audio_formats/codecs/opus/libopusenc/COPYING": "93b17ab56b8230127fea532be0dcb4e6d71e66ab5e8ce5d6ae8785d7288b164f",
+      "modules/juce_javascript/choc/LICENSE.md": "098e8bc855cead3961ece222ca427296808a0c77605a8c24e77224d1ad8a0cae",
+      "modules/juce_audio_devices/native/oboe/README.md": "bf7b1823f0d1b1bff4e1aefe1232e9d3cf2877b2ec584bc71b3ca9b50a8a1a27",
+      "modules/juce_audio_devices/native/oboe/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "modules/juce_audio_devices/native/asio/LICENSE.txt": "61e56814f24b32216884b2db0b4dcc317111a5ab354d54d19dd9fc13d71b1c7a",
+      "modules/juce_audio_devices/native/oboe/src/common/README.md": "6600f826fbe5206439897d837ec2b26a2377a569f9f4e71ab33216edc6fa48b5",
+      "modules/juce_audio_devices/native/oboe/src/flowgraph/resampler/README.md": "f18bad98383b8428e2ae2f5f0e45cbe0974fe4144d7b8bdd175dc99ed60e6bf5",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/README.md": "46a70b0feaf83dbadf41a6a8fb727294b19ef30afc8f991c388068adb6c7e3a8",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt": "d6115b263faa1cdf8c7372d70889c833dde1cec95252e7ee93e4f7d599ec96ca",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/base/README.md": "ad1d9841ca066333d6716ee80dc6db136ccbbf5cde197c5e98e574c6a84a1895",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/base/LICENSE.txt": "d6115b263faa1cdf8c7372d70889c833dde1cec95252e7ee93e4f7d599ec96ca",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/public.sdk/README.md": "91f9dbe6d66db589422adc96e3025415228fba7e90f6b2560db43a1756dc173a",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/public.sdk/LICENSE.txt": "d6115b263faa1cdf8c7372d70889c833dde1cec95252e7ee93e4f7d599ec96ca",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/pluginterfaces/README.md": "87e47d23f12d5dcadd0d80ad1b6d017ae630ae6c755d726e6af53d4431324d74",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/pluginterfaces/LICENSE.txt": "d6115b263faa1cdf8c7372d70889c833dde1cec95252e7ee93e4f7d599ec96ca",
+      "modules/juce_audio_processors_headless/format_types/VST3_SDK/public.sdk/source/vst/moduleinfo/ReadMe.md": "73738fb65ceaa42e3e238a28efa52c9d62d2fdc2cea4db588513ea6fe2c653aa",
+      "modules/juce_audio_processors_headless/format_types/LV2_SDK/lilv/COPYING": "e06562d6bcf0341b2ac2ad0f0ca36801d2ebf388d5ef297011625e4c36e963f0",
+      "modules/juce_audio_processors_headless/format_types/LV2_SDK/sratom/COPYING": "3fc429d6b944fa20306357196a28bb4dd7c25e2d67edebec771f44de5bd7f9e8",
+      "modules/juce_audio_processors_headless/format_types/LV2_SDK/sord/COPYING": "e06562d6bcf0341b2ac2ad0f0ca36801d2ebf388d5ef297011625e4c36e963f0",
+      "modules/juce_audio_processors_headless/format_types/LV2_SDK/lv2/COPYING": "0b0b07d852e3ce7fa04986e141f73001bd7f260683968f0a19e02dbcc4131aa6",
+      "modules/juce_audio_processors_headless/format_types/LV2_SDK/serd/COPYING": "e06562d6bcf0341b2ac2ad0f0ca36801d2ebf388d5ef297011625e4c36e963f0",
+      "modules/juce_core/native/java/README.txt": "a1ebd1fcb60c938d059e5eacee9ad70a4ae91adfc4dfaf93bf7bc9973d19448b",
+      "modules/juce_core/zip/zlib/README": "4026d921213bb2e311d8d42b44ef53361c102d5d45ae32f93f8e52eaee8d068f",
+      "modules/juce_core/zip/zlib/LICENSE": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+      "modules/juce_box2d/box2d/README.txt": "f5dd2b43f4847dedc0e565bed19f06a8c73cbfef6e5c55e25e22c855239f752e",
+      "modules/juce_gui_extra/native/typescript/webview-interop/LICENSE-JUCE.md": "0b1b3668388d561b384fa5514b1040aefd919393b02ddf1aca3e9385f5d04344",
+      "modules/juce_gui_extra/native/typescript/webview-interop/README.md": "a63be67ecd267778a2581eb297068e007443528c3bce7dcec6ad9e3d0861b21b",
+      "modules/juce_gui_extra/native/typescript/webview-interop/LICENSE-AGPL.md": "00352ab19865e23bb0ab7e0f45332206aba6a66d75b3f3cc962fdd6508d63ea4",
+      "modules/juce_gui_extra/native/typescript/webview-interop/LICENSE.md": "fefc0cc6b44ca6fb91983405e0e2ff2e45b51598d20d7560af5db4aaee0806a0",
+      "modules/juce_audio_plugin_client/AAX/SDK/LICENSE.txt": "44edcb3404ef6e6120ae463070aeac7451198f1fabdaffdc7b03e938e45d3c6d",
+      "modules/juce_audio_plugin_client/AU/AudioUnitSDK/LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "modules/juce_graphics/fonts/harfbuzz/COPYING": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
+      "modules/juce_graphics/image_formats/jpglib/README": "913af09f785683accdf660b85dcf27fdd567d4ad649daa95cb8771b040db79d1",
+      "modules/juce_graphics/image_formats/libwebp/COPYING": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+      "modules/juce_graphics/image_formats/pnglib/LICENSE": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
+      "modules/juce_graphics/unicode/sheenbidi/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "modules/juce_graphics/drawables/lunasvg/LICENSE": "e008ab9f8b36ec517cc47be20e776e68d69f5ba75f8f774d506ae4696d0e50c4",
+      "modules/juce_graphics/drawables/lunasvg/plutovg/LICENSE": "e008ab9f8b36ec517cc47be20e776e68d69f5ba75f8f774d506ae4696d0e50c4",
+      "modules/juce_graphics/drawables/lunasvg/plutovg/source/FTL.TXT": "e60d07dfb2c5264f9f405fa52bf0d4f85429dd9ae1bc2ffcff8af1924ef720d1",
+      "LICENSE.md": "6318e8f9bfcd5471de3608ea1ed10953279e912b9c76b78d55575b90f6bf1bf2"
+    },
+    "upstream_commits": [
+      "d60b7a78030661574a615b586d9325ba7a7fa7dd JUCE version 9.0.5",
+      "5144e4559e8100fbefc52482cf6e07a7f42ba278 Docs: Update change list",
+      "2303b551cf518f84cfe4723df6b6a456ee310a96 ZipFile: Check for a symbolic parent before deleting an existing target file",
+      "df978b66ae95842f5a1b32bed245d04ec5f4aa8d Windows: Fix a bug changing a thread's priority",
+      "fde0a524a05cad80c0f8ee3e42db3ddf20a5324b ValueTree: Limit the nesting depth of trees and arrays read from a stream",
+      "486906b640402d1c808bb808a9ef053ea2337a83 JSON: Limit the nesting depth of parsed objects and arrays",
+      "ab5645ca9c885263bd83fb56344ede048cca5210 Resave all projects and regenerate the dependency SPDX",
+      "dcc5d04f99f1750bd78cb3468386b332accf8659 README: Update the minimum Android build requirements",
+      "12095c0670c8bbe9593ad67e0b7b84dfa1338f50 Projucer (Android): Compile Java sources at language level 17",
+      "01904c20a6321960a9e6e36bb0bd31374e40f40e Projucer (Android): Update default Gradle version",
+      "7f5e58eaeb7f1c0b5f1e0470bef8a2176bd70926 OSC: Limit the nesting depth of received bundles",
+      "28432d8ed3569c969cfeebc51cdd19ff13e37c15 Component: Retarget mouse events to the nearest surviving ancestor when the original target is deleted before delivery",
+      "657712be233b3514a97005505f9f7f425c26db92 File: Resolve drive-relative paths against the parent in getChildFile on Windows",
+      "bf695ff98595d41ce3300c58ee43c25c081cf94b RectangleList: Avoid infinite loops when consolidating floating-point lists",
+      "41c6ae37cd40ac7fea2e82f655d0722c2d8f0b51 CMake: Regenerate the Windows resources file when the target's version info changes",
+      "74c08c1e214036ef31144eab2ab12474deb19127 ResizableWindow: Lay the content out again when the insets of a full-screen window change",
+      "c4cd4dd3e6d95af3ce4dc122c40c3a8635201bf0 Resave all projects",
+      "ce08efc5c063670634a930d8ab7a79654fe35859 HarfBuzz: Fix build issues and update SBOM",
+      "237847ce2407bf65ff745ef9371e33c747e81cd3 HarfBuzz: Remove stale duplicated source files left behind by an earlier update",
+      "5d64a193ae2822638b549ab753072861670cf2e7 HarfBuzz: Import sources from version 15.0.0",
+      "51479709ccf0b9aba2317e9c997ae642c0a42564 Resave all projects",
+      "a6440029db08acc50400b1ef13d2089d066916a3 HarfBuzz: Fix build issues and update SBOM",
+      "87a4cdcf982fd4e11ed1fdf2b07b860a689e4f61 HarfBuzz: Import sources from version 14.6.0",
+      "8fb21a75d415661c44ca5651a32550d12971c1b7 Projucer Android: Use compileOptions rather than a Java toolchain to target Java 8",
+      "973d04ce556931ed4ae666e35e3a7c8cf742aed3 Fix some LLVM 23.1 clang-tidy warnings",
+      "8bb18c42c6e13932305234b32c9175aae219249e iOS: Fix deprecation warnings when targeting iOS 26 and later",
+      "7a9a5eb88367fd542937bfdbfa5f7d14a0509818 Projucer Xcode: Update generated project files for better compatibility with Xcode 27",
+      "af69a2354dd7fa7c683197fb4a0a93489c88d108 iOS: Remove uses of [UIScreen mainScreen]",
+      "dfb378a0617f6080390acfad12469af4af780dde iOS: Report the correct safe area insets on devices with a side-mounted sensor housing",
+      "d9e2ca817fae31323a54e8a8d991058b591e4bca PopupMenu: Allow semi-transparent menus with a parent component when the desktop can't use semi-transparent windows",
+      "ab9047fb26f2a47ffdb4243c9c92c063f8671fa4 PNGLoader: Validate image dimensions before allocating the decode buffer",
+      "b90de97021245c4d428d377cfdda70d75b51b1a3 GIFLoader: Validate the LZW minimum code size and first code",
+      "7b6d202ba14ffbd0b21ca3d9cf32284738631c2f Docs: Fix some typos in AbstractFifo",
+      "3993ffc82e58278c6c8a5581657bb1ac8dcf4363 JS: Fix a crash when a native object's function is called on a different object",
+      "732213bc00c47f419c8f57dd256eaa482040b1b4 JS:  Fix a timeout bug",
+      "8ec5db9502037f5bf008c4aab88d7c5434e72119 JS: Fix a crash when JavascriptEngine is destroyed before JS variables that reference it",
+      "7b80acdfae01da3c1a116fad428dc60f2030d325 PluginListComponent: Fix potential dangling pointer when the path chooser window returns",
+      "60d5f325a8823133fb48ed0466c377de64b11e9d DialogsDemo: Add some examples of the new message box apis",
+      "90795269175f8c0eff4428ef643e5ed77fd33ce2 NativeMessageBox: Add button metadata to allow setting explicit primary actions, and cancel/destructive roles",
+      "9e7bfb042076673f652abe8794e530faf99cfdd0 DropShadower: Remove VirtualDesktopWatcher",
+      "823a0b9d58235e5e63344efd9cac0fdb0e8bb1d1 X11: Dispatch events that a reply has already read into Xlib's queue",
+      "46561f27af02bab50bd8c781e39f85db3a98b7d0 Windows: WebP: Fix build with clang-cl 19 and 20",
+      "94410931f43f2025a52e1b609954d93e30849c24 XmlDocument: Fix double expansion of escaped references inside entity markup",
+      "3342d409111ee63ba764b8d95f208fbc90df0d7a XmlDocument: Limit entity expansion and element nesting depth",
+      "f8a5c5d80f3b16fba700d4a5d5882723a9d534ae XmlDocument: Only load external entities through a caller-supplied InputSource",
+      "31b3b680639c1e2f788b89145714a1e668e2f092 ZipFile: Confine symbolic links to the target directory and reject oversized entries",
+      "8493b2c3caaecd5f7c8df2c6d03f9a2c761d8f56 WAV and AIFF files: Harden metadata parsing",
+      "8c0c0d9b25720ab1fb5e821efab873264274eda0 AIFF/WAV Audio Format: Fix a crash when reading files with malformed channel counts",
+      "7ff644f65d7daa1428c34b9738ebb5c449dc9172 MIDI (WinMM): Fix a bug where device names could be applied to the wrong device if device scanning failed",
+      "6847e81f0bc0346ce55a15ca80ede87fe6b10fd9 Windowing (Windows): Fix issue where mouse input  could be ignored when using system auto-scaling",
+      "5a3189992f8c178ad34eb26ac4f5cb70348bb876 MIDI (WinMM): Re-queue sysex buffers directly from the MIDI input callback",
+      "8cb7241e845c138b4d2e8d7cc58a315a3f9e49ca X11: Avoid BadAtom errors when creating windows without a window manager",
+      "6975e67eac1ed67601fdd1429b846dcc6a782d15 String: Fix a bug when comparing multi-byte characters",
+      "27f89b5dd3545b01dfc68a8f56f451b5fba0ce86 macOS: Fix a bug dismissing modal alerts",
+      "7359ee798e22969e25b5b1607ba00d54961105a0 Fonts (Android): Query fonts.xml for fallback fonts on older Android version",
+      "6bef760b2690648b037b7c95ba0eb9db752dabb0 Projucer: Avoid reordering VST3 categories for Spatial|Fx plugins",
+      "f27dff54f699d8c86e042dae80afd19016af92e8 CMake: Avoid reordering VST3 categories for Spatial|Fx plugins",
+      "5aa5e635ebe91bb28176567fe73d558b43f9fbf3 Direct2D: Treat any success code as having presented, instead of just S_OK",
+      "4d92ab1c11ce6ef88fa01d317da1c32f03c58941 Direct2D: Avoid rendering frames before swapchain becomes ready",
+      "26d459e8601ce1e2c8a6c98e7ba37970fead8fc7 Windows: Accumulate dirty rects manually instead of using InvalidateRect",
+      "66cea28b117c3d5868ba4a3a4e2b76ec94270b44 Direct2DHwndContext: MakeHwndPimpl::present() private",
+      "e9656aae500e66c7eda9a6d9db47619c76fd5224 NSViewComponentPeer: Attempt to repaint as soon as possible after vblank",
+      "4d458dbb9a36386193652e0ca300ed1aee422688 MIDI (Apple): Avoid constructing synthetic endpoints for devices already discovered through the system UMP endpoint manager",
+      "450a59311678c6791460392e46dd1df0786a6168 Resave all projects",
+      "637a7344349f03dcbd365f725b8553dafb661d66 MessageBoxOptions: Replace old withButton() function with a new version that accepts an explicit integer result code",
+      "90db407245764b41f4012ce9bcbe7efe9336a045 VST3 Host: Avoid calling checkSizeConstraint on non-resizable views",
+      "909ffb0fadcee91a6ef8da06defadb8636f16f36 ImageConvolutionKernel: Avoid forming OOB pointer",
+      "ff8ad464cbd0f1073e64bca2bc093a62b7e20e3a VST3 Host: Fix UADx scaling issues when reopening editors on Windows",
+      "1c8d095e5060cd84b4e398c0ee5166d41d75ab63 Resave projects",
+      "5bc3927e1d110b614a4345fed1062e73481b0cd3 Component: Add support for native child windows",
+      "7a17fea6c036e82fa6e78a4b8d162dba236f4cd9 Windows VST3: Fix a scaling bug when dragging between monitors with different DPI",
+      "d4c72e0c4fc988aed7735f6b7caa30032a3dd2ac Resave all projects",
+      "753fa57c98d0d323400aa2dcd361008cd90e1917 Bump version number to 9.0.5",
+      "454fe891acc8204f99f4ef1e3a28c84b1a4da145 Revert \"CI: Add security-patches/* branches\"",
+      "9e5517e6abf96c3c0488ef7ea4760acb72336938 Revert \"CI: Add security-patches/* branches\""
+    ],
+    "local_checks": [
+      {
+        "command": [
+          "python3",
+          "scripts/check-docs.py",
+          "--self-test"
+        ],
+        "exit_code": 0,
+        "seconds": 8.51,
+        "log": "Anamorph-check-docs-self-test.log",
+        "tail": [
+          "/workspace/Anamorph/scripts/check-docs.py:2106: SyntaxWarning: invalid escape sequence '\\['",
+          "  f\"`release.yml` cannot extract it (`^## \\[`) and it does not terminate the \"",
+          "check-docs: self-test passed (700 cases)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-docs.py"
+        ],
+        "exit_code": 1,
+        "seconds": 1.45,
+        "log": "Anamorph-check-docs.log",
+        "tail": [
+          "/workspace/Anamorph/CHANGELOG.md:24: `## [Unreleased]` needs a tagged release to compare against, and this line has no release tag yet (read from the git tags in `main`'s history (origin/main) -- `git fetch --tags --refmap= origin +refs/heads/main:refs/remotes/origin/main` brings one pushed since it last fetched) (`## [0.10.0]` is in the file, but git has no tag `0.10.0`: add this section once that tag is pushed) -- this line's first tag is 0.9.9; until it is cut, unreleased work goes in the dated entry it will ship in (CHANGELOG_POLICY.md rule 8); its definition `https://github.com/skyRolly/Anamorph/compare/0.10.0...HEAD` compares from 0.10.0, a version with no git tag",
+          "",
+          "check-docs: 3 finding(s) across 187 file(s)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-portability.py",
+          "--self-test"
+        ],
+        "exit_code": 0,
+        "seconds": 0.08,
+        "log": "Anamorph-check-portability-self-test.log",
+        "tail": [
+          "check-portability: self-test passed (120 cases)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-portability.py"
+        ],
+        "exit_code": 0,
+        "seconds": 1.28,
+        "log": "Anamorph-check-portability.log",
+        "tail": [
+          "check-portability: installer/uninstaller scratch names agree (.anamorph-install-stage, .anamorph-probe, .probe).",
+          "check-portability: 83 file(s) scanned, 0 violation(s)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-realtime.py",
+          "--self-test"
+        ],
+        "exit_code": 0,
+        "seconds": 0.06,
+        "log": "Anamorph-check-realtime-self-test.log",
+        "tail": [
+          "check-realtime: self-test passed (97 cases)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-realtime.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.53,
+        "log": "Anamorph-check-realtime.log",
+        "tail": [
+          "check-realtime: 52 file(s) scanned, 0 violation(s)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-product-identity.py",
+          "--self-test"
+        ],
+        "exit_code": 0,
+        "seconds": 0.29,
+        "log": "Anamorph-check-product-identity-self-test.log",
+        "tail": [
+          "product identity VERSIONINFO API-boundary fixture passed",
+          "product identity self-test passed (source, generated Linux/Windows/macOS, AU, VST3, packages; good/bad fixtures)"
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-product-identity.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.1,
+        "log": "Anamorph-check-product-identity.log",
+        "tail": [
+          "    ]",
+          "  }",
+          "}"
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-citations.py",
+          "--self-test"
+        ],
+        "exit_code": 0,
+        "seconds": 0.9,
+        "log": "Anamorph-check-citations-self-test.log",
+        "tail": [
+          "check-citations: self-test passed (298 cases)."
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "scripts/check-citations.py",
+          "--base",
+          "origin/main"
+        ],
+        "exit_code": 0,
+        "seconds": 5.75,
+        "log": "Anamorph-check-citations.log",
+        "tail": [
+          "check-citations: note — DELIBERATE_REAIMS entry tests/state_tests.cpp: src/PluginEditor.cpp:2567 -> src/PluginEditor.cpp:2705 was not needed against origin/main, which already carries the re-aimed spelling. Its transition is behind that base and can never match from there again. Safe to delete ONLY if that base is the branch's merge base; re-run against that first.",
+          "check-citations: note — DELIBERATE_REAIMS entry tests/state_tests.cpp: src/PluginEditor.cpp:2681 -> src/PluginEditor.cpp:2705 was not needed against origin/main, which already carries the re-aimed spelling. Its transition is behind that base and can never match from there again. Safe to delete ONLY if that base is the branch's merge base; re-run against that first.",
+          "check-citations: 609 anchor(s) still point at the same text as origin/main."
+        ]
+      }
+    ],
+    "documentation_after_remote_tag_fetch": {
+      "status": "passed",
+      "exit_code": 0,
+      "tail": "check-docs: 187 file(s) clean."
+    },
+    "cache_tests": {
+      "status": "passed",
+      "tests": 7,
+      "log": ".......\n----------------------------------------------------------------------\nRan 7 tests in 26.133s\n\nOK\n"
+    },
+    "product_configurations": {
+      "904": {
+        "status": "failed_environment_prerequisite",
+        "local_juce_path": "/workspace/JUCE-904",
+        "first_fatal": "ft2build.h: No such file or directory",
+        "errors": [
+          "error: ft2build.h: No such file or directory",
+          "fatal error: ft2build.h: No such file or directory"
+        ],
+        "log_sha256": "3743ea4f3e2a1494f076b9e47c0bed5933304a7c0722b4b7abff983a50c0ef16"
+      },
+      "905": {
+        "status": "failed_environment_prerequisite",
+        "local_juce_path": "/workspace/JUCE-review",
+        "first_fatal": "ft2build.h: No such file or directory",
+        "errors": [
+          "fatal error: ft2build.h: No such file or directory",
+          "fatal error: ft2build.h: No such file or directory"
+        ],
+        "log_sha256": "26972197da9103fdf5fd44e9230c04c75417021f869c8c33af46c74d8f24421c"
+      }
+    },
+    "isolated_fetch": {
+      "cmake": "3.31.6",
+      "minimum_supported_cmake_test": {
+        "status": "passed",
+        "cmake": "3.22.6",
+        "actual_head": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+        "checkout_clean": true,
+        "exit_code": 0
+      },
+      "git_shallow": true,
+      "expected_and_actual_head": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "checkout_clean": true,
+      "configure_exit_code": 0,
+      "warning": "CMP0169: probe uses FetchContent_Populate without adding JUCE; product uses MakeAvailable",
+      "cmake_source": "cmake_minimum_required(VERSION 3.22)\nproject(JucePinProvenance NONE)\ninclude(FetchContent)\nFetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG d60b7a78030661574a615b586d9325ba7a7fa7dd GIT_SHALLOW TRUE)\nFetchContent_Populate(JUCE)\nexecute_process(COMMAND git -C ${juce_SOURCE_DIR} rev-parse HEAD OUTPUT_VARIABLE actual OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)\nif(NOT actual STREQUAL \"d60b7a78030661574a615b586d9325ba7a7fa7dd\")\n message(FATAL_ERROR \"Incorrect JUCE provenance: ${actual}\")\nendif()\nmessage(STATUS \"Verified immutable JUCE HEAD: ${actual}\")\n"
+    },
+    "embedded_attribution_source_comparison": {
+      "modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-stb-truetype.h": {
+        "byte_identical": true,
+        "target_sha256": "cb41ac8668608666febd1f3a5e92efb5eb3658da6f3ea88f3340d6baaf38d50f"
+      },
+      "modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-stb-image.h": {
+        "byte_identical": true,
+        "target_sha256": "fe5f282e81c5248e2545fc3098ed0462de8e1be8a8a7a835a7921508ee47f1a4"
+      },
+      "modules/juce_graphics/drawables/lunasvg/plutovg/source/plutovg-stb-image-write.h": {
+        "byte_identical": true,
+        "target_sha256": "427607ad2cd885e51af7ef58a2c45c25106fcfbadb43063853e706d86362b933"
+      },
+      "modules/juce_opengl/opengl/juce_gl.h": {
+        "byte_identical": true,
+        "target_sha256": "b805a3161077aeb5e80adadb57ed84dc84025cb7983c61f309fc0125a2b8628e"
+      }
+    },
+    "proposal_doc_checks": {
+      "docs": {
+        "checker_self_test_exit_code": 0,
+        "self_test_tail": [
+          "  f\"`release.yml` cannot extract it (`^## \\[`) and it does not terminate the \"",
+          "check-docs: self-test passed (700 cases)."
+        ],
+        "check_exit_code": 0,
+        "check_summary": "check-docs: 189 file(s) clean."
+      },
+      "citations": {
+        "checker_self_test_exit_code": 0,
+        "self_test_tail": [
+          "check-citations: self-test passed (298 cases)."
+        ],
+        "check_exit_code": 0,
+        "check_summary": "check-citations: 609 anchor(s) still point at the same text as origin/main."
+      }
+    }
+  },
+  "not_run": [
+    "target DSP/state suites",
+    "old/new DSP/state/render comparison",
+    "target pluginval deterministic x3/randomise x3",
+    "target ASan/UBSan",
+    "target realtime/memcheck runtime",
+    "target platform warning/ABI gates",
+    "target native Windows/macOS Intel/macOS arm64 builds",
+    "target packaging/symbol gates",
+    "target TSan",
+    "target fuzz"
+  ],
+  "manual_acceptance": "Pending Human Acceptance"
+}
