@@ -31,6 +31,29 @@ all editor teardown orders nor replace owner-deferred native visual, lifecycle,
 accessibility or performance acceptance. NR-026/KI-035's pinned JUCE Slider wheel
 scope is a separate unfixed issue. See [the evidence ledger](../../worklogs/engineering-review/spectrum-imager-lifetime.json).
 
+## Parameter-triggered adoption cycle — State157 / NR-028
+
+Run `AnamorphStateTests --editor-restore-lifetime-probe timer` or `preset`;
+omitting the selector runs both, and the normal suite runs the same fixture.
+Each callback/live-or-destroy case reuses ONE processor for A→B→C→B. Every leg
+holds a real off-thread restore after sound install, changes the live A/B sound,
+publishes the restore, and invokes the actual private timer or component-owned
+preset-button callback. Synchronous Width notifications may delete the editor.
+Immediate notification, metadata, baseline, sound, Settings/latency, history and
+dispatch checks run before serialization. Both saved A/B payloads and a reopened
+Width attachment are checked on each leg. Final B must match first B's complete
+normalized parameter vector, and all three actual adoptions must be counted.
+Live controls also verify timer continuation or popup opening. The existing
+handoff/pacing deadlines are unchanged. Only in-memory popup placement metadata
+is supplied without a display; this is not native visual acceptance.
+
+Test-only controls skip the final callback or truncate before the return to B;
+they must fail the immediate/return/repeat oracles. Original editor-source
+controls retain the destructive lifetime witness. Main already contains #209's
+exact protection; no duplicate source guards or shadow-warning baseline are added.
+Results and historical failures are retained in the
+[evidence ledger](../../worklogs/engineering-review/gui-restore-adoption-lifetime.json).
+
 ## Restore callout destruction — State155 / NR-025
 
 `tests/gui_restore_lifetime_tests.h` delivers the actual preset-name callback and

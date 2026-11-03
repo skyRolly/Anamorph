@@ -490,6 +490,14 @@ results; original owner attestations are not retroactively assigned to new code.
   Corrected targeted ASan exits0; complete cross-platform sanitizer CI remains
   separate. The distinct pinned-JUCE wheel failure is NR-026/KI-035, still unfixed.
 
+**Parameter-trigger follow-up (NR-028 / PR #211, unmerged):** the same protected
+callouts are also reached when adopting displaced sound notifies Width listeners.
+The parallel production guard fix is superseded by integrated #209. State157 now
+executes same-processor A→B→C→B through both real callbacks, retaining live and
+destructive controls, metadata/Settings completion, saved A/B sounds and editor
+reopen checks. Skipping final adoption and truncating the return leg both fail.
+No separate production fix or integration is claimed by that test-only follow-up.
+
 ## INC-024 — Scale callback resumed after synchronous editor destruction
 
 - **Date:** 2026-11-02 (implementation `15a8995a89bd4718bc650b276ad418aa8e2eeca7`).

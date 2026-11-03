@@ -45924,6 +45924,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "gui_restore_lifetime_tests.h"
 #include "gui_scale_lifetime_tests.h"
 #include "spectrum_imager_lifetime_tests.h"
+#include "editor_restore_lifetime_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -46030,6 +46031,20 @@ int main (int argc, char* argv[])
             else { std::fprintf (stderr, "Unknown frequency-editor lifetime probe\n"); return 2; }
         }
         spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes (path);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--editor-restore-lifetime-probe") == 0)
+    {
+        int path = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "timer") == 0) path = 0;
+            else if (std::strcmp (argv[2], "preset") == 0) path = 1;
+            else { std::fprintf (stderr, "Unknown editor restore path probe\n"); return 2; }
+        }
+        testEditorRestoreAdoptionLifetimes (path);
         std::printf ("%d checks, %d failure(s)\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -46369,6 +46384,7 @@ int main (int argc, char* argv[])
     testEditorCommandLifetimes();
     testGuiRestoreLifetimes();
     testGuiScaleLifetimes();
+    testEditorRestoreAdoptionLifetimes();
     testSpectrumImagerCallbackLifetimes();
     spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes();
 
