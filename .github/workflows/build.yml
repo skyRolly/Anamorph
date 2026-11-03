@@ -1117,18 +1117,12 @@ jobs:
       # platform runs; this is the half that needs a corpse to read.
       #
       # THE HARNESS PROVES ITS OWN ORACLE FIRST, in the shape this workflow already
-      # uses for the RTSan canary and the four lints: it feeds the parser deepening
-      # documents with the boundary bypassed until one does not return, and exits 1
-      # saying so if none does -- because the crashing depth is a property of the
-      # toolchain's frame sizes (measured: Clang 2 500-3 000 levels on 1 MB, GCC 13 at
-      # -O1 survives 3 000 and crashes at 5 000), not of this project. It then sizes
-      # its own fixtures from the depth it measured, so the step cannot rot into
-      # testing a shape too shallow to misbehave on the runner it lands on. A third
-      # assertion keeps the contract from being satisfiable by refusing everything:
-      # seven writer-shaped documents must still be ADMITTED.
-      #
-      # ~0.5 s for 1 500 generated documents plus 18 named shapes; no build-system
-      # change, compiled here exactly as the two realtime canaries are.
+      # uses for the RTSan canary and the four lints. Controlled child outcomes
+      # prove signal/timeout/setup-error detection, and a valid depth-cap+1
+      # document proves the product boundary acts independently of JUCE. Under
+      # 9.0.5 the historical deep controls must be rejected by its new parser
+      # limit; legacy comparisons retain their crash-depth search (ADR-0071).
+      # All 18 named, seven legitimate and 1 500 generated documents remain.
       - name: The XML boundary still agrees with the parser (ADR-0056)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
         run: |
@@ -1141,11 +1135,8 @@ jobs:
             build/_deps/juce-src/modules/juce_core/juce_core_CompilationTime.cpp \
             -o xml-boundary-differential -lpthread -ldl -lz
           ./xml-boundary-differential 1500 || {
-            echo "::error::A document the boundary ADMITS does not return from juce::parseXML"\
-                 " (ADR-0056). The scan and the parser have diverged again: find the construct the"\
-                 " walk steps over that the parser resumes inside, and refuse it rather than"\
-                 " modelling where the parser stops -- modelling it is what put the round-52 hole"\
-                 " there. tests/xml_boundary_differential.cpp prints the offending document."
+            echo "::error::XML boundary differential failed (ADR-0056/ADR-0071)."\
+                 " Inspect the canary, parser, boundary and fixture evidence printed above."
             exit 1
           }
       - name: pluginval (deterministic x3 -- release gate)

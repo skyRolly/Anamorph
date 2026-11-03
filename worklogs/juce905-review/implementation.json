@@ -96,5 +96,295 @@
   "negative_controls": {
     "old_cache_on_original_cmake": "detected",
     "immutable_source_check_bypass": "detected"
+  },
+  "minimum_cmake_cache_tests": {
+    "cmake": "3.22.6",
+    "passed": true,
+    "count": 11
+  },
+  "real_cache_migration": [
+    {
+      "step": "seed-old-local",
+      "command": [
+        "cmake",
+        "-S",
+        "/workspace/Anamorph",
+        "-B",
+        "/workspace/juce905-runs/anamorph-904",
+        "-DANAMORPH_JUCE_PATH=/workspace/JUCE-904",
+        "-DANAMORPH_JUCE_VERSION=9.0.4",
+        "-DANAMORPH_JUCE_TAG=3fb5cbc0340758596dac39f7c8de47d562b4896e"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "passed": true
+    },
+    {
+      "step": "refuse-stale",
+      "command": [
+        "cmake",
+        "-S",
+        "/workspace/Anamorph",
+        "-B",
+        "/workspace/juce905-runs/anamorph-904",
+        "-DANAMORPH_JUCE_PATH="
+      ],
+      "exit": 1,
+      "expected_exit": 1,
+      "passed": true
+    },
+    {
+      "step": "reset-and-local",
+      "command": [
+        "cmake",
+        "-S",
+        "/workspace/Anamorph",
+        "-B",
+        "/workspace/juce905-runs/anamorph-904",
+        "-UANAMORPH_JUCE_VERSION",
+        "-UANAMORPH_JUCE_TAG",
+        "-DANAMORPH_JUCE_PATH=/workspace/JUCE-904"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "passed": true
+    }
+  ],
+  "compile_provenance": {
+    "Anamorph-904": {
+      "head": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+      "clean": true,
+      "compile_commands": 203,
+      "codec_definitions": {
+        "Anamorph": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "Anamorph_Standalone": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "Anamorph_VST3": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphTests": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphStateTests": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphBench": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphDspDump": [
+          [
+            true,
+            true,
+            true
+          ]
+        ]
+      }
+    },
+    "Anamorph-905": {
+      "head": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "clean": true,
+      "compile_commands": 203,
+      "codec_definitions": {
+        "Anamorph": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "Anamorph_Standalone": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "Anamorph_VST3": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphTests": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphStateTests": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphBench": [
+          [
+            true,
+            true,
+            true
+          ]
+        ],
+        "AnamorphDspDump": [
+          [
+            true,
+            true,
+            true
+          ]
+        ]
+      }
+    },
+    "Anamorph-flags": {
+      "identical": true,
+      "differences": 0,
+      "examples": []
+    }
+  },
+  "test_compatibility_correction": {
+    "scope": "tests/xml_boundary_differential.cpp; CI comments/failure diagnostic; documentation. No production reader, schema, fixture, tolerance or gate change.",
+    "initial_head": "f803855f87370a4ba770e5b5499ccc6dabbaeeae",
+    "initial_failed_run": 41710637307,
+    "initial_failed_job": 126177465963,
+    "cause": "Old oracle requires a crash; JUCE 9.0.5 adds parser nesting limits.",
+    "validation": [
+      {
+        "variant": "original-905",
+        "exit": 1,
+        "expected_exit": 1,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "  liveness:   3000 levels (21000 B) -> returned",
+          "  liveness:   5000 levels (35000 B) -> returned",
+          "  liveness:  10000 levels (70000 B) -> returned",
+          "  liveness:  20000 levels (140000 B) -> returned",
+          "  liveness:  40000 levels (280000 B) -> returned",
+          "::error::no nesting depth in this harness's range exhausted a 1 MB stack, so the",
+          " oracle cannot observe the failure it exists to catch. Do not read the result",
+          " below as a pass."
+        ]
+      },
+      {
+        "variant": "corrected",
+        "exit": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "  liveness: all five contained-outcome canaries observed",
+          "  liveness: JUCE accepts depth cap+1; the product boundary refuses it",
+          "  liveness: all five historical deep controls rejected by JUCE and boundary",
+          "  named shapes: 18 checked",
+          "  legitimate shapes: 7 checked, 0 refused",
+          "  sweep: 1500 cases (seed 20260921) -- admitted 846, refused 654, admitted past the cap 270",
+          "xml-boundary differential: clean"
+        ]
+      },
+      {
+        "variant": "admit-all",
+        "exit": 1,
+        "expected_exit": 1,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "  liveness: all five contained-outcome canaries observed",
+          "::error::product depth boundary is not independently live"
+        ]
+      },
+      {
+        "variant": "refuse-all",
+        "exit": 1,
+        "expected_exit": 1,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "  liveness: all five contained-outcome canaries observed",
+          "  liveness: JUCE accepts depth cap+1; the product boundary refuses it",
+          "  liveness: all five historical deep controls rejected by JUCE and boundary",
+          "  named shapes: 18 checked",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (writer-shaped session): <?xml version=\"1.0\" encoding=\"UTF-8\"?><AnamorphRoot presetName=\"Gentle Width\"><ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"1.5\"/></ANAMORPH><ANAMORPH_INTERNAL int_osIndex=\"0\"/><AB active=\"0\" slotAParams=\"&lt;ANAMORPH/&gt;\"/></AnamorphRoot>",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (apostrophe in a preset name): <AnamorphRoot presetName=\"Bob&apos;s Width\"><ANAMORPH/></AnamorphRoot>",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (escaped '<' and '>' in a value): <AnamorphRoot presetName=\"a&lt;b&gt;c\"><ANAMORPH/></AnamorphRoot>",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (single-quoted attribute values): <AnamorphRoot presetName='Gentle'><ANAMORPH><PARAM id='w' value='1'/></ANAMORPH></AnamorphRoot>",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (an A/B payload as its own document): <?xml version=\"1.0\" encoding=\"UTF-8\"?><ANAMORPH><PARAM id=\"width\" value=\"1.2\"/></ANAMORPH>",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (a comment and a processing instruction around the root): <?xml version=\"1.0\"?><!-- saved by Anamorph --><?pi x?><AnamorphRoot><ANAMORPH/></AnamorphRoot>",
+          "  !! REFUSED A LEGITIMATE DOCUMENT (exactly at the depth cap): <a><a><a><a><a><a><a><a></a></a></a></a></a></a></a></a>",
+          "  legitimate shapes: 7 checked, 7 refused",
+          "  sweep: 1500 cases (seed 20260921) -- admitted 0, refused 1500, admitted past the cap 0",
+          "::error::the sweep admitted no document nested past the cap, so the early-exit",
+          " branches were never exercised. Raise the case count or check the generator."
+        ]
+      },
+      {
+        "variant": "collapse-signal-timeout",
+        "exit": 1,
+        "expected_exit": 1,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "::error::oracle canary controlled signal: expected CRASHED, observed returned"
+        ]
+      },
+      {
+        "variant": "ignore-setup-error",
+        "exit": 1,
+        "expected_exit": 1,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "::error::oracle canary controlled setup error: expected harness-error, observed harness-error"
+        ]
+      },
+      {
+        "variant": "null-is-accepted",
+        "exit": 1,
+        "expected_exit": 1,
+        "passed": true,
+        "output": [
+          "xml-boundary differential: admitted => the parser returns (depth cap 8)",
+          "::error::oracle canary parser rejection: expected rejected, observed returned"
+        ]
+      }
+    ],
+    "legacy_branch": "retained; not re-executed locally during this correction; prior baseline CI evidence retained"
+  },
+  "baseline_local_tests": {
+    "dsp": {
+      "checks": 945,
+      "failures": 0
+    },
+    "state": {
+      "checks": 13959,
+      "failures": 0
+    }
   }
 }

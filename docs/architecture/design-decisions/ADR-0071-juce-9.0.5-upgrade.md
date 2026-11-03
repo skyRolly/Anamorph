@@ -144,3 +144,17 @@ to old-cache/refusal/reset cases. Current runtime evidence and explicit pending 
 in the implementation continuation of the worklog and `worklogs/juce905-review/implementation.json`.
 No PR merge, product version change, release operation or manual acceptance is authorized by this
 implementation record. Existing proposal-stage missing-header measurements remain dated history.
+
+
+## Observed test compatibility correction
+
+The first implemented Linux run [41710637307](https://github.com/skyRolly/Anamorph/actions/runs/41710637307)
+failed only the XML differential step: its old oracle required an unguarded deep parse to crash.
+JUCE 9.0.5 now rejects excessive nesting before that failure. This is an obsolete test expectation;
+no product boundary, serialization schema, fixture or tolerance is changed. The separately
+identifiable correction retains the old deep inputs and the legacy-pin branch, requires parser
+rejection at 9.0.5, and adds contained signal/timeout/setup-error canaries plus an independent
+product-cap control. Resource/setup failures now fail closed. All 18 named, seven legitimate and
+1 500 generated cases remain mandatory. Negative-control and runtime observations are retained
+in the worklog and implementation evidence. This falls within this ADR's approved JUCE-induced
+compatibility-correction scope; it does not relax ADR-0056's 256 KB/depth-8/no-DOCTYPE boundary.

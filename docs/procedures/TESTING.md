@@ -1551,12 +1551,14 @@ the only one that asserts a *contract between two components* rather than a beha
 document or a null, either is a pass; what is forbidden is not returning. It exists because round 52
 shipped a hand-written model of the parser that was right about a comment, a CDATA section and a
 processing instruction and wrong about an opening tag with an unterminated quote, and nothing in the
-tree compared the two. It proves its own oracle first by feeding the parser deepening documents with
-the boundary bypassed until one does not return — the crashing depth is a property of the toolchain
-(Clang 2 500–3 000 levels on 1 MB; GCC 13 at -O1 survives 3 000 and crashes at 5 000), so it searches
-rather than hard-codes — then sizes its fixtures from the depth it measured. It also asserts that
-seven writer-shaped documents are still ADMITTED, so the contract cannot be satisfied by refusing
-everything. ~0.5 s for 1 500 generated documents plus 18 named shapes. **Linux-only by construction**
+tree compared the two. With JUCE 9.0.5 (ADR-0071), five contained-outcome canaries prove
+accepted return, parser rejection, signal, timeout and setup-error classification; setup errors
+fail the gate. A well-formed depth-9 document must parse in JUCE but be refused by the unchanged
+product depth-8 boundary. The five historical deep controls must be rejected by the hardened
+parser and the product boundary. The pre-9.0.5 comparison branch retains its measured crash-depth
+search. All 18 named shapes, seven writer-shaped documents and 1 500 generated cases remain;
+legitimate documents must be admitted, and the sweep must exercise early-exit branches. The
+controlled timeout adds one second. **Linux-only by construction**
 (`fork` + `pthread_attr_setstacksize`) and deliberately not folded into `AnamorphStateTests`, whose
 run must not contain a case that can take the process down with it; State test 116 leg E2 carries the
 same shapes as ordinary assertions on the boundary's VERDICT, which every platform runs.

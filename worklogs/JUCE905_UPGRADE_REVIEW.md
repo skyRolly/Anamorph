@@ -279,3 +279,33 @@ isolated `debian:13-slim` Docker image at digest
 GCC 14.2.0, CMake 3.31.6, Ninja and the repository-required desktop development libraries.
 This does not replace the pinned Clang/GCC CI toolchain gates. Runtime comparison and CI
 execution are in progress; no unexecuted result is promoted to a pass.
+
+
+### Separately identifiable test compatibility correction
+
+Initial implementation head `f803855f87370a4ba770e5b5499ccc6dabbaeeae`, Linux job
+[126177465963](https://github.com/skyRolly/Anamorph/actions/runs/41710637307/job/126177465963):
+**Failed**, solely at the XML differential's crash-required liveness expectation. The actual
+checkout was verified as `d60b7a78030661574a615b586d9325ba7a7fa7dd`. The same job passed both
+suites (945 DSP / 13,959 state checks), the stack/race probes and pluginval strictness 10,
+deterministic ×3 and randomise ×3 on first attempts. Its overall failure remains a failure.
+
+JUCE 9.0.5's `XmlParsingLimits` and `readNextElement` bound parser recursion. The old oracle
+observes returns at every retained deep-control size, then incorrectly diagnoses a dead oracle.
+The corrected test distinguishes accepted and rejected parses, requires rejection of every
+retained deep control at 9.0.5, keeps the old-pin search branch, and retains all 18 named / seven
+legitimate / 1,500 generated cases. Five controlled child outcomes prove signal, alarm and
+setup-error detection independently. A valid depth-cap+1 document parses upstream but must be
+refused by the product guard. Setup/resource failures now fail closed rather than being ignored.
+No product parsing rule, state format, fixture, tolerance, CI gate or pluginval setting changes.
+The workflow retains its compile/run/exit gate; only explanatory comments and failure diagnostic
+change. Mutation evidence and final target CI are recorded in the implementation continuation.
+
+
+The corrected GCC 14 differential passes: 18 named shapes, seven legitimate shapes (zero refused),
+1,500 generated cases, 846 admitted / 654 refused, including 270 early-exit cases past the cap.
+The unchanged original compiled against 9.0.5 fails for its obsolete crash expectation. Five
+mutations all exit 1: admit everything, refuse everything, collapse signal/timeout into return,
+ignore setup errors, and treat a rejected parse as accepted. The corrected variant exits 0.
+Exact outcomes are retained under `test_compatibility_correction` in `implementation.json`.
+The legacy branch remains available; it was not re-executed locally for this test correction.
