@@ -404,6 +404,42 @@ DELIBERATE_REAIMS = {
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
      "src/gui/SpectrumImager.cpp:752"): "bandCount",
+    # 2026-11-03 (NR-029, PR #212 follow-up): the push-event citation gate
+    # compares against the previous pushed commit. These historical statements
+    # need statement-level re-aims, not the nearby lines a mechanical offset
+    # chooses after callback code is inserted into edited functions. Each target
+    # is checked against the live source on every run. The first five transitions
+    # are from the merge base; the next five are from the pushed predecessor.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:679",
+     "src/gui/SpectrumImager.cpp:724"): "Validate ONCE",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1422",
+     "src/gui/SpectrumImager.cpp:1796"): "dropX",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1738",
+     "src/gui/SpectrumImager.cpp:2282"): "binHz",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:944",
+     "src/gui/SpectrumImager.cpp:1082"): "stored && bandCount() == want",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/gui/SpectrumImager.cpp:1752",
+     "src/gui/SpectrumImager.cpp:2470"): "animOnP",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:708",
+     "src/gui/SpectrumImager.cpp:724"): "Validate ONCE",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1754",
+     "src/gui/SpectrumImager.cpp:1796"): "dropX",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:2179",
+     "src/gui/SpectrumImager.cpp:2282"): "binHz",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1014",
+     "src/gui/SpectrumImager.cpp:1082"): "stored && bandCount() == want",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/gui/SpectrumImager.cpp:2193",
+     "src/gui/SpectrumImager.cpp:2470"): "animOnP",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge

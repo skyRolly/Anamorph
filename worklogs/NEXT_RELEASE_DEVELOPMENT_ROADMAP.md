@@ -2308,3 +2308,11 @@ DSP comparison extension is the next headless engineering increment. NR-010 need
 identified hardware for actual budgets; NR-013 needs a pinned REAPER reproducer. NR-003
 remains Deferred; NR-004/005/007 retain recurrence triggers; NR-018/019 remain owner/
 legal/provisioning work. No merge or 0.10.0 release operation is included.
+
+
+### NR-029 citation-gate follow-up — 2026-11-03 UTC
+
+- At PR #212 head `13e3afb`, the exact-head push workflow passed documentation validation and the 286-case citation self-test, but `Check documentation evidence anchors` failed. The push event compares against the immediately previous push, so its base was `05b207e`; the re-aim table had not declared all citation spellings present at that base.
+- The first candidate table used source line-map positions for several `origin/main` citations. Reviewing the actual source and documents at both bases showed those were not the old citation spellings. Re-aims now pair each real base citation with the cited current statement and verify its identifying token: merge-base `29150f3` uses `679→724`, `1422→1796`, `1738→2282`, `944→1082`, `1752→2470`; push predecessor `13e3afb` uses `708→724`, `1754→1796`, `2179→2282`, `1014→1082`, `2193→2470`.
+- The corrected candidate checker passes its 286 self-tests, the evidence-anchor check against both `13e3afb` (push-event base) and `29150f3` (merge base), documentation validation (186 files), and whitespace checks. These are local candidate results; exact-head workflow validation after the follow-up push is pending.
+- The source/test correction remains in PR #212; this follow-up changes citation targets, explicit checker declarations, and evidence records only. No native acceptance is claimed, and PR #212 remains open and unmerged.
