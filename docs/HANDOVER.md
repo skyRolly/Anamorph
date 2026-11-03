@@ -9,7 +9,7 @@ remain open for corrections and separate human review. Older pending/unapproved
 statements below describe their dated checkpoints. Native acceptance remains
 owner-deferred, and the 0.10.0 tag/draft/11 assets/version stay unchanged.
 
-## Current integration and callback investigation — 2026-11-03 (Asia/Shanghai)
+## Historical integration and callback investigation — 2026-11-03 (Asia/Shanghai)
 
 #208 is merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`; #207 at
 `29150f312ec4a43ec85f35e61028d8338057d927`, actual combined main. Reviewed source

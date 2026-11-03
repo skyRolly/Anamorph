@@ -493,7 +493,8 @@ results; original owner attestations are not retroactively assigned to new code.
 ## INC-024 — Scale callback resumed after synchronous editor destruction
 
 - **Date:** 2026-11-02 (implementation `15a8995a89bd4718bc650b276ad418aa8e2eeca7`).
-  **Status:** implemented in the open NR-027 correction PR; not integrated on main.
+  **Status:** source correction implemented in NR-027; the owner authorized PR #210
+  integration subject to mandatory CI. The execution register records the actual merge.
   The unchanged 0.10.0 draft contains the original scaling methods.
 - **Affected source:** baseline `29150f312ec4a43ec85f35e61028d8338057d927`;
   priority P1. The reproducible lifetime violation is verified; supported-host incidence is unknown.
@@ -513,4 +514,5 @@ results; original owner attestations are not retroactively assigned to new code.
   cases with ASan leak detection enabled; State156 also checks layout, transform
   composition, parameter/latency invariants and reopening. Only the Editor, JUCE OpenGL,
   and probe translation units were instrumented. This is not DAW or native visual acceptance;
-  owner-deferred native requirements remain outstanding. Keep KI-036 listed until integration.
+  owner-deferred native requirements remain outstanding. KI-036 is corrected in this
+  source change; the unchanged draft and actual integration status remain separate.

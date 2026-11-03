@@ -266,6 +266,13 @@
     "integrated_parent": "0d395366237ac0b5ae10f74be644de3835a8f104",
     "strategy": "Additive merge; source guards and both test headers/selectors/suite invocations preserved; no history rewrite.",
     "validation": "Checker/tooling preflight and documentation/citations against main and prior #210 push pass. No built tree existed for that preflight; combined suites and synchronized CI are pending.",
-    "authorization": "Owner explicitly authorized #209/#210 merges; #211/#212 remain review-only; native acceptance deferred."
+    "authorization": "Owner explicitly authorized #209/#210 merges; #211/#212 remain review-only; native acceptance deferred.",
+    "combined_validation": {
+      "compiler": "Pinned Clang 22.1.8; all test-target first-party and JUCE modules instrumented with the unchanged CI ASan/UBSan/vptr and supplementary sanitizer groups; leak/strict runtime options retained.",
+      "focused": "State155 79/79; State156 741/741; Xvfb popup control 32/32.",
+      "initial_full_suites": "DSP 941/941; state 13050 checks, 11 preset filesystem failures. JUCE resolveXDGFolder reads ~/.config/user-dirs.dirs rather than XDG_CONFIG_HOME environment; actual fallback is on the exhausted root overlay. No sanitizer diagnostic.",
+      "isolated_rerun": "In progress at this checkpoint, using Bubblewrap with a fresh /tmp directory bound to the real ~/.config path and /tmp writable; no HOME override or test/detector relaxation.",
+      "ci": "Synchronized source head fc371f0b had no failures at refresh, with sanitizer and macOS/analyzer jobs still pending; updated documentation head requires current CI."
+    }
   }
 }

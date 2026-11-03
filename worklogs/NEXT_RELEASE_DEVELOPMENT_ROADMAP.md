@@ -1977,7 +1977,7 @@ The owner separately authorized integration; native acceptance remains deferred.
 - **Limits:** native host incidence unknown; fixes and new PR merges require review,
   native/manual execution stays owner-deferred, all release gates remain.
 
-### NR-025 — Restore menu/timer callback lifetime (P1 / KI-034)
+### NR-025 — Restore menu/timer callback lifetime (P1 / former KI-034)
 
 Confirmed on combined main`29150f3`: actual menu adoption and timer poll can
 synchronously notify latency, close the editor, then resume through freed fields.
@@ -1987,8 +1987,8 @@ State155 executes79 headless checks plus32 explicit displayed-popup controls.
 Original ASan fails2/2; independently removed menu/timer guards and the raw stale
 callback each reproduce UAF. Always-return mutants fail live continuation.
 Corrected targeted ASan passes all four selections. Full current local suites
-execute945 DSP/12,313 state. PR #209 review/current-head CI and explicit merge approval remain
-separate. Configured Linux pluginval strictness10 passes both modes ×3;
+execute945 DSP/12,313 state. PR #209 is integrated at `0d395366`; current combined validation remains
+separate from its historical independent-branch measurements. Configured Linux pluginval strictness10 passes both modes ×3;
 all first attempts, with historical unrelated signal exits still unattributed. [Investigation, alternatives and scope](GUI_CALLBACK_LIFETIME_REVIEW.md).
 
 ### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
@@ -2007,7 +2007,7 @@ protocol changed. Continue independent source review while that decision is held
 ### NR-027 — Scale and mode callbacks stop after synchronous editor destruction
 
 **Confirmed P1 on `29150f3`; implemented in commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`,
-pending review and integration.** A synchronous parent `childBoundsChanged` callback
+owner-approved for integration after synchronized CI.** A synchronous parent `childBoundsChanged` callback
 can destroy the editor during `applyUiScale`'s `setSize`/`setTransform`. The original
 method then accesses the OpenGL context; the timer can also resume into destroyed
 controls. The same relevant `applyUiScale` and `timerCallback` bodies are present in

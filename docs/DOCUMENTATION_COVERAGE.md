@@ -18834,3 +18834,12 @@ source citations and their token-verified declarations against the actual combin
 source; check both integrated main and the previous #210 push. Local preflight
 passes its checker/tooling controls, but has no built test tree yet; synchronized
 CI and combined DSP/state execution remain required.
+
+Remove the obsolete KI-034 open-table row after #209 integration and move the
+implemented KI-036 scale finding wholly to INC-024. Keep the actual integration
+state in the execution register and distinguish the unchanged release candidate.
+Both full-module sanitizer focused tests and the Xvfb popup control pass; the
+first local full-suite run retains eleven preset filesystem failures because the
+legacy JUCE resolver ignores the XDG environment override. The isolated rerun
+binds an empty writable temporary directory at the real preset configuration
+path without altering production code, assertions, sanitizer options or HOME.
