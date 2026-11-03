@@ -109,28 +109,6 @@
       "result": "ASan heap-use-after-free in beginBandMove when the first pin begin notification destroys the editor"
     }
   ],
-  "validation_status": {
-    "local_sanitizer_state_suite": "incomplete: 12,735 checks, 11 preset-filesystem failures caused by root overlay exhaustion; no sanitizer findings; rerun with space available",
-    "focused_original_and_fixed_controls": "expanded current working controls: generic 456/456; inline frequency 49/49; held in-press Width wheel 17/17; held-wheel guard-removal mutant reproduces ASan UAF; historical original witnesses retained",
-    "exact_head_ci": {
-      "head": "05b207e34ff9920e39abfc22be31ee35c5baaa33",
-      "build_run": "41557243527",
-      "snapshot": "Exact-head source-lint failed at Citation-gate self-test after all preceding steps passed; docs step passed. Other main build jobs, CodeQL and MSVC were still in progress in the refresh snapshot; dependency review passed. A second duplicate build run left many jobs skipped.",
-      "failure": "A previously declared re-aim for docs/DOCUMENTATION_COVERAGE.md still targeted source line 739 after the source moved the live bandCount() read to line 752; the checker reproduced the stale target locally. The same source insertion moved seven documented anchors.",
-      "correction": "Updated the re-aim and citation, re-anchored seven drifted citations against origin/main with check-citations.py --fix; self-test passes 276 cases, base check passes 609 anchors, and check-docs passes 186 files. Exact-head CI must be refreshed after the documentation correction is pushed."
-    },
-    "native_host_visual_accessibility": "deferred by owner; not run or waived",
-    "release_objects": "0.10.0 tag, draft, assets and version unchanged",
-    "DSP_acceptance": "941/941; allocation guard raw-malloc half unavailable in this ASan build by design",
-    "citation_gate_followup": {
-      "previous_head": "13e3afb2518d4041a1f1ee2500d02c405eb89e04",
-      "build_run": "41557678835",
-      "snapshot": "Exact-head docs and citation-gate self-test passed, but evidence-anchor check failed against the push predecessor because base-specific re-aim declarations were incomplete.",
-      "correction": "Re-derived the documented citation spellings from both merge base 29150f312ec4a43ec85f35e61028d8338057d927 and push predecessor 13e3afb2518d4041a1f1ee2500d02c405eb89e04. Corrected targets are token-verified in DELIBERATE_REAIMS.",
-      "local_validation": "Candidate checker: 286 self-tests; evidence-anchor checks pass against both bases; documentation check 186 files; whitespace clean.",
-      "next": "Follow-up commit and exact-head CI refresh pending; keep the prior CI failure as historical evidence."
-    }
-  },
   "review_correction_2026_11_03": {
     "review_head": "2f1a8e7c0dc72db70e643d2451f38323e9ebb6cf",
     "integrated_main": "0cd95120162b7913a5656f828f27eb96034c1b34",
@@ -145,7 +123,39 @@
       "Held Width wheel enters the production takeWheelNotch helper, not parent/OS/DAW wheel routing; begin/end are not separately selected.",
       "Other editor/host orders and all native visual/accessibility/performance acceptance remain unverified or owner-deferred."
     ],
-    "local_validation": "In progress; append actual results before push.",
+    "local_validation": {
+      "toolchain": "Pinned Clang22.1.8 / C++23; verified JUCE3fb5cbc0; RelWithDebInfo -O1 -gline-tables-only; all test modules instrumented.",
+      "sanitizers": "address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability; unchanged ignorelist; no new suppressions.",
+      "runtime": "ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1:strict_init_order=1:strict_string_checks=1; UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1",
+      "generic_callback_sweep": "456 checks, 0 failures; actual live/destructive controls.",
+      "inline_frequency": "49 checks, 0 failures.",
+      "full_suites": "941 DSP / 13559 state, 0 failures.",
+      "filesystem": "Same fresh checkout and private writable preset-directory mount; no HOME override, production/test expectation or sanitizer relaxation.",
+      "logs": [
+        {
+          "name": "pr212-spectrum-imager-fixed.log",
+          "sha256": "b9befd18520589647dbce8db4f36428fcd192c2b12e4064b204af8cdc667817f"
+        },
+        {
+          "name": "pr212-spectrum-frequency-editor-fixed.log",
+          "sha256": "560e4e39d26bef68379dd80dfb5767cade6645f96856c8a570d99fb396c6f36d"
+        },
+        {
+          "name": "pr212-full-suites.log",
+          "sha256": "9b7960d7060f4e661743cbf147bbc6a4fce2e14be5b1df14bd66187351517266"
+        },
+        {
+          "name": "pr212-final-preflight.log",
+          "sha256": "5299f25979405f623f1491a31f645614298ca1073ed95bf25b8caead0946aaff"
+        },
+        {
+          "name": "spectrum-held-wheel-restored.log",
+          "sha256": "dc0cf05d14c4b37da6fe7b250d5fb2254ae7476c17922804de99ee0f7c863d86"
+        }
+      ],
+      "final_preflight": "Completed all checkers/tooling, 18 Python controls, source/realtime/portability/state coverage, docs/table/link and citation checks, plus actual 941 DSP / 13559 state executions after restoring source. Source hashes match the corrected candidate. Shipping artifact ABI/pluginval remain separate exact-head CI gates.",
+      "restored_held_width_wheel": "17 checks, 0 failures after guard restoration."
+    },
     "approval": "Open/unmerged; no auto-merge or merge authorization.",
     "final_head_evidence_comment": "https://github.com/skyRolly/Anamorph/pull/212#issuecomment-6604302597",
     "post_merge_main_ci": {
@@ -171,7 +181,8 @@
           "job": 125913798622,
           "sha256": "d274c39262a5d8693018c7db2ececde85647b27164c3f884e280220f4862bd29"
         }
-      ]
+      ],
+      "memcheck_archive_independently_verified": true
     },
     "release_boundary_verification": {
       "tag_object": "1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0",
@@ -187,6 +198,128 @@
       "citations": "298 self-tests; 609 evidence anchors against both current main and previous remote head2f1a8e7c. Main and prior-PR transition declarations are preserved and token-verified.",
       "docs": "187 files clean; links and Markdown tables checked by existing checker.",
       "preflight": "Checker/tooling half passed. No build tree in preparation worktree, so its suite and shipping-ABI executions were explicitly not run there. Actual C++ evidence and final-head CI are separate."
+    },
+    "source_preservation": {
+      "src/gui/SpectrumImager.cpp": {
+        "reviewed_remote_sha256": "d13de366244f2bfd57fcbe09f25158e8899c0053b80f083ff30e5abc2df44808",
+        "synchronized_sha256": "d13de366244f2bfd57fcbe09f25158e8899c0053b80f083ff30e5abc2df44808"
+      },
+      "src/gui/SpectrumImager.h": {
+        "reviewed_remote_sha256": "7847854f2e95d08af8e2b3d7c87fb55eeb065530bb5f1eb2c2a56b7521eb735f",
+        "synchronized_sha256": "7847854f2e95d08af8e2b3d7c87fb55eeb065530bb5f1eb2c2a56b7521eb735f"
+      },
+      "tests/spectrum_imager_lifetime_tests.h": {
+        "reviewed_remote_sha256": "fb8040c2aa6bc6d88ae0563a479fc9b15548740b61655ad359695fc216d81038",
+        "synchronized_sha256": "fb8040c2aa6bc6d88ae0563a479fc9b15548740b61655ad359695fc216d81038"
+      }
+    },
+    "evidence_storage": "/workspace/scratch/anamorph-review-20261103-evidence/",
+    "refreshed_original_and_mutant_controls": {
+      "baseline": "29150f312ec4a43ec85f35e61028d8338057d927",
+      "fixed_source_sha256": {
+        "src/PluginEditor.cpp": "312fbb28b427efc420e4b4cf1a83e2d68cfc4ffd8db5254d432bf1244f900bb4",
+        "src/PluginEditor.h": "a2e6af1cddf757ab7ab0082d812f8aa4a273ffecc23804fb35371ec39e928c7b",
+        "src/gui/SpectrumImager.cpp": "d13de366244f2bfd57fcbe09f25158e8899c0053b80f083ff30e5abc2df44808",
+        "src/gui/SpectrumImager.h": "7847854f2e95d08af8e2b3d7c87fb55eeb065530bb5f1eb2c2a56b7521eb735f"
+      },
+      "cases": [
+        {
+          "variant": "original",
+          "selector": "reset-begin",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-original-reset-begin.log",
+          "sha256": "a4345c2b812a000b935e1c1ab05220875206ab66f64c272cc2279372f9bc1dc4"
+        },
+        {
+          "variant": "original",
+          "selector": "split-reset-end",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-original-split-reset-end.log",
+          "sha256": "ac97677f2fd9c8ff80d3eec6e3a1564a6682e5a7332ca1c30622ec821a29fd8e"
+        },
+        {
+          "variant": "original",
+          "selector": "freq-commit-value",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-original-freq-commit-value.log",
+          "sha256": "5d7563175e1e91c94a53e6593422e1a66e1487c5ab2a12da10c92a19b7a8b35e"
+        },
+        {
+          "variant": "original",
+          "selector": "remove-solo-value",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-original-remove-solo-value.log",
+          "sha256": "a0bcac991d5607ae91534f3927b83c0a508127adb842bf4b8c071358ae9bb933"
+        },
+        {
+          "variant": "original",
+          "selector": "wheel-split-value",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-original-wheel-split-value.log",
+          "sha256": "5568e23b55663c3d2bc25975f5bc3decfce0b99832ec1830bd2eae6f29df1807"
+        },
+        {
+          "variant": "original",
+          "selector": "held-wheel-width-value",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-original-held-wheel-width-value.log",
+          "sha256": "1f7965c34379554e257d7c155ea2223736ac131dd78ecb56f1a19f7990ca540d"
+        },
+        {
+          "variant": "held-wheel-guard-removal",
+          "selector": "held-wheel-width-value",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/spectrum-held-wheel-guard-removal-held-wheel-width-value.log",
+          "sha256": "2b0e2e2287566e199511bf987eee8e6e84a3c9b0366a37b6d5ea09f95b7cd36d"
+        }
+      ],
+      "detector_options": "All linked test modules use the full strict ASan/UBSan/vptr and supplementary CI groups. No options weakened.",
+      "original_source_sha256": {
+        "src/PluginEditor.cpp": "45c0d80f82d5a82c4b1988359d591274380a3a3ffe105f483b30ae16b27ec455",
+        "src/PluginEditor.h": "8a2824ce1f5e2434f6ad3da69b9fe93f7fc4b49dc0fa15a5e623f647b5f93e2a",
+        "src/gui/SpectrumImager.cpp": "a60c80e78313024c39984c73508db37a89512a34a397c263564d7f937bd4a155",
+        "src/gui/SpectrumImager.h": "bd7bf923e8019749d2826e890c4f5c1a2885e29a1581550545691deb5cdf7705"
+      },
+      "held_wheel_mutant_recipe": "Remove only the lifetime check immediately after storeOwned(widthP[dragBand], want, gestureW[dragBand]) in takeWheelNotch; retain all other guards and assertions.",
+      "held_wheel_mutant_source_sha256": "6a3ecb0f471dc8378e4c00799e32b594741c4c3cd4f4fb872ded01949bc799e3",
+      "interpretation": "All six original selected routes and the held-Width post-store guard-removal mutant trap on invalid-vptr under strict full groups, before a later ASan access. Historical ASan-specific witnesses are retained without weakening vptr or other settings."
+    },
+    "checker_integrity": "The citation checker AST is identical to integrated main except DELIBERATE_REAIMS target records. No parser, assertion, negative control or detection rule changed.",
+    "continuation_inventory": "State153/155/156 CLI and default-suite wiring verified present once on main and synchronized driver. No lost-registration defect found. Inline focus-loss/Escape and broader native routing remain explicitly unprobed, not inferred from Return coverage.",
+    "validation_state_at_commit": "All local validation and seven original/mutant controls complete. Exact final pushed-head CI is pending at this checkpoint and tracked in the linked evidence comment. PR remains open/unmerged."
+  },
+  "historical_validation_status": {
+    "local_sanitizer_state_suite": "incomplete: 12,735 checks, 11 preset-filesystem failures caused by root overlay exhaustion; no sanitizer findings; rerun with space available",
+    "focused_original_and_fixed_controls": "expanded current working controls: generic 456/456; inline frequency 49/49; held in-press Width wheel 17/17; held-wheel guard-removal mutant reproduces ASan UAF; historical original witnesses retained",
+    "exact_head_ci": {
+      "head": "05b207e34ff9920e39abfc22be31ee35c5baaa33",
+      "build_run": "41557243527",
+      "snapshot": "Exact-head source-lint failed at Citation-gate self-test after all preceding steps passed; docs step passed. Other main build jobs, CodeQL and MSVC were still in progress in the refresh snapshot; dependency review passed. A second duplicate build run left many jobs skipped.",
+      "failure": "A previously declared re-aim for docs/DOCUMENTATION_COVERAGE.md still targeted source line 739 after the source moved the live bandCount() read to line 752; the checker reproduced the stale target locally. The same source insertion moved seven documented anchors.",
+      "correction": "Updated the re-aim and citation, re-anchored seven drifted citations against origin/main with check-citations.py --fix; self-test passes 276 cases, base check passes 609 anchors, and check-docs passes 186 files. Exact-head CI must be refreshed after the documentation correction is pushed."
+    },
+    "native_host_visual_accessibility": "deferred by owner; not run or waived",
+    "release_objects": "0.10.0 tag, draft, assets and version unchanged",
+    "DSP_acceptance": "941/941; allocation guard raw-malloc half unavailable in this ASan build by design",
+    "citation_gate_followup": {
+      "previous_head": "13e3afb2518d4041a1f1ee2500d02c405eb89e04",
+      "build_run": "41557678835",
+      "snapshot": "Exact-head docs and citation-gate self-test passed, but evidence-anchor check failed against the push predecessor because base-specific re-aim declarations were incomplete.",
+      "correction": "Re-derived the documented citation spellings from both merge base 29150f312ec4a43ec85f35e61028d8338057d927 and push predecessor 13e3afb2518d4041a1f1ee2500d02c405eb89e04. Corrected targets are token-verified in DELIBERATE_REAIMS.",
+      "local_validation": "Candidate checker: 286 self-tests; evidence-anchor checks pass against both bases; documentation check 186 files; whitespace clean.",
+      "next": "Follow-up commit and exact-head CI refresh pending; keep the prior CI failure as historical evidence."
     }
+  },
+  "validation_status": {
+    "current_synchronized_local": "Complete: focused456/49/restored-held17; full strict sanitizer/preflight941 DSP/13559 state; six original routes and held-wheel mutant fail on invalid-vptr, corrected source passes. Exact final-head CI is separate.",
+    "native_host_visual_accessibility": "Owner-deferred; not run or waived.",
+    "release_objects": "Tag/draft/11 assets/version unchanged."
   }
 }

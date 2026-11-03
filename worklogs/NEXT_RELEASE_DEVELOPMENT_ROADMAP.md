@@ -29,6 +29,23 @@ both integrated editor guards. The original SpectrumImager production correction
 and test bytes remain unchanged apart from current source-citation anchors.
 No dependency on unmerged #211 is needed; #209 supplies its overlapping guards.
 
+Synchronized local full-module strict sanitizers run941 DSP/13,559 state checks;
+generic callback sweep456 and dedicated inline frequency49. The source and test
+bytes equal authoritative remote `2f1a8e7c`; only integrated editor guards and
+citation anchors are reconciled. Original/control refresh and final-head CI are
+tracked in the evidence comment before human review.
+
+Six refreshed original routes (Width reset begin, crossover reset end, inline
+frequency value, solo removal value, split wheel value and held Width wheel value)
+and the held-wheel guard-removal mutant all fail on invalid-vptr under strict
+full-module sanitizers. The restored held-wheel control passes17 checks; final
+preflight runs941 DSP/13,559 state. Historical ASan UAF and gesture/history
+witnesses remain retained; vptr was not disabled to obtain a later ASan report.
+Current-head CI is separately recorded in the linked comment. A bounded driver
+audit confirms State153/155/156 are wired once in their CLI and ordinary suites;
+no missing-registration change is justified. Preserve native and unprobed callback
+limits rather than infer global safety from this inventory.
+
 Assign **KI-037** to NR-029 after confirming it unused. The old provisional
 KI-035 collided with the independently confirmed, still-unfixed NR-026 JUCE
 Slider wheel-scope defect. Preserve KI-035 for NR-026; do not conflate the two.
