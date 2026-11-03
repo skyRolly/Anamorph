@@ -443,8 +443,10 @@
     "file": "src/gui/LookAndFeel.h",
     "line": 135,
     "citation": "juce_PopupMenu.cpp:1440-1443",
-    "target": "juce_PopupMenu.cpp:1436-1439",
-    "old_text": null
+    "target": "juce_PopupMenu.cpp:1442-1446",
+    "old_text": null,
+    "mechanical_proposal_target": "juce_PopupMenu.cpp:1436-1439",
+    "method": "manual semantic re-aim: the previous citation was mis-aimed before the upgrade; current findLookAndFeel is verified in the exact 9.0.5 source"
   },
   {
     "product": "Anamorph",

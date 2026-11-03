@@ -17,7 +17,7 @@
   "environment_recovery": "Isolated debian:13-slim Docker with development prerequisites; outer missing-header observations retained as history",
   "source_changes": {
     "comment_only": true,
-    "changed_comment_diff_lines": 108,
+    "changed_comment_diff_lines": 110,
     "non_comment_diff_lines": 0
   },
   "source_policy_checks": [
@@ -884,5 +884,14 @@
     "worklogs/juce905-review/target-ci-retry.json",
     "worklogs/juce905-review/target-ci.json",
     "worklogs/juce905-review/transitions-comparison.json"
-  ]
+  ],
+  "citation_evidence_clarification": {
+    "production_executable_tokens_changed": false,
+    "production_line_count_changed": false,
+    "source": "PopupMenu constructor captures lf before parenting and uses that bound reference later",
+    "map": "Correct implemented findLookAndFeel target 1442-1446; preserve original mechanical 1436-1439 separately",
+    "previous_full_ci_head": "fdc9b8cb08ba3bef9dd45a207a0bca91e786369d",
+    "previous_full_ci_conclusion": "success",
+    "new_final_head_ci": "pending; consult PR"
+  }
 }

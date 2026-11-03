@@ -2266,8 +2266,8 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // editor's Component base -- i.e. before the menu is asynchronously cancelled, so
     // it would fire on every window-closed-with-the-menu-open in a debug build.
     //
-    // THREE calls still resolve through the DEFAULT look-and-feel, all before the
-    // parenting. setOpaque (:463) is inert -- same answer either way, colours::bgPanel
+    // THREE calls still use the DEFAULT look-and-feel reference captured before
+    // parenting. These run later. setOpaque (:463) is inert: colours::bgPanel
     // is opaque. preparePopupMenuWindow (:511) is NOT inert any more: since 0.9.3
     // AnamorphLookAndFeel overrides it as the pop-up-tracking hook, and the DEFAULT
     // look-and-feel's implementation is the empty LookAndFeel_V2 one -- so our override

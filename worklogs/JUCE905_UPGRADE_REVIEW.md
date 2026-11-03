@@ -359,3 +359,15 @@ write under 9.0.4, read twice there, then read the same bytes under 9.0.5. Compa
 outputs and original/resaved binary. Never combine one pin's objects with another pin's headers.
 The retained helper generalizes the executed Ninja command-replacement procedure to explicit paths.
 All substantive remaining items in §7 remain **Pending Human Acceptance**. Both PRs stay unmerged.
+
+
+### Final citation-evidence audit
+
+The LookAndFeel source already cited the correct 9.0.5 `findLookAndFeel` block, but its map
+row still held the original mechanical offset proposal. The map now records the implemented
+1442–1446 target, retaining 1436–1439 explicitly as `mechanical_proposal_target`; the old
+citation was mis-aimed before this upgrade. A two-line comment clarification distinguishes
+`lf` captured at constructor line 383 before parenting from later uses at 463/511. The reference
+continues to select the default look-and-feel even though those uses occur after parenting.
+No executable token or line count changes. The 32+5 DSP and session comparisons remain evidence
+for identical production code; the new final-head CI is tracked separately on the PR.
