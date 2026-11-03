@@ -727,5 +727,6 @@
     "target TSan",
     "target fuzz"
   ],
-  "manual_acceptance": "Pending Human Acceptance"
+  "manual_acceptance": "Pending Human Acceptance",
+  "record_scope": "Original proposal-stage snapshot before owner ADR approval; current implementation status is in implementation.json"
 }

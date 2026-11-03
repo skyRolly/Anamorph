@@ -18,7 +18,7 @@
 // ---- Which component should provide the tooltip text this tick -------------------------------
 //
 // THE DEFECT. JUCE's tooltip tick reads TWO DIFFERENT SOURCES OF TRUTH and mixes them
-// (juce_TooltipWindow.cpp:209, :221, :223):
+// (juce_TooltipWindow.cpp:210, :222, :224):
 //
 //     newComp  = Desktop::getMainMouseSource().getComponentUnderMouse();   // the TEXT comes from here
 //     mousePos = Desktop::getMainMouseSource().getScreenPosition();        // the BOX POSITION from here
@@ -26,7 +26,7 @@
 // The two are on DIFFERENT CLOCKS. `getScreenPosition()` is LIVE: it asks the OS on every call
 // (getRawScreenPosition -> MouseInputSource::getCurrentRawMousePosition,
 // juce_MouseInputSourceImpl.h:96-101), and Desktop::getMousePosition() is exactly that same value
-// (juce_Desktop.cpp:167-173). `getComponentUnderMouse()` is a CACHE
+// (juce_Desktop.cpp:240-246). `getComponentUnderMouse()` is a CACHE
 // (juce_MouseInputSourceImpl.h:54-56), and the only thing that writes it is
 //
 //     setComponentUnderMouse (findComponentAt (lastPointerState.position, lastPeer))
@@ -36,7 +36,7 @@
 // AND THAT WRITE IS NOT ONLY DRIVEN BY OS EVENTS, which is the part that ties the defect to
 // REPOSITIONING and was got wrong at first. `TooltipWindow::updatePosition` is `setBounds()` then
 // `setVisible (true)` (juce_TooltipWindow.cpp:92-96), and BOTH of those call
-// `Component::sendFakeMouseMove()` (juce_Component.cpp:1105 and :559) -> `triggerFakeMove()` ->
+// `Component::sendFakeMouseMove()` (juce_Component.cpp:1175 and :559) -> `triggerFakeMove()` ->
 // `handleAsyncUpdate()` -> `setPointerState (lastPointerState, ..., forceUpdate = true)`
 // (juce_MouseInputSourceImpl.h:453-462, :292-297). So EVERY show, move or hide of the box
 // re-derives "what is under the mouse" -- from the last event's position, never from the live one.
@@ -441,7 +441,7 @@ private:
     // JUCE re-delivers that click on purpose: Component::internalMouseDown sees the modal menu,
     // calls internalModalInputAttempt() -- which dismisses it synchronously -- and then, because
     // the modal loop has now exited, hands the SAME mouse-down to the component underneath
-    // (juce_Component.cpp:2507-2544 in the pinned tree; the comment there says so outright).
+    // (juce_Component.cpp:2577-2616 in the pinned tree; the comment there says so outright).
     // Underneath is whatever the cursor happens to be over, and several of those act on the press
     // itself: ABControl::mouseDown toggles A/B, SpectrumImager::mouseDown can ADD a band, a
     // Backdrop closes its panel and discards what was typed into it.
@@ -456,13 +456,13 @@ private:
     // even in the same hierarchy. The preset menu IS an editor child -- but PopupMenu::MenuWindow
     // sets setAlwaysOnTop (true) in its constructor (juce_PopupMenu.cpp:380), and Component::toFront
     // on a NON-always-on-top component walks its insert index back past every always-on-top sibling
-    // (juce_Component.cpp:914-922). The shield does not set that flag, so it cannot be raised in
+    // (juce_Component.cpp:984-992). The shield does not set that flag, so it cannot be raised in
     // front of a menu even if it is raised while one is already open. Nothing else in src/ sets
     // alwaysOnTop, so a menu window is the only sibling that can outrank it. (showPresetMenu also
     // raises the shield BEFORE showMenuAsync, so the append order agrees with the flag order.)
     //
     // Keyboard focus is deliberately left alone: toFront (false) skips grabKeyboardFocus
-    // (juce_Component.cpp:928-934) and setMouseClickGrabsKeyboardFocus (false) covers the click, so
+    // (juce_Component.cpp:998-1004) and setMouseClickGrabsKeyboardFocus (false) covers the click, so
     // raising the shield cannot pull focus out of the Save Preset field mid-edit.
     // It is ALWAYS visible and paints nothing; only its mouse interception is toggled. (dimOverlay is
     // the precedent for the transparent-to-the-mouse half only -- it is a full-editor overlay with
@@ -473,12 +473,12 @@ private:
     // Every fake mouse move in play here is ASYNCHRONOUS: Component::sendFakeMouseMove ->
     // MouseInputSource::triggerFakeMove -> triggerAsyncUpdate (juce_MouseInputSourceImpl.h:449-451).
     // It is dispatched a message-loop pass later, so it lands after showWithOptionalCallback has run
-    // setVisible(true), enterModalState AND toFront on the menu (juce_PopupMenu.cpp:2308-2312) and
+    // setVisible(true), enterModalState AND toFront on the menu (juce_PopupMenu.cpp:2304-2308) and
     // returned -- our own toFront, and the one JUCE fires from the menu's setVisible, are the same
     // deferred move. Two independent properties make that dispatch a no-op for hover:
     //   1. The menu is modal by then, and Component::internalMouseEnter/internalMouseExit BOTH
     //      early-return for a target that isCurrentlyBlockedByAnotherModalComponent()
-    //      (juce_Component.cpp:2414-2420, :2452-2458). MenuWindow does not override
+    //      (juce_Component.cpp:2484-2490, :2522-2528). MenuWindow does not override
     //      canModalEventBeSentToComponent, so every editor child -- the control under the cursor and
     //      this shield alike -- is blocked (juce_ComponentHelpers.h:213-219). No mouseExit/mouseEnter
     //      is delivered, so the only two event-driven hover consumers in src/ (SpectrumImager's hover
@@ -488,7 +488,7 @@ private:
     //      1678-1682) and the combo "hov" flag does the same (:1392-1395). That is the 0.6.1
     //      stuck-hover fix, and it makes hovA immune to componentUnderMouse churn by construction.
     //      It also makes it blind to OCCLUSION, which is the other half and was missing until 0.9.4:
-    //      getMouseXYRelative is a pure coordinate transform (juce_Component.cpp:3233-3236), so a
+    //      getMouseXYRelative is a pure coordinate transform (juce_Component.cpp:3285-3288), so a
     //      control keeps containing the cursor while a drop-down is stacked over it and lit up with
     //      the pointer provably on the menu. cursorIsOverOpenPopup() supplies the missing term, and
     //      cursorOverlay()/occludes() the other one: a Backdrop covers the editor EXCEPT its own
@@ -505,9 +505,9 @@ private:
     //      of approaching it for ever -- without that second half the first would never let the
     //      gate seal again. Measured: idle stays at 0 passes/s with the cursor outside.
     // Toggling interception rather than visibility is therefore about cost and side effects, not
-    // hover: setInterceptsMouseClicks is pure flag assignment (juce_Component.cpp:1336-1341), where
+    // hover: setInterceptsMouseClicks is pure flag assignment (juce_Component.cpp:1406-1411), where
     // setVisible would add a full-editor repaint() on every menu open plus a repaintParent() and a
-    // cached-image release on every close (:555-563), for no behavioural gain.
+    // cached-image release on every close (:565-573), for no behavioural gain.
     struct PopupShield : public juce::Component
     {
         PopupShield()
@@ -517,11 +517,11 @@ private:
             setWantsKeyboardFocus (false);
         }
         // Deliberately empty: consuming the event IS the behaviour. The first four only state that
-        // intent -- juce::Component's versions are already `{}` (juce_Component.cpp:2310-2314).
+        // intent -- juce::Component's versions are already `{}` (juce_Component.cpp:2380-2384).
         //
         // The last two are the ones that actually do something. Component::mouseWheelMove and
         // ::mouseMagnify are NOT empty in the base class: each forwards the event to the nearest
-        // enabled ancestor (:2316-2328), which for this shield is the editor itself. Without these,
+        // enabled ancestor (:2386-2398), which for this shield is the editor itself. Without these,
         // a scroll or a pinch over a raised shield would arrive at
         // AnamorphAudioProcessorEditor::mouseWheelMove -- harmless today, since the Persistence-reveal
         // branch there keys on `e.eventComponent == &scopePersistK`, but it makes "the shield
@@ -615,7 +615,7 @@ private:
     // only push millisecondsBeforeTipAppears to a huge value, which does not touch a tip already on
     // screen and -- worse -- is bypassed entirely while one is: TooltipWindow::timerCallback takes a
     // fast path when `isVisible() || now < lastHideTime + 500` and calls showTip() on any tip change
-    // without consulting the delay (juce_TooltipWindow.cpp:242-247). That is exactly the reported
+    // without consulting the delay (juce_TooltipWindow.cpp:243-248). That is exactly the reported
     // "disable it and the tip stays, then moving quickly to another control shows a new one".
     //
     // getTipFor is virtual, so returning nothing while disabled makes JUCE's own state machine do
@@ -625,7 +625,7 @@ private:
     {
         using juce::TooltipWindow::TooltipWindow;
         // NOT named `isEnabled`: juce::Component::isEnabled() is a non-virtual member function
-        // (juce_Component.h:1592) that a data member of that name would HIDE in this scope -- and
+        // (juce_Component.h:1611) that a data member of that name would HIDE in this scope -- and
         // hide silently, since `tooltips.isEnabled()` would still compile and still return a bool,
         // just the wrong one. Empty => behave exactly like juce::TooltipWindow.
         std::function<bool()> tooltipsEnabled;
@@ -1049,7 +1049,7 @@ private:
             // `sliderRegionSize` is private and is **0 for every rotary slider**, which makes JUCE's
             // own division `+inf` and the test false. Round 30 established why, because the
             // initialiser says 1: `Pimpl::resized` assigns the member for the horizontal and
-            // vertical styles only (juce_Slider.cpp:1266-1274, :1324), and `juce::Slider`'s own
+            // vertical styles only (juce_Slider.cpp:1267-1275, :1325), and `juce::Slider`'s own
             // constructor runs a layout while the style is still the default `LinearHorizontal` and
             // the bounds are 0x0 -- which writes 0. `setupRotary`'s later
             // `setSliderStyle (RotaryVerticalDrag)` re-runs the layout, takes neither branch, and

@@ -12,8 +12,8 @@ status or legal determination is asserted here.** Nothing in this document is le
 
 | Name | Where it appears | Status |
 |---|---|---|
-| **Anamorph** | product name — `CMakeLists.txt:14, 427`, the plug-in's About screen, every artifact and installer | *`[OWNER/LEGAL DECISION]`* — whether the name is registered, pending or unregistered in any jurisdiction is **not recorded anywhere in this repository**. Use no ™ or ® symbol until that is settled. |
-| **RollyTech** | company name — `CMakeLists.txt:422` (`COMPANY_NAME`), the `NOTICE` copyright line, the preset directory path, the bundle identifier `tech.rolly.anamorph`, and since 0.9.1 the four-character manufacturer code **`RTec`** (`CMakeLists.txt:424`, ADR-0023) that every RollyTech plug-in shares | *`[OWNER/LEGAL DECISION]`* — same: no registration status is recorded. |
+| **Anamorph** | product name — `CMakeLists.txt:14, 428`, the plug-in's About screen, every artifact and installer | *`[OWNER/LEGAL DECISION]`* — whether the name is registered, pending or unregistered in any jurisdiction is **not recorded anywhere in this repository**. Use no ™ or ® symbol until that is settled. |
+| **RollyTech** | company name — `CMakeLists.txt:423` (`COMPANY_NAME`), the `NOTICE` copyright line, the preset directory path, the bundle identifier `tech.rolly.anamorph`, and since 0.9.1 the four-character manufacturer code **`RTec`** (`CMakeLists.txt:425`, ADR-0023) that every RollyTech plug-in shares | *`[OWNER/LEGAL DECISION]`* — same: no registration status is recorded. |
 | **`www.rolly.tech`** | About-screen link — `src/PluginEditor.h:1366` | Domain, not a mark. |
 
 Until the owner records a registration status, documentation must describe these as *names*, and
@@ -83,7 +83,7 @@ reproduced in [`NOTICE`](NOTICE) and inventoried in
 
 | # | Item | Why it is here | Tracked as |
 |---|---|---|---|
-| 1 | **Steinberg VST 3** — the SDK *code* bundled with JUCE 9.0.4 is MIT, but the **VST name and logo**, and the terms for developing and distributing VST 3 plug-ins, are governed separately (the SDK ships `VST3_Usage_Guidelines.pdf`; its README refers to a *Steinberg VST 3 Plug-In SDK Licensing Agreement*). **Commercial VST3 distribution requires reviewing Steinberg's requirements separately.** No determination is made in this repository. | blocks commercial sale | `RH-R10` / `RH-F2` |
+| 1 | **Steinberg VST 3** — the SDK *code* bundled with JUCE 9.0.5 is MIT, but the **VST name and logo**, and the terms for developing and distributing VST 3 plug-ins, are governed separately (the SDK ships `VST3_Usage_Guidelines.pdf`; its README refers to a *Steinberg VST 3 Plug-In SDK Licensing Agreement*). **Commercial VST3 distribution requires reviewing Steinberg's requirements separately.** No determination is made in this repository. | blocks commercial sale | `RH-R10` / `RH-F2` |
 | 2 | **Anamorph / RollyTech registration status** — unknown; see §1. | needed before any ™/® use | `RH-F1` |
 | 3 | **Brand-usage policy for third parties** — does not exist; not needed for internal testing. | post-release | — |
 

@@ -965,7 +965,7 @@ jobs:
       # premise that "the DSP suite holds no processors". That is true only of
       # `AnamorphAudioProcessor` -- which `AnamorphTests` genuinely cannot construct,
       # since it compiles `tests/dsp_tests.cpp` alone and never the plugin sources
-      # (CMakeLists.txt:544-546) -- and it is the wrong test. What overflows a frame is
+      # (CMakeLists.txt:545-547) -- and it is the wrong test. What overflows a frame is
       # a large object, not that particular one, and `dsp_tests.cpp` declares
       # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
       # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact

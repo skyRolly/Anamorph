@@ -6655,7 +6655,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:424-425`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:425-426`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a
@@ -7368,3 +7368,13 @@ weakening controls. Commands, source digests, results and limits are in the
 These are optional standalone research checks, not replacements for Test 61,
 production-path regressions, same-invocation sanitizer canaries, native CI or
 the human Architecture Review gate. No production threading fix is claimed.
+
+
+## JUCE 9.0.5 source identity check
+
+`tests/juce_cache_tests.py` also exercises the actual FetchContent boundary with genuine local
+git fixtures. A mismatched immutable checkout must fail in `cmake/VerifyJuceSource.cmake`; a
+matching custom SHA must be reported before the deliberately minimal fixture reaches the later
+missing-JUCE-function error. Bypassing the real check fails the mismatch test. No framework
+download or product build is required for these controls. Normal CI configuration records actual
+source HEAD; explicit product local-path overrides retain intentional old/new comparisons.

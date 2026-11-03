@@ -1,5 +1,10 @@
 # COMPATIBILITY_MATRIX.md
 
+JUCE 9.0.5 implementation is approved under ADR-0071 (owner: “approve ADR / dont merge PR”,
+2026-11-04). The upgrade branch selects `d60b7a78030661574a615b586d9325ba7a7fa7dd`;
+[validation and pending human acceptance](../../worklogs/JUCE905_UPGRADE_REVIEW.md) are source-bound.
+Existing release/host attestations below retain their original dependency/artifact scope.
+
 Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verified**
 (README/CI claim, not fully provable here) · **Unverified** (could work, no evidence in repo) ·
 **Not Supported** (deliberate, evidence-backed exclusion).
@@ -17,9 +22,9 @@ and `procedures/LEVEL5_AUDITION.md`.
 
 | Format | Status | Evidence |
 |---|---|---|
-| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:413; build.yml all jobs |
-| **AU (Audio Unit)** | **Verified (build + conformance)** / **Unverified (host)** | Built on macOS as `.component` (universal) and, since 0.9.4, put through the same blocking pluginval gate as the VST3 (both modes ×3, against the packaged bundle, after an install into `~/Library/Audio/Plug-Ins/Components/` + `AudioComponentRegistrar` restart) — and, since the `macos-intel` job, through that same gate a second time against a thin `x86_64` build on **native Intel** hardware. Still unverified against a *real* host: pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, so Logic/GarageBand loading is not tested in repo, and `auval` is not run (`docs/procedures/CI_CD.md` §"Known coverage limits"). CMakeLists.txt:414-416; .github/workflows/build.yml:2258 (the `macos` job header) |
-| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:417-419 |
+| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:414; build.yml all jobs |
+| **AU (Audio Unit)** | **Verified (build + conformance)** / **Unverified (host)** | Built on macOS as `.component` (universal) and, since 0.9.4, put through the same blocking pluginval gate as the VST3 (both modes ×3, against the packaged bundle, after an install into `~/Library/Audio/Plug-Ins/Components/` + `AudioComponentRegistrar` restart) — and, since the `macos-intel` job, through that same gate a second time against a thin `x86_64` build on **native Intel** hardware. Still unverified against a *real* host: pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, so Logic/GarageBand loading is not tested in repo, and `auval` is not run (`docs/procedures/CI_CD.md` §"Known coverage limits"). CMakeLists.txt:415-417; .github/workflows/build.yml:2258 (the `macos` job header) |
+| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:418-420 |
 | **AAX** | **Not Supported** | Out of scope: needs an Avid account + PACE/iLok signing. docs/policies/COMPATIBILITY_POLICY.md. (DSP core is wrapper-agnostic, so a future AAX wrapper is low-cost, but it is explicitly not built today.) |
 
 ## Platforms / architectures
@@ -102,7 +107,7 @@ without test evidence.`
 
 | Dependency | Pin | Status | Evidence |
 |---|---|---|---|
-| JUCE | **9.0.4** — immutable commit `3fb5cbc…` (FetchContent, `GIT_SHALLOW`; ADR-0022, ADR-0026, ADR-0054, ADR-0060, ADR-0061) | **Verified** | CMakeLists.txt:70-72, 81-89 (`9.0.4`), CMakeLists.txt:71 (`3fb5cbc`) |
+| JUCE | **9.0.5** — immutable commit `d60b7a7…` (FetchContent, `GIT_SHALLOW`; ADR-0022, ADR-0026, ADR-0054, ADR-0060, ADR-0071) | **Verified** | CMakeLists.txt:70-72, 81-89 (`9.0.5`), CMakeLists.txt:71 (`d60b7a7`) |
 | C++ standard | C++23 (`CMAKE_CXX_STANDARD 23`; ADR-0027) | **Verified** | CMakeLists.txt:16-18 |
 | pluginval | Exact ordinary release and content hashes shared by both wrappers | **Verified** | `scripts/pluginval-release.json`; `scripts/acquire-pluginval.py` |
 

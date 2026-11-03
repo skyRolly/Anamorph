@@ -244,7 +244,7 @@ namespace anamorph::xmlBoundary
             //
             //   * `quote != 0`: the walk consumed from an opening quote to the end of the text as
             //     though it were all one attribute value. THE PARSER DOES NOT AGREE, and the
-            //     disagreement is positional: `juce_XmlDocument.cpp:491-497` treats a quote as a
+            //     disagreement is positional: `juce_XmlDocument.cpp:526-532` treats a quote as a
             //     string delimiter only after `name =`. A quote where an attribute NAME is
             //     expected falls to `:508-510` (`setLastError ("illegal character found in ...",
             //     false)` then `break`), and a name followed by a quote with no `=` to `:500-503`

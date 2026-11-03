@@ -1,5 +1,11 @@
 # JUCE 9.0.5 investigation and architecture review packet
 
+**Current status — 2026-11-04:** the owner approved ADR-0071 (“approve ADR / dont merge PR”).
+The upgrade branch now pins JUCE 9.0.5. Sections 1–8 below preserve the original proposal-stage
+source/baseline observations, including the earlier missing-header failure. The implementation
+continuation at the end and `juce905-review/implementation.json` own subsequent execution status.
+Manual/native acceptance remains pending; the PR is not authorized to merge.
+
 Recorded 2026-11-04 (Asia/Shanghai). **Proposal only; Pending Human Architecture Review.**
 Current CMake dependency remains 9.0.4. [Proposed ADR-0071](../docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md)
 records the requested decision; [evidence.json](juce905-review/evidence.json) retains measured
@@ -246,3 +252,30 @@ Existing citation re-aim bookkeeping notes are informational; no source anchor o
 is suppressed. These checks validate the proposal documents, not a target plugin build.
 Python 3.12 also emits two pre-existing invalid-escape SyntaxWarnings in `check-docs.py`;
 the unchanged checker exits successfully after the existing remote release tags are fetched.
+
+
+## 9. Owner-approved implementation continuation — 2026-11-04
+
+Owner approval: **“approve ADR / dont merge PR”**, replying to the explicit request for
+ADR-0071 and ADR-0051. This accepts ADR-0071 and permits its implementation/validation;
+manual acceptance, integration and release remain separate. Current branch defaults pin
+`d60b7a78030661574a615b586d9325ba7a7fa7dd`. Reused 9.0.4 fields fail before fetching;
+previous default protection, custom pins, local overrides and codec definitions remain.
+
+`cmake/VerifyJuceSource.cmake` checks actual fetched HEAD against full immutable pins and
+prints provenance in every normal CI configuration. The cache suite passes 11 tests,
+including real mismatched/matching Git checkout controls. The old-cache negative control
+fails on baseline CMake for reaching the stand-in; disabling source verification is detected
+by the new regression. Exact logs/statuses are retained in the implementation ledger.
+
+All first-party `src/` diff lines are comments. The source map refreshes upstream coordinates;
+pre-existing PopupMenu references to the wrong line block are re-aimed to the actual function,
+not merely offset mechanically. No source-compatibility correction or DSP/state/latency change
+is currently required. Default compile options and plugin identity are unchanged.
+
+The earlier outer-environment missing headers are resolved for Linux experiments through an
+isolated `debian:13-slim` Docker image at digest
+`sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4`,
+GCC 14.2.0, CMake 3.31.6, Ninja and the repository-required desktop development libraries.
+This does not replace the pinned Clang/GCC CI toolchain gates. Runtime comparison and CI
+execution are in progress; no unexecuted result is promoted to a pass.

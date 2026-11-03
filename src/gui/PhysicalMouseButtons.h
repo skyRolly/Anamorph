@@ -17,7 +17,7 @@
 //  and it is why KI-028's abandoned-gesture sweep never ran on macOS.
 //
 //  The correct API is right there in the same file, 1500 lines below:
-//  `[NSEvent pressedMouseButtons]` (juce_NSViewComponentPeer_mac.mm:1867), a
+//  `[NSEvent pressedMouseButtons]` (juce_NSViewComponentPeer_mac.mm:1998), a
 //  global real-time query JUCE uses for tracking-area enter/exit but never wires
 //  into the modifier path. This header is that one call, and nothing else.
 //

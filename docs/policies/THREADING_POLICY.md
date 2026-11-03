@@ -397,3 +397,8 @@ Evidence [Verified]:
 
 A change to the thread model, a new shared-state path, or a new atomic ordering triggers the
 **Architecture Review Gate** and an **AI Agent Hard Stop**. Changing this policy requires an ADR.
+
+JUCE 9.0.5 source re-verification (Accepted ADR-0071, 2026-11-04): the VST3 changes
+are Windows DPI/view scaling; built-format state/processing entry contracts are unchanged.
+AU/Standalone wrapper files, APVTS storage and MessageManagerLock implementation are
+byte-identical to 9.0.4. New shared GUI/native-window behavior still needs native acceptance.

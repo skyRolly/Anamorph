@@ -108,7 +108,7 @@ state. The imager retries normally after a failed full-window wakeup copy, even
 when its preceding tail scan succeeded. No partial scratch is displayed or transformed.
 
 `Vectorscope::tick` and `SpectrumImager::pushFFT` run on the message thread.
-`Vectorscope::paint` also reads samples. Pinned JUCE 9.0.4's
+`Vectorscope::paint` also reads samples. Pinned JUCE 9.0.5's
 `OpenGLContext::CachedImage::renderFrame` takes its message-manager lock before
 `paintComponent` → `paintOwner` → `component.paintEntireComponent` on the render
 thread. ADR-0070 explicitly preserves this serialized GUI path and amends scope

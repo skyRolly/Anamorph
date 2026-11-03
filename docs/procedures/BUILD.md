@@ -1,8 +1,8 @@
 # BUILD.md
 
-JUCE 9.0.5 is under [Proposed ADR-0071](../architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md).
-Current defaults remain 9.0.4. The [review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md)
-records acquisition checks and missing local development prerequisites; it does not authorize a pin change.
+JUCE 9.0.5 is under [Accepted ADR-0071](../architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md).
+Defaults pin the exact 9.0.5 commit. The [review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md)
+records acquisition, comparisons and remaining validation; owner approval is recorded in the ADR.
 
 How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; no IDE/Projucer).
 
@@ -41,14 +41,14 @@ Evidence [Verified]: `CMakeLists.txt` (`juce_add_plugin`), `resources/icons/PROV
   figure moved with the CI runner: the C++23 migration was verified on the then-current
   `macos-14` image, whose AppleClang identifies as 15.0.0.15000309 (Xcode 15.4) — the compiler
   version, not the Xcode version, is what `CMAKE_CXX_COMPILER_VERSION` reports.
-- **JUCE 9.0.4** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
-  commit SHA `3fb5cbc…`) — or pointed at a local checkout. See
+- **JUCE 9.0.5** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
+  commit SHA `d60b7a7…`) — or pointed at a local checkout. See
   `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning, ADR-0022 for the move to
   the 9.0 line and the SHA pin, ADR-0026 for the 9.0.1 bump, ADR-0054 for the 9.0.2 bump and
   ADR-0060 for the 9.0.3 bump and ADR-0061 for the 9.0.4 bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++23),
-:67-72 (JUCE 9.0.4 commit pin), :81-89 (FetchContent).
+:67-72 (JUCE 9.0.5 commit pin), :81-89 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -101,11 +101,11 @@ Evidence [Verified]: `cmake/CheckJuceCache.cmake`, included before FetchContent 
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 543) |
-| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 417-419) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 544) |
+| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 418-420) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:66, 77-79) |
-| `ANAMORPH_JUCE_TAG` | `3fb5cbc…` (= tag 9.0.4) — CMakeLists.txt:71 (`3fb5cbc`) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version — CMakeLists.txt:70-72 (`9.0.4`) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:471) |
+| `ANAMORPH_JUCE_TAG` | `d60b7a7…` (= tag 9.0.5) — CMakeLists.txt:71 (`d60b7a7`) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version — CMakeLists.txt:70-72 (`9.0.5`) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:472) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -115,7 +115,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_JUCE_PATH=/path/to
 ## Formats produced
 
 `VST3` everywhere; `+ AU` additionally on macOS; `+ Standalone` when `ANAMORPH_BUILD_STANDALONE`
-is ON. Evidence [Verified]: CMakeLists.txt:413-419.
+is ON. Evidence [Verified]: CMakeLists.txt:414-420.
 
 ## Artifact paths
 
@@ -201,7 +201,7 @@ through 9.0.1 and defaults it to 1 from 9.0.2, so without the pin every shipped 
 an MP3 decoder the product never calls. ADR-0054 carries the reasoning; the five other targets
 (`AnamorphTests`, `AnamorphStateTests`, `AnamorphBench`, `AnamorphDspDump`, `AnamorphFuzzState`)
 carry the same definition so no build configuration disagrees with the shipped one.
-Evidence [Verified]: CMakeLists.txt:493-522 (the `Anamorph` block, `JUCE_USE_MP3AUDIOFORMAT=0` at
+Evidence [Verified]: CMakeLists.txt:494-523 (the `Anamorph` block, `JUCE_USE_MP3AUDIOFORMAT=0` at
 :506), :547, :592, :634, :677, :720 (the other five targets).
 
 `JUCE_USE_OPUS=0` and `JUCE_USE_WEBP=0` joined at the JUCE 9.0.3 bump for the same reason from the
@@ -211,7 +211,7 @@ Without the pins every shipped binary would compile both, and neither is read or
 in the product. The new `juce_audio_formats_opus*.c` and `juce_graphics_libwebp_*.c` translation
 units are still compiled (JUCE's module build globs every top-level source) but emit no code: one
 hidden placeholder symbol per Opus unit, none at all per WebP unit. ADR-0060 carries the reasoning;
-the same five targets carry both definitions. Evidence [Verified]: CMakeLists.txt:517-518 and the
+the same five targets carry both definitions. Evidence [Verified]: CMakeLists.txt:518-519 and the
 two lines after `JUCE_USE_MP3AUDIOFORMAT=0` in each of the other five targets.
 
 ## Product namespace (ADR-0063)

@@ -1,0 +1,100 @@
+{
+  "product": "Anamorph",
+  "status": "implementation_in_progress",
+  "owner_approval": {
+    "date": "2026-11-04",
+    "timezone": "Asia/Shanghai",
+    "quote": "approve ADR\ndont merge PR",
+    "adr": "0071",
+    "authorizes": "scoped implementation and validation",
+    "pr_merge_authorized": false
+  },
+  "baseline_main": "82c98e45984f5c7bc0f953340622f90523957780",
+  "target": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "previous": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+  "manual_acceptance": "Pending Human Acceptance",
+  "full_automated_validation": "in progress",
+  "environment_recovery": "Isolated debian:13-slim Docker with development prerequisites; outer missing-header observations retained as history",
+  "source_changes": {
+    "comment_only": true,
+    "changed_comment_diff_lines": 108,
+    "non_comment_diff_lines": 0
+  },
+  "source_policy_checks": [
+    {
+      "command": [
+        "python3",
+        "scripts/check-portability.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "summary": [
+        "check-portability: self-test passed (120 cases)."
+      ]
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-portability.py"
+      ],
+      "exit_code": 0,
+      "summary": [
+        "check-portability: installer/uninstaller scratch names agree (.anamorph-install-stage, .anamorph-probe, .probe).",
+        "check-portability: 83 file(s) scanned, 0 violation(s)."
+      ]
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-realtime.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "summary": [
+        "check-realtime: self-test passed (97 cases)."
+      ]
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-realtime.py"
+      ],
+      "exit_code": 0,
+      "summary": [
+        "check-realtime: 52 file(s) scanned, 0 violation(s)."
+      ]
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-product-identity.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "summary": [
+        "product identity VERSIONINFO API-boundary fixture passed",
+        "product identity self-test passed (source, generated Linux/Windows/macOS, AU, VST3, packages; good/bad fixtures)"
+      ]
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-product-identity.py"
+      ],
+      "exit_code": 0,
+      "summary": [
+        "  }",
+        "}"
+      ]
+    }
+  ],
+  "cache_tests": {
+    "passed": true,
+    "count": 11,
+    "summary": "...........\n----------------------------------------------------------------------\nRan 11 tests in 99.768s\n\nOK\n"
+  },
+  "negative_controls": {
+    "old_cache_on_original_cmake": "detected",
+    "immutable_source_check_bypass": "detected"
+  }
+}

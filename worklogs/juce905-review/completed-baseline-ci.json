@@ -1,0 +1,119 @@
+{
+  "note": "Completed baseline 9.0.4 results checked after owner approval; target results are separate",
+  "jobs": [
+    {
+      "name": "source-lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109595978"
+    },
+    {
+      "name": "linux",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596203"
+    },
+    {
+      "name": "windows",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596206"
+    },
+    {
+      "name": "native-evidence-smoke (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596301"
+    },
+    {
+      "name": "tsan",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596344"
+    },
+    {
+      "name": "macos-crossslice",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596357"
+    },
+    {
+      "name": "fuzz",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596360"
+    },
+    {
+      "name": "native-evidence-smoke (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596364"
+    },
+    {
+      "name": "native-evidence-smoke (macos-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596394"
+    },
+    {
+      "name": "macos-intel",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596411"
+    },
+    {
+      "name": "realtime",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596435"
+    },
+    {
+      "name": "docs",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596538"
+    },
+    {
+      "name": "windows-avx2-ab",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596550"
+    },
+    {
+      "name": "macos",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596570"
+    },
+    {
+      "name": "linux-lto-tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596632"
+    },
+    {
+      "name": "sanitizers",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596875"
+    },
+    {
+      "name": "macos-review-coinstallation",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109597995"
+    },
+    {
+      "name": "merge-check",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109598403"
+    },
+    {
+      "name": "macos-review-selections",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109599174"
+    }
+  ]
+}
