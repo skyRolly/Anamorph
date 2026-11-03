@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## NR-028 repeated restore-cycle review — 2026-11-03
+
+State157 now covers same-processor A→B→C→B for both production adoption callbacks
+with live/destructive parameter notifications, restoration metadata, Settings and
+latency, saved A/B sounds, exact repeated-B values and reopened attachments.
+The skipped-final-adoption and truncated-cycle controls distinguish a real return
+from a repeated assertion against first B. Main's #209 guards supersede the
+parallel #211 source fix; keeping main verbatim also removes #211's real shadow
+warning. Restore-cycle documentation, roadmap, handover and candidate readiness
+are reconciled with actual #209/#210 integration; historical failures remain in
+the ledger. No production contract or native acceptance change is claimed.
+
 ## NR-027 editor scale lifetime — 2026-11-02
 
 Record the confirmed synchronous parent-teardown path in `applyUiScale` and its

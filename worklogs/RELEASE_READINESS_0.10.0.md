@@ -1,13 +1,16 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Authorized integration checkpoint — 2026-11-03 (Asia/Shanghai)
+## Current #209/#210 integration — 2026-11-03 (Asia/Shanghai)
 
-PR #209 is integrated at `0d395366237ac0b5ae10f74be644de3835a8f104`. The owner
-authorized #210 as well; the additive synchronization preserves both lifetime
-corrections and tests and is awaiting mandatory CI before merge. PR #211/#212
-remain open for corrections and separate human review. Older pending/unapproved
-statements below describe their dated checkpoints. Native acceptance remains
-owner-deferred, and the 0.10.0 tag/draft/11 assets/version stay unchanged.
+#209 merged at `0d395366`; #210 merged at `0cd95120162b7913a5656f828f27eb96034c1b34`.
+Its tree equals final reviewed/validated head `7208bdc2`; all selected current-head
+workflows completed. Both callback guards and State155/156 remain intact.
+#211 is being corrected for the repeated restore-cycle policy; #212's callback
+coverage description is under review. Both remain open and unmerged, without
+merge authorization. The roadmap and individual evidence ledgers track actual
+post-merge and review-head validation. Earlier records below are historical.
+Native acceptance remains owner-deferred. The existing 0.10.0 tag, unpublished
+draft, 11 assets and version are unchanged and do not contain post-tag fixes.
 
 ## Current candidate boundary after #208/#207 — 2026-11-03 (Asia/Shanghai)
 

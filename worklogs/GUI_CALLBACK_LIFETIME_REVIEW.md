@@ -5,6 +5,21 @@
 This is a bounded implementation review, not certification of every GUI event or
 manual host acceptance. Native/manual/performance execution remains owner-deferred.
 
+## Current integrated guards and State157 follow-up — 2026-11-03
+
+#209 and #210 are merged at `0d395366` and `0cd95120`; retain both actual-editor
+corrections and their independent controls. PR #211's parameter-triggered restore
+case reaches the same protected menu/timer callouts as #209's latency trigger.
+Its source guards are superseded by integrated #209, not a distinct remaining
+production fix. State157's original one-adoption fixture missed TESTING_POLICY
+rule3a; use same-processor A→B→C→B with all actual callback legs and live/destructive
+controls. See the [cycle ledger](engineering-review/gui-restore-adoption-lifetime.json).
+The old #211 citation and compiler-warning failures are actual checker/source
+integration failures, separate from historical local disk exhaustion.
+#211/#212 remain open and unmerged for separate human review. Native execution
+is still deferred. NR-026/KI-035's pinned-JUCE Slider risk remains unfixed and
+architecture/dependency-gated; SpectrumImager coverage must not claim to fix it.
+
 ## Integrated baseline and controls
 
 #208 merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`; #207 at
