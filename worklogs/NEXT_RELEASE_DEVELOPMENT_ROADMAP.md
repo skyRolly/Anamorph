@@ -35,7 +35,13 @@ and pluginval gates succeeded; the macOS universal job failed only at
 “DSP + state self-tests, x86_64 slice under Rosetta.” Its run-log endpoint returned
 HTTP 403, so the cause is not established. Several duplicate/no-op workflow jobs
 were skipped. This checkpoint does not treat that prior head as validation of the
-working changes; all exact-head checks must be refreshed after push.
+working changes. The first follow-up push (`05b207e`) exposed a source-lint
+citation self-test failure: the `bandCount()` re-aim target had moved to line
+752, and seven other anchors moved with the added source lines. The target
+and declaration are corrected; `check-citations.py --self-test` passes 276
+cases, the `origin/main` comparison passes all 609 anchors after seven
+re-anchors, and `check-docs.py` passes 186 files. The exact-head correction
+run must still be refreshed after the documentation follow-up is pushed.
 
 The lifetime audit remains bounded to production GUI entry points and the exercised
 host-dispatch behavior. Native acceptance remains owner-deferred, not waived. NR-003
