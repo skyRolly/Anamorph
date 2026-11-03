@@ -1,6 +1,49 @@
 # Next release investigation and development roadmap
 
-## Current execution: NR-029 SpectrumImager callback lifetime — 2026-11-02 (Asia/Shanghai)
+## Current execution checkpoint: NR-029 callback lifetime follow-up — 2026-11-03 UTC
+
+The owner continues to defer native-machine performance, visual/editor-lifecycle,
+accessibility and host acceptance. No hardware was requested or used. The existing
+0.10.0 tag, draft, assets and version remain unchanged.
+
+PR #212 remains open and unmerged. The callback audit extended beyond the initial
+width and topology-add witnesses. Production-path controls now cover crossover and
+width resets, inline frequency commits, solo toggles, add/remove mask remaps,
+band-move gesture closes, explicit drag cancellation, standalone split-wheel and
+in-press width-wheel updates. On the current working branch, the generic
+SpectrumImager lifetime sweep passes **456/456** ASan/UBSan/LSan checks and the
+dedicated inline frequency editor sweep passes **49/49**. The in-press Width wheel
+control passes **17/17**; removing its post-store lifetime guard reproduces an
+ASan heap-use-after-free in `cancelActiveDrag()` (raw log hash
+`5ddbcf2181c2a9618add988f4016887f22b1cdd4c2ab8693d375cbce2d3ff2d7`). These are
+component/state-harness results, not native host or GUI acceptance.
+
+The complete ASan/UBSan/LSan state suite reached **12,735 checks with 11 failures**.
+All 11 were preset-filesystem setup/write assertions in State tests 12, 102 and 104;
+the root overlay had zero bytes available (`df -h /`), preventing fixture copies and
+the intentional directory-at-target failures. The failure log is retained at
+`/tmp/nr029-final-state-suite.log` (SHA-256
+`eb099c1c73b7ba3cb355eff39c23a5519438fc2d544192d95cba243583385a6f`). No ASan,
+UBSan or lifetime-probe diagnostic occurred. The separate DSP acceptance executable
+passed **941/941** checks; its allocation test notes that the raw-malloc half of the
+guard is unavailable in this ASan build, as designed. `git diff --check` passes.
+
+At the last pushed PR #212 head (`fdacbb92`), current remote checks were refreshed:
+Build, CodeQL, dependency review, MSVC, Linux, Windows, Intel macOS, sanitizer,
+RealtimeSanitizer, TSAN, fuzz, documentation, source-lint, native-evidence smoke,
+and pluginval gates succeeded; the macOS universal job failed only at
+“DSP + state self-tests, x86_64 slice under Rosetta.” Its run-log endpoint returned
+HTTP 403, so the cause is not established. Several duplicate/no-op workflow jobs
+were skipped. This checkpoint does not treat that prior head as validation of the
+working changes; all exact-head checks must be refreshed after push.
+
+The lifetime audit remains bounded to production GUI entry points and the exercised
+host-dispatch behavior. Native acceptance remains owner-deferred, not waived. NR-003
+remains Deferred; release selection and all release operations remain separate owner
+decisions. Preserve the original/fixed/mutant traces and exact test commands in the
+engineering-review ledger. PR #212 must not be merged without separate authorization.
+
+## Historical checkpoint: NR-029 initial callback lifetime — 2026-11-02 (Asia/Shanghai)
 
 The integrated baseline remains `29150f312ec4a43ec85f35e61028d8338057d927`.
 The owner has deferred native/manual host, GUI, accessibility and performance
@@ -1958,29 +2001,39 @@ The owner separately authorized integration; native acceptance remains deferred.
   synchronously destroy the actual editor from production `SpectrumImager`
   mouse callbacks; source execution then resumes in the destroyed component.
   This is a deterministic memory-lifetime defect; host incidence is unmeasured.
-- **Reproduced paths:** width begin/store/end, crossover-handle begin,
-  topology-add Bands begin/value, and the first pin begin of an interior-band
-  move. The original width store/end, add Bands begin, and band-move begin
-  controls report ASan heap-use-after-free; original width/crossover begin
-  controls expose the processor having missed the close and a later Undo being
-  lost. Raw evidence identities are in the JSON ledger.
-- **Correction candidate in PR #212:** hold `SafePointer` checks across synchronous
-  notifications, copy callback objects and processor-targeting closures onto
-  the stack where the component may die, defer cancellation until a begin
-  dispatch returns, and close only gestures the processor has observed. Preserve
-  completed parameter/history operations and use the existing processor-owned
-  transaction callback for multi-store edits. No DSP, parameter identity,
-  serialization, latency, threading protocol, or realtime processing changes.
-- **Validation:** focused corrected controls pass 109/109 under ASan/UBSan/LSan;
-  the complete locally built state suite passes 12,337/12,337 with those
-  sanitizers enabled. These checks instrument the test harness and selected
-  production translation units, not every linked object. Exact-head remote CI
-  and human review are pending in the new PR; do not merge without authorization.
-- **Audit limits / next:** actual reset/reset-crossover, inline frequency commit,
-  solo-toggle/removal and held/standalone wheel paths have not received their own
-  controlled destruction probes. They remain unverified, not cleared. Continue
-  the callback inventory against actual call paths and add a separate correction
-  only with a reproducer. Native/host GUI acceptance remains owner-deferred.
+- **Reproduced paths:** width begin/store/end, crossover-handle begin, topology
+  add and remove mask notifications, width and crossover resets, solo toggle,
+  inline frequency commit begin/value/end, interior-band move begin and edge
+  closes, explicit drag cancellation, standalone split wheel, and a held Width
+  drag receiving a wheel notch. The held-wheel value path has a discriminating
+  guard-removal mutant: removing the post-store `SafePointer` check produces an
+  ASan heap-use-after-free in `cancelActiveDrag()` after the value listener
+  destroys the editor. Separate retained controls establish the initial width
+  store/end, topology-add, and band-move original UAFs. Raw evidence identities
+  are recorded in the JSON ledger.
+- **Working correction for PR #212:** copy processor-targeted callback objects
+  and callback-owned naming state onto the active stack before synchronous
+  parameter dispatch; test `SafePointer` before resumed component access; finish
+  gesture pairs only after the initiating begin dispatch returns; and preserve
+  completed processor edits/Undo endpoints after editor destruction. Topology
+  edits interrupted during solo-mask remapping restore that remap only while it
+  still stands, leaving newer host values untouched. No DSP, parameter identity,
+  serialization, latency, threading protocol, or realtime-processing changes.
+- **Validation:** the current working binary passes the generic callback sweep
+  (456/456), dedicated inline-frequency controls (49/49), held-wheel Width
+  control (17/17), and DSP suite (941/941). The full ASan/UBSan/LSan state suite
+  reached 12,735 checks with 11 preset-filesystem failures in States 12, 102 and
+  104 while `/` had zero available bytes; no sanitizer or lifetime-probe errors
+  were reported. Exact log identity and commands are in the JSON ledger. The
+  prior pushed head `fdacbb9` had one macOS Rosetta x86_64 state/DSP job failure;
+  its log endpoint returned 403 and its cause is unresolved. Recheck all exact-head
+  CI after these changes are pushed.
+- **Audit limits / next:** this is bounded callback coverage, not proof of every
+  host-driven teardown ordering. Re-run the full state suite with writable space
+  available and inspect/reproduce the Rosetta job failure if the updated remote
+  run repeats it. Native host/GUI, performance and accessibility acceptance remain
+  owner-deferred. PR #212 remains open and unmerged; do not merge without separate
+  authorization.
 
 ## 5. Version and release strategy
 

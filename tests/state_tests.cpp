@@ -45971,9 +45971,47 @@ int main (int argc, char* argv[])
             else if (std::strcmp (argv[2], "add-begin") == 0) path = 4;
             else if (std::strcmp (argv[2], "add-value") == 0) path = 5;
             else if (std::strcmp (argv[2], "band-move-begin") == 0) path = 6;
+            else if (std::strcmp (argv[2], "reset-value") == 0) path = 7;
+            else if (std::strcmp (argv[2], "reset-begin") == 0) path = 8;
+            else if (std::strcmp (argv[2], "split-reset-value") == 0) path = 9;
+            else if (std::strcmp (argv[2], "split-reset-begin") == 0) path = 10;
+            else if (std::strcmp (argv[2], "split-reset-end") == 0) path = 11;
+            else if (std::strcmp (argv[2], "solo-mask-value") == 0) path = 12;
+            else if (std::strcmp (argv[2], "solo-mask-begin") == 0) path = 13;
+            else if (std::strcmp (argv[2], "solo-mask-end") == 0) path = 14;
+            else if (std::strcmp (argv[2], "band-move-end-left") == 0) path = 15;
+            else if (std::strcmp (argv[2], "band-move-end-right") == 0) path = 16;
+            else if (std::strcmp (argv[2], "freq-commit-begin") == 0) path = 17;
+            else if (std::strcmp (argv[2], "freq-commit-value") == 0) path = 18;
+            else if (std::strcmp (argv[2], "freq-commit-end") == 0) path = 19;
+            else if (std::strcmp (argv[2], "add-solo-begin") == 0) path = 20;
+            else if (std::strcmp (argv[2], "add-solo-value") == 0) path = 21;
+            else if (std::strcmp (argv[2], "remove-solo-begin") == 0) path = 22;
+            else if (std::strcmp (argv[2], "remove-solo-value") == 0) path = 23;
+            else if (std::strcmp (argv[2], "cancel-width-end") == 0) path = 24;
+            else if (std::strcmp (argv[2], "cancel-split-end") == 0) path = 25;
+            else if (std::strcmp (argv[2], "wheel-split-begin") == 0) path = 26;
+            else if (std::strcmp (argv[2], "wheel-split-value") == 0) path = 27;
+            else if (std::strcmp (argv[2], "wheel-split-end") == 0) path = 28;
+            else if (std::strcmp (argv[2], "held-wheel-width-value") == 0) path = 29;
             else { std::fprintf (stderr, "Unknown SpectrumImager lifetime path probe\n"); return 2; }
         }
         testSpectrumImagerCallbackLifetimes (path);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--spectrum-frequency-editor-lifetime-probe") == 0)
+    {
+        int path = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "begin") == 0) path = 0;
+            else if (std::strcmp (argv[2], "value") == 0) path = 1;
+            else if (std::strcmp (argv[2], "end") == 0) path = 2;
+            else { std::fprintf (stderr, "Unknown frequency-editor lifetime probe\n"); return 2; }
+        }
+        spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes (path);
         std::printf ("%d checks, %d failure(s)\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -46296,6 +46334,7 @@ int main (int argc, char* argv[])
     testRotaryAccessibilityMetadataAndKeyboard();
     testEditorCommandLifetimes();
     testSpectrumImagerCallbackLifetimes();
+    spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

@@ -518,6 +518,8 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
 {
     if (p == nullptr) return false;
     const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
     const float norm   = p->convertTo0to1 (plain);
     const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
     // ADR-0008, round 17: what the parameter held before THIS store. It is the step's `before` for
@@ -527,14 +529,26 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     anamorph::param::setValueNotifyingHost (p, norm);
     // Parameter listeners run synchronously and may close the editor. The
     // caller's `ownedNorm` reference can then name destroyed component storage.
-    if (safeThis == nullptr) return false;
+    if (safeThis == nullptr)
+    {
+        // A listener can destroy the editor during this store's synchronous
+        // notification even though the processor parameter now contains our
+        // exact value. Preserve the completed edit in processor history using
+        // callback copies, without writing `ownedNorm` in dead component data.
+        if (juce::exactlyEqual (p->getValue(), expect))
+        {
+            if (notifyWrite) notifyWrite (p, was, expect);
+        }
+        else if (notifyRefused)
+            notifyRefused (p);
+        return false;
+    }
     if (! juce::exactlyEqual (p->getValue(), expect))
     {
         // ADR-0008 round 19. THE REFUSAL IS REPORTED, not merely returned. Returning false tells
         // this function's CALLER to stop; it told the undo batch nothing, so the batch could not
         // tell "a store that did not stand" from "a control that has not written yet" and closed
         // on a live read of somebody else's value.
-        const auto notifyRefused = onOwnedRefused;
         if (notifyRefused) notifyRefused (p);
         if (safeThis == nullptr) return false;
         return false;
@@ -546,7 +560,6 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     // read the ending value back. Made here, with `expect`, the step learns both halves from the
     // one store that actually committed: `spreadSplits` runs after the primary's gesture has
     // closed, so this is the only place the pushed neighbour's ending value can come from.
-    const auto notifyWrite = onOwnedWrite;
     if (notifyWrite) notifyWrite (p, was, expect);
     if (safeThis == nullptr) return false;
     ownedNorm = expect;
@@ -837,7 +850,9 @@ struct ScopedWheelName
     ~ScopedWheelName() { if (fn) fn (nullptr); }
     ScopedWheelName (const ScopedWheelName&) = delete;
     ScopedWheelName& operator= (const ScopedWheelName&) = delete;
-    const Fn& fn;
+    // The close can destroy the component that owns `onWheelStep`; the scope
+    // must retain its callable independently of that component.
+    Fn fn;
 };
 } // namespace
 // ADR-0046: the same contract `resetParam` has carried since ADR-0045, for the one store that
@@ -902,6 +917,14 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBand
     if (juce::exactlyEqual (p->getValue(), expect)) return;   // no sweep, no gesture, no store, no undo
 
     if (onSweep) onSweep();
+    // The gesture and value notifications below are synchronous. A parameter
+    // listener can destroy the editor from either one, so keep everything the
+    // remainder of this processor-side reset needs in locals before opening
+    // the gesture. The ownership callbacks belong to this component, but their
+    // current closures target the processor and must survive component teardown.
+    auto* const topologyParameter = bandsP;
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
     // ADR-0045. The band index its callers pass is derived from `bandAtX` OUTSIDE this call, and
     // `beginChangeGesture` below dispatches to every listener before the store -- so a host lane
     // answering the gesture open by dropping Bands left this resetting the width of a band the
@@ -917,20 +940,26 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBand
     // read-back proof `storeOwned` uses: what is there afterwards either is what was installed, or
     // somebody else's, and those are different facts.
     anamorph::param::beginChangeGesture (p);
-    if (expectedBands < 0 || bandCount() == expectedBands)
+    const bool topologyMatches = expectedBands < 0
+                              || (topologyParameter != nullptr
+                                  ? juce::jlimit (1, 4, (int) std::lround (
+                                        topologyParameter->convertFrom0to1 (
+                                            topologyParameter->getValue())))
+                                  : 4) == expectedBands;
+    if (topologyMatches)
     {
         const float was = p->getValue();
         anamorph::param::setValueNotifyingHost (p, norm);
         if (! juce::exactlyEqual (p->getValue(), expect))
         {
-            if (onOwnedRefused) onOwnedRefused (p);
+            if (notifyRefused) notifyRefused (p);
         }
-        else if (onOwnedWrite) onOwnedWrite (p, was, expect);
+        else if (notifyWrite) notifyWrite (p, was, expect);
     }
     // ...AND A GUARD THAT REFUSED IS A REFUSAL TOO. The gesture opened and closed having written
     // nothing, so the live value at the close is whatever the host left there -- which is exactly
     // the value that must not become this user action's endpoint.
-    else if (onOwnedRefused) onOwnedRefused (p);
+    else if (notifyRefused) notifyRefused (p);
     anamorph::param::endChangeGesture (p);
 }
 // ADR-0040, round-3 correction 3: THE COMMIT POINT OPENS A GESTURE FIRST, so a check in the caller
@@ -1058,10 +1087,45 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
 // word this plan was computed from is still the word being replaced; -1 waives both.
 bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
 {
-    if (soloP == nullptr) return false;
+    auto* const parameter = soloP;
+    if (parameter == nullptr) return false;
     mask &= 0x0F;
+    auto* const topologyParameter = bandsP;
+    std::array<juce::RangedAudioParameter*, 3> splitParameters {};
+    std::copy (std::begin (freqP), std::end (freqP), splitParameters.begin());
+    std::array<juce::RangedAudioParameter*, 4> widthParameters {};
+    std::copy (std::begin (widthP), std::end (widthP), widthParameters.begin());
+    const std::array<float, 3> splitStamp { gestureX[0], gestureX[1], gestureX[2] };
+    const std::array<float, 4> widthStamp { gestureW[0], gestureW[1], gestureW[2], gestureW[3] };
+    const int gestureBandsStamp = gestureBands;
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
+    const auto readBands = [topologyParameter]
+    {
+        return topologyParameter != nullptr
+             ? juce::jlimit (1, 4, (int) std::lround (
+                   topologyParameter->convertFrom0to1 (topologyParameter->getValue())))
+             : 4;
+    };
+    const auto readSoloMask = [parameter]
+    {
+        return (int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) & 0x0F;
+    };
+    const auto soundMoved = [&]
+    {
+        if (gestureBandsStamp < 0) return false;
+        for (size_t k = 0; k < splitParameters.size(); ++k)
+            if (splitParameters[k] != nullptr
+                && ! juce::exactlyEqual (splitParameters[k]->getValue(), splitStamp[k]))
+                return true;
+        for (size_t b = 0; b < widthParameters.size(); ++b)
+            if (widthParameters[b] != nullptr
+                && ! juce::exactlyEqual (widthParameters[b]->getValue(), widthStamp[b]))
+                return true;
+        return false;
+    };
     bool stored = false;
-    anamorph::param::beginChangeGesture (soloP);
+    anamorph::param::beginChangeGesture (parameter);
     // ADR-0045, THE SOUND HALF OF ITS OWN SECOND SENTENCE: "a store whose gesture bracket
     // dispatches before it proves the topology inside the bracket, never outside it." That is what
     // the two clauses below do for the COUNT -- and ADR-0039 settled that the count is not the whole
@@ -1074,27 +1138,27 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
     // predicate self-disables when no gesture is in force (`gestureBands < 0`), so `removeBand`'s
     // own mask remap and every record-less caller are unaffected; and with nothing racing the
     // caller's gate has just proved these values, so nothing that used to commit stops committing.
-    if ((expectedBands < 0 || bandCount() == expectedBands)
-        && (expectedMask < 0 || soloMask() == expectedMask)
-        && ! soundMovedUnderGesture())
+    if ((expectedBands < 0 || readBands() == expectedBands)
+        && (expectedMask < 0 || readSoloMask() == expectedMask)
+        && ! soundMoved())
     {
         // ROUND 21: declared, not left to the close's live read -- see `resetParam`.
-        const float was    = soloP->getValue();
-        const float norm   = soloP->convertTo0to1 ((float) mask);
-        const float expect = soloP->convertTo0to1 (soloP->convertFrom0to1 (norm));
-        anamorph::param::setValueNotifyingHost (soloP, norm);
-        if (! juce::exactlyEqual (soloP->getValue(), expect))
+        const float was    = parameter->getValue();
+        const float norm   = parameter->convertTo0to1 ((float) mask);
+        const float expect = parameter->convertTo0to1 (parameter->convertFrom0to1 (norm));
+        anamorph::param::setValueNotifyingHost (parameter, norm);
+        if (! juce::exactlyEqual (parameter->getValue(), expect))
         {
-            if (onOwnedRefused) onOwnedRefused (soloP);
+            if (notifyRefused) notifyRefused (parameter);
         }
         else
         {
-            if (onOwnedWrite) onOwnedWrite (soloP, was, expect);
+            if (notifyWrite) notifyWrite (parameter, was, expect);
             stored = true;
         }
     }
-    else if (onOwnedRefused) onOwnedRefused (soloP);
-    anamorph::param::endChangeGesture (soloP);
+    else if (notifyRefused) notifyRefused (parameter);
+    anamorph::param::endChangeGesture (parameter);
     // ADR-0042: confirmed on the far side as well -- see setBands. Measured on the value dispatch
     // rather than the gesture open: `the mask store was overwritten from inside its dispatch and the
     // transaction carried on: Bands 3 with mask 0x9`. `soloMask()` rounds through std::lround, so
@@ -1110,7 +1174,7 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
     // `setBands`' near-side guard is a second layer; M2 (every layer removed) kills leg C with
     // `the add committed its count (Bands 3) after the topology it proved had already moved to 4`.
     // The cover is defence in depth, not one line, and leg C pins the combination.
-    return stored && soloMask() == mask;
+    return stored && readSoloMask() == mask;
 }
 // ADR-0041: the toggle reads the word it is about to replace and names it, so the store proves both
 // halves of what it assumed -- the topology the band index belongs to, and the mask it is toggling.
@@ -1317,8 +1381,21 @@ void SpectrumImager::endBandMove()
 {
     const int l = soloMoveLeft, r = soloMoveRight;
     soloMoveLeft = soloMoveRight = -1;
-    if (l >= 0) endGesture (freqP[l]);
-    if (r >= 0) endGesture (freqP[r]);
+    // Close both latched gestures from stack-owned state. Each end dispatch is
+    // synchronous, so a listener may destroy this component while the first
+    // close is in progress. The second parameter and refusal callback must not
+    // be fetched from component members after that dispatch returns.
+    auto* const leftParameter = l >= 0 ? freqP[l] : nullptr;
+    auto* const rightParameter = r >= 0 ? freqP[r] : nullptr;
+    const auto notifyRefused = onOwnedRefused;
+    const auto closeGesture = [notifyRefused] (juce::RangedAudioParameter* parameter)
+    {
+        if (parameter == nullptr) return;
+        if (notifyRefused) notifyRefused (parameter);
+        anamorph::param::endChangeGesture (parameter);
+    };
+    closeGesture (leftParameter);
+    closeGesture (rightParameter);
 }
 
 void SpectrumImager::resetCrossover (int i)
@@ -1326,30 +1403,111 @@ void SpectrumImager::resetCrossover (int i)
     // ADR-0008 round 24 (R1092): the primary's gesture CLOSES and `spreadSplits` stores the
     // neighbours after it, so a poll landing on that close recorded the primary alone and left
     // the pushed neighbours to a second step -- R515's defect, reached by a different door.
+    // Copy every component-owned input before the first synchronous dispatch.
+    // The reset is one processor-side action: if a listener closes the editor
+    // from the gesture open, primary write, or gesture close, the remaining
+    // plan and its Undo declarations must still finish without reading `this`.
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const auto originalPlot = plot();
+    auto* const topologyParameter = bandsP;
+    std::array<juce::RangedAudioParameter*, 3> splitParameters {};
+    std::copy (std::begin (freqP), std::end (freqP), splitParameters.begin());
+    const auto notifySweep = onSweep;
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
+
+    const auto readBands = [topologyParameter]
+    {
+        return topologyParameter != nullptr
+             ? juce::jlimit (1, 4, (int) std::lround (
+                   topologyParameter->convertFrom0to1 (topologyParameter->getValue())))
+             : 4;
+    };
+
     const ScopedUserTransaction wholeReset (*this);
-    auto* p = (i >= 0 && i < 3) ? freqP[i] : nullptr;
+    auto* p = (i >= 0 && i < (int) splitParameters.size()) ? splitParameters[(size_t) i] : nullptr;
     if (p == nullptr) return;
-    if (i >= bandCount() - 1) return;   // same rule as commitFreqEditor: the handle must still be live
-    if (onSweep) onSweep();
+    if (i >= readBands() - 1) return;   // same rule as commitFreqEditor: the handle must still be live
+    if (notifySweep && safeThis != nullptr) notifySweep();
+
+    // Geometry is immutable through the component's lifetime. Prefer the
+    // post-sweep bounds when it survived; a reentrant close uses the snapshot
+    // taken above, preserving the same projection for the in-flight action.
+    const auto resetPlot = safeThis != nullptr ? safeThis->plot() : originalPlot;
+    const auto freqToResetX = [resetPlot] (float hz)
+    {
+        return resetPlot.getX() + fracForFreq (hz) * resetPlot.getWidth();
+    };
+    const auto resetXToFreq = [resetPlot] (float x)
+    {
+        return freqForFrac ((x - resetPlot.getX()) / resetPlot.getWidth());
+    };
+    const auto projectResetGaps = [resetPlot] (float* xs, int count, int pin)
+    {
+        if (count <= 0) return;
+        const float lo = resetPlot.getX() + kMinGapPx;
+        const float hi = resetPlot.getRight() - kMinGapPx;
+        if (pin >= 0 && pin < count)
+        {
+            xs[pin] = juce::jlimit (lo, hi, xs[pin]);
+            for (int k = pin - 1; k >= 0; --k) xs[k] = juce::jmin (xs[k], xs[k + 1] - kMinGapPx);
+            for (int k = pin + 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
+        }
+        else
+        {
+            for (int k = 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
+        }
+        if (xs[0] < lo)
+        {
+            const float shift = lo - xs[0];
+            for (int k = 0; k < count; ++k) xs[k] += shift;
+        }
+        if (xs[count - 1] > hi)
+        {
+            const float shift = xs[count - 1] - hi;
+            for (int k = 0; k < count; ++k) xs[k] -= shift;
+        }
+        for (int k = 0; k < count; ++k) xs[k] = juce::jlimit (lo, hi, xs[k]);
+    };
+    const auto storeResetValue = [&] (juce::RangedAudioParameter* parameter,
+                                      float plain, float& ownedNorm)
+    {
+        if (parameter == nullptr) return false;
+        const float norm = parameter->convertTo0to1 (plain);
+        const float expect = parameter->convertTo0to1 (parameter->convertFrom0to1 (norm));
+        const float was = parameter->getValue();
+        anamorph::param::setValueNotifyingHost (parameter, norm);
+        if (! juce::exactlyEqual (parameter->getValue(), expect))
+        {
+            if (notifyRefused) notifyRefused (parameter);
+            return false;
+        }
+        if (notifyWrite) notifyWrite (parameter, was, expect);
+        ownedNorm = expect;
+        return true;
+    };
+
     // ADR-0043: the plan is computed AFTER the gesture opens, for the reason spelled out in
     // commitFreqEditor -- `projectGaps` slides the pin by an amount derived from the NEIGHBOURS, and
     // `beginChangeGesture` dispatches to the host before the store. ADR-0042: the reset is then
     // confirmed before anything is moved to make room for it.
     anamorph::param::beginChangeGesture (p);
-    const int M = bandCount() - 1;
+    const int M = readBands() - 1;
     float xs[3] {}, was[3] {}, owned = 0.0f;
     bool ok = (i < M);
     if (ok)
     {
-        for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+        for (int k = 0; k < M && k < (int) splitParameters.size(); ++k)
         {
             // ADR-0047: the plan and the world it is computed from are ONE reading, not two.
-            was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;   // the world the plan is computed from
-            xs[k]  = freqToX ((freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (was[k]) : kFreqLo);
+            auto* const parameter = splitParameters[(size_t) k];
+            was[k] = parameter != nullptr ? parameter->getValue() : 0.0f;
+            xs[k] = freqToResetX (parameter != nullptr
+                                  ? parameter->convertFrom0to1 (was[k]) : kFreqLo);
         }
-        xs[i] = freqToX (p->convertFrom0to1 (p->getDefaultValue()));
-        projectGaps (xs, M, i);
-        ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
+        xs[i] = freqToResetX (p->convertFrom0to1 (p->getDefaultValue()));
+        projectResetGaps (xs, M, i);
+        ok = storeResetValue (p, juce::jlimit (kFreqLo, kFreqHi, resetXToFreq (xs[i])), owned);
     }
     // ROUND 22, RISK-012: this gesture states an endpoint or it states a refusal, never nothing.
     // `ok` is false without `storeOwned` having run at all when the handle is no longer live, and
@@ -1357,16 +1515,73 @@ void SpectrumImager::resetCrossover (int i)
     // parameter during the press. Stated unconditionally, as `endGesture` does and for the same
     // reason: it carries no value, and the close skips a parameter whose store DECLARED an
     // endpoint before it looks at the refusal bit, so a reset that stood keeps what it installed.
-    if (onOwnedRefused) onOwnedRefused (p);
+    if (notifyRefused) notifyRefused (p);
     anamorph::param::endChangeGesture (p);
     if (! ok || ! juce::exactlyEqual (p->getValue(), owned)) return;
-    (void) spreadSplits (xs, was, M, i, owned);
+    for (int k = 0; k < M && k < (int) splitParameters.size(); ++k)
+    {
+        if (! juce::exactlyEqual (p->getValue(), owned) || readBands() - 1 != M) return;
+        if (k == i) continue;
+        auto* const parameter = splitParameters[(size_t) k];
+        if (parameter == nullptr) continue;
+        const float norm = parameter->getValue();
+        if (! juce::exactlyEqual (norm, was[k])) return;
+        if (std::abs (freqToResetX (parameter->convertFrom0to1 (norm)) - xs[k]) <= kSplitMovedPx)
+            continue;
+        float spreadOwned = 0.0f;
+        if (! storeResetValue (parameter,
+                               juce::jlimit (kFreqLo, kFreqHi, resetXToFreq (xs[k])), spreadOwned))
+            return;
+    }
 }
+
+namespace
+{
+// If a topology edit is torn down while its first (solo-mask) sub-action is
+// notifying listeners, that sub-action can finish after the editor has died.
+// Its mask remap is only valid together with the later width/split/count
+// stores. Restore it when those stores cannot be entered, but only while the
+// remapped word still stands; a host write takes precedence.
+void restoreSoloMaskAfterCancelledTopology (
+    juce::RangedAudioParameter* parameter, int expectedMask, int originalMask,
+    const std::function<void (const juce::AudioProcessorParameter*, float, float)>& notifyWrite,
+    const std::function<void (const juce::AudioProcessorParameter*)>& notifyRefused)
+{
+    if (parameter == nullptr) return;
+    const auto readMask = [parameter]
+    {
+        return (int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) & 0x0F;
+    };
+    if (readMask() == originalMask) return;
+
+    anamorph::param::beginChangeGesture (parameter);
+    if (readMask() == expectedMask)
+    {
+        const float was = parameter->getValue();
+        const float norm = parameter->convertTo0to1 ((float) originalMask);
+        const float expect = parameter->convertTo0to1 (parameter->convertFrom0to1 (norm));
+        anamorph::param::setValueNotifyingHost (parameter, norm);
+        if (juce::exactlyEqual (parameter->getValue(), expect))
+        {
+            if (notifyWrite) notifyWrite (parameter, was, expect);
+        }
+        else if (notifyRefused)
+            notifyRefused (parameter);
+    }
+    else if (notifyRefused)
+        notifyRefused (parameter);
+    anamorph::param::endChangeGesture (parameter);
+}
+} // namespace
 
 int SpectrumImager::addBandAt (float hz, int& resultingBands)
 {
     // ADR-0008 round 24 (R1092): this whole burst is ONE user action -- see `onUserTransaction`.
     const ScopedUserTransaction wholeAdd (*this);
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    auto* const soloParameter = soloP;
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
     const int N = bandCount();
     resultingBands = N;          // nothing added -> the caller's gesture keeps the count it had
     // ADR-0048 CONSIDERED AND REJECTED A REFUSAL HERE, and the reason is the ADR-0044/0045 asymmetry
@@ -1464,6 +1679,16 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     // State test 76 legs B and C are the controls that keep it.
     if (bandCount() != N || soloMask() != oldMask) return -1;
     if (! setSoloMask (nm, N, oldMask)) return -1;
+    if (safeThis == nullptr)
+    {
+        // The nested mask gesture may have completed its store after destroying
+        // the editor. That remap is valid only with the rest of the add burst,
+        // which cannot be continued from this component-owned plan. Cancel the
+        // partial action without overwriting a newer host mask.
+        restoreSoloMaskAfterCancelledTopology (soloParameter, nm, oldMask,
+                                               notifyWrite, notifyRefused);
+        return -1;
+    }
 
     for (int i = 0; i <= N; ++i)
     {
@@ -1508,6 +1733,10 @@ void SpectrumImager::removeBand (int b, int expectedBands)
 {
     // ADR-0008 round 24 (R1092): `addBandAt`'s sibling, and the same multi-store transaction.
     const ScopedUserTransaction wholeRemove (*this);
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    auto* const soloParameter = soloP;
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
     const int N = bandCount();
     if (N <= 1) return;
     // REFUSE, NEVER CLAMP (ADR-0038). This used to be `b = juce::jlimit (0, N - 1, b)`, and
@@ -1652,6 +1881,14 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // disposition instead.
     if (bandCount() != expectedBands || soloMask() != oldMask) return;
     if (! setSoloMask (nm, expectedBands, oldMask)) return;
+    if (safeThis == nullptr)
+    {
+        // As in addBandAt, do not leave a solo remap for a topology edit whose
+        // component-owned plan was interrupted by synchronous destruction.
+        restoreSoloMaskAfterCancelledTopology (soloParameter, nm, oldMask,
+                                               notifyWrite, notifyRefused);
+        return;
+    }
 
     // ADR-0049. A TRANSACTION PROVES BOTH ENDS OF EVERY VALUE IT MOVES. A removal does not write
     // values; it MOVES them -- slot k is written with what slot k + 1 was holding when the plan was
@@ -1746,9 +1983,21 @@ void SpectrumImager::openFreqEditor (int i)
         freqEditor->setFont (juce::Font (juce::FontOptions (11.0f)));
         freqEditor->setSelectAllWhenFocused (true);
         freqEditor->onTextChange = [this] { editTextEdited = true; };
-        freqEditor->onReturnKey  = [this] { commitFreqEditor(); };
+        // TextEditor owns these callbacks. A parameter notification from a
+        // commit can synchronously destroy this imager (and the TextEditor
+        // whose callback is executing), so retain a weak component reference
+        // on the callback stack before entering the transaction.
+        freqEditor->onReturnKey  = [this]
+        {
+            const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+            if (safeThis != nullptr) safeThis->commitFreqEditor();
+        };
         freqEditor->onEscapeKey  = [this] { closeFreqEditor(); };
-        freqEditor->onFocusLost  = [this] { commitFreqEditor(); };
+        freqEditor->onFocusLost  = [this]
+        {
+            const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+            if (safeThis != nullptr) safeThis->commitFreqEditor();
+        };
         addAndMakeVisible (*freqEditor);
     }
     auto chip = numberChip (i).expanded (6.0f, 4.0f);
@@ -1792,7 +2041,14 @@ void SpectrumImager::commitFreqEditor()
     // that never happened. A typed value is a different matter entirely and still wins: the user's
     // own action is the newer authority (ADR-0036 section 25).
     if (! editTextEdited && freqEditor->getText() == editOpenText) { closeFreqEditor(); return; }
-    auto* p = freqP[i];
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const auto originalPlot = plot();
+    std::array<juce::RangedAudioParameter*, 3> splitParameters {};
+    std::copy (std::begin (freqP), std::end (freqP), splitParameters.begin());
+    auto* const topologyParameter = bandsP;
+    const auto notifyWrite = onOwnedWrite;
+    const auto notifyRefused = onOwnedRefused;
+    auto* p = splitParameters[(size_t) i];
     if (p == nullptr) { closeFreqEditor(); return; }
     const float want = juce::jlimit (kFreqLo, kFreqHi, parseFreq (freqEditor->getText()));
 
@@ -1803,28 +2059,110 @@ void SpectrumImager::commitFreqEditor()
     // that had already moved: measured `8440.1 / 3000.0 / 19500.0`, the first split above the
     // second. Computed here, `projectGaps` is pure and nothing dispatches between the snapshot and
     // the store, so the projection is a function of the world one statement earlier.
+    juce::Rectangle<float> actionPlot = originalPlot;
+    const auto freqToActionX = [&actionPlot] (float hz)
+    {
+        return actionPlot.getX() + fracForFreq (hz) * actionPlot.getWidth();
+    };
+    const auto actionXToFreq = [&actionPlot] (float x)
+    {
+        return freqForFrac ((x - actionPlot.getX()) / actionPlot.getWidth());
+    };
+    const auto readBands = [topologyParameter]
+    {
+        return topologyParameter != nullptr
+             ? juce::jlimit (1, 4, (int) std::lround (
+                   topologyParameter->convertFrom0to1 (topologyParameter->getValue())))
+             : 4;
+    };
+    const auto projectActionGaps = [&actionPlot] (float* xs, int count, int pin)
+    {
+        if (count <= 0) return;
+        const float lo = actionPlot.getX() + kMinGapPx;
+        const float hi = actionPlot.getRight() - kMinGapPx;
+        if (pin >= 0 && pin < count)
+        {
+            xs[pin] = juce::jlimit (lo, hi, xs[pin]);
+            for (int k = pin - 1; k >= 0; --k) xs[k] = juce::jmin (xs[k], xs[k + 1] - kMinGapPx);
+            for (int k = pin + 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
+        }
+        else
+        {
+            for (int k = 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
+        }
+        if (xs[0] < lo)
+        {
+            const float shift = lo - xs[0];
+            for (int k = 0; k < count; ++k) xs[k] += shift;
+        }
+        if (xs[count - 1] > hi)
+        {
+            const float shift = xs[count - 1] - hi;
+            for (int k = 0; k < count; ++k) xs[k] -= shift;
+        }
+        for (int k = 0; k < count; ++k) xs[k] = juce::jlimit (lo, hi, xs[k]);
+    };
+    const auto storeActionValue = [&] (juce::RangedAudioParameter* parameter,
+                                       float plain, float& ownedNorm)
+    {
+        if (parameter == nullptr) return false;
+        const float norm = parameter->convertTo0to1 (plain);
+        const float expect = parameter->convertTo0to1 (parameter->convertFrom0to1 (norm));
+        const float was = parameter->getValue();
+        anamorph::param::setValueNotifyingHost (parameter, norm);
+        if (! juce::exactlyEqual (parameter->getValue(), expect))
+        {
+            if (notifyRefused) notifyRefused (parameter);
+            return false;
+        }
+        if (notifyWrite) notifyWrite (parameter, was, expect);
+        ownedNorm = expect;
+        return true;
+    };
+
     anamorph::param::beginChangeGesture (p);
-    const int M = bandCount() - 1;
+    // Use the post-open geometry when the editor survived. If it did not,
+    // continue the already-started processor action using the stable snapshot.
+    if (safeThis != nullptr) actionPlot = safeThis->plot();
+    const int M = readBands() - 1;
     float xs[3] {}, was[3] {}, owned = 0.0f;
     bool ok = (i < M);
     if (ok)
     {
-        for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+        for (int k = 0; k < M && k < (int) splitParameters.size(); ++k)
         {
             // ADR-0047: one reading answers both -- the plan below and the ownership baseline
             // `spreadSplits` proves each neighbour against.
-            was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
-            xs[k]  = freqToX ((freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (was[k]) : kFreqLo);
+            auto* const parameter = splitParameters[(size_t) k];
+            was[k] = parameter != nullptr ? parameter->getValue() : 0.0f;
+            xs[k] = freqToActionX (parameter != nullptr
+                                   ? parameter->convertFrom0to1 (was[k]) : kFreqLo);
         }
-        xs[i] = freqToX (want);
-        projectGaps (xs, M, i);
-        ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
+        xs[i] = freqToActionX (want);
+        projectActionGaps (xs, M, i);
+        ok = storeActionValue (p, juce::jlimit (kFreqLo, kFreqHi, actionXToFreq (xs[i])), owned);
     }
-    if (onOwnedRefused) onOwnedRefused (p);   // ROUND 22, RISK-012 -- see `resetCrossover`
+    if (notifyRefused) notifyRefused (p);   // ROUND 22, RISK-012 -- see `resetCrossover`
     anamorph::param::endChangeGesture (p);
     if (ok && juce::exactlyEqual (p->getValue(), owned))
-        (void) spreadSplits (xs, was, M, i, owned);
-    closeFreqEditor();
+    {
+        for (int k = 0; k < M && k < (int) splitParameters.size(); ++k)
+        {
+            if (! juce::exactlyEqual (p->getValue(), owned) || readBands() - 1 != M) break;
+            if (k == i) continue;
+            auto* const parameter = splitParameters[(size_t) k];
+            if (parameter == nullptr) continue;
+            const float norm = parameter->getValue();
+            if (! juce::exactlyEqual (norm, was[k])) break;
+            if (std::abs (freqToActionX (parameter->convertFrom0to1 (norm)) - xs[k]) <= kSplitMovedPx)
+                continue;
+            float spreadOwned = 0.0f;
+            if (! storeActionValue (parameter,
+                                   juce::jlimit (kFreqLo, kFreqHi, actionXToFreq (xs[k])), spreadOwned))
+                break;
+        }
+    }
+    if (safeThis != nullptr) safeThis->closeFreqEditor();
 }
 void SpectrumImager::closeFreqEditor()
 {
@@ -3273,7 +3611,11 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         // accidentally disagreeing -- the press index is no longer derivable from a transient layout,
         // so the disagreement this comparison used to rely on has nothing left to catch.
         if (deleteHit (e.position, pressBands, relRow) == dB && ! gestureIsStale())
+        {
+            const juce::Component::SafePointer<SpectrumImager> safeThis (this);
             removeBand (dB, pressBands);                 // released over the same x -> delete
+            if (safeThis == nullptr) return;
+        }
         gestureBands = -1;                               // ADR-0050: after the action, not before it
         updateHover (e.position);
         repaint();
@@ -3290,6 +3632,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         const bool alt2  = soloPressAlt;
         const bool held  = soloHoldActive;
         const bool moved = soloMovedBand;
+        const juce::Component::SafePointer<SpectrumImager> safeThis (this);
         soloPressBand = -1;
         soloHoldActive = soloMovedBand = false;
         // ADR-0041: the solo click names the topology it was aimed at. Without `pressBands` these
@@ -3300,8 +3643,11 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         // install landing after the handler's gate does not get the click applied to it.
         if (held)
         {
-            if (onClearSoloPreview) onClearSoloPreview();
+            const auto notifyClear = onClearSoloPreview;
+            if (notifyClear) notifyClear();
+            if (safeThis == nullptr) return;
             if (moved) endBandMove();
+            if (safeThis == nullptr) return;
         }
         else if (! gestureIsStale())
         {
@@ -3319,6 +3665,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
                                     pressBands, m);
             }
             else (void) toggleSoloBit (sb, pressBands);
+            if (safeThis == nullptr) return;
         }
         gestureBands = -1;                               // ADR-0050: after the action, not before it
         updateHover (e.position);
@@ -3414,6 +3761,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 // parameter's endChangeGesture can never fire twice.
 void SpectrumImager::cancelActiveDrag()
 {
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
     // ADR-0053 round 29: whatever ends the press, ends this. Same statement as `mouseUp`'s, and
     // since round 32 the same call: this display's gesture is over.
     anamorph::gui::releaseDragWheel (*this);
@@ -3472,23 +3820,45 @@ void SpectrumImager::cancelActiveDrag()
     const int  sb    = soloPressBand;
     const bool held  = soloHoldActive;
     const bool moved = soloMovedBand;
+    const int moveLeft = (sb >= 0 && held && moved) ? soloMoveLeft : -1;
+    const int moveRight = (sb >= 0 && held && moved) ? soloMoveRight : -1;
+    auto* const widthParameter = wb >= 0 ? widthP[wb] : nullptr;
+    auto* const splitParameter = h >= 0 ? freqP[h] : nullptr;
+    auto* const moveLeftParameter = moveLeft >= 0 ? freqP[moveLeft] : nullptr;
+    auto* const moveRightParameter = moveRight >= 0 ? freqP[moveRight] : nullptr;
+    const auto notifyRefused = onOwnedRefused;
+    const auto notifyClear = onClearSoloPreview;
     dragBand = dragHandle = soloPressBand = pressDeleteBand = -1;
     dragRemovePending = false;
     handleHoldActive  = false;
     widthHoldActive   = false;
     soloHoldActive = soloMovedBand = false;
+    if (moveLeft >= 0 || moveRight >= 0) soloMoveLeft = soloMoveRight = -1;
     // The same calls in the same order as before, from the locals. A reentrant cancel now takes the
     // cheap exit above and closes nothing; leg D is the control that an UNINTERRUPTED cancel still
     // closes exactly once, because clearing first must not turn this function into a no-op.
-    if (wb >= 0) endGesture (widthP[wb]);
-    if (h  >= 0) endGesture (freqP[h]);
+    const auto closeGesture = [notifyRefused] (juce::RangedAudioParameter* parameter)
+    {
+        if (parameter == nullptr) return;
+        if (notifyRefused) notifyRefused (parameter);
+        anamorph::param::endChangeGesture (parameter);
+    };
+    closeGesture (widthParameter);
+    closeGesture (splitParameter);
     if (sb >= 0)
     {
-        if (held && onClearSoloPreview) onClearSoloPreview();
-        if (moved) endBandMove();
+        if (held && notifyClear) notifyClear();
+        if (moved)
+        {
+            closeGesture (moveLeftParameter);
+            closeGesture (moveRightParameter);
+        }
     }
-    updateHover (getMouseXYRelative().toFloat());
-    repaint();
+    if (safeThis != nullptr)
+    {
+        safeThis->updateHover (safeThis->getMouseXYRelative().toFloat());
+        safeThis->repaint();
+    }
 }
 void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
 {
@@ -3531,7 +3901,8 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
 // holder's own coordinates either way, which is what every anchor below is expressed in.
 bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
-    const juce::ScopeGuard finishEvent { [safeThis = juce::Component::SafePointer<SpectrumImager> (this)]
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const juce::ScopeGuard finishEvent { [safeThis]
     {
         if (safeThis != nullptr) safeThis->finishGestureEvent();
     } };
@@ -3656,8 +4027,15 @@ bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::Mous
                 if (! moves) return true;
                 soloMovedBand = true;
                 beginBandMove (soloPressBand, gestureBands);
+                if (safeThis == nullptr) return true;
             }
-            if (! soloHoldActive) { soloHoldActive = true; if (onSoloPreview) onSoloPreview (1 << soloPressBand); }
+            if (! soloHoldActive)
+            {
+                soloHoldActive = true;
+                const auto notifyPreview = onSoloPreview;
+                if (notifyPreview) notifyPreview (1 << soloPressBand);
+                if (safeThis == nullptr) return true;
+            }
             // `moveBand` translates the band by T = clamp (cursor - bandAnchorX, bandTmin, bandTmax),
             // so the anchor IS the accumulator: moving it adds this notch now and keeps it for every
             // later mouse move. Derived from the CLAMPED T, so a notch past the end of the travel
@@ -3666,7 +4044,9 @@ bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::Mous
             const float t = juce::jlimit (bandTmin, bandTmax,
                                           ((float) e.position.x - bandAnchorX) + dy * kWheelSplitPx);
             bandAnchorX = (float) e.position.x - t;
-            if (! moveBand ((float) e.position.x, gestureBands)) { cancelActiveDrag(); return true; }
+            const bool moved = moveBand ((float) e.position.x, gestureBands);
+            if (safeThis == nullptr) return true;
+            if (! moved) { cancelActiveDrag(); return true; }
         }
         else if (dragHandle >= 0)
         {
@@ -3704,7 +4084,9 @@ bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::Mous
             const float want = juce::jlimit (lo, hi,
                                              ((float) e.position.x - dragGrabDX) + dy * kWheelSplitPx);
             float landed = want;
-            if (! dragCrossoverTo (dragHandle, want, gestureBands, &landed)) { cancelActiveDrag(); return true; }
+            const bool moved = dragCrossoverTo (dragHandle, want, gestureBands, &landed);
+            if (safeThis == nullptr) return true;
+            if (! moved) { cancelActiveDrag(); return true; }
             dragGrabDX = (float) e.position.x - landed;
         }
         else if (dragBand >= 0 && dragBand < (int) std::size (gestureW))
@@ -3734,9 +4116,11 @@ bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::Mous
             // asked for.
             widthHoldActive = true;
             dragGrabDY = (float) e.position.y - widthToY (want);
-            if (! storeOwned (widthP[dragBand], want, gestureW[dragBand])) { cancelActiveDrag(); return true; }
+            const bool stored = storeOwned (widthP[dragBand], want, gestureW[dragBand]);
+            if (safeThis == nullptr) return true;
+            if (! stored) { cancelActiveDrag(); return true; }
         }
-        repaint();
+        if (safeThis != nullptr) safeThis->repaint();
         return true;
     }
 
@@ -3750,6 +4134,15 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
     const float dy  = (float) anamorph::gui::wheelDominantDelta (wheel);
     if (std::abs (dy) < 1.0e-4f) return;
     const float sgn = dy > 0.0f ? 1.0f : -1.0f;
+    const juce::Component::SafePointer<SpectrumImager> safeThis (this);
+    const auto notifyRefused = onOwnedRefused;
+    const auto notifyWheelStep = onWheelStep;
+    const auto closeGesture = [notifyRefused] (juce::RangedAudioParameter* parameter)
+    {
+        if (parameter == nullptr) return;
+        if (notifyRefused) notifyRefused (parameter);
+        anamorph::param::endChangeGesture (parameter);
+    };
 
     // NO PRESS IS IN FLIGHT ANYWHERE, so this is a STANDALONE scroll -- the case every rule from
     // here down is about.
@@ -3944,7 +4337,13 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
         // and `storeOwned` makes that declaration through `onOwnedWrite` for every split it
         // touches, pushed neighbours included. State test 86 leg D2 is the leg that drives a
         // neighbour into being pushed and requires one Undo to bring the whole row back.
-        beginGesture (freqP[scrollHandle]);
+        auto* const parameter = freqP[scrollHandle];
+        beginGesture (parameter);
+        if (safeThis == nullptr)
+        {
+            closeGesture (parameter);
+            return;
+        }
         // ADR-0047: the tick's target starts from the position `captureDragOrigins` just stamped,
         // not from a fresh read of the same split. A fresh read failed SAFE -- `ownsSplit` refuses a
         // value the stamp does not know -- but a refusal is a wheel tick the user loses for no
@@ -3962,9 +4361,10 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
             // the previous scroll keeps the value it ended on. State test 86 legs J and M measure
             // this branch -- M is the one that can tell the store result apart from the
             // empty-gesture test, because it aborts the burst AFTER its own first store.
-            const ScopedWheelName wheelName (onWheelStep, stored ? freqP[scrollHandle] : nullptr);
-            endGesture (freqP[scrollHandle]);
+            const ScopedWheelName wheelName (notifyWheelStep, stored ? parameter : nullptr);
+            closeGesture (parameter);
         }
+        if (safeThis == nullptr) return;
         gestureBands = -1;
         // THE STAMP FOLLOWS THE BURST'S OWN EDITS, and without this the row half above would drop
         // the latch on the second tick of every ordinary split burst -- because a split burst
@@ -4025,17 +4425,24 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
         gestureW[scrollBand] = wNorm;
         gestureBands = N;
         {
-            beginGesture (widthP[scrollBand]);
+            auto* const parameter = widthP[scrollBand];
+            beginGesture (parameter);
+            if (safeThis == nullptr)
+            {
+                closeGesture (parameter);
+                return;
+            }
             const bool stored = ownsWidth (scrollBand) && bandCount() == N
-                             && storeOwned (widthP[scrollBand], want, gestureW[scrollBand]);
+                             && storeOwned (parameter, want, gestureW[scrollBand]);
             // Named only if the store stood -- see the split branch above for why. `storeOwned`'s
             // result is no longer discarded: this is what acts on the refusal.
-            const ScopedWheelName wheelName (onWheelStep, stored ? widthP[scrollBand] : nullptr);
-            endGesture (widthP[scrollBand]);
+            const ScopedWheelName wheelName (notifyWheelStep, stored ? parameter : nullptr);
+            closeGesture (parameter);
         }
+        if (safeThis == nullptr) return;
         gestureBands = -1;
     }
-    repaint();
+    if (safeThis != nullptr) safeThis->repaint();
 }
 
 // Called at the drag, routed-wheel and release event boundaries, after scoped actions unwind.
