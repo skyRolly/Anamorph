@@ -331,7 +331,7 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.
 
 
-## JUCE 9.0.5 proposal (2026-11-04)
+## JUCE 9.0.5 upgrade (2026-11-04)
 
 - `docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md` — Accepted decision under owner approval; implementation remains on its unmerged branch.
 - [`worklogs/JUCE905_UPGRADE_REVIEW.md`](../worklogs/JUCE905_UPGRADE_REVIEW.md) — investigation/review packet and native acceptance worksheet.
@@ -344,3 +344,7 @@ The worklog/ledgers are supporting investigation evidence under SOURCE_OF_TRUTH,
 a mismatched immutable SHA; local-checkout comparisons retain their separate branch.
 `worklogs/juce905-review/implementation.json` and `citation-map.json` retain approved execution
 and upstream-coordinate evidence; these ledgers do not establish manual acceptance.
+
+The same packet retains `target-ci.json` / `target-ci-retry.json` (timestamped jobs/provenance), `completed-baseline-ci.json`,
+`steady-comparison.json` / `transitions-comparison.json`, and the independent `session_probe.cpp`
+plus `build_session_probe.py` reproduction helper. They are validation evidence, not shared product code.

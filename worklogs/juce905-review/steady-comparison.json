@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "mode": "ab",
+  "inputs": {
+    "A": {
+      "path": "/workspace/juce905-runs/anamorph-904-steady.txt",
+      "sha256": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+      "valid": true,
+      "record_count": 32,
+      "records": {
+        "haas-os1-lr": {
+          "hash": "2c17208e09a4ca0c",
+          "latency": 0,
+          "line": 5
+        },
+        "haas-os1-ms": {
+          "hash": "29fef291deab6853",
+          "latency": 0,
+          "line": 6
+        },
+        "haas-os2-lr": {
+          "hash": "1059c3204be4d176",
+          "latency": 4,
+          "line": 7
+        },
+        "haas-os2-ms": {
+          "hash": "f7591d9006d37c81",
+          "latency": 4,
+          "line": 8
+        },
+        "haas-os4-lr": {
+          "hash": "8ba86883cc1ff4a4",
+          "latency": 6,
+          "line": 9
+        },
+        "haas-os4-ms": {
+          "hash": "e5435f19aae55ab4",
+          "latency": 6,
+          "line": 10
+        },
+        "haas-os8-lr": {
+          "hash": "4b044f4ba72c6d07",
+          "latency": 6,
+          "line": 11
+        },
+        "haas-os8-ms": {
+          "hash": "486f6f1adebd2872",
+          "latency": 6,
+          "line": 12
+        },
+        "velvet-os1-lr": {
+          "hash": "72458fc3bf20ce75",
+          "latency": 0,
+          "line": 13
+        },
+        "velvet-os1-ms": {
+          "hash": "f3d02955c4b12b08",
+          "latency": 0,
+          "line": 14
+        },
+        "velvet-os2-lr": {
+          "hash": "f01034759f3cea53",
+          "latency": 4,
+          "line": 15
+        },
+        "velvet-os2-ms": {
+          "hash": "d7753eeebdf5fd02",
+          "latency": 4,
+          "line": 16
+        },
+        "velvet-os4-lr": {
+          "hash": "9d36f9ef29a5470b",
+          "latency": 6,
+          "line": 17
+        },
+        "velvet-os4-ms": {
+          "hash": "962af38ea4b44271",
+          "latency": 6,
+          "line": 18
+        },
+        "velvet-os8-lr": {
+          "hash": "07520c06f2f20c0e",
+          "latency": 6,
+          "line": 19
+        },
+        "velvet-os8-ms": {
+          "hash": "506332d7a90861c4",
+          "latency": 6,
+          "line": 20
+        },
+        "chorus-os1-lr": {
+          "hash": "0d6c0c60fce95d35",
+          "latency": 0,
+          "line": 21
+        },
+        "chorus-os1-ms": {
+          "hash": "75fafa9aa9c56f28",
+          "latency": 0,
+          "line": 22
+        },
+        "chorus-os2-lr": {
+          "hash": "11ff0955ea27820b",
+          "latency": 4,
+          "line": 23
+        },
+        "chorus-os2-ms": {
+          "hash": "8669e84171d6ab58",
+          "latency": 4,
+          "line": 24
+        },
+        "chorus-os4-lr": {
+          "hash": "b6047777fe6e9835",
+          "latency": 6,
+          "line": 25
+        },
+        "chorus-os4-ms": {
+          "hash": "3c9c1eee2ba4ec0b",
+          "latency": 6,
+          "line": 26
+        },
+        "chorus-os8-lr": {
+          "hash": "bd5ee10304bc9715",
+          "latency": 6,
+          "line": 27
+        },
+        "chorus-os8-ms": {
+          "hash": "42a346d11b53056f",
+          "latency": 6,
+          "line": 28
+        },
+        "dimensional-os1-lr": {
+          "hash": "489c56315712750d",
+          "latency": 0,
+          "line": 29
+        },
+        "dimensional-os1-ms": {
+          "hash": "3ca988f812c0dc98",
+          "latency": 0,
+          "line": 30
+        },
+        "dimensional-os2-lr": {
+          "hash": "534dea7680ea039d",
+          "latency": 4,
+          "line": 31
+        },
+        "dimensional-os2-ms": {
+          "hash": "5d6c6c3dfa0d6433",
+          "latency": 4,
+          "line": 32
+        },
+        "dimensional-os4-lr": {
+          "hash": "7dd4bb5da8489d54",
+          "latency": 6,
+          "line": 33
+        },
+        "dimensional-os4-ms": {
+          "hash": "d22fbffd2b728838",
+          "latency": 6,
+          "line": 34
+        },
+        "dimensional-os8-lr": {
+          "hash": "0dc9bdea082a2433",
+          "latency": 6,
+          "line": 35
+        },
+        "dimensional-os8-ms": {
+          "hash": "1d8403e5e4f6592d",
+          "latency": 6,
+          "line": 36
+        }
+      }
+    },
+    "B": {
+      "path": "/workspace/juce905-runs/anamorph-905-steady.log",
+      "sha256": "e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8",
+      "valid": true,
+      "record_count": 32,
+      "records": {
+        "haas-os1-lr": {
+          "hash": "2c17208e09a4ca0c",
+          "latency": 0,
+          "line": 5
+        },
+        "haas-os1-ms": {
+          "hash": "29fef291deab6853",
+          "latency": 0,
+          "line": 6
+        },
+        "haas-os2-lr": {
+          "hash": "1059c3204be4d176",
+          "latency": 4,
+          "line": 7
+        },
+        "haas-os2-ms": {
+          "hash": "f7591d9006d37c81",
+          "latency": 4,
+          "line": 8
+        },
+        "haas-os4-lr": {
+          "hash": "8ba86883cc1ff4a4",
+          "latency": 6,
+          "line": 9
+        },
+        "haas-os4-ms": {
+          "hash": "e5435f19aae55ab4",
+          "latency": 6,
+          "line": 10
+        },
+        "haas-os8-lr": {
+          "hash": "4b044f4ba72c6d07",
+          "latency": 6,
+          "line": 11
+        },
+        "haas-os8-ms": {
+          "hash": "486f6f1adebd2872",
+          "latency": 6,
+          "line": 12
+        },
+        "velvet-os1-lr": {
+          "hash": "72458fc3bf20ce75",
+          "latency": 0,
+          "line": 13
+        },
+        "velvet-os1-ms": {
+          "hash": "f3d02955c4b12b08",
+          "latency": 0,
+          "line": 14
+        },
+        "velvet-os2-lr": {
+          "hash": "f01034759f3cea53",
+          "latency": 4,
+          "line": 15
+        },
+        "velvet-os2-ms": {
+          "hash": "d7753eeebdf5fd02",
+          "latency": 4,
+          "line": 16
+        },
+        "velvet-os4-lr": {
+          "hash": "9d36f9ef29a5470b",
+          "latency": 6,
+          "line": 17
+        },
+        "velvet-os4-ms": {
+          "hash": "962af38ea4b44271",
+          "latency": 6,
+          "line": 18
+        },
+        "velvet-os8-lr": {
+          "hash": "07520c06f2f20c0e",
+          "latency": 6,
+          "line": 19
+        },
+        "velvet-os8-ms": {
+          "hash": "506332d7a90861c4",
+          "latency": 6,
+          "line": 20
+        },
+        "chorus-os1-lr": {
+          "hash": "0d6c0c60fce95d35",
+          "latency": 0,
+          "line": 21
+        },
+        "chorus-os1-ms": {
+          "hash": "75fafa9aa9c56f28",
+          "latency": 0,
+          "line": 22
+        },
+        "chorus-os2-lr": {
+          "hash": "11ff0955ea27820b",
+          "latency": 4,
+          "line": 23
+        },
+        "chorus-os2-ms": {
+          "hash": "8669e84171d6ab58",
+          "latency": 4,
+          "line": 24
+        },
+        "chorus-os4-lr": {
+          "hash": "b6047777fe6e9835",
+          "latency": 6,
+          "line": 25
+        },
+        "chorus-os4-ms": {
+          "hash": "3c9c1eee2ba4ec0b",
+          "latency": 6,
+          "line": 26
+        },
+        "chorus-os8-lr": {
+          "hash": "bd5ee10304bc9715",
+          "latency": 6,
+          "line": 27
+        },
+        "chorus-os8-ms": {
+          "hash": "42a346d11b53056f",
+          "latency": 6,
+          "line": 28
+        },
+        "dimensional-os1-lr": {
+          "hash": "489c56315712750d",
+          "latency": 0,
+          "line": 29
+        },
+        "dimensional-os1-ms": {
+          "hash": "3ca988f812c0dc98",
+          "latency": 0,
+          "line": 30
+        },
+        "dimensional-os2-lr": {
+          "hash": "534dea7680ea039d",
+          "latency": 4,
+          "line": 31
+        },
+        "dimensional-os2-ms": {
+          "hash": "5d6c6c3dfa0d6433",
+          "latency": 4,
+          "line": 32
+        },
+        "dimensional-os4-lr": {
+          "hash": "7dd4bb5da8489d54",
+          "latency": 6,
+          "line": 33
+        },
+        "dimensional-os4-ms": {
+          "hash": "d22fbffd2b728838",
+          "latency": 6,
+          "line": 34
+        },
+        "dimensional-os8-lr": {
+          "hash": "0dc9bdea082a2433",
+          "latency": 6,
+          "line": 35
+        },
+        "dimensional-os8-ms": {
+          "hash": "1d8403e5e4f6592d",
+          "latency": 6,
+          "line": 36
+        }
+      }
+    }
+  },
+  "classification": "IDENTICAL",
+  "exit_code": 0,
+  "hashes": {
+    "status": "IDENTICAL",
+    "compared_scenarios": 32,
+    "differences": []
+  },
+  "latency": {
+    "status": "EQUAL",
+    "compared_scenarios": 32,
+    "differences": []
+  },
+  "errors": [],
+  "warnings": []
+}

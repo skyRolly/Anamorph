@@ -309,3 +309,53 @@ mutations all exit 1: admit everything, refuse everything, collapse signal/timeo
 ignore setup errors, and treat a rejected parse as accepted. The corrected variant exits 0.
 Exact outcomes are retained under `test_compatibility_correction` in `implementation.json`.
 The legacy branch remains available; it was not re-executed locally for this test correction.
+
+
+## 10. Executed implementation evidence — 2026-11-04 (Asia/Shanghai)
+
+The production `src/` diff is comment-only. Equivalent GCC 14.2 Release builds use the clean exact
+old/new JUCE trees, identical normalized compile flags (all 203 commands), Haswell/FP/LTO contracts
+and existing fixtures. Fresh normal FetchContent reports the target SHA; local 9.0.4 overrides work.
+The real reused baseline build accepts its intentional old local checkout, rejects old cached fields
+when that override is removed, and configures after the documented two-field reset. Cache suites
+pass with CMake 3.22.6 and 3.31.6 (11 cases each), preserving earlier refusals and negative controls.
+
+| Gate | Observed evidence |
+|---|---|
+| Full old/new DSP suites | 945 checks each, zero failures |
+| Full old/new state suites | 13,959 checks each, zero failures |
+| Committed steady dump | 32/32 hashes identical, all latency metadata equal; raw output SHA-256 `e019ad0b595f55c2e01169d7cacc184d5c477b2d281fee165e70ca2058fd1fa8` at both pins |
+| Committed transition dump | 5/5 hashes and latency traces identical; raw output SHA-256 `8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd` at both pins |
+| Dump instrument/parser controls | Both pin self-checks and automatic discrimination controls pass; parser self-test passes 162 production-entry fixtures/mutants |
+| Cross-version session | 11,249 bytes, SHA-256 `df4ae19d21243cd1842dcc0245568557029cd26bb47e91b573417b09cb666154`; repeatable old reads and byte-identical target re-save |
+| Parameter/metadata/render comparison | Full outputs equal: both slots ×36 parameter bits, Unicode/XML-special names and dirty state; six distinct 44.1/48/96 kHz hashes and latency 4 samples agree |
+| Local VST3 pluginval 1.0.4 | Strictness 10, deterministic ×3 + randomise ×3; all six pass on first attempt after discovery setup is corrected |
+| Generated Linux product identity | Checker self-test and actual generated metadata pass; product version remains 0.10.0 |
+| Codec/component coverage | All seven configured consumers (including format targets) carry all three exclusions; the CI fuzz target retains the same definitions. Object probes find no MP3/Opus/WebP symbols; HarfBuzz/SheenBidi/JPEG/PNG/FLAC/Ogg/Vorbis/zlib/PlutoVG source objects retain their expected components/attribution |
+
+The full new VST3/Standalone/tests/bench/dump build was confirmed with no work remaining before
+clearing disposable validation objects to recover disk. The simultaneous Anabasis links exhausted
+this 8 GB workspace. Those environmental failures remain logged; completed object/archive/binary
+identities were recorded before cleanup. Existing repository `build/` directories were untouched.
+An initial scratch discovery-root symlink hid the bundle from `find`; this produced no validator
+result. A physical discovery root pointing to the same exact bundle fixes setup. Neither wrappers,
+release locks, strictness, pass counts nor retries changed.
+
+`target-ci.json` retains source-head `0afa0d5fa1dd6a1cef18df343cf34ec30ffa9e9d` evidence:
+Linux, Windows, Apple Silicon/macOS, native Intel/macOS, both plugin formats where applicable,
+normal/LTO suites, full pluginval modes ×3, ABI/warnings, packaging/symbol/identity gates,
+ASan/UBSan + both memchecks, TSan with seeded canary, realtime, fuzz and source/docs checks pass.
+MSVC, CodeQL and dependency review pass. Optional native selection/co-installation/merge-check
+jobs are skipped. The reporting-only cross-slice job was cancelled on attempt 1; attempt 2 completed successfully
+without gate changes. Its cross-architecture numerical report is distinct from the identical same-toolchain
+JUCE comparison above. Final evidence-documentation head CI must also be read on the PR; this
+snapshot does not claim execution against a future commit. Initial XML failure remains recorded.
+Local GCC 14 measurements do not certify shipping ABI; the shipping Clang CI gate passed without
+raising its declared floor. No old 9.0.4 native attestation is reused.
+
+Reproduce the independent session check using `juce905-review/session_probe.cpp` and its helper
+against separate verified builds: compile each entry point with that build's state-target objects,
+write under 9.0.4, read twice there, then read the same bytes under 9.0.5. Compare the complete read
+outputs and original/resaved binary. Never combine one pin's objects with another pin's headers.
+The retained helper generalizes the executed Ninja command-replacement procedure to explicit paths.
+All substantive remaining items in §7 remain **Pending Human Acceptance**. Both PRs stay unmerged.

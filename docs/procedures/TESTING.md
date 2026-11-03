@@ -1,8 +1,9 @@
 # TESTING.md
 
 The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) records
-the exact pending comparison/native checklist and executed source/cache checks. Runtime equivalence
-is unverified; Level-5 is **Pending Human Acceptance** and existing 9.0.4 attestations retain their scope.
+executed old/new comparisons and the exact remaining native checklist. Linux GCC 14 comparisons
+are bit-identical (32 steady / five transitions and cross-version session renders); shipping-toolchain
+CI is recorded separately. Level-5 is **Pending Human Acceptance**; 9.0.4 attestations retain their scope.
 
 
 ## SpectrumImager teardown coverage — NR-029 / KI-037

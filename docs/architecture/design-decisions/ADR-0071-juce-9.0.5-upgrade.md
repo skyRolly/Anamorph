@@ -60,7 +60,7 @@ Earlier owner approvals cover their dated decisions, not this new proposal.
 - Preserve all production DSP, parameter IDs/ranges/defaults, state schemas and migrations,
   product/format identities, latency and real-time contracts. Any necessary JUCE-induced
   source correction must be separately identifiable and reviewed; no such correction is
-  implemented or demonstrated necessary by this source-only investigation.
+  demonstrated necessary in production. The observed test-only correction is recorded below.
 - Update current dependency declarations/provenance, cache tests, live JUCE citations,
   dependency/build/CI/testing records, `NOTICE` and `THIRD_PARTY_LICENSES.md` together when the
   pin actually changes. Historical ADRs, release attestations and measurements retain 9.0.4.
@@ -158,3 +158,18 @@ product-cap control. Resource/setup failures now fail closed. All 18 named, seve
 1 500 generated cases remain mandatory. Negative-control and runtime observations are retained
 in the worklog and implementation evidence. This falls within this ADR's approved JUCE-induced
 compatibility-correction scope; it does not relax ADR-0056's 256 KB/depth-8/no-DOCTYPE boundary.
+
+
+## Observed implementation validation — 2026-11-04
+
+Both pins use equivalent current production source (comment-only `src/` diff), GCC 14 Release
+settings and fixtures in isolated Linux builds. All 32 committed DSP dump scenarios and five
+transitions have identical hashes and latency/trace metadata. Both full suites pass 945 DSP and
+13,959 state checks. A 9.0.4 session re-saves byte-for-byte; all 36 parameter bits per slot,
+metadata, six distinct 44.1/48/96 kHz render hashes and reported latencies agree. The committed
+parser self-tests, dump controls, source/cache negative controls and corrected XML controls stay live.
+Local strictness-10 pluginval passes both modes ×3. Required source-head CI platform/sanitizer/static
+jobs pass, including the reporting-only cross-slice retry (attempt 2); final evidence-head checks are tracked in the PR.
+The worklog and timestamped target CI ledger distinguish passes, initial failure, cancellations and
+skips. Manual DAW/listening/native acceptance remains **Pending Human Acceptance**; this ADR
+approval does not accept those tests or authorize merge/release.

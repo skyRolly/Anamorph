@@ -1,6 +1,6 @@
 {
   "product": "Anamorph",
-  "status": "implementation_in_progress",
+  "status": "implemented_pending_human_acceptance",
   "owner_approval": {
     "date": "2026-11-04",
     "timezone": "Asia/Shanghai",
@@ -13,7 +13,7 @@
   "target": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
   "previous": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
   "manual_acceptance": "Pending Human Acceptance",
-  "full_automated_validation": "in progress",
+  "full_automated_validation": "Implementation head 0afa0d5fa1dd6a1cef18df343cf34ec30ffa9e9d: all normal build/static/dependency workflows pass, including the cross-slice retry (attempt 2). Final evidence-documentation head CI remains required.",
   "environment_recovery": "Isolated debian:13-slim Docker with development prerequisites; outer missing-header observations retained as history",
   "source_changes": {
     "comment_only": true,
@@ -386,5 +386,503 @@
       "checks": 13959,
       "failures": 0
     }
-  }
+  },
+  "record_scope": "Executed source implementation and local comparison results, captured 2026-11-03 UTC / 2026-11-04 Asia/Shanghai. Live final-head CI is recorded in the PR; timestamped CI snapshots retain original statuses.",
+  "superseded_local_invocations": [
+    {
+      "step": "pluginval-deterministic",
+      "command": [
+        "bash",
+        "/workspace/juce905-runs/pluginval-Anamorph/scripts/run-pluginval.sh",
+        "10",
+        "deterministic",
+        "vst3"
+      ],
+      "exit": 0,
+      "seconds": 0.03,
+      "log": "anamorph-905-pluginval-deterministic.log",
+      "note": "Corrected scratch-root discovery layout; exact repository wrapper and lock unchanged."
+    },
+    {
+      "step": "pluginval-randomise",
+      "command": [
+        "bash",
+        "/workspace/juce905-runs/pluginval-Anamorph/scripts/run-pluginval.sh",
+        "10",
+        "randomise",
+        "vst3"
+      ],
+      "exit": 0,
+      "seconds": 0.019,
+      "log": "anamorph-905-pluginval-randomise.log",
+      "note": "Corrected scratch-root discovery layout; exact repository wrapper and lock unchanged."
+    }
+  ],
+  "local_runtime": [
+    {
+      "step": "dsp-tests",
+      "command": [
+        "xvfb-run",
+        "-a",
+        "/workspace/juce905-runs/anamorph-905/AnamorphTests_artefacts/Release/AnamorphTests"
+      ],
+      "exit": 0,
+      "seconds": 18.931,
+      "log": "anamorph-905-dsp-tests.log"
+    },
+    {
+      "step": "state-tests",
+      "command": [
+        "xvfb-run",
+        "-a",
+        "/workspace/juce905-runs/anamorph-905/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+      ],
+      "exit": 0,
+      "seconds": 60.68,
+      "log": "anamorph-905-state-tests.log"
+    },
+    {
+      "step": "session-build",
+      "command": [
+        "python3",
+        "/workspace/juce905-runs/build_session_probe.py",
+        "Anamorph",
+        "905"
+      ],
+      "exit": 0,
+      "seconds": 29.836,
+      "log": "anamorph-905-session-build.log"
+    },
+    {
+      "step": "session-read",
+      "command": [
+        "xvfb-run",
+        "-a",
+        "/workspace/juce905-runs/anamorph-session-905",
+        "read",
+        "/workspace/juce905-runs/anamorph-session-904.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.345,
+      "log": "anamorph-905-session-read.log"
+    },
+    {
+      "step": "session-compare",
+      "command": [
+        "cmp",
+        "/workspace/juce905-runs/anamorph-session-904-read1.txt",
+        "/workspace/juce905-runs/anamorph-905-session-read.log"
+      ],
+      "exit": 0,
+      "seconds": 0.009,
+      "log": "anamorph-905-session-compare.log"
+    },
+    {
+      "step": "session-bytes",
+      "command": [
+        "cmp",
+        "/workspace/juce905-runs/anamorph-session-904.bin",
+        "/workspace/juce905-runs/anamorph-session-904.bin.resaved"
+      ],
+      "exit": 0,
+      "seconds": 0.006,
+      "log": "anamorph-905-session-bytes.log"
+    },
+    {
+      "step": "dump-selfcheck",
+      "command": [
+        "/workspace/juce905-runs/anamorph-905/AnamorphDspDump_artefacts/Release/AnamorphDspDump",
+        "--self-check"
+      ],
+      "exit": 0,
+      "seconds": 29.5,
+      "log": "anamorph-905-dump-selfcheck.log"
+    },
+    {
+      "step": "steady",
+      "command": [
+        "/workspace/juce905-runs/anamorph-905/AnamorphDspDump_artefacts/Release/AnamorphDspDump"
+      ],
+      "exit": 0,
+      "seconds": 61.067,
+      "log": "anamorph-905-steady.log"
+    },
+    {
+      "step": "transitions",
+      "command": [
+        "/workspace/juce905-runs/anamorph-905/AnamorphDspDump_artefacts/Release/AnamorphDspDump",
+        "--transitions"
+      ],
+      "exit": 0,
+      "seconds": 1.443,
+      "log": "anamorph-905-transitions.log"
+    },
+    {
+      "step": "steady-compare",
+      "command": [
+        "python3",
+        "/workspace/Anamorph/scripts/check-dsp-dump.py",
+        "ab",
+        "--suite",
+        "steady",
+        "--left",
+        "/workspace/juce905-runs/anamorph-904-steady.txt",
+        "--right",
+        "/workspace/juce905-runs/anamorph-905-steady.log",
+        "--report",
+        "/workspace/juce905-runs/anamorph-steady-comparison.json"
+      ],
+      "exit": 0,
+      "seconds": 0.093,
+      "log": "anamorph-905-steady-compare.log"
+    },
+    {
+      "step": "transitions-compare",
+      "command": [
+        "python3",
+        "/workspace/Anamorph/scripts/check-dsp-dump.py",
+        "ab",
+        "--suite",
+        "transitions",
+        "--left",
+        "/workspace/juce905-runs/anamorph-904-transitions.txt",
+        "--right",
+        "/workspace/juce905-runs/anamorph-905-transitions.log",
+        "--report",
+        "/workspace/juce905-runs/anamorph-transitions-comparison.json"
+      ],
+      "exit": 0,
+      "seconds": 0.052,
+      "log": "anamorph-905-transitions-compare.log"
+    },
+    {
+      "step": "identity-selftest",
+      "command": [
+        "python3",
+        "/workspace/Anamorph/scripts/check-product-identity.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.346,
+      "log": "anamorph-905-identity-selftest.log"
+    },
+    {
+      "step": "identity",
+      "command": [
+        "python3",
+        "/workspace/Anamorph/scripts/check-product-identity.py",
+        "--build-dir",
+        "/workspace/juce905-runs/anamorph-905",
+        "--platform",
+        "linux",
+        "--report",
+        "/workspace/juce905-runs/anamorph-identity.json"
+      ],
+      "exit": 0,
+      "seconds": 0.055,
+      "log": "anamorph-905-identity.log"
+    },
+    {
+      "step": "pluginval-deterministic",
+      "command": [
+        "bash",
+        "/workspace/juce905-runs/pluginval-Anamorph/scripts/run-pluginval.sh",
+        "10",
+        "deterministic",
+        "vst3"
+      ],
+      "exit": 0,
+      "seconds": 0.03,
+      "log": "anamorph-905-pluginval-deterministic.log",
+      "note": "Corrected scratch-root discovery layout; exact repository wrapper and lock unchanged."
+    },
+    {
+      "step": "pluginval-randomise",
+      "command": [
+        "bash",
+        "/workspace/juce905-runs/pluginval-Anamorph/scripts/run-pluginval.sh",
+        "10",
+        "randomise",
+        "vst3"
+      ],
+      "exit": 0,
+      "seconds": 0.019,
+      "log": "anamorph-905-pluginval-randomise.log",
+      "note": "Corrected scratch-root discovery layout; exact repository wrapper and lock unchanged."
+    }
+  ],
+  "superseded_local_invocations_reason": "Scratch build root was a symlink and wrapper find did not traverse it; corrected using a physical discovery directory containing the exact target bundle symlink. No validator or product ran in those discovery failures.",
+  "dsp_comparison": {
+    "steady": {
+      "schema_version": 1,
+      "mode": "ab",
+      "classification": "IDENTICAL",
+      "exit_code": 0,
+      "hashes": {
+        "status": "IDENTICAL",
+        "compared_scenarios": 32,
+        "differences": []
+      },
+      "latency": {
+        "status": "EQUAL",
+        "compared_scenarios": 32,
+        "differences": []
+      },
+      "errors": [],
+      "warnings": []
+    },
+    "transitions": {
+      "schema_version": 2,
+      "mode": "ab",
+      "classification": "IDENTICAL",
+      "exit_code": 0,
+      "hashes": {
+        "status": "IDENTICAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "latency": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      },
+      "errors": [],
+      "warnings": [],
+      "suite": "transitions",
+      "latency_trace": {
+        "status": "EQUAL",
+        "compared_scenarios": 5,
+        "differences": []
+      }
+    }
+  },
+  "state_comparison": {
+    "bytes": 11249,
+    "sha256": "df4ae19d21243cd1842dcc0245568557029cd26bb47e91b573417b09cb666154",
+    "byte_identical_resave": true,
+    "baseline_repeatable": true,
+    "target_full_output_identical": true,
+    "parameters_per_slot": 36,
+    "slots": 2,
+    "render_records": [
+      "render 44100 latency=4 hash=b22d1e6c24d632ed",
+      "render 48000 latency=4 hash=25fb5a1fab07aac7",
+      "render 96000 latency=4 hash=100e06e0b8424872",
+      "render 44100 latency=4 hash=706851d225583b33",
+      "render 48000 latency=4 hash=580a239f736a42a8",
+      "render 96000 latency=4 hash=6294a3148c5ae722"
+    ],
+    "raw_output": "resaved-identical=1 size=11249\nslot=0 name=升级 & <Recall> \"A/B\" A dirty=0\nchannelMode=00000000\nmonoSum=00000000\nswap=00000000\ninputBalance=3f000000\npolarityL=00000000\npolarityR=00000000\nmsMode=00000000\ndrive=00000000\nalgorithm=3f800000\namount=3f266667\nhaasDelay=3ea5a5a6\nhaasSide=00000000\nvelvetDensity=3f000000\nchorusRate=3ec434ce\nchorusDepth=3f000000\ndimMode=3f2aaaab\nwidth=3f0ccccd\nmbEnable=3f800000\nmbBands=3f800000\nmbSolo=00000000\nmbFreqLow=3ea2db7e\nmbFreqMid=3f08b589\nmbFreqHigh=3f39b170\nmbWidthLow=3f000000\nmbWidthMid=3f000000\nmbWidthHiMid=3f000000\nmbWidthHigh=3f000000\nmonoMakerOn=00000000\nmonoMakerFreq=3f000000\nmix=3f800000\noutputGain=3f000000\noutputBalance=3f000000\nautoGainMatch=00000000\nsolo=00000000\nbypass=00000000\nadvancedMode=00000000\nrender 44100 latency=4 hash=b22d1e6c24d632ed\nrender 48000 latency=4 hash=25fb5a1fab07aac7\nrender 96000 latency=4 hash=100e06e0b8424872\nslot=1 name=升级 & <Recall> \"A/B\" dirty=1\nchannelMode=3dba2e8c\nmonoSum=3e3a2e8c\nswap=3e8ba2e9\ninputBalance=3eba1cad\npolarityL=3ee8ba2f\npolarityR=3f0ba2e9\nmsMode=3f22e8ba\ndrive=3f3a2221\nalgorithm=3f51745d\namount=3f68b43a\nhaasDelay=00000000\nhaasSide=3dba2e8c\nvelvetDensity=3e3a5e36\nchorusRate=3e8b8e53\nchorusDepth=3eba5e36\ndimMode=3ee8ba2f\nwidth=3f0ba5e4\nmbEnable=3f22e8ba\nmbBands=3f3a2e8c\nmbSolo=3f51745d\nmbFreqLow=3f68ba2e\nmbFreqMid=00000000\nmbFreqHigh=3dba2e8c\nmbWidthLow=3e3a5e36\nmbWidthMid=3e8b851f\nmbWidthHiMid=3eba1cad\nmbWidthHigh=3ee8b43a\nmonoMakerOn=3f0ba2e9\nmonoMakerFreq=3f22e8b9\nmix=3f3a1cad\noutputGain=3f5170a4\noutputBalance=3f68b43a\nautoGainMatch=00000000\nsolo=3dba2e8c\nbypass=00000000\nadvancedMode=3e8ba2e9\nrender 44100 latency=4 hash=706851d225583b33\nrender 48000 latency=4 hash=580a239f736a42a8\nrender 96000 latency=4 hash=6294a3148c5ae722\n"
+  },
+  "component_objects": {
+    "harfbuzz": {
+      "object": "juce_graphics/juce_graphics_Harfbuzz.cpp.o",
+      "pattern": "hb_buffer_create",
+      "matches": [
+        "00000000 T hb_buffer_create",
+        "00000000 T hb_buffer_create_similar"
+      ]
+    },
+    "sheenbidi": {
+      "object": "juce_graphics/juce_graphics_Sheenbidi.c.o",
+      "pattern": "SBAlgorithmCreate",
+      "matches": [
+        "00000000 T SBAlgorithmCreate",
+        "00000000 T SBAlgorithmCreateParagraph"
+      ]
+    },
+    "jpeg": {
+      "object": "juce_graphics/juce_graphics_libjpg_1.c.o",
+      "pattern": "jpeg_",
+      "matches": [
+        "00000000 T jpeg_CreateCompress",
+        "00000000 T jpeg_abort",
+        "00000000 T jpeg_abort_compress",
+        "00000000 T jpeg_add_quant_table",
+        "00000000 T jpeg_alloc_huff_table"
+      ]
+    },
+    "png": {
+      "object": "juce_graphics/juce_graphics_libpng.c.o",
+      "pattern": "png_",
+      "matches": [
+        "00000000 T png_XYZ_from_xy",
+        "00000000 T png_access_version_number",
+        "00000000 T png_app_error",
+        "00000000 T png_app_warning",
+        "00000000 T png_ascii_from_fixed"
+      ]
+    },
+    "webp": {
+      "object": "juce_graphics/juce_graphics_libwebp_dec.c.o",
+      "pattern": "WebP",
+      "matches": []
+    },
+    "opus": {
+      "object": "juce_audio_formats/juce_audio_formats_opus.c.o",
+      "pattern": "opus_",
+      "matches": []
+    },
+    "flac": {
+      "object": "juce_audio_formats/juce_audio_formats_flac_2.c.o",
+      "pattern": "FLAC__",
+      "matches": [
+        "00000000 D FLAC__ChannelAssignmentString",
+        "00000000 D FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE2_ESCAPE_PARAMETER",
+        "00000000 D FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE2_PARAMETER_LEN",
+        "00000000 D FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_ESCAPE_PARAMETER",
+        "00000000 D FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_ORDER_LEN"
+      ]
+    },
+    "oggvorbis": {
+      "object": "juce_audio_formats/juce_audio_formats_ogg.c.o",
+      "pattern": "vorbis_|ogg_",
+      "matches": [
+        "00000000 T ogg_packet_clear",
+        "00000000 T ogg_page_bos",
+        "00000000 T ogg_page_checksum_set",
+        "00000000 T ogg_page_continued",
+        "00000000 T ogg_page_eos"
+      ]
+    },
+    "formats": {
+      "object": "juce_audio_formats/juce_audio_formats.cpp.o",
+      "matches": []
+    },
+    "plutovg": {
+      "object": "juce_graphics/juce_graphics_lunasvg.c.o",
+      "matches": [
+        "00000000 T juce_plutovg_blend",
+        "00000000 T juce_plutovg_canvas_add_font_face",
+        "00000000 T juce_plutovg_canvas_add_font_file",
+        "00000000 T juce_plutovg_canvas_add_glyph",
+        "00000000 T juce_plutovg_canvas_add_path",
+        "00000000 T juce_plutovg_canvas_add_text",
+        "00000000 T juce_plutovg_canvas_arc",
+        "00000000 T juce_plutovg_canvas_arc_to"
+      ]
+    },
+    "zlib": {
+      "object": "juce_core/juce_core_zlib.c.o",
+      "matches": [
+        "00000000 T deflate",
+        "00000000 T deflateBound",
+        "00000000 T deflateBound_z",
+        "00000000 T deflateCopy",
+        "00000000 T deflateEnd",
+        "00000000 T deflateGetDictionary",
+        "00000000 T deflateInit2_",
+        "00000000 T deflateInit_"
+      ]
+    }
+  },
+  "environment_failures": [
+    {
+      "event": "Disk exhausted during simultaneous product validation builds",
+      "classification": "environment failure, not a JUCE compatibility verdict",
+      "affected": "Anabasis 9.0.4 and 9.0.5 local links; Anamorph full build confirmed complete",
+      "recovery": "Record identities/logs; delete task-generated probe clones, completed object files/archives/executables; resume unchanged configurations. Original user build directories untouched."
+    }
+  ],
+  "local_binary_identities": [
+    {
+      "path": "/workspace/juce905-runs/anamorph-904/AnamorphTests_artefacts/Release/AnamorphTests",
+      "bytes": 37811208,
+      "sha256": "b17a97d047c29496f90ecbd56f2a970fe21bc45956868e17a0d46387306faef1"
+    },
+    {
+      "path": "/workspace/juce905-runs/anamorph-904/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+      "bytes": 176143352,
+      "sha256": "c38b090b97214df47284ec66e989230961a0811cf84a2b5aef0899c1d12992da"
+    },
+    {
+      "path": "/workspace/juce905-runs/anamorph-session-904",
+      "bytes": 151610984,
+      "sha256": "ab6752f4ae11aacd32802895178c41705926e9cbaea65f20d410995355f2bbab"
+    },
+    {
+      "path": "/workspace/juce905-runs/anamorph-905/AnamorphTests_artefacts/Release/AnamorphTests",
+      "bytes": 37933832,
+      "sha256": "eae0f78c015bff5c200a8a80748db1257f76648f16b0026aaf784ba005d5d529"
+    },
+    {
+      "path": "/workspace/juce905-runs/anamorph-905/AnamorphStateTests_artefacts/Release/AnamorphStateTests",
+      "bytes": 183974256,
+      "sha256": "f3f4350283227000594ab03a82a574912b44194dbe88805b80cea28ce08e8140"
+    },
+    {
+      "path": "/workspace/juce905-runs/anamorph-905/AnamorphBench_artefacts/Release/AnamorphBench",
+      "bytes": 9355176,
+      "sha256": "3d27218c7d7b9c46110fa22450f7dc667af9bd965cfd9f0345571beccc45a440"
+    },
+    {
+      "path": "/workspace/juce905-runs/anamorph-session-905",
+      "bytes": 159415904,
+      "sha256": "c0e42778207b0d84b2b6585624bd1ca7702359b4401634a4e38bf229a36e4f71"
+    }
+  ],
+  "files_modified": [
+    ".github/dependabot.yml",
+    ".github/workflows/build.yml",
+    "CHANGELOG.md",
+    "CMakeLists.txt",
+    "NOTICE",
+    "PRIVACY.md",
+    "README.md",
+    "THIRD_PARTY_LICENSES.md",
+    "TRADEMARKS.md",
+    "cmake/CheckJuceCache.cmake",
+    "cmake/VerifyJuceSource.cmake",
+    "docs/COMMERCIAL_STATUS.md",
+    "docs/DOCUMENTATION_COVERAGE.md",
+    "docs/FUTURE_RISKS.md",
+    "docs/HANDOVER.md",
+    "docs/KNOWN_ISSUES.md",
+    "docs/REPOSITORY_MAP.md",
+    "docs/SOURCE_OF_TRUTH.md",
+    "docs/architecture/ARCHITECTURE.md",
+    "docs/architecture/COMPATIBILITY_MATRIX.md",
+    "docs/architecture/REALTIME_SAFETY_AUDIT.md",
+    "docs/architecture/THREAD_MODEL.md",
+    "docs/architecture/design-decisions/ADR-0001-format-agnostic-dsp-core.md",
+    "docs/architecture/design-decisions/ADR-0023-vendor-manufacturer-code.md",
+    "docs/architecture/design-decisions/ADR-0054-juce-9.0.2-upgrade.md",
+    "docs/architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md",
+    "docs/architecture/design-decisions/ADR-0060-juce-9.0.3-upgrade.md",
+    "docs/architecture/design-decisions/ADR-0061-juce-9.0.4-upgrade.md",
+    "docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md",
+    "docs/architecture/design-decisions/ADR_INDEX.md",
+    "docs/policies/CODE_STYLE.md",
+    "docs/policies/DEPENDENCY_POLICY.md",
+    "docs/policies/RELEASE_POLICY.md",
+    "docs/policies/TESTING_POLICY.md",
+    "docs/policies/THREADING_POLICY.md",
+    "docs/procedures/BUILD.md",
+    "docs/procedures/CI_CD.md",
+    "docs/procedures/PACKAGING.md",
+    "docs/procedures/TESTING.md",
+    "docs/procedures/TROUBLESHOOTING.md",
+    "src/PluginEditor.cpp",
+    "src/PluginEditor.h",
+    "src/PluginProcessor.h",
+    "src/PresetManager.cpp",
+    "src/XmlBoundary.h",
+    "src/gui/LookAndFeel.cpp",
+    "src/gui/LookAndFeel.h",
+    "src/gui/PhysicalMouseButtons.h",
+    "tests/juce_cache_tests.py",
+    "tests/xml_boundary_differential.cpp",
+    "worklogs/JUCE905_UPGRADE_REVIEW.md",
+    "worklogs/juce905-review/baseline-ci.json",
+    "worklogs/juce905-review/build_session_probe.py",
+    "worklogs/juce905-review/citation-map.json",
+    "worklogs/juce905-review/completed-baseline-ci.json",
+    "worklogs/juce905-review/evidence.json",
+    "worklogs/juce905-review/implementation.json",
+    "worklogs/juce905-review/session_probe.cpp",
+    "worklogs/juce905-review/steady-comparison.json",
+    "worklogs/juce905-review/target-ci-retry.json",
+    "worklogs/juce905-review/target-ci.json",
+    "worklogs/juce905-review/transitions-comparison.json"
+  ]
 }

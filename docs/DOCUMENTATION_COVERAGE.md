@@ -18913,3 +18913,13 @@ and changelog. Product versions/identities and DSP/state/latency/codec/compiler 
 The original proposal and missing-outer-header observations are dated history; isolated Docker
 validation now supplies Linux prerequisites. Record actual runtime/CI outcomes in the worklog
 and implementation ledger; retain all unexecuted manual/native cases as pending.
+
+
+## JUCE 9.0.5 executed comparison and test adaptation evidence
+
+Record the source-head CI snapshot, independent session probe/helper and complete DSP dump
+comparison ledgers in `worklogs/juce905-review/`; link them from the repository map and upgrade
+worklog. Testing/ADR records now describe actual Linux equivalence and the separately identifiable
+XML oracle adaptation (original and five mutants fail, correction passes). Historical proposal,
+missing-header and initial failure records retain their original scope. Native acceptance stays
+pending. No release attestation, product version, numerical fixture or tolerance is changed.
