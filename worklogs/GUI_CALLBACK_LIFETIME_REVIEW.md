@@ -1,11 +1,21 @@
 # GUI callback lifetime review — NR-025 / NR-026
 
+## Current integrated restoration and SpectrumImager review
+
+PR #211 is integrated at `c35a9d6b` with State157 A→B→C→B coverage; its production
+guards were already supplied by #209. PR #212 additively retains this correction
+and its existing SpectrumImager implementation/tests. The multiband changelog
+note now cites `af8edfdd` and `05b207e3` on the explicitly unmerged review branch.
+Current exact-head evidence is linked from the roadmap. NR-026/KI-035 remains a
+separate unfixed dependency/architecture decision; no new production defect was
+established by this provenance finding. Native/manual acceptance stays deferred.
+
 2026-11-03 (Asia/Shanghai). Source baseline:
 `29150f312ec4a43ec85f35e61028d8338057d927`, after owner-authorized #208/#207.
 This is a bounded implementation review, not certification of every GUI event or
 manual host acceptance. Native/manual/performance execution remains owner-deferred.
 
-## Current integrated guards and State157 follow-up — 2026-11-03
+## Historical integrated guards and State157 follow-up — 2026-11-03
 
 #209 and #210 are merged at `0d395366` and `0cd95120`; retain both actual-editor
 corrections and their independent controls. PR #211's parameter-triggered restore

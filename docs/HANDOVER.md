@@ -1,6 +1,36 @@
 # HANDOVER.md
 
-## Current #209/#210 integration — 2026-11-03 (Asia/Shanghai)
+## Current #211 integration and #212 provenance review
+
+Owner-authorized PR #211 merged as
+`c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9`; its tree equals reviewed head
+`58a0dc4f264f3350fd36555a64b0f8c04efe1caa`. Production sources remain exactly
+those integrated by #209/#210. State157's same-processor A→B→C→B coverage is
+integrated once beside State155/156. Actual main local preflight ran 945 DSP /
+13,454 state checks; full strict ASan/UBSan/vptr ran 941 DSP / 13,454 state.
+Both completed with zero failures; displayed popup32, focused timer/preset201
+each and six strictness10 VST3 pluginval passes also completed. Actual main Build41660239454 attempt2 completed16 selected jobs with3 intentional
+optional/routing skips; CodeQL41660239752 and MSVC/PREfast41660239461 also pass.
+Independently digest-verified memcheck artifact13247606458 records DSP934 / state13,454,
+both completed/exit0/zero errors, with existing leak checking disabled. Retained
+dependency/capacity failures and complete provenance are in the
+[post-merge record](https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6607693944).
+
+PR #212 remains open and unmerged for separate owner review, with auto-merge
+disabled. The missing changelog Evidence Source is corrected using implementation
+commits `af8edfdd` and `05b207e3`, explicitly on an unmerged review branch.
+The additive synchronization retains State157 and both SpectrumImager fixtures;
+production and Spectrum regression bytes equal reviewed `9a00894b`. KI-037/NR-029
+remains distinct from the unfixed, architecture-gated KI-035/NR-026 Slider issue.
+The [current review evidence](https://github.com/skyRolly/Anamorph/pull/212#issuecomment-6604302597)
+records the final pushed SHA, validation and CI; pending or failed jobs are not passes.
+
+Native NR-006/010/014 acceptance remains owner-deferred; NR-003 remains Deferred.
+The annotated 0.10.0 tag, unpublished draft429760301, eleven assets and version
+metadata are unchanged. These post-tag source fixes are absent from that draft;
+no rebuild, publication, distribution or release authorization follows.
+
+## Historical #209/#210 integration — 2026-11-03 (Asia/Shanghai)
 
 #209 merged at `0d395366`; #210 merged at `0cd95120162b7913a5656f828f27eb96034c1b34`.
 The latter tree equals validated head `7208bdc2`; all selected current-head

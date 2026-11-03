@@ -317,9 +317,343 @@
       "next": "Follow-up commit and exact-head CI refresh pending; keep the prior CI failure as historical evidence."
     }
   },
-  "validation_status": {
-    "current_synchronized_local": "Complete: focused456/49/restored-held17; full strict sanitizer/preflight941 DSP/13559 state; six original routes and held-wheel mutant fail on invalid-vptr, corrected source passes. Exact final-head CI is separate.",
-    "native_host_visual_accessibility": "Owner-deferred; not run or waived.",
-    "release_objects": "Tag/draft/11 assets/version unchanged."
+  "validation_status": "Synchronized source validated locally:945 DSP/13959 state Release,941 DSP/13959 strict full-module sanitizers; controls discriminate and reviewed source restored. Actual final pushed-head CI status and artifacts are in the live evidence comment. Candidate remains open/unmerged.",
+  "changelog_provenance_review": {
+    "review_head": "9a00894b9a922786036de121432339582d6f9511",
+    "entry_introduction": "8779db9735284d524a01166b5b86504e1e4fa888",
+    "implementation": [
+      {
+        "sha": "af8edfddd3a88fceaee9f672cb753548a35403b6",
+        "in_pr212": true,
+        "integrated_main": false
+      },
+      {
+        "sha": "05b207e34ff9920e39abfc22be31ee35c5baaa33",
+        "in_pr212": true,
+        "integrated_main": false
+      }
+    ],
+    "reviewed_source_sha256": {
+      "src/gui/SpectrumImager.cpp": "d13de366244f2bfd57fcbe09f25158e8899c0053b80f083ff30e5abc2df44808",
+      "src/gui/SpectrumImager.h": "7847854f2e95d08af8e2b3d7c87fb55eeb065530bb5f1eb2c2a56b7521eb735f",
+      "src/PluginEditor.cpp": "312fbb28b427efc420e4b4cf1a83e2d68cfc4ffd8db5254d432bf1244f900bb4",
+      "src/PluginEditor.h": "a2e6af1cddf757ab7ab0082d812f8aa4a273ffecc23804fb35371ec39e928c7b",
+      "tests/spectrum_imager_lifetime_tests.h": "fb8040c2aa6bc6d88ae0563a479fc9b15548740b61655ad359695fc216d81038"
+    },
+    "root_cause": "The new Unreleased Fixed bullet was added by merge commit 8779db9735284d524a01166b5b86504e1e4fa888 without the Evidence line required by CHANGELOG_POLICY rule 2. This is a documentation provenance defect; no additional implementation defect was established.",
+    "changelog_correction": "- Keep multiband display edits and their Undo gestures consistent when a parameter notification closes the editor.\n  Evidence: commits `af8edfdd` and `05b207e3`; PR #212 (unmerged review branch);\n  NR-029/KI-037; SpectrumImager lifetime/Undo regressions. [Verified]\n",
+    "evidence_policy": "docs/policies/CHANGELOG_POLICY.md rule 2; current published Keep a Changelog1.1.0 read and retained.",
+    "regressions": [
+      "tests/spectrum_imager_lifetime_tests.h :: testSpectrumImagerCallbackLifetimes",
+      "tests/spectrum_imager_lifetime_tests.h :: testSpectrumImagerFrequencyEditorLifetimes"
+    ],
+    "issue_disposition": "NR-029/KI-037 and INC-025 describe the unmerged SpectrumImager candidate. NR-026/KI-035 remains the separate architecture-gated pinned-JUCE Slider defect.",
+    "synchronization": "Additive merge of c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9 into the authoritative PR212 branch, preserving shared history, both Spectrum fixtures and State157.",
+    "authorization": "Correct, test and push PR212; keep it open and unmerged with auto-merge disabled. No release operation or native/manual acceptance.",
+    "recorded_at": "2026-11-03T23:59:25+08:00",
+    "citation_correction_commit": "a6f01bcd24df13a703e39e9f072cb4b1d412eb7c",
+    "synchronization_commit": "15cdd42ebb500b9b4e9c2ab55a517883a7960fa6",
+    "synchronization_result": "Additive merge; all conflicts resolved without rewriting remote history. State157 header exactly matches integrated main. Existing SpectrumImager regression header and production bytes exactly match reviewed9a00894b. All three fixtures and their CLI selectors remain registered once.",
+    "documentation_check": "All eight Unreleased Fixed entries carry Evidence. check-docs700-case self-test and actual187-file check; citation self-tests and checks against current main and previous remote9a00894b pass.",
+    "checker_integrity": "Acceptance and self-test AST identical to main after excluding DELIBERATE_REAIMS data; existing token-verified target records retained. Restored unintended executable-bit removal; no checker logic/expectation/suppression change.",
+    "local_validation": {
+      "source_merge": "15cdd42e",
+      "release": "945 DSP /13959 state, zero failures",
+      "strict_sanitizer": "941 DSP /13959 state, zero failures",
+      "pluginval": "strictness10 deterministic/randomise three passes each, first attempts",
+      "popup": "32 checks, zero failures",
+      "build_exit_history": "Initial Release build command reported exit1 with no error diagnostic in complete log. Unchanged confirmation exited0. Do not invent a cause or reclassify the first exit.",
+      "logs": {
+        "pr212-preflight.log": "c9ea13c19ec4431d9691fc86ff89914a648968633bcafe61b6f430e3ed72de3d",
+        "pr212-combined-build.log": "02daab39728dac51661eb86c119d46245644a75e05a6aed606abf3c1ed7a8abd",
+        "pr212-combined-build-confirm.log": "0656b271384ae1ad43889febee9feb27f46ef1dda774c866e0e4a8a99a9cf3bc",
+        "pr212-combined-san-build.log": "7898da13031357e6ba0ac41b84fcd9f5550061de8540f9a0d535699cc3a8d832",
+        "pr212-combined-san-dsp.log": "e31fac7bd3e3dfc7eb4cf72ab0fd3c8b0edc9d25ab6214ae7d0e8eef16df9921",
+        "pr212-combined-san-state.log": "3c1eef3ce1b11d1feb8866285a47604b6c17eef355d621cf1cfbc1c76379f8c9",
+        "pr212-pluginval-deterministic.log": "820b13a4324eb3ce131d6a8ac48f18b8cd93a9bcb277b72c0f24ad8a70885eb8",
+        "pr212-pluginval-randomise.log": "d7b7bac5238d890fb9704c4274b730136f65f610a91c0a618532c38775d755ac",
+        "pr212-popup-live.log": "8bc161b38fc34b88f6ad74bd9d839779c4947cd2ef828ec26534e241d58a95a4",
+        "pr212-warning-gate.log": "2ce3158e4c9d41edacc830e1b32f33d7055b712240c34788704d3c3d4a6f0edc"
+      }
+    },
+    "refreshed_original_and_mutant_controls": {
+      "baseline": "29150f312ec4a43ec85f35e61028d8338057d927",
+      "original_source_sha256": {
+        "src/PluginEditor.cpp": "45c0d80f82d5a82c4b1988359d591274380a3a3ffe105f483b30ae16b27ec455",
+        "src/PluginEditor.h": "8a2824ce1f5e2434f6ad3da69b9fe93f7fc4b49dc0fa15a5e623f647b5f93e2a",
+        "src/gui/SpectrumImager.cpp": "a60c80e78313024c39984c73508db37a89512a34a397c263564d7f937bd4a155",
+        "src/gui/SpectrumImager.h": "bd7bf923e8019749d2826e890c4f5c1a2885e29a1581550545691deb5cdf7705"
+      },
+      "fixed_source_sha256": {
+        "src/gui/SpectrumImager.cpp": "d13de366244f2bfd57fcbe09f25158e8899c0053b80f083ff30e5abc2df44808",
+        "src/gui/SpectrumImager.h": "7847854f2e95d08af8e2b3d7c87fb55eeb065530bb5f1eb2c2a56b7521eb735f",
+        "src/PluginEditor.cpp": "312fbb28b427efc420e4b4cf1a83e2d68cfc4ffd8db5254d432bf1244f900bb4",
+        "src/PluginEditor.h": "a2e6af1cddf757ab7ab0082d812f8aa4a273ffecc23804fb35371ec39e928c7b",
+        "tests/spectrum_imager_lifetime_tests.h": "fb8040c2aa6bc6d88ae0563a479fc9b15548740b61655ad359695fc216d81038"
+      },
+      "recipe": "Use all four original PluginEditor/SpectrumImager source/header files consistently, rebuild actual full-module sanitized state target, run six selected probes. Then restore reviewed headers/editor, remove only the held-Width post-store lifetime check in takeWheelNotch, rebuild and require its failure. Restore all reviewed source bytes, rebuild and require generic456/frequency49/held-wheel17 passes.",
+      "mutant_sha256": "6a3ecb0f471dc8378e4c00799e32b594741c4c3cd4f4fb872ded01949bc799e3",
+      "records": [
+        {
+          "variant": "original",
+          "build_exit": 0,
+          "build_log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-build-original.log",
+          "sha256": "bc77a7fbd93546f3dad6a551938e66cf802d36c45055dee9c5367f1e0af0a258"
+        },
+        {
+          "variant": "original",
+          "selector": "reset-begin",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "reset-begin"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-original-reset-begin.log",
+          "sha256": "c1ed2d5fd70e52063e45300e3d95c9d206db9fd29bd61c3c0de1a96e4ba2167e",
+          "binary_sha256": "54cceeceff47f5b9f38b1519ef562e19e80b66a01fe7d8d3485ca6aabae721a5"
+        },
+        {
+          "variant": "original",
+          "selector": "split-reset-end",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "split-reset-end"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-original-split-reset-end.log",
+          "sha256": "0e14e6575184ac279e60fb7667c3a2241649d58ae5fa679d5bf0c2e1fbea3c89",
+          "binary_sha256": "54cceeceff47f5b9f38b1519ef562e19e80b66a01fe7d8d3485ca6aabae721a5"
+        },
+        {
+          "variant": "original",
+          "selector": "freq-commit-value",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "freq-commit-value"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-original-freq-commit-value.log",
+          "sha256": "80e63c0fb512c443e7ff5cb314b820f7f3acd95c0beb54000a6c33c3590414f2",
+          "binary_sha256": "54cceeceff47f5b9f38b1519ef562e19e80b66a01fe7d8d3485ca6aabae721a5"
+        },
+        {
+          "variant": "original",
+          "selector": "remove-solo-value",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "remove-solo-value"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-original-remove-solo-value.log",
+          "sha256": "9c89f66ac65b26c4ff4bc4e7487712da3da21f20037c9ba99f0ebdd979eb78ad",
+          "binary_sha256": "54cceeceff47f5b9f38b1519ef562e19e80b66a01fe7d8d3485ca6aabae721a5"
+        },
+        {
+          "variant": "original",
+          "selector": "wheel-split-value",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "wheel-split-value"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-original-wheel-split-value.log",
+          "sha256": "d5d2f0d139128e512ac4439523e3028d6f4b626f88f6a3ad67f408fe63a991f8",
+          "binary_sha256": "54cceeceff47f5b9f38b1519ef562e19e80b66a01fe7d8d3485ca6aabae721a5"
+        },
+        {
+          "variant": "original",
+          "selector": "held-wheel-width-value",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "held-wheel-width-value"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-original-held-wheel-width-value.log",
+          "sha256": "273bad1638655a53caaf0612630b13c29b74100b029ec845ba3e80c7e273e766",
+          "binary_sha256": "54cceeceff47f5b9f38b1519ef562e19e80b66a01fe7d8d3485ca6aabae721a5"
+        },
+        {
+          "variant": "held-wheel-guard-removal",
+          "build_exit": 0,
+          "build_log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-build-held-wheel-guard-removal.log",
+          "sha256": "bc77a7fbd93546f3dad6a551938e66cf802d36c45055dee9c5367f1e0af0a258"
+        },
+        {
+          "variant": "held-wheel-guard-removal",
+          "selector": "held-wheel-width-value",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "held-wheel-width-value"
+          ],
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "summary": [],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-held-wheel-guard-removal-held-wheel-width-value.log",
+          "sha256": "85760da170a00b2864229530a03160b1264a0d1cb5375cbea1a7bb26080885e6",
+          "binary_sha256": "59b511ae3c2df2d3c7854a500a754a4e14f4c135b3e8282d7ebccf1bfa657240"
+        },
+        {
+          "variant": "restoration",
+          "source_hashes_verified": true
+        },
+        {
+          "variant": "restored-fixed",
+          "build_exit": 0,
+          "build_log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-build-restored-fixed.log",
+          "sha256": "bc77a7fbd93546f3dad6a551938e66cf802d36c45055dee9c5367f1e0af0a258"
+        },
+        {
+          "variant": "restored-fixed",
+          "selector": "all",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe"
+          ],
+          "exit": 0,
+          "detector": null,
+          "summary": [
+            "456 checks, 0 failure(s)"
+          ],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-restored-fixed-all.log",
+          "sha256": "b9befd18520589647dbce8db4f36428fcd192c2b12e4064b204af8cdc667817f",
+          "binary_sha256": "73fcff169a69a192c291809a9a6fdf5e44feeb7801b00b699af41572075d70fe"
+        },
+        {
+          "variant": "restored-fixed-frequency",
+          "selector": "all",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-frequency-editor-lifetime-probe"
+          ],
+          "exit": 0,
+          "detector": null,
+          "summary": [
+            "49 checks, 0 failure(s)"
+          ],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-restored-fixed-frequency-all.log",
+          "sha256": "560e4e39d26bef68379dd80dfb5767cade6645f96856c8a570d99fb396c6f36d",
+          "binary_sha256": "73fcff169a69a192c291809a9a6fdf5e44feeb7801b00b699af41572075d70fe"
+        },
+        {
+          "variant": "restored-fixed",
+          "selector": "held-wheel-width-value",
+          "command": [
+            "/workspace/Anamorph/build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests",
+            "--spectrum-imager-lifetime-probe",
+            "held-wheel-width-value"
+          ],
+          "exit": 0,
+          "detector": null,
+          "summary": [
+            "17 checks, 0 failure(s)"
+          ],
+          "log": "/workspace/scratch/anamorph-integration-20261103/pr212-control-restored-fixed-held-wheel-width-value.log",
+          "sha256": "dc0cf05d14c4b37da6fe7b250d5fb2254ae7476c17922804de99ee0f7c863d86",
+          "binary_sha256": "73fcff169a69a192c291809a9a6fdf5e44feeb7801b00b699af41572075d70fe"
+        }
+      ],
+      "interpretation": "All six original routes and the single guard-removal variant report invalid-vptr under unchanged strict full sanitizer groups. Restored generic456, dedicated frequency49, held-wheel17 pass. vptr stops before later ASan access; no detector weakened. Source hashes verified restored."
+    },
+    "final_head_ci": "Required push/PR/CodeQL/MSVC/PREfast/dependency and all applicable sanitizer/memcheck/realtime/portability/pluginval outcomes must be checked against final pushed SHA. Pending/failed/cancelled/skipped are distinct. Exact final status and artifact digests are maintained in the existing live evidence comment to avoid superseding the validated head with an evidence-only commit.",
+    "final_head_evidence_comment": "https://github.com/skyRolly/Anamorph/pull/212#issuecomment-6604302597",
+    "remaining_unverified": [
+      "No dedicated Width reset-end destruction selector.",
+      "Inline frequency Return is invoked; focus-loss/Escape closures are not directly exercised.",
+      "Solo removal covers mask begin/value and selected positions, not every parameter/phase/topology.",
+      "Held Width wheel enters the production takeWheelNotch helper, not parent/OS/DAW wheel routing; begin/end are not separately selected.",
+      "Other editor/host orders and all native visual/accessibility/performance acceptance remain unverified or owner-deferred."
+    ],
+    "release_protection": {
+      "tag_object": "1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0",
+      "tag_source": "4c136881f245470577d66a7603f15b177ddcf3dc",
+      "draft_id": 429760301,
+      "draft": true,
+      "assets": 11,
+      "version_and_workflow_hashes": {
+        "CMakeLists.txt": "97184e55c01832ea7e9cce609693e437e3ff02c448412e7f8e27e796c9e09d19",
+        "scripts/ubsan-ignorelist.txt": "6f67e13d4f3e0773e9acdce365c435c877af6445505bddbd82085ceea6f63144",
+        "scripts/clang-warning-baseline.txt": "5b7e74b3eb4e77b8d62c1ae689dfe8b6c847ed5da9f34ee3ef03378b1b2bd1f9",
+        "scripts/gcc-warning-baseline.txt": "5ea89e26cbad53ff558f17b5f5ec6afabe266493a78a5307c730d9e76b2d6743",
+        ".github/workflows/build.yml": "38ce2beb997e5a8531cad9ea9b66b1d90966f423b61074a21ee9f4776fab329a",
+        ".github/workflows/release.yml": "182fa3f8a892c1a7b43ce2c894d687713608a0aaaadabfe510f8822266eb8f65",
+        "juce_pin": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+        "tag_object": "1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0",
+        "tag_source": "4c136881f245470577d66a7603f15b177ddcf3dc",
+        "tag_type": "tag"
+      }
+    },
+    "approval": "PR212 must stay open/unmerged, auto-merge disabled, awaiting explicit owner merge authorization. No native/manual, architecture or release approval inferred.",
+    "integrated_main_completed_ci": {
+      "source": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+      "build_run": 41660239454,
+      "attempt": 2,
+      "selected_jobs": "16 success,3 intentional optional/routing skips",
+      "codeql": 41660239752,
+      "msvc_prefast": 41660239461,
+      "memcheck": {
+        "artifact_id": 13247606458,
+        "sha256": "fa921810171e627ef5b21e1cde9a773878c4f953c6c513437d96b53b36d4cf4d",
+        "source": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+        "results": [
+          {
+            "suite": "dsp",
+            "command": [
+              "valgrind",
+              "--tool=memcheck",
+              "--track-origins=yes",
+              "--leak-check=no",
+              "--error-exitcode=1",
+              "--error-limit=no",
+              "--num-callers=25",
+              "build-vg/AnamorphTests_artefacts/Release/AnamorphTests"
+            ],
+            "exit_code": 0,
+            "log": "dsp.log",
+            "state": "completed",
+            "pid": 7445
+          },
+          {
+            "suite": "state",
+            "command": [
+              "valgrind",
+              "--tool=memcheck",
+              "--track-origins=yes",
+              "--leak-check=no",
+              "--error-exitcode=1",
+              "--error-limit=no",
+              "--num-callers=25",
+              "build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+            ],
+            "exit_code": 0,
+            "log": "state.log",
+            "state": "completed",
+            "pid": 7446
+          }
+        ],
+        "archive_verified": true,
+        "raw_logs_verified": true,
+        "leak_check": "no, unchanged existing option; not a leak-clean claim"
+      },
+      "evidence": "https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6607693944"
+    }
   }
 }

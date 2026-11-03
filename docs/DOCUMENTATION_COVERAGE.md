@@ -1,5 +1,17 @@
 # DOCUMENTATION_COVERAGE.md
 
+## #211 integration and #212 provenance audit
+
+Record the owner-authorized #211 merge `c35a9d6b` and retain States155–157 plus
+both SpectrumImager fixtures through additive synchronization `15cdd42e`. Update
+README, handover, candidate readiness, callback review, roadmap and both existing
+evidence ledgers. Main validation and final #212 validation remain separate; the
+linked live evidence records the final pushed head and actual CI outcomes. The
+changelog correction cites the two actual implementation commits and explicitly
+retains unmerged review status. Restore the citation checker executable bit; its
+logic, negative controls and acceptance criteria remain unchanged. Preserve KI-035
+versus KI-037, historical failures, bounded coverage and native/release deferrals.
+
 ## NR-029 changelog provenance correction
 
 The multiband Unreleased note added by `8779db97` omitted the Evidence Source
@@ -7,8 +19,8 @@ required by CHANGELOG_POLICY rule 2. Cite the actual implementation commits
 `af8edfddd3a88fceaee9f672cb753548a35403b6` and
 `05b207e34ff9920e39abfc22be31ee35c5baaa33`, both contained in unmerged PR #212.
 Retain NR-029/KI-037, the existing callback/gesture/Undo regression evidence and
-the explicit review-branch status. No production or test change resolves this
-documentation finding; final combined-head validation follows synchronization.
+the explicit review-branch status. The evidence citation resolves this documentation finding; final combined-head
+validation follows synchronization.
 
 ## NR-029 coverage-description review — 2026-11-03
 

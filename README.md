@@ -23,9 +23,10 @@ The release remains **Draft and unpublished**. The
 asset hashes and development priorities. On 2026-10-31 (Asia/Shanghai), the owner explicitly
 confirmed relevant ADR approvals and real-machine testing completed/approved (NR-001/002).
 The detailed host matrix NR-003 is Deferred; individual unexecuted cases are not passed.
-PRs #195–#210 are integrated on main through `0cd95120` (2026-11-03,
+PRs #195–#211 are integrated on main through `c35a9d6b` (2026-11-03,
 Asia/Shanghai). NR-024 protects Undo/Redo/A-B editor lifetime; NR-023 bounds
-transport arithmetic. The [callback investigation](worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
+transport arithmetic. State157 retains the repeated same-processor restore cycle.
+The [callback investigation](worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
 records integrated restore/scale guards, review-only imager corrections, and an unresolved framework
 lifetime finding. The [NR-006 architecture](docs/architecture/design-decisions/ADR-0070-validated-atomic-scope-windows.md)
 is Accepted and its atomic-window implementation is on main. Current native
