@@ -1,6 +1,32 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current candidate boundary after #207/#208 integration — 2026-11-02 (Asia/Shanghai)
+## Authorized integration checkpoint — 2026-11-03 (Asia/Shanghai)
+
+PR #209 is integrated at `0d395366237ac0b5ae10f74be644de3835a8f104`. The owner
+authorized #210 as well; the additive synchronization preserves both lifetime
+corrections and tests and is awaiting mandatory CI before merge. PR #211/#212
+remain open for corrections and separate human review. Older pending/unapproved
+statements below describe their dated checkpoints. Native acceptance remains
+owner-deferred, and the 0.10.0 tag/draft/11 assets/version stay unchanged.
+
+## Current candidate boundary after #208/#207 — 2026-11-03 (Asia/Shanghai)
+
+Main `29150f312ec4a43ec85f35e61028d8338057d927` contains owner-approved #208
+and #207. Combined945 DSP/12,234 state checks and retained original/fixed/mutant
+sanitizer controls verify the integrated source scope, not native acceptance.
+NR-025 additionally reproduces menu/timer post-restore UAF; its correction is
+unmerged. NR-026 reproduces a pinned-JUCE wheel teardown UAF and requires a
+dependency/architecture disposition before implementation. See the
+[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md). No native occurrence rate or
+attribution of earlier validator signal exits is established by these new probes.
+
+The existing annotated 0.10.0 object`1190e455` still peels to`4c13688`;
+draft429760301 remains unpublished, with its11 existing assets. Main corrections
+do not update those artifacts. Hold the draft; candidate selection, outstanding
+native/cost/UX acceptance and separate release authorization remain necessary.
+No tag, asset, version, rebuild or publication change is made.
+
+## Historical candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
 
 Current main is `29150f312ec4a43ec85f35e61028d8338057d927`, including owner-approved
 #207/#208. The #207 transport correction and #208 Undo/Redo/A-B lifetime correction

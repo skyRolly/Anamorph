@@ -260,5 +260,12 @@
     "The reproducer invokes actual editor methods, callbacks, and JUCE Component notifications with a controlled parent that synchronously deletes its child. It is not a supported DAW/native-host test.",
     "Only the editor translation unit, JUCE OpenGL translation unit and probe are ASan-instrumented; other linked objects are unchanged. Full sanitizer CI remains required.",
     "Hosted/component tests do not satisfy deferred NR-006/010 performance or NR-014 native visual/accessibility acceptance."
-  ]
+  ],
+  "integration_sync_20261103": {
+    "approved_head": "2859a946d5cf11757ae7e035ca8e0c6775a13ea8",
+    "integrated_parent": "0d395366237ac0b5ae10f74be644de3835a8f104",
+    "strategy": "Additive merge; source guards and both test headers/selectors/suite invocations preserved; no history rewrite.",
+    "validation": "Checker/tooling preflight and documentation/citations against main and prior #210 push pass. No built tree existed for that preflight; combined suites and synchronized CI are pending.",
+    "authorization": "Owner explicitly authorized #209/#210 merges; #211/#212 remain review-only; native acceptance deferred."
+  }
 }

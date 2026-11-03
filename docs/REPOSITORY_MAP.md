@@ -13,6 +13,10 @@ NR-027's scale teardown probes retain separate original/fixed/guard-removal cont
 [`gui-scale-callback-lifetime.json`](../worklogs/engineering-review/gui-scale-callback-lifetime.json).
 Historical standing-programme rounds retain their dated source scopes.
 
+The bounded [GUI callback lifetime review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
+and `worklogs/engineering-review/gui-restore-lifetime.json` retain NR-025 restore
+controls and the distinct NR-026 pinned-framework witness/decision boundary.
+
 ```
 Anamorph/
 ├── CMakeLists.txt          Build: JUCE FetchContent (9.0.4, pinned by commit SHA), AnamorphDSP INTERFACE lib,

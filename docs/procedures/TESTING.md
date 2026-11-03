@@ -1,5 +1,25 @@
 # TESTING.md
 
+## Restore callout destruction — State155 / NR-025
+
+`tests/gui_restore_lifetime_tests.h` delivers the actual preset-name callback and
+private timer override without changing the shipping class definition. A real
+off-message-thread restore waits for adoption; its synchronous latency listener
+destroys the editor during menu adoption or the timer poll. Assert completed
+restoration/latency, cleared dispatch, reopened Width readback and a stale copied
+menu callback leaving a second restore pending. Repeat each case twice.
+Run `AnamorphStateTests --gui-restore-lifetime-probe` for the three headless cases,
+or select `menu-close`, `timer-close`, `timer-live` or `popup-live`. Unknown
+selectors fail. The last case requires a display and fails explicitly without one;
+Linux CI runs it with Xvfb. It verifies an actual popup still opens, while the
+headless survivor verifies the timer still refreshes its Undo indicator.
+These are automated component controls, not manual host or visual acceptance.
+The default fixture executes79 checks; the explicit displayed case executes32.
+Original ASan fails both teardown paths; removing each guard or using the raw
+stale callback restores a UAF. Always-return mutants fail the survivor controls.
+Corrected actual-editor-TU ASan passes all four selections with leak detection;
+other linked objects are unchanged, so full sanitizer CI remains separate.
+
 ## Transport metadata arithmetic — State153 / NR-023
 
 `tests/transport_position_tests.h` runs through the real `processBlock` in the
