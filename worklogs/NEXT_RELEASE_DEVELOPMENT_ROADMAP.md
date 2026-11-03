@@ -1,12 +1,114 @@
 # Next release investigation and development roadmap
 
+## Current #211 integration and #212 provenance review
 
-Final review-head validation is tracked in the [PR #211 evidence comment](https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6604296936); pending jobs remain pending until that exact head completes.
+Owner-authorized PR #211 merged as
+`c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9`; its tree equals reviewed head
+`58a0dc4f264f3350fd36555a64b0f8c04efe1caa`. Production sources remain exactly
+those integrated by #209/#210. State157's same-processor A→B→C→B coverage is
+integrated once beside State155/156. Actual main local preflight ran 945 DSP /
+13,454 state checks; full strict ASan/UBSan/vptr ran 941 DSP / 13,454 state.
+Both completed with zero failures; displayed popup32, focused timer/preset201
+each and six strictness10 VST3 pluginval passes also completed. Actual main Build41660239454 attempt2 completed16 selected jobs with3 intentional
+optional/routing skips; CodeQL41660239752 and MSVC/PREfast41660239461 also pass.
+Independently digest-verified memcheck artifact13247606458 records DSP934 / state13,454,
+both completed/exit0/zero errors, with existing leak checking disabled. Retained
+dependency/capacity failures and complete provenance are in the
+[post-merge record](https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6607693944).
+
+PR #212 remains open and unmerged for separate owner review, with auto-merge
+disabled. The missing changelog Evidence Source is corrected using implementation
+commits `af8edfdd` and `05b207e3`, explicitly on an unmerged review branch.
+The additive synchronization retains State157 and both SpectrumImager fixtures;
+production and Spectrum regression bytes equal reviewed `9a00894b`. KI-037/NR-029
+remains distinct from the unfixed, architecture-gated KI-035/NR-026 Slider issue.
+The [current review evidence](https://github.com/skyRolly/Anamorph/pull/212#issuecomment-6604302597)
+records the final pushed SHA, validation and CI; pending or failed jobs are not passes.
+
+Native NR-006/010/014 acceptance remains owner-deferred; NR-003 remains Deferred.
+The annotated 0.10.0 tag, unpublished draft429760301, eleven assets and version
+metadata are unchanged. These post-tag source fixes are absent from that draft;
+no rebuild, publication, distribution or release authorization follows.
+
+Combined #212 local validation completed **945 DSP / 13,959 state** checks;
+full strict sanitizers completed **941 DSP / 13,959 state**, zero failures.
+Generic456, inline-frequency49 and held-Width17 restored controls pass. Six original
+routes and the one-guard mutant fail on invalid-vptr under the unchanged detectors.
+All reviewed source hashes are restored. Full preflight,18 Python controls, the
+actual ABI/warning gates, popup32 and both strictness10 pluginval modes×3 pass.
+The first Release build command's unexplained exit1 remains recorded separately;
+an unchanged confirmation exited0. Final pushed-head CI is recorded in the linked
+review evidence; local or historical results do not substitute for that head.
+
+The multiband bullet was introduced without a citation by `8779db97`; the actual
+implementation is in `af8edfddd3a88fceaee9f672cb753548a35403b6` and
+`05b207e34ff9920e39abfc22be31ee35c5baaa33`, both ancestors of #212 and absent
+from integrated main. Citation correction `a6f01bcd` and additive merge `15cdd42e`
+preserve reviewed shared history. No production or regression-body change was
+needed for the finding. All eight Unreleased Fixed entries carry evidence.
+
+Independent priorities remain the bounded callback inventory and separately gated
+NR-026 dependency decision. Do not manufacture a fix or repeat completed/Deferred
+work without new evidence. No additional PR merge is authorized; the remaining
+native, commercial, signing and candidate-specific release gates retain their scope.
 
 
-Actual combined-main `0cd95120` Build41634987301, CodeQL41634987240 and MSVC41634987355 completed successfully. Linux ran945 DSP/13,054 state checks; full sanitizers941 DSP/13,054 state; memcheck934 DSP/13,054 state, both suites completed with zero errors. Linux strictness10 pluginval completed both modes×3 on first attempts. Three optional/routing jobs were intentionally skipped. The pinned-Clang ABI gate passed; the historical local GCC shipping preflight failure is not reclassified or claimed repaired.
 
-## Current integration and restore-cycle review — 2026-11-03 (Asia/Shanghai)
+Historical reviewed-head validation is tracked in the [PR #212 evidence comment](https://github.com/skyRolly/Anamorph/pull/212#issuecomment-6604302597); pending jobs remain pending until that exact head completes.
+
+Historical reviewed-head validation is tracked in the [PR #211 evidence comment](https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6604296936); pending jobs remain pending until that exact head completes.
+
+
+Historical combined-main `0cd95120` Build41634987301, CodeQL41634987240 and MSVC41634987355 completed successfully. Linux ran945 DSP/13,054 state checks; full sanitizers941 DSP/13,054 state; memcheck934 DSP/13,054 state, both suites completed with zero errors. Linux strictness10 pluginval completed both modes×3 on first attempts. Three optional/routing jobs were intentionally skipped. The pinned-Clang ABI gate passed; the historical local GCC shipping preflight failure is not reclassified or claimed repaired.
+
+## Historical baseline and SpectrumImager review — 2026-11-03 (Asia/Shanghai)
+
+Owner-approved #209 merged at `0d395366237ac0b5ae10f74be644de3835a8f104`;
+#210 merged at `0cd95120162b7913a5656f828f27eb96034c1b34`, actual current main. Its tree equals
+validated #210 head `7208bdc2`. Build41619737257 (16 successful jobs, 3 intentional
+skips), PR41619744561, CodeQL41619744502, MSVC41619744513 and dependency41619744547
+completed. Combined local full-module sanitizer suites ran 941 DSP / 13,054 state
+checks; focused State15579, State156741 and Xvfb popup32. Original-editor controls
+fail on invalid-vptr access with the strict vptr detector; historical ASan/mutants
+remain retained. Digest-verified memcheck artifact13224979657 records both suites
+completed/exit0/zero errors, with existing leak checking disabled. One local
+pluginval attempt exited139 before the unchanged retry policy completed all
+strictness10 deterministic/randomized passes; its cause is not established.
+
+**PR #212 / NR-029 remains open, unmerged and review-only.** The review finding
+is accepted: its description understated the implemented reset, inline-frequency,
+solo/removal and wheel probes. The verified production routes, selectors, live/
+destructive controls, gesture/Undo oracles and remaining gaps are documented in
+TESTING and the evidence ledger. Synchronize additively with main and preserve
+both integrated editor guards. The original SpectrumImager production correction
+and test bytes remain unchanged apart from current source-citation anchors.
+No dependency on unmerged #211 is needed; #209 supplies its overlapping guards.
+
+Synchronized local full-module strict sanitizers run941 DSP/13,559 state checks;
+generic callback sweep456 and dedicated inline frequency49. The source and test
+bytes equal authoritative remote `2f1a8e7c`; only integrated editor guards and
+citation anchors are reconciled. Original/control refresh and final-head CI are
+tracked in the evidence comment before human review.
+
+Six refreshed original routes (Width reset begin, crossover reset end, inline
+frequency value, solo removal value, split wheel value and held Width wheel value)
+and the held-wheel guard-removal mutant all fail on invalid-vptr under strict
+full-module sanitizers. The restored held-wheel control passes17 checks; final
+preflight runs941 DSP/13,559 state. Historical ASan UAF and gesture/history
+witnesses remain retained; vptr was not disabled to obtain a later ASan report.
+Current-head CI is separately recorded in the linked comment. A bounded driver
+audit confirms State153/155/156 are wired once in their CLI and ordinary suites;
+no missing-registration change is justified. Preserve native and unprobed callback
+limits rather than infer global safety from this inventory.
+
+Assign **KI-037** to NR-029 after confirming it unused. The old provisional
+KI-035 collided with the independently confirmed, still-unfixed NR-026 JUCE
+Slider wheel-scope defect. Preserve KI-035 for NR-026; do not conflate the two.
+#211's State157 return/repeat correction remains separately review-only.
+Native/manual execution is owner-deferred; acceptance is outstanding. NR-003 stays
+Deferred. The 0.10.0 tag, unpublished draft, 11 assets and version remain unchanged.
+
+## Historical integration and restore-cycle review — 2026-11-03 (Asia/Shanghai)
 
 Owner-approved #209 merged at `0d395366237ac0b5ae10f74be644de3835a8f104`;
 #210 merged at `0cd95120162b7913a5656f828f27eb96034c1b34` (current integrated main).
@@ -1506,10 +1608,11 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
-| NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | Combined source validated; #211 adds parameter-trigger cycle coverage |
+| NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | State157 follow-up integrated by #211; actual main validation recorded above |
 | NR-026 | P1 | Architecture/dependency review pending | Actual JUCE wheel-scope teardown UAF; no JUCE patch or pin change | Human review before any gated implementation |
-| NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and actual-editor sanitizer controls | Native incidence remains unverified |
-| NR-028 | P1 | #211 review-only; production guards integrated by #209 | State157 pending parameter-trigger adoption, same-processor A→B→C→B | Correct/revalidate tests; separate owner merge review |
+| NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and sanitizer controls | Native incidence unverified |
+| NR-028 | P1 | Completed / integrated #211 / c35a9d6b | Same-processor A→B→C→B parameter-trigger adoption cycle; guards already integrated #209 | Actual combined-main validation and preserved negative controls |
+| NR-029 | P1 | #212 review-only / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; changelog provenance corrected | Current final-head validation evidence; explicit owner merge review still required |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -2077,8 +2180,41 @@ history and balanced dispatch on every leg. Keep live timer/button continuation
 and destruction controls. A skipped final callback and a truncated return leg
 are separate test-only negative controls. No production, schema or dependency
 change is needed. See [the evidence ledger](engineering-review/gui-restore-adoption-lifetime.json).
-PR #211 is not merged or authorized for merge; #212 remains independent against
-integrated main. Native/host/visual acceptance remains deferred, not passed.
+The owner authorized #211 and it merged as `c35a9d6b`; the tree equals reviewed
+`58a0dc4f`. #212 now includes that main additively and remains separately open
+and unmerged. Native/host/visual acceptance remains deferred, not passed.
+
+### NR-029 — SpectrumImager teardown, gesture and history (P1 / KI-037)
+
+At source baseline `29150f3`, synchronous parameter notifications can destroy the
+owning editor before imager mouse handlers, multi-store helpers or component-owned
+callbacks resume. Preserve processor actions/gesture cleanup from stack-owned
+state. The candidate corrects component lifetime checks and begin/end ordering;
+no processor, DSP, parameter/schema, latency, audio-thread or dependency contract
+changes. The existing source candidate is preserved through additive integration
+with main's restore/scale guards. PR #212 is open and unmerged; no merge authorized.
+
+The description's claimed unaudited reset, inline-frequency, solo/removal and
+wheel groups are actually exercised. TESTING maps each production entry to its
+selectors and exact oracles, including live/destructive controls and gesture/Undo
+checks. Coverage is bounded: no dedicated Width-reset-end probe; no direct inline
+focus-loss/Escape probe; no complete topology/removal-notification matrix; held
+Width wheel enters the production helper, not native routing. Other host/editor
+orders and native visual/accessibility acceptance remain unverified/deferred.
+Existing original/fixed/held-wheel mutant evidence is retained and current-head
+results are recorded in the [ledger](engineering-review/spectrum-imager-lifetime.json).
+Initial PR #212 called this KI-035 provisionally; that identifier belongs to
+NR-026's separate unfixed pinned-JUCE Slider defect. KI-037 is the unused current
+identifier, with this historical alias preserved explicitly. INC-025 records the
+candidate without claiming integration. No new source change follows merely
+from correcting the coverage description.
+
+The later changelog provenance finding is documentation-only: `8779db97` added
+the Unreleased bullet without its required Evidence Source. The entry now cites
+the real implementation commits `af8edfdd` / `05b207e3`, PR #212 as an unmerged
+review branch, NR-029/KI-037 and existing lifetime/Undo regressions. Source and
+regression-body bytes remain reviewed; State157 is retained after synchronization.
+Final pushed-head CI and remaining unverified scenarios are in the linked evidence.
 
 ## 5. Version and release strategy
 

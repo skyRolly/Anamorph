@@ -403,7 +403,43 @@ DELIBERATE_REAIMS = {
     # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
-     "src/gui/SpectrumImager.cpp:723"): "bandCount",
+     "src/gui/SpectrumImager.cpp:752"): "bandCount",
+    # 2026-11-03 (NR-029, PR #212 follow-up): the push-event citation gate
+    # compares against the previous pushed commit. These historical statements
+    # need statement-level re-aims, not the nearby lines a mechanical offset
+    # chooses after callback code is inserted into edited functions. Each target
+    # is checked against the live source on every run. The first five transitions
+    # are from the merge base; the next five are from the pushed predecessor.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:679",
+     "src/gui/SpectrumImager.cpp:724"): "Validate ONCE",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1422",
+     "src/gui/SpectrumImager.cpp:1796"): "dropX",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1738",
+     "src/gui/SpectrumImager.cpp:2282"): "binHz",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:944",
+     "src/gui/SpectrumImager.cpp:1082"): "stored && bandCount() == want",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/gui/SpectrumImager.cpp:1752",
+     "src/gui/SpectrumImager.cpp:2470"): "animOnP",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:708",
+     "src/gui/SpectrumImager.cpp:724"): "Validate ONCE",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1754",
+     "src/gui/SpectrumImager.cpp:1796"): "dropX",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:2179",
+     "src/gui/SpectrumImager.cpp:2282"): "binHz",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:1014",
+     "src/gui/SpectrumImager.cpp:1082"): "stored && bandCount() == want",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/gui/SpectrumImager.cpp:2193",
+     "src/gui/SpectrumImager.cpp:2470"): "animOnP",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
@@ -500,6 +536,10 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:426-565",
      'src/PluginProcessor.cpp:576-1036'): "syncCommitted",
 
+    # 2026-11-02 (NR-029): the PluginEditor.cpp and SpectrumImager.cpp target
+    # spellings below follow this change's callback captures and lifetime guards.
+    # The cited behavior did not change; targets were checked in the current tree.
+    #
     # ROUND 30 (d75a4c8 -> this push), and the same shape as the round-28 entries above: the SOURCE
     # did not move within this push, so every re-anchor below is indistinguishable from drift to the
     # push-predecessor check. Rounds 29 and 30 moved `PluginEditor.cpp`, `PluginEditor.h` and
@@ -515,7 +555,7 @@ DELIBERATE_REAIMS = {
      "src/PluginEditor.h:1366"): "aboutLink",
     ("PRIVACY.md",
      "src/PluginEditor.cpp:2221",
-     'src/PluginEditor.cpp:2354'): "createDirectory",
+     'src/PluginEditor.cpp:2359'): "createDirectory",
     ("TRADEMARKS.md",
      "src/PluginEditor.h:1021",
      "src/PluginEditor.h:1366"): "aboutLink",
@@ -530,7 +570,7 @@ DELIBERATE_REAIMS = {
      "src/gui/LookAndFeel.cpp:482"): "Rectangle",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2221",
-     'src/PluginEditor.cpp:2354'): "createDirectory",
+     'src/PluginEditor.cpp:2359'): "createDirectory",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.h:1021",
      "src/PluginEditor.h:1366"): "aboutLink",
@@ -539,40 +579,40 @@ DELIBERATE_REAIMS = {
      "src/gui/LookAndFeel.cpp:780-783"): "getPopupMenuFont",
     ("docs/KNOWN_ISSUES.md",
      "src/PluginEditor.cpp:2319-2327",
-     'src/PluginEditor.cpp:2452-2460'): "focusSaveNameField",
+     'src/PluginEditor.cpp:2457-2465'): "focusSaveNameField",
     ("docs/KNOWN_ISSUES.md",
      "src/PluginEditor.cpp:2275",
-     'src/PluginEditor.cpp:2408'): "focusSaveNameField",
+     'src/PluginEditor.cpp:2413'): "focusSaveNameField",
     ("docs/KNOWN_ISSUES.md",
      "src/PluginEditor.cpp:2257-2327",
-     'src/PluginEditor.cpp:2390-2460'): "focusSaveNameField",
+     'src/PluginEditor.cpp:2395-2465'): "focusSaveNameField",
     ("docs/POSTMORTEMS.md",
      "src/PluginEditor.cpp:1865-1869",
-     'src/PluginEditor.cpp:1935-1939'): "cursorOverPopup",
+     'src/PluginEditor.cpp:1940-1944'): "cursorOverPopup",
     ("docs/POSTMORTEMS.md",
      "src/PluginEditor.cpp:1577-1580",
-     'src/PluginEditor.cpp:1627-1630'): "cursorOverPopup",
+     'src/PluginEditor.cpp:1632-1635'): "cursorOverPopup",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:759",
-     'src/PluginEditor.cpp:807'): "startTimerHz",
+     'src/PluginEditor.cpp:812'): "startTimerHz",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:1981-1982",
-     'src/PluginEditor.cpp:2054-2055'): "triggerRepaint",
+     'src/PluginEditor.cpp:2059-2060'): "triggerRepaint",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:762-768",
-     'src/PluginEditor.cpp:810-816'): "VBlankAttachment",
+     'src/PluginEditor.cpp:815-821'): "VBlankAttachment",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:759, 1497-1677",
-     'src/PluginEditor.cpp:807, 1542-1731'): "abortAbandonedDragGestures",
+     'src/PluginEditor.cpp:812, 1547-1736'): "abortAbandonedDragGestures",
     ("docs/architecture/THREAD_MODEL.md",
      "src/PluginEditor.cpp:776-778",
-     'src/PluginEditor.cpp:824-826'): "meterVBlank",
+     'src/PluginEditor.cpp:829-831'): "meterVBlank",
     ("docs/procedures/CI_CD.md",
      "src/gui/LookAndFeel.cpp:328",
      "src/gui/LookAndFeel.cpp:482"): "Rectangle",
     ("tests/state_tests.cpp",
      "src/PluginEditor.cpp:2567",
-     'src/PluginEditor.cpp:2700'): "multiBar",
+     'src/PluginEditor.cpp:2705'): "multiBar",
 
     # ROUND 28, SECOND PUSH (71d3614), and the entries below exist because a re-anchor is
     # INDISTINGUISHABLE FROM DRIFT when the SOURCE did not move. `a6773cd` shipped the round-28
@@ -584,10 +624,10 @@ DELIBERATE_REAIMS = {
     # so a number that was wrong when it was written fails here rather than going quiet.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2373-2398",
-     'src/PluginEditor.cpp:2549-2574'): "oversampleBox",
+     'src/PluginEditor.cpp:2554-2579'): "oversampleBox",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2175",
-     'src/PluginEditor.cpp:2354'): "createDirectory",
+     'src/PluginEditor.cpp:2359'): "createDirectory",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1247-1424",
      'src/PluginProcessor.cpp:1460-1637'): "parameterGestureChanged",
@@ -642,7 +682,7 @@ DELIBERATE_REAIMS = {
      'src/PluginProcessor.cpp:1168'): "viewParams",
     ("docs/FUTURE_RISKS.md",
      "src/gui/SpectrumImager.cpp:898-913",
-     "src/gui/SpectrumImager.cpp:897-912"): "beginChangeGesture",
+     "src/gui/SpectrumImager.cpp:942-963"): "beginChangeGesture",
     # ...and ADR-0010's, whose anchor is a PAIR: the notifying write the wrapper replaced, and the
     # poll's gesture guard, which merely moved. One end edited is enough to make the whole anchor
     # unmappable, so the entry carries both ends at their re-derived spellings. The two entries
@@ -845,48 +885,19 @@ DELIBERATE_REAIMS = {
     ('docs/architecture/design-decisions/ADR-0044-a-transaction-owns-everything-it-has-written.md',
      'src/PluginParameters.cpp:369-378',
      'src/PluginParameters.cpp:396-405'): 'e.mbEnable',
-
-    # 2026-11-02 (NR-027, PR #210): the implementation commit moved several
-    # first-party anchors before this documentation commit could correct them.
-    # Against the push predecessor the source is already at its new lines, so
-    # these unchanged claims look like document-only re-aims. Each target is
-    # checked below against the exact source token it names.
-    ("PRIVACY.md",
-     "src/PluginEditor.cpp:2335",
-     'src/PluginEditor.cpp:2354'): "createDirectory",
-    ("docs/DOCUMENTATION_COVERAGE.md",
-     "src/PluginEditor.cpp:2530-2555",
-     'src/PluginEditor.cpp:2549-2574'): "oversampleBox",
-    ("docs/DOCUMENTATION_COVERAGE.md",
-     "src/PluginEditor.cpp:2335",
-     'src/PluginEditor.cpp:2354'): "createDirectory",
-    ("docs/KNOWN_ISSUES.md",
-     "src/PluginEditor.cpp:2433-2441",
-     'src/PluginEditor.cpp:2452-2460'): "focusSaveNameField",
-    ("docs/KNOWN_ISSUES.md",
-     "src/PluginEditor.cpp:2389",
-     'src/PluginEditor.cpp:2408'): "focusSaveNameField",
-    ("docs/KNOWN_ISSUES.md",
-     "src/PluginEditor.cpp:2371-2441",
-     'src/PluginEditor.cpp:2390-2460'): "focusSaveNameField",
-    ("docs/POSTMORTEMS.md",
-     "src/PluginEditor.cpp:1921-1925",
-     'src/PluginEditor.cpp:1935-1939'): "cursorOverPopup",
-    ("docs/POSTMORTEMS.md",
-     "src/PluginEditor.cpp:1617-1620",
-     'src/PluginEditor.cpp:1627-1630'): "cursorOverPopup",
-    ("docs/architecture/THREAD_MODEL.md",
-     "src/PluginEditor.cpp:2037-2038",
-     'src/PluginEditor.cpp:2054-2055'): "triggerRepaint",
-    ("docs/architecture/THREAD_MODEL.md",
-     "src/PluginEditor.cpp:802, 1537-1717",
-     'src/PluginEditor.cpp:807, 1542-1731'): "abortAbandonedDragGestures",
-    ("docs/architecture/design-decisions/ADR-0054-juce-9.0.2-upgrade.md",
-     "src/PluginEditor.cpp:307, 321, 821, 2037-2038",
-     'src/PluginEditor.cpp:307, 321, 826, 2054-2055'): "triggerRepaint",
-    ("tests/state_tests.cpp",
-     "src/PluginEditor.cpp:2681",
-     'src/PluginEditor.cpp:2700'): "multiBar",
+    # Preserve the integrated #209/#210 transitions on this combined source.
+    ('PRIVACY.md', 'src/PluginEditor.cpp:2335', 'src/PluginEditor.cpp:2359'): 'createDirectory',
+    ('docs/DOCUMENTATION_COVERAGE.md', 'src/PluginEditor.cpp:2530-2555', 'src/PluginEditor.cpp:2554-2579'): 'oversampleBox',
+    ('docs/DOCUMENTATION_COVERAGE.md', 'src/PluginEditor.cpp:2335', 'src/PluginEditor.cpp:2359'): 'createDirectory',
+    ('docs/KNOWN_ISSUES.md', 'src/PluginEditor.cpp:2433-2441', 'src/PluginEditor.cpp:2457-2465'): 'focusSaveNameField',
+    ('docs/KNOWN_ISSUES.md', 'src/PluginEditor.cpp:2389', 'src/PluginEditor.cpp:2413'): 'focusSaveNameField',
+    ('docs/KNOWN_ISSUES.md', 'src/PluginEditor.cpp:2371-2441', 'src/PluginEditor.cpp:2395-2465'): 'focusSaveNameField',
+    ('docs/POSTMORTEMS.md', 'src/PluginEditor.cpp:1921-1925', 'src/PluginEditor.cpp:1940-1944'): 'cursorOverPopup',
+    ('docs/POSTMORTEMS.md', 'src/PluginEditor.cpp:1617-1620', 'src/PluginEditor.cpp:1632-1635'): 'cursorOverPopup',
+    ('docs/architecture/THREAD_MODEL.md', 'src/PluginEditor.cpp:2037-2038', 'src/PluginEditor.cpp:2059-2060'): 'triggerRepaint',
+    ('docs/architecture/THREAD_MODEL.md', 'src/PluginEditor.cpp:802, 1537-1717', 'src/PluginEditor.cpp:812, 1547-1736'): 'abortAbandonedDragGestures',
+    ('docs/architecture/design-decisions/ADR-0054-juce-9.0.2-upgrade.md', 'src/PluginEditor.cpp:307, 321, 821, 2037-2038', 'src/PluginEditor.cpp:307, 321, 831, 2059-2060'): 'triggerRepaint',
+    ('tests/state_tests.cpp', 'src/PluginEditor.cpp:2681', 'src/PluginEditor.cpp:2705'): 'multiBar',
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

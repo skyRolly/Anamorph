@@ -17,7 +17,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 
 Evidence [Verified]:
 - Source: src/PluginProcessor.cpp:410-504 (`processBlock`), :392 `ScopedNoDenormals`
-- Source: src/PluginEditor.cpp:807 (24 Hz timer), src/PluginEditor.cpp:810-817 (VBlank), :306-320 (OpenGL gate)
+- Source: src/PluginEditor.cpp:812 (24 Hz timer), src/PluginEditor.cpp:815-822 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:23 ("Nothing is ever drawn on the audio thread")
 
 ## OpenGL platform gate (0.8.5)
@@ -38,7 +38,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:307-321 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:2054-2055 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:2059-2060 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
@@ -46,8 +46,8 @@ Evidence [Verified]:
 
 | Mechanism | Rate | Work | Source |
 |---|---|---|---|
-| `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:810-816 |
-| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:807, 1542-1731 |
+| `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:815-821 |
+| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:812, 1547-1736 |
 | `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
 | `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
 | `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |
@@ -63,7 +63,7 @@ re-expressed in `dt` form so its time constant is display-independent. The idle
 gates (S1/S2/S3, H15) and the once-per-block audio-side ballistics are unchanged.
 
 Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLContext.detach()`
-(the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:824-826.
+(the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:829-831.
 
 ## Restore completion and latency reentry (0.10.0 / ADR-0068)
 
@@ -143,7 +143,7 @@ freed while another thread can reach it, because a pointer is reachable from exa
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` (readout click, `src/gui/LevelMeter.h:27`); audio `processBlock` on a play edge or seek (`src/PluginProcessor.cpp:489`) | audio `process()` | LevelMeters.h:85, 110 |
 | Forced duck, A/B switch, A/B forget, and a bulk swap's sequence and completion (one request word) — **ordering-critical (ADR-0057, Accepted 2026-09-27)** | `std::atomic<int> duckRequest`: bit 0 a forced duck, bit 1 an A/B switch with the two slot indices in bits 4-7 and 8-11, bit 2 forget, bit 12 a completion, bits 13-16 the request's sequence (1-15; 0 is the engine API), bits 17-20 the completion's sequence. **Every modification is a read-modify-write**, never a plain store (precondition 3), so every later modification continues a completion's release sequence: `requestDuck()` a `fetch_or` (sequence 0) or a CAS that stores the sequence, `requestAbSwitch()` a CAS that keeps a pending switch's source, `forgetAbMatchMemory()` a CAS that keeps a pending duck, the sequence and the completion and drops a pending switch — all relaxed — and **`completeBulkApply()` a RELEASE CAS**, published after the swap's LAST parameter store. The consumer takes the whole word with an **ACQUIRE `exchange (0)`** twice per block, before and after reading the snapshot, adopts nothing while a swap's completion is awaited, and starts the forced duck only on a snapshot read between two takes after it — so the bottom adopts the complete destination (KI-032, fixed in 0.9.9; State tests 139 and 140, DSP Test 75) | message thread: `abSwitchToAdopted` (`requestAbSwitch`), undo / redo / a preset load (`requestDuck` with the sequence `beginBulkApply` gives), their completions (`endBulkApply` → `completeBulkApply`: `BulkApply::complete()` and PresetManager's `onSoundApplied`), `adoptRestoreTail` (`forgetAbMatchMemory`) | audio `setParametersFrom()` each block; the prepare path's `prepareFrom()` (`primeParametersFrom`, then a second fresh read); the engine API's one-take `setParameters()` / `primeParameters()` — all through `takeRequestWord()` | AnamorphEngine.h `duckRequest`, `completeBulkApply`; AnamorphEngine.cpp `completeBulkApply` / `takeRequestWord` / `startTakenRequests` |
 | Engine-API Level-Match injection | `std::atomic<float> matchInject` (relaxed store / `exchange`) | an engine API caller (`injectMatchGainDb`); the processor no longer calls it | audio `process()` (a forced bottom, or the next block) | AnamorphEngine.h `matchInject` |
-| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1752 |
+| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:2470 |
 
 **The A/B Level-Match memory is not shared state** (ADR-0007, Amendment of 2026-09-25, A/B provenance). Each
 slot's record -- the value published when the slot was left, whether it was measured, the state and rate it

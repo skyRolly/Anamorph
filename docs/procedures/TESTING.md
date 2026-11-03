@@ -1,6 +1,36 @@
 # TESTING.md
 
 
+## SpectrumImager teardown coverage — NR-029 / KI-037
+
+The actual editor and laid-out imager are used with production hit-testing and
+synchronous APVTS listeners. Each selected phase runs both a live editor and an
+editor destroyed by that notification. Event counts must be positive, destruction
+must match the selected control, and parameter/gesture/history assertions must
+hold; a function name alone is not coverage evidence.
+
+| Callback group | Executed production route and selectors | Verified oracles and limits |
+|---|---|---|
+| Width/crossover reset | Alt `mouseDown` invokes `resetParam` (`reset-begin`, `reset-value`) or `resetCrossover` (`split-reset-begin`, `split-reset-value`, `split-reset-end`) | Actual default/primary value changes, balanced gestures and exact original Width/all three splits after Undo. No dedicated Width-reset-end case or exhaustive neighbor-store/topology matrix. |
+| Inline crossover frequency | `mouseDoubleClick` opens the real TextEditor, then its component-owned `onReturnKey` commits `5 kHz`; `freq-commit-begin`, `freq-commit-value`, `freq-commit-end` | Notification reached, one begin/end pair, processor edit completes, Undo restores all three original splits. Focus-loss shares commit code but is not directly invoked; Escape is not probed. |
+| Solo toggle | Real header solo hit through `mouseDown`/`mouseUp`; `solo-mask-begin`, `solo-mask-value`, `solo-mask-end` | Mask changes, gestures balance, Undo restores the exact original solo mask. Not a matrix of all bands/modifiers. |
+| Topology solo remap/removal | Real add/remove mouse affordances; `add-solo-begin`, `add-solo-value`, `remove-solo-begin`, `remove-solo-value` | Live count/mask are legal; destruction cancels before stores without partial count/solo changes or empty Undo, and original splits/widths remain exact. Only selected mask begin/value phases and positions, not every removal notification. |
+| Standalone crossover wheel | Real `mouseWheelMove` reaches `takeWheelNotch`; `wheel-split-begin`, `wheel-split-value`, `wheel-split-end` | One balanced pair; begin-time destruction cancels before store, later phases complete and Undo restores the original split. Native/host wheel routing is not executed. |
+| Wheel during held Width drag | Real press followed by production `takeWheelNotch` with held-button modifiers; `held-wheel-width-value` | Changed Width, exactly one pending gesture close, exact Undo, and retained guard-removal sanitizer failure. Helper entry does not exercise the parent/OS wheel route; no independently selected begin/end destruction phases. |
+
+`AnamorphStateTests --spectrum-imager-lifetime-probe [selector]` runs the generic
+sweep or one selector. The three `freq-commit-*` aliases delegate to the dedicated
+`--spectrum-frequency-editor-lifetime-probe [begin|value|end]` fixture. Both
+fixtures also run in the ordinary suite. Other existing selectors cover Width
+begin/store/end, split begin, topology add Bands begin/value, first band-move pin
+begin and both closes, and explicit drag cancellation ends. The default generic
+sweep skips the three delegated aliases; do not count them as six extra cases.
+
+These are component/state and instrumented lifetime tests. They neither certify
+all editor teardown orders nor replace owner-deferred native visual, lifecycle,
+accessibility or performance acceptance. NR-026/KI-035's pinned JUCE Slider wheel
+scope is a separate unfixed issue. See [the evidence ledger](../../worklogs/engineering-review/spectrum-imager-lifetime.json).
+
 ## Parameter-triggered adoption cycle — State157 / NR-028
 
 Run `AnamorphStateTests --editor-restore-lifetime-probe timer` or `preset`;

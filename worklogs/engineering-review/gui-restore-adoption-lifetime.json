@@ -82,8 +82,9 @@
     "pr": "https://github.com/skyRolly/Anamorph/pull/211",
     "head_when_opened": "02ddeee03b84373a74170c6beb1997df0623d7fb",
     "evidence_ledger_commit": "59486b4",
-    "state": "Open; exact-head CI status is reported on the pull request",
-    "merge": "Not authorized; separate owner approval required"
+    "state": "Merged with explicit owner authorization",
+    "merge": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+    "current_integration_evidence": "https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6607693944"
   },
   "review_correction_2026_11_03": {
     "finding": "Accepted: the original one-adoption State157 fixture did not satisfy TESTING_POLICY rule 3a.",
@@ -316,5 +317,125 @@
     "validation_state_at_commit": "Local focused/full suites and all four cycle mutants verified. Final pushed-head CI is reported in the linked evidence comment, separately from historical successes.",
     "review_status": "Corrected local review candidate. Push and exact-head CI remain pending at this recorded checkpoint; live final-head results are in the linked evidence comment."
   },
-  "historical_snapshot_note": "Top-level source hashes and sanitizer fields retain the original independent PR checkpoint. The dated review correction below is the current integrated-baseline record."
+  "historical_snapshot_note": "Top-level source hashes/sanitizer fields and dated review-correction records retain their original reviewed checkpoints. integration_2026_11_03 records current owner-authorized integration and points to completed final CI evidence without replacing historical failures.",
+  "integration_2026_11_03": {
+    "recorded_at": "2026-11-03T23:59:25+08:00",
+    "owner_authorization": "Explicit owner approval to merge PR211 after mandatory current-head verification. No other merge authorized.",
+    "merge_commit": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+    "reviewed_head": "58a0dc4f264f3350fd36555a64b0f8c04efe1caa",
+    "parents": [
+      "0cd95120162b7913a5656f828f27eb96034c1b34",
+      "58a0dc4f264f3350fd36555a64b0f8c04efe1caa"
+    ],
+    "reviewed_tree_matches": true,
+    "production_delta_from_209_210": false,
+    "state157_registered_once": true,
+    "integration_identity_and_source_hashes": {
+      "merge": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+      "parents": [
+        "0cd95120162b7913a5656f828f27eb96034c1b34",
+        "58a0dc4f264f3350fd36555a64b0f8c04efe1caa"
+      ],
+      "tree": "2fa680214c71bc4c8abfcd3232beab5121e41897",
+      "reviewed_head": "58a0dc4f264f3350fd36555a64b0f8c04efe1caa",
+      "reviewed_tree": "2fa680214c71bc4c8abfcd3232beab5121e41897",
+      "files": {
+        "src/PluginEditor.cpp": "9e4ccbf620fbed76e233b450f973237eaee6dfb0fe1ce60c90b40a49bde7c6cf",
+        "src/PluginEditor.h": "64cfaa902afe9b9433bd05438bc35f9860f4b9c5d532d66e5a03d4da94f51088",
+        "tests/gui_restore_lifetime_tests.h": "e8fe5ca1288bec4376a064a976cccc2a2162f92f32403c7d41382593b26c8b3f",
+        "tests/gui_scale_lifetime_tests.h": "05311ec9720789363ea06e8b88f8bc2dd31887b43f80132701a29720416cbb0d",
+        "tests/editor_restore_lifetime_tests.h": "28ab4f8f887922d4ac9f0bfa5247d75ca99fd34d68b786311a71370756f465f5",
+        "tests/state_tests.cpp": "92281dac8e4d9a1e215448db0302bda79a4c685c82ac6e1dcba047e0797afbd5",
+        "CMakeLists.txt": "97184e55c01832ea7e9cce609693e437e3ff02c448412e7f8e27e796c9e09d19"
+      },
+      "production_delta_from_209_210": "",
+      "state157_registrations": 1,
+      "branch_rules": [],
+      "native_acceptance": "Owner-deferred; unperformed, not passed or waived",
+      "release_operations": "None"
+    },
+    "premerge_ci": "Reviewed58a0dc4f: selected Build41641996718, PR41642006638, CodeQL41642006358, MSVC41642006520 and dependency41642006386 all completed successfully. GitHub CLEAN/MERGEABLE, no reviews/inline threads, main unprotected/no branch rules.",
+    "local_release": "945 DSP /13454 state, zero failures; full preflight, ABI, documentation/citation and checker self-tests.",
+    "local_strict_sanitizers": "941 DSP /13454 state, zero failures; full-module address/undefined/vptr plus all supplementary CI groups; unchanged ignorelist and strict runtime options.",
+    "focused": "Displayed popup32; State157 timer201/preset201. Six strictness10 VST3 pluginval passes, first attempts.",
+    "local_sanitizer_configuration_failure": "First local run used /workspace/.cloud-setup/JUCE and stopped at vendored HarfBuzz implicit conversion: pre-existing ignorelist matches juce-src only. Retained failed raw log. Reconfigured the same verified pin through build-san/_deps/juce-src, rebuilt all modules and passed both suites. No ignorelist/detector/test change.",
+    "local_log_hashes": {
+      "main-preflight.log": "3c27c4602d766f28d81452bc9326ff524bc837f0c2aaa851dd4bf34642d50105",
+      "main-popup-live.log": "8bc161b38fc34b88f6ad74bd9d839779c4947cd2ef828ec26534e241d58a95a4",
+      "main-state157-timer.log": "24885210c24bb01ca6c17343026f1033b11b93f0a07675a5f246cc338d00dff1",
+      "main-state157-preset.log": "b5d58f0f099602fb0f3184b8d4b1be2297e32b49ac8c68723691cbb82e0f77f7",
+      "main-pluginval-deterministic.log": "820b13a4324eb3ce131d6a8ac48f18b8cd93a9bcb277b72c0f24ad8a70885eb8",
+      "main-pluginval-randomise.log": "913a7227d6f32013d4dd763555973849235b4324847c11ec9305db102ba7717f",
+      "main-linux-job.log": "1cd19db2c72dc5d6f0e09da75d330b45579e9da51f982aa616347a570cc76ee8",
+      "main-san-state-nonstandard-juce-path.log": "772f63a042244fea482fed110a18c34aa93b1e3a250aa373e4b4c3a921df51b8",
+      "main-san-build.log": "b44c61cb8c02f546fc78dbe6d91fc6a84781502e7722d15608360d7c084e95ef",
+      "main-san-dsp.log": "e31fac7bd3e3dfc7eb4cf72ab0fd3c8b0edc9d25ab6214ae7d0e8eef16df9921",
+      "main-san-state.log": "8313268d5ee5665f8413c3c7934297d81ce7308ec919d6fdfd9ec142ba06513e"
+    },
+    "actual_main_ci": {
+      "build": 41660239454,
+      "codeql": 41660239752,
+      "msvc": 41660239461,
+      "build_at_record": "Completed successfully at c35a9d6b, attempt2:16 selected jobs successful,3 intentional optional/routing skips. CodeQL/MSVC/PREfast also completed successfully; no pending or failed selected check.",
+      "attempt1": "Sanitizers/TSan/fuzz failed before tests due apt.llvm.org DNS resolution. Three macOS arm64 jobs cancelled with runner_id0/no steps and explicit capacity-acquisition annotations. All six rerun with unchanged checks. Other selected jobs passed.",
+      "tsan_host_artifact": 13244077965,
+      "tsan_host_sha256": "f40d054c8ffde820c6bf280cce4557b3e13be1fd337268faf28c2e2578299bef",
+      "tsan_verified": "Downloaded/digest-verified; seeded canary exit66/data-race report/liveness true. Actual probes and13454-state suite completed successfully. Host JSON recorded before canary retains not_yet_tested; canary and job logs establish execution.",
+      "memcheck": {
+        "artifact_id": 13247606458,
+        "sha256": "fa921810171e627ef5b21e1cde9a773878c4f953c6c513437d96b53b36d4cf4d",
+        "source": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+        "results": [
+          {
+            "suite": "dsp",
+            "command": [
+              "valgrind",
+              "--tool=memcheck",
+              "--track-origins=yes",
+              "--leak-check=no",
+              "--error-exitcode=1",
+              "--error-limit=no",
+              "--num-callers=25",
+              "build-vg/AnamorphTests_artefacts/Release/AnamorphTests"
+            ],
+            "exit_code": 0,
+            "log": "dsp.log",
+            "state": "completed",
+            "pid": 7445
+          },
+          {
+            "suite": "state",
+            "command": [
+              "valgrind",
+              "--tool=memcheck",
+              "--track-origins=yes",
+              "--leak-check=no",
+              "--error-exitcode=1",
+              "--error-limit=no",
+              "--num-callers=25",
+              "build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+            ],
+            "exit_code": 0,
+            "log": "state.log",
+            "state": "completed",
+            "pid": 7446
+          }
+        ],
+        "archive_verified": true,
+        "raw_logs_verified": true,
+        "leak_check": "no, unchanged existing option; not a leak-clean claim"
+      },
+      "ci_log_sha256": {
+        "main-linux-job.log": "1cd19db2c72dc5d6f0e09da75d330b45579e9da51f982aa616347a570cc76ee8",
+        "main-sanitizers-job.log": "44997aa51cfae92dc778493faeb3b8ca6a030028955794a3c2ede5ed0e403cee",
+        "main-tsan-job.log": "a384a77b19f7e5d979684ba249832554e37ed8191706b9ed3c7e34a003bba0ae",
+        "main-build-final-jobs.json": "9692160d69c16416d4a7cee1d25e2e5823dd5545d3d06517764f5203e9b07698",
+        "main-final-check-runs.json": "22a7d32a3c2f4033db65dc284fb9eb9ed0475c84a7368ceb13720d1f6395b5fd"
+      }
+    },
+    "final_evidence": "https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6607693944",
+    "native_acceptance": "Owner-deferred and unperformed, not passed/waived; NR006/010/014 remain outstanding; NR003 Deferred.",
+    "release": "No release/version operation; annotated0.10.0 and existing unpublished draft/eleven assets remain protected.",
+    "final_verification_at": "2026-11-04T00:04:50+08:00"
+  }
 }

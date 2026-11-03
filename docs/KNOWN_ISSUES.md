@@ -1,5 +1,9 @@
 # KNOWN_ISSUES.md
 
+KI-037 / NR-029 is corrected in the unmerged #212 candidate; see INC-025.
+Its provisional KI-035 label collided with the separate unfixed NR-026 issue.
+Integration and human review remain outstanding; the old draft is unchanged.
+
 KI-036 is corrected in the NR-027 source change; see INC-024. Integration is
 tracked separately in the execution register; the old draft is unchanged.
 KI-034 is resolved through #209 at `0d395366`; see INC-023.
@@ -362,13 +366,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2452-2460; declared src/PluginEditor.h:585). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2457-2465; declared src/PluginEditor.h:585). This shipped in
   the 0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2408 (the on-open call) / src/PluginEditor.cpp:2452-2460 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2413 (the on-open call) / src/PluginEditor.cpp:2457-2465 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -676,7 +680,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:401-411 (the field), src/PluginEditor.cpp:2390-2460 (show + focus);
+  src/PluginEditor.cpp:401-411 (the field), src/PluginEditor.cpp:2395-2465 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2442-2481`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,

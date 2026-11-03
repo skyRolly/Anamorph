@@ -6967,7 +6967,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2700),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2705),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -45923,6 +45923,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "editor_command_lifetime_tests.h"
 #include "gui_restore_lifetime_tests.h"
 #include "gui_scale_lifetime_tests.h"
+#include "spectrum_imager_lifetime_tests.h"
 #include "editor_restore_lifetime_tests.h"
 
 int main (int argc, char* argv[])
@@ -45973,6 +45974,63 @@ int main (int argc, char* argv[])
             else { std::fprintf (stderr, "Unknown GUI restore lifetime probe\n"); return 2; }
         }
         testGuiRestoreLifetimes (action);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--spectrum-imager-lifetime-probe") == 0)
+    {
+        int path = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "begin") == 0) path = 0;
+            else if (std::strcmp (argv[2], "store") == 0) path = 1;
+            else if (std::strcmp (argv[2], "end") == 0) path = 2;
+            else if (std::strcmp (argv[2], "split-begin") == 0) path = 3;
+            else if (std::strcmp (argv[2], "add-begin") == 0) path = 4;
+            else if (std::strcmp (argv[2], "add-value") == 0) path = 5;
+            else if (std::strcmp (argv[2], "band-move-begin") == 0) path = 6;
+            else if (std::strcmp (argv[2], "reset-value") == 0) path = 7;
+            else if (std::strcmp (argv[2], "reset-begin") == 0) path = 8;
+            else if (std::strcmp (argv[2], "split-reset-value") == 0) path = 9;
+            else if (std::strcmp (argv[2], "split-reset-begin") == 0) path = 10;
+            else if (std::strcmp (argv[2], "split-reset-end") == 0) path = 11;
+            else if (std::strcmp (argv[2], "solo-mask-value") == 0) path = 12;
+            else if (std::strcmp (argv[2], "solo-mask-begin") == 0) path = 13;
+            else if (std::strcmp (argv[2], "solo-mask-end") == 0) path = 14;
+            else if (std::strcmp (argv[2], "band-move-end-left") == 0) path = 15;
+            else if (std::strcmp (argv[2], "band-move-end-right") == 0) path = 16;
+            else if (std::strcmp (argv[2], "freq-commit-begin") == 0) path = 17;
+            else if (std::strcmp (argv[2], "freq-commit-value") == 0) path = 18;
+            else if (std::strcmp (argv[2], "freq-commit-end") == 0) path = 19;
+            else if (std::strcmp (argv[2], "add-solo-begin") == 0) path = 20;
+            else if (std::strcmp (argv[2], "add-solo-value") == 0) path = 21;
+            else if (std::strcmp (argv[2], "remove-solo-begin") == 0) path = 22;
+            else if (std::strcmp (argv[2], "remove-solo-value") == 0) path = 23;
+            else if (std::strcmp (argv[2], "cancel-width-end") == 0) path = 24;
+            else if (std::strcmp (argv[2], "cancel-split-end") == 0) path = 25;
+            else if (std::strcmp (argv[2], "wheel-split-begin") == 0) path = 26;
+            else if (std::strcmp (argv[2], "wheel-split-value") == 0) path = 27;
+            else if (std::strcmp (argv[2], "wheel-split-end") == 0) path = 28;
+            else if (std::strcmp (argv[2], "held-wheel-width-value") == 0) path = 29;
+            else { std::fprintf (stderr, "Unknown SpectrumImager lifetime path probe\n"); return 2; }
+        }
+        testSpectrumImagerCallbackLifetimes (path);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--spectrum-frequency-editor-lifetime-probe") == 0)
+    {
+        int path = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "begin") == 0) path = 0;
+            else if (std::strcmp (argv[2], "value") == 0) path = 1;
+            else if (std::strcmp (argv[2], "end") == 0) path = 2;
+            else { std::fprintf (stderr, "Unknown frequency-editor lifetime probe\n"); return 2; }
+        }
+        spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes (path);
         std::printf ("%d checks, %d failure(s)\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -46327,6 +46385,8 @@ int main (int argc, char* argv[])
     testGuiRestoreLifetimes();
     testGuiScaleLifetimes();
     testEditorRestoreAdoptionLifetimes();
+    testSpectrumImagerCallbackLifetimes();
+    spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

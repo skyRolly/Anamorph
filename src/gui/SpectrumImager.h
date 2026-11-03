@@ -118,11 +118,15 @@ private:
     // the only correct use is a named local at the top of a transaction.
     struct ScopedUserTransaction
     {
-        explicit ScopedUserTransaction (const SpectrumImager& o) noexcept : owner (o)
-        { if (owner.onUserTransaction) owner.onUserTransaction (true); }
+        explicit ScopedUserTransaction (const SpectrumImager& o)
+            : notifyTransaction (o.onUserTransaction)
+        { if (notifyTransaction) notifyTransaction (true); }
         ~ScopedUserTransaction()
-        { if (owner.onUserTransaction) owner.onUserTransaction (false); }
-        const SpectrumImager& owner;
+        { if (notifyTransaction) notifyTransaction (false); }
+        // A parameter listener may destroy the editor while the transaction's
+        // stack frame is still active. Keep both the callback and its captured
+        // processor lifetime independent of this component.
+        std::function<void(bool)> notifyTransaction;
         JUCE_DECLARE_NON_COPYABLE (ScopedUserTransaction)
     };
 
@@ -468,6 +472,12 @@ private:
     // This state is used only on the message thread: no posted event or timer retry.
     // Ending beginBandMove's scope alone is too early: its caller still uses the pins.
     int   gestureActionDepth = 0, gestureEventDepth = 0;
+    // A synchronous listener may destroy the editor before the processor has
+    // received a gesture's begin notification. In that case the originating
+    // mouseDown stack closes it after the dispatch finishes; the destructor
+    // must leave it open until then.
+    bool  parameterBeginDispatch = false;
+    bool  cancelAfterParameterBegin = false;
     std::optional<juce::MouseEvent> deferredMouseUp;
     void finishGestureEvent();
 
