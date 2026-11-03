@@ -1,6 +1,23 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
+## Current candidate boundary after #208/#207 — 2026-11-03 (Asia/Shanghai)
+
+Main `29150f312ec4a43ec85f35e61028d8338057d927` contains owner-approved #208
+and #207. Combined945 DSP/12,234 state checks and retained original/fixed/mutant
+sanitizer controls verify the integrated source scope, not native acceptance.
+NR-025 additionally reproduces menu/timer post-restore UAF; its correction is
+unmerged. NR-026 reproduces a pinned-JUCE wheel teardown UAF and requires a
+dependency/architecture disposition before implementation. See the
+[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md). No native occurrence rate or
+attribution of earlier validator signal exits is established by these new probes.
+
+The existing annotated 0.10.0 object`1190e455` still peels to`4c13688`;
+draft429760301 remains unpublished, with its11 existing assets. Main corrections
+do not update those artifacts. Hold the draft; candidate selection, outstanding
+native/cost/UX acceptance and separate release authorization remain necessary.
+No tag, asset, version, rebuild or publication change is made.
+
+## Historical candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
 
 Current main is `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`, containing the
 NR-024/KI-033 editor lifetime correction through owner-approved #208. NR-023/#207

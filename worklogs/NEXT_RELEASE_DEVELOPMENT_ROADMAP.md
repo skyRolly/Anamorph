@@ -1,6 +1,46 @@
 # Next release investigation and development roadmap
 
-## Current execution: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+## Current execution: #208/#207 integrated; restore callback investigation — 2026-11-03 (Asia/Shanghai)
+
+Owner-approved #208 merged at **`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`**;
+#207 merged at **`29150f312ec4a43ec85f35e61028d8338057d927`**, current integrated
+main. #207 retains reviewed `5e10d26` via additive synchronization `52039ae` and
+validated final head `ab7998804a2b2161a532ff1e3de26a8ec6e8039b`. No shared history
+was rewritten. The merge tree equals the validated tree; reviewed processor and
+editor source bytes and both original control records are preserved exactly once.
+Actual combined-main preflight executes **945 DSP / 12,234 state / 18 Python**
+checks. Focused current-wrapper UBSan passes208 and editor-command ASan passes3;
+the original wrapper still fails33 checks/four UBSan categories, and original and
+borrowed-reference editor controls still fail all three commands under ASan.
+
+Final #207-head Build41472583420 (16 successful jobs/3 intentional skips),
+PR41472595108, CodeQL41472595084, MSVC41472595111 and dependency41472595092
+completed. Independently verified memcheck artifact13159780263 records both
+suites completed/exit0/zero errors, with leak checking disabled by the existing
+configuration. Actual main Build41480257211 (16 successful jobs/3 intentional
+skips), MSVC41480257258 and CodeQL41480257255 subsequently completed successfully.
+Main memcheck artifact13161163476 was independently downloaded/digest-verified:
+both suites completed/exit0/zero errors, existing leak checking disabled. The prior
+#208-main Build41469471520 attempt1 lost two unacquired macOS hosted jobs (no steps
+or runner); annotations explicitly report capacity acquisition failure. Attempt2
+completed without changing checks. Preserve that infrastructure history.
+
+**New source evidence:** NR-025/P1 confirms preset-menu and timer post-restore
+use-after-free through real latency notification and editor teardown. Implement
+only message-thread lifetime guards in [PR #209](https://github.com/skyRolly/Anamorph/pull/209),
+**open and unmerged**; State155 includes live, reopen, completed
+restore and stale-copy controls. Native/manual work remains owner-deferred.
+NR-026/P1 separately confirms a pinned-JUCE wheel-scope destructor reading a
+deleted Slider; editor-only instrumentation missed it, actual GUI-module ASan
+detects it. No dependency/pin/protocol change is authorized. Prepare review options
+and preserve the reproduction before any gated implementation. New PRs require
+separate merge authorization. See the [callback review](GUI_CALLBACK_LIFETIME_REVIEW.md).
+
+The existing native package and all NR-006/010/native NR-014 acceptance stay
+outstanding. NR-003 remains Deferred; recurrence/legal/product/provisioning and
+release gates remain unchanged. No hardware request, release or version operation.
+
+## Historical #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
 
 The owner explicitly authorized both #208 and #207. #208 reviewed head
 `e12e1a5b8a3480341627d714aebf3a2d2340c805` is integrated at
@@ -1413,8 +1453,10 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
-| NR-023 | P2 | Implemented / unmerged #207 | Bound transport clock arithmetic; verified original/fixed wrapper controls and exact-head CI | Independent correctness fix |
+| NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport clock arithmetic; combined regression/UBSan and source-scoped CI retained | Completed source correction |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
+| NR-025 | P1 | Correction in open PR #209 / unmerged | Restore menu/timer lifetime guards; real adoption, live/reopen/stale-copy controls | Current independent lifetime fix |
+| NR-026 | P1 | Confirmed / gated review needed | Pinned JUCE wheel-scope teardown UAF; preserve repro, no dependency change yet | Architecture/dependency decision |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1884,8 +1926,9 @@ a later source does not authorize a rebuild, retag, version or release operation
   categories versus none corrected. Instrumented-wrapper controls are not a claim
   that every linked dependency was sanitized; required full CI remains separate.
   [Raw identities/log hashes](engineering-review/transport-arithmetic.json).
-- **Remaining:** refreshed combined-candidate gates and actual #207 integration.
-  The owner authorized #207 and #208, not future PRs.
+- **Integrated:** #207 at `29150f312ec4a43ec85f35e61028d8338057d927` after
+  synchronized exact-head CI. Combined main executes945/12,234 and retains both
+  original/fixed sanitizer controls. The owner authorized #207 and #208, not future PRs.
   No architecture, serialization, latency, parameter or realtime mechanism changes.
 
 ### NR-024 — Editor command callbacks survive reentrant destruction
@@ -1908,6 +1951,33 @@ The owner separately authorized integration; native acceptance remains deferred.
   detection enabled. Targeted TU controls are separate from full sanitizer CI.
 - **Limits:** native host incidence unknown; fixes and new PR merges require review,
   native/manual execution stays owner-deferred, all release gates remain.
+
+### NR-025 — Restore menu/timer callback lifetime (P1 / KI-034)
+
+Confirmed on combined main`29150f3`: actual menu adoption and timer poll can
+synchronously notify latency, close the editor, then resume through freed fields.
+Correction`b537596` uses stack-local weak guards and a weak/stack-owned preset
+click; it preserves the completed processor restoration and existing scheduling.
+State155 executes79 headless checks plus32 explicit displayed-popup controls.
+Original ASan fails2/2; independently removed menu/timer guards and the raw stale
+callback each reproduce UAF. Always-return mutants fail live continuation.
+Corrected targeted ASan passes all four selections. Full current local suites
+execute945 DSP/12,313 state. PR #209 review/current-head CI and explicit merge approval remain
+separate. Configured Linux pluginval strictness10 passes both modes ×3;
+all first attempts, with historical unrelated signal exits still unattributed. [Investigation, alternatives and scope](GUI_CALLBACK_LIFETIME_REVIEW.md).
+
+### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
+
+Actual Width wheel plus synchronous parameter-listener editor deletion reproduces
+UAF inside JUCE9.0.4's `Slider::ScopedDragNotification` destructor. Rebuilding all
+actual GUI-basics TUs exposes the read; Editor-only ASan had missed it. Live
+control passes. No native occurrence rate or attribution of old signal exits.
+Hold production dependency changes for human Architecture Review. The
+[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026--ki-035--pinned-juce-wheel-teardown-review-packet)
+compares bounded dependency repair, product event redesign and retained risk;
+recommend a consistent nonshipping prototype including gesture cleanup before
+selecting an exact patch/version/ADR. No pin, dependency bytes or Accepted
+protocol changed. Continue independent source review while that decision is held.
 
 ## 5. Version and release strategy
 
@@ -1944,8 +2014,10 @@ NR-022/006 and bounded NR-014 source work is integrated; native/manual execution
 is owner-deferred without waiving acceptance. Review state/preset/Undo, DSP/RT
 boundaries, publications/lifetimes, component callbacks and verification oracles
 for new reproducible evidence. Establish original/negative controls before fixing;
-use focused independent PRs and preserve Accepted contracts. NR-023/024 are this
-round's confirmed corrections. NR-003/013/015 and recurrence/owner gates remain;
+use focused independent PRs and preserve Accepted contracts. NR-023/024 are
+integrated; NR-025 is an unmerged restore-lifetime correction, NR-026 a confirmed
+dependency-lifetime finding held for review. Continue actual Settings/resize and
+attachment teardown probes with sufficient module instrumentation. NR-003/013/015 and recurrence/owner gates remain;
 unrelated source correctness does not wait for physical-machine performance.
 
 ### Phase 2 — Measurement inputs before optimization or expanded installation

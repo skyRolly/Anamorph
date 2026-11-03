@@ -30,6 +30,11 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
+The [GUI callback review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) and
+`worklogs/engineering-review/gui-restore-lifetime.json` are investigation evidence
+for NR-025/026, not authority to change Accepted latency/dependency contracts or
+merge future PRs. The roadmap owns current integration/approval status.
+
 The 2026-10-31 Linux correction is governed by Accepted
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):
 VST3-only installation, portable Standalone and preservation of legacy desktop resources.

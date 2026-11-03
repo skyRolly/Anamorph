@@ -1,6 +1,21 @@
 # HANDOVER.md
 
-## Current integration and engineering continuation — 2026-11-02 (Asia/Shanghai)
+## Current integration and callback investigation — 2026-11-03 (Asia/Shanghai)
+
+#208 is merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`; #207 at
+`29150f312ec4a43ec85f35e61028d8338057d927`, actual combined main. Reviewed source
+and original/fixed/mutant controls survive the additive documentation/test-driver
+reconciliation. Combined-main local preflight executes945 DSP/12,234 state/18
+Python; actual post-merge CI is tracked in the execution register, separately from
+successful synchronized-head CI. NR-023/024 source corrections are integrated.
+
+The [callback review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) confirms two
+new restore callout failures (NR-025, guarded in a new unmerged branch) and a
+distinct pinned-JUCE wheel-scope failure (NR-026, human review before any dependency
+change). New PR merges remain unauthorized. Native/manual acceptance is still
+owner-deferred, not waived. The 0.10.0 tag, unpublished draft and assets stay intact.
+
+## Historical integration and engineering continuation — 2026-11-02 (Asia/Shanghai)
 
 Owner-authorized #208 merged at `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`,
 with the reviewed e12e1a5 tree unchanged. NR-024/KI-033 is integrated (INC-022).
