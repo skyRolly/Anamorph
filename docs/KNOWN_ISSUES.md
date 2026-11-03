@@ -1,7 +1,23 @@
 # KNOWN_ISSUES.md
 
+KI-037 / NR-029 is corrected in the unmerged #212 candidate; see INC-025.
+Its provisional KI-035 label collided with the separate unfixed NR-026 issue.
+Integration and human review remain outstanding; the old draft is unchanged.
+
+KI-036 is corrected in the NR-027 source change; see INC-024. Integration is
+tracked separately in the execution register; the old draft is unchanged.
+KI-034 is resolved through #209 at `0d395366`; see INC-023.
 KI-033 is resolved on main through #208 at `a78b733`; see INC-022 in
 [POSTMORTEMS.md](POSTMORTEMS.md). The unchanged draft retains the old callbacks.
+
+## Confirmed callback findings — 2026-11-03 (Asia/Shanghai)
+
+**KI-035 / NR-026:** actual attached Width wheel notification can delete its
+Slider before pinned JUCE's `ScopedDragNotification` destructor reads it. Actual
+GUI-module ASan reports UAF; live control passes. **Unfixed; dependency/architecture
+review required** before production changes. Editor-only sanitizer silence missed
+the dependency read. No native incidence rate or attribution of earlier validator
+signals is established. [Evidence/options](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md).
 
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
@@ -170,7 +186,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-030 | ~~After an **A/B switch between slots that differ only in continuous controls** (Drive, Mix, Width, Amount…), Level Match drifts away from the slot's correct remembered gain — 0.22–5.8 dB depending on the change — and takes 1.8–4.5 s to come back~~ | — | **RESOLVED 2026-09-24** (ADR-0007, Amendment of 2026-09-24, F13(2)). An A/B switch whose slots differ in anything the Level-Match measurement reads now re-arms the analysis where the slot's gain is restored, and a re-prepare at an unchanged sample rate keeps the match instead of rebuilding it, once Level Match has caught up with the latest change to the sound (Test 67, State test 131; Test 69, State test 133). An A/B slot's remembered gain counts as caught up only if it was a confirmed measurement when the slot was left (ADR-0007, Amendment of 2026-09-25, A/B provenance; Test 70, State test 134), and it stays caught up through the fade-in of a switch made during another switch's fade-out (ADR-0007, Note of 2026-09-26; Test 72, State test 136), and when Velvet Density holds a NaN the Velvet ignores (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Test 74, State test 138). The engage cases recorded with it are decided behaviour, not defects: see the entry |
 | KI-031 | ~~**Turning Level Match on** without an A/B switch — **Undo of Level Match Apply**, re-engaging it by hand after Apply, or engaging it while Output Gain is below the matched gain — briefly plays louder than both the level before and the matched level after (+2.3 / +4.5 / +5.7 dB at Drive 4 / 8 / 10)~~ | — | **RESOLVED 2026-09-24** (owner ruling O4g; ADR-0007, Amendment 2026-09-24). A switch that turns Level Match on and changes nothing its measurement reads now starts at the matched level (Test 66, State test 130). Outside an A/B switch, an engage that also changes the sound still glides from unity: a measurement-staleness case, kept by the F13(2) decision (KI-030) |
 | KI-032 | ~~An **A/B switch, undo, redo or preset load made while the host processes much faster than real time** — an offline render, a host that renders ahead, one that splits its callback into small blocks — or while the message thread stalls for ~10 ms or more (at 256-sample buffers), can adopt a **partly written sound**: some of the destination's settings with the rest of the previous sound's, or the previous sound whole. It plays that into the switch's fade-in, then glides (or ducks a second time) to the destination, and a same-rate re-prepare before the destination's level is re-measured throws its matched level away~~ | — | **RESOLVED 2026-09-27** (ADR-0057, **Accepted** on the repository owner's approval and implemented; 0.9.9). A bulk swap's completion is now published after its last parameter store and acquired by the audio thread, which keeps the previous sound playing until then and lands the swap whole (Test 75, State tests 139 and 140; worklog §V) |
-| KI-035 | A synchronous parameter notification can destroy the editor while a SpectrumImager mouse callback is still running, causing use-after-free or an unbalanced Undo gesture | High | Confirmed on main `29150f3`; correction candidate in NR-029 is unmerged and requires review |
+| KI-035 | Pinned JUCE wheel gesture scope dereferences a deleted Slider | High | NR-026: confirmed with actual GUI-module ASan; dependency/architecture review required |
 
 ---
 
@@ -198,7 +214,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2584-2586 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2590-2592 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -350,13 +366,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2438-2446; declared src/PluginEditor.h:585). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2457-2465; declared src/PluginEditor.h:585). This shipped in
   the 0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2394 (the on-open call) / src/PluginEditor.cpp:2438-2446 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2413 (the on-open call) / src/PluginEditor.cpp:2457-2465 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -664,7 +680,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:396-406 (the field), src/PluginEditor.cpp:2376-2446 (show + focus);
+  src/PluginEditor.cpp:401-411 (the field), src/PluginEditor.cpp:2395-2465 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2442-2481`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -1331,32 +1347,3 @@ handler and retain service-survivor refusal. This closes that first-party regres
 without a new native session or any claim about the original attach/DSP cause.
 Evidence: `scripts/diagnose-rosetta-handshake.py::Driver.observe` and its production
 observer/runner/controller optional-hash self-tests.
-
-## KI-035 — SpectrumImager mouse callbacks can resume after synchronous editor destruction
-
-- **Status:** Confirmed on integrated main `29150f312ec4a43ec85f35e61028d8338057d927`;
-  correction candidate NR-029 is in [PR #212](https://github.com/skyRolly/Anamorph/pull/212)
-  and is not integrated.
-- **Severity/confidence:** High, deterministic source-level use-after-free or
-  unbalanced Undo gesture under a reachable parameter-listener interleaving.
-  Native host incidence and field rate are not measured.
-- **Mechanism:** Width begin/store/end, crossover-handle begin, topology-add
-  Bands begin/value, and interior-band move pin-begin all synchronously notify
-  parameter listeners. A listener can destroy the editor before the initiating
-  `SpectrumImager` callback or helper resumes. The remaining member access then
-  uses a dead component; destruction during begin can also close too early,
-  before the processor's later listener has observed the begin.
-- **Evidence [Verified]:** actual `AnamorphAudioProcessorEditor` construction,
-  production component hit-testing and mouse callbacks; original ASan witnesses
-  and corrected probes in
-  [`spectrum-imager-lifetime.json`](../worklogs/engineering-review/spectrum-imager-lifetime.json).
-  The candidate retains the processor operation and history transition, copies
-  needed callback objects, checks component `SafePointer`s after synchronous
-  dispatch, and closes a begun gesture only after dispatch returns.
-- **Coverage/limits:** seven focused scenarios include live-editor controls,
-  gesture pairing, later Undo, and exact topology restoration after interrupted
-  add. Reset/reset-crossover, inline frequency commit, solo-toggle/removal and
-  held/standalone wheel dispatch still need their own controlled probes. Do not
-  infer those paths safe from these cases. No DSP, audio-thread, state schema,
-  parameter registry or latency behavior changed; native/manual editor testing
-  remains deferred.

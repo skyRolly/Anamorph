@@ -1,5 +1,56 @@
 # TESTING.md
 
+
+## SpectrumImager teardown coverage — NR-029 / KI-037
+
+The actual editor and laid-out imager are used with production hit-testing and
+synchronous APVTS listeners. Each selected phase runs both a live editor and an
+editor destroyed by that notification. Event counts must be positive, destruction
+must match the selected control, and parameter/gesture/history assertions must
+hold; a function name alone is not coverage evidence.
+
+| Callback group | Executed production route and selectors | Verified oracles and limits |
+|---|---|---|
+| Width/crossover reset | Alt `mouseDown` invokes `resetParam` (`reset-begin`, `reset-value`) or `resetCrossover` (`split-reset-begin`, `split-reset-value`, `split-reset-end`) | Actual default/primary value changes, balanced gestures and exact original Width/all three splits after Undo. No dedicated Width-reset-end case or exhaustive neighbor-store/topology matrix. |
+| Inline crossover frequency | `mouseDoubleClick` opens the real TextEditor, then its component-owned `onReturnKey` commits `5 kHz`; `freq-commit-begin`, `freq-commit-value`, `freq-commit-end` | Notification reached, one begin/end pair, processor edit completes, Undo restores all three original splits. Focus-loss shares commit code but is not directly invoked; Escape is not probed. |
+| Solo toggle | Real header solo hit through `mouseDown`/`mouseUp`; `solo-mask-begin`, `solo-mask-value`, `solo-mask-end` | Mask changes, gestures balance, Undo restores the exact original solo mask. Not a matrix of all bands/modifiers. |
+| Topology solo remap/removal | Real add/remove mouse affordances; `add-solo-begin`, `add-solo-value`, `remove-solo-begin`, `remove-solo-value` | Live count/mask are legal; destruction cancels before stores without partial count/solo changes or empty Undo, and original splits/widths remain exact. Only selected mask begin/value phases and positions, not every removal notification. |
+| Standalone crossover wheel | Real `mouseWheelMove` reaches `takeWheelNotch`; `wheel-split-begin`, `wheel-split-value`, `wheel-split-end` | One balanced pair; begin-time destruction cancels before store, later phases complete and Undo restores the original split. Native/host wheel routing is not executed. |
+| Wheel during held Width drag | Real press followed by production `takeWheelNotch` with held-button modifiers; `held-wheel-width-value` | Changed Width, exactly one pending gesture close, exact Undo, and retained guard-removal sanitizer failure. Helper entry does not exercise the parent/OS wheel route; no independently selected begin/end destruction phases. |
+
+`AnamorphStateTests --spectrum-imager-lifetime-probe [selector]` runs the generic
+sweep or one selector. The three `freq-commit-*` aliases delegate to the dedicated
+`--spectrum-frequency-editor-lifetime-probe [begin|value|end]` fixture. Both
+fixtures also run in the ordinary suite. Other existing selectors cover Width
+begin/store/end, split begin, topology add Bands begin/value, first band-move pin
+begin and both closes, and explicit drag cancellation ends. The default generic
+sweep skips the three delegated aliases; do not count them as six extra cases.
+
+These are component/state and instrumented lifetime tests. They neither certify
+all editor teardown orders nor replace owner-deferred native visual, lifecycle,
+accessibility or performance acceptance. NR-026/KI-035's pinned JUCE Slider wheel
+scope is a separate unfixed issue. See [the evidence ledger](../../worklogs/engineering-review/spectrum-imager-lifetime.json).
+
+## Restore callout destruction — State155 / NR-025
+
+`tests/gui_restore_lifetime_tests.h` delivers the actual preset-name callback and
+private timer override without changing the shipping class definition. A real
+off-message-thread restore waits for adoption; its synchronous latency listener
+destroys the editor during menu adoption or the timer poll. Assert completed
+restoration/latency, cleared dispatch, reopened Width readback and a stale copied
+menu callback leaving a second restore pending. Repeat each case twice.
+Run `AnamorphStateTests --gui-restore-lifetime-probe` for the three headless cases,
+or select `menu-close`, `timer-close`, `timer-live` or `popup-live`. Unknown
+selectors fail. The last case requires a display and fails explicitly without one;
+Linux CI runs it with Xvfb. It verifies an actual popup still opens, while the
+headless survivor verifies the timer still refreshes its Undo indicator.
+These are automated component controls, not manual host or visual acceptance.
+The default fixture executes79 checks; the explicit displayed case executes32.
+Original ASan fails both teardown paths; removing each guard or using the raw
+stale callback restores a UAF. Always-return mutants fail the survivor controls.
+Corrected actual-editor-TU ASan passes all four selections with leak detection;
+other linked objects are unchanged, so full sanitizer CI remains separate.
+
 ## Transport metadata arithmetic — State153 / NR-023
 
 `tests/transport_position_tests.h` runs through the real `processBlock` in the
@@ -32,25 +83,25 @@ The display oracle finds the existing `presetname` component ID; it permits
 abbreviated/empty captions and asserts the dirty-state change instead of assuming
 an unabridged Default caption.
 
-## SpectrumImager callback lifetime — NR-029
+## Synchronous scale/resize teardown — State156 / NR-027
 
-The ordinary state suite and
-`AnamorphStateTests --spectrum-imager-lifetime-probe [begin|store|end|split-begin|add-begin|add-value|band-move-begin]`
-drive production `SpectrumImager` hit-testing with an actual editor. A parameter
-listener synchronously destroys that editor during width gesture begin/store/end,
-crossover-handle begin, topology-add Bands begin/value, or the first pin of an
-interior band-move startup. The probes retain live-editor controls, gesture
-balance checks, completed-Undo checks, exact topology restoration after an
-interrupted add, and a later normal edit that must remain undoable.
+`tests/gui_scale_lifetime_tests.h` drives the real host-DPI `setScaleFactor`, timer
+scale and Advanced-mode paths, and the component-owned Advanced button callback.
+A real JUCE parent callback may synchronously destroy the actual editor during its
+`setSize` or `setTransform`; live-editor controls check ordinary layout and scale
+composition, while destroyed-editor controls check that parameter values, latency,
+dispatch state and the processor's reopened view remain valid. The focused selector
+is `AnamorphStateTests --gui-scale-lifetime-probe [dpi|timer-scale|timer-mode|advanced]`;
+unknown selectors fail. State156's full fixture runs in the ordinary state suite.
 
-On the pre-fix source, the width store/end, topology-add Bands begin and
-band-move begin controls produce ASan heap-use-after-free; width/crossover
-gesture-begin controls also expose an unbalanced processor gesture and missing
-Undo on the next edit. The corrected focused controls pass with ASan, UBSan and
-leak detection enabled. Run the full state suite and mandatory sanitizer CI as
-well; the focused instrumented build does not claim every linked object was
-sanitized. This is message-thread component-lifetime coverage, not a native host,
-visual or accessibility acceptance result.
+At baseline `29150f3`, State156 passes 741/741 checks. The original production
+translation unit reproduces ASan heap-use-after-free in all four destroy cases.
+Separately removing the post-`setSize`, post-`setTransform`, or timer-return guard
+restores sanitizer failures; suppressing scale/layout work fails the live controls.
+Corrected actual-editor and JUCE OpenGL translation units pass all eight ASan
+destroy/live cases with leak detection enabled. Other linked objects are not
+instrumented in this focused control, and this is not native host or visual
+acceptance; full repository sanitizer CI remains required.
 
 **Owner direction, 2026-11-02:** native performance, GUI/host/editor/assistive and
 hardware-dependent installation execution is deferred this round. Acceptance

@@ -1,26 +1,55 @@
 # DOCUMENTATION_COVERAGE.md
 
-## NR-029 SpectrumImager callback lifetime investigation — 2026-11-02
+## NR-029 coverage-description review — 2026-11-03
 
-Record the confirmed main-baseline use-after-free/gesture-balance defect and its
-unmerged correction candidate in [PR #212](https://github.com/skyRolly/Anamorph/pull/212).
-Preserve actual-editor hit-test reproducers,
-original ASan witnesses, seven corrected ASan/UBSan/LSan controls and the full
-12,337-check sanitizer-enabled state-suite result with raw identities. The
-coverage is bounded to the enumerated width, crossover-handle, topology-add and
-interior-band-move paths; reset, inline frequency, solo/removal and wheel paths
-remain for separate probes. TESTING, KI-035 and the execution roadmap retain
-this scope. No native GUI/host acceptance, 0.10.0 release change, architecture
-approval or PR merge is inferred.
+Accepted finding: the PR body understated the production reset, inline-frequency,
+solo/removal and wheel probes already present on remote `2f1a8e7c`. TESTING now
+maps routes, selectors, live/destructive cases and gesture/history oracles, with
+explicit Width-reset-end, focus-loss/Escape, topology/removal and held-wheel routing
+limits. The existing SpectrumImager source/tests are preserved while adding
+integrated #209/#210 guards and drivers. KI-037 resolves the provisional KI-035
+collision with the distinct unfixed JUCE Slider risk. Roadmap, incident, changelog,
+handover and candidate readiness distinguish this unmerged correction from main
+and from the unchanged draft. No native acceptance or universal callback safety
+claim follows from this inventory.
+
+## NR-027 editor scale lifetime — 2026-11-02
+
+Record the confirmed synchronous parent-teardown path in `applyUiScale` and its
+timer callers. State156 runs the actual DPI, timer-scale, timer-mode and Advanced
+paths against a real JUCE parent component; live controls retain scale/layout and
+processor invariants. Original ASan reproduces four UAFs; corrected ASan passes
+all four close and four live cases. Independent removal of the size, transform and
+timer guards restores sanitizer errors; suppressing scale application fails live
+controls. Link the retained source/control hashes from the evidence JSON. Update
+TESTING, unreleased notes, known issues, postmortem, handover, release-readiness,
+roadmap and map. Preserve the actual-host uncertainty, owner-deferred native
+acceptance and unchanged 0.10.0 release boundary.
+
+## #208/#207 combined main and callback investigation — 2026-11-03
+
+Reconcile actual merge commits/source tree and executed combined counts; retain
+the original/fixed/reference controls, exact-head versus post-merge CI distinction
+and unacquired-runner annotations. The earlier integration audit is historical.
+NR-025 adds real menu/timer restore teardown, restoration/readback/reopen/stale-copy
+and live continuation controls. Linux's separate Xvfb popup control is automated,
+not manual visual acceptance. Sync TESTING/CI_CD, roadmap, handover, readiness,
+map/authority/README and the callback review evidence. NR-026 retains a separate
+dependency-review boundary and full-module instrumentation witness. Source-level
+corrections change no DSP/state/parameter/latency/threading contract or dependency
+pin. Preserve all native deferrals, existing diagnostic limitations and release
+objects; pending checks remain pending.
 
 ## #208 integration and #207 overlap reconciliation — 2026-11-02
 
 Record actual #208 merge `a78b733`, retain both independent control records and
 combine State153/154 headers, CLI probes, suite calls and unreleased entries.
-Move integrated KI-033 to INC-022; transport integration and combined validation
-remain pending. Reconcile current forward records without rewriting historical
-source-scoped outcomes. Correct the stale VBlank citation while preserving all
-checker rules, expected tokens and release/native acceptance boundaries.
+Both #207 and #208 are integrated on current main `29150f3`; retain separate
+source-scoped control records and the combined 945 DSP/12,234 state baseline.
+Move integrated KI-033 to INC-022. Reconcile current forward records without
+rewriting historical source-scoped outcomes. Correct the stale VBlank citation
+while preserving all checker rules, expected tokens and release/native acceptance
+boundaries.
 
 The following two dated audits retain their independent pre-integration source
 scopes; current integration states are in the execution register.
@@ -2002,7 +2031,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2535-2560`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2554-2579`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -2473,7 +2502,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1768-1776`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1782-1790`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -2512,7 +2541,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1725` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1739` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -2522,7 +2551,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2340"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2359"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -2599,7 +2628,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:691`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:696`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -2889,7 +2918,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3902` and `.github/workflows/build.yml:3987`, this round being
+`.github/workflows/build.yml:3908` and `.github/workflows/build.yml:3993`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9621,13 +9650,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:685` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:690` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:714`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:719`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the
@@ -18805,3 +18834,25 @@ The exact raw-byte assertions detect executed report and summary clobbers from
 a seeded guard-bypass mutant, in addition to the existing duplicate-overwrite
 mutant. TESTING, CI_CD and REPOSITORY_MAP document the guard and its same-job
 coverage. Prior-head CI remains dated evidence, not verification of this follow-up.
+
+
+### #209/#210 additive integration review — 2026-11-03 (Asia/Shanghai)
+
+Preserve both actual-editor lifetime corrections and the State155/State156 headers,
+CLI selections and normal-suite calls while merging integrated #209 into #210.
+Source changes relative to integrated #209 remain the eight approved scale-guard
+lines; the callback and scale regressions are both retained. Resolve overlapping
+roadmap, incident and release records without dropping either finding. Re-derive
+source citations and their token-verified declarations against the actual combined
+source; check both integrated main and the previous #210 push. Local preflight
+passes its checker/tooling controls, but has no built test tree yet; synchronized
+CI and combined DSP/state execution remain required.
+
+Remove the obsolete KI-034 open-table row after #209 integration and move the
+implemented KI-036 scale finding wholly to INC-024. Keep the actual integration
+state in the execution register and distinguish the unchanged release candidate.
+Both full-module sanitizer focused tests and the Xvfb popup control pass; the
+first local full-suite run retains eleven preset filesystem failures because the
+legacy JUCE resolver ignores the XDG environment override. The isolated rerun
+binds an empty writable temporary directory at the real preset configuration
+path without altering production code, assertions, sanitizer options or HOME.

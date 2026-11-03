@@ -380,7 +380,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // list, not merely the next row.
     presetPrev.onClick = [this] { stepPreset (-1); };
     presetNext.onClick = [this] { stepPreset (+1); };
-    presetName.onClick = [this] { showPresetMenu(); };
+    presetName.onClick = [weak = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+    {
+        // The component-owned closure can disappear during restore adoption.
+        const auto safeThis = weak;
+        if (safeThis != nullptr) safeThis->showPresetMenu();
+    };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
     addAndMakeVisible (presetName);
@@ -1559,12 +1564,14 @@ void AnamorphAudioProcessorEditor::timerCallback()
     dismissOrphanedPopupMenus();
     refreshPopupShield();
 
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> scaleAlive (this);
     // Sync cached view-state with the (possibly externally changed) parameters.
     if (advancedToggle.getToggleState() != advanced)
     {
         advanced = advancedToggle.getToggleState();
         updateModeVisibility();      // visibility first -- see advancedToggle.onClick
         applyUiScale();              // then resize for / against the Multiband bar (#2)
+        if (scaleAlive == nullptr) return; // a synchronous host resize can close the editor
     }
     if (metersToggle.getToggleState() != metersOn)
         metersOn = metersToggle.getToggleState(); // layoutScopeArea owns visibility (#2)
@@ -1596,7 +1603,10 @@ void AnamorphAudioProcessorEditor::timerCallback()
 
     // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
     if (uiScaleBox.getSelectedItemIndex() != lastScaleIdx)
+    {
         applyUiScale();
+        if (scaleAlive == nullptr) return;
+    }
 
     refreshPresetDisplay(); // preset name + dirty dot track outside edits (F2)
 
@@ -1674,8 +1684,12 @@ void AnamorphAudioProcessorEditor::timerCallback()
         if (dimOverlay.isVisible()) dimOverlay.toFront (false);
     }
 
+    // Adoption may synchronously notify a host which closes this editor (NR-025).
+    // Keep the guard on this call's stack; the processor still finishes its work.
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> timerAlive (this);
     processor.pollUndoCoalesceFromTimer(); // fold settled sound edits into undo steps (#10-12)
                                            // ...through the door that never blocks (ADR-0036 round 21)
+    if (timerAlive == nullptr) return;
     undoButton.setEnabled (processor.canUndo());
     redoButton.setEnabled (processor.canRedo());
     // Wave 4: re-format the readout only when the raw published float changed.
@@ -2037,8 +2051,11 @@ void AnamorphAudioProcessorEditor::applyUiScale()
     // mode; the XS..XL transform scales it, COMPOSED with the host's display/DPI
     // scale so the user scale and the host DPI cooperate instead of overwriting each
     // other (the Windows window-size bug). hostScale is 1.0 unless the host set it.
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> scaleAlive (this);
     setSize (kWidth, advanced ? kAdvHeight : kHeight);
+    if (scaleAlive == nullptr) return;
     setTransform (juce::AffineTransform::scale (hostScale * scales[idx]));
+    if (scaleAlive == nullptr) return;
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
 }
@@ -2206,7 +2223,9 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // answer: a refused drain leaves the tick on the outgoing row for the life of THIS popup and
     // the 20 Hz adopt repairs it before the next one. Display only, bounded to one opening, and
     // strictly better than the wait.
+    const juce::Component::SafePointer<AnamorphAudioProcessorEditor> menuAlive (this);
     processor.adoptPendingHostState (/*mayBlock*/ false);
+    if (menuAlive == nullptr) return; // NR-025: latency notification can destroy this editor
 
     auto& pm = processor.getPresets();
     pm.refresh();

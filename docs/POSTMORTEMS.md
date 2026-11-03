@@ -148,7 +148,7 @@ required) · Fix · Why this fix · Prevention.
   - **No automated surface reaches it.** `tests/state_tests.cpp:6-11` constructs the editor but never shows it; neither suite has a pointer or a display, and the defect needs a real modal pop-up plus a real click. pluginval (Level 4) drives a host we do not control and never opens a context menu.
   - **The earlier fix in the same cycle could not have surfaced it.** The Settings drop-down click-through was fixed first with a predicate reading `ComboBox::isPopupActive()`. That design is *incapable* of expressing this case — `TextEditor::menuActive` is private and a `TextEditor` is not a `ComboBox` — so however thoroughly that fix was exercised, it would never have reached the sibling defect. A fix scoped to the mechanism that happened to **expose** a defect, rather than to the defect's **cause**, cannot find its siblings. That is the transferable lesson from this incident.
   - **The manual report path found the drop-down case and stopped.** The Settings symptom was reported and fixed; nobody thought to try a right-click in a different dialog, because nothing connected the two.
-- **Fix:** an editor-level **`PopupShield`** — a transparent, full-editor child that is always visible and normally inert, and starts **intercepting** while any pop-up is on screen. It is then the component the re-delivered click lands on, and it does nothing with it. Two feeders keep it in sync: `AnamorphLookAndFeel::preparePopupMenuWindow` catches every menu built through our look-and-feel (both `ComboBox` and `TextEditor` set the menu's look-and-feel to ours), and `showPresetMenu` counts its own menu, which cannot reach that hook because `MenuWindow` binds `getLookAndFeel()` *before* parenting and calls through that bound reference. Interception is toggled rather than visibility to avoid `setVisible`'s repaint side effects (a full-editor `repaint()` on every menu open, a `repaintParent()` and cached-image release on every close, `juce_Component.cpp:555-563`), **not** to protect hover — hover is safe either way. Every fake mouse move here is asynchronous (`sendFakeMouseMove` → `triggerAsyncUpdate`, `juce_MouseInputSourceImpl.h:449-451`), so it is dispatched after the menu is already modal, and `Component::internalMouseEnter`/`internalMouseExit` both early-return for any component blocked by a modal one (`juce_Component.cpp:2414-2420`, `:2452-2458`); independently of that, this editor derives every hover visual geometrically from `getMouseXYRelative()` rather than from enter/exit (`src/PluginEditor.cpp:1926-1930`, `src/PluginEditor.cpp:1622-1625`), the 0.6.1 stuck-hover fix.
+- **Fix:** an editor-level **`PopupShield`** — a transparent, full-editor child that is always visible and normally inert, and starts **intercepting** while any pop-up is on screen. It is then the component the re-delivered click lands on, and it does nothing with it. Two feeders keep it in sync: `AnamorphLookAndFeel::preparePopupMenuWindow` catches every menu built through our look-and-feel (both `ComboBox` and `TextEditor` set the menu's look-and-feel to ours), and `showPresetMenu` counts its own menu, which cannot reach that hook because `MenuWindow` binds `getLookAndFeel()` *before* parenting and calls through that bound reference. Interception is toggled rather than visibility to avoid `setVisible`'s repaint side effects (a full-editor `repaint()` on every menu open, a `repaintParent()` and cached-image release on every close, `juce_Component.cpp:555-563`), **not** to protect hover — hover is safe either way. Every fake mouse move here is asynchronous (`sendFakeMouseMove` → `triggerAsyncUpdate`, `juce_MouseInputSourceImpl.h:449-451`), so it is dispatched after the menu is already modal, and `Component::internalMouseEnter`/`internalMouseExit` both early-return for any component blocked by a modal one (`juce_Component.cpp:2414-2420`, `:2452-2458`); independently of that, this editor derives every hover visual geometrically from `getMouseXYRelative()` rather than from enter/exit (`src/PluginEditor.cpp:1940-1944`, `src/PluginEditor.cpp:1632-1635`), the 0.6.1 stuck-hover fix.
 - **Why this fix:** the contract is "the dismissing click must not act on anything underneath", and *underneath* is any control the cursor happens to be over — several of which act on the press itself (`ABControl::mouseDown` toggles A/B, `SpectrumImager::mouseDown` can add a band). A predicate per control is N places to get right and N places for a future control to be forgotten; one shield is one place and covers controls added later for free. It also removes the class rather than the instance, which is what the per-control approach failed to do. Its riskiest property is proved from the source rather than left to a GUI test: the shield cannot be raised in front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:380`) and `Component::toFront` inserts a non-always-on-top component behind every always-on-top sibling (`juce_Component.cpp:914-922`).
 - **Prevention:** ships **without** an automated regression test under the `TESTING_POLICY` rule-1 exception recorded in **ADR-0025**, on the same qualifying condition as INC-010 — no automated surface reaches it, not that a test would be hard. **What replaced it:** the assumption is now explicit and enforced in one place instead of implied in many, with the z-order property proved from the pinned source. **Tracked at:** `docs/procedures/TESTING.md` §"Gaps in the automated coverage", alongside INC-010; the manual checks are listed at the end of `worklogs/GUI_INTERACTION_FIXES_0.9.3.md`. **Residual:** **KI-018** — the shield stops the click reaching a control but cannot un-count it, so JUCE's multi-click run still includes it and a very fast follow-up click can arrive as a double-click; every available lever is out of bounds (see the KI). **Could infrastructure close it:** yes, and it is the same harness INC-010 names — one that instantiates the editor and drives synthetic mouse events would make "a click while a pop-up is open reaches the shield and no control" directly assertable.
 
@@ -463,3 +463,79 @@ results; original owner attestations are not retroactively assigned to new code.
   and completed memcheck remain separate evidence; native/manual acceptance is owner-deferred.
   The old draft is not repaired by this integration. Continue bounded teardown probes at
   other notifying GUI entry points without assuming they share the defect.
+
+## INC-023 — Restore callouts resumed after the editor closed
+
+- **Date:** 2026-11-03. **Source baseline:** integrated main`29150f3`.
+  **Correction:** commit`b537596`, integrated through owner-approved PR #209 at
+  `0d395366237ac0b5ae10f74be644de3835a8f104`; KI-034 is closed for current main.
+  **Severity:** High; deterministic source-level UAF, native incidence unmeasured.
+- **Evidence [Verified]:** NR-025, State155 and the
+  [callback record](../worklogs/engineering-review/gui-restore-lifetime.json).
+  A real off-message-thread restore is adopted by the actual preset menu or timer;
+  its synchronous latency listener deletes the editor. Original ASan faults in
+  both post-adoption paths while restoration completes independently.
+- **Root cause:** `showPresetMenu` reads processor state via freed `this` after
+  adoption; the timer accesses Undo/processor fields after its poll adopts state.
+  Existing NR-024 guards protect different entry points. The preset click's raw
+  capture additionally lets a copied dead-editor callback enter the method again.
+- **Correction/alternatives:** stack-local weak editor handles checked immediately
+  after both callouts, plus a stack copy of the preset click's captured weak handle.
+  Preserve processor-owned restoration/latency; cancelling it or rescheduling all
+  notifications changes existing contracts and does not address ownership locally.
+- **Prevention:**79 display-independent focused checks plus32 explicit popup-control
+  checks, each case repeated twice. Original ASan fails both paths; independently
+  removing either guard or restoring the raw stale callback restores a UAF.
+  Unconditional-return mutants fail the live timer/popup continuation controls.
+  Corrected targeted ASan exits0; complete cross-platform sanitizer CI remains
+  separate. The distinct pinned-JUCE wheel failure is NR-026/KI-035, still unfixed.
+
+## INC-024 — Scale callback resumed after synchronous editor destruction
+
+- **Date:** 2026-11-02 (implementation `15a8995a89bd4718bc650b276ad418aa8e2eeca7`).
+  **Status:** source correction implemented in NR-027; the owner authorized PR #210
+  integration subject to mandatory CI. The execution register records the actual merge.
+  The unchanged 0.10.0 draft contains the original scaling methods.
+- **Affected source:** baseline `29150f312ec4a43ec85f35e61028d8338057d927`;
+  priority P1. The reproducible lifetime violation is verified; supported-host incidence is unknown.
+- **Evidence [Verified]:** State156, 741 focused checks, and
+  [source/control provenance](../worklogs/engineering-review/gui-scale-callback-lifetime.json).
+- **Problem/root cause:** host DPI, timer-driven scale/mode changes, and the Advanced
+  button reach the real `applyUiScale` method. `setSize` or `setTransform` synchronously
+  notifies the parent; the controlled parent can destroy the editor before the call returns.
+  The old method then reads `openGLContext`, or the timer continues accessing destroyed
+  controls. Original actual-editor ASan controls report UAF in all four entry paths.
+- **Correction:** a stack-owned `Component::SafePointer` is checked after each operation
+  that can notify the parent. The timer holds its own stack guard and returns after either
+  scale application if the editor was destroyed. Removing each guard restores a sanitizer
+  failure; suppressing the scale/layout work fails live-editor controls. Processor state,
+  parameters, latency, DSP, and event dispatch are unchanged.
+- **Validation/limits:** corrected actual-editor controls pass four close and four live
+  cases with ASan leak detection enabled; State156 also checks layout, transform
+  composition, parameter/latency invariants and reopening. Only the Editor, JUCE OpenGL,
+  and probe translation units were instrumented. This is not DAW or native visual acceptance;
+  owner-deferred native requirements remain outstanding. KI-036 is corrected in this
+  source change; the unchanged draft and actual integration status remain separate.
+
+
+## INC-025 — SpectrumImager synchronous callback teardown (NR-029 / KI-037)
+
+**Candidate in PR #212; not integrated or merge-authorized.** On source baseline
+`29150f3`, a parameter listener can delete the editor during imager mouse helpers
+or gesture dispatch. Resumed component/callback accesses use freed state; nested
+gesture close can also precede the outer begin reaching the processor listener,
+leaving later edits without valid Undo ownership. Original store/end/add/band-move
+ASan failures and begin/next-edit assertions are retained in the evidence ledger.
+
+The candidate copies required callback/processor state onto the stack, checks weak
+component lifetime after synchronous callouts, and completes gesture cleanup after
+begin dispatch returns. Preserve completed processor writes and correct Undo;
+selected nested topology actions cancel before stores rather than commit partial
+count/solo state. Current probes include resets, Return-key frequency commit,
+solo/removal and wheel helpers with exact gesture/history oracles. TESTING states
+the remaining phase/routing gaps. The historical provisional KI-035 is reconciled
+to unused KI-037; NR-026/KI-035's pinned-JUCE Slider scope remains unfixed.
+
+No DSP, parameter/schema, latency, threading protocol, dependency or release change
+is included. Headless/sanitizer results are not native GUI acceptance; it remains
+owner-deferred. See [control provenance](../worklogs/engineering-review/spectrum-imager-lifetime.json).
