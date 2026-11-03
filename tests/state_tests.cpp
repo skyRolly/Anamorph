@@ -6967,7 +6967,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2692),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2700),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -45922,6 +45922,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "transport_position_tests.h"
 #include "editor_command_lifetime_tests.h"
 #include "gui_restore_lifetime_tests.h"
+#include "gui_scale_lifetime_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -45971,6 +45972,22 @@ int main (int argc, char* argv[])
             else { std::fprintf (stderr, "Unknown GUI restore lifetime probe\n"); return 2; }
         }
         testGuiRestoreLifetimes (action);
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--gui-scale-lifetime-probe") == 0)
+    {
+        int action = -1;
+        if (argc > 2)
+        {
+            if (std::strcmp (argv[2], "dpi") == 0) action = 0;
+            else if (std::strcmp (argv[2], "timer-scale") == 0) action = 1;
+            else if (std::strcmp (argv[2], "timer-mode") == 0) action = 2;
+            else if (std::strcmp (argv[2], "advanced") == 0) action = 3;
+            else { std::fprintf (stderr, "Unknown GUI scale lifetime probe\n"); return 2; }
+        }
+        testGuiScaleLifetimes (action);
         std::printf ("%d checks, %d failure(s)\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -46293,6 +46310,7 @@ int main (int argc, char* argv[])
     testRotaryAccessibilityMetadataAndKeyboard();
     testEditorCommandLifetimes();
     testGuiRestoreLifetimes();
+    testGuiScaleLifetimes();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

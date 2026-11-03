@@ -24,6 +24,11 @@ including in entries written before 0.9.9 gave it that name.
 ## [Unreleased]
 
 ### Fixed
+- **Scale and mode changes stop safely if a synchronous parent resize callback closes the editor.**
+  The editor no longer resumes its scale or timer work through freed component state.
+  Evidence: commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`; NR-027/KI-036;
+  State156 and original/fixed ASan controls. [Verified]
+
 - **Opening the preset menu or polling a restored session no longer accesses an editor closed by a latency notification.**
   Restoration completes; a closed editor skips subsequent display updates.
   Evidence: commit `b537596`; NR-025/KI-034; State155. [Verified]
