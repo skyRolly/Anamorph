@@ -1,0 +1,278 @@
+{
+  "finding": "NR-027 / KI-036",
+  "baseline_commit": "29150f312ec4a43ec85f35e61028d8338057d927",
+  "implementation_commit": "15a8995a89bd4718bc650b276ad418aa8e2eeca7",
+  "priority": "P1; deterministic source-level use-after-free, actual supported-host incidence unknown",
+  "source_sha256": {
+    "baseline_plugin_editor": "45c0d80f82d5a82c4b1988359d591274380a3a3ffe105f483b30ae16b27ec455",
+    "release_draft_plugin_editor": "544d14ffeb4198ef0ab9f9d3965bb599e873a2524faecbadd49156d92e66ed48",
+    "corrected_plugin_editor": "138ad686ba669577002fe2ef81e38e7718a98c17a53316cb9b50c6369df02c78",
+    "test_fixture": "05311ec9720789363ea06e8b88f8bc2dd31887b43f80132701a29720416cbb0d",
+    "asan_probe": "951f0dd6e183690ce65f063d78c9702242ad6a03953f56c47af991959ae0001e",
+    "juce_opengl_source": "2c185910dff22d62f0fed8d54a012f94a1c5342d82ae963567c9d64eac750b55"
+  },
+  "relevant_function_sha256": {
+    "applyUiScale": {
+      "main-baseline": "e7a26e7935b760846f8bda11c5d0e07c8ca00af36633783c29566dd4d9fd0901",
+      "release-draft": "e7a26e7935b760846f8bda11c5d0e07c8ca00af36633783c29566dd4d9fd0901",
+      "corrected": "6aecd63689266fd13b82306c77c3ccef4218995146d7da189d8af0e56b8ae417"
+    },
+    "timerCallback": {
+      "main-baseline": "6820240f31d1b72306efd4e31385106f78088e91ad631d6cf04dcddd4903539a",
+      "release-draft": "6820240f31d1b72306efd4e31385106f78088e91ad631d6cf04dcddd4903539a",
+      "corrected": "55bebaedb8dff80e8f1d5a600d6e0f46280495ccde5d0445dc82727aca70f341"
+    }
+  },
+  "mechanism": "Real editor scaling calls Component::setSize and setTransform. A synchronous parent childBoundsChanged callback can destroy the editor, after which the old applyUiScale continues to use openGLContext or the old timerCallback resumes touching destroyed controls. The same actual failure path was present in the unchanged 0.10.0 draft methods.",
+  "correction": "Stack-owned Component::SafePointer checks follow setSize and setTransform before more member access. timerCallback also keeps its own stack SafePointer and returns after either applyUiScale call if a parent destroyed the editor.",
+  "toolchain": {
+    "compiler": "Debian clang version 22.1.8 (1~deb13u4)",
+    "language": "C++23",
+    "target": "Linux AnamorphStateTests Release objects; actual PluginEditor.cpp, JUCE juce_opengl.cpp and standalone probe recompiled with -O1 -g -fsanitize=address -fno-omit-frame-pointer; other linked objects unchanged",
+    "asan_options": "detect_leaks=1:halt_on_error=1:symbolize=1"
+  },
+  "automated_checks": {
+    "focused_state156": "741 checks, 0 failures",
+    "full_local_suites": "945 DSP checks and 12975 state checks, 0 failures",
+    "focused_state_log_sha256": "94b1592cd0215df1794c8b9d5eab2c4b23a1f6c4e59e3cde1ea74c79f2f82546",
+    "full_suite_log_sha256": "efc429bbe6b5f75dfb31ef93e0e3c848fb2737f7437b26603fd09cfc095fc399",
+    "preflight_log_sha256": "e53ac8c4fea38552c8fac0b088868ac4200bb6060b61aaf523d6affd0fd35fbb"
+  },
+  "controls": [
+    {
+      "variant": "fixed",
+      "source_sha256": "138ad686ba669577002fe2ef81e38e7718a98c17a53316cb9b50c6369df02c78",
+      "cases": [
+        {
+          "case": "dpi",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=dpi parent-callbacks=1 closes=1 editor-alive=0 live-result=1",
+          "stdout_sha256": "b66d293ea0359065a619f2b7fab49dd55fc635d66b795f7b269b4e24c00588e0",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "timer-scale",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=timer-scale parent-callbacks=1 closes=1 editor-alive=0 live-result=1",
+          "stdout_sha256": "1b554efbb5514f9d7e018ddbb3a96290caa7e82f737e97691c0be741844faf8a",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "timer-mode",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=timer-mode parent-callbacks=1 closes=1 editor-alive=0 live-result=1",
+          "stdout_sha256": "83c6fccc16810fbc39442168593e6e449df7f9b39dc0dbcf877b56fca6ce875f",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "advanced",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=advanced parent-callbacks=1 closes=1 editor-alive=0 live-result=1",
+          "stdout_sha256": "0ecf95595f9a8fb4eeecf3ddc2d9a3777a8f18d78ce83c745f579225f8476572",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-dpi",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-dpi parent-callbacks=1 closes=0 editor-alive=1 live-result=1",
+          "stdout_sha256": "2ac7146e553beb96268996d6db42fbe77a5fda41af5e9e7bf2d01236d0ded372",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-timer-scale",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-timer-scale parent-callbacks=1 closes=0 editor-alive=1 live-result=1",
+          "stdout_sha256": "40c0acea5ee454f435a36aa17b02dccef9daf8b01236bc9c81089853d4a93d6c",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-timer-mode",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-timer-mode parent-callbacks=1 closes=0 editor-alive=1 live-result=1",
+          "stdout_sha256": "b7b7ed00dd410f9551eb39674ffe579312e97b6aa4c72f1d1911d7f77b66d7ee",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-advanced",
+          "exit": 0,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-advanced parent-callbacks=1 closes=0 editor-alive=1 live-result=1",
+          "stdout_sha256": "6fb340f08d010797981697b85cb55791025bca5ac0d56d949be8fde9a8533fbb",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "variant": "original",
+      "source_sha256": "45c0d80f82d5a82c4b1988359d591274380a3a3ffe105f483b30ae16b27ec455",
+      "cases": [
+        {
+          "case": "dpi",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7eae8a3eaa60 at pc 0x558988f795a6 bp 0x7fff7d0af060 sp 0x7fff7d0af058",
+          "top_frame": "0x558988f795a5 in juce::OpenGLContext::isAttached() const /workspace/.cloud-setup/JUCE/modules/juce_opengl/opengl/juce_OpenGLContext.cpp:1449:12",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "6c37cd85aefb4c7af89f58027303264a4070edec4c3be2e3cf28b778761fd5fb"
+        },
+        {
+          "case": "timer-scale",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7e1e4f9eaa60 at pc 0x5567321945a6 bp 0x7ffdfae8c0c0 sp 0x7ffdfae8c0b8",
+          "top_frame": "0x5567321945a5 in juce::OpenGLContext::isAttached() const /workspace/.cloud-setup/JUCE/modules/juce_opengl/opengl/juce_OpenGLContext.cpp:1449:12",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "9fa4006d8cad40adc4fa9ba57e655f2d2b1ae21a4330fdffc7b527edaa172bdc"
+        },
+        {
+          "case": "timer-mode",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7e7e77ff2e24 at pc 0x556e62db2f26 bp 0x7fff04b45c10 sp 0x7fff04b45c08",
+          "top_frame": "0x556e62db2f25 in AnamorphAudioProcessorEditor::applyUiScale() /workspace/scratch/anamorph-integration207208/nr027-asan-controls/original/PluginEditor.cpp:2036:49",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "f9d39ad53c66ed2dfbf73cb24672a5574a9ce6f26d6f0d014ee6105e1947e47e"
+        },
+        {
+          "case": "advanced",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7e95323f2e24 at pc 0x55741390df26 bp 0x7fff26c868b0 sp 0x7fff26c868a8",
+          "top_frame": "0x55741390df25 in AnamorphAudioProcessorEditor::applyUiScale() /workspace/scratch/anamorph-integration207208/nr027-asan-controls/original/PluginEditor.cpp:2036:49",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "c2a1205f2ac75551533be96c86cf695e19f7e3c19e5221ea9597444bb2fbddf5"
+        }
+      ]
+    },
+    {
+      "variant": "remove-size-guard",
+      "source_sha256": "403a2d7272b39be6ede75fd43bd8c7f449243a91f88362c6907e6dacd8e1b85c",
+      "cases": [
+        {
+          "case": "timer-mode",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7e3c7a7f2e24 at pc 0x55b86e8e31a6 bp 0x7ffd5e93f250 sp 0x7ffd5e93f248",
+          "top_frame": "0x55b86e8e31a5 in AnamorphAudioProcessorEditor::applyUiScale() /workspace/scratch/anamorph-integration207208/nr027-asan-controls/remove-size-guard/PluginEditor.cpp:2043:49",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "307dcbf2336a5746fafc527da2cd58d75f271cb52b9e3b5b2a114ce2b3804b3e"
+        }
+      ]
+    },
+    {
+      "variant": "remove-transform-guard",
+      "source_sha256": "24bd14455b65512bfa600deca2a9736c4f76565c5311c14e2d36fac1b9f5921d",
+      "cases": [
+        {
+          "case": "dpi",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7e7eff9eaa60 at pc 0x55b6cf8cadc6 bp 0x7ffe16d99740 sp 0x7ffe16d99738",
+          "top_frame": "0x55b6cf8cadc5 in juce::OpenGLContext::isAttached() const /workspace/.cloud-setup/JUCE/modules/juce_opengl/opengl/juce_OpenGLContext.cpp:1449:12",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "d8158dd502b7ed0b3cd5d5efbe8a9bd852f7353c5cee95a445a69c456f1aa830"
+        }
+      ]
+    },
+    {
+      "variant": "remove-timer-guard",
+      "source_sha256": "7f81c2f05cd4f010c3cf7891683ca5de536073e30020f0450d4668c29e129af7",
+      "cases": [
+        {
+          "case": "timer-scale",
+          "exit": 1,
+          "asan_error": "heap-use-after-free on address 0x7e75a9dea558 at pc 0x55acb1307b43 bp 0x7fff1d4516d0 sp 0x7fff1d4516c8",
+          "top_frame": "0x55acb1307b42 in AnamorphAudioProcessorEditor::refreshPresetDisplay() /workspace/scratch/anamorph-integration207208/nr027-asan-controls/remove-timer-guard/PluginEditor.cpp:2093:16",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "db6096c41aaef322d0ad93040947d48bca5ab3c0649117786f91812fbf23d841"
+        },
+        {
+          "case": "timer-mode",
+          "exit": 1,
+          "asan_error": "SEGV on unknown address 0x000000000b61 (pc 0x55fca386fba6 bp 0x7ffebabffc90 sp 0x7ffebabffb78 T0)",
+          "top_frame": "0x55fca386fba6 in juce::Value::getValue() const /workspace/.cloud-setup/JUCE/modules/juce_data_structures/values/juce_Value.cpp:162:19",
+          "stdout": "",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "9cdc408ade68639dc21b3ce0c89d393573e1d7442a6331ebc59df001ef27b912"
+        }
+      ]
+    },
+    {
+      "variant": "return-before-apply",
+      "source_sha256": "8aed5302b50656fa8de88a1b034cd5b2dab0770590f56b5225b13c257f046a42",
+      "cases": [
+        {
+          "case": "live-dpi",
+          "exit": 6,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-dpi parent-callbacks=0 closes=0 editor-alive=1 live-result=0",
+          "stdout_sha256": "e7aa6d9e1bdacb082239bf8893b7a25ea0c9107b1b63acbe41bb68148fa44bdc",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-timer-scale",
+          "exit": 6,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-timer-scale parent-callbacks=0 closes=0 editor-alive=1 live-result=0",
+          "stdout_sha256": "eb2eb14d4c9cd0e02ca04a14b23dd820780657cd5e9a73c3bedd027bec221d4e",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-timer-mode",
+          "exit": 6,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-timer-mode parent-callbacks=0 closes=0 editor-alive=1 live-result=0",
+          "stdout_sha256": "22da0114bcb6453e2a36ae3fd1fc172189ebb866b3f509cfba54fffa546807dd",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "case": "live-advanced",
+          "exit": 6,
+          "asan_error": null,
+          "top_frame": null,
+          "stdout": "case=live-advanced parent-callbacks=0 closes=0 editor-alive=1 live-result=0",
+          "stdout_sha256": "0f74940538ab197b2f0438a8f81b5379b9c1aba3ffadc09234d99c1fa4ce13af",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  ],
+  "scope_limitations": [
+    "The reproducer invokes actual editor methods, callbacks, and JUCE Component notifications with a controlled parent that synchronously deletes its child. It is not a supported DAW/native-host test.",
+    "Only the editor translation unit, JUCE OpenGL translation unit and probe are ASan-instrumented; other linked objects are unchanged. Full sanitizer CI remains required.",
+    "Hosted/component tests do not satisfy deferred NR-006/010 performance or NR-014 native visual/accessibility acceptance."
+  ],
+  "integration_sync_20261103": {
+    "approved_head": "2859a946d5cf11757ae7e035ca8e0c6775a13ea8",
+    "integrated_parent": "0d395366237ac0b5ae10f74be644de3835a8f104",
+    "strategy": "Additive merge; source guards and both test headers/selectors/suite invocations preserved; no history rewrite.",
+    "validation": "Checker/tooling preflight and documentation/citations against main and prior #210 push pass. No built tree existed for that preflight; combined suites and synchronized CI are pending.",
+    "authorization": "Owner explicitly authorized #209/#210 merges; #211/#212 remain review-only; native acceptance deferred.",
+    "combined_validation": {
+      "compiler": "Pinned Clang 22.1.8; all test-target first-party and JUCE modules instrumented with the unchanged CI ASan/UBSan/vptr and supplementary sanitizer groups; leak/strict runtime options retained.",
+      "focused": "State155 79/79; State156 741/741; Xvfb popup control 32/32.",
+      "initial_full_suites": "DSP 941/941; state 13050 checks, 11 preset filesystem failures. JUCE resolveXDGFolder reads ~/.config/user-dirs.dirs rather than XDG_CONFIG_HOME environment; actual fallback is on the exhausted root overlay. No sanitizer diagnostic.",
+      "isolated_rerun": "In progress at this checkpoint, using Bubblewrap with a fresh /tmp directory bound to the real ~/.config path and /tmp writable; no HOME override or test/detector relaxation.",
+      "ci": "Synchronized source head fc371f0b had no failures at refresh, with sanitizer and macOS/analyzer jobs still pending; updated documentation head requires current CI."
+    }
+  }
+}

@@ -1,86 +1,128 @@
 # Next release investigation and development roadmap
 
-## Current execution: NR-028 restore-adoption editor lifetime — 2026-11-02 (UTC)
 
-The current integrated baseline is `29150f312ec4a43ec85f35e61028d8338057d927`.
-The owner-authorized integrations are complete: #208 merged at
-`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`; #207 merged at the current-main
-commit `29150f312ec4a43ec85f35e61028d8338057d927` (merged head
-`ab7998804a2b2161a532ff1e3de26a8ec6e8039b`). #209 remains open and outside
-the named merge authorization. #210 remains open at `2859a946d5cf11757ae7e035ca8e0c6775a13ea8`;
-its refreshed current-head checks completed successfully, with conditional jobs
-intentionally skipped. It has not been merged.
+Final review-head validation is tracked in the [PR #211 evidence comment](https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6604296936); pending jobs remain pending until that exact head completes.
 
-The bounded callback investigation confirmed **NR-028 / KI-034 (P1)** on the
-unchanged main source. A pending host restore installs its sound before publishing
-metadata; an intervening A/B action makes later adoption reinstall that sound and
-synchronously notify parameters. A listener then destroys the editor while either
-the editor timer (`pollUndoCoalesceFromTimer`) or the preset-name callback
-(`adoptPendingHostState`) is active. ASan reports UAF at
-`PluginEditor.cpp:1674` and `:2206` respectively. The exact control, callback,
-root cause and source evidence are recorded in
-[`engineering-review/gui-restore-adoption-lifetime.json`](engineering-review/gui-restore-adoption-lifetime.json).
 
-The focused correction is implemented on branch `fix/gui-restore-adoption-lifetime`:
-copy a `Component::SafePointer` onto the timer/member stack before adoption, return
-if synchronous notification destroyed the editor, and make the preset button
-callback copy its weak handle onto its own stack before invoking the component-owned
-closure. Processor restore and metadata transitions remain complete. No thread,
-DSP, parameter, serialization, latency, dependency or build contract changed.
-Under ASan+UBSan with leak detection, State157 passes **24/24** for the live and
-destructive timer path and **24/24** for the live and destructive preset path.
-The original main-source controls reproduce both UAFs. The full sanitizer state
-suite completed **12,276 checks / 11 failures** while the shared filesystem was
-out of space; all eleven are file-operation/setup assertions (preset copying and
-controlled write-failure cases), not callback or memory-safety failures. This is
-an environment limitation, not a passing full suite. The temporary sanitizer
-build was cleaned after recording its binary identities. A later clean rebuild
-attempt was manually stopped at 29/65 compile steps after 12m38s, while large
-JUCE GUI units were still compiling; it never ran tests and is not validation
-evidence. Exact-head CI for a new PR is still required.
+Actual combined-main `0cd95120` Build41634987301, CodeQL41634987240 and MSVC41634987355 completed successfully. Linux ran945 DSP/13,054 state checks; full sanitizers941 DSP/13,054 state; memcheck934 DSP/13,054 state, both suites completed with zero errors. Linux strictness10 pluginval completed both modes×3 on first attempts. Three optional/routing jobs were intentionally skipped. The pinned-Clang ABI gate passed; the historical local GCC shipping preflight failure is not reclassified or claimed repaired.
 
-KI-034 remains an issue on integrated main until the correction is reviewed and
-merged. The correction is not yet merged or authorized for merge. After opening
-the focused PR, continue the remaining GUI callback inventory from source: inspect
-other parameter-notifying commands and component-owned closures for post-call
-member access and self-destruction, requiring a separate witness before expanding
-scope. Preserve the owner's native/manual test deferral and the unchanged 0.10.0
-release objects. New PR merges require separate authorization.
+## Current integration and restore-cycle review — 2026-11-03 (Asia/Shanghai)
 
-## Historical checkpoint: approved #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+Owner-approved #209 merged at `0d395366237ac0b5ae10f74be644de3835a8f104`;
+#210 merged at `0cd95120162b7913a5656f828f27eb96034c1b34` (current integrated main).
+The merge tree equals validated #210 head `7208bdc205a9401b345a2c7ad8b027bb6685d517`.
+Both approved corrections and the unmodified State155/156 headers are present once.
+Final #210 Build41619737257, PR41619744561, CodeQL41619744502,
+MSVC41619744513 and dependency41619744547 completed successfully; optional/skipped
+jobs are not claimed as executed. Combined local full-module ASan/UBSan/vptr
+previously ran 941 DSP / 13,054 state checks. Six original-editor controls report
+invalid-vptr access before ASan can reach the later read; historical ASan/mutant
+records remain retained. Strictness10 pluginval completed deterministic/randomized
+three passes each; one deterministic attempt exited139 before a successful retry.
+That signal has no established attribution. #209 post-merge Build41615975342,
+CodeQL41615975298 and MSVC41615975279 also completed.
 
-The owner explicitly authorized both #208 and #207. #208 reviewed head
+**PR #211 / NR-028 remains open, unmerged and review-only.** Its old single
+adoption test did not satisfy TESTING_POLICY rule3a. The revised State157 executes
+A→B→C→B on the same processor for both real timer/preset callbacks, with live and
+synchronous-destruction controls on every leg, reopened editors, Settings/latency,
+A/B payload, baseline/history and exact repeated-B parameter oracles. Validation
+and negative-control results are recorded in the linked evidence ledger.
+Focused timer and preset selectors each pass201 checks. Full strict sanitizer
+preflight runs941 DSP/13,454 state checks. Skipping only final adoption fails14
+checks per selector; truncating before return B fails6 per selector. Original
+editor-source controls still fail both paths on invalid-vptr access; corrected
+source passes. Raw logs and hashes are retained in the ledger and persistent
+scratch evidence, without new suppressions or expectation changes.
+Its old source fix duplicates the guards now integrated by #209: retain main's
+exact guards and names, avoiding duplicate guards and the old shadow warning.
+
+The old #211 source-lint failure was stale citation declarations; Linux failed a
+real `-Wshadow-uncaptured-local` warning. Neither was a disk failure. Its sanitizer
+job passed on that historical head. The earlier local eleven file-operation
+failures and interrupted rebuild remain non-passing historical evidence. A fresh
+checkout and writable private preset-directory mount preserve test requirements.
+#212 remains separately open for coverage-description correction and validation.
+Native/manual execution is owner-deferred; acceptance is outstanding. NR-003
+remains Deferred. No version, tag, draft or asset operation is authorized.
+
+## Historical checkpoint: #208/#207 integrated; restore callback investigation — 2026-11-03 (Asia/Shanghai)
+
+Owner-approved #208 merged at **`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`**;
+#207 merged at **`29150f312ec4a43ec85f35e61028d8338057d927`**, current integrated
+main. #207 retains reviewed `5e10d26` via additive synchronization `52039ae` and
+validated final head `ab7998804a2b2161a532ff1e3de26a8ec6e8039b`. No shared history
+was rewritten. The merge tree equals the validated tree; reviewed processor and
+editor source bytes and both original control records are preserved exactly once.
+Actual combined-main preflight executes **945 DSP / 12,234 state / 18 Python**
+checks. Focused current-wrapper UBSan passes208 and editor-command ASan passes3;
+the original wrapper still fails33 checks/four UBSan categories, and original and
+borrowed-reference editor controls still fail all three commands under ASan.
+
+Final #207-head Build41472583420 (16 successful jobs/3 intentional skips),
+PR41472595108, CodeQL41472595084, MSVC41472595111 and dependency41472595092
+completed. Independently verified memcheck artifact13159780263 records both
+suites completed/exit0/zero errors, with leak checking disabled by the existing
+configuration. Actual main Build41480257211 (16 successful jobs/3 intentional
+skips), MSVC41480257258 and CodeQL41480257255 subsequently completed successfully.
+Main memcheck artifact13161163476 was independently downloaded/digest-verified:
+both suites completed/exit0/zero errors, existing leak checking disabled. The prior
+#208-main Build41469471520 attempt1 lost two unacquired macOS hosted jobs (no steps
+or runner); annotations explicitly report capacity acquisition failure. Attempt2
+completed without changing checks. Preserve that infrastructure history.
+
+**New source evidence:** NR-025/P1 confirms preset-menu and timer post-restore
+use-after-free through real latency notification and editor teardown. Implement
+only message-thread lifetime guards in [PR #209](https://github.com/skyRolly/Anamorph/pull/209),
+**open and unmerged**; State155 includes live, reopen, completed
+restore and stale-copy controls. Native/manual work remains owner-deferred.
+NR-026/P1 separately confirms a pinned-JUCE wheel-scope destructor reading a
+deleted Slider; editor-only instrumentation missed it, actual GUI-module ASan
+detects it. No dependency/pin/protocol change is authorized. Prepare review options
+and preserve the reproduction before any gated implementation. New PRs require
+separate merge authorization. See the [callback review](GUI_CALLBACK_LIFETIME_REVIEW.md).
+
+The existing native package and all NR-006/010/native NR-014 acceptance stay
+outstanding. NR-003 remains Deferred; recurrence/legal/product/provisioning and
+release gates remain unchanged. No hardware request, release or version operation.
+
+## Historical #208 integration and combined #207 validation — 2026-11-02 (Asia/Shanghai)
+
+The owner authorized PRs #207 and #208. #208 reviewed head
 `e12e1a5b8a3480341627d714aebf3a2d2340c805` is integrated at
-**`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`**, current main. Its two parents
-are `06527b1` and `e12e1a5`; tree `ba4419210a4a04b92815c9a889e936e064a0bc0b`
-equals the reviewed source. Exact-head Build41455335960 (16 successful jobs / 3
-intentional skips), PR41455345331, CodeQL41455345414, MSVC41455345368 and
-dependency41455345481 completed. Verified memcheck artifact13146899246 records
-both suites completed, exit0/zero errors. These are #208 source-scoped outcomes,
-not proof of combined-main validation.
+`a78b73334dbbbd70dc6ab6de9fd155643983d1f6`; #207 reviewed head
+`5e10d262535dc422c0db51e3cc444456e2fb96f1` is integrated at current main
+`29150f312ec4a43ec85f35e61028d8338057d927`. Both corrections and their regression
+sets are present. The actual post-integration Build41480257211, CodeQL41480257255,
+MSVC41480257258 and digest-verified memcheck artifact13161163476 completed; DSP and
+state memcheck suites exited0 with zero reported errors. Original/fixed/mutant
+controls for NR-023/024 remain source-scoped in their evidence records.
 
-NR-024/KI-033 is **integrated**, with original/fixed/reference-mutant ASan controls
-and State154 retained. Its resolved record is POSTMORTEMS INC-022. NR-023/#207
-remains **open and unmerged**, preserving reviewed head `5e10d26` as an ancestor.
-Merge current main into its original branch without rewriting shared history;
-retain both test headers, CLI probes and ordinary-suite calls, both unreleased
-entries and immutable control records. Conflict reconciliation changes no reviewed
-processor/editor implementation. Rebuild and execute the combined candidate;
-record actual counts, focused sanitizer results and exact-head CI before merging.
+**Current additional PR:** #209 / NR-025 is open and unmerged at head
+`2ac19a67e7c7a673c5aab9cf84c0ba78f684be86`. Its refreshed exact-head Build run
+41488872878 completed successfully (all selected jobs passed; the three optional
+review selections/co-installation jobs were intentionally skipped). PR merge-check
+41488879744, CodeQL, MSVC analysis, PREfast, and dependency review also pass. The
+branch contains restore-menu/timer teardown work; separate NR-026 remains an
+architecture/dependency review proposal. No merge authorization for #209 or a new PR
+has been given.
 
-Combined source at integration commit `52039ae` now executes **945 DSP / 12,234
-state / 18 Python** controls in the complete local preflight, exit0. Both focused
-CLI paths remain in the normal suite. Documentation/citation liveness, whitespace,
-source-policy gates and the shipping-Clang ABI pass. Preflight log SHA256
-`909b183ac70aaa6dfedcbf43c42c14aef4ffa0d080273ebd5c386ce97c0d8243`. Focused combined-source sanitizers and
-exact final-head CI are tracked in the #207 discussion; pending jobs are not passes.
+**NR-027 / KI-036, P1:** the real editor's host-DPI, timer scale, timer mode and
+Advanced-button scale/layout paths can be destroyed synchronously by a parent
+`childBoundsChanged` callback. At main baseline `29150f3`, actual-editor ASan reproduces
+heap-use-after-free in all four paths. Commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`
+adds stack-owned `SafePointer` checks after `setSize` and `setTransform` and guards both
+timer continuations. State156 passes741/741 focused checks; corrected ASan passes four
+close plus four live controls. Removing each guard restores sanitizer failure; an
+apply-suppression mutant fails live scale/layout controls. This is a controlled real
+JUCE-parent repro, not a supported-DAW occurrence or native visual acceptance.
 
-After both authorized integrations, inventory remaining parameter-notifying GUI
-entry points and use actual callbacks plus deterministic editor destruction.
-Require a witness before selecting another correction. New PR merges remain
-separately owner-gated. NR-006/010/native NR-014/manual host and hardware execution
-remain owner-deferred without waiving acceptance; NR-003 remains Deferred. Do not
-request machines or native results. The 0.10.0 tag/draft/assets/version stay unchanged.
+The corrected candidate's full local suites pass **945 DSP / 12,975 state** checks.
+Native/manual NR-006/010/014 execution remains owner-deferred, acceptance is not waived,
+and NR-003 remains Deferred. The 0.10.0 tag/draft/assets/version remain unchanged.
+Continue with a systematic source-backed inventory of remaining notifying GUI entry
+points and other independently testable ownership paths; do not merge new PRs without
+separate owner authorization.
 
 ## Historical NR-023 independent-branch checkpoint: #206 integrated; independent engineering review — 2026-11-02 (Asia/Shanghai)
 
@@ -1212,12 +1254,14 @@ recommends selecting a later source/candidate under separate authorization after
 remaining NR-006 native performance/manual acceptance, rather than publishing the
 old bytes on the strength of current-main CI.
 
-Continue independently executable engineering review and the focused NR-023/024
-corrections. Native/manual/hardware execution is owner-deferred for this round;
-preserve the [package](NATIVE_VALIDATION_PACKAGE.md) and outstanding acceptance.
-Do not request native inputs. NR-013 still requires a pinned host reproducer and
-NR-015 useful scope/authorized isolation when resumed. NR-018/019/020 remain
-owner-dependent. Stable NR IDs include decisions and investigations, not just bugs.
+PR #207/#208, NR-025/#209 and NR-027/#210 corrections are integrated; #211/#212 remain
+review-only until separately authorized. Continue the source-backed GUI lifetime
+inventory and other independently testable checks. Native/manual/hardware execution
+is owner-deferred for this round; preserve the
+[package](NATIVE_VALIDATION_PACKAGE.md) and outstanding acceptance. Do not request
+native inputs. NR-013 still requires a pinned host reproducer and NR-015 useful
+scope/authorized isolation when resumed. NR-018/019/020 remain owner-dependent.
+Stable NR IDs include decisions and investigations, not just bugs.
 
 ## 2. Verified baseline
 
@@ -1460,8 +1504,12 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
 | NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
-| NR-023 | P2 | Implemented / unmerged #207 | Bound transport clock arithmetic; verified original/fixed wrapper controls and exact-head CI | Independent correctness fix |
-| NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154, original/fixed/reference-mutant ASan controls | Independent lifetime fix |
+| NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
+| NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
+| NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | Combined source validated; #211 adds parameter-trigger cycle coverage |
+| NR-026 | P1 | Architecture/dependency review pending | Actual JUCE wheel-scope teardown UAF; no JUCE patch or pin change | Human review before any gated implementation |
+| NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and actual-editor sanitizer controls | Native incidence remains unverified |
+| NR-028 | P1 | #211 review-only; production guards integrated by #209 | State157 pending parameter-trigger adoption, same-processor A→B→C→B | Correct/revalidate tests; separate owner merge review |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -1915,6 +1963,8 @@ a later source does not authorize a rebuild, retag, version or release operation
 
 ### NR-023 — Bound transport metadata before meter seek detection
 
+Integrated through owner-approved #207 at `29150f312ec4a43ec85f35e61028d8338057d927`.
+
 - **Verified mechanism:** `processBlock` casts PPQ-derived non-finite/out-of-range
   doubles to int64, adds a block to signed sample time and computes signed absolute
   differences. Actual-wrapper UBSan reproduces all four undefined operations.
@@ -1931,8 +1981,14 @@ a later source does not authorize a rebuild, retag, version or release operation
   categories versus none corrected. Instrumented-wrapper controls are not a claim
   that every linked dependency was sanitized; required full CI remains separate.
   [Raw identities/log hashes](engineering-review/transport-arithmetic.json).
-- **Remaining:** refreshed combined-candidate gates and actual #207 integration.
-  The owner authorized #207 and #208, not future PRs.
+- **Integration validation:** combined `scripts/run-tests.sh` now passes 945 DSP /
+  12,975 state checks with the later State156 regression added. The main-source
+  post-integration Build, CodeQL, MSVC and digest-verified memcheck outcomes are in
+  the current execution record above.
+
+- **Integrated:** #207 at `29150f312ec4a43ec85f35e61028d8338057d927` after
+  synchronized exact-head CI. Combined main executes945/12,234 and retains both
+  original/fixed sanitizer controls. The owner authorized #207 and #208, not future PRs.
   No architecture, serialization, latency, parameter or realtime mechanism changes.
 
 ### NR-024 — Editor command callbacks survive reentrant destruction
@@ -1956,10 +2012,78 @@ The owner separately authorized integration; native acceptance remains deferred.
 - **Limits:** native host incidence unknown; fixes and new PR merges require review,
   native/manual execution stays owner-deferred, all release gates remain.
 
+### NR-025 — Restore menu/timer callback lifetime (P1 / former KI-034)
+
+Confirmed on combined main`29150f3`: actual menu adoption and timer poll can
+synchronously notify latency, close the editor, then resume through freed fields.
+Correction`b537596` uses stack-local weak guards and a weak/stack-owned preset
+click; it preserves the completed processor restoration and existing scheduling.
+State155 executes79 headless checks plus32 explicit displayed-popup controls.
+Original ASan fails2/2; independently removed menu/timer guards and the raw stale
+callback each reproduce UAF. Always-return mutants fail live continuation.
+Corrected targeted ASan passes all four selections. Full current local suites
+execute945 DSP/12,313 state. PR #209 is integrated at `0d395366`; current combined validation remains
+separate from its historical independent-branch measurements. Configured Linux pluginval strictness10 passes both modes ×3;
+all first attempts, with historical unrelated signal exits still unattributed. [Investigation, alternatives and scope](GUI_CALLBACK_LIFETIME_REVIEW.md).
+
+### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
+
+Actual Width wheel plus synchronous parameter-listener editor deletion reproduces
+UAF inside JUCE9.0.4's `Slider::ScopedDragNotification` destructor. Rebuilding all
+actual GUI-basics TUs exposes the read; Editor-only ASan had missed it. Live
+control passes. No native occurrence rate or attribution of old signal exits.
+Hold production dependency changes for human Architecture Review. The
+[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026--ki-035--pinned-juce-wheel-teardown-review-packet)
+compares bounded dependency repair, product event redesign and retained risk;
+recommend a consistent nonshipping prototype including gesture cleanup before
+selecting an exact patch/version/ADR. No pin, dependency bytes or Accepted
+protocol changed. Continue independent source review while that decision is held.
+
+### NR-027 — Scale and mode callbacks stop after synchronous editor destruction
+
+**Confirmed P1 on `29150f3`; implemented in commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`,
+integrated through #210 at `0cd95120` after synchronized-head CI.** A synchronous parent `childBoundsChanged` callback
+can destroy the editor during `applyUiScale`'s `setSize`/`setTransform`. The original
+method then accesses the OpenGL context; the timer can also resume into destroyed
+controls. The same relevant `applyUiScale` and `timerCallback` bodies are present in
+the unchanged 0.10.0 draft. No supported DAW incidence is established.
+
+- **Correction:** stack-owned `Component::SafePointer` checks follow both component
+  callouts; `timerCallback` checks after each call to `applyUiScale`. No parameter,
+  processor, latency, dispatch, state, DSP or threading contract changes.
+- **Regression:** State156 drives actual DPI, timer scale, timer mode and Advanced
+  callback paths with a real JUCE parent that destroys the editor synchronously.
+  Focused test 741/741; full local suites 945 DSP / 12,975 state. Original ASan fails
+  all four destroy paths; corrected ASan passes four destroy/four live cases. Removing
+  the size, transform or timer guard restores sanitizer errors; suppressing scale/layout
+  work fails live controls.
+- **Limit:** the source-level parent callback is deterministic but is not a DAW host
+  reproduction. Only the Editor/OpenGL/probe objects are ASan-instrumented. Native
+  visual/editor lifecycle acceptance remains owner-deferred; full CI on the new PR is
+  pending. See [control provenance](engineering-review/gui-scale-callback-lifetime.json).
+
+### NR-028 — Repeated parameter-triggered restore adoption (P1; KI-034 overlap)
+
+The two #211 callback guards are already integrated by #209, including the
+stack-copy requirement for the component-owned preset click. Preserve that source
+exactly. State157 adds a distinct parameter-listener teardown witness beyond
+State155's latency listener and now implements the policy-required same-processor
+A→B→C→B cycle. Every B/C/B leg installs a different session after an A/B detour,
+actually invokes the production callback, checks immediate adoption before any
+serialization can rescue it, and reopens the editor on the same processor.
+Compare the final B's entire normalized parameter vector with first B; verify both
+serialized A/B slot widths, active slot, preset name/baseline, Settings, latency,
+history and balanced dispatch on every leg. Keep live timer/button continuation
+and destruction controls. A skipped final callback and a truncated return leg
+are separate test-only negative controls. No production, schema or dependency
+change is needed. See [the evidence ledger](engineering-review/gui-restore-adoption-lifetime.json).
+PR #211 is not merged or authorized for merge; #212 remains independent against
+integrated main. Native/host/visual acceptance remains deferred, not passed.
+
 ## 5. Version and release strategy
 
 1. **Existing draft: 0.10.0, held unchanged.** It includes #187/#191/#193 but lacks
-   post-tag NR-022/NR-006. NR-001/002 are complete. NR-021 recommends a separately
+   post-tag NR-022/NR-006, NR-023/024 and NR-027 corrections. NR-001/002 are complete. NR-021 recommends a separately
    selected integrated source after native acceptance; no retag/replacement/version
    execution is authorized. Retain the current draft and all provenance.
 2. **Later maintenance:** if an evidence-backed, compatible defect correction is selected after
@@ -1980,7 +2104,7 @@ The owner separately authorized integration; native acceptance remains deferred.
 
 ### Phase 0 — Completed approval records; remaining owner decisions
 
-NR-001/002/016 and #199–#206 integrations are complete. Preserve the actual
+NR-001/002/016 and #199–#208 integrations are complete. Preserve the actual
 merge and owner-attestation evidence; do not repeat that batch. NR-018/019 remain
 separate owner/legal/provisioning decisions. Unknown distribution rights keep all
 artifacts private/draft. New PRs require their own merge authorization.
@@ -1991,8 +2115,9 @@ NR-022/006 and bounded NR-014 source work is integrated; native/manual execution
 is owner-deferred without waiving acceptance. Review state/preset/Undo, DSP/RT
 boundaries, publications/lifetimes, component callbacks and verification oracles
 for new reproducible evidence. Establish original/negative controls before fixing;
-use focused independent PRs and preserve Accepted contracts. NR-023/024 are this
-round's confirmed corrections. NR-003/013/015 and recurrence/owner gates remain;
+use focused independent PRs and preserve Accepted contracts. NR-023/024 are
+integrated; NR-025/#209 and NR-027/#210 are integrated; NR-026 remains
+architecture/dependency-gated. NR-003/013/015 and recurrence/owner gates remain;
 unrelated source correctness does not wait for physical-machine performance.
 
 ### Phase 2 — Measurement inputs before optimization or expanded installation

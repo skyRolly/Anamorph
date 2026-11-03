@@ -84,5 +84,237 @@
     "evidence_ledger_commit": "59486b4",
     "state": "Open; exact-head CI status is reported on the pull request",
     "merge": "Not authorized; separate owner approval required"
-  }
+  },
+  "review_correction_2026_11_03": {
+    "finding": "Accepted: the original one-adoption State157 fixture did not satisfy TESTING_POLICY rule 3a.",
+    "integrated_main": "0cd95120162b7913a5656f828f27eb96034c1b34",
+    "approved_integrations": {
+      "209": "0d395366237ac0b5ae10f74be644de3835a8f104",
+      "210": "0cd95120162b7913a5656f828f27eb96034c1b34"
+    },
+    "previous_review_head": "ed635fbd3a1baf5a4cb8df17a749e2819bf0adb8",
+    "source_disposition": "Keep integrated main PluginEditor.cpp/h byte-for-byte. #209 already supplies these guards; State157 adds the separate parameter-trigger restoration witness. No duplicate guards.",
+    "test_contract": "One processor per timer/preset and live/destructive case. Initialize A, actually adopt B/C/B through the production callback, displacing each sound after host install. Verify immediate notifications, metadata, baseline, A/B sounds, Settings/latency, history, dispatch and reopened Width attachment on each leg. Final B must exactly match the first B complete normalized parameter vector.",
+    "alternatives_rejected": [
+      "Repeated assertions against first B do not execute a return leg.",
+      "A fresh processor per leg cannot expose reuse defects.",
+      "Serializing before immediate callback oracles can hide a skipped callback because getStateInformation itself adopts.",
+      "Duplicate source guards would obscure the integrated protection and retain the shadowing failure."
+    ],
+    "historical_ci_failures": {
+      "run": 41536322372,
+      "source_lint_job": 125589499091,
+      "source_lint_cause": "Dead re-aim targets for POSTMORTEMS and THREAD_MODEL; actual citation integration defect, not storage.",
+      "linux_job": 125589498532,
+      "linux_cause": "New -Wshadow-uncaptured-local from popup safeThis capture shadowing menu local; actual warning, not storage. Main uses menuAlive and preserves the guard.",
+      "sanitizers_job": 125589499237,
+      "sanitizers_result": "Passed on ed635fbd: ASan DSP941/state12280; both memcheck suites completed with zero errors. Historical, not final correction-head evidence."
+    },
+    "combined_main_evidence": {
+      "tree_equals_validated_head": "7208bdc205a9401b345a2c7ad8b027bb6685d517",
+      "build_run": 41619737257,
+      "selected_matrix_jobs": "16 success, 3 intentionally skipped",
+      "other_workflows": [
+        41619744561,
+        41619744502,
+        41619744513,
+        41619744547
+      ],
+      "memcheck_artifact": 13224979657,
+      "memcheck_sha256": "174680ce17586b557d5193229832dc618b19a9907434111043c523476908a0f0",
+      "independent_artifact_verification": "Downloaded through connector after direct CLI artifact redirect returned403; SHA-256 verified; results.json records both completed/exit0 and both raw logs contain zero error summaries. Existing leak-check=no remains explicit.",
+      "local_historical_sanitized": "941 DSP / 13054 state; unchanged strict detector options; writable private configuration-directory mount isolates the full root overlay.",
+      "pluginval_historical": "Strictness10 deterministic/randomized three passes each. One deterministic pass3 attempt exited139 before retry succeeded; no causal attribution established.",
+      "temporary_runtime_loss": "The environment refresh removed the temporary checkout/logs. Pushed commits, recorded hashes and remote CI remain preserved. This follow-up uses a new clean checkout; do not claim an interrupted local preflight completed."
+    },
+    "local_validation": {
+      "toolchain": "Pinned Clang22.1.8 / C++23, verified JUCE3fb5cbc0, RelWithDebInfo -O1 -gline-tables-only, all modules instrumented.",
+      "sanitizers": "address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability; unchanged repository ignorelist; no new suppression.",
+      "runtime": "ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1:strict_init_order=1:strict_string_checks=1; UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1",
+      "filesystem_isolation": "Bubblewrap binds only a writable empty private preset config directory at /home/agent/.config. No HOME override, test/production/assertion change or detector relaxation.",
+      "focused_timer": "201 checks, 0 failures",
+      "focused_preset": "201 checks, 0 failures",
+      "full_suites": "941 DSP / 13454 state, 0 failures",
+      "logs": [
+        {
+          "name": "state157-timer-fixed.log",
+          "sha256": "24885210c24bb01ca6c17343026f1033b11b93f0a07675a5f246cc338d00dff1"
+        },
+        {
+          "name": "state157-preset-fixed.log",
+          "sha256": "b5d58f0f099602fb0f3184b8d4b1be2297e32b49ac8c68723691cbb82e0f77f7"
+        },
+        {
+          "name": "pr211-full-suites.log",
+          "sha256": "762e70d21896722e981a597734aff7cff83dc1c3038db012cb66dd24e649c73b"
+        },
+        {
+          "name": "pr211-final-preflight.log",
+          "sha256": "e8ebd393fd6ab2d2de3c16bcb5913f3096b40c8ccbf9efd0341a4e64c8d12af3"
+        }
+      ],
+      "preflight": "Completed with checker/tooling self-tests, source/realtime/portability/state coverage, docs/table/link checks, all citation bases, 18 Python controls and actual 941 DSP / 13454 state executions. No shipping ABI artifact in this test-only build; actual main and final-head CI shipping gates are separate.",
+      "restored_source_hash_verified": true
+    },
+    "approval": "Open/unmerged. No merge or auto-merge authorization. Native/manual acceptance owner-deferred, not waived.",
+    "final_head_evidence_comment": "https://github.com/skyRolly/Anamorph/pull/211#issuecomment-6604296936",
+    "historical_normalized_plain_fixture_correction": "Initial draft assertions compared normalized d2::Session Width values with plain serialized/Slider values and failed18 focused checks. Corrected the expectation via the actual parameter convertFrom0to1 range; live APVTS checks remain normalized. This was a new test-oracle error, not a product defect.",
+    "evidence_storage": "Raw logs retained at /workspace/scratch/anamorph-review-20261103-evidence/. Freed only regenerable .o files from the abandoned nr028-asan CMake build; source, prior logs and executable controls preserved.",
+    "regression_source_sha256": "28ab4f8f887922d4ac9f0bfa5247d75ca99fd34d68b786311a71370756f465f5",
+    "post_merge_main_ci": {
+      "head": "0cd95120162b7913a5656f828f27eb96034c1b34",
+      "build_run": 41634987301,
+      "codeql_run": 41634987240,
+      "msvc_run": 41634987355,
+      "status": "Completed success on actual merge head",
+      "build_jobs": "16 successful / 3 intentionally skipped",
+      "linux_job": 125913798063,
+      "linux_results": "945 DSP / 13054 state; popup32; pluginval strictness10 both modes x3 all first attempts; pinned-Clang shipping ABI and warnings pass.",
+      "sanitizers_job": 125913798622,
+      "sanitizers_results": "941 DSP / 13054 state, zero failures; supplementary sanitizer groups remain enabled.",
+      "memcheck_results": "934 DSP / 13054 state, both completed/exit0/zero error summaries; existing leak checking disabled.",
+      "memcheck_artifact": 13231204365,
+      "memcheck_declared_sha256": "f3f87f66606cae21810eb9761ded1b58b86d93b944090165a8ed48ba61d2af24",
+      "raw_logs": [
+        {
+          "job": 125913798063,
+          "sha256": "54acfe3d10173108b4790ed3b8faf00147b3220328ffd9ae27ac033b12a10d4a"
+        },
+        {
+          "job": 125913798622,
+          "sha256": "d274c39262a5d8693018c7db2ececde85647b27164c3f884e280220f4862bd29"
+        }
+      ]
+    },
+    "release_boundary_verification": {
+      "tag_object": "1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0",
+      "peeled_source": "4c136881f245470577d66a7603f15b177ddcf3dc",
+      "draft_id": 429760301,
+      "draft": true,
+      "asset_count": 11,
+      "release_updated_at": "2026-10-31T06:17:44Z",
+      "asset_metadata_sha256": "903f03a6e90d1e7f15025dfd1b4d19fc2b36828d74da7bc36d3f6b4d1e397c30",
+      "verification": "Read-only API identities, sizes, digests and modification times match the documented eleven old assets; no release mutation or asset rebuild."
+    },
+    "cycle_negative_controls": {
+      "regression_sha256": "28ab4f8f887922d4ac9f0bfa5247d75ca99fd34d68b786311a71370756f465f5",
+      "controls": [
+        {
+          "control": "skip-final-adoption",
+          "selector": "timer",
+          "exit": 1,
+          "log": "/tmp/anamorph-review-evidence-20261103/state157-skip-final-adoption-timer.log",
+          "sha256": "167c619a7c6f19d705012c73a094574a3285b868133051d8269734f752540efa",
+          "reported_failures": [
+            "  [FAIL] 157: every adoption reaches its synchronous parameter listener",
+            "  [FAIL] 157: each adoption completes identity and active slot",
+            "  [FAIL] 157: each adoption completes its preset baseline",
+            "  [FAIL] 157: restored sound survives callback teardown: got 0.24000001, expected 0.660000026 (tol 1e-06)",
+            "  [FAIL] 157: repeated adoption restores Settings and latency",
+            "  [FAIL] 157 live timer: continuation refreshes the real Undo button",
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "  [FAIL] 157: every adoption reaches its synchronous parameter listener",
+            "  [FAIL] 157: each leg preserves the selected live/destructive control",
+            "  [FAIL] 157: each adoption completes identity and active slot",
+            "  [FAIL] 157: each adoption completes its preset baseline",
+            "  [FAIL] 157: restored sound survives callback teardown: got 0.24000001, expected 0.660000026 (tol 1e-06)",
+            "  [FAIL] 157: repeated adoption restores Settings and latency",
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "201 checks, 14 failure(s)"
+          ]
+        },
+        {
+          "control": "skip-final-adoption",
+          "selector": "preset",
+          "exit": 1,
+          "log": "/tmp/anamorph-review-evidence-20261103/state157-skip-final-adoption-preset.log",
+          "sha256": "bcc7cd4ca4c02eaede9f82b2c3c55b7100e5b299102a2fc1324bd45f6db22d61",
+          "reported_failures": [
+            "  [FAIL] 157: every adoption reaches its synchronous parameter listener",
+            "  [FAIL] 157: each adoption completes identity and active slot",
+            "  [FAIL] 157: each adoption completes its preset baseline",
+            "  [FAIL] 157: restored sound survives callback teardown: got 0.24000001, expected 0.660000026 (tol 1e-06)",
+            "  [FAIL] 157: repeated adoption restores Settings and latency",
+            "  [FAIL] 157 live preset: continuation opens the production popup",
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "  [FAIL] 157: every adoption reaches its synchronous parameter listener",
+            "  [FAIL] 157: each leg preserves the selected live/destructive control",
+            "  [FAIL] 157: each adoption completes identity and active slot",
+            "  [FAIL] 157: each adoption completes its preset baseline",
+            "  [FAIL] 157: restored sound survives callback teardown: got 0.24000001, expected 0.660000026 (tol 1e-06)",
+            "  [FAIL] 157: repeated adoption restores Settings and latency",
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "201 checks, 14 failure(s)"
+          ]
+        },
+        {
+          "control": "truncate-before-return",
+          "selector": "timer",
+          "exit": 1,
+          "log": "/tmp/anamorph-review-evidence-20261103/state157-truncate-before-return-timer.log",
+          "sha256": "f1ea11a63056f8921b0d2afe5e622a2c1d1bfeaac5c158f837478bbc9492b4a7",
+          "reported_failures": [
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "  [FAIL] 157 cycle: final return restores B metadata after C",
+            "  [FAIL] 157 cycle: final B restores every exact normalized value of first B",
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "  [FAIL] 157 cycle: final return restores B metadata after C",
+            "  [FAIL] 157 cycle: final B restores every exact normalized value of first B",
+            "162 checks, 6 failure(s)"
+          ]
+        },
+        {
+          "control": "truncate-before-return",
+          "selector": "preset",
+          "exit": 1,
+          "log": "/tmp/anamorph-review-evidence-20261103/state157-truncate-before-return-preset.log",
+          "sha256": "8f5828c32fd2feb20950f032a2534688374789bb57b8a360f2bb09376f87472e",
+          "reported_failures": [
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "  [FAIL] 157 cycle: final return restores B metadata after C",
+            "  [FAIL] 157 cycle: final B restores every exact normalized value of first B",
+            "  [FAIL] 157 cycle: all three B/C/B adoptions actually execute",
+            "  [FAIL] 157 cycle: final return restores B metadata after C",
+            "  [FAIL] 157 cycle: final B restores every exact normalized value of first B",
+            "162 checks, 6 failure(s)"
+          ]
+        }
+      ],
+      "scope": "Test-only mutants; production source, detector options and assertions unchanged. Corrected test restored and rebuilt in finally.",
+      "recipes": {
+        "skip-final-adoption": "Temporarily enclose only the actual timer/preset invocation in if (leg != 2), preserving every assertion.",
+        "truncate-before-return": "Temporarily change the leg bound from leg < 3 to leg < 2, preserving all final count/metadata/full-parameter assertions."
+      }
+    },
+    "original_controls_current_harness": {
+      "baseline": "29150f312ec4a43ec85f35e61028d8338057d927",
+      "control": "Only the original editor translation unit on the revised State157 harness.",
+      "original_editor_sha256": "45c0d80f82d5a82c4b1988359d591274380a3a3ffe105f483b30ae16b27ec455",
+      "fixed_editor_sha256": "9e4ccbf620fbed76e233b450f973237eaee6dfb0fe1ce60c90b40a49bde7c6cf",
+      "cases": [
+        {
+          "selector": "timer",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/state157-original-timer.log",
+          "sha256": "dc302d429f797a5f0c8ef4cf50f0a76b5c02e0e8069942c8520b14594e9423ed"
+        },
+        {
+          "selector": "preset",
+          "exit": 1,
+          "detector": "UBSan invalid-vptr",
+          "log": "/tmp/anamorph-review-evidence-20261103/state157-original-preset.log",
+          "sha256": "a52860a6ce61a398bfbcf4c81163af2b5a5d6b63139f34d8453c51c9c6f34f32"
+        }
+      ],
+      "interpretation": "With full strict groups, vptr traps before a later ASan UAF. Both original timer/preset selectors fail; corrected integrated guards pass. Historical ASan-only UAF records remain valid within their instrumented scope."
+    },
+    "production_source_sha256": {
+      "src/PluginEditor.cpp": "9e4ccbf620fbed76e233b450f973237eaee6dfb0fe1ce60c90b40a49bde7c6cf",
+      "src/PluginEditor.h": "64cfaa902afe9b9433bd05438bc35f9860f4b9c5d532d66e5a03d4da94f51088"
+    },
+    "validation_state_at_commit": "Local focused/full suites and all four cycle mutants verified. Final pushed-head CI is reported in the linked evidence comment, separately from historical successes.",
+    "review_status": "Corrected local review candidate. Push and exact-head CI remain pending at this recorded checkpoint; live final-head results are in the linked evidence comment."
+  },
+  "historical_snapshot_note": "Top-level source hashes and sanitizer fields retain the original independent PR checkpoint. The dated review correction below is the current integrated-baseline record."
 }

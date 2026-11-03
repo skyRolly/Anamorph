@@ -1,5 +1,15 @@
 # CI_CD.md
 
+## Restore callback positive popup control
+
+The Linux shipping job reuses its state binary and existing Xvfb installation to
+run `--gui-restore-lifetime-probe popup-live`. This blocking positive control
+ensures NR-025's lifetime guards preserve a surviving editor's production popup.
+Both destruction paths, the surviving timer, restoration and reopen/stale-copy
+controls run in the ordinary cross-platform suite and existing sanitizer jobs.
+No sanitizer options, timeout budgets, detector rules or dependency pins change.
+Virtual-display execution does not establish manual native GUI acceptance.
+
 ## Native evidence tool portability
 
 `native-evidence-smoke` builds the existing opt-in Bench and test targets with

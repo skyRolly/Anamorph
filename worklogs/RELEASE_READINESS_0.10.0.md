@@ -1,16 +1,47 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
+## Current #209/#210 integration — 2026-11-03 (Asia/Shanghai)
 
-Current main is `a78b73334dbbbd70dc6ab6de9fd155643983d1f6`, containing the
-NR-024/KI-033 editor lifetime correction through owner-approved #208. NR-023/#207
-is authorized but still unmerged while its combined candidate is validated. The
-unchanged 0.10.0 tag `1190e455` points to `4c13688`; unpublished draft429760301
-and all11 asset identities/digests are preserved. That source still has both
-original defects, plus the earlier post-tag gaps. Native execution is owner-deferred
-without accepting cost, usability or release readiness. Candidate selection, native
-acceptance and explicit release authorization remain required. No rebuild, retag,
-version or publication operation is authorized.
+#209 merged at `0d395366`; #210 merged at `0cd95120162b7913a5656f828f27eb96034c1b34`.
+Its tree equals final reviewed/validated head `7208bdc2`; all selected current-head
+workflows completed. Both callback guards and State155/156 remain intact.
+#211 is being corrected for the repeated restore-cycle policy; #212's callback
+coverage description is under review. Both remain open and unmerged, without
+merge authorization. The roadmap and individual evidence ledgers track actual
+post-merge and review-head validation. Earlier records below are historical.
+Native acceptance remains owner-deferred. The existing 0.10.0 tag, unpublished
+draft, 11 assets and version are unchanged and do not contain post-tag fixes.
+
+## Current candidate boundary after #208/#207 — 2026-11-03 (Asia/Shanghai)
+
+Main `29150f312ec4a43ec85f35e61028d8338057d927` contains owner-approved #208
+and #207. Combined945 DSP/12,234 state checks and retained original/fixed/mutant
+sanitizer controls verify the integrated source scope, not native acceptance.
+NR-025 additionally reproduces menu/timer post-restore UAF; its correction is
+unmerged. NR-026 reproduces a pinned-JUCE wheel teardown UAF and requires a
+dependency/architecture disposition before implementation. See the
+[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md). No native occurrence rate or
+attribution of earlier validator signal exits is established by these new probes.
+
+The existing annotated 0.10.0 object`1190e455` still peels to`4c13688`;
+draft429760301 remains unpublished, with its11 existing assets. Main corrections
+do not update those artifacts. Hold the draft; candidate selection, outstanding
+native/cost/UX acceptance and separate release authorization remain necessary.
+No tag, asset, version, rebuild or publication change is made.
+
+## Historical candidate boundary after #208 integration — 2026-11-02 (Asia/Shanghai)
+
+Current main is `29150f312ec4a43ec85f35e61028d8338057d927`, including owner-approved
+#207/#208. The #207 transport correction and #208 Undo/Redo/A-B lifetime correction
+are integrated; PR #209/NR-025 and the new NR-027 scale callback correction remain
+unmerged. The unchanged 0.10.0 tag `1190e455` points to `4c13688`; unpublished draft
+429760301 and its 11 asset IDs, names, sizes and SHA-256 digests are unchanged. The
+draft predates NR-023/024 and contains the original scale methods implicated by
+NR-027. Its source/artifacts therefore do not include these later fixes.
+
+Native execution remains owner-deferred, without accepting cost, usability or release
+readiness. Candidate selection, native acceptance and explicit release authorization
+remain required. No rebuild, retag, version or publication operation is authorized.
 
 ## Historical #206 source/candidate disposition — 2026-11-02 (Asia/Shanghai)
 

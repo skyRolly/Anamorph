@@ -1,5 +1,49 @@
 # TESTING.md
 
+
+## Parameter-triggered adoption cycle — State157 / NR-028
+
+Run `AnamorphStateTests --editor-restore-lifetime-probe timer` or `preset`;
+omitting the selector runs both, and the normal suite runs the same fixture.
+Each callback/live-or-destroy case reuses ONE processor for A→B→C→B. Every leg
+holds a real off-thread restore after sound install, changes the live A/B sound,
+publishes the restore, and invokes the actual private timer or component-owned
+preset-button callback. Synchronous Width notifications may delete the editor.
+Immediate notification, metadata, baseline, sound, Settings/latency, history and
+dispatch checks run before serialization. Both saved A/B payloads and a reopened
+Width attachment are checked on each leg. Final B must match first B's complete
+normalized parameter vector, and all three actual adoptions must be counted.
+Live controls also verify timer continuation or popup opening. The existing
+handoff/pacing deadlines are unchanged. Only in-memory popup placement metadata
+is supplied without a display; this is not native visual acceptance.
+
+Test-only controls skip the final callback or truncate before the return to B;
+they must fail the immediate/return/repeat oracles. Original editor-source
+controls retain the destructive lifetime witness. Main already contains #209's
+exact protection; no duplicate source guards or shadow-warning baseline are added.
+Results and historical failures are retained in the
+[evidence ledger](../../worklogs/engineering-review/gui-restore-adoption-lifetime.json).
+
+## Restore callout destruction — State155 / NR-025
+
+`tests/gui_restore_lifetime_tests.h` delivers the actual preset-name callback and
+private timer override without changing the shipping class definition. A real
+off-message-thread restore waits for adoption; its synchronous latency listener
+destroys the editor during menu adoption or the timer poll. Assert completed
+restoration/latency, cleared dispatch, reopened Width readback and a stale copied
+menu callback leaving a second restore pending. Repeat each case twice.
+Run `AnamorphStateTests --gui-restore-lifetime-probe` for the three headless cases,
+or select `menu-close`, `timer-close`, `timer-live` or `popup-live`. Unknown
+selectors fail. The last case requires a display and fails explicitly without one;
+Linux CI runs it with Xvfb. It verifies an actual popup still opens, while the
+headless survivor verifies the timer still refreshes its Undo indicator.
+These are automated component controls, not manual host or visual acceptance.
+The default fixture executes79 checks; the explicit displayed case executes32.
+Original ASan fails both teardown paths; removing each guard or using the raw
+stale callback restores a UAF. Always-return mutants fail the survivor controls.
+Corrected actual-editor-TU ASan passes all four selections with leak detection;
+other linked objects are unchanged, so full sanitizer CI remains separate.
+
 ## Transport metadata arithmetic — State153 / NR-023
 
 `tests/transport_position_tests.h` runs through the real `processBlock` in the
@@ -32,22 +76,25 @@ The display oracle finds the existing `presetname` component ID; it permits
 abbreviated/empty captions and asserts the dirty-state change instead of assuming
 an unabridged Default caption.
 
-## Reentrant restore-adoption editor destruction — State157 / NR-028
+## Synchronous scale/resize teardown — State156 / NR-027
 
-`tests/editor_restore_lifetime_tests.h` invokes the actual editor timer override
-and preset-name button callback. A controlled off-thread restore installs its
-sound and pauses before metadata handoff; an A/B action changes the live sound,
-then adoption restores the host sound and synchronously notifies a real parameter
-listener. The live and destructive controls verify notification thread, completed
-processor state, restored sound, and editor lifetime. Run the full state suite or
-`AnamorphStateTests --editor-restore-lifetime-probe [timer|preset]`; unknown
-selectors fail. Each focused path passes 24 checks under ASan+UBSan with leak
-detection; the original integrated source reports heap-use-after-free in both
-paths. The preset callback supplies only in-memory display placement metadata to
-JUCE in a headless process; it creates no peer and is not native visual
-acceptance. The full sanitizer suite also encountered 11 filesystem assertions
-after the workspace ran out of space; see the linked evidence record for exact
-classification. Full CI remains required.
+`tests/gui_scale_lifetime_tests.h` drives the real host-DPI `setScaleFactor`, timer
+scale and Advanced-mode paths, and the component-owned Advanced button callback.
+A real JUCE parent callback may synchronously destroy the actual editor during its
+`setSize` or `setTransform`; live-editor controls check ordinary layout and scale
+composition, while destroyed-editor controls check that parameter values, latency,
+dispatch state and the processor's reopened view remain valid. The focused selector
+is `AnamorphStateTests --gui-scale-lifetime-probe [dpi|timer-scale|timer-mode|advanced]`;
+unknown selectors fail. State156's full fixture runs in the ordinary state suite.
+
+At baseline `29150f3`, State156 passes 741/741 checks. The original production
+translation unit reproduces ASan heap-use-after-free in all four destroy cases.
+Separately removing the post-`setSize`, post-`setTransform`, or timer-return guard
+restores sanitizer failures; suppressing scale/layout work fails the live controls.
+Corrected actual-editor and JUCE OpenGL translation units pass all eight ASan
+destroy/live cases with leak detection enabled. Other linked objects are not
+instrumented in this focused control, and this is not native host or visual
+acceptance; full repository sanitizer CI remains required.
 
 **Owner direction, 2026-11-02:** native performance, GUI/host/editor/assistive and
 hardware-dependent installation execution is deferred this round. Acceptance
