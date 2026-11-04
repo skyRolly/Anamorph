@@ -475,10 +475,14 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`python3 tests/juce_cache_tests.py` runs seven CMake cache regression tests (CMake, Ninja and a C/C++
-compiler required). They exercise the real top-level build file, stopping at a local JUCE stand-in:
-fresh/repeated configuration, a cached 9.0.3 pair and its reset, either partial reset, retained custom
-overrides, an intentional local 9.0.3 checkout, and legacy 9.0.2 fields. No JUCE download or plugin compilation occurs.
+`python3 tests/juce_cache_tests.py` runs 16 CMake cache/source-provenance regression tests
+(CMake, Ninja, Git and a C/C++ compiler required). They exercise the real top-level build file
+with a local JUCE stand-in: fresh/repeated configuration, previous 9.0.2/9.0.3/9.0.4 fields,
+full/partial resets, custom pins and intentional local comparisons. Git-backed source overrides
+must match immutable pins. Explicit archives remain supported, including without Git installed
+and inside an unrelated repository; normal fetched sources without Git identity and overrides
+with broken metadata are refused. Archive tests reach a deliberate product-target boundary
+marker after the provenance check. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
 `tests/dsp_tests.cpp` has **75 DSP tests** (Test 1 to Test 75; Tests 3 and 4 run as one) and the A/B

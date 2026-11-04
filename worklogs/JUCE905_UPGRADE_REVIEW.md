@@ -184,7 +184,7 @@ later results must be recorded with their own exact source/run, not silently app
 3. Run full DSP/state suites, preserving rate/buffer/OS/reset/transport/bypass/Mix/non-finite,
    stereo and accepted mono-input behavior, metering, callback/restore and latency controls.
    Reuse the previous upgrade's real-processor state comparison procedure; capture 9.0.4
-   sessions/presets, compare 9.0.5 re-save, all parameter bits/metadata, renders and latency.
+   sessions/presets, compare 9.0.5 re-save, all normalized parameter bits/metadata, renders and latency.
 4. Run existing required CI across Linux, Windows, Apple Silicon and native Intel: VST3,
    macOS AU, enabled Standalone, both pluginval modes ×3 at `ANAMORPH_PLUGINVAL_STRICTNESS`
    (currently 10); all existing sanitizer/memcheck/TSan/realtime/fuzz, source/docs/citation,
@@ -328,7 +328,7 @@ pass with CMake 3.22.6 and 3.31.6 (11 cases each), preserving earlier refusals a
 | Committed transition dump | 5/5 hashes and latency traces identical; raw output SHA-256 `8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd` at both pins |
 | Dump instrument/parser controls | Both pin self-checks and automatic discrimination controls pass; parser self-test passes 162 production-entry fixtures/mutants |
 | Cross-version session | 11,249 bytes, SHA-256 `df4ae19d21243cd1842dcc0245568557029cd26bb47e91b573417b09cb666154`; repeatable old reads and byte-identical target re-save |
-| Parameter/metadata/render comparison | Full outputs equal: both slots ×36 parameter bits, Unicode/XML-special names and dirty state; six distinct 44.1/48/96 kHz hashes and latency 4 samples agree |
+| Parameter/metadata/render comparison | Full outputs equal: both slots ×36 normalized `getValue()` bit patterns, Unicode/XML-special names and dirty state; six distinct 44.1/48/96 kHz hashes and latency 4 samples agree |
 | Local VST3 pluginval 1.0.4 | Strictness 10, deterministic ×3 + randomise ×3; all six pass on first attempt after discovery setup is corrected |
 | Generated Linux product identity | Checker self-test and actual generated metadata pass; product version remains 0.10.0 |
 | Codec/component coverage | All seven configured consumers (including format targets) carry all three exclusions; the CI fuzz target retains the same definitions. Object probes find no MP3/Opus/WebP symbols; HarfBuzz/SheenBidi/JPEG/PNG/FLAC/Ogg/Vorbis/zlib/PlutoVG source objects retain their expected components/attribution |
@@ -371,3 +371,31 @@ citation was mis-aimed before this upgrade. A two-line comment clarification dis
 continues to select the default look-and-feel even though those uses occur after parenting.
 No executable token or line count changes. The 32+5 DSP and session comparisons remain evidence
 for identical production code; the new final-head CI is tracked separately on the PR.
+
+
+## Owner review follow-up — 2026-11-04
+
+Before this follow-up, head `8f79485b7b347f4af679ec62f1c44cfbedb1128c` completed all automated workflows
+([Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/41742291646)).
+Those executed gates remain recorded; Level-5/listening/DAW/native acceptance is still pending.
+The review identified live-record drift (historical acceptance/current CI wording, cache migration,
+and compliance navigation) and a source-verifier regression for explicit archive overrides.
+
+The verifier now distinguishes a Git root from a trusted unversioned source-directory override.
+Git-backed immutable revisions must match HEAD. Explicit archives warn that identity is unverified;
+missing normal-fetch metadata and broken Git metadata remain errors. A parent's Git HEAD is not
+JUCE identity. The check follows `FetchContent_MakeAvailable`: it verifies provenance before
+product targets and does not gate JUCE's own configuration-time execution. The FetchContent model
+and separate local-path override remain intact. Regression and real-archive evidence is retained
+in `juce905-review/review-followup.json`; this changed helper requires its own final-head CI.
+
+The session probe records **normalized `getValue()` bits**, not independently measured
+unnormalized parameter values. Its byte-identical re-save checks serialization separately, and
+its six audio hashes check the restored renders. Earlier references to parameter bits describe
+that normalized listing; no additional raw-value comparison or manual audition is inferred.
+
+Follow-up local validation: 16/16 cache/source tests pass on both CMake 3.22.6 and 3.31.6.
+The archive regression fails against the previous helper; immutable-mismatch and implicit-archive
+bypass controls are detected. A real extracted 9.0.5 archive configures all enabled product targets
+with the expected unverified-identity warning, while the existing Git source still reports exact
+`d60b7a78030661574a615b586d9325ba7a7fa7dd`. This configure does not claim archive-binary validation.

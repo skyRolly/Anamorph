@@ -165,7 +165,7 @@ compatibility-correction scope; it does not relax ADR-0056's 256 KB/depth-8/no-D
 Both pins use equivalent current production source (comment-only `src/` diff), GCC 14 Release
 settings and fixtures in isolated Linux builds. All 32 committed DSP dump scenarios and five
 transitions have identical hashes and latency/trace metadata. Both full suites pass 945 DSP and
-13,959 state checks. A 9.0.4 session re-saves byte-for-byte; all 36 parameter bits per slot,
+13,959 state checks. A 9.0.4 session re-saves byte-for-byte; all 36 normalized `getValue()` parameter bit patterns per slot,
 metadata, six distinct 44.1/48/96 kHz render hashes and reported latencies agree. The committed
 parser self-tests, dump controls, source/cache negative controls and corrected XML controls stay live.
 Local strictness-10 pluginval passes both modes ×3. Required source-head CI platform/sanitizer/static
@@ -173,3 +173,22 @@ jobs pass, including the reporting-only cross-slice retry (attempt 2); final evi
 The worklog and timestamped target CI ledger distinguish passes, initial failure, cancellations and
 skips. Manual DAW/listening/native acceptance remains **Pending Human Acceptance**; this ADR
 approval does not accept those tests or authorize merge/release.
+
+
+## Owner review follow-up — 2026-11-04
+
+The source verifier must preserve explicit FetchContent archive overrides. Normal Git fetches
+and Git-backed source overrides retain immutable-HEAD enforcement; an archive without its own
+Git metadata is permitted as trusted, explicitly **unverified** development input, like the
+existing local-checkout escape hatch. It does not prove the default pin or licensing inventory.
+An enclosing repository's HEAD is never substituted. The check remains after JUCE configuration,
+before product targets: this is provenance validation, not an execution trust boundary. No
+FetchContent acquisition model, compiler/codec/format setting or product contract changes.
+
+Live handover/CI/build/compliance records distinguish prior 9.0.4 attestations from current
+9.0.5 automated evidence and pending Level-5/manual acceptance. Session-probe bit listings use
+normalized `getValue()`; byte-identical serialization and render hashes are separate checks.
+No independent unnormalized parameter measurement is claimed. The review follow-up requires
+fresh tests/CI. The 16-case cache/source suite passes on CMake 3.22.6 and 3.31.6, and a
+full real-archive configure passes with the expected unverified-identity warning. Source-head
+CI remains separately required. Evidence is in the worklog and `review-followup.json`; no merge is authorized.

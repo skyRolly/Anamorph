@@ -368,12 +368,26 @@ No dependency or format is added.
 **Accepted ADR-0071; owner approval: “approve ADR / dont merge PR”.**
 The immutable pin is `d60b7a78030661574a615b586d9325ba7a7fa7dd`; stale 9.0.4
 cache fields are refused alongside previous defaults. Custom pins/local comparisons and all codec
-exclusions remain. Current cache tests: 11 passing; the new old-cache test fails on baseline CMake
+exclusions remain. Current cache tests: 16 passing; the new old-cache test fails on baseline CMake
 for reaching the dependency boundary. Full automated evidence and remaining limitations are
 recorded in [the implementation worklog](../../worklogs/JUCE905_UPGRADE_REVIEW.md).
 **Level-5 remains Pending Human Acceptance.** No merge or release approval is granted.
 
-FetchContent-only `cmake/VerifyJuceSource.cmake` reports actual Git HEAD and refuses an
+For Git-backed FetchContent sources, `cmake/VerifyJuceSource.cmake` reports actual JUCE-root
+Git HEAD and refuses an
 immutable SHA mismatch, including disconnected/stale source reuse. Its genuine local Git
 positive/negative regression cases run in the same cache suite; local-path comparisons bypass
 this guard and named custom revisions retain their resolution behavior.
+
+
+## Explicit source-directory override provenance (ADR-0071, review follow-up)
+
+`FETCHCONTENT_SOURCE_DIR_JUCE` retains CMake's existing offline source-override behavior.
+If the supplied directory is itself a Git worktree, its HEAD must match an immutable pin.
+A trusted archive without Git metadata is allowed with an unverified-identity warning, including
+when it is extracted inside another repository. An ancestor repository's HEAD is not JUCE
+provenance. Missing Git identity in a normal fetched source, or broken Git metadata in an
+override, remains fatal. The unchanged `ANAMORPH_JUCE_PATH` branch permits intentional local
+comparisons. Neither unversioned override mode establishes the exact official commit for release
+or CI pin evidence; use a verified checkout for that evidence. The post-configuration check does
+not prevent JUCE's CMake/helper configuration from running and is not an untrusted-code boundary.

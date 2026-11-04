@@ -158,5 +158,60 @@ class JuceCacheTests(unittest.TestCase):
         self.assertNotIn("does not match immutable pin", result.stdout)
 
 
+    def archive_source(self):
+        # Defining the first product API supplies a precise boundary marker:
+        # its deliberate failure is after the real source verifier returns.
+        (self.juce / "CMakeLists.txt").write_text(
+            'function(juce_add_plugin)\n'
+            '  message(FATAL_ERROR "JUCE_ARCHIVE_PRODUCT_BOUNDARY_REACHED")\n'
+            'endfunction()\n', encoding="utf-8")
+
+    def assert_archive_override(self, result):
+        output = " ".join(result.stdout.split())
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("unverified JUCE source override", output)
+        self.assertIn("JUCE_ARCHIVE_PRODUCT_BOUNDARY_REACHED", output)
+        self.assertNotIn("verified JUCE source HEAD", output)
+        self.assertNotIn("does not match immutable pin", output)
+
+    def test_explicit_archive_override_remains_supported(self):
+        self.archive_source()
+        self.assert_archive_override(self.configure())
+
+    def test_explicit_archive_override_does_not_require_git(self):
+        self.archive_source()
+        self.assert_archive_override(self.configure("-DCMAKE_DISABLE_FIND_PACKAGE_Git=TRUE"))
+
+    def test_archive_override_does_not_inherit_ancestor_git_head(self):
+        self.archive_source()
+        (self.base / "parent.txt").write_text("Unrelated parent repository\n")
+        for args in (("init", "--quiet"), ("add", "parent.txt"),
+                     ("-c", "user.name=Cache Test", "-c", "user.email=cache-test@example.invalid",
+                      "commit", "--quiet", "-m", "parent fixture")):
+            subprocess.run(["git", "-C", str(self.base), *args], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assert_archive_override(self.configure())
+
+    def test_normal_source_without_git_metadata_is_refused(self):
+        self.archive_source()
+        result = subprocess.run(
+            ["cmake", f"-Djuce_SOURCE_DIR={self.juce}", f"-DANAMORPH_JUCE_TAG={TAG}",
+             "-P", str(ROOT / "cmake/VerifyJuceSource.cmake")],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            timeout=30, check=False)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("cannot verify JUCE source Git identity", " ".join(result.stdout.split()))
+        self.assertNotIn("unverified JUCE source override", result.stdout)
+
+    def test_broken_git_metadata_is_not_treated_as_an_archive(self):
+        self.archive_source()
+        (self.juce / ".git").write_text("gitdir: missing-git-directory\n")
+        result = self.configure()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("cannot verify JUCE source Git identity", " ".join(result.stdout.split()))
+        self.assertNotIn("JUCE_ARCHIVE_PRODUCT_BOUNDARY_REACHED", result.stdout)
+        self.assertNotIn("unverified JUCE source override", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

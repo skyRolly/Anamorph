@@ -18923,3 +18923,13 @@ worklog. Testing/ADR records now describe actual Linux equivalence and the separ
 XML oracle adaptation (original and five mutants fail, correction passes). Historical proposal,
 missing-header and initial failure records retain their original scope. Native acceptance stays
 pending. No release attestation, product version, numerical fixture or tolerance is changed.
+
+
+## JUCE 9.0.5 owner-review corrections
+
+Synchronize live handover/CI/build/compliance status with executed automated evidence and pending
+manual acceptance. Preserve 9.0.4 attestations under ADR-0061. Document explicit unversioned
+FetchContent archive overrides, strict Git/default pin checks and post-configuration provenance
+scope. Add archive/ancestor/broken-metadata regressions to the existing cache suite and retain
+execution evidence in `worklogs/juce905-review/review-followup.json`. Clarify normalized probe
+measurements without changing product parameters, state schema, DSP, formats or versions.

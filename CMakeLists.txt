@@ -79,7 +79,7 @@ if(ANAMORPH_JUCE_PATH)
     add_subdirectory(${ANAMORPH_JUCE_PATH} ${CMAKE_BINARY_DIR}/JUCE)
 else()
     include(FetchContent)
-    message(STATUS "Anamorph: fetching JUCE ${ANAMORPH_JUCE_VERSION} (${ANAMORPH_JUCE_TAG}) from github.com/juce-framework/JUCE")
+    message(STATUS "Anamorph: requested JUCE ${ANAMORPH_JUCE_VERSION} (${ANAMORPH_JUCE_TAG}); resolving via FetchContent")
     FetchContent_Declare(
         JUCE
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
@@ -87,7 +87,7 @@ else()
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(JUCE)
-    include(cmake/VerifyJuceSource.cmake)
+    include(cmake/VerifyJuceSource.cmake) # Post-configuration provenance; not a pre-execution trust gate.
 endif()
 
 # ----------------------------------------------------------------------------

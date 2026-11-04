@@ -84,7 +84,7 @@ scripts/build.sh            # scripts/build.sh [Release|Debug]
 
 Evidence [Verified]: scripts/build.sh:14-15.
 
-An existing `build/` configured on JUCE 9.0.2 or 9.0.3 now fails configuration before fetching:
+An existing `build/` configured on JUCE 9.0.2, 9.0.3 or 9.0.4 now fails configuration before fetching:
 CMake retains the cached pin despite the updated defaults. From the repository root, reset
 **both** values once, then use the normal wrapper:
 
@@ -225,3 +225,19 @@ Windows installer packaging (Accepted ADR-0064) uses the checked-in independent 
 at `resources/icons/windows/Anamorph.ico`, with no build-time download. It is distinct from
 JUCE's generated four-frame resource container. Source/native installer gates reject missing
 or altered inputs; ordinary plugin CMake/PNG inputs and compiled runtime behavior are unchanged.
+
+
+## Explicit offline source-directory overrides
+
+CMake's existing `-DFETCHCONTENT_SOURCE_DIR_JUCE=/path/to/JUCE` override remains supported,
+including extracted source archives. A Git checkout rooted at that directory is checked against
+an immutable pin just like a fetched checkout. An archive without its own Git metadata is accepted
+for trusted offline/development use with an **unverified source identity** warning; no commit SHA
+is inferred from its version string or an enclosing repository's HEAD. Broken Git metadata is an
+error, and normal fetched sources cannot silently use the archive exception.
+
+The stale-cache checks still apply: reset both `ANAMORPH_JUCE_TAG` and
+`ANAMORPH_JUCE_VERSION` when upgrading an existing build. The separate
+`-DANAMORPH_JUCE_PATH=/path/to/JUCE` escape hatch retains its intentional local-comparison
+behavior. Release/CI evidence for the default 9.0.5 pin must use a verifiable Git checkout.
+Verification follows JUCE's configuration; it is not a gate on executing untrusted CMake code.

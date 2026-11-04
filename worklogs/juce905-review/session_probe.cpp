@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <cstdint>
 
+// getValue() below records normalized 0..1 parameter bits. The byte-identical
+// state re-save is a separate serialization check; this listing does not
+// independently measure restored unnormalized values.
 static void describe (AnamorphAudioProcessor& processor)
 {
     for (int slot = 0; slot != 2; ++slot)

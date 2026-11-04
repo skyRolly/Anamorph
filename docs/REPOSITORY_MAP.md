@@ -348,3 +348,6 @@ and upstream-coordinate evidence; these ledgers do not establish manual acceptan
 The same packet retains `target-ci.json` / `target-ci-retry.json` (timestamped jobs/provenance), `completed-baseline-ci.json`,
 `steady-comparison.json` / `transitions-comparison.json`, and the independent `session_probe.cpp`
 plus `build_session_probe.py` reproduction helper. They are validation evidence, not shared product code.
+
+`worklogs/juce905-review/review-followup.json` records owner-review corrections, archive-override
+regressions, exact test/configuration evidence and final-head CI scope.

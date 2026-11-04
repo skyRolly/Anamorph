@@ -1,8 +1,10 @@
 # CI_CD.md
 
-The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) separates
-the captured 9.0.4 baseline CI from unexecuted target validation. Accepted ADR-0071
-changes the pin and cache checks while preserving workflow gates; source-bound target results are recorded separately.
+The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) separates completed automated
+9.0.4 baseline and 9.0.5 target validation from **Pending Human Acceptance** for native DAW,
+listening and visual/installation checks. The [timestamped completed-target CI record](../../worklogs/juce905-review/review-followup.json)
+and worklog identify the tested heads; [PR checks](https://github.com/skyRolly/Anamorph/pull/213)
+record subsequent review-fix validation. Architecture approval for ADR-0071 does not complete Level-5 acceptance.
 
 ## Restore callback positive popup control
 
@@ -2618,3 +2620,13 @@ deadline `RuntimeError` remain incomplete and enter existing cleanup. Mandatory
 hashing and `Driver.digest` are unchanged. Inert production observer/runner/
 controller cases and an exception-handler-removal mutant guard this distinction;
 an unreadable service image still cannot erase a separate/unknown survivor.
+
+
+## Source-provenance check scope
+
+`FetchContent_MakeAvailable(JUCE)` configures JUCE (including its helper tools) before
+`cmake/VerifyJuceSource.cmake` runs. The check verifies source identity before product targets
+are generated; it is **not a pre-execution trust gate for dependency CMake code**. Configure only
+trusted sources. Normal fetched checkouts must have a JUCE-root Git identity and immutable pins
+must match HEAD. Explicit archive overrides are permitted with an unverified-source warning;
+they do not establish release/CI pin provenance. See `BUILD.md` and `DEPENDENCY_POLICY.md`.
