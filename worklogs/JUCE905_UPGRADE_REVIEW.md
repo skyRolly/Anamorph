@@ -1,18 +1,23 @@
 # JUCE 9.0.5 investigation and architecture review packet
 
+**Integration — 2026-11-04:** owner-authorized [PR #213](https://github.com/skyRolly/Anamorph/pull/213) merged as `18a51df773d8701004fe86e85df820fdf6949f2d`; its tree equals approved head `520537e849b3f42a4300d55acc652a354d360025`. ADR-0071 remains **Accepted**. `main` pins JUCE **9.0.5** at `d60b7a78030661574a615b586d9325ba7a7fa7dd`. Level-5 listening and native/manual acceptance are **PASS — owner-attested**; execution date, exact payload and environment were not supplied. No new release is authorized.
+
+Corrected-head [Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/41831965689) and [PR merge-check](https://github.com/skyRolly/Anamorph/actions/runs/41831977210) passed, as did the associated CodeQL, MSVC and dependency-review checks. On the merge commit, the cache/provenance suite passed 28/28 on each of CMake 3.22.6 and 3.31.6 (no skips); these fixtures do not constitute a product build. Post-merge [Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/41840722187), [CodeQL](https://github.com/skyRolly/Anamorph/actions/runs/41840722379) and [MSVC](https://github.com/skyRolly/Anamorph/actions/runs/41840722200) report their live status at those links. Historical failures, limitations and acceptance scope below remain unchanged.
+
+
 **Current reconciliation — 2026-11-04 (Asia/Shanghai):** ADR-0071 remains Accepted;
 **Level-5 listening and native/manual acceptance PASS — owner-attested for JUCE 9.0.5**.
 Exact tested payload/environment provenance was not supplied. This new attestation supersedes
 only the earlier pending human-acceptance status, not the historical test/CI observations.
 See the final reconciliation section and `juce905-review/acceptance-reconciliation.json`.
-The damaged-metadata correction requires its own source-head CI; PR merge/release remain unauthorized.
+The corrected-head CI passed and PR #213 has since merged; no release is authorized.
 
 **Earlier implementation status — 2026-11-04:** the owner approved ADR-0071 (“approve ADR / dont merge PR”).
 The upgrade branch now pins JUCE 9.0.5. Sections 1–8 below preserve the original proposal-stage
 source/baseline observations, including the earlier missing-header failure. The implementation
 continuation at the end and `juce905-review/implementation.json` own subsequent execution status.
 At that earlier checkpoint manual/native acceptance was pending; the later owner attestation
-above supersedes that status. PR merge remains unauthorized.
+above supersedes that status. At that earlier checkpoint PR merge was unauthorized; PR #213 has since merged.
 
 Recorded 2026-11-04 (Asia/Shanghai). **Proposal only; Pending Human Architecture Review.**
 Current CMake dependency remains 9.0.4. [Proposed ADR-0071](../docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md)

@@ -368,7 +368,7 @@ as recorded under "One-time unpublished 0.10.0 candidate supersession" above.
 
 
 JUCE 9.0.5 review reconciliation (recorded 2026-11-04 Asia/Shanghai): owner Level-5 listening
-and native/manual acceptance are **PASS — owner-attested** for the unmerged upgrade. Exact tested
+and native/manual acceptance are **PASS — owner-attested** for the integrated upgrade. Exact tested
 payload/source, execution date and environment details were not supplied. This acceptance is
-separate from historical releases and grants no merge/publication permission; current records:
+separate from historical releases. PR #213 has since merged; no publication is authorized. Current records:
 `worklogs/JUCE905_UPGRADE_REVIEW.md`. No release object, product version or commercial decision changes.

@@ -172,7 +172,7 @@ The [JUCE 9.0.5 review packet](worklogs/JUCE905_UPGRADE_REVIEW.md) supports
 [Accepted ADR-0071](docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md).
 It is developer investigation evidence; the configured dependency is 9.0.5 under explicit owner Architecture Review approval; Level-5 listening and native/manual acceptance are now **PASS — owner-attested for 9.0.5**,
 recorded 2026-11-04 (Asia/Shanghai). Exact tested payload/environment details were not supplied.
-No merge or release is authorized.
+PR #213 is merged; no release is authorized.
 
 The full technical documentation lives in **[`docs/`](docs/)**:
 - **Start here:** [`docs/SOURCE_OF_TRUTH.md`](docs/SOURCE_OF_TRUTH.md) · [`docs/HANDOVER.md`](docs/HANDOVER.md) · [`docs/REPOSITORY_MAP.md`](docs/REPOSITORY_MAP.md)
