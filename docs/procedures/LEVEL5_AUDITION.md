@@ -390,4 +390,4 @@ docs/policies/TESTING_POLICY.md (Level 5); docs/procedures/RELEASE_PROCESS.md §
 **PASS — owner-attested** for Level-5 listening and native/manual acceptance in PR #213.
 This is new 9.0.5 evidence and does not inherit ADR-0061's 9.0.4 sign-off. No repeat audition is
 requested. Actual test execution date/time, tested source commit and payload SHA-256, machine/OS/CPU/architecture, DAW/version, plugin formats, device, sample rates/buffer sizes, programme/session identifiers and per-scenario observations were not supplied. The date above is the attestation recording date, not the execution date.
-The full scope/binding record is `worklogs/JUCE905_UPGRADE_REVIEW.md`. No merge/release authorization follows.
+The full scope/binding record is `worklogs/JUCE905_UPGRADE_REVIEW.md`. PR #213 was subsequently merged under separate owner authorization; no release is authorized.

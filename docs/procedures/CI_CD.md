@@ -5,7 +5,7 @@ validation from human evidence. Level-5 listening and native/manual acceptance a
 owner-attested for 9.0.5**, recorded 2026-11-04 (Asia/Shanghai); exact tested payload/environment
 fields were not supplied. The [reconciliation record](../../worklogs/juce905-review/acceptance-reconciliation.json)
 identifies prior tested heads, while [PR checks](https://github.com/skyRolly/Anamorph/pull/213)
-identify corrected-head CI. ADR-0071 remains Accepted; no merge/release authorization is granted.
+identify corrected-head CI. PR #213 merged as `18a51df773d8701004fe86e85df820fdf6949f2d`; ADR-0071 remains Accepted. No release is authorized. Post-merge CI links are in the review packet.
 
 ## Restore callback positive popup control
 

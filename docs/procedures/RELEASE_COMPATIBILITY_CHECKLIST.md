@@ -4,9 +4,9 @@
 (Asia/Shanghai). Level-5 listening and native/manual acceptance are complete for this upgrade;
 this is separate from the historical 9.0.4 approval. Architecture Review remains Accepted.
 Exact tested payload/environment details were not supplied; see the [reconciliation worklog](../../worklogs/JUCE905_UPGRADE_REVIEW.md).
-No merge or release publication is authorized.
+PR #213 is merged; no release publication is authorized.
 
-This records broad acceptance for the unmerged JUCE upgrade. It does not assert individual
+This records broad acceptance for the integrated JUCE upgrade. It does not assert individual
 named-host results or complete an artifact-specific release checklist. Exact tested source/payload,
 execution date and environment fields remain NOT RECORDED; original release records are unchanged.
 

@@ -186,4 +186,4 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 The [JUCE 9.0.5 investigation](../worklogs/JUCE905_UPGRADE_REVIEW.md) and
 `worklogs/juce905-review/` ledgers are supporting evidence for **Accepted ADR-0071**.
 The owner approved this ADR on 2026-11-04 (“approve ADR / dont merge PR”).
-The upgrade branch pins 9.0.5; native/Level-5 acceptance and PR merge remain separate gates.
+Main pins 9.0.5 after PR #213; native/Level-5 acceptance is owner-attested, distinct from source-bound automated evidence.

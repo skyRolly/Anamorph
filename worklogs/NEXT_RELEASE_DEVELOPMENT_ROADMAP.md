@@ -1,5 +1,10 @@
 # Next release investigation and development roadmap
 
+**Integration — 2026-11-04:** owner-authorized [PR #213](https://github.com/skyRolly/Anamorph/pull/213) merged as `18a51df773d8701004fe86e85df820fdf6949f2d`; its tree equals approved head `520537e849b3f42a4300d55acc652a354d360025`. ADR-0071 remains **Accepted**. `main` pins JUCE **9.0.5** at `d60b7a78030661574a615b586d9325ba7a7fa7dd`. Level-5 listening and native/manual acceptance are **PASS — owner-attested**; execution date, exact payload and environment were not supplied. No new release is authorized.
+
+See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and actual post-merge CI. Prior roadmap entries below are dated snapshots.
+
+
 ## Current #211 integration and #212 provenance review
 
 Owner-authorized PR #211 merged as

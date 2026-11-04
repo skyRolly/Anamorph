@@ -333,7 +333,7 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 
 ## JUCE 9.0.5 upgrade (2026-11-04)
 
-- `docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md` — Accepted decision under owner approval; implementation remains on its unmerged branch.
+- `docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md` — Accepted decision under owner approval; implementation merged into main in PR #213.
 - [`worklogs/JUCE905_UPGRADE_REVIEW.md`](../worklogs/JUCE905_UPGRADE_REVIEW.md) — investigation/review packet and native acceptance worksheet.
 - `worklogs/juce905-review/evidence.json` — source/acquisition/local-check evidence.
 - `worklogs/juce905-review/baseline-ci.json` — captured 9.0.4 baseline jobs/statuses, not target validation.
