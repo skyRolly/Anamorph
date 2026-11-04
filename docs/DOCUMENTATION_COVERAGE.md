@@ -1,6 +1,6 @@
 # DOCUMENTATION_COVERAGE.md
 
-JUCE 9.0.5 integration status is reconciled across the ADR, dependency policy, handover, build/CI and acceptance records, and [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md); prior review snapshots remain historical.
+JUCE 9.0.5 integration status is reconciled across the repository map, ADR, dependency policy, handover, build/CI and acceptance records, and [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md); prior review snapshots remain historical.
 
 
 ## #211 integration and #212 provenance audit
