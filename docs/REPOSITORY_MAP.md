@@ -19,7 +19,7 @@ controls and the distinct NR-026 pinned-framework witness/decision boundary.
 
 ```
 Anamorph/
-├── CMakeLists.txt          Build: JUCE FetchContent (9.0.4, pinned by commit SHA), AnamorphDSP INTERFACE lib,
+├── CMakeLists.txt          Build: JUCE FetchContent (9.0.5, pinned by commit SHA), AnamorphDSP INTERFACE lib,
 │                           AnamorphHardening flags (ADR-0021), plugin target
 │                           (VST3 [+AU on macOS] [+Standalone]), tests app.
 ├── README.md               Project façade (features, status, quick start, docs nav).
@@ -40,7 +40,7 @@ Anamorph/
 │                           the naming obligations the dependency licences impose.
 ├── SUPPORT.md              Internal-testing guide: what a tester may do with a build, what to
 │                           check first, and what a test report must contain.
-├── cmake/CheckJuceCache.cmake  Refuse stale 9.0.2/9.0.3 cache entries before fetching; preserve overrides.
+├── cmake/CheckJuceCache.cmake  Refuse stale 9.0.2/9.0.3/9.0.4 cache entries before fetching; preserve overrides.
 ├── src/                    Source (wrapper + GUI + DSP core).
 ├── resources/icons/        Approved B0 1024/32 PNG inputs and immutable provenance for JUCE icons.
 ├── tests/                  Headless self-tests (DSP + state compatibility), fixtures, and the
@@ -234,8 +234,8 @@ Its 2026-10-29 fallback amendment adds `cmake/MacIcon.cmake` and
 
 ## `docs/` — documentation library
 
-The current JUCE upgrade decision is `docs/architecture/design-decisions/ADR-0061-juce-9.0.4-upgrade.md`;
-its measurement record is `worklogs/JUCE904_UPGRADE_0.9.9.md`. ADR-0060 remains as the superseded 9.0.3 record.
+The current JUCE upgrade decision is `docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md`;
+its execution record is `worklogs/JUCE905_UPGRADE_REVIEW.md`. The JUCE904 and ADR-0060 records retain their dated 9.0.4/9.0.3 evidence.
 
 ```
 docs/
@@ -256,7 +256,7 @@ docs/
                      CHANGELOG, TESTING, RELEASE, DEPENDENCY, CODE_STYLE)
 ```
 
-Evidence [Verified]: file tree from the repository; CMakeLists.txt:114-384 (hardening interface) + :326 (`AnamorphDSP`) / :352 (`juce_add_plugin`); src/ listing.
+Evidence [Verified]: file tree from the repository; CMakeLists.txt:115-385 (hardening interface) + :326 (`AnamorphDSP`) / :352 (`juce_add_plugin`); src/ listing.
 
 `scripts/check-product-identity.py` verifies source and generated bundle/package namespaces
 and independent plugin/GUID identities. `worklogs/2026-10-23-product-namespace.md` records
@@ -329,3 +329,30 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
   This does not execute Rosetta, DSP, an installer or a debugger.
 - `tests/scope_ring_diagnostic.cpp`: separately instrumented single-threaded
   newest-frame fixture with exact operand-bit/boolean/FP/address diagnostics.
+
+
+## JUCE 9.0.5 upgrade (2026-11-04)
+
+- `docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md` — Accepted decision under owner approval; implementation remains on its unmerged branch.
+- [`worklogs/JUCE905_UPGRADE_REVIEW.md`](../worklogs/JUCE905_UPGRADE_REVIEW.md) — investigation/review packet and native acceptance worksheet.
+- `worklogs/juce905-review/evidence.json` — source/acquisition/local-check evidence.
+- `worklogs/juce905-review/baseline-ci.json` — captured 9.0.4 baseline jobs/statuses, not target validation.
+
+The worklog/ledgers are supporting investigation evidence under SOURCE_OF_TRUTH, not a new authority class.
+
+`cmake/VerifyJuceSource.cmake` records the actual FetchContent checkout HEAD and refuses
+a mismatched immutable SHA; local-checkout comparisons retain their separate branch.
+`worklogs/juce905-review/implementation.json` and `citation-map.json` retain approved execution
+and upstream-coordinate evidence; these ledgers do not establish manual acceptance.
+
+The same packet retains `target-ci.json` / `target-ci-retry.json` (timestamped jobs/provenance), `completed-baseline-ci.json`,
+`steady-comparison.json` / `transitions-comparison.json`, and the independent `session_probe.cpp`
+plus `build_session_probe.py` reproduction helper. They are validation evidence, not shared product code.
+
+`worklogs/juce905-review/review-followup.json` records owner-review corrections, archive-override
+regressions, exact test/configuration evidence and final-head CI scope.
+
+
+`worklogs/juce905-review/acceptance-reconciliation.json` records the new 9.0.5 owner attestation,
+its scope and unsupplied provenance fields; `worklogs/juce905-review/metadata-review.json` records
+source-classification, before/after/partial-fix tests and retained configuration-order evidence.

@@ -115,7 +115,7 @@ identities and original/P1 human attestations with their scope. The earlier
   Below that floor the failure is an illegal-instruction fault inside the host (`SIGILL`;
   `STATUS_ILLEGAL_INSTRUCTION` on Windows). Only Apple Silicon carries no ISA floor.
   `docs/policies/COMPATIBILITY_POLICY.md`.
-- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.4** is fetched
+- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.5** is fetched
   automatically (pinned to an immutable commit via CMake `FetchContent`) or pointed at a local
   checkout.
 - Linux build deps install via `scripts/setup-linux.sh`. See `docs/procedures/BUILD.md`.
@@ -167,6 +167,13 @@ Mono Maker (post-Mix) → Output → Band Solo monitor (post-everything) → met
 only the nonlinear stages. Full detail: `docs/architecture/`.
 
 ## Documentation
+
+The [JUCE 9.0.5 review packet](worklogs/JUCE905_UPGRADE_REVIEW.md) supports
+[Accepted ADR-0071](docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md).
+It is developer investigation evidence; the configured dependency is 9.0.5 under explicit owner Architecture Review approval; Level-5 listening and native/manual acceptance are now **PASS — owner-attested for 9.0.5**,
+recorded 2026-11-04 (Asia/Shanghai). Exact tested payload/environment details were not supplied.
+No merge or release is authorized.
+
 The full technical documentation lives in **[`docs/`](docs/)**:
 - **Start here:** [`docs/SOURCE_OF_TRUTH.md`](docs/SOURCE_OF_TRUTH.md) · [`docs/HANDOVER.md`](docs/HANDOVER.md) · [`docs/REPOSITORY_MAP.md`](docs/REPOSITORY_MAP.md)
 - **For users:** [`docs/user/`](docs/user/) (installation guide, user manual)

@@ -181,3 +181,9 @@ helper amendment were implemented through PR #175 merge `14bde706e2d121c9970cf00
 that historical Linux contract is superseded by ADR-0069/PR #193.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.
+
+
+The [JUCE 9.0.5 investigation](../worklogs/JUCE905_UPGRADE_REVIEW.md) and
+`worklogs/juce905-review/` ledgers are supporting evidence for **Accepted ADR-0071**.
+The owner approved this ADR on 2026-11-04 (“approve ADR / dont merge PR”).
+The upgrade branch pins 9.0.5; native/Level-5 acceptance and PR merge remain separate gates.

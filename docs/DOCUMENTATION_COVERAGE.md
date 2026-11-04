@@ -1311,7 +1311,7 @@ after. The fix is one shared `anchor_still_right()` used by both paths, so the t
 again; the duplication was the defect, not a symptom of it.
 
 **Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
-*neighbouring* line of the same file (`CMakeLists.txt:427`, cited alongside `:14` in `TRADEMARKS.md`),
+*neighbouring* line of the same file (`CMakeLists.txt:428`, cited alongside `:14` in `TRADEMARKS.md`),
 the run still fails on that path — so the exemption still covers one declared line and nothing else.
 Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
 sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
@@ -2952,7 +2952,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3908` and `.github/workflows/build.yml:3993`, this round being
+`.github/workflows/build.yml:3899` and `.github/workflows/build.yml:3984`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -3004,7 +3004,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:630-651`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:631-652`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -3319,7 +3319,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:498-499, 548-552, 593-597`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:499-500, 549-553, 594-598`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -4075,7 +4075,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:555-564`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:556-565`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -4100,7 +4100,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:555-564`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:556-565`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -7641,7 +7641,7 @@ is_declared_reaim(D, C, B)  -> True    # and the reverse
 
 **And the second gate did not catch it.** `verify_reaim_targets` resolves the declared anchor and
 requires its token, which usually turns the stale case red — but on `docs/REPOSITORY_MAP.md`'s
-`CMakeLists.txt:114-384`, a 270-line span, the token stays inside the span through almost any edit.
+`CMakeLists.txt:115-385`, a 270-line span, the token stays inside the span through almost any edit.
 So `114-384 → 120-390` was excused **and** the aim-check passed: real drift suppressed with no output
 at all. That is the case that makes this a defect rather than a message-quality problem.
 
@@ -9845,7 +9845,7 @@ round. `check-docs` 120 files clean, `check-citations` 415 anchors clean against
 the round-1 head, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
 
 **Drift found while auditing, corrected here:** `RELEASE_PROCESS.md`'s Versioning section cited
-`CMakeLists.txt:306-331` for the versioning comment and `ANAMORPH_BUILD_NUMBER`; those lines are the
+`CMakeLists.txt:307-332` for the versioning comment and `ANAMORPH_BUILD_NUMBER`; those lines are the
 LTO linker options. The real anchors are `:467-469` and `:492`, `:495`. The citation gate could not
 see it — `origin/main` carries the same stale text, so there was nothing to drift from.
 
@@ -11088,7 +11088,7 @@ allocator/deallocator pair closed. Tests are not edited for a dashboard.
 **One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
 stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
 holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` alone (CMakeLists.txt:544-546) — and the wrong test: `dsp_tests.cpp` declares
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:545-547) — and the wrong test: `dsp_tests.cpp` declares
 `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
 28% of the reserve. The step now runs both binaries; both were verified green under
 `ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
@@ -18890,3 +18890,58 @@ first local full-suite run retains eleven preset filesystem failures because the
 legacy JUCE resolver ignores the XDG environment override. The isolated rerun
 binds an empty writable temporary directory at the real preset configuration
 path without altering production code, assertions, sanitizer options or HOME.
+
+
+## JUCE 9.0.5 review packet — 2026-11-04 (Asia/Shanghai)
+
+Register Proposed ADR-0071; add the independent upstream/source/licensing/cache/CI review,
+validation limitations and exact Pending Human Acceptance worksheet in `worklogs/JUCE905_UPGRADE_REVIEW.md`
+and its source/baseline ledgers. Synchronize README, repository map, source-of-truth, dependency
+policy and build/CI/testing navigation. Current 9.0.4 declarations, NOTICE/licence inventory,
+historical decisions/attestations, tests, workflow gates, product version and release records
+remain factual and unchanged. No changelog entry claims an unimplemented upgrade. Architecture
+approval is required before pin/cache/source modifications; target DSP/state/native validation
+is unexecuted because configuration is blocked on missing Linux development prerequisites.
+
+
+## JUCE 9.0.5 owner-approved implementation — 2026-11-04
+
+The owner accepted ADR-0071 with the explicit instruction “approve ADR / dont merge PR”.
+Update the pin, stale-cache protection and regression cases, current dependency/provenance and
+attribution homes, live JUCE citations, architecture/build/CI/testing/compatibility navigation
+and changelog. Product versions/identities and DSP/state/latency/codec/compiler contracts remain.
+The original proposal and missing-outer-header observations are dated history; isolated Docker
+validation now supplies Linux prerequisites. Record actual runtime/CI outcomes in the worklog
+and implementation ledger; retain all unexecuted manual/native cases as pending.
+
+
+## JUCE 9.0.5 executed comparison and test adaptation evidence
+
+Record the source-head CI snapshot, independent session probe/helper and complete DSP dump
+comparison ledgers in `worklogs/juce905-review/`; link them from the repository map and upgrade
+worklog. Testing/ADR records now describe actual Linux equivalence and the separately identifiable
+XML oracle adaptation (original and five mutants fail, correction passes). Historical proposal,
+missing-header and initial failure records retain their original scope. Native acceptance stays
+pending. No release attestation, product version, numerical fixture or tolerance is changed.
+
+
+## JUCE 9.0.5 owner-review corrections
+
+Synchronize live handover/CI/build/compliance status with executed automated evidence and pending
+manual acceptance. Preserve 9.0.4 attestations under ADR-0061. Document explicit unversioned
+FetchContent archive overrides, strict Git/default pin checks and post-configuration provenance
+scope. Add archive/ancestor/broken-metadata regressions to the existing cache suite and retain
+execution evidence in `worklogs/juce905-review/review-followup.json`. Clarify normalized probe
+measurements without changing product parameters, state schema, DSP, formats or versions.
+
+
+## JUCE 9.0.5 owner acceptance and damaged-metadata reconciliation
+
+Record the new owner-attested Level-5/native/manual PASS, with actual execution date and exact
+tested payload/environment fields explicitly NOT RECORDED. Update live handover/compatibility/
+release-readiness/ADR/dependency/CI records while retaining dated history and no merge/release
+permission. Reproduce dangling and unreadable metadata archive misclassification; retain the
+post-configuration boundary under Accepted ADR-0071, with four alternatives and CMake evidence.
+Register `acceptance-reconciliation.json` and `metadata-review.json`; source-local regressions and
+before/after/partial-fix controls cover the corrected literal entry detection. Named-host rows,
+individual observations, product behavior/versions, fixtures and release objects are unchanged.

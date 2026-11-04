@@ -23,6 +23,13 @@ including in entries written before 0.9.9 gave it that name.
 
 ## [Unreleased]
 
+### Changed
+
+- **Upgrade JUCE from 9.0.4 to 9.0.5**, including upstream Windows VST3 scaling, native-window
+  lifecycle and parser hardening changes. Existing default CMake caches must reset both JUCE fields.
+  Evidence: [PR #213](https://github.com/skyRolly/Anamorph/pull/213); ADR-0071.
+  [Verified — dependency/source; runtime and native acceptance are recorded separately]
+
 ### Fixed
 
 - Keep multiband display edits and their Undo gestures consistent when a parameter notification closes the editor.

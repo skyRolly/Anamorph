@@ -125,14 +125,14 @@ public:
                                     int standardHeight, int& idealWidth, int& idealHeight) override;
 
     // Every PopupMenu window built through THIS look-and-feel reports itself here
-    // (juce_PopupMenu.cpp:515 calls it from the MenuWindow constructor). It is the one hook that
+    // (juce_PopupMenu.cpp:511 calls it from the MenuWindow constructor). It is the one hook that
     // catches a menu we did not create ourselves -- a ComboBox drop-down (juce_ComboBox.cpp:561
     // sets the menu's look-and-feel to ours) and a TextEditor context menu
     // (juce_TextEditor.cpp:1578 does the same). The editor uses it to know a pop-up is on screen;
     // see PluginEditor's pop-up shield. Empty when nobody is listening (safe to skip).
     //
     // NOT called for a menu whose own look-and-feel is null: findLookAndFeel returns
-    // `menu.lookAndFeel.get()` (juce_PopupMenu.cpp:1440-1443), and the `lf` used at :515 is captured
+    // `menu.lookAndFeel.get()` (juce_PopupMenu.cpp:1442-1446), and the `lf` used at :511 is captured
     // at :383, BEFORE the window is parented -- so it is the default look-and-feel, not the one it
     // would inherit from its parent. The preset menu is that case (INC-010 dropped its
     // setLookAndFeel on purpose), and the editor tracks it directly instead.
@@ -140,7 +140,7 @@ public:
     void preparePopupMenuWindow (juce::Component& newMenuWindow) override
     {
         // Chain first, observe second: this hook is purely ADDITIVE. The inherited implementation is
-        // LookAndFeel_V2's empty one in the pinned tree (juce_LookAndFeel_V2.cpp:1172), so today the
+        // LookAndFeel_V2's empty one in the pinned tree (juce_LookAndFeel_V2.cpp:1191), so today the
         // call is free -- but a later JUCE that gives menu windows real per-look-and-feel preparation
         // here (shadow, opacity, rounding) would otherwise be silently skipped for every Anamorph
         // menu. Same shape as the other overrides in this class that extend rather than replace
@@ -396,19 +396,19 @@ struct DragGestureOwner : WheelDragOwner
 //
 //  That is reachable where Anamorph ships, and the envelope is exact:
 //    * macOS -- NOT reachable. `MouseInputSourceList::canUseTouch()` is `false` and `addSource()`
-//      refuses every index past 0 (juce_NSViewComponentPeer_mac.mm:3032-3045), so the process has
+//      refuses every index past 0 (juce_NSViewComponentPeer_mac.mm:3172-3185), so the process has
 //      exactly one source for its whole life.
 //    * Linux/BSD -- REACHABLE, with no opt-out. `XWindowSystem::canUseMultiTouch()` is true
-//      whenever XI2 sets up (juce_XWindowSystem_linux.cpp:2320-2327, and `JUCE_USE_XINPUT`
+//      whenever XI2 sets up (juce_XWindowSystem_linux.cpp:2359-2366, and `JUCE_USE_XINPUT`
 //      defaults to 1), windows handling clicks select master-pointer touch events
-//      (:645-659), and a touch dispatches as `InputSourceType::touch` with a per-finger index
-//      (:4218-4236) alongside the live `mouse` source. A finger on one control while the mouse
+//      (:650-664), and a touch dispatches as `InputSourceType::touch` with a per-finger index
+//      (:4327-4345) alongside the live `mouse` source. A finger on one control while the mouse
 //      holds another is an ordinary state there.
 //    * Windows -- a second source is created (a synthesised touch or pen message is still typed
 //      from `GetMessageExtraInfo()`, and `doMouseDown`'s early return is gated on
-//      `canUseMultiTouch()`, juce_Windowing_windows.cpp:2645-2652), but the editor never opts into
+//      `canUseMultiTouch()`, juce_Windowing_windows.cpp:2802-2809), but the editor never opts into
 //      real multi-touch: `AudioProcessorEditor::usesWindowsMultiTouch()` returns false
-//      (juce_AudioProcessorEditor.cpp:260-263) and nothing here overrides it, so `RegisterTouchWindow`
+//      (juce_AudioProcessorEditor.cpp:259-262) and nothing here overrides it, so `RegisterTouchWindow`
 //      is never called and the OS synthesises ONE cursor. Concurrency is not established there;
 //      the per-device cell is simply correct rather than needed.
 //

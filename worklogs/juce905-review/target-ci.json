@@ -1,0 +1,343 @@
+{
+  "record_scope": "Timestamped source-implementation CI evidence. Later documentation commits and live PR checks must be evaluated separately; cancelled/skipped are not passes.",
+  "captured_at": "2026-11-03T22:54:23.759Z",
+  "implementation_head": "0afa0d5fa1dd6a1cef18df343cf34ec30ffa9e9d",
+  "workflow_run": 41714528047,
+  "attempt": 1,
+  "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047",
+  "jobs": [
+    {
+      "id": 126191814647,
+      "name": "native-evidence-smoke (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191814647",
+      "steps": [
+        {
+          "name": "Collect diagnostic smoke (macOS)",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Collect diagnostic smoke (Windows MSVC Ninja)",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 126191815101,
+      "name": "source-lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815101",
+      "steps": []
+    },
+    {
+      "id": 126191815124,
+      "name": "macos-crossslice",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815124",
+      "steps": []
+    },
+    {
+      "id": 126191815188,
+      "name": "linux-lto-tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815188",
+      "steps": []
+    },
+    {
+      "id": 126191815214,
+      "name": "docs",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815214",
+      "steps": []
+    },
+    {
+      "id": 126191815262,
+      "name": "native-evidence-smoke (macos-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815262",
+      "steps": [
+        {
+          "name": "Linux build dependencies",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Collect diagnostic smoke (Linux)",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Collect diagnostic smoke (Windows MSVC Ninja)",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Reader shutdown lifetime and ASan negative control (Linux)",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 126191815285,
+      "name": "linux",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815285",
+      "steps": []
+    },
+    {
+      "id": 126191815303,
+      "name": "tsan",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815303",
+      "steps": []
+    },
+    {
+      "id": 126191815316,
+      "name": "macos",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815316",
+      "steps": []
+    },
+    {
+      "id": 126191815361,
+      "name": "fuzz",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815361",
+      "steps": [
+        {
+          "name": "Upload fuzz findings",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 126191815379,
+      "name": "sanitizers",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815379",
+      "steps": []
+    },
+    {
+      "id": 126191815396,
+      "name": "realtime",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815396",
+      "steps": []
+    },
+    {
+      "id": 126191815423,
+      "name": "windows",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815423",
+      "steps": []
+    },
+    {
+      "id": 126191815483,
+      "name": "windows-avx2-ab",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815483",
+      "steps": []
+    },
+    {
+      "id": 126191815496,
+      "name": "macos-intel",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815496",
+      "steps": []
+    },
+    {
+      "id": 126191815505,
+      "name": "native-evidence-smoke (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191815505",
+      "steps": [
+        {
+          "name": "Linux build dependencies",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Collect diagnostic smoke (Linux)",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Collect diagnostic smoke (macOS)",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Reader shutdown lifetime and ASan negative control (Linux)",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "id": 126191817406,
+      "name": "macos-review-selections",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191817406",
+      "steps": []
+    },
+    {
+      "id": 126191817560,
+      "name": "macos-review-coinstallation",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191817560",
+      "steps": []
+    },
+    {
+      "id": 126191870011,
+      "name": "merge-check",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41714528047/job/126191870011",
+      "steps": []
+    }
+  ],
+  "log_evidence": [
+    {
+      "job_id": 126191815285,
+      "name": "linux",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:41:05.8293495Z configure-ci-apt-mirrors: 8 checks, 0 failures",
+        "2026-11-03T20:43:31.4602841Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /home/runner/work/Anamorph/Anamorph/build/_deps/juce-src",
+        "2026-11-03T20:54:05.2294214Z 945 checks, 0 failures",
+        "2026-11-03T20:54:05.7581814Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T20:54:52.3272320Z 13959 checks, 0 failure(s)",
+        "2026-11-03T20:54:54.7664677Z 32 checks, 0 failure(s)",
+        "2026-11-03T20:56:12.7582038Z xml-boundary differential: clean",
+        "2026-11-03T20:56:51.8658913Z pluginval: ALL 3 deterministic pass(es) succeeded for vst3 at strictness 10",
+        "2026-11-03T20:57:30.7345699Z pluginval: ALL 3 randomise pass(es) succeeded for vst3 at strictness 10"
+      ]
+    },
+    {
+      "job_id": 126191815423,
+      "name": "windows",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:43:25.5512576Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at D:/a/Anamorph/Anamorph/build/_deps/juce-src\r",
+        "2026-11-03T20:55:56.0926274Z 941 checks, 0 failures\r",
+        "2026-11-03T20:55:56.9884014Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran\r",
+        "2026-11-03T20:57:34.2795993Z 13794 checks, 0 failure(s)\r",
+        "2026-11-03T20:57:41.9548298Z pluginval: ALL 3 deterministic pass(es) succeeded at strictness 10\r",
+        "2026-11-03T20:57:45.6113132Z pluginval: ALL 3 randomise pass(es) succeeded at strictness 10\r"
+      ]
+    },
+    {
+      "job_id": 126191815316,
+      "name": "macos",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:54:18.4314990Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /Users/runner/work/Anamorph/Anamorph/build/_deps/juce-src",
+        "2026-11-03T21:17:08.2447160Z 941 checks, 0 failures",
+        "2026-11-03T21:17:09.6973070Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T21:18:54.4620810Z 13804 checks, 0 failure(s)",
+        "2026-11-03T21:19:20.5172360Z 941 checks, 0 failures",
+        "2026-11-03T21:19:24.2123470Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T21:23:03.8226660Z 13804 checks, 0 failure(s)",
+        "2026-11-03T21:27:18.4463440Z pluginval: ALL 3 deterministic pass(es) succeeded for vst3 at strictness 10",
+        "2026-11-03T21:30:26.1517210Z pluginval: ALL 3 randomise pass(es) succeeded for vst3 at strictness 10",
+        "2026-11-03T21:33:38.8244490Z pluginval: ALL 3 deterministic pass(es) succeeded for au at strictness 10",
+        "2026-11-03T21:36:50.6360970Z pluginval: ALL 3 randomise pass(es) succeeded for au at strictness 10"
+      ]
+    },
+    {
+      "job_id": 126191815496,
+      "name": "macos-intel",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:44:05.0975110Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /Users/runner/work/Anamorph/Anamorph/build/_deps/juce-src",
+        "2026-11-03T21:05:05.2510970Z 941 checks, 0 failures",
+        "2026-11-03T21:05:07.7539250Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T21:07:24.0666230Z 13804 checks, 0 failure(s)",
+        "2026-11-03T21:09:59.4998770Z pluginval: ALL 3 deterministic pass(es) succeeded for vst3 at strictness 10",
+        "2026-11-03T21:12:14.0663770Z pluginval: ALL 3 randomise pass(es) succeeded for vst3 at strictness 10",
+        "2026-11-03T21:14:36.1378840Z pluginval: ALL 3 deterministic pass(es) succeeded for au at strictness 10",
+        "2026-11-03T21:16:57.7961570Z pluginval: ALL 3 randomise pass(es) succeeded for au at strictness 10"
+      ]
+    },
+    {
+      "job_id": 126191815379,
+      "name": "sanitizers",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:41:02.7654455Z configure-ci-apt-mirrors: 8 checks, 0 failures",
+        "2026-11-03T20:43:29.7005769Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /home/runner/work/Anamorph/Anamorph/build-san/_deps/juce-src",
+        "2026-11-03T20:49:14.4532465Z 941 checks, 0 failures",
+        "2026-11-03T20:49:15.3596496Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T20:50:35.0995869Z 13959 checks, 0 failure(s)",
+        "2026-11-03T20:51:52.6707567Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /home/runner/work/Anamorph/Anamorph/build-vg/_deps/juce-src",
+        "2026-11-03T20:55:24.8245741Z [state]   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T21:04:37.6375589Z [dsp] 934 checks, 0 failures",
+        "2026-11-03T21:04:37.6563663Z [dsp] ==7876== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)",
+        "2026-11-03T21:11:58.3948434Z [state] 13959 checks, 0 failure(s)",
+        "2026-11-03T21:11:58.5651415Z [state] ==7877== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)"
+      ]
+    },
+    {
+      "job_id": 126191815303,
+      "name": "tsan",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:41:00.9875218Z configure-ci-apt-mirrors: 8 checks, 0 failures",
+        "2026-11-03T20:42:00.6378808Z canary reported its seeded race -- the lane is live",
+        "2026-11-03T20:42:20.0268664Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /__w/Anamorph/Anamorph/build-tsan/_deps/juce-src",
+        "2026-11-03T20:44:12.6488719Z 34 checks, 0 failure(s)",
+        "2026-11-03T20:44:13.3438020Z 34 checks, 0 failure(s)",
+        "2026-11-03T20:44:14.0542528Z 34 checks, 0 failure(s)",
+        "2026-11-03T20:44:14.7658200Z 34 checks, 0 failure(s)",
+        "2026-11-03T20:44:15.4527083Z 34 checks, 0 failure(s)",
+        "2026-11-03T20:44:16.6089429Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T20:47:50.8400544Z 13959 checks, 0 failure(s)"
+      ]
+    },
+    {
+      "job_id": 126191815396,
+      "name": "realtime",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:41:02.2461107Z configure-ci-apt-mirrors: 8 checks, 0 failures",
+        "2026-11-03T20:42:16.2308664Z canary reported its seeded violation -- the lane is live",
+        "2026-11-03T20:43:20.2324410Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /home/runner/work/Anamorph/Anamorph/build-rtsan/_deps/juce-src",
+        "2026-11-03T20:43:24.6445731Z canary reported its seeded violation -- the effects gate is live",
+        "2026-11-03T20:43:33.1475658Z 934 checks, 0 failures"
+      ]
+    },
+    {
+      "job_id": 126191815361,
+      "name": "fuzz",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:41:05.9150021Z configure-ci-apt-mirrors: 8 checks, 0 failures",
+        "2026-11-03T20:42:37.7027255Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /home/runner/work/Anamorph/Anamorph/build-fuzz/_deps/juce-src"
+      ]
+    },
+    {
+      "job_id": 126191815188,
+      "name": "linux-lto-tests",
+      "available": true,
+      "lines": [
+        "2026-11-03T20:41:16.1157916Z configure-ci-apt-mirrors: 8 checks, 0 failures",
+        "2026-11-03T20:42:50.1624087Z -- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /__w/Anamorph/Anamorph/build-lto/_deps/juce-src",
+        "2026-11-03T20:50:12.0227534Z 945 checks, 0 failures",
+        "2026-11-03T20:50:12.3951865Z   gate (a) intact: 19 checks, 0 failed, dependent checks ran",
+        "2026-11-03T20:51:03.9248283Z 13959 checks, 0 failure(s)"
+      ]
+    }
+  ],
+  "retry_status": "Attempt 2 completed successfully; original cancelled reporting-only job is retained in attempt 1."
+}

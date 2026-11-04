@@ -1,5 +1,12 @@
 # CI_CD.md
 
+The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) separates source-bound automated
+validation from human evidence. Level-5 listening and native/manual acceptance are now **PASS —
+owner-attested for 9.0.5**, recorded 2026-11-04 (Asia/Shanghai); exact tested payload/environment
+fields were not supplied. The [reconciliation record](../../worklogs/juce905-review/acceptance-reconciliation.json)
+identifies prior tested heads, while [PR checks](https://github.com/skyRolly/Anamorph/pull/213)
+identify corrected-head CI. ADR-0071 remains Accepted; no merge/release authorization is granted.
+
 ## Restore callback positive popup control
 
 The Linux shipping job reuses its state binary and existing Xvfb installation to
@@ -1797,7 +1804,7 @@ processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally 
 
 **Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
 suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:544-546), so it cannot construct one — and it
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:545-547), so it cannot construct one — and it
 is the wrong test: what overflows a frame is a large automatic, not that particular class, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
@@ -1909,7 +1916,7 @@ across its scenario scopes — 16 `Rig`s at 768 bytes (GCC's `sizeof`), 17 talli
 snapshots sum to about 14.4 KB at GCC's type sizes, and MSVC's own type sizes and the temporaries make up
 the rest; GCC lets the disjoint scopes share their slots. Re-audited before merge (2026-09-27): the test runs on
 the main thread and starts no thread, `tests/state_tests.cpp` is compiled into `AnamorphStateTests` only
-(`CMakeLists.txt:584`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
+(`CMakeLists.txt:585`), never into the plug-in, and even the /analyze figure is 1.8 % of the Windows
 main thread's 1 MiB, where the `windows` job runs the suite natively. Every claim that
 moved did so by an exact multiple of the objects' growth: **88 bytes** per `AnamorphAudioProcessor` in
 `state_tests.cpp` (the new `onSoundApplied` `std::function`, 64 bytes on MSVC; the bulk swap's two `int`s;
@@ -2614,3 +2621,20 @@ deadline `RuntimeError` remain incomplete and enter existing cleanup. Mandatory
 hashing and `Driver.digest` are unchanged. Inert production observer/runner/
 controller cases and an exception-handler-removal mutant guard this distinction;
 an unreadable service image still cannot erase a separate/unknown survivor.
+
+
+## Source-provenance check scope
+
+`FetchContent_MakeAvailable(JUCE)` configures JUCE (including its helper tools) before
+`cmake/VerifyJuceSource.cmake` runs. The check verifies source identity before product targets
+are generated; it is **not a pre-execution trust gate for dependency CMake code**. Configure only
+trusted sources. Normal fetched checkouts must have a JUCE-root Git identity and immutable pins
+must match HEAD. Explicit archive overrides are permitted with an unverified-source warning;
+they do not establish release/CI pin provenance. See `BUILD.md` and `DEPENDENCY_POLICY.md`.
+
+
+Source-metadata review (2026-11-04, ADR-0071): retain the documented post-configuration
+ordering. JUCE package checks/module setup and juceaide may run before verification. The verifier
+checks source identity before product targets, not dependency CMake execution or dirty-tree content.
+Directory-entry checks reject dangling/unreadable metadata; explicit metadata-free archives retain
+their warning policy. Alternatives and executed boundary evidence: `worklogs/JUCE905_UPGRADE_REVIEW.md`.

@@ -1,0 +1,212 @@
+{
+  "product": "Anamorph",
+  "note": "Read-only initial 9.0.4 baseline snapshot; target validation not claimed",
+  "runs": [
+    {
+      "id": 41691099252,
+      "name": "Microsoft C++ Code Analysis",
+      "sha": "82c98e45984f5c7bc0f953340622f90523957780",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099252",
+      "event": "push"
+    },
+    {
+      "id": 41691099104,
+      "name": "CodeQL Advanced",
+      "sha": "82c98e45984f5c7bc0f953340622f90523957780",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099104",
+      "event": "push"
+    },
+    {
+      "id": 41691099069,
+      "name": "Build & Validate",
+      "sha": "82c98e45984f5c7bc0f953340622f90523957780",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069",
+      "event": "push"
+    },
+    {
+      "id": 41660239454,
+      "name": "Build & Validate",
+      "sha": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41660239454",
+      "event": "push"
+    },
+    {
+      "id": 41660239461,
+      "name": "Microsoft C++ Code Analysis",
+      "sha": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41660239461",
+      "event": "push"
+    },
+    {
+      "id": 41660239752,
+      "name": "CodeQL Advanced",
+      "sha": "c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41660239752",
+      "event": "push"
+    },
+    {
+      "id": 41634987355,
+      "name": "Microsoft C++ Code Analysis",
+      "sha": "0cd95120162b7913a5656f828f27eb96034c1b34",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41634987355",
+      "event": "push"
+    },
+    {
+      "id": 41634987240,
+      "name": "CodeQL Advanced",
+      "sha": "0cd95120162b7913a5656f828f27eb96034c1b34",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41634987240",
+      "event": "push"
+    },
+    {
+      "id": 41634987301,
+      "name": "Build & Validate",
+      "sha": "0cd95120162b7913a5656f828f27eb96034c1b34",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41634987301",
+      "event": "push"
+    },
+    {
+      "id": 41615975342,
+      "name": "Build & Validate",
+      "sha": "0d395366237ac0b5ae10f74be644de3835a8f104",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41615975342",
+      "event": "push"
+    }
+  ],
+  "jobs": [
+    {
+      "name": "source-lint",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109595978"
+    },
+    {
+      "name": "linux",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596203"
+    },
+    {
+      "name": "windows",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596206"
+    },
+    {
+      "name": "native-evidence-smoke (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596301"
+    },
+    {
+      "name": "tsan",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596344"
+    },
+    {
+      "name": "macos-crossslice",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596357"
+    },
+    {
+      "name": "fuzz",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596360"
+    },
+    {
+      "name": "native-evidence-smoke (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596364"
+    },
+    {
+      "name": "native-evidence-smoke (macos-latest)",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596394"
+    },
+    {
+      "name": "macos-intel",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596411"
+    },
+    {
+      "name": "realtime",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596435"
+    },
+    {
+      "name": "docs",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596538"
+    },
+    {
+      "name": "windows-avx2-ab",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596550"
+    },
+    {
+      "name": "macos",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596570"
+    },
+    {
+      "name": "linux-lto-tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596632"
+    },
+    {
+      "name": "sanitizers",
+      "status": "in_progress",
+      "conclusion": null,
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109596875"
+    },
+    {
+      "name": "macos-review-coinstallation",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109597995"
+    },
+    {
+      "name": "merge-check",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109598403"
+    },
+    {
+      "name": "macos-review-selections",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/skyRolly/Anamorph/actions/runs/41691099069/job/126109599174"
+    }
+  ]
+}

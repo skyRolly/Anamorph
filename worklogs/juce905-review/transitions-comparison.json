@@ -1,0 +1,102 @@
+{
+  "schema_version": 2,
+  "mode": "ab",
+  "inputs": {
+    "A": {
+      "path": "/workspace/juce905-runs/anamorph-904-transitions.txt",
+      "sha256": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+      "valid": true,
+      "record_count": 5,
+      "records": {
+        "transition-bypass-mix": {
+          "hash": "02abc8a6fb52f6cc",
+          "latency": 6,
+          "line": 4,
+          "latency_trace": "b3d16cf31bee8383"
+        },
+        "transition-algorithm-os": {
+          "hash": "183063c2820cc41a",
+          "latency": 0,
+          "line": 5,
+          "latency_trace": "c990beedc3f65783"
+        },
+        "transition-crossover": {
+          "hash": "9c13fcc6836abce4",
+          "latency": 0,
+          "line": 6,
+          "latency_trace": "19dbc3365ea56383"
+        },
+        "transition-solo-bands": {
+          "hash": "6298b566896f9494",
+          "latency": 0,
+          "line": 7,
+          "latency_trace": "19dbc3365ea56383"
+        },
+        "transition-reset-idle": {
+          "hash": "7b1150370c8b5794",
+          "latency": 0,
+          "line": 8,
+          "latency_trace": "19dbc3365ea56383"
+        }
+      }
+    },
+    "B": {
+      "path": "/workspace/juce905-runs/anamorph-905-transitions.log",
+      "sha256": "8879592392a3f46350b223147ab771a82c43ff436b0fd04578853d6693ba91bd",
+      "valid": true,
+      "record_count": 5,
+      "records": {
+        "transition-bypass-mix": {
+          "hash": "02abc8a6fb52f6cc",
+          "latency": 6,
+          "line": 4,
+          "latency_trace": "b3d16cf31bee8383"
+        },
+        "transition-algorithm-os": {
+          "hash": "183063c2820cc41a",
+          "latency": 0,
+          "line": 5,
+          "latency_trace": "c990beedc3f65783"
+        },
+        "transition-crossover": {
+          "hash": "9c13fcc6836abce4",
+          "latency": 0,
+          "line": 6,
+          "latency_trace": "19dbc3365ea56383"
+        },
+        "transition-solo-bands": {
+          "hash": "6298b566896f9494",
+          "latency": 0,
+          "line": 7,
+          "latency_trace": "19dbc3365ea56383"
+        },
+        "transition-reset-idle": {
+          "hash": "7b1150370c8b5794",
+          "latency": 0,
+          "line": 8,
+          "latency_trace": "19dbc3365ea56383"
+        }
+      }
+    }
+  },
+  "classification": "IDENTICAL",
+  "exit_code": 0,
+  "hashes": {
+    "status": "IDENTICAL",
+    "compared_scenarios": 5,
+    "differences": []
+  },
+  "latency": {
+    "status": "EQUAL",
+    "compared_scenarios": 5,
+    "differences": []
+  },
+  "errors": [],
+  "warnings": [],
+  "suite": "transitions",
+  "latency_trace": {
+    "status": "EQUAL",
+    "compared_scenarios": 5,
+    "differences": []
+  }
+}

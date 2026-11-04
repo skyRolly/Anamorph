@@ -489,3 +489,14 @@ declared lengths, NUL-hidden tails, invalid UTF-8 and parseable truncation from 
 This corrects evidence, not this ADR's accepted boundary or its preserved malformed-input semantics.
 `worklogs/STATE_HOST_HARDENING_0.9.10.md` contains the owner decision package for any further
 restrictions. No additional acceptance restriction or owner approval is inferred here.
+
+
+## JUCE 9.0.5 differential-harness continuation — ADR-0071
+
+The dated crash-depth observations above remain evidence about their original dependency.
+Owner-approved ADR-0071 updates the harness for JUCE's new parser nesting limit: excessive nesting
+must now be rejected; contained failure canaries and a depth-cap+1 document independently prove
+that the oracle and product guard remain live. All named/legitimate/generated cases remain.
+Production size, depth, DOCTYPE rules and failure semantics are unchanged. See
+[ADR-0071](ADR-0071-juce-9.0.5-upgrade.md) and the
+[upgrade worklog](../../../worklogs/JUCE905_UPGRADE_REVIEW.md) for observed evidence.

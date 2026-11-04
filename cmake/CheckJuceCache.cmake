@@ -4,13 +4,14 @@
 # cache overrides whose intent cannot be inferred from their values.
 set(_anamorph_stale_juce_tags
     "72782788ce18c2d4d760b28e0921d6ffc6431102"
-    "be29c81492b6151c8ea8d14c840e1311963b3a83")
-set(_anamorph_stale_juce_versions "9.0.2" "9.0.3")
+    "be29c81492b6151c8ea8d14c840e1311963b3a83"
+    "3fb5cbc0340758596dac39f7c8de47d562b4896e")
+set(_anamorph_stale_juce_versions "9.0.2" "9.0.3" "9.0.4")
 if(NOT ANAMORPH_JUCE_PATH AND
    (ANAMORPH_JUCE_TAG IN_LIST _anamorph_stale_juce_tags OR
     ANAMORPH_JUCE_VERSION IN_LIST _anamorph_stale_juce_versions))
     message(FATAL_ERROR
-        "Anamorph: stale JUCE cache (${ANAMORPH_JUCE_VERSION}, ${ANAMORPH_JUCE_TAG}); this tree pins JUCE 9.0.4.\n"
+        "Anamorph: stale JUCE cache (${ANAMORPH_JUCE_VERSION}, ${ANAMORPH_JUCE_TAG}); this tree pins JUCE 9.0.5.\n"
         "Reset both cached values, then rebuild:\n"
         "  cmake -S \"${CMAKE_SOURCE_DIR}\" -B \"${CMAKE_BINARY_DIR}\""
         " -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION\n"

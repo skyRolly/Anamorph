@@ -1,5 +1,12 @@
 # TESTING.md
 
+The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) records
+executed old/new comparisons and the exact remaining native checklist. Linux GCC 14 comparisons
+are bit-identical (32 steady / five transitions and cross-version session renders); shipping-toolchain
+CI is recorded separately. Level-5 listening and native/manual acceptance are **PASS — newly owner-attested for 9.0.5**,
+recorded 2026-11-04 Asia/Shanghai. Exact tested payload/environment and execution date were not
+supplied; historical 9.0.4 attestations retain their scope.
+
 
 ## SpectrumImager teardown coverage — NR-029 / KI-037
 
@@ -470,10 +477,14 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`python3 tests/juce_cache_tests.py` runs seven CMake cache regression tests (CMake, Ninja and a C/C++
-compiler required). They exercise the real top-level build file, stopping at a local JUCE stand-in:
-fresh/repeated configuration, a cached 9.0.3 pair and its reset, either partial reset, retained custom
-overrides, an intentional local 9.0.3 checkout, and legacy 9.0.2 fields. No JUCE download or plugin compilation occurs.
+`python3 tests/juce_cache_tests.py` runs 28 CMake cache/source-provenance regression tests
+(CMake, Ninja, Git and a C/C++ compiler required). They exercise the real top-level build file
+with a local JUCE stand-in: fresh/repeated configuration, previous 9.0.2/9.0.3/9.0.4 fields,
+full/partial resets, custom pins and intentional local comparisons. Git-backed source overrides
+must match immutable pins. Explicit archives remain supported, including without Git installed
+and inside an unrelated repository; normal fetched sources without Git identity and overrides
+with broken metadata are refused. Archive tests reach a deliberate product-target boundary
+marker after the provenance check. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
 `tests/dsp_tests.cpp` has **75 DSP tests** (Test 1 to Test 75; Tests 3 and 4 run as one) and the A/B
@@ -1547,12 +1558,14 @@ the only one that asserts a *contract between two components* rather than a beha
 document or a null, either is a pass; what is forbidden is not returning. It exists because round 52
 shipped a hand-written model of the parser that was right about a comment, a CDATA section and a
 processing instruction and wrong about an opening tag with an unterminated quote, and nothing in the
-tree compared the two. It proves its own oracle first by feeding the parser deepening documents with
-the boundary bypassed until one does not return — the crashing depth is a property of the toolchain
-(Clang 2 500–3 000 levels on 1 MB; GCC 13 at -O1 survives 3 000 and crashes at 5 000), so it searches
-rather than hard-codes — then sizes its fixtures from the depth it measured. It also asserts that
-seven writer-shaped documents are still ADMITTED, so the contract cannot be satisfied by refusing
-everything. ~0.5 s for 1 500 generated documents plus 18 named shapes. **Linux-only by construction**
+tree compared the two. With JUCE 9.0.5 (ADR-0071), five contained-outcome canaries prove
+accepted return, parser rejection, signal, timeout and setup-error classification; setup errors
+fail the gate. A well-formed depth-9 document must parse in JUCE but be refused by the unchanged
+product depth-8 boundary. The five historical deep controls must be rejected by the hardened
+parser and the product boundary. The pre-9.0.5 comparison branch retains its measured crash-depth
+search. All 18 named shapes, seven writer-shaped documents and 1 500 generated cases remain;
+legitimate documents must be admitted, and the sweep must exercise early-exit branches. The
+controlled timeout adds one second. **Linux-only by construction**
 (`fork` + `pthread_attr_setstacksize`) and deliberately not folded into `AnamorphStateTests`, whose
 run must not contain a case that can take the process down with it; State test 116 leg E2 carries the
 same shapes as ordinary assertions on the boundary's VERDICT, which every platform runs.
@@ -6651,7 +6664,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:424-425`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:425-426`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a
@@ -7364,3 +7377,23 @@ weakening controls. Commands, source digests, results and limits are in the
 These are optional standalone research checks, not replacements for Test 61,
 production-path regressions, same-invocation sanitizer canaries, native CI or
 the human Architecture Review gate. No production threading fix is claimed.
+
+
+## JUCE 9.0.5 source identity check
+
+`tests/juce_cache_tests.py` also exercises the actual FetchContent boundary with genuine local
+git fixtures. A mismatched immutable checkout must fail in `cmake/VerifyJuceSource.cmake`; a
+matching custom SHA must be reported before the deliberately minimal fixture reaches the later
+missing-JUCE-function error. Bypassing the real check fails the mismatch test. No framework
+download or product build is required for these controls. Normal CI configuration records actual
+source HEAD; explicit product local-path overrides retain intentional old/new comparisons.
+
+
+JUCE metadata review (ADR-0071): the current 28-test suite includes dangling links,
+unreadable metadata files/directories, invalid links, valid metadata links/worktrees, no-Git
+checkout refusal, literal source paths and an executed post-configuration boundary marker.
+Symlink/permission fixture limitations are explicit unittest skips; POSIX chmod does not prove
+Windows ACL behavior. Original and IS_SYMLINK-only failures are retained in `metadata-review.json`.
+Owner Level-5/native/manual acceptance for 9.0.5 is **PASS — owner-attested**, recorded 2026-11-04
+Asia/Shanghai; exact tested payload/environment and individual observations are not supplied.
+No repeat acceptance is requested. Source-bound automated CI remains independently mandatory.

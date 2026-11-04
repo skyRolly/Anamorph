@@ -8,10 +8,9 @@
 //          IMPLIES  juce::parseXML (t) RETURNS
 //
 //  "Returns" means returns — a document or a null, either is a pass. What is
-//  forbidden is not returning at all: the unbounded mutual recursion in
-//  `XmlDocument::readNextElement`/`readChildElements`, and the unbounded loop in
-//  `expandEntity` that a `DOCTYPE` reaches. ADR-0055 and ADR-0056 exist for those
-//  two behaviours and for nothing else.
+//  forbidden is not returning at all. ADR-0055 and ADR-0056 guard the recursive
+//  parsing/entity expansion paths that were unbounded in the earlier dependency.
+//  JUCE 9.0.5 bounds those paths; the product boundaries remain unchanged.
 //
 //  WHY THIS FILE EXISTS. `XmlBoundary.h` is a hand-written partial XML scanner
 //  standing in front of a parser whose behaviour it MODELS. Round 52 shipped one
@@ -26,14 +25,13 @@
 //  nothing could have caught it; State test 116 asserts the shapes someone
 //  thought of, which is a different thing.
 //
-//  THE ORACLE HAS TO BE ABLE TO FAIL, so §1 feeds the parser a shape that is
-//  KNOWN to exhaust the stack, with the boundary bypassed. If that shape returns,
-//  this harness proves nothing and says so rather than printing a zero. The
-//  crashing threshold is a property of the toolchain's frame sizes, not of this
-//  project — ADR-0056 measured SIGSEGV between 2 500 and 3 000 levels on a 1 MB
-//  stack with Clang; GCC 13 at -O1 survives 3 000 and crashes at 5 000 — so §1
-//  SEARCHES for the threshold rather than hard-coding one, and fails only if no
-//  depth in its range misbehaves.
+//  THE ORACLE HAS TO BE ABLE TO FAIL. Controlled child failures independently
+//  prove return/rejection, signal, timeout and setup-error classification. A
+//  well-formed document one level above the product cap is accepted by JUCE but
+//  refused by the boundary, so upstream hardening cannot hide a disabled guard.
+//  JUCE 9.0.5 bounds its own recursion: the historical deep stress inputs must
+//  now be REJECTED, not required to crash (ADR-0071). The earlier dependency's
+//  crash-depth search remains in its version branch for historical comparisons.
 //
 //  ISOLATION, AND WHY THIS IS NOT A STATE TEST. A false negative is a stack
 //  overflow: it kills the process that meets it. So every parse runs in a FORKED
@@ -45,7 +43,7 @@
 //  a case whose failure mode is taking the whole run down with it. State test 116
 //  leg E2 carries the same shapes as ordinary assertions on the boundary's
 //  VERDICT, which is what every platform can run; this file is the half that
-//  needs a corpse to read.
+//  contains failures that must not end the test runner.
 //
 //  Build (the `linux` job does exactly this):
 //    c++ -std=c++23 -O1 -I src -I <juce>/modules \
@@ -81,26 +79,33 @@ namespace
 
     constexpr int kCap = anamorph::xmlBoundary::maxDocumentDepth;
 
-    enum Outcome { kReturned, kCrashed, kHung, kHarnessError };
+    enum Outcome { kReturned, kRejected, kCrashed, kHung, kHarnessError };
+    enum class Fault { none, signal, timeout, setup };
 
     const char* outcomeName (Outcome o)
     {
         switch (o)
         {
             case kReturned: return "returned";
+            case kRejected: return "rejected";
             case kCrashed:  return "CRASHED";
             case kHung:     return "HUNG";
             default:        return "harness-error";
         }
     }
 
-    struct ParseArg { const std::string* text; };
+    bool parserAnswered (Outcome out)
+    {
+        return out == kReturned || out == kRejected;
+    }
+
+    struct ParseArg { const std::string* text; bool accepted = false; };
 
     void* parseOnThread (void* raw)
     {
         auto* a = static_cast<ParseArg*> (raw);
         auto x = juce::parseXML (juce::String::fromUTF8 (a->text->data(), (int) a->text->size()));
-        (void) x;                 // a null IS a pass: the parser answered
+        a->accepted = x != nullptr; // a null still means the parser answered
         return nullptr;
     }
 
@@ -108,7 +113,8 @@ namespace
     // inside it because `setrlimit (RLIMIT_STACK)` after start cannot shrink the
     // already-mapped main stack -- an earlier version of this harness used it, and
     // its liveness check correctly refused to trust the result.
-    Outcome parseContained (const std::string& text, size_t stackKB, unsigned timeoutSec)
+    Outcome parseContained (const std::string& text, size_t stackKB, unsigned timeoutSec,
+                            Fault fault = Fault::none)
     {
         fflush (nullptr);
         const pid_t pid = fork();
@@ -117,21 +123,26 @@ namespace
         if (pid == 0)
         {
             alarm (timeoutSec);
+            if (fault == Fault::signal) kill (getpid(), SIGKILL); // controlled, no core dump
+            if (fault == Fault::timeout) for (;;) pause();       // alarm is the only exit
+            if (fault == Fault::setup) _exit (9);
             pthread_attr_t attr;
-            pthread_attr_init (&attr);
-            pthread_attr_setstacksize (&attr, stackKB * 1024u);
+            if (pthread_attr_init (&attr) != 0) _exit (9);
+            if (pthread_attr_setstacksize (&attr, stackKB * 1024u) != 0) _exit (9);
             ParseArg arg { &text };
             pthread_t t;
             if (pthread_create (&t, &attr, parseOnThread, &arg) != 0) _exit (9);
-            pthread_join (t, nullptr);
-            _exit (0);
+            pthread_attr_destroy (&attr);
+            if (pthread_join (t, nullptr) != 0) _exit (9);
+            _exit (arg.accepted ? 0 : 10);
         }
 
         int status = 0;
-        waitpid (pid, &status, 0);
+        if (waitpid (pid, &status, 0) != pid) return kHarnessError;
         if (WIFSIGNALED (status)) return WTERMSIG (status) == SIGALRM ? kHung : kCrashed;
-        if (WIFEXITED (status) && WEXITSTATUS (status) == 9) return kHarnessError;
-        return kReturned;
+        if (WIFEXITED (status) && WEXITSTATUS (status) == 0) return kReturned;
+        if (WIFEXITED (status) && WEXITSTATUS (status) == 10) return kRejected;
+        return kHarnessError;
     }
 
     std::string repeat (const char* unit, int n)
@@ -225,7 +236,7 @@ namespace
     {
         if (! admits (doc)) return;                        // refused: the parser never sees it
         const auto out = parseContained (doc, stackKB, 3);
-        if (out == kReturned || out == kHarnessError) return;
+        if (parserAnswered (out)) return;
         ++failures;
         std::printf ("  !! FALSE NEGATIVE (%s): admitted, parser %s -- %zu B: %.90s\n",
                      label, outcomeName (out), doc.size(), doc.c_str());
@@ -240,19 +251,64 @@ int main (int argc, char** argv)
 
     std::printf ("xml-boundary differential: admitted => the parser returns (depth cap %d)\n", kCap);
 
-    // ---- 1. THE ORACLE MUST BE ABLE TO FAIL --------------------------------------
+    // ---- 1. THE ORACLE AND THE PRODUCT BOUNDARY MUST BOTH BE LIVE ----------------
+    struct Canary { const char* label; const char* text; Fault fault; Outcome expected; bool safe; };
+    const Canary canaries[] = {
+        { "valid return", "<check/>", Fault::none, kReturned, true },
+        { "parser rejection", "<", Fault::none, kRejected, true },
+        { "controlled signal", "<check/>", Fault::signal, kCrashed, false },
+        { "controlled timeout", "<check/>", Fault::timeout, kHung, false },
+        { "controlled setup error", "<check/>", Fault::setup, kHarnessError, false },
+    };
+    for (const auto& c : canaries)
+    {
+        const auto out = parseContained (c.text, 1024, 1, c.fault);
+        if (out != c.expected || parserAnswered (out) != c.safe)
+        {
+            std::printf ("::error::oracle canary %s: expected %s, observed %s\n",
+                         c.label, outcomeName (c.expected), outcomeName (out));
+            return 1;
+        }
+    }
+    std::printf ("  liveness: all five contained-outcome canaries observed\n");
+    const auto overCap = repeat ("<a>", kCap + 1) + repeat ("</a>", kCap + 1);
+    if (parseContained (overCap, 1024, 3) != kReturned || admits (overCap))
+    {
+        std::printf ("::error::product depth boundary is not independently live\n");
+        return 1;
+    }
+    std::printf ("  liveness: JUCE accepts depth cap+1; the product boundary refuses it\n");
+
+   #if JUCE_VERSION >= 0x090005
+    // Retain the existing deep controls. The hardened parser must reject each;
+    // return alone could conceal a missing upstream limit. Never require a crash
+    // from a dependency that deliberately added a recursion guard.
+    const int fixtureDepth = 3000;
+    for (const int levels : { 3000, 5000, 10000, 20000, 40000 })
+    {
+        const auto shape = repeat ("<a>", levels) + repeat ("</a>", levels);
+        const auto out = parseContained (shape, 1024, 5);
+        if (out != kRejected || admits (shape))
+        {
+            std::printf ("::error::hardened parser control at %d levels: %s; boundary admits=%d\n",
+                         levels, outcomeName (out), admits (shape));
+            return 1;
+        }
+    }
+    std::printf ("  liveness: all five historical deep controls rejected by JUCE and boundary\n");
+   #else
     // Fed directly, past the boundary, a deep enough document must not return. The
     // depth at which that happens belongs to the toolchain, so search for it.
-    int crashDepth = 0;
+    int fixtureDepth = 0;
     for (const int levels : { 3000, 5000, 10000, 20000, 40000 })
     {
         const auto shape = repeat ("<a>", levels) + repeat ("</a>", levels);
         const auto out   = parseContained (shape, 1024, 5);
         std::printf ("  liveness: %6d levels (%zu B) -> %s\n",
                      levels, shape.size(), outcomeName (out));
-        if (out == kCrashed || out == kHung) { crashDepth = levels; break; }
+        if (out == kCrashed || out == kHung) { fixtureDepth = levels; break; }
     }
-    if (crashDepth == 0)
+    if (fixtureDepth == 0)
     {
         std::printf ("::error::no nesting depth in this harness's range exhausted a 1 MB stack, so the\n"
                      " oracle cannot observe the failure it exists to catch. Do not read the result\n"
@@ -262,20 +318,22 @@ int main (int argc, char** argv)
     // ...and the boundary must refuse that very shape. If it did not, everything
     // else here is moot.
     {
-        const auto shape = repeat ("<a>", crashDepth) + repeat ("</a>", crashDepth);
+        const auto shape = repeat ("<a>", fixtureDepth) + repeat ("</a>", fixtureDepth);
         if (admits (shape))
         {
-            std::printf ("::error::the boundary ADMITS the %d-level shape that does not return\n", crashDepth);
+            std::printf ("::error::the boundary ADMITS the %d-level shape that does not return\n", fixtureDepth);
             return 1;
         }
         std::printf ("  liveness: the boundary refuses it, and the oracle can see a crash at %d levels\n",
-                     crashDepth);
+                     fixtureDepth);
     }
 
+   #endif
+
     // ---- 2. THE NAMED SHAPES ------------------------------------------------------
-    // The tail is sized from the measured crashing depth, so this file cannot rot into
-    // testing a shape too shallow to misbehave on the machine it runs on.
-    const std::string tail = repeat ("<x>", crashDepth);
+    // Retain the original named corpus and generated sweep. New-parser fixture
+    // depth stays at the original Clang witness; legacy pins measure their depth.
+    const std::string tail = repeat ("<x>", fixtureDepth);
 
     struct Named { const char* label; std::string doc; };
     const Named named[] = {
@@ -344,7 +402,7 @@ int main (int argc, char** argv)
         // Depths on both sides of the cap, plus deep ones the cap must catch.
         const int depth = r.chance (55) ? 1 + r.below (kCap)
                         : r.chance (60) ? kCap + 1 + r.below (4)
-                                        : 200 + r.below (crashDepth);
+                                        : 200 + r.below (fixtureDepth);
         const auto doc = makeDoc (r, depth);
 
         if (! admits (doc)) { ++refused; continue; }
@@ -355,7 +413,7 @@ int main (int argc, char** argv)
         if (depth > kCap) ++admittedOverCap;
 
         const auto out = parseContained (doc, 1024, 3);
-        if (out != kReturned && out != kHarnessError)
+        if (! parserAnswered (out))
         {
             ++failures;
             std::printf ("  !! FALSE NEGATIVE (sweep, seed %llu case %d): admitted, parser %s -- %.90s\n",

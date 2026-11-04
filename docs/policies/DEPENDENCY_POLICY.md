@@ -6,7 +6,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.4**, pinned by **immutable commit SHA** `3fb5cbc0340758596dac39f7c8de47d562b4896e` — CMakeLists.txt:71 (`3fb5cbc0340758596dac39f7c8de47d562b4896e`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.4`) |
+| **JUCE** | **9.0.5**, pinned by **immutable commit SHA** `d60b7a78030661574a615b586d9325ba7a7fa7dd` — CMakeLists.txt:71 (`d60b7a78030661574a615b586d9325ba7a7fa7dd`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.5`) |
 | **pluginval** | Exact release and archive/executable SHA-256 in `scripts/pluginval-release.json` | Both wrappers call `scripts/acquire-pluginval.py` (Python standard library) | `scripts/test-pluginval-acquisition.py`; RH-F6 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable and **asserted to be the release build**: `setup-llvm-apt.sh` carries the `llvmorg-<version>` tag commit per major and refuses both an unrecorded major and a build from any other commit (ADR-0028 sets the rule; **ADR-0033** adds the assertion and records why 23 is not yet adoptable) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:126-128 |
@@ -26,7 +26,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   resources; native AppKit regressions use the developer tools' Swift compiler. No new
   product library, downloaded icon container, artwork version or JUCE/toolchain pin is added.
 
-- **JUCE is pinned to an exact IMMUTABLE commit** (`3fb5cbc…` = tag 9.0.4; `ANAMORPH_JUCE_VERSION`
+- **JUCE is pinned to an exact IMMUTABLE commit** (`d60b7a7…` = tag 9.0.5; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
   0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
   the framework for the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`),
@@ -35,8 +35,8 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
   behaviour stable. Evidence [Verified]: CMakeLists.txt:70-72, 81-89; the X11 dependency is
   documented in ADR-0011.
-- **Cached 9.0.2/9.0.3 pins cannot silently survive the 9.0.4 upgrade.** Without a local JUCE path,
-  configuration fails before FetchContent if either cached pin field still identifies 9.0.2 or 9.0.3,
+- **Cached 9.0.2/9.0.3/9.0.4 pins cannot silently survive the 9.0.5 upgrade.** Without a local JUCE path,
+  configuration fails before FetchContent if either cached pin field still identifies 9.0.2, 9.0.3 or 9.0.4,
   and prints the command to reset both. Other overrides are retained; an intentional older-JUCE
   comparison uses `ANAMORPH_JUCE_PATH`. Evidence [Verified]: `cmake/CheckJuceCache.cmake`,
   `tests/juce_cache_tests.py` (fresh/reused caches, partial resets, overrides and local checkouts).
@@ -45,12 +45,12 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   pins it to **0** on all six targets that carry the `JUCE_*` contract, which keeps the shipped
   binary's content and `THIRD_PARTY_LICENSES.md`'s "ships no MP3 decoder" claim as they were: the
   flag is the no-op, the omission would have been the change. Rule 5 governs it from here.
-  Evidence [Verified]: CMakeLists.txt:508, 549, 594, 636, 679, 722; ADR-0054.
+  Evidence [Verified]: CMakeLists.txt:509, 550, 595, 637, 680, 723; ADR-0054.
   **9.0.3 added two more by adding codecs rather than flipping one:** `JUCE_USE_OPUS` (vendored opus,
   opusfile and libopusenc) and `JUCE_USE_WEBP` (vendored libwebp) both arrive defaulting to **1**.
   Anamorph pins both to **0** on the same six targets for the same reason — the product reads and
   writes neither format, and two more third-party libraries in every binary would be dead code that
-  `THIRD_PARTY_LICENSES.md` and `NOTICE` do not carry. Evidence [Verified]: CMakeLists.txt:517-518;
+  `THIRD_PARTY_LICENSES.md` and `NOTICE` do not carry. Evidence [Verified]: CMakeLists.txt:518-519;
   ADR-0060.
 
 ## Update mechanisms
@@ -122,7 +122,7 @@ A manual upgrade requires a reviewed change:
    §Proving a dependency bump is bit-identical). **And re-verify ADR-0057's store-side precondition**
    (precondition 2): `AudioProcessorValueTreeState`'s `ParameterAdapter` must still store
    `unnormalisedValue` release-or-stronger (at 9.0.2, a `seq_cst` assignment in `parameterValueChanged`;
-   unchanged at 9.0.3 and 9.0.4, where `juce_AudioProcessorValueTreeState.cpp` is byte-identical — ADR-0060 / ADR-0061).
+   unchanged through 9.0.5 (ADR-0071), where `juce_AudioProcessorValueTreeState.cpp` is byte-identical — ADR-0060 / ADR-0061).
    A relaxed store there lets the bulk-swap handshake trust a mixed snapshot on ARMv8, and no x86-64 test
    and no lint can see it.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump —
@@ -142,7 +142,7 @@ A manual upgrade requires a reviewed change:
    two trees, re-aim the live citations, and record the map in the bump's ADR (ADR-0060 §Citation
    map); accepted ADRs keep the line numbers of the tree they were written against.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:498-522` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:499-523` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log
@@ -360,3 +360,48 @@ Namespace generation audit (2026-10-23, Accepted ADR-0063; final approval record
 BUNDLE_ID governs CFBundleIdentifier and unused framework/AAX/ARA defaults; independent AU
 codes and non-VST2-compatible VST3 CIDs are preserved and checked in generated outputs.
 No dependency or format is added.
+
+
+
+## JUCE 9.0.5 implementation — 2026-11-04
+
+**Accepted ADR-0071; owner approval: “approve ADR / dont merge PR”.**
+The immutable pin is `d60b7a78030661574a615b586d9325ba7a7fa7dd`; stale 9.0.4
+cache fields are refused alongside previous defaults. Custom pins/local comparisons and all codec
+exclusions remain. Current cache tests: 28 passing; the new old-cache test fails on baseline CMake
+for reaching the dependency boundary. Full automated evidence and remaining limitations are
+recorded in [the implementation worklog](../../worklogs/JUCE905_UPGRADE_REVIEW.md).
+**Level-5 listening and native/manual acceptance PASS — owner-attested for JUCE 9.0.5**,
+recorded 2026-11-04 (Asia/Shanghai). Actual execution date and exact payload/environment binding
+are not supplied; see the reconciliation worklog. No merge or release approval is granted.
+
+For Git-backed FetchContent sources, `cmake/VerifyJuceSource.cmake` reports actual JUCE-root
+Git HEAD and refuses an
+immutable SHA mismatch, including disconnected/stale source reuse. Its genuine local Git
+positive/negative regression cases run in the same cache suite; local-path comparisons bypass
+this guard and named custom revisions retain their resolution behavior.
+
+
+## Explicit source-directory override provenance (ADR-0071, review follow-up)
+
+`FETCHCONTENT_SOURCE_DIR_JUCE` retains CMake's existing offline source-override behavior.
+If the supplied directory is itself a Git worktree, its HEAD must match an immutable pin.
+A trusted archive without Git metadata is allowed with an unverified-identity warning, including
+when it is extracted inside another repository. An ancestor repository's HEAD is not JUCE
+provenance. Missing Git identity in a normal fetched source, or broken Git metadata in an
+override, remains fatal. The unchanged `ANAMORPH_JUCE_PATH` branch permits intentional local
+comparisons. Neither unversioned override mode establishes the exact official commit for release
+or CI pin evidence; use a verified checkout for that evidence. The post-configuration check does
+not prevent JUCE's CMake/helper configuration from running and is not an untrusted-code boundary.
+
+
+## Damaged metadata and attestation reconciliation (ADR-0071)
+
+The archive exception requires **no `.git` directory entry**. Dangling symlinks, unreadable files
+or directories, malformed metadata and invalid/inaccessible metadata targets must not become
+archives. `EXISTS` is insufficient for both links and unreadable entries; CMake 3.22/3.31-tested
+literal entry detection preserves valid Git/worktree verification and no-Git archive warnings.
+The intended post-configuration guarantee is unchanged; pre-configuration acquisition/verification
+would be a separately reviewed design. Owner Level-5/native/manual PASS is current human evidence,
+not machine-measured host metadata. Exact missing provenance fields remain visible in
+`worklogs/juce905-review/acceptance-reconciliation.json`. Historical compliance rows are unchanged.

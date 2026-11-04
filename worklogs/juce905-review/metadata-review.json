@@ -1,0 +1,496 @@
+{
+  "record_scope": "Product-local damaged metadata and retained post-configuration ordering investigation; tests do not represent owner machines or listening",
+  "captured_at_utc": "2026-11-04T12:39:58.201315+00:00",
+  "product": "Anamorph",
+  "parent_head": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+  "environment": {
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "uid": 1000,
+    "symlink_fixture": "available and exercised",
+    "posix_permission_denial": "enforced; chmod-000 entries were not readable"
+  },
+  "original_before": [
+    {
+      "product": "Anamorph",
+      "cmake": "3.22.6",
+      "test": "test_dangling_git_metadata_symlink_is_refused",
+      "exit_code": 1,
+      "result": "expected assertion failure; original helper admits damaged metadata as archive",
+      "log": "anamorph-3.22.6-test_dangling_git_metadata_symlink_is_refused-before.log",
+      "log_sha256": "914579d4b5ca9bbb238f8bb15dba4346b94b2d865d97eb5904967274c9413cc2",
+      "observed_archive_warning": true,
+      "observed_product_target_boundary": true
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.22.6",
+      "test": "test_unreadable_git_metadata_file_is_refused",
+      "exit_code": 1,
+      "result": "expected assertion failure; original helper admits damaged metadata as archive",
+      "log": "anamorph-3.22.6-test_unreadable_git_metadata_file_is_refused-before.log",
+      "log_sha256": "b92df3d809cd87638334b4080e7af430140b168dc8fdc2fc04cbfb2c666dd4c3",
+      "observed_archive_warning": true,
+      "observed_product_target_boundary": true
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.22.6",
+      "test": "test_unreadable_git_metadata_directory_is_refused",
+      "exit_code": 1,
+      "result": "expected assertion failure; original helper admits damaged metadata as archive",
+      "log": "anamorph-3.22.6-test_unreadable_git_metadata_directory_is_refused-before.log",
+      "log_sha256": "9337d2859cdd759a0df46b0e12aa30e81eb5852f358646811af60d6fdb654831",
+      "observed_archive_warning": true,
+      "observed_product_target_boundary": true
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.31.6",
+      "test": "test_dangling_git_metadata_symlink_is_refused",
+      "exit_code": 1,
+      "result": "expected assertion failure; original helper admits damaged metadata as archive",
+      "log": "anamorph-3.31.6-test_dangling_git_metadata_symlink_is_refused-before.log",
+      "log_sha256": "fb3d752114ab0714e7008c809817c8aeb53ea8ad336978f59ea67a1c82baed84",
+      "observed_archive_warning": true,
+      "observed_product_target_boundary": true
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.31.6",
+      "test": "test_unreadable_git_metadata_file_is_refused",
+      "exit_code": 1,
+      "result": "expected assertion failure; original helper admits damaged metadata as archive",
+      "log": "anamorph-3.31.6-test_unreadable_git_metadata_file_is_refused-before.log",
+      "log_sha256": "50e0c035e20499abd0f1fa5f7244b3195f149e9215564670d2d9c0df7add4f58",
+      "observed_archive_warning": true,
+      "observed_product_target_boundary": true
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.31.6",
+      "test": "test_unreadable_git_metadata_directory_is_refused",
+      "exit_code": 1,
+      "result": "expected assertion failure; original helper admits damaged metadata as archive",
+      "log": "anamorph-3.31.6-test_unreadable_git_metadata_directory_is_refused-before.log",
+      "log_sha256": "3ac2ea00b49a3378ba55190f7096c3c6ba06528f85968d63037b074d970301a4",
+      "observed_archive_warning": true,
+      "observed_product_target_boundary": true
+    }
+  ],
+  "cmake_file_predicates": [
+    {
+      "cmake": "3.22.6",
+      "scenario": "missing",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=false",
+        "-- GLOB="
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "scenario": "dangling_symlink",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=true",
+        "-- GLOB=/tmp/juce-metadata-audit-fcy95hla/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "scenario": "unreadable_file",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=false",
+        "-- GLOB=/tmp/juce-metadata-audit-uq8v8tp9/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "scenario": "empty_directory",
+      "observed": [
+        "-- EXISTS=true",
+        "-- IS_SYMLINK=false",
+        "-- GLOB=/tmp/juce-metadata-audit-sloyp5tt/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "scenario": "unreadable_directory",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=false",
+        "-- GLOB=/tmp/juce-metadata-audit-1gwc0829/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "scenario": "invalid_target_symlink",
+      "observed": [
+        "-- EXISTS=true",
+        "-- IS_SYMLINK=true",
+        "-- GLOB=/tmp/juce-metadata-audit-p8ez64nt/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "scenario": "unreadable_target_symlink",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=true",
+        "-- GLOB=/tmp/juce-metadata-audit-rkjm7a1o/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "missing",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=false",
+        "-- GLOB="
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "dangling_symlink",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=true",
+        "-- GLOB=/tmp/juce-metadata-audit-x_qbybyc/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "unreadable_file",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=false",
+        "-- GLOB=/tmp/juce-metadata-audit-bvnq26td/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "empty_directory",
+      "observed": [
+        "-- EXISTS=true",
+        "-- IS_SYMLINK=false",
+        "-- GLOB=/tmp/juce-metadata-audit-5gcna39u/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "unreadable_directory",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=false",
+        "-- GLOB=/tmp/juce-metadata-audit-xs8s065g/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "invalid_target_symlink",
+      "observed": [
+        "-- EXISTS=true",
+        "-- IS_SYMLINK=true",
+        "-- GLOB=/tmp/juce-metadata-audit-n9zskw40/source/.git"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "scenario": "unreadable_target_symlink",
+      "observed": [
+        "-- EXISTS=false",
+        "-- IS_SYMLINK=true",
+        "-- GLOB=/tmp/juce-metadata-audit-jdq4b4zb/source/.git"
+      ]
+    }
+  ],
+  "corrected_after": [
+    {
+      "cmake": "3.22.6",
+      "result": "passed",
+      "tests": 28,
+      "skipped": 0,
+      "test_results": [
+        "test_archive_override_does_not_inherit_ancestor_git_head (__main__.JuceCacheTests.test_archive_override_does_not_inherit_ancestor_git_head) ... ok",
+        "test_broken_git_metadata_is_not_treated_as_an_archive (__main__.JuceCacheTests.test_broken_git_metadata_is_not_treated_as_an_archive) ... ok",
+        "test_custom_pin_and_version_survive_reconfiguration (__main__.JuceCacheTests.test_custom_pin_and_version_survive_reconfiguration) ... ok",
+        "test_dangling_git_metadata_symlink_is_refused (__main__.JuceCacheTests.test_dangling_git_metadata_symlink_is_refused) ... ok",
+        "test_dangling_git_metadata_without_git_tool_is_refused (__main__.JuceCacheTests.test_dangling_git_metadata_without_git_tool_is_refused) ... ok",
+        "test_dependency_configuration_precedes_provenance_rejection (__main__.JuceCacheTests.test_dependency_configuration_precedes_provenance_rejection) ... ok",
+        "test_empty_git_metadata_directory_is_refused (__main__.JuceCacheTests.test_empty_git_metadata_directory_is_refused) ... ok",
+        "test_existing_904_cache_fails_until_both_values_are_reset (__main__.JuceCacheTests.test_existing_904_cache_fails_until_both_values_are_reset) ... ok",
+        "test_explicit_archive_override_does_not_require_git (__main__.JuceCacheTests.test_explicit_archive_override_does_not_require_git) ... ok",
+        "test_explicit_archive_override_remains_supported (__main__.JuceCacheTests.test_explicit_archive_override_remains_supported) ... ok",
+        "test_fetched_source_must_match_immutable_pin (__main__.JuceCacheTests.test_fetched_source_must_match_immutable_pin) ... ok",
+        "test_fresh_and_repeated_configuration_select_current_pin (__main__.JuceCacheTests.test_fresh_and_repeated_configuration_select_current_pin) ... ok",
+        "test_git_checkout_without_git_tool_is_refused (__main__.JuceCacheTests.test_git_checkout_without_git_tool_is_refused) ... ok",
+        "test_git_metadata_symlink_to_invalid_target_is_refused (__main__.JuceCacheTests.test_git_metadata_symlink_to_invalid_target_is_refused) ... ok",
+        "test_legacy_902_fields_are_also_refused (__main__.JuceCacheTests.test_legacy_902_fields_are_also_refused) ... ok",
+        "test_legacy_903_fields_are_also_refused (__main__.JuceCacheTests.test_legacy_903_fields_are_also_refused) ... ok",
+        "test_local_checkout_allows_intentional_904_comparison (__main__.JuceCacheTests.test_local_checkout_allows_intentional_904_comparison) ... ok",
+        "test_matching_custom_immutable_source_is_verified (__main__.JuceCacheTests.test_matching_custom_immutable_source_is_verified) ... ok",
+        "test_metadata_detection_uses_literal_source_path (__main__.JuceCacheTests.test_metadata_detection_uses_literal_source_path) ... ok",
+        "test_mixed_904_and_current_fields_are_refused (__main__.JuceCacheTests.test_mixed_904_and_current_fields_are_refused) ... ok",
+        "test_normal_source_with_dangling_git_metadata_is_refused (__main__.JuceCacheTests.test_normal_source_with_dangling_git_metadata_is_refused) ... ok",
+        "test_normal_source_without_git_metadata_is_refused (__main__.JuceCacheTests.test_normal_source_without_git_metadata_is_refused) ... ok",
+        "test_resetting_only_tag_still_refuses_stale_version (__main__.JuceCacheTests.test_resetting_only_tag_still_refuses_stale_version) ... ok",
+        "test_resetting_only_version_still_refuses_stale_tag (__main__.JuceCacheTests.test_resetting_only_version_still_refuses_stale_tag) ... ok",
+        "test_unreadable_git_metadata_directory_is_refused (__main__.JuceCacheTests.test_unreadable_git_metadata_directory_is_refused) ... ok",
+        "test_unreadable_git_metadata_file_is_refused (__main__.JuceCacheTests.test_unreadable_git_metadata_file_is_refused) ... ok",
+        "test_valid_git_metadata_symlink_is_verified (__main__.JuceCacheTests.test_valid_git_metadata_symlink_is_verified) ... ok",
+        "test_valid_git_worktree_is_verified (__main__.JuceCacheTests.test_valid_git_worktree_is_verified) ... ok"
+      ],
+      "summary": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 28 tests in 22.599s",
+        "",
+        "OK"
+      ]
+    },
+    {
+      "cmake": "3.31.6",
+      "result": "passed",
+      "tests": 28,
+      "skipped": 0,
+      "test_results": [
+        "test_archive_override_does_not_inherit_ancestor_git_head (__main__.JuceCacheTests.test_archive_override_does_not_inherit_ancestor_git_head) ... ok",
+        "test_broken_git_metadata_is_not_treated_as_an_archive (__main__.JuceCacheTests.test_broken_git_metadata_is_not_treated_as_an_archive) ... ok",
+        "test_custom_pin_and_version_survive_reconfiguration (__main__.JuceCacheTests.test_custom_pin_and_version_survive_reconfiguration) ... ok",
+        "test_dangling_git_metadata_symlink_is_refused (__main__.JuceCacheTests.test_dangling_git_metadata_symlink_is_refused) ... ok",
+        "test_dangling_git_metadata_without_git_tool_is_refused (__main__.JuceCacheTests.test_dangling_git_metadata_without_git_tool_is_refused) ... ok",
+        "test_dependency_configuration_precedes_provenance_rejection (__main__.JuceCacheTests.test_dependency_configuration_precedes_provenance_rejection) ... ok",
+        "test_empty_git_metadata_directory_is_refused (__main__.JuceCacheTests.test_empty_git_metadata_directory_is_refused) ... ok",
+        "test_existing_904_cache_fails_until_both_values_are_reset (__main__.JuceCacheTests.test_existing_904_cache_fails_until_both_values_are_reset) ... ok",
+        "test_explicit_archive_override_does_not_require_git (__main__.JuceCacheTests.test_explicit_archive_override_does_not_require_git) ... ok",
+        "test_explicit_archive_override_remains_supported (__main__.JuceCacheTests.test_explicit_archive_override_remains_supported) ... ok",
+        "test_fetched_source_must_match_immutable_pin (__main__.JuceCacheTests.test_fetched_source_must_match_immutable_pin) ... ok",
+        "test_fresh_and_repeated_configuration_select_current_pin (__main__.JuceCacheTests.test_fresh_and_repeated_configuration_select_current_pin) ... ok",
+        "test_git_checkout_without_git_tool_is_refused (__main__.JuceCacheTests.test_git_checkout_without_git_tool_is_refused) ... ok",
+        "test_git_metadata_symlink_to_invalid_target_is_refused (__main__.JuceCacheTests.test_git_metadata_symlink_to_invalid_target_is_refused) ... ok",
+        "test_legacy_902_fields_are_also_refused (__main__.JuceCacheTests.test_legacy_902_fields_are_also_refused) ... ok",
+        "test_legacy_903_fields_are_also_refused (__main__.JuceCacheTests.test_legacy_903_fields_are_also_refused) ... ok",
+        "test_local_checkout_allows_intentional_904_comparison (__main__.JuceCacheTests.test_local_checkout_allows_intentional_904_comparison) ... ok",
+        "test_matching_custom_immutable_source_is_verified (__main__.JuceCacheTests.test_matching_custom_immutable_source_is_verified) ... ok",
+        "test_metadata_detection_uses_literal_source_path (__main__.JuceCacheTests.test_metadata_detection_uses_literal_source_path) ... ok",
+        "test_mixed_904_and_current_fields_are_refused (__main__.JuceCacheTests.test_mixed_904_and_current_fields_are_refused) ... ok",
+        "test_normal_source_with_dangling_git_metadata_is_refused (__main__.JuceCacheTests.test_normal_source_with_dangling_git_metadata_is_refused) ... ok",
+        "test_normal_source_without_git_metadata_is_refused (__main__.JuceCacheTests.test_normal_source_without_git_metadata_is_refused) ... ok",
+        "test_resetting_only_tag_still_refuses_stale_version (__main__.JuceCacheTests.test_resetting_only_tag_still_refuses_stale_version) ... ok",
+        "test_resetting_only_version_still_refuses_stale_tag (__main__.JuceCacheTests.test_resetting_only_version_still_refuses_stale_tag) ... ok",
+        "test_unreadable_git_metadata_directory_is_refused (__main__.JuceCacheTests.test_unreadable_git_metadata_directory_is_refused) ... ok",
+        "test_unreadable_git_metadata_file_is_refused (__main__.JuceCacheTests.test_unreadable_git_metadata_file_is_refused) ... ok",
+        "test_valid_git_metadata_symlink_is_verified (__main__.JuceCacheTests.test_valid_git_metadata_symlink_is_verified) ... ok",
+        "test_valid_git_worktree_is_verified (__main__.JuceCacheTests.test_valid_git_worktree_is_verified) ... ok"
+      ],
+      "summary": [
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 28 tests in 44.196s",
+        "",
+        "OK"
+      ]
+    }
+  ],
+  "partial_fix_and_negative_controls": [
+    {
+      "product": "Anamorph",
+      "variant": "IS_SYMLINK_only",
+      "test": "test_dangling_git_metadata_symlink_is_refused",
+      "result": "passed"
+    },
+    {
+      "product": "Anamorph",
+      "variant": "IS_SYMLINK_only",
+      "test": "test_unreadable_git_metadata_file_is_refused",
+      "result": "expected assertion failure detected"
+    },
+    {
+      "product": "Anamorph",
+      "variant": "IS_SYMLINK_only",
+      "test": "test_unreadable_git_metadata_directory_is_refused",
+      "result": "expected assertion failure detected"
+    },
+    {
+      "product": "Anamorph",
+      "variant": "immutable_mismatch_bypass",
+      "test": "test_fetched_source_must_match_immutable_pin",
+      "result": "expected assertion failure detected"
+    },
+    {
+      "product": "Anamorph",
+      "variant": "reject_all_archives",
+      "test": "test_explicit_archive_override_remains_supported",
+      "result": "expected assertion failure detected"
+    }
+  ],
+  "additional_source_cases": [
+    {
+      "product": "Anamorph",
+      "cmake": "3.22.6",
+      "case": "unreadable_metadata_target",
+      "exit_code": 1,
+      "result": "correctly refused; no archive fallback"
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.22.6",
+      "case": "normal_checkout_without_git_tool",
+      "exit_code": 1,
+      "result": "correctly refused; no archive fallback"
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.31.6",
+      "case": "unreadable_metadata_target",
+      "exit_code": 1,
+      "result": "correctly refused; no archive fallback"
+    },
+    {
+      "product": "Anamorph",
+      "cmake": "3.31.6",
+      "case": "normal_checkout_without_git_tool",
+      "exit_code": 1,
+      "result": "correctly refused; no archive fallback"
+    }
+  ],
+  "selected_fix": "Literal .git directory-entry presence using file(GLOB LIST_DIRECTORIES TRUE), with glob metacharacters quoted in the parent path. EXISTS plus IS_SYMLINK alone misses unreadable files/directories.",
+  "guarantees": [
+    "JUCE-root Git HEAD verified when available; immutable commit pins must match",
+    "Explicit metadata-free archives supported with unverified identity warning; no Git tool required for this exception",
+    "Damaged/unreadable/dangling metadata cannot use archive fallback; parent HEAD cannot identify JUCE",
+    "Normal fetched sources with failed Git identity are refused",
+    "Existing product local-path escape branch unchanged"
+  ],
+  "ordering": {
+    "disposition": "Retain approved post-configuration provenance check",
+    "classification": "Correctly documented limitation; no mandatory pre-execution requirement identified",
+    "configuration_before_verifier": [
+      "FetchContent acquisition/reuse and dependency add_subdirectory",
+      "JUCE package/platform/module setup and host juceaide setup/build may run"
+    ],
+    "source_before_population": "Not assumed available for a fresh fetch",
+    "boundary_evidence": "test_dependency_configuration_precedes_provenance_rejection: dependency file WRITE observed before wrong-pin rejection",
+    "alternatives": [
+      "Retain MakeAvailable+post-check (selected)",
+      "Precheck already-available Git sources plus actual-source post-check",
+      "Separate population, verification and add_subdirectory",
+      "Hybrid fetched-source pre-verification and explicitly trusted local/archive branches"
+    ],
+    "redesign_implemented": false,
+    "new_architecture_decision": false,
+    "stronger_boundary_requires_separate_architecture_review": true,
+    "not_claimed": [
+      "Pre-execution trust boundary",
+      "Working-tree content hash or clean-tree enforcement"
+    ]
+  },
+  "cmake_documentation": [
+    {
+      "installed_cmake": "3.22.6",
+      "resource": "Modules/FetchContent.cmake",
+      "sha256": "9361b1bb4f140ba5b14095a1ef83529fd1d5c1bda1ef68996e65519148d8372f"
+    },
+    {
+      "installed_cmake": "3.22.6",
+      "resource": "Help/command/if.rst",
+      "sha256": "b4ab41d4dc5437a07c94eef2b6795c45550cedb91de18fae1062786b80d820a2"
+    },
+    {
+      "installed_cmake": "3.31.6",
+      "resource": "Modules/FetchContent.cmake",
+      "sha256": "eaa54c31dc85ccbfc0a8ab663a528c2aaebc6c4c97ae344d44ac0f99919275cb"
+    },
+    {
+      "installed_cmake": "3.31.6",
+      "resource": "Help/command/if.rst",
+      "sha256": "f544aca94db030a3ec09b854899a6ebc1bc87015c2277816eae951166ec594bd"
+    }
+  ],
+  "valid_source_build_command_comparison": {
+    "result": "passed",
+    "compile_commands_byte_identical": true,
+    "compile_command_count": 203,
+    "sha256": "bcccbfc53240d2eaeac0e3bc7143517eb6fab6f7014862c3e4c943729ffd2179",
+    "configuration": "Existing equivalent-source GCC 14 Release, same cache, no new product flags",
+    "observed_source_proof": [
+      "-- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /workspace/juce905-runs/anamorph-905/_deps/juce-src"
+    ],
+    "configure_log": "anamorph-metadata-product-configure.log"
+  },
+  "platform_limits": [
+    "POSIX permission fixtures do not prove Windows ACL behavior",
+    "Unavailable symlink or permission-denial fixtures are explicit unittest skips; none skipped locally"
+  ],
+  "production_contract_changes": false,
+  "owner_acceptance_record": "acceptance-reconciliation.json",
+  "corrected_head_ci": "Separately required; source-bound PR checks are authoritative for subsequent execution",
+  "real_archive_configure_after_fix": {
+    "result": "passed",
+    "source": "Retained real git-archive fixture, no Git metadata",
+    "observed_warning": "Unverified JUCE source override; no immutable identity verification claimed",
+    "completion": [
+      "-- Configuring done (2.9s)",
+      "-- Generating done (0.1s)"
+    ],
+    "scope": "Enabled product targets configured; archive product binaries not rebuilt"
+  },
+  "documentation_source_checks": [
+    {
+      "check": "docs-self",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-docs: self-test passed (700 cases)."
+    },
+    {
+      "check": "docs",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-docs: 189 file(s) clean."
+    },
+    {
+      "check": "citation-self",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-citations: self-test passed (298 cases)."
+    },
+    {
+      "check": "citation-head",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-citations: 609 anchor(s) still point at the same text as HEAD."
+    },
+    {
+      "check": "citation-main",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-citations: 609 anchor(s) still point at the same text as origin/main."
+    },
+    {
+      "check": "portability-self",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-portability: self-test passed (120 cases)."
+    },
+    {
+      "check": "portability",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-portability: 83 file(s) scanned, 0 violation(s)."
+    },
+    {
+      "check": "identity-self",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "product identity self-test passed (source, generated Linux/Windows/macOS, AU, VST3, packages; good/bad fixtures)"
+    },
+    {
+      "check": "identity",
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "source product identity contract unchanged"
+    }
+  ]
+}

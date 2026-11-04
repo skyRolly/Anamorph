@@ -1,0 +1,515 @@
+[
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1013,
+    "citation": "juce_TooltipWindow.cpp:250-256",
+    "target": "juce_TooltipWindow.cpp:251-257",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1150,
+    "citation": "juce_Component.cpp:2316-2321",
+    "target": "juce_Component.cpp:2386-2391",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1169,
+    "citation": "juce_PopupMenu.cpp:515",
+    "target": "juce_PopupMenu.cpp:511",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1235,
+    "citation": "juce_Component.cpp:3233-3236",
+    "target": "juce_Component.cpp:3285-3288",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1332,
+    "citation": "juce_PopupMenu.cpp:824-834",
+    "target": "juce_PopupMenu.cpp:820-830",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1406,
+    "citation": "juce_PopupMenu.cpp:824-834",
+    "target": "juce_PopupMenu.cpp:820-830",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1409,
+    "citation": "juce_PopupMenu.cpp:1583-1590",
+    "target": "juce_PopupMenu.cpp:1579-1586",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1414,
+    "citation": "juce_PopupMenu.cpp:912-915",
+    "target": "juce_PopupMenu.cpp:908-911",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 1442,
+    "citation": "juce_PopupMenu.cpp:2265-2286",
+    "target": "juce_PopupMenu.cpp:2261-2282",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 2251,
+    "citation": "juce_PopupMenu.cpp:381",
+    "target": "juce_PopupMenu.cpp:381",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 2261,
+    "citation": "juce_PopupMenu.cpp:385-387",
+    "target": "juce_PopupMenu.cpp:385-387",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 2313,
+    "citation": "juce_PopupMenu.cpp:383",
+    "target": "juce_PopupMenu.cpp:383",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.cpp",
+    "line": 2425,
+    "citation": "juce_PopupMenu.cpp:2309",
+    "target": "juce_PopupMenu.cpp:2305",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 21,
+    "citation": "juce_TooltipWindow.cpp:209",
+    "target": "juce_TooltipWindow.cpp:210",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 29,
+    "citation": "juce_Desktop.cpp:167-173",
+    "target": "juce_Desktop.cpp:240-246",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 38,
+    "citation": "juce_TooltipWindow.cpp:92-96",
+    "target": "juce_TooltipWindow.cpp:92-96",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 39,
+    "citation": "juce_Component.cpp:1105",
+    "target": "juce_Component.cpp:1175",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 444,
+    "citation": "juce_Component.cpp:2507-2544",
+    "target": null,
+    "old_text": [
+      "    if (target->isCurrentlyBlockedByAnotherModalComponent())",
+      "    {",
+      "        target->flags.mouseDownWasBlocked = true;",
+      "        target->internalModalInputAttempt();",
+      "",
+      "        if (checker.shouldBailOut())",
+      "            return;",
+      "",
+      "        // If processing the input attempt has exited the modal loop, we'll allow the event",
+      "        // to be delivered.",
+      "        if (target->isCurrentlyBlockedByAnotherModalComponent())",
+      "        {",
+      "            // allow blocked mouse-events to go to global listeners",
+      "            desktop.getMouseListeners().callChecked (checker, [&] (MouseListener& l) { l.mouseDown (checker.eventWithNearestParent()); });",
+      "            return;",
+      "        }",
+      "    }",
+      "",
+      "    target->flags.mouseDownWasBlocked = false;",
+      "",
+      "    checker.forEach ([] (auto& comp)",
+      "    {",
+      "        if (comp.isBroughtToFrontOnMouseClick())",
+      "            comp.toFront (true);",
+      "    });",
+      "",
+      "    if (checker.shouldBailOut())",
+      "        return;",
+      "",
+      "    target->grabKeyboardFocusInternal (focusChangedByMouseClick, true, FocusChangeDirection::unknown);",
+      "",
+      "    if (checker.shouldBailOut())",
+      "        return;",
+      "",
+      "    if (target->flags.repaintOnMouseActivityFlag)",
+      "        target->repaint();",
+      "",
+      "    target->mouseDown (me);"
+    ]
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 457,
+    "citation": "juce_PopupMenu.cpp:380",
+    "target": "juce_PopupMenu.cpp:380",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 459,
+    "citation": "juce_Component.cpp:914-922",
+    "target": "juce_Component.cpp:984-992",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 465,
+    "citation": "juce_Component.cpp:928-934",
+    "target": "juce_Component.cpp:998-1004",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 476,
+    "citation": "juce_PopupMenu.cpp:2308-2312",
+    "target": "juce_PopupMenu.cpp:2304-2308",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 481,
+    "citation": "juce_Component.cpp:2414-2420",
+    "target": "juce_Component.cpp:2484-2490",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 491,
+    "citation": "juce_Component.cpp:3233-3236",
+    "target": "juce_Component.cpp:3285-3288",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 508,
+    "citation": "juce_Component.cpp:1336-1341",
+    "target": "juce_Component.cpp:1406-1411",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 520,
+    "citation": "juce_Component.cpp:2310-2314",
+    "target": "juce_Component.cpp:2380-2384",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 618,
+    "citation": "juce_TooltipWindow.cpp:242-247",
+    "target": "juce_TooltipWindow.cpp:243-248",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 628,
+    "citation": "juce_Component.h:1592",
+    "target": "juce_Component.h:1611",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 888,
+    "citation": "juce_Slider.cpp:396-399",
+    "target": "juce_Slider.cpp:396-399",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1029,
+    "citation": "juce_Slider.cpp:969",
+    "target": "juce_Slider.cpp:969",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1052,
+    "citation": "juce_Slider.cpp:1266-1274",
+    "target": "juce_Slider.cpp:1267-1275",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1081,
+    "citation": "juce_Slider.cpp:843-845",
+    "target": "juce_Slider.cpp:843-845",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1141,
+    "citation": "juce_Slider.cpp:906-970",
+    "target": "juce_Slider.cpp:906-970",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1184,
+    "citation": "juce_Slider.cpp:997",
+    "target": "juce_Slider.cpp:997",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1212,
+    "citation": "juce_Slider.cpp:878",
+    "target": "juce_Slider.cpp:878",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginEditor.h",
+    "line": 1255,
+    "citation": "juce_Slider.cpp:928",
+    "target": "juce_Slider.cpp:928",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginProcessor.h",
+    "line": 41,
+    "citation": "juce_audio_plugin_client_VST3.cpp:3474-3478",
+    "target": "juce_audio_plugin_client_VST3.cpp:3538-3542",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginProcessor.h",
+    "line": 78,
+    "citation": "juce_audio_plugin_client_VST3.cpp:3474-3478",
+    "target": "juce_audio_plugin_client_VST3.cpp:3538-3542",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PluginProcessor.h",
+    "line": 131,
+    "citation": "juce_audio_plugin_client_VST3.cpp:3481-3492",
+    "target": "juce_audio_plugin_client_VST3.cpp:3545-3556",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PresetManager.cpp",
+    "line": 363,
+    "citation": "juce_String.cpp:2017-2021",
+    "target": "juce_String.cpp:2017-2021",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PresetManager.cpp",
+    "line": 376,
+    "citation": "juce_CharPointer_UTF8.h:437-511",
+    "target": "juce_CharPointer_UTF8.h:465-539",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PresetManager.cpp",
+    "line": 518,
+    "citation": "juce_File.cpp:559-566",
+    "target": "juce_File.cpp:581-588",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PresetManager.cpp",
+    "line": 551,
+    "citation": "juce_File.cpp:568-576",
+    "target": "juce_File.cpp:590-598",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PresetManager.cpp",
+    "line": 1176,
+    "citation": "juce_File.cpp:798-803",
+    "target": "juce_File.cpp:820-825",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/PresetManager.cpp",
+    "line": 1217,
+    "citation": "juce_File.h:802-805",
+    "target": "juce_File.h:806-809",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/XmlBoundary.h",
+    "line": 247,
+    "citation": "juce_XmlDocument.cpp:491-497",
+    "target": "juce_XmlDocument.cpp:526-532",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.cpp",
+    "line": 50,
+    "citation": "juce_XWindowSystem_linux.cpp:4218",
+    "target": "juce_XWindowSystem_linux.cpp:4327",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.cpp",
+    "line": 141,
+    "citation": "juce_Slider.cpp:396-399",
+    "target": "juce_Slider.cpp:396-399",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.cpp",
+    "line": 691,
+    "citation": "juce_PopupMenu.cpp:348-351",
+    "target": "juce_PopupMenu.cpp:348-351",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 128,
+    "citation": "juce_PopupMenu.cpp:515",
+    "target": "juce_PopupMenu.cpp:511",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 135,
+    "citation": "juce_PopupMenu.cpp:1440-1443",
+    "target": "juce_PopupMenu.cpp:1442-1446",
+    "old_text": null,
+    "mechanical_proposal_target": "juce_PopupMenu.cpp:1436-1439",
+    "method": "manual semantic re-aim: the previous citation was mis-aimed before the upgrade; current findLookAndFeel is verified in the exact 9.0.5 source"
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 143,
+    "citation": "juce_LookAndFeel_V2.cpp:1172",
+    "target": "juce_LookAndFeel_V2.cpp:1191",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 399,
+    "citation": "juce_NSViewComponentPeer_mac.mm:3032-3045",
+    "target": "juce_NSViewComponentPeer_mac.mm:3172-3185",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 402,
+    "citation": "juce_XWindowSystem_linux.cpp:2320-2327",
+    "target": "juce_XWindowSystem_linux.cpp:2359-2366",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 409,
+    "citation": "juce_Windowing_windows.cpp:2645-2652",
+    "target": "juce_Windowing_windows.cpp:2802-2809",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 411,
+    "citation": "juce_AudioProcessorEditor.cpp:260-263",
+    "target": "juce_AudioProcessorEditor.cpp:259-262",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/LookAndFeel.h",
+    "line": 470,
+    "citation": "juce_Slider.cpp:906-970",
+    "target": "juce_Slider.cpp:906-970",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/PhysicalMouseButtons.h",
+    "line": 11,
+    "citation": "juce_NSViewComponentPeer_mac.mm:302-307",
+    "target": "juce_NSViewComponentPeer_mac.mm:302-307",
+    "old_text": null
+  },
+  {
+    "product": "Anamorph",
+    "file": "src/gui/PhysicalMouseButtons.h",
+    "line": 20,
+    "citation": "juce_NSViewComponentPeer_mac.mm:1867",
+    "target": "juce_NSViewComponentPeer_mac.mm:1998",
+    "old_text": null
+  }
+]

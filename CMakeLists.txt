@@ -64,11 +64,11 @@ option(ANAMORPH_BUILD_DSPDUMP "Build AnamorphDspDump, the DSP bit-identity harne
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
 set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)")
-# JUCE 9.0.4 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
+# JUCE 9.0.5 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
 # name, so the dependency cannot silently change under a re-pointed tag
 # (dependency hardening; the human-readable version lives in ANAMORPH_JUCE_VERSION).
-set(ANAMORPH_JUCE_VERSION "9.0.4" CACHE STRING "Human-readable JUCE version of the pinned commit")
-set(ANAMORPH_JUCE_TAG  "3fb5cbc0340758596dac39f7c8de47d562b4896e" CACHE STRING
+set(ANAMORPH_JUCE_VERSION "9.0.5" CACHE STRING "Human-readable JUCE version of the pinned commit")
+set(ANAMORPH_JUCE_TAG  "d60b7a78030661574a615b586d9325ba7a7fa7dd" CACHE STRING
     "JUCE git rev to fetch when no local path is given (commit SHA of tag ${ANAMORPH_JUCE_VERSION})")
 include(cmake/CheckJuceCache.cmake)
 # ----------------------------------------------------------------------------
@@ -79,7 +79,7 @@ if(ANAMORPH_JUCE_PATH)
     add_subdirectory(${ANAMORPH_JUCE_PATH} ${CMAKE_BINARY_DIR}/JUCE)
 else()
     include(FetchContent)
-    message(STATUS "Anamorph: fetching JUCE ${ANAMORPH_JUCE_VERSION} (${ANAMORPH_JUCE_TAG}) from github.com/juce-framework/JUCE")
+    message(STATUS "Anamorph: requested JUCE ${ANAMORPH_JUCE_VERSION} (${ANAMORPH_JUCE_TAG}); resolving via FetchContent")
     FetchContent_Declare(
         JUCE
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
@@ -87,6 +87,7 @@ else()
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(JUCE)
+    include(cmake/VerifyJuceSource.cmake) # Post-configuration provenance; not a pre-execution trust gate.
 endif()
 
 # ----------------------------------------------------------------------------

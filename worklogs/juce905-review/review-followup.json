@@ -1,0 +1,264 @@
+{
+  "record_scope": "Timestamped owner-review follow-up evidence before publishing the follow-up commit. Earlier numerical and target-CI records retain their tested-source scope. Subsequent source-head CI is reported on the PR; this record does not predict it.",
+  "captured_at_utc": "2026-11-04T07:52:48.408052+00:00",
+  "product": "Anamorph",
+  "adr": "ADR-0071",
+  "adr_status": "Accepted; owner approval 2026-11-04 Asia/Shanghai; no merge or manual acceptance authorized",
+  "parent_head": "8f79485b7b347f4af679ec62f1c44cfbedb1128c",
+  "changes": [
+    "Correct live handover/CI/cache-migration/compliance and testing records",
+    "Preserve trusted explicit source-directory archive overrides without claiming immutable identity",
+    "Keep Git-root immutable-HEAD enforcement; reject default missing or broken metadata",
+    "Document post-JUCE-configuration provenance scope; not an execution trust boundary",
+    "Clarify normalized parameter-bit listings; no independent unnormalized-value measurement"
+  ],
+  "cache_source_regressions": [
+    {
+      "cmake": "3.31.6",
+      "tests": 16,
+      "result": "passed",
+      "output": "................\n----------------------------------------------------------------------\nRan 16 tests in 15.972s\n\nOK",
+      "command": [
+        "python3",
+        "tests/juce_cache_tests.py"
+      ]
+    },
+    {
+      "cmake": "3.22.6",
+      "tests": 16,
+      "result": "passed",
+      "output": "................\n----------------------------------------------------------------------\nRan 16 tests in 10.608s\n\nOK",
+      "command": [
+        "python3",
+        "tests/juce_cache_tests.py"
+      ]
+    }
+  ],
+  "negative_controls": [
+    {
+      "control": "previous_helper_rejects_archive",
+      "test": "test_explicit_archive_override_remains_supported",
+      "expected_assertion_failure_observed": true
+    },
+    {
+      "control": "immutable_mismatch_bypass",
+      "test": "test_fetched_source_must_match_immutable_pin",
+      "expected_assertion_failure_observed": true
+    },
+    {
+      "control": "implicit_archive_bypass",
+      "test": "test_normal_source_without_git_metadata_is_refused",
+      "expected_assertion_failure_observed": true
+    }
+  ],
+  "real_archive_configure": {
+    "result": "passed",
+    "exit_code": 0,
+    "cmake": "3.31.6",
+    "environment": "Existing isolated Debian 13 validation container, GCC 14.2, Release; no product compiler setting changed",
+    "source_archive_fixture": "git archive d60b7a78030661574a615b586d9325ba7a7fa7dd, extracted without .git",
+    "archive_sha256": "1701c272b543dbf2bc4022d72644aa291416c1630d0c68028680d28c72ca3d93",
+    "command": [
+      "cmake",
+      "-S",
+      "/workspace/Anamorph",
+      "-B",
+      "/workspace/juce905-runs/review-archive-anamorph",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DFETCHCONTENT_SOURCE_DIR_JUCE=/workspace/JUCE-905-archive",
+      "-DANAMORPH_BUILD_TESTS=OFF",
+      "-DANAMORPH_BUILD_STANDALONE=ON"
+    ],
+    "observed_warning": "Unverified JUCE source override; no immutable commit verification claimed",
+    "observed_completion": [
+      "-- Configuring done (86.6s)",
+      "-- Generating done (0.0s)",
+      "-- Build files have been written to: /workspace/juce905-runs/review-archive-anamorph"
+    ],
+    "limitations": "Configuration and generated product targets verified; archive product binaries were not compiled. Fixture origin is known to this experiment; arbitrary archives remain unverified."
+  },
+  "real_git_source_verification": {
+    "product": "Anamorph",
+    "command": [
+      "cmake",
+      "-Djuce_SOURCE_DIR=/workspace/juce905-runs/anamorph-905/_deps/juce-src",
+      "-DANAMORPH_JUCE_TAG=d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "-P",
+      "/workspace/Anamorph/cmake/VerifyJuceSource.cmake"
+    ],
+    "exit_code": 0,
+    "output": "-- Anamorph: verified JUCE source HEAD d60b7a78030661574a615b586d9325ba7a7fa7dd at /workspace/juce905-runs/anamorph-905/_deps/juce-src\n"
+  },
+  "completed_pre_review_target_ci": {
+    "captured_at_utc": "2026-11-04T07:51:59.183Z",
+    "product": "Anamorph",
+    "runs": [
+      {
+        "id": 41742297588,
+        "name": "Microsoft C++ Code Analysis",
+        "event": "pull_request",
+        "head_sha": "8f79485b7b347f4af679ec62f1c44cfbedb1128c",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-03T23:50:37Z",
+        "updated_at": "2026-11-04T00:07:26Z",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41742297588"
+      },
+      {
+        "id": 41742297513,
+        "name": "Build & Validate",
+        "event": "pull_request",
+        "head_sha": "8f79485b7b347f4af679ec62f1c44cfbedb1128c",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-03T23:50:36Z",
+        "updated_at": "2026-11-03T23:58:07Z",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41742297513"
+      },
+      {
+        "id": 41742297505,
+        "name": "Dependency review",
+        "event": "pull_request",
+        "head_sha": "8f79485b7b347f4af679ec62f1c44cfbedb1128c",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-03T23:50:36Z",
+        "updated_at": "2026-11-03T23:51:50Z",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41742297505"
+      },
+      {
+        "id": 41742297532,
+        "name": "CodeQL Advanced",
+        "event": "pull_request",
+        "head_sha": "8f79485b7b347f4af679ec62f1c44cfbedb1128c",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-03T23:50:36Z",
+        "updated_at": "2026-11-04T00:21:36Z",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41742297532"
+      },
+      {
+        "id": 41742291646,
+        "name": "Build & Validate",
+        "event": "push",
+        "head_sha": "8f79485b7b347f4af679ec62f1c44cfbedb1128c",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-11-03T23:50:34Z",
+        "updated_at": "2026-11-04T00:20:33Z",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41742291646"
+      }
+    ]
+  },
+  "followup_source_head_ci": {
+    "status_at_capture": "pending publication and execution",
+    "authoritative_subsequent_results": "https://github.com/skyRolly/Anamorph/pull/213"
+  },
+  "parameter_measurement": {
+    "listing": "normalized AudioProcessorParameter::getValue() float bit patterns (0..1)",
+    "serialization": "old session byte-identical re-save, separately recorded",
+    "render": "six restored renders/latencies compared, separately recorded",
+    "independent_unnormalized_comparison": false
+  },
+  "manual_acceptance": "Pending Human Acceptance",
+  "product_version_changed": false,
+  "merge_authorized": false,
+  "source_policy_and_documentation_checks": [
+    {
+      "command": [
+        "python3",
+        "scripts/check-docs.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-docs: self-test passed (700 cases)."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-docs.py"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-docs: 189 file(s) clean."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-portability.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-portability: self-test passed (120 cases)."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-portability.py"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-portability: 83 file(s) scanned, 0 violation(s)."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-product-identity.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "product identity self-test passed (source, generated Linux/Windows/macOS, AU, VST3, packages; good/bad fixtures)"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-product-identity.py"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "source identity contract matches unchanged product identity"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-citations.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-citations: self-test passed (298 cases)."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-citations.py",
+        "--check",
+        "--base",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-citations: 609 anchor(s) still point at the same text as HEAD."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check-citations.py",
+        "--check",
+        "--base",
+        "origin/main"
+      ],
+      "exit_code": 0,
+      "result": "passed",
+      "summary": "check-citations: 609 anchor(s) still point at the same text as origin/main."
+    }
+  ],
+  "baseline_warnings": [
+    "Unchanged scripts/check-docs.py emits Python SyntaxWarning for two pre-existing escape sequences; documentation checks complete with exit 0."
+  ]
+}

@@ -7,6 +7,12 @@ required human gates **COMPLETE**; planned release **2026-10-22**. The full atte
 NOT RECORDED details are in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
 §Final owner release attestation. Supersedes ADR-0060; its historical evidence is retained.
 
+
+**Dependency-pin amendment — 2026-11-04:** owner-Accepted ADR-0071 advances the
+unmerged upgrade branch to JUCE 9.0.5 / `d60b7a78030661574a615b586d9325ba7a7fa7dd`.
+This record retains its historical 9.0.4 decision/evidence; other contracts remain in force.
+No current PR merge or new manual acceptance is inferred from the earlier approvals.
+
 ## Context
 
 PR #160 merged JUCE 9.0.3 into main at `e0532bc`. On 2026-10-21 the owner requested a safe

@@ -373,7 +373,7 @@ namespace
         // fallback, so refusing when it says no makes the fallback unreachable BY CONSTRUCTION
         // rather than by a second opinion that could drift from it. It rejects a malformed lead
         // byte, a missing or malformed continuation byte, an overlong encoding, a surrogate code
-        // point and anything past U+10FFFF (`juce_CharPointer_UTF8.h:437-511`). Valid UTF-8 above
+        // point and anything past U+10FFFF (`juce_CharPointer_UTF8.h:465-539`). Valid UTF-8 above
         // ASCII is untouched: a preset carrying `café` still loads.
         return juce::CharPointer_UTF8::isValidString (reinterpret_cast<const char*> (bytes + bom),
                                                       (int) (size - bom));
@@ -515,7 +515,7 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
     // `getSize()` describes the file at the instant it is asked; the read happens afterwards, and
     // anything may have replaced the file in between -- a sync client finishing a download, an
     // editor's save-over, another process writing the same name. `File::loadFileAsData`, which
-    // this used to call, re-stats and reads the WHOLE file (`juce_File.cpp:559-566`), so the
+    // this used to call, re-stats and reads the WHOLE file (`juce_File.cpp:581-588`), so the
     // replacement's entire content entered memory and then went on to the scans below with the cap
     // never re-applied: the one check that exists to keep an enormous file out of memory was
     // decided on a file that was no longer there.
@@ -548,7 +548,7 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
 
     // DECODED EXACTLY AS `loadFileAsString` DECODED IT, which is not a tidying but the point: that
     // function is `readEntireStreamAsString` -> `MemoryOutputStream::toString` -> this same call
-    // (juce_File.cpp:568-576, juce_InputStream.cpp:241-246, juce_MemoryOutputStream.cpp:207-210),
+    // (juce_File.cpp:590-598, juce_InputStream.cpp:241-246, juce_MemoryOutputStream.cpp:207-210),
     // so a byte-order mark and a UTF-16 preset still read precisely as they did before this guard.
     // `MemoryBlock::toString` would NOT do: it is `String::fromUTF8`, which keeps a UTF-8 mark as a
     // character and cannot read UTF-16 at all. The cast is bounded by the size check above.
@@ -1173,7 +1173,7 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 //  A preset write that is only reported as successful when the bytes are on disk.
 //
 //  WHY THIS EXISTS instead of `File::replaceWithText`. That function's write is
-//  UNCHECKED, in the pinned JUCE (9.0.4, 3fb5cbc034) at juce_File.cpp:798-803:
+//  UNCHECKED, in the pinned JUCE (9.0.5, d60b7a7803) at juce_File.cpp:820-825:
 //
 //      TemporaryFile tempFile (*this, useHiddenFile);
 //      tempFile.getFile().appendText (...);          // <-- bool result DISCARDED
@@ -1214,7 +1214,7 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
 //  `writeUserPreset` depends on, and it still holds. A write that fails is never
 //  promoted, and `~TemporaryFile` removes it, so the preset already on disk is
 //  left exactly as it was. The argument list below is `replaceWithText`'s own
-//  default set (juce_File.h:802-805), so a successful save writes byte-for-byte
+//  default set (juce_File.h:806-809), so a successful save writes byte-for-byte
 //  what it wrote before this change.
 static bool writeTextVerified (const juce::File& target, const juce::String& text)
 {
