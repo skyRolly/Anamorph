@@ -368,10 +368,12 @@ No dependency or format is added.
 **Accepted ADR-0071; owner approval: “approve ADR / dont merge PR”.**
 The immutable pin is `d60b7a78030661574a615b586d9325ba7a7fa7dd`; stale 9.0.4
 cache fields are refused alongside previous defaults. Custom pins/local comparisons and all codec
-exclusions remain. Current cache tests: 16 passing; the new old-cache test fails on baseline CMake
+exclusions remain. Current cache tests: 28 passing; the new old-cache test fails on baseline CMake
 for reaching the dependency boundary. Full automated evidence and remaining limitations are
 recorded in [the implementation worklog](../../worklogs/JUCE905_UPGRADE_REVIEW.md).
-**Level-5 remains Pending Human Acceptance.** No merge or release approval is granted.
+**Level-5 listening and native/manual acceptance PASS — owner-attested for JUCE 9.0.5**,
+recorded 2026-11-04 (Asia/Shanghai). Actual execution date and exact payload/environment binding
+are not supplied; see the reconciliation worklog. No merge or release approval is granted.
 
 For Git-backed FetchContent sources, `cmake/VerifyJuceSource.cmake` reports actual JUCE-root
 Git HEAD and refuses an
@@ -391,3 +393,15 @@ override, remains fatal. The unchanged `ANAMORPH_JUCE_PATH` branch permits inten
 comparisons. Neither unversioned override mode establishes the exact official commit for release
 or CI pin evidence; use a verified checkout for that evidence. The post-configuration check does
 not prevent JUCE's CMake/helper configuration from running and is not an untrusted-code boundary.
+
+
+## Damaged metadata and attestation reconciliation (ADR-0071)
+
+The archive exception requires **no `.git` directory entry**. Dangling symlinks, unreadable files
+or directories, malformed metadata and invalid/inaccessible metadata targets must not become
+archives. `EXISTS` is insufficient for both links and unreadable entries; CMake 3.22/3.31-tested
+literal entry detection preserves valid Git/worktree verification and no-Git archive warnings.
+The intended post-configuration guarantee is unchanged; pre-configuration acquisition/verification
+would be a separately reviewed design. Owner Level-5/native/manual PASS is current human evidence,
+not machine-measured host metadata. Exact missing provenance fields remain visible in
+`worklogs/juce905-review/acceptance-reconciliation.json`. Historical compliance rows are unchanged.

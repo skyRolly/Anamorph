@@ -365,3 +365,10 @@ and verified, and source build 1940 is retained in the manifest. Full provenance
 This recovery describes the superseded original candidate. The completed P1 replacement
 used normal Release 5, new draft 428664381 and annotated tag object `7229ec12` on `b085c87`,
 as recorded under "One-time unpublished 0.10.0 candidate supersession" above.
+
+
+JUCE 9.0.5 review reconciliation (recorded 2026-11-04 Asia/Shanghai): owner Level-5 listening
+and native/manual acceptance are **PASS — owner-attested** for the unmerged upgrade. Exact tested
+payload/source, execution date and environment details were not supplied. This acceptance is
+separate from historical releases and grants no merge/publication permission; current records:
+`worklogs/JUCE905_UPGRADE_REVIEW.md`. No release object, product version or commercial decision changes.

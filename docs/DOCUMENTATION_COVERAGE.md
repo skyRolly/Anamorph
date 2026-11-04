@@ -18933,3 +18933,15 @@ FetchContent archive overrides, strict Git/default pin checks and post-configura
 scope. Add archive/ancestor/broken-metadata regressions to the existing cache suite and retain
 execution evidence in `worklogs/juce905-review/review-followup.json`. Clarify normalized probe
 measurements without changing product parameters, state schema, DSP, formats or versions.
+
+
+## JUCE 9.0.5 owner acceptance and damaged-metadata reconciliation
+
+Record the new owner-attested Level-5/native/manual PASS, with actual execution date and exact
+tested payload/environment fields explicitly NOT RECORDED. Update live handover/compatibility/
+release-readiness/ADR/dependency/CI records while retaining dated history and no merge/release
+permission. Reproduce dangling and unreadable metadata archive misclassification; retain the
+post-configuration boundary under Accepted ADR-0071, with four alternatives and CMake evidence.
+Register `acceptance-reconciliation.json` and `metadata-review.json`; source-local regressions and
+before/after/partial-fix controls cover the corrected literal entry detection. Named-host rows,
+individual observations, product behavior/versions, fixtures and release objects are unchanged.

@@ -29,6 +29,14 @@ if(Git_FOUND)
     endif()
 endif()
 
+# EXISTS follows links and can also be false for unreadable entries. Only a
+# source with no .git directory entry qualifies for the archive exception.
+# Quote glob metacharacters in the parent path so it remains a literal path.
+string(REPLACE "[" "[[]" _anamorph_juce_metadata_pattern "${juce_SOURCE_DIR}")
+string(REPLACE "*" "[*]" _anamorph_juce_metadata_pattern "${_anamorph_juce_metadata_pattern}")
+string(REPLACE "?" "[?]" _anamorph_juce_metadata_pattern "${_anamorph_juce_metadata_pattern}")
+file(GLOB _anamorph_juce_git_metadata LIST_DIRECTORIES TRUE "${_anamorph_juce_metadata_pattern}/.git")
+
 if(_anamorph_juce_git_root)
     execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${juce_SOURCE_DIR}" rev-parse HEAD
         RESULT_VARIABLE _anamorph_juce_git_result
@@ -44,7 +52,7 @@ if(_anamorph_juce_git_root)
         message(FATAL_ERROR "Anamorph: JUCE source HEAD ${_anamorph_juce_head} does not match immutable pin ${ANAMORPH_JUCE_TAG}; reset the fetched checkout or use ANAMORPH_JUCE_PATH for an intentional comparison.")
     endif()
     message(STATUS "Anamorph: verified JUCE source HEAD ${_anamorph_juce_head} at ${juce_SOURCE_DIR}")
-elseif(_anamorph_juce_override AND NOT EXISTS "${juce_SOURCE_DIR}/.git")
+elseif(_anamorph_juce_override AND NOT _anamorph_juce_git_metadata)
     message(WARNING "Anamorph: unverified JUCE source override at ${juce_SOURCE_DIR}: no Git metadata rooted at this source directory. Trusted offline/development archives remain supported, but no immutable commit verification is claimed. Release/CI pin evidence requires a verifiable Git checkout.")
 else()
     # A normal fetched checkout, or an override with broken Git metadata, may
@@ -52,6 +60,8 @@ else()
     message(FATAL_ERROR "Anamorph: cannot verify JUCE source Git identity at ${juce_SOURCE_DIR}. A normal FetchContent build requires a verifiable JUCE Git checkout. Trusted source archives must be selected explicitly with FETCHCONTENT_SOURCE_DIR_JUCE or ANAMORPH_JUCE_PATH.")
 endif()
 
+unset(_anamorph_juce_metadata_pattern)
+unset(_anamorph_juce_git_metadata)
 unset(_anamorph_juce_override)
 unset(_anamorph_juce_git_root)
 unset(_anamorph_juce_root_result)

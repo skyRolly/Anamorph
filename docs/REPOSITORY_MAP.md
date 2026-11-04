@@ -351,3 +351,8 @@ plus `build_session_probe.py` reproduction helper. They are validation evidence,
 
 `worklogs/juce905-review/review-followup.json` records owner-review corrections, archive-override
 regressions, exact test/configuration evidence and final-head CI scope.
+
+
+`worklogs/juce905-review/acceptance-reconciliation.json` records the new 9.0.5 owner attestation,
+its scope and unsupplied provenance fields; `worklogs/juce905-review/metadata-review.json` records
+source-classification, before/after/partial-fix tests and retained configuration-order evidence.

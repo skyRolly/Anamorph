@@ -3,7 +3,9 @@
 The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) records
 executed old/new comparisons and the exact remaining native checklist. Linux GCC 14 comparisons
 are bit-identical (32 steady / five transitions and cross-version session renders); shipping-toolchain
-CI is recorded separately. Level-5 is **Pending Human Acceptance**; 9.0.4 attestations retain their scope.
+CI is recorded separately. Level-5 listening and native/manual acceptance are **PASS — newly owner-attested for 9.0.5**,
+recorded 2026-11-04 Asia/Shanghai. Exact tested payload/environment and execution date were not
+supplied; historical 9.0.4 attestations retain their scope.
 
 
 ## SpectrumImager teardown coverage — NR-029 / KI-037
@@ -475,7 +477,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`python3 tests/juce_cache_tests.py` runs 16 CMake cache/source-provenance regression tests
+`python3 tests/juce_cache_tests.py` runs 28 CMake cache/source-provenance regression tests
 (CMake, Ninja, Git and a C/C++ compiler required). They exercise the real top-level build file
 with a local JUCE stand-in: fresh/repeated configuration, previous 9.0.2/9.0.3/9.0.4 fields,
 full/partial resets, custom pins and intentional local comparisons. Git-backed source overrides
@@ -7385,3 +7387,13 @@ matching custom SHA must be reported before the deliberately minimal fixture rea
 missing-JUCE-function error. Bypassing the real check fails the mismatch test. No framework
 download or product build is required for these controls. Normal CI configuration records actual
 source HEAD; explicit product local-path overrides retain intentional old/new comparisons.
+
+
+JUCE metadata review (ADR-0071): the current 28-test suite includes dangling links,
+unreadable metadata files/directories, invalid links, valid metadata links/worktrees, no-Git
+checkout refusal, literal source paths and an executed post-configuration boundary marker.
+Symlink/permission fixture limitations are explicit unittest skips; POSIX chmod does not prove
+Windows ACL behavior. Original and IS_SYMLINK-only failures are retained in `metadata-review.json`.
+Owner Level-5/native/manual acceptance for 9.0.5 is **PASS — owner-attested**, recorded 2026-11-04
+Asia/Shanghai; exact tested payload/environment and individual observations are not supplied.
+No repeat acceptance is requested. Source-bound automated CI remains independently mandatory.

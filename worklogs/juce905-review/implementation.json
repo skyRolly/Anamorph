@@ -895,5 +895,7 @@
     "previous_full_ci_conclusion": "success",
     "new_final_head_ci": "pending; consult PR"
   },
-  "review_followup": "review-followup.json"
+  "review_followup": "review-followup.json",
+  "later_owner_acceptance_record": "acceptance-reconciliation.json (new 9.0.5 owner-attested PASS; original snapshot status retained as history)",
+  "later_source_metadata_review": "metadata-review.json"
 }

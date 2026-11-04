@@ -1,10 +1,18 @@
 # JUCE 9.0.5 investigation and architecture review packet
 
-**Current status — 2026-11-04:** the owner approved ADR-0071 (“approve ADR / dont merge PR”).
+**Current reconciliation — 2026-11-04 (Asia/Shanghai):** ADR-0071 remains Accepted;
+**Level-5 listening and native/manual acceptance PASS — owner-attested for JUCE 9.0.5**.
+Exact tested payload/environment provenance was not supplied. This new attestation supersedes
+only the earlier pending human-acceptance status, not the historical test/CI observations.
+See the final reconciliation section and `juce905-review/acceptance-reconciliation.json`.
+The damaged-metadata correction requires its own source-head CI; PR merge/release remain unauthorized.
+
+**Earlier implementation status — 2026-11-04:** the owner approved ADR-0071 (“approve ADR / dont merge PR”).
 The upgrade branch now pins JUCE 9.0.5. Sections 1–8 below preserve the original proposal-stage
 source/baseline observations, including the earlier missing-header failure. The implementation
 continuation at the end and `juce905-review/implementation.json` own subsequent execution status.
-Manual/native acceptance remains pending; the PR is not authorized to merge.
+At that earlier checkpoint manual/native acceptance was pending; the later owner attestation
+above supersedes that status. PR merge remains unauthorized.
 
 Recorded 2026-11-04 (Asia/Shanghai). **Proposal only; Pending Human Architecture Review.**
 Current CMake dependency remains 9.0.4. [Proposed ADR-0071](../docs/architecture/design-decisions/ADR-0071-juce-9.0.5-upgrade.md)
@@ -193,9 +201,11 @@ later results must be recorded with their own exact source/run, not silently app
 5. Investigate any changed number/state/host behavior before acceptance. Do not widen tolerances,
    rewrite fixtures, suppress diagnostics, change formats/platforms or remove negative controls.
 
-## 7. Exact native/manual acceptance worksheet
+## 7. Original native/manual acceptance worksheet — historical detail record
 
-Every item below is **Pending Human Acceptance for JUCE 9.0.5**. Record tester/date, exact
+At proposal time every item below was Pending Human Acceptance. The new owner attestation
+records overall Level-5/native/manual **PASS**; these original unchecked detail fields have no
+separately supplied per-scenario observations and do not request repeat acceptance. Original fields: tester/date, exact
 source SHA and artifact SHA-256, OS/CPU/architecture, DAW/version, format, device, rate/block,
 old/new configuration and individual observations. Use current Level-5 and release-compatibility
 procedures; older approval dates do not complete this worksheet.
@@ -399,3 +409,119 @@ The archive regression fails against the previous helper; immutable-mismatch and
 bypass controls are detected. A real extracted 9.0.5 archive configures all enabled product targets
 with the expected unverified-identity warning, while the existing Git source still reports exact
 `d60b7a78030661574a615b586d9325ba7a7fa7dd`. This configure does not claim archive-binary validation.
+
+
+## Human acceptance reconciliation and damaged-metadata review — 2026-11-04
+
+### New owner attestation
+
+The repository owner explicitly states in the current review instruction:
+
+> Level-5 listening: PASSED.
+>
+> Native/manual acceptance: PASSED.
+>
+> These confirmations apply to both projects' JUCE 9.0.5 upgrades.
+
+**Result: PASS — owner-attested for this JUCE 9.0.5 upgrade**, recorded 2026-11-04
+(Asia/Shanghai). This is new evidence, independent of the historical 9.0.4 sign-off.
+The recording date is not an asserted test execution date. The agent did not perform this
+listening or native/manual validation and does not request it again.
+
+Actual test execution date/time, tested source commit and payload SHA-256, machine/OS/CPU/architecture, DAW/version, plugin formats, device, sample rates/buffer sizes, programme/session identifiers and per-scenario observations were not supplied. The refreshed review context is source `cad7c6ff922189d17103d2a6044fa8f381965b7a` and JUCE
+`d60b7a78030661574a615b586d9325ba7a7fa7dd`; that known review head is not claimed as an
+owner-specified tested binary. The exact missing provenance fields remain **NOT RECORDED** in
+`juce905-review/acceptance-reconciliation.json`. No named host/platform row or per-item observation
+is manufactured from the broad attestation.
+
+| Gate / evidence | Current disposition |
+|---|---|
+| Architecture Review | ADR-0071 remains **Accepted** under the earlier owner approval |
+| Automated validation before this correction | Five workflows passed at `cad7c6ff922189d17103d2a6044fa8f381965b7a`; [Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/41795678721) |
+| Corrected-source automated validation | Must complete on its own head; the PR checks identify the tested source; no older CI is substituted |
+| Level-5 listening | **PASS — owner-attested**, new 9.0.5 acceptance |
+| Native/manual acceptance | **PASS — owner-attested**, new 9.0.5 acceptance |
+| Test execution / exact payload and environment binding | **NOT RECORDED**; fields listed above, distinct from the Passed attestation |
+| PR merge / release publication | **Not authorized**; PR stays open and auto-merge disabled |
+
+The correction changes only configuration-time rejection of damaged metadata, focused Python
+regressions and documentation. CMake target declarations, production `src/`, compiler/ISA/FP/LTO
+settings, codecs, product version, formats, state/DSP/latency contracts and JUCE pin are unchanged.
+Equivalent valid-source configuration commands are checked separately in `metadata-review.json`.
+New CI artifacts have their own source/run/build metadata; no byte-level identity with the owner's
+unspecified tested payload is inferred. This does not introduce a materially different audio/GUI
+implementation or require repeating the owner's acceptance. Exact artifact binding remains absent.
+
+### Finding A: confirmed locally; directory-entry detection selected
+
+The old helper admitted explicit overrides with a dangling `.git` symlink. On both CMake
+3.22.6 and 3.31.6, `EXISTS` is false for that link and for unreadable `.git` files/directories.
+The same defect was independently reproduced in this product's workspace. Each original helper
+reaches the deliberate product-target marker and emits the unverified-archive warning in all three
+cases. The regression tests fail against it.
+
+The suggested `AND NOT IS_SYMLINK` rejects the dangling-link case, but still admits unreadable
+regular files/directories; the partial-fix variant fails those two regressions. The selected
+correction checks whether a literal `.git` directory entry is present using CMake `file(GLOB
+... LIST_DIRECTORIES TRUE)`. Parent-path glob metacharacters are quoted. This distinguishes an
+absent entry from an unreadable or dangling entry without requiring Git or reading metadata contents.
+It is not a source-tree content hash or an execution sandbox.
+
+| Source supplied to the FetchContent branch | Disposition |
+|---|---|
+| Valid JUCE-root Git checkout / worktree / valid metadata symlink | Verify HEAD; an immutable pin must match |
+| Wrong immutable Git HEAD | Fatal mismatch before product targets |
+| Explicit archive with no `.git` entry, including no Git tool | Unverified-source warning; supported trusted offline/development input |
+| Explicit archive inside an unrelated parent repository | Warning; ancestor HEAD cannot establish JUCE identity |
+| Malformed metadata file, empty/broken directory, dangling or invalid metadata symlink | Fatal Git-identity failure; no archive fallback |
+| Unreadable metadata file/directory or inaccessible symlink target | Fatal; an existing directory entry cannot become an archive exemption |
+| Git metadata present but Git tool unavailable | Fatal; identity cannot be verified |
+| Ordinary fetched source with missing/damaged/unverifiable metadata | Fatal; explicit archive exception does not apply |
+| `ANAMORPH_JUCE_PATH` | Existing separately trusted local-comparison branch; no FetchContent verification claim |
+
+The 28-test cache/source suite passes on CMake 3.22.6 and 3.31.6, including valid Git/worktree
+and metadata symlink fixtures, wrong-pin refusal, original cache controls, explicit archives with
+and without Git, parent-repository isolation, dangling/invalid/unreadable metadata, literal paths
+and the post-configuration boundary. Linux fixtures run as UID 1000 with effective symlink and
+permission denial; no case is silently counted as passed. Symlink creation failures and unenforceable
+POSIX permission fixtures use explicit unittest skips with their reasons on other environments.
+Windows ACL behavior is not inferred from POSIX chmod tests. Before/after and partial-fix/mutation
+results are recorded in `juce905-review/metadata-review.json`; immutable-check bypass and
+reject-all-archive variants remain detectable.
+
+### Finding B: retain the documented post-configuration contract
+
+This is a correctly documented limitation, not a violation of a mandatory pre-execution guarantee.
+ADR-0071 and `DEPENDENCY_POLICY.md` explicitly select the existing FetchContent model and
+post-configuration provenance check. A stronger boundary is a possible future architecture proposal,
+not an implicit requirement of this review. No acquisition/configuration redesign is implemented.
+
+`FetchContent_Declare` records details; the actual source path may not exist until population.
+`FetchContent_MakeAvailable` obtains/reuses the source and calls `add_subdirectory` for JUCE's
+`CMakeLists.txt`. JUCE can perform package/compiler/platform checks, configure modules, and build
+its host `juceaide` helper before this verifier runs. With explicit source overrides, download/update
+is skipped but JUCE configuration still runs. `ANAMORPH_JUCE_PATH` directly configures a trusted local
+tree through its separate branch. Stale-cache checks remain before FetchContent.
+
+A runtime boundary regression writes a marker from dependency CMake and then observes the wrong-pin
+rejection. It proves that dependency configuration has already run, while product targets have not
+been admitted. Blindly moving the verifier before MakeAvailable would use unavailable or stale
+source state for a fresh fetch.
+
+| Alternative | Correctness / provenance guarantee | CMake, offline/override/cache behavior | Maintenance / architecture scope |
+|---|---|---|---|
+| **Retain MakeAvailable + post-check (selected)** | Enforces JUCE-root HEAD and immutable mismatch before product targets; no pre-execution or dirty-content guarantee | Existing 3.22/3.31 behavior, SHA/GIT_SHALLOW, cache migration and trusted archive/local overrides preserved | Minimal bug fix under Accepted ADR; no new architecture decision |
+| Precheck already available Git paths, then MakeAvailable | Can inspect known local sources but cannot guarantee fresh-fetch identity or final selected path before population; needs a subsequent actual-source check | Must handle absent source paths, reused caches, overrides and provider/package behavior explicitly | Duplicated/partial guarantee; broader reviewed design if adopted |
+| Separate acquisition → verification → add_subdirectory | Can gate JUCE's project CMake after population, while acquisition machinery still runs first | Legacy declared-name Populate works in 3.22 but is deprecated by CMP0169 in 3.31; explicit overrides and state properties need preservation; no pin/diagnostic relaxation permitted | New orchestration/version-policy ownership, requires Architecture Review |
+| Hybrid verified fetched Git / explicitly trusted local branches | Can give fetched sources a stronger project-configuration boundary, but intentionally leaves trusted archives/local paths outside it | Requires a supported split-acquisition design and explicit semantics for all source/provider/cache paths | Multiple paths and additional maintenance; architecture-gated redesign, not selected |
+
+The bundled CMake documentation was inspected at both installed patch versions:
+[3.22 FetchContent](https://cmake.org/cmake/help/v3.22/module/FetchContent.html),
+[3.31 FetchContent](https://cmake.org/cmake/help/v3.31/module/FetchContent.html),
+[3.31 CMP0169](https://cmake.org/cmake/help/v3.31/policy/CMP0169.html) and each version's `if`
+file predicates. MakeAvailable configures content before returning, explicit source-directory
+overrides skip download/update, and declared-name Populate is deprecated in 3.31. Retaining the
+approved model preserves reproducibility and offline behavior without inventing a pre-execution
+guarantee. Configure only trusted dependency sources.
+
+PR merge and release publication remain unauthorized. No release object or product version changes.

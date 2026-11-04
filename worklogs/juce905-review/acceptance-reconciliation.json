@@ -1,0 +1,115 @@
+{
+  "record_scope": "New owner-provided 9.0.5 acceptance; not historical 9.0.4 inheritance and not an agent-run audition. Record captured before publishing the damaged-metadata correction.",
+  "recorded_date": "2026-11-04",
+  "recorded_timezone": "Asia/Shanghai",
+  "product": "Anamorph",
+  "product_version": "0.10.0",
+  "juce_version": "9.0.5",
+  "juce_commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "owner_attestation": {
+    "source": "Current owner instruction in this task: RollyTech JUCE 9.0.5 — Review Corrections and Human Acceptance Reconciliation",
+    "attestor": "repository owner (user)",
+    "quotes": [
+      "Level-5 listening: PASSED.",
+      "Native/manual acceptance: PASSED.",
+      "These confirmations apply to both projects' JUCE 9.0.5 upgrades."
+    ],
+    "level5_listening": "Passed — owner-attested",
+    "native_manual_acceptance": "Passed — owner-attested",
+    "applies_to": "current JUCE 9.0.5 upgrade review",
+    "agent_performed_human_tests": false,
+    "execution_timestamp_supplied": false
+  },
+  "known_review_context": {
+    "refreshed_source_head": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+    "not_claimed_as_owner_tested_binary": true
+  },
+  "not_supplied_provenance_fields": {
+    "actual_test_execution_date_time": "NOT RECORDED — not supplied by owner",
+    "owner_tested_source_commit": "NOT RECORDED — not supplied by owner",
+    "owner_tested_payload_sha256": "NOT RECORDED — not supplied by owner",
+    "machine_os_cpu_architecture": "NOT RECORDED — not supplied by owner",
+    "daw_names_and_versions": "NOT RECORDED — not supplied by owner",
+    "plugin_formats_tested": "NOT RECORDED — not supplied by owner",
+    "audio_device": "NOT RECORDED — not supplied by owner",
+    "sample_rates_hz": "NOT RECORDED — not supplied by owner",
+    "buffer_sizes": "NOT RECORDED — not supplied by owner",
+    "programme_preset_session_identifiers": "NOT RECORDED — not supplied by owner",
+    "per_scenario_observations": "NOT RECORDED — not supplied by owner"
+  },
+  "architecture_review": {
+    "adr": "ADR-0071",
+    "status": "Accepted (existing owner approval; unchanged)"
+  },
+  "completed_prior_head_automated_validation": {
+    "captured_at_utc": "2026-11-04T12:34:56.643Z",
+    "product": "Anamorph",
+    "runs": [
+      {
+        "id": 41795685837,
+        "name": "CodeQL Advanced",
+        "event": "pull_request",
+        "head_sha": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41795685837",
+        "updated_at": "2026-11-04T08:26:32Z"
+      },
+      {
+        "id": 41795685823,
+        "name": "Dependency review",
+        "event": "pull_request",
+        "head_sha": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41795685823",
+        "updated_at": "2026-11-04T07:57:38Z"
+      },
+      {
+        "id": 41795685685,
+        "name": "Microsoft C++ Code Analysis",
+        "event": "pull_request",
+        "head_sha": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41795685685",
+        "updated_at": "2026-11-04T08:15:48Z"
+      },
+      {
+        "id": 41795685649,
+        "name": "Build & Validate",
+        "event": "pull_request",
+        "head_sha": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41795685649",
+        "updated_at": "2026-11-04T08:02:07Z"
+      },
+      {
+        "id": 41795678721,
+        "name": "Build & Validate",
+        "event": "push",
+        "head_sha": "cad7c6ff922189d17103d2a6044fa8f381965b7a",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/skyRolly/Anamorph/actions/runs/41795678721",
+        "updated_at": "2026-11-04T08:27:05Z"
+      }
+    ]
+  },
+  "corrected_head_automated_validation": {
+    "status_at_capture": "Pending publication and execution on its own corrected head",
+    "authoritative_subsequent_status": "https://github.com/skyRolly/Anamorph/pull/213"
+  },
+  "binding_assessment": {
+    "production_source_or_target_flags_changed": false,
+    "same_valid_source_compile_commands": "byte-identical; see metadata-review.json",
+    "changed_behavior": "Rejects dangling/unreadable Git metadata during configuration; valid sources have unchanged product build commands",
+    "materially_different_audio_gui_implementation": false,
+    "repeat_human_acceptance_requested": false,
+    "exact_owner_payload_binding": "NOT RECORDED; new CI build/source/artifact identities do not invent it"
+  },
+  "merge_authorized": false,
+  "release_publication_authorized": false,
+  "release_objects_changed": false
+}

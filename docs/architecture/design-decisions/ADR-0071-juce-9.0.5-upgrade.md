@@ -1,9 +1,14 @@
 # ADR-0071 — JUCE 9.0.4 → 9.0.5
 
+**Current human evidence:** Level-5 listening and native/manual acceptance **PASS — owner-attested
+for JUCE 9.0.5**, recorded 2026-11-04 (Asia/Shanghai); exact tested payload/environment fields
+are not supplied. The architecture status below remains Accepted, and no merge/release is authorized.
+
 **Status:** Accepted — 2026-11-04 (Asia/Shanghai), on the owner's explicit reply
 “approve ADR / dont merge PR” to the approval request for ADR-0071 and Anabasis ADR-0051.
 This clears the Architecture Review Gate for the scoped implementation below. It does not
-approve PR merge, release publication or unperformed manual acceptance. Proposed earlier
+approve PR merge or release publication. Human acceptance was separately owner-attested later;
+see the reconciliation evidence below. Proposed earlier
 the same day; the original investigation and its unavailable-build observations remain history.
 Amends ADR-0061's current dependency pin; its dated 9.0.4 evidence remains intact.
 
@@ -107,7 +112,7 @@ Apple Silicon CI matrix with both pluginval modes ×3 at the workflow strictness
 sanitizer/TSan/realtime/memcheck/fuzz/ABI/warning/source/docs/analysis/dependency gates and native
 packaging/symbol checks. Do not widen tolerances, regenerate fixtures or remove negative controls.
 
-**Pending Human Acceptance:** new Level-5 listening, DAW session reload/automation/PDC,
+**At proposal time — Pending Human Acceptance:** new Level-5 listening, DAW session reload/automation/PDC,
 editor/menu/scaling/accessibility/native OpenGL and relevant installation/packaging checks.
 The exact worksheet is in the worklog. Existing 9.0.4 attestations do not accept 9.0.5.
 
@@ -162,6 +167,9 @@ compatibility-correction scope; it does not relax ADR-0056's 256 KB/depth-8/no-D
 
 ## Observed implementation validation — 2026-11-04
 
+Historical snapshot before the new owner attestation: its pending status is superseded by the
+current human evidence above and the later reconciliation below; measured outcomes retain their scope.
+
 Both pins use equivalent current production source (comment-only `src/` diff), GCC 14 Release
 settings and fixtures in isolated Linux builds. All 32 committed DSP dump scenarios and five
 transitions have identical hashes and latency/trace metadata. Both full suites pass 945 DSP and
@@ -192,3 +200,29 @@ No independent unnormalized parameter measurement is claimed. The review follow-
 fresh tests/CI. The 16-case cache/source suite passes on CMake 3.22.6 and 3.31.6, and a
 full real-archive configure passes with the expected unverified-identity warning. Source-head
 CI remains separately required. Evidence is in the worklog and `review-followup.json`; no merge is authorized.
+
+
+## Human reconciliation and source-metadata correction — 2026-11-04
+
+The new owner attestation explicitly passes Level-5 listening and native/manual acceptance for
+JUCE 9.0.5. It is not inherited from 9.0.4 and does not grant merge/release permission. The owner
+is the attestor; 2026-11-04 (Asia/Shanghai) is the recording date, not an inferred execution date.
+Actual test execution date/time, tested source commit and payload SHA-256, machine/OS/CPU/architecture, DAW/version, plugin formats, device, sample rates/buffer sizes, programme/session identifiers and per-scenario observations were not supplied. The evidence fields and known review context are in
+`worklogs/juce905-review/acceptance-reconciliation.json`; named host rows are not fabricated.
+
+The confirmed damaged-metadata bug is corrected within this ADR's existing source-verification
+scope: an archive requires absence of a `.git` directory entry. `EXISTS` plus `IS_SYMLINK` alone
+still misses unreadable files/directories on both supported CMake versions. Literal directory-entry
+detection rejects those entries and dangling links while retaining real worktrees, valid metadata
+symlinks, immutable mismatch rejection, archive warnings, no-Git archive support and parent isolation.
+The 28-case suite passes on 3.22.6/3.31.6; original and partial-fix regressions are retained in
+`worklogs/juce905-review/metadata-review.json`.
+
+The post-configuration ordering is retained. This satisfies the already-selected contract and
+explicitly does not gate JUCE configuration-time execution. Moving verification ahead of source
+population is invalid for fresh sources; split-population/hybrid alternatives add build orchestration
+and CMake-version/provider policy ownership and would require a separately reviewed architecture
+change. The worklog records four alternatives, before-product-target boundary evidence and CMake
+source documentation. No target/compiler/codec/product/DSP/state/GUI/latency change is introduced.
+Fresh corrected-head CI remains mandatory; no prior success is substituted. Existing human
+acceptance remains recorded without a repeat request; exact payload binding is still not supplied.
