@@ -15,7 +15,11 @@ main is `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`, with JUCE 9.0.5 pinned at
 [Combined-main Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/42044417919),
 [CodeQL](https://github.com/skyRolly/Anamorph/actions/runs/42044417652), and
 [MSVC analysis](https://github.com/skyRolly/Anamorph/actions/runs/42044417697)
-were pending when this record was prepared; consult the runs for final results.
+completed successfully on `09cf1887`. Build selected 16 successful jobs; its
+merge-check and two optional macOS review jobs were intentionally skipped. Linux
+ran 945 DSP and 13,959 State checks, and strictness-10 VST3 pluginval passed
+deterministic and randomise modes three times each. The sanitizer lane also ran
+both suites under Valgrind with zero reported errors (leak checking disabled).
 The #216 merge's superseded Build run 42044253482 was cancelled by the next push.
 
 The [NR-026 runner](engineering-review/nr026-repro/README.md#source-bound-execution-after-integration)

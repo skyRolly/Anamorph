@@ -13,6 +13,8 @@ by the evidence verifier, including an additional corruption control. The callba
 the pending teardown gesture/Undo decision; ADR-0072 remains Proposed. The general
 State-suite filesystem exposure is a separate follow-up, not covered by the
 Linux diagnostic wrapper.
+Combined-main Build, CodeQL and MSVC analysis subsequently passed; the roadmap
+and release assessment retain their scope and the intermediate cancelled run.
 
 ## Preset path source-comment correction — 2026-11-05
 

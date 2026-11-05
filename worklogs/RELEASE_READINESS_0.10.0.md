@@ -12,6 +12,9 @@ tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0` still peels to
 with 11 assets. Product version remains 0.10.0. Current-source CI is not evidence
 about those draft assets, and candidate selection or release operations require
 separate authorization. Native and commercial/signing gates remain as below.
+The API digest for each of the 11 assets still matches the recorded inventory;
+the combined-main Build, CodeQL and MSVC runs passed on `09cf1887`, within their
+automated scope. No draft artifact was rebuilt or replaced.
 
 ## Current source and candidate assessment — 2026-11-05 UTC
 
