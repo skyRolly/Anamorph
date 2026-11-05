@@ -5,8 +5,35 @@ This is nonshipping evidence for Architecture Review. The product inputs are the
 `d60b7a78030661574a615b586d9325ba7a7fa7dd`. The runner refuses a different
 JUCE HEAD, a dirty JUCE tree, changed product build inputs, or an incomplete list
 of the five `juce_gui_basics` translation units. The source SHA in the ledger is
-for the product's build inputs; later documentation-only branch commits do not
-change those inputs.
+for the product's build inputs. The check is byte-sensitive, including comments.
+
+## Source-bound execution after integration
+
+Combined main `09cf18876d6ad09dabf9878fc0c719d0c49f10c7` includes PR #217's
+comment correction in `src/PresetManager.h`. That is the **only** difference
+from `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` in the runner's guarded
+`src`, `tests`, `CMakeLists.txt` and `cmake` paths. The runner correctly refuses
+that checkout with `product build inputs differ from the recorded source`. The
+changed lines are comments; no binary comparison has been made, so this does not
+claim binary identity or a current-main diagnostic result.
+
+Keep the original guard and recorded product identity. To rerun the historical
+procedure, use a clean detached worktree at the #216 merge, which contains this
+package and whose guarded inputs match the recorded product source:
+
+```bash
+git worktree add --detach ../anamorph-nr026-baseline f15236d5598efb5346a962643fecd1aca778a38a
+cd ../anamorph-nr026-baseline
+git diff --exit-code f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7 -- src tests CMakeLists.txt cmake
+```
+
+Then build and run the commands below **in that worktree**. Use fresh build and
+output directories and retain the resulting manifest separately: a new execution
+is a new observation, not the archived one. The original product commit alone
+does not contain this later reproduction package. A future current-source run
+would need its own exact source identity, build inputs, isolation and results;
+relaxing this guard or replacing the historical hash would conflate observations.
+The existing historical and isolated output identities remain unchanged.
 
 `original-probe.cpp` is byte-for-byte the `gui-inventory-probe-v2.cpp` content
 embedded in `gui-restore-lifetime.json` (SHA-256 `0d78b980…ae336a5`). Its
