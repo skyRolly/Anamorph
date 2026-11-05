@@ -24,6 +24,12 @@ work remains owner-deferred; NR-018/019 remain separate commercial/provisioning
 gates. The [candidate assessment](RELEASE_READINESS_0.10.0.md) distinguishes
 the protected draft from current source.
 
+PR #215's #214 CI-history correction and PR #216's NR-026 indexing/reproduction
+corrections are being prepared on their existing review stack; both remain open,
+unmerged and with auto-merge disabled. Their final pushed heads and checks are
+recorded in their review evidence after validation. No merge or release
+authorization follows from this documentation/evidence work.
+
 ## Historical #211 integration and #212 provenance review — before #212 merged
 
 Owner-authorized PR #211 merged as
@@ -2165,20 +2171,31 @@ balanced gesture. A held-knob press wheel also reproduces a product-side UAF in
 one gesture. Full current-pin State suite passes 13,959 checks; State 86/88 cover ordinary
 wheel/Undo but not teardown during the notification. No native incidence is established.
 
-ADR-0071 does not authorize further JUCE changes. The architecture package compares a bounded
-JUCE repair, product-owned wheel handling and retaining the risk. A dependency fix requires a
-human Architecture Review, exact patch/source identity and a validated exactly-once gesture cleanup
-design. No candidate selected and no production patch applied. See the
-[revalidation packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026-revalidation-on-integrated-juce-9-0-5--2026-11-05)
-and [evidence ledger](engineering-review/nr026-juce905.json).
+ADR-0071 does not authorize further JUCE changes. The architecture package evaluates a combined
+bounded JUCE plus product-continuation correction, product-owned wheel handling, retaining the
+documented risk, and deferring production implementation. A JUCE-only correction cannot resolve the
+separate held-wheel product continuation witness. Any dependency or event-model change requires
+human Architecture Review, exact source identity, compatibility review, and validated gesture and
+Undo behavior. Current disposition is defer pending the owner's architecture/risk selection; no
+production patch is applied. The [review packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026-revalidation-on-integrated-juce-9-0-5--2026-11-05),
+[reproduction package](engineering-review/nr026-repro/README.md) and
+[evidence ledger](engineering-review/nr026-juce905.json) retain the inputs and boundaries.
 
-**Next batch:** the owner/Architecture Review selects the NR-026 direction before any gated
-implementation. In parallel, continue a bounded source-backed audit of remaining Settings and
-parameter-attachment teardown callbacks not exercised by NR-024–029. A new correction requires an
-actual production entry point, a live control, a destructive ASan reproduction with relevant JUCE
-GUI modules instrumented, and checks for parameter, gesture and Undo/history outcomes with original
-and guard-removal controls. If that audit yields no witness, preserve current behavior. Native/DAW
-acceptance remains owner-deferred.
+**Bounded Settings/attachment audit — 2026-11-05:** inspected Oversampling and UI Scale internal
+combos, Scope Persistence's `juce::Value` binding and callback, Tooltips/UI Animations, the
+`InternalState` property listener, APVTS attachment-witness setup and timer-driven scale application.
+`applyUiScale` already checks a `Component::SafePointer` after synchronous resize/transform calls;
+the Scope Persistence consumer updates the Vectorscope value. Existing State 86/88 and the 13,959-
+check suite cover ordinary settings/state, wheel, gesture and Undo behavior, but not destruction
+inside each Settings notification. No concrete failing production entry point or actionable gap was
+found; this bounded negative result does not establish host-specific callback safety. No PR or
+production edit is justified. See the [source review](GUI_CALLBACK_LIFETIME_REVIEW.md#bounded-settings-and-attachment-lifecycle-audit--2026-11-05).
+
+**Next batch:** obtain the owner's NR-026 architecture/risk disposition before any gated
+implementation. Resume Settings/attachment investigation only with a new production-path witness or
+other evidence. Any correction requires a live control, destructive ASan reproduction with relevant
+JUCE GUI modules instrumented, and parameter, gesture and Undo/history oracles with original and
+guard-removal controls. Native/DAW acceptance remains owner-deferred.
 
 ### NR-027 — Scale and mode callbacks stop after synchronous editor destruction
 

@@ -14,8 +14,12 @@ NR-027's scale teardown probes retain separate original/fixed/guard-removal cont
 Historical standing-programme rounds retain their dated source scopes.
 
 The bounded [GUI callback lifetime review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
-and `worklogs/engineering-review/gui-restore-lifetime.json` retain NR-025 restore
-controls and the distinct NR-026 pinned-framework witness/decision boundary.
+explains the NR-025/026 investigation. Supporting engineering-review evidence keeps
+the [historical JUCE 9.0.4 witness](../worklogs/engineering-review/gui-restore-lifetime.json)
+and the [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.json)
+distinct. The [NR-026 reproduction package](../worklogs/engineering-review/nr026-repro/README.md)
+contains diagnostic sources, exact commands, and retained outputs. These records
+support review; the roadmap owns current execution status.
 
 ```
 Anamorph/
@@ -47,6 +51,10 @@ Anamorph/
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
 ├── worklogs/               Current forward execution register: NEXT_RELEASE_DEVELOPMENT_ROADMAP.md;
 │                           release execution/history: RELEASE_READINESS_0.10.0.md.
+│                           engineering-review/nr026-juce905.json — supporting NR-026
+│                           measurements and provenance, not an architecture decision.
+│                           engineering-review/nr026-repro/ — nonshipping probe sources,
+│                           reproduction procedure, and checksummed raw observations.
 │                           Session-local investigation records for future agents (NOT
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions

@@ -33,58 +33,266 @@
     "result": "Only 9.0.0 through 9.0.5 release tags were returned; 9.0.5 is d60b7a78030661574a615b586d9325ba7a7fa7dd. No later supported release tag was available to compare.",
     "disposition": "Do not treat the development default branch as an approved release candidate."
   },
-  "build": {
-    "system": "managed Linux native image",
-    "compiler": "GCC 14.2.0",
-    "cmake": "3.31.6",
-    "configuration": "CMake Release target AnamorphStateTests; exact JUCE 9.0.5 git checkout verified by CMake",
-    "instrumentation": "all five juce_gui_basics translation units, production PluginEditor.cpp and probe compiled with -O1 -g -fsanitize=address -fno-omit-frame-pointer; other linked product/JUCE objects from the same 9.0.5 Release target remain uninstrumented",
-    "negative_control": "same actual Width wheel interaction with editor kept alive; Xvfb used for the existing GUI fixture requirement",
-    "probe_source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
-    "held_probe_source_sha256": "e20828e57c312770529fe39d397f0723bbf2dca283accb01bbb6c8b5c9810c5a",
-    "command_manifest_sha256": "646f187ccc84037ae87f48b65aaa00ec609ea9b2b7c8305195ea1c2278f16cf6",
-    "result_sha256": "8270b9c2359a978e318c5e8fd3252846d96c84bd9991d2a3f0e83043c5f2a233",
-    "held_result_sha256": "b58226a41c71e71229f5094f4ca452c47cbbcd863374ffa87c5293cb0ee6182a",
-    "binary_sha256": "e8a8f508c05076fb2fe40f7ca7a7ffceaf8092a8c93b651d7a049d844b652cef",
-    "held_binary_sha256": "214d3a5eb966619328b19c7aff703213990a091f8448a50a68c6bf5c4f6c42d1"
-  },
-  "results": [
-    {
-      "case": "standalone-wheel-editor-live",
-      "exit": 0,
-      "width": "0.50 -> 0.53",
-      "gesture_begins": 1,
-      "gesture_ends": 1,
-      "asan": "clean"
-    },
-    {
-      "case": "standalone-wheel-editor-destroyed-synchronously",
-      "exit": 1,
-      "asan": "heap-use-after-free",
-      "read": "Slider::ScopedDragNotification::~ScopedDragNotification, JUCE 9.0.5 juce_Slider.cpp:1440",
-      "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
-    },
-    {
-      "case": "held-knob-press-wheel-editor-live",
-      "exit": 0,
-      "width": "0.50 -> 0.53",
-      "gesture_begins": 1,
-      "gesture_ends": 1,
-      "asan": "clean"
-    },
-    {
-      "case": "held-knob-press-wheel-editor-destroyed-synchronously",
-      "exit": 1,
-      "asan": "heap-use-after-free",
-      "read": "Slider::getValue via Knob::takeWheelNotch after setValue returns; wheelTakenByAnyPress dispatch path",
-      "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
-    }
-  ],
-  "existing_regression": "State suite on the same Release target: 13,959 checks, 0 failures. State 86 verifies normal wheel grouping/Undo; State 88 verifies a wheel notch during an owned held press and exact Undo. These tests do not destroy the editor during the wheel parameter notification.",
+  "existing_regression": "State suite on the same Release target: 13,959 checks, 0 failures. State 86 verifies normal wheel grouping/Undo; State 88 verifies a wheel notch during an owned held press and exact Undo. These tests do not destroy the editor during the wheel parameter notification. The 13,959-check state suite was also rerun in the new observation; retained stdout is checksummed in new_observation.",
   "limitations": [
     "Deterministic headless/Xvfb component reproduction, not DAW incidence or native host acceptance.",
     "ASan coverage is focused to Editor, probe and all juce_gui_basics translation units; linked JUCE parameter dispatch and other product objects are not ASan-instrumented.",
     "Teardown cases abort at the UAF, so their gesture close, Undo history and post-destruction completion are not validly observed.",
-    "No shipping dependency or production source was patched in this investigation."
-  ]
+    "No shipping dependency or production source was patched in this investigation.",
+    "Historical held-wheel source, command manifest, raw outputs and binaries are unavailable; only their prior hashes survive, and no historical log was reconstructed.",
+    "New held-wheel source is a separate probe based on State test 88; its SHA-256 and exact source bytes are retained.",
+    "New raw ASan stderr and stdout are committed with SHA-256 identities and validated by the package verifier.",
+    "New full state-suite output is retained; build outputs and 162 MB diagnostic binaries are not committed.",
+    "Both teardown runs abort at ASan; neither gesture completion nor Undo history is observed for those cases."
+  ],
+  "historical_run": {
+    "toolchain": {
+      "system": "managed Linux native image",
+      "compiler": "GCC 14.2.0",
+      "cmake": "3.31.6",
+      "configuration": "CMake Release target AnamorphStateTests; exact JUCE 9.0.5 git checkout verified by CMake",
+      "instrumentation": "all five juce_gui_basics translation units, production PluginEditor.cpp and probe compiled with -O1 -g -fsanitize=address -fno-omit-frame-pointer; other linked product/JUCE objects from the same 9.0.5 Release target remain uninstrumented",
+      "negative_control": "same actual Width wheel interaction with editor kept alive; Xvfb used for the existing GUI fixture requirement"
+    },
+    "summary": [
+      {
+        "case": "standalone-wheel-editor-live",
+        "exit": 0,
+        "width": "0.50 -> 0.53",
+        "gesture_begins": 1,
+        "gesture_ends": 1,
+        "asan": "clean"
+      },
+      {
+        "case": "standalone-wheel-editor-destroyed-synchronously",
+        "exit": 1,
+        "asan": "heap-use-after-free",
+        "read": "Slider::ScopedDragNotification::~ScopedDragNotification, JUCE 9.0.5 juce_Slider.cpp:1440",
+        "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
+      },
+      {
+        "case": "held-knob-press-wheel-editor-live",
+        "exit": 0,
+        "width": "0.50 -> 0.53",
+        "gesture_begins": 1,
+        "gesture_ends": 1,
+        "asan": "clean"
+      },
+      {
+        "case": "held-knob-press-wheel-editor-destroyed-synchronously",
+        "exit": 1,
+        "asan": "heap-use-after-free",
+        "read": "Slider::getValue via Knob::takeWheelNotch after setValue returns; wheelTakenByAnyPress dispatch path",
+        "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
+      }
+    ],
+    "unretained_materials": {
+      "standalone_probe": {
+        "sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+        "availability": "recovered byte-for-byte from the committed source-bound historical ledger; current file is independently hashed below"
+      },
+      "held_probe": {
+        "sha256": "e20828e57c312770529fe39d397f0723bbf2dca283accb01bbb6c8b5c9810c5a",
+        "availability": "source bytes unavailable; hash alone did not permit recovery; a new, separately identified held-wheel probe is included"
+      },
+      "command_manifest": {
+        "sha256": "646f187ccc84037ae87f48b65aaa00ec609ea9b2b7c8305195ea1c2278f16cf6",
+        "availability": "bytes unavailable; not reconstructed from summary"
+      },
+      "standalone_result": {
+        "sha256": "8270b9c2359a978e318c5e8fd3252846d96c84bd9991d2a3f0e83043c5f2a233",
+        "availability": "raw output unavailable; not reconstructed from summary"
+      },
+      "held_result": {
+        "sha256": "b58226a41c71e71229f5094f4ca452c47cbbcd863374ffa87c5293cb0ee6182a",
+        "availability": "raw output unavailable; not reconstructed from summary"
+      },
+      "standalone_binary": {
+        "sha256": "e8a8f508c05076fb2fe40f7ca7a7ffceaf8092a8c93b651d7a049d844b652cef",
+        "availability": "binary bytes unavailable"
+      },
+      "held_binary": {
+        "sha256": "214d3a5eb966619328b19c7aff703213990a091f8448a50a68c6bf5c4f6c42d1",
+        "availability": "binary bytes unavailable"
+      }
+    }
+  },
+  "new_observation": {
+    "kind": "new observation; rerun on 2026-11-05 UTC after the historical raw materials proved unavailable",
+    "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+    "execution_checkout": "ad14b3c43fc452f9b765c38b0482f8ee31b4776c",
+    "juce": {
+      "version": "9.0.5",
+      "commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "slider_cpp_sha256": "b0faf21b6bf1a36f33e7ebc5cb6b02eaf35b64f83423c08538a4b0f284a149e2"
+    },
+    "toolchain": {
+      "system": "Debian GNU/Linux 13 (trixie), x86_64",
+      "compiler": "c++ (Debian 14.2.0-19) 14.2.0",
+      "cmake": "cmake version 3.31.6",
+      "configuration": "CMake Release AnamorphStateTests target; verified Git JUCE override; standalone plugin target disabled",
+      "display": "Xvfb; separate XDG_CONFIG_HOME for each case"
+    },
+    "instrumentation": "five juce_gui_basics TUs, PluginEditor.cpp and probe; all other linked objects are uninstrumented",
+    "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+    "configure_command": [
+      "cmake",
+      "-S",
+      "/workspace/Anamorph",
+      "-B",
+      "/workspace/.anamorph-tools/build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DFETCHCONTENT_SOURCE_DIR_JUCE=/workspace/.anamorph-tools/JUCE",
+      "-DANAMORPH_BUILD_STANDALONE=OFF",
+      "-DCMAKE_PREFIX_PATH=/workspace/.anamorph-tools/root/usr"
+    ],
+    "build_command": [
+      "cmake",
+      "--build",
+      "/workspace/.anamorph-tools/build",
+      "--target",
+      "AnamorphStateTests",
+      "--parallel",
+      "2"
+    ],
+    "command_manifest": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/manifest.json",
+    "command_manifest_sha256": "7548b4e26ceb7a338643f8c5273791de301efa51dc81ab8f4f253fd866c5e319",
+    "raw_cases": [
+      {
+        "case": "standalone-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+        "stdout": "standalone-live.stdout",
+        "stdout_sha256": "b3a3e07ca5df2b6d0a3fc7ec7b7a331629010766a425a57529a5d77569661747",
+        "stderr": "standalone-live.stderr",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "case": "standalone-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+        "stdout": "standalone-close.stdout",
+        "stdout_sha256": "383699fbcb95b52a0d0027d100d0303e28e694c263387d6a0af8d9fb6b8569fe",
+        "stderr": "standalone-close.stderr.gz",
+        "stderr_sha256": "fbc7d3adabbdcaec106a6603cfad29b89336a940183ffb7befcd1da2e3dd2106"
+      },
+      {
+        "case": "held-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d",
+        "stdout": "held-live.stdout",
+        "stdout_sha256": "59e980a18a854c42d4a74b1da0fff35b52b0428f1d2f60950b61cb6c617f12e3",
+        "stderr": "held-live.stderr",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "case": "held-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d",
+        "stdout": "held-close.stdout",
+        "stdout_sha256": "6017d8433058ebbc4c081a94b171f9cb959da3fa8e3f983eec5a9ea6baec03c7",
+        "stderr": "held-close.stderr.gz",
+        "stderr_sha256": "9aa826ac0d60ad8a4ffc42b8f4c2d3ee033209166877aeabf9dc39c3e44a7a38"
+      }
+    ],
+    "state_suite": {
+      "command": [
+        "xvfb-run",
+        "-a",
+        "/workspace/.anamorph-tools/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+      ],
+      "checks": 13959,
+      "failures": 0,
+      "stdout": "state-suite.stdout",
+      "stdout_sha256": "f19fd4953764cea9bba79115d9650bbd3aa597a7f91077df7e059d903cc9357e",
+      "stderr": "state-suite.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "materials": [
+      {
+        "path": "worklogs/engineering-review/nr026-repro/README.md",
+        "sha256": "63fa83473b5e8b8dbd381de8e1d41d4c84245186a7fa94aed3346f9eee8e6d5f"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/original-probe.cpp",
+        "sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/held-wheel-probe.cpp",
+        "sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/run.py",
+        "sha256": "8448f0ffec1f93a4af0566aac2257a36f0bd3dbbae00aa4cb3c94ecd57d61679"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/verify.py",
+        "sha256": "eb0dd59c8f7cba700bdafbf94520d85867b075bf97cf54acec35bfdf5f567593"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/build.stdout",
+        "sha256": "f95634d146520a0ceb1beb2a42cb8246dc7d6e821fdf28adc7ac18dd7fddf5d7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/configure.stdout",
+        "sha256": "45462ea7c2b90edbf45dda29fb1bbcec07241470015aa1595e84f56b793a4b79"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-close.stderr.gz",
+        "sha256": "35424c304072b65b63c817b82da2a7b9864156fc1b205bfeb53d0a28dde777f8"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-close.stdout",
+        "sha256": "6017d8433058ebbc4c081a94b171f9cb959da3fa8e3f983eec5a9ea6baec03c7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-live.stdout",
+        "sha256": "59e980a18a854c42d4a74b1da0fff35b52b0428f1d2f60950b61cb6c617f12e3"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/manifest.json",
+        "sha256": "7548b4e26ceb7a338643f8c5273791de301efa51dc81ab8f4f253fd866c5e319"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-close.stderr.gz",
+        "sha256": "d2f53806c25d14dd7fad9ae48fc55c85e1546c7c0c423fe503e76f5ba770fb52"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-close.stdout",
+        "sha256": "383699fbcb95b52a0d0027d100d0303e28e694c263387d6a0af8d9fb6b8569fe"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-live.stdout",
+        "sha256": "b3a3e07ca5df2b6d0a3fc7ec7b7a331629010766a425a57529a5d77569661747"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/state-suite.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/state-suite.stdout",
+        "sha256": "f19fd4953764cea9bba79115d9650bbd3aa597a7f91077df7e059d903cc9357e"
+      }
+    ],
+    "binary_retention": "new run binaries were not committed; their hashes identify the locally executed bytes only. Rebuild from retained commands and sources.",
+    "historical_result_retention": "historical summaries are kept separately above; the old output hashes do not identify retained output bytes."
+  }
 }

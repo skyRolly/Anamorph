@@ -1,0 +1,56 @@
+[0/2] Re-checking globbed directories...
+[1/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_processors/juce_audio_processors.cpp.o
+[2/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_gui_extra/juce_gui_extra.cpp.o
+[3/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics_2.cpp.o
+[4/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics.cpp.o
+In file included from /workspace/.anamorph-tools/JUCE/modules/juce_core/system/juce_StandardHeader.h:108,
+                 from /workspace/.anamorph-tools/JUCE/modules/juce_core/juce_core.h:215,
+                 from /workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics.h:67,
+                 from /workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics.h:68,
+                 from /workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics.cpp:55:
+/workspace/.anamorph-tools/JUCE/modules/juce_core/system/juce_PlatformDefs.h:292:38: note: ‘#pragma message: This version of JUCE does not use the splash screen, the flag JUCE_DISPLAY_SPLASH_SCREEN is ignored’
+  292 |  #define JUCE_COMPILER_WARNING(msg)  _Pragma (JUCE_STRINGIFY (message (msg)))
+      |                                      ^~~~~~~
+/workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics.cpp:61:2: note: in expansion of macro ‘JUCE_COMPILER_WARNING’
+   61 |  JUCE_COMPILER_WARNING ("This version of JUCE does not use the splash screen, the flag JUCE_DISPLAY_SPLASH_SCREEN is ignored")
+      |  ^~~~~~~~~~~~~~~~~~~~~
+[5/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics_3.cpp.o
+[6/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics_4.cpp.o
+[7/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_gui_basics/juce_gui_basics_5.cpp.o
+[8/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_Harfbuzz.cpp.o
+[9/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_Sheenbidi.c.o
+[10/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libjpg_1.c.o
+[11/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libjpg_2.c.o
+[12/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics.cpp.o
+[13/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libjpg_3.c.o
+[14/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dec.c.o
+[15/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dsp_dec.c.o
+[16/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dsp_dec_avx2.c.o
+[17/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dsp_dec_sse41.c.o
+[18/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dsp_enc.c.o
+[19/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dsp_enc_avx2.c.o
+[20/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_dsp_enc_sse41.c.o
+[21/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_enc.c.o
+[22/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_sharpyuv.c.o
+[23/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libwebp_utils.c.o
+[24/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_libpng.c.o
+[25/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_graphics/juce_graphics_lunasvg.c.o
+[26/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_events/juce_events.cpp.o
+[27/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_core/juce_core_CompilationTime.cpp.o
+[28/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_core/juce_core_zlib.c.o
+[29/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_data_structures/juce_data_structures.cpp.o
+[30/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_processors_headless/juce_audio_processors_headless.cpp.o
+[31/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_processors_headless/juce_audio_processors_headless_ara.cpp.o
+[32/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_processors_headless/juce_audio_processors_headless_lv2_libs.cpp.o
+[33/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_core/juce_core.cpp.o
+[34/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_basics/juce_audio_basics.cpp.o
+[35/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_formats/juce_audio_formats_flac_1.c.o
+[36/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_formats/juce_audio_formats_flac_2.c.o
+[37/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_formats/juce_audio_formats_ogg.c.o
+[38/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_formats/juce_audio_formats_opus.c.o
+[39/45] Building C object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_formats/juce_audio_formats_opusfile.c.o
+[40/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_formats/juce_audio_formats.cpp.o
+[41/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_dsp/juce_dsp.cpp.o
+[42/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_audio_devices/juce_audio_devices.cpp.o
+[43/45] Building CXX object CMakeFiles/AnamorphStateTests.dir/workspace/.anamorph-tools/JUCE/modules/juce_opengl/juce_opengl.cpp.o
+[44/45] Linking CXX executable AnamorphStateTests_artefacts/Release/AnamorphStateTests

@@ -31,6 +31,11 @@ full State suite, limitations and source/output identities in
 NR-026, handover and candidate readiness; preserve State86/88 scope and deferred
 native acceptance. Prepare dependency alternatives under the Architecture Review
 gate. No product or JUCE source change is included before that disposition.
+The new ledger is classified as supporting engineering-review evidence and indexed
+in REPOSITORY_MAP, SOURCE_OF_TRUTH and README §Documentation alongside the
+historical 9.0.4 ledger. The new nonshipping reproduction procedure and retained
+diagnostic materials are also indexed/classified in those three surfaces. The
+ledgers remain supporting evidence rather than architectural authority.
 
 ## Historical #211 integration and #212 provenance audit
 
