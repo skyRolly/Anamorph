@@ -148,6 +148,14 @@ def main():
             finish(second)
             assert not root1.exists() and not root2.exists(), "normal cleanup left a profile"
 
+            disconnected, disconnected_root = ready_process(command, env)
+            processes.append(disconnected)
+            disconnected.stdin.close()
+            disconnected.stdin = None
+            _, error = disconnected.communicate(timeout=90)
+            assert disconnected.returncode == 3 and "isolation probe release failed" in error
+            assert not disconnected_root.exists(), "disconnected probe left a profile"
+
             replaced, root3 = ready_process(command, env)
             processes.append(replaced)
             moved = root3.with_name(root3.name + "-moved")
@@ -174,7 +182,7 @@ def main():
                 if proc.poll() is None:
                     proc.kill()
                     proc.communicate(timeout=90)
-    print("State filesystem isolation: save/load, concurrent roots, fail-closed setup, replacement and interruption controls passed")
+    print("State filesystem isolation: save/load, concurrent roots, fail-closed setup, disconnected release, replacement and interruption controls passed")
 
 
 if __name__ == "__main__":

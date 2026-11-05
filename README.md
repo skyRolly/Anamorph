@@ -182,7 +182,7 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 - **Rules (binding):** [`docs/policies/`](docs/policies/) (real-time audio, threading, DSP, compatibility, AI-agent)
 - **History & status:** [`CHANGELOG.md`](CHANGELOG.md) · [`docs/POSTMORTEMS.md`](docs/POSTMORTEMS.md) · [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) · [`docs/FUTURE_RISKS.md`](docs/FUTURE_RISKS.md)
 - **Callback investigation:** [review and decisions](worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) · [JUCE 9.0.4 evidence](worklogs/engineering-review/gui-restore-lifetime.json) · [JUCE 9.0.5 NR-026 evidence](worklogs/engineering-review/nr026-juce905.json) · [reproduction package](worklogs/engineering-review/nr026-repro/README.md) · [Proposed ADR-0072](docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md) (human review pending)
-- **Test isolation:** [Linux State-suite execution evidence](worklogs/engineering-review/state-isolation-linux-2026-11-05.json) (supporting engineering record)
+- **Test isolation:** [Linux State-suite execution evidence](worklogs/engineering-review/state-isolation-linux-2026-11-05.json) · [disconnect-control execution](worklogs/engineering-review/state-isolation-linux-2026-11-05-disconnect.json) (supporting engineering records)
 
 The documentation falls into **four classes**, kept deliberately separate:
 

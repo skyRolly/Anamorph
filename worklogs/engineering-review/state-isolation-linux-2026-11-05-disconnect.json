@@ -1,0 +1,48 @@
+{
+  "classification": "Additional local Linux regression evidence for the unmerged State isolation candidate after addressing the MSVC probe warning; not native DAW or release acceptance.",
+  "source_parent": "12a0129dbc9a8845aab871fa9ca5d0d5145d221c",
+  "source_identity": "Parent plus the exact source and test input hashes below; the prior local observation is preserved separately.",
+  "previous_record": "state-isolation-linux-2026-11-05.json",
+  "juce_commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0",
+  "cmake": "4.4.4",
+  "generator": "Ninja, Release, ANAMORPH_BUILD_STANDALONE=OFF",
+  "commands": [
+    "cmake --build /workspace/anamorph-tools/build-state --target AnamorphStateTests AnamorphTests --parallel 1",
+    "copy the rebuilt State executable to the run-tests.sh discovery directory",
+    "xvfb-run -a ./scripts/run-tests.sh"
+  ],
+  "inputs_sha256": {
+    "CMakeLists.txt": "da5db108adf080e1a367e6fe592fcb1898f17f2a89b37ac0427676f9f51ce40a",
+    "src/PresetManager.cpp": "216859f1e717c5d42b94944cdfad99390c7d886454207e07d474609e249d0337",
+    "src/PresetManager.h": "5d81cd433319f5535984ac53c2afe8f0673576e2a717073cfae68bd4544a6593",
+    "tests/state_tests.cpp": "ec19797f20b87b504c7817e01f738b11d4fea4dbc7ad016c3cf94f89fc683ce9",
+    "tests/p1_resolution_tests.h": "81c3fbd2d6c152f1c7499d6666180f0d05ed7caf135518e0f2dc102532118f19",
+    "tests/state_filesystem.h": "a80fa03e4cdda6128dbafbe00896fa985e7bafa3f1af1c0c2a731eeb7414f3cc",
+    "tests/state_isolation_tests.py": "7390342e72261570a199dfd44e4abcc0ba743253a6cdfa95acee136d9f5c3abe",
+    "scripts/run-tests.sh": "4e03247f1b173820e1c98be7913c17aebf4facedb0c64ddd86beac3ec57e0459",
+    ".github/workflows/build.yml": "9020234df255299f3ae79ed0a965d2dfc28415cb90f2b2897b37deb522965df4"
+  },
+  "binary_sha256": {
+    "AnamorphTests": "f8d3d769b47b97e5ca8ae0a50c2693044bcd65be51294e7b0f61583d075d0606",
+    "AnamorphStateTests": "6bdabd1aad1c128978a1017129e4e7552245a22ff68a3cf41ae048559635790f"
+  },
+  "result": {
+    "exit": 0,
+    "dsp_checks": 945,
+    "state_checks": 13959,
+    "failures": 0,
+    "isolation_controls": "passed, including disconnected probe returns failure and removes its owned root",
+    "scope": "fake caller homes and redirect, symlinked temporary parent, rejected preset/temp overlap, caller/temp sentinels, concurrent probe roots, failed setup, disconnected controller, replaced-root cleanup and termination"
+  },
+  "stdout": {
+    "path": "worklogs/engineering-review/state-isolation-linux-2026-11-05-disconnect.log.gz",
+    "raw_sha256": "3a89fe9cfd27b2789c1a15aaff725b62c55836f8b62bde1e3d9ed60fc0d80f45",
+    "gzip_sha256": "c6adc682af9acff6b6cb4de3b1383a0787db1c2f6c633343c77ffcbd3cdb54da"
+  },
+  "preceding_ci": {
+    "head": "12a0129dbc9a8845aab871fa9ca5d0d5145d221c",
+    "build": "https://github.com/skyRolly/Anamorph/actions/runs/42056675277",
+    "result": "16 selected jobs passed; three conditional skips. MSVC analysis left a review comment for an ignored getchar result in the test probe; this observation uses a later source delta."
+  }
+}

@@ -64,8 +64,18 @@ shipping-binary identity comparison.
 The initial review head `fe7024dd` [failed native-Intel macOS compilation](https://github.com/skyRolly/Anamorph/actions/runs/42053478101/job/127336364638):
 `std::filesystem` requires macOS 10.15 while this repository's deployment target
 is 10.13. The subsequent test-only correction uses `realpath` and exclusive
-`mkdir` on POSIX, keeping the existing deployment target; it needs fresh final-head
-Linux, macOS and Windows validation. The failed run remains a failure, not a pass.
+`mkdir` on POSIX, keeping the existing deployment target. Corrected head
+`12a0129d` completed [Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/42056675277):
+all 16 selected jobs passed and three conditional jobs skipped. The State suite and
+isolation controls actually ran on Linux, Windows, and both macOS configurations;
+the failed initial run remains a failure. MSVC analysis subsequently flagged an
+ignored return value in the new isolation probe. The follow-up makes a disconnected
+probe controller fail explicitly and checks cleanup on that path. Fresh checks are
+required on the resulting head; do not attribute the earlier green CI to it.
+The separate [Linux disconnect-control record](engineering-review/state-isolation-linux-2026-11-05-disconnect.json)
+retains its own input and binary hashes and output: 945 DSP and 13,959 State
+checks passed, including the new failure-and-cleanup control. The earlier
+execution record and output remain intact.
 
 Independent follow-up: `tests/fuzz_state.cpp` constructs a processor for each
 input, and the manager constructor calls `refresh()`, which enumerates the

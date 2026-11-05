@@ -45965,7 +45965,11 @@ int main (int argc, char* argv[])
         setRaw (proc, "width", 0.13f);
         if (! opCompleted (presets.loadFile (file)) || std::abs (rawOf (proc, "width") - 0.73f) > 1.0e-5f) return 3;
         std::printf ("STATE_ISOLATION_READY=%s\n", profile.directory().getFullPathName().toRawUTF8());
-        if (argc > 2 && std::strcmp (argv[2], "hold") == 0) std::getchar();
+        if (argc > 2 && std::strcmp (argv[2], "hold") == 0 && std::getchar() == EOF)
+        {
+            std::fprintf (stderr, "State tests: isolation probe release failed\n");
+            return 3;
+        }
         return 0;
     }
 
