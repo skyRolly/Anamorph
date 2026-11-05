@@ -1,5 +1,21 @@
 # Release readiness — 0.10.0 (draft only)
 
+## Integration update — 2026-11-05 UTC
+
+Owner-authorized #216 and #217 merged at `f15236d5598efb5346a962643fecd1aca778a38a`
+and `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`, respectively. The latter is the
+combined main at this checkpoint. ADR-0072 is still Proposed; NR-026/KI-035 is
+unresolved and neither a production correction nor risk retention is approved.
+The draft predates both integrations and the other post-tag work. The annotated
+tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0` still peels to
+`4c136881f245470577d66a7603f15b177ddcf3dc`; draft `429760301` remains unpublished
+with 11 assets. Product version remains 0.10.0. Current-source CI is not evidence
+about those draft assets, and candidate selection or release operations require
+separate authorization. Native and commercial/signing gates remain as below.
+The API digest for each of the 11 assets still matches the recorded inventory;
+the combined-main Build, CodeQL and MSVC runs passed on `09cf1887`, within their
+automated scope. No draft artifact was rebuilt or replaced.
+
 ## Current source and candidate assessment — 2026-11-05 UTC
 
 Read-only remote inspection: annotated tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`

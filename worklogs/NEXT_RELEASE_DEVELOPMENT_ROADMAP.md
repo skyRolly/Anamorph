@@ -4,6 +4,52 @@
 
 See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and actual post-merge CI. Prior roadmap entries below are dated snapshots.
 
+## #216 / #217 integration and follow-up — 2026-11-05 UTC
+
+Owner-authorized PR #216 merged as `f15236d5598efb5346a962643fecd1aca778a38a`;
+PR #217 followed as `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`. Both reviewed
+heads are merge parents in the ancestry and the combined tree equals the
+independently computed merge tree. No conflict resolution was needed. Current
+main is `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`, with JUCE 9.0.5 pinned at
+`d60b7a78030661574a615b586d9325ba7a7fa7dd` and product version 0.10.0.
+[Combined-main Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/42044417919),
+[CodeQL](https://github.com/skyRolly/Anamorph/actions/runs/42044417652), and
+[MSVC analysis](https://github.com/skyRolly/Anamorph/actions/runs/42044417697)
+completed successfully on `09cf1887`. Build selected 16 successful jobs; its
+merge-check and two optional macOS review jobs were intentionally skipped. Linux
+ran 945 DSP and 13,959 State checks, and strictness-10 VST3 pluginval passed
+deterministic and randomise modes three times each. The sanitizer lane also ran
+both suites under Valgrind with zero reported errors (leak checking disabled).
+The #216 merge's superseded Build run 42044253482 was cancelled by the next push.
+
+The [NR-026 runner](engineering-review/nr026-repro/README.md#source-bound-execution-after-integration)
+rejects combined main: its exact-byte product guard sees the #217 comment change
+in `src/PresetManager.h`. The #216 merge retains both the runner and the original
+guarded inputs and is the documented detached-worktree baseline. Its retained
+observations still verify; no current-tree observation or binary identity is
+claimed. The comment change does not authorize rewriting the historical source.
+An independent archival rerun on that worktree passed nine isolation controls
+and 13,959 State checks, then reproduced both live controls and both expected
+ASan teardown observations. Its [separate manifest and streams](engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/manifest.json)
+retain checkout, product, dependency, toolchain and command identities; the
+previous observations are unchanged. This is not a combined-main execution.
+
+NR-026/KI-035 remains unresolved, with two distinct component-test UAF paths.
+[ADR-0072](../docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+remains Proposed; ADR-0053 and ADR-0071 remain Accepted and binding. Continue D
+(defer production implementation) while the owner reviews the gesture/Undo
+contract and A/B/C alternatives. A merged proposal is not a design, risk or
+release approval. See the [decision packet](GUI_CALLBACK_LIFETIME_REVIEW.md#architecture-review-decision-package).
+
+The ordinary State executable is a separate isolation gap: its production
+`PresetManager` can read and write the caller's presets, while several fixed test
+names also live in the shared temporary directory. NR-026's Linux profile wrapper
+does not cover direct launches, normal scripts or other platforms. A bounded
+cross-platform test-only correction and platform execution evidence remain the
+next priority; do not run the existing unisolated suite against real user data.
+Deferred NR-006/010/014 and NR-013 native work and host/installation matrices remain
+pending. The older draft predates these changes; no release operation is authorized.
+
 ## Independent preset-path source audit — 2026-11-05 UTC
 
 The Linux NR-026 isolation investigation exposed a separate comment drift:

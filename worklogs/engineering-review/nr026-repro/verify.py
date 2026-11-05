@@ -176,6 +176,60 @@ def verify(root):
                         else b'Knob::takeWheelNotch')
             assert entry['exit'] == 1 and b'AddressSanitizer: heap-use-after-free' in stderr and location in stderr
 
+    # A separate execution from the integrated #216 checkout verifies that the
+    # documented archival worktree still runs; none of the earlier identities
+    # or observations are replaced by this result.
+    rerun = ledger['archival_rerun']
+    manifest_path = root / rerun['command_manifest']['path']
+    assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == rerun['command_manifest']['sha256']
+    for source in rerun['runner_inputs']:
+        assert hashlib.sha256((root / source['path']).read_bytes()).hexdigest() == source['sha256']
+    observed = json.loads(manifest_path.read_text())
+    assert observed['schema'] == 2
+    assert observed['checkout_head'] == rerun['execution_checkout']
+    assert observed['product_commit'] == rerun['product_source'] == ledger['product_source']
+    assert observed['juce_commit'] == rerun['juce_commit'] == ledger['dependency']['commit']
+    assert observed['state_suite'] == {'exit': 0, 'checks': 13959, 'failures': 0}
+    rerun_commands = {item['name']: item for item in observed['commands']}
+    assert len(rerun_commands) == len(observed['commands'])
+    for entry in observed['commands']:
+        assert 'exit' in entry and 'interrupted_or_failed_to_start' not in entry
+        for stream in ('stdout', 'stderr'):
+            raw = retained_stream(manifest_path.parent, entry[stream])
+            assert hashlib.sha256(raw).hexdigest() == entry[stream + '_sha256']
+    control = rerun_commands['isolation-controls']
+    assert control['exit'] == 0 and b'Ran 9 tests' in retained_stream(manifest_path.parent, control['stderr'])
+    state = rerun_commands['state-suite']
+    assert state['exit'] == 0 and b'13959 checks, 0 failure(s)' in retained_stream(manifest_path.parent, state['stdout'])
+    case_results = {item['case']: item for item in observed['results']}
+    assert set(case_results) == {'standalone-live', 'standalone-close', 'held-live', 'held-close'}
+    profiles = []
+    for name in ('state-suite', 'standalone-live', 'standalone-close', 'held-live', 'held-close'):
+        entry = rerun_commands[name]
+        home = Path(entry['environment']['HOME'])
+        profile = home.parent
+        assert profile.parent == Path('/tmp') and profile.name.startswith('anamorph-nr026-')
+        assert entry['resolved_paths'] == {'home': str(home), 'application_data': str(home / '.config'),
+                                           'preset': str(home / '.config/RollyTech/Anamorph/Presets'),
+                                           'temporary': str(profile / 'tmp')}
+        profiles.append(profile)
+        if name == 'state-suite':
+            continue
+        result = case_results[name]
+        assert result['exit'] == entry['exit'] and result['expected_outcome_observed'] is True
+        source = 'original-probe.cpp' if name.startswith('standalone') else 'held-wheel-probe.cpp'
+        assert result['source_sha256'] == hashlib.sha256((manifest_path.parent / (source + '.executed.txt')).read_bytes()).hexdigest()
+        stdout = retained_stream(manifest_path.parent, entry['stdout'])
+        stderr = retained_stream(manifest_path.parent, entry['stderr'])
+        if name.endswith('live'):
+            assert entry['exit'] == 0 and not stderr
+            assert all(token in stdout for token in (b'width=0.53', b'begins=1', b'ends=1'))
+        else:
+            location = (b'ScopedDragNotification::~ScopedDragNotification' if name.startswith('standalone')
+                        else b'Knob::takeWheelNotch')
+            assert entry['exit'] == 1 and b'AddressSanitizer: heap-use-after-free' in stderr and location in stderr
+    assert len(set(profiles)) == 5
+
 
 def self_test(root):
     with tempfile.TemporaryDirectory(prefix='nr026-evidence-control-', dir='/tmp') as tmp:
@@ -191,7 +245,8 @@ def self_test(root):
                  target / 'nr026-repro/path-probe.cpp',
                  target / 'nr026-repro/observed-isolated-2026-11-05/isolation-controls-final.stderr',
                  target / 'nr026-repro/observed-isolated-2026-11-05/mutation-process-group.stderr',
-                 target / 'nr026-repro/test_isolation_mutations.py']
+                 target / 'nr026-repro/test_isolation_mutations.py',
+                 target / 'nr026-repro/observed-archival-rerun-2026-11-05/standalone-live.stdout']
         for path in paths:
             original = path.read_bytes()
             path.write_bytes(original + b'altered')
@@ -214,7 +269,7 @@ def self_test(root):
             pass
         else:
             raise AssertionError('failed to reject altered case classification')
-    print('NR-026 evidence verifier: eight corruption controls passed')
+    print('NR-026 evidence verifier: nine corruption controls passed')
 
 
 if __name__ == '__main__':
@@ -226,4 +281,4 @@ if __name__ == '__main__':
         self_test(repository)
     else:
         verify(repository)
-        print('NR-026 evidence: historical and isolated identities and result oracles verified')
+        print('NR-026 evidence: historical, isolated and archival-rerun identities and result oracles verified')

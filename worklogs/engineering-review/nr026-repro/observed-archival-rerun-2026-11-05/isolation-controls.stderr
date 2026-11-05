@@ -1,0 +1,14 @@
+test_cleanup_refuses_a_replaced_root (__main__.IsolationTests.test_cleanup_refuses_a_replaced_root) ... ok
+test_interruption_stops_child_and_preserves_external_output (__main__.IsolationTests.test_interruption_stops_child_and_preserves_external_output) ... ok
+test_juce_user_dirs_escape_is_detected_and_refused (__main__.IsolationTests.test_juce_user_dirs_escape_is_detected_and_refused) ... ok
+test_legacy_xdg_only_profile_still_resolves_caller_home (__main__.IsolationTests.test_legacy_xdg_only_profile_still_resolves_caller_home) ... ok
+test_missing_or_altered_isolation_variables_fail_before_work (__main__.IsolationTests.test_missing_or_altered_isolation_variables_fail_before_work) ... ok
+test_parallel_invocations_are_separate (__main__.IsolationTests.test_parallel_invocations_are_separate) ... ok
+test_real_paths_and_preset_round_trip_do_not_touch_caller_home (__main__.IsolationTests.test_real_paths_and_preset_round_trip_do_not_touch_caller_home) ... ok
+test_symlink_escape_is_rejected_and_cleanup_does_not_follow_it (__main__.IsolationTests.test_symlink_escape_is_rejected_and_cleanup_does_not_follow_it) ... ok
+test_unusable_parent_fails (__main__.IsolationTests.test_unusable_parent_fails) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.835s
+
+OK

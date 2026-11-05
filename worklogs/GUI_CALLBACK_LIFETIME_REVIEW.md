@@ -61,6 +61,24 @@ or evidence that user files were actually modified.
 
 ### Architecture Review decision package
 
+**After #216/#217 integration:** ADR-0072 is Proposed, not Accepted. The two
+observed continuations remain separate: JUCE's standalone notification scope and
+the product's held-wheel continuation. The retained close cases terminate at ASan,
+so they establish neither post-destruction gesture closure nor Undo. The baseline
+and combined-tree guard limitation are documented in the
+[reproduction procedure](engineering-review/nr026-repro/README.md#source-bound-execution-after-integration).
+
+Accepted ADR-0053 already governs an active press owning its wheel, ordinary
+gesture/Undo grouping, and a no-edit burst adding no Undo step. State 86/88 cover
+the ordinary live cases. They do not decide who finishes a gesture when editor
+destruction occurs inside a callback. For an applied edit with a surviving
+processor, exactly one closure and a meaningful Undo step are a proposed testable
+contract, not an interpretation that changes an Accepted ADR. The owner must
+decide its scope, including destruction during begin/value/end, an interrupted
+no-edit interaction, processor destruction and reopening. A future implementation
+must show real begin/end counts and Undo/Redo with surviving witnesses, not merely
+a clean sanitizer exit.
+
 The Accepted ADR-0071 authorizes the JUCE 9.0.5 pin only. The Architecture Review Gate and
 Dependency Policy still require human review for a dependency source/pin/patch change. Do not
 interpret the passing JUCE upgrade acceptance or CI as approval for an added JUCE patch.

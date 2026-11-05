@@ -1,0 +1,10 @@
+In file included from /workspace/JUCE-9.0.5/modules/juce_audio_processors_headless/juce_audio_processors_headless.h:145,
+                 from /workspace/JUCE-9.0.5/modules/juce_audio_processors/juce_audio_processors.h:64,
+                 from /workspace/Anamorph-nr026/src/PluginProcessor.h:3,
+                 from /workspace/Anamorph-nr026/worklogs/engineering-review/nr026-repro/original-probe.cpp:1:
+/workspace/JUCE-9.0.5/modules/juce_audio_processors_headless/processors/juce_AudioProcessor.h:292:18: warning: ‘virtual void juce::AudioProcessor::processBlock(juce::AudioBuffer<double>&, juce::MidiBuffer&)’ was hidden [-Woverloaded-virtual=]
+  292 |     virtual void processBlock (AudioBuffer<double>& buffer,
+      |                  ^~~~~~~~~~~~
+/workspace/Anamorph-nr026/src/PluginProcessor.h:119:10: note:   by ‘virtual void AnamorphAudioProcessor::processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&)’
+  119 |     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+      |          ^~~~~~~~~~~~
