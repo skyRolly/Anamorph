@@ -6,7 +6,20 @@ records source-bound automated evidence and the new **PASS — owner-attested** 
 acceptance for 9.0.5 (recorded 2026-11-04 Asia/Shanghai). Exact tested payload/environment fields
 were not supplied. No release is authorized. Older attestations remain dated history.
 
-## Current handover — 2026-11-05 UTC
+## Current handover after #216/#217 — 2026-11-05 UTC
+
+Owner-authorized #216 merged at `f15236d5598efb5346a962643fecd1aca778a38a`
+and #217 at `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`, the current combined
+main at this checkpoint. ADR-0072 remains Proposed and NR-026/KI-035 remains
+unfixed; merging the review packet did not approve its production alternatives
+or accept release risk. The #217 comment makes the original NR-026 byte guard
+reject combined main; the [procedure](../worklogs/engineering-review/nr026-repro/README.md#source-bound-execution-after-integration)
+documents the source-matching worktree. Ordinary State-suite preset and shared
+temporary-file isolation remains a separate cross-platform follow-up. See the
+[execution register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) for current
+CI, deferred native work and release boundaries.
+
+## Historical handover before #216/#217 — 2026-11-05 UTC
 
 Remote main `b0a063d2db982e3b6cdd1c403abce08098d1cfa1` includes #207–#215.
 Owner-approved #215 merged with a tree identical to reviewed head `a43c9964`;

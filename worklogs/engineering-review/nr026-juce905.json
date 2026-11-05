@@ -638,5 +638,26 @@
         }
       ]
     }
+  },
+  "archival_rerun": {
+    "classification": "New execution of the original source-bound diagnostic; not a current-main observation or replacement of earlier results.",
+    "execution_checkout": "f15236d5598efb5346a962643fecd1aca778a38a",
+    "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+    "juce_commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+    "configure_argv": ["cmake", "-S", "/workspace/Anamorph-nr026", "-B", "/workspace/anamorph-tools/build-historical-2", "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", "-DFETCHCONTENT_SOURCE_DIR_JUCE=/workspace/JUCE-9.0.5", "-DANAMORPH_BUILD_STANDALONE=OFF"],
+    "build_argv": ["cmake", "--build", "/workspace/anamorph-tools/build-historical-2", "--target", "AnamorphStateTests", "AnamorphTests", "--parallel", "2"],
+    "command_manifest": {
+      "path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/manifest.json",
+      "sha256": "83767b791c2c32603ed356ca8cfb03960ac97f67677dcc343626d55870ac4dd8"
+    },
+    "runner_inputs": [
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/run.py.executed.txt", "sha256": "9be0be7f51e092d02205fff65d10ba0bfaa046c21fb40cd54cd73c341d4c8ab2"},
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/isolation.py.executed.txt", "sha256": "815abf208f8f5f16cf9d48a3874530e29be04b8e59087f302e7eb84e40bda0ae"},
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/path-probe.cpp.executed.txt", "sha256": "c8606eaa955a5e89225da26507ced779ab4403f0097f6689972acea9460e5be8"},
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/test_isolation.py.executed.txt", "sha256": "836febac43dd85852c5ffef45789fefd35e4d1f1a4f3b2efbaa716f8d4adcedc"},
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/native_validation.py.executed.txt", "sha256": "429f1affaa24fdc0d06247c9bdd425e256d0100eb557dc4b0b19a296bcfbf5b6"},
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/original-probe.cpp.executed.txt", "sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"},
+      {"path": "worklogs/engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/held-wheel-probe.cpp.executed.txt", "sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"}
+    ]
   }
 }
