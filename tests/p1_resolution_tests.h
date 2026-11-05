@@ -154,7 +154,7 @@ static void testFiniteParameterBoundaryAndRestoreWindow()
             parameter->setValueNotifyingHost (0.87f);
             p->setStateInformation (blob.getData(), (int) blob.getSize());
             checkNear (parameter->getValue(), parameter->getDefaultValue(), 1e-6, "unusable serialized session value retains the declared-default rule");
-            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+            const auto file = state_test_filesystem::temporaryDirectory
                 .getNonexistentChildFile ("AnamorphP1Finite", ".anamorph");
             check (file.replaceWithText (text), "the invalid-number preset fixture is written");
             check (opCompleted (p->getPresets().loadFile (file)), "the existing preset loader accepts the well-formed invalid-number fixture");

@@ -18,7 +18,60 @@ mechanism remains a separate cross-platform follow-up; do not assume changing
 only HOME or XDG variables isolates every platform.
 
 
-## Current integrated baseline — 2026-11-05 UTC
+## Cross-platform State filesystem follow-up — review branch
+
+The investigation starts from combined main `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`,
+after owner-authorized #216 (`f15236d5598efb5346a962643fecd1aca778a38a`) and #217.
+ADR-0072 remains Proposed; NR-026/KI-035 and the release/native gates remain open.
+
+Source inspection found that the ordinary State executable constructs the real
+`PresetManager`, including in State 8, 10, 12, 51/52/57, 109, 117, 130/131/133,
+141 and the state-hardening fixture. It enumerates the preset directory and
+some fixtures save, load, park, rename or delete files there. Fixed names under
+JUCE's temporary directory are another collision/cleanup surface. The diagnostic
+runner's isolated Linux profile does not protect those direct or normal CI runs.
+
+Pinned JUCE Linux uses `HOME`, reads `~/.config/user-dirs.dirs`, and otherwise
+uses `~/.config`; XDG_CONFIG_HOME alone does not override that implementation.
+macOS uses `NSHomeDirectory()` and `~/Library`; Windows asks the shell for
+`CSIDL_APPDATA`. JUCE uses TMPDIR on Linux/macOS and `GetTempPath` on Windows.
+These are source findings; no native host test is implied.
+
+The review-branch correction installs a unique test-owned preset root in the
+nonshipping State target before processor construction and moves its temporary
+fixtures under that root, retaining the real save/load/list code. It checks root
+identity and marker before cleanup, fails closed if setup fails, and leaves an
+owned temporary tree on forced termination. Direct-launch controls cover real
+save/load, separate concurrent roots, fake caller-home/temp sentinels during the
+complete suite and direct probes, invalid
+setup, replaced-root cleanup and interruption. This is not a hostile-user
+sandbox; the read-only production-path check can consult user configuration.
+Linux/macOS/Windows execution is established only by completed runs on the
+actual review head. NR-026's historical guard and production event architecture
+remain unchanged. The proposed correction is unmerged pending review.
+
+The local Linux Release run completed 945 DSP and 13,959 State checks with zero
+failures, plus the full-suite and direct-launch isolation controls. The separate
+[execution record](engineering-review/state-isolation-linux-2026-11-05.json)
+identifies the input and binary hashes, toolchain and retained output. A prior
+symlinked-build invocation failed at binary discovery and is recorded as setup
+failure. macOS and Windows execution for this candidate remains CI-dependent.
+With the test fixture macro omitted, normalized preprocessing of
+`PresetManager.cpp` matched combined main; retaining the macro produced a
+different output containing the test setter. This source control is not a
+shipping-binary identity comparison.
+
+Independent follow-up: `tests/fuzz_state.cpp` constructs a processor for each
+input, and the manager constructor calls `refresh()`, which enumerates the
+resolved user preset directory. The fuzz target does not install the State
+profile. This is a source-reviewed read/dependency on caller state, not evidence
+that fuzzing writes user presets: `encodeSelection`/`decodeSelection` carry
+metadata and do not open a preset file. The harness deliberately avoids JUCE
+static teardown at libFuzzer exit, so a State-style RAII profile needs its own
+lifetime and cleanup validation. Investigate separately before claiming fuzz
+isolation; no fuzz runtime observation was collected here.
+
+## Historical baseline before #216/#217 — 2026-11-05 UTC
 
 Owner-reviewed PR #215 merged as `b0a063d2db982e3b6cdd1c403abce08098d1cfa1`;
 its tree is identical to approved head `a43c9964d21a9c6332f4511a25458280309c3a85`.

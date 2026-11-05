@@ -474,6 +474,13 @@ public:
     // Empty when no processor wires it up -> isDirty always rebuilds (safe).
     std::function<juce::uint32 ()> soundParamGeneration;
 
+#if defined (ANAMORPH_FIXTURE_DIR)
+    // Compiled only into the nonshipping State/fuzz targets. The State harness
+    // installs its disposable directory before constructing any processor.
+    static void setTestPresetDirectory (const juce::File& directory) { testPresetDirectory() = directory; }
+    static juce::File& testPresetDirectory() { static juce::File directory; return directory; }
+#endif
+
 private:
     // ROUND 27 (R640): the halves the public entry points split into. `applyParsedFile` is
     // everything `loadFile` used to do after its parse, and `writeUserPreset` everything

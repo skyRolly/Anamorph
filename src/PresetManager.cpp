@@ -82,7 +82,6 @@ namespace
         bool fired = false;
     };
 }
-
 // ----------------------------------------------------------------------------
 PresetManager::PresetManager (juce::AudioProcessorValueTreeState& s) : apvts (s)
 {
@@ -93,13 +92,14 @@ PresetManager::PresetManager (juce::AudioProcessorValueTreeState& s) : apvts (s)
     sel = { Selection::Kind::factory, factoryPresets().front().id, {} };
     sigAtLoad = soundSig();
 }
-
 juce::File PresetManager::presetDirectory()
 {
+#if defined (ANAMORPH_FIXTURE_DIR)
+    if (testPresetDirectory() != juce::File()) return testPresetDirectory();
+#endif
     return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
               .getChildFile ("RollyTech").getChildFile ("Anamorph").getChildFile ("Presets");
 }
-
 void PresetManager::refresh()
 {
     list.clearQuick();

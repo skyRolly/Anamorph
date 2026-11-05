@@ -19012,3 +19012,13 @@ post-configuration boundary under Accepted ADR-0071, with four alternatives and 
 Register `acceptance-reconciliation.json` and `metadata-review.json`; source-local regressions and
 before/after/partial-fix controls cover the corrected literal entry detection. Named-host rows,
 individual observations, product behavior/versions, fixtures and release objects are unchanged.
+
+## State-suite filesystem isolation follow-up
+
+Document the nonshipping State preset-directory override, per-process temporary
+fixtures, safe cleanup limits and direct-launch controls in TESTING and CI_CD.
+The production preset writer/loader remains in the State executable. The
+filesystem contract and platform-evidence boundaries are recorded in the roadmap;
+the Linux-only NR-026 historical runner and its retained source identity stay intact.
+Index the separate local Linux execution ledger and compressed output as supporting
+evidence in the repository map, source-of-truth inventory and README navigation.

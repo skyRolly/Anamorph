@@ -1,5 +1,13 @@
 # CI_CD.md
 
+The Linux/macOS `run-tests.sh` path and the Windows State step run
+`tests/state_isolation_tests.py --full-suite` against the actual State executable,
+including the unchanged State suite; the DSP suite still runs separately. The controls exercise distinct concurrent
+test-owned roots, the real preset writer/loader, failed setup, replacement-root
+cleanup and termination. Individual direct State probes also initialise the
+test-only profile before constructing processors. The current workflow run is the
+source of execution results; this is not native DAW or release acceptance.
+
 The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) separates source-bound automated
 validation from human evidence. Level-5 listening and native/manual acceptance are now **PASS —
 owner-attested for 9.0.5**, recorded 2026-11-04 (Asia/Shanghai); exact tested payload/environment

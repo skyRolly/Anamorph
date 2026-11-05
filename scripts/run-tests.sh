@@ -80,4 +80,6 @@ STATE_TESTS="$(find_one AnamorphStateTests)"
 run_suite "$TESTS"
 
 echo
-run_suite "$STATE_TESTS"
+# Run the full State suite against disposable caller sentinels, then exercise
+# direct launches. Keep the optional architecture prefix and bash 3.2 guard.
+python3 "$ROOT/tests/state_isolation_tests.py" --full-suite -- ${TEST_RUNNER[@]+"${TEST_RUNNER[@]}"} "$STATE_TESTS"

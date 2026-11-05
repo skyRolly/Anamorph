@@ -38,6 +38,8 @@ contains nonshipping diagnostic sources, procedure and observed outputs. These
 records do not change Accepted latency/dependency contracts or authorize merges.
 Accepted ADRs and binding policies govern architecture; the roadmap owns current
 integration/approval status.
+The [State isolation Linux record](../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
+is supporting test evidence, not architectural authority or native acceptance.
 The NR-026 [ADR-0072 proposal](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
 is developer architecture-review material with **Proposed** status. It does not
 override Accepted ADR-0053/0071 or grant implementation, merge or risk acceptance.

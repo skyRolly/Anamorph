@@ -7,6 +7,42 @@ CI is recorded separately. Level-5 listening and native/manual acceptance are **
 recorded 2026-11-04 Asia/Shanghai. Exact tested payload/environment and execution date were not
 supplied; historical 9.0.4 attestations retain their scope.
 
+## State-suite filesystem isolation
+
+The State executable creates a fresh, uniquely named test-owned directory before
+constructing any processor, for the full suite and direct probe selectors. The
+nonshipping State build directs the real `PresetManager` to its `presets` child;
+save, load, enumeration and identity tests still execute the production manager.
+Test-created temporary files use a separate child of the same root. Failure to
+create or identify the root stops the process before tests run. The shipping build
+does not compile the test-directory override. The fuzz target also compiles the
+override under its existing fixture definition but does not install it; this
+change does not claim fuzz-process filesystem isolation.
+
+The parent is JUCE's OS temporary directory. The fixture resolves and compares the
+actual production preset path before installing the override, so on Linux that
+read-only check can consult the caller's `user-dirs.dirs`. It never enumerates or
+modifies the caller's presets. Directory identity and a unique marker are checked
+before cleanup; a replaced root or symlink is preserved. Normal exits remove the
+owned tree; a crash, SIGKILL, termination or machine loss can leave it under the
+temporary parent. Remove a leftover only after identifying it as test-owned.
+The mechanism is for accidental user-data and concurrency isolation, not a
+sandbox against a hostile process running as the same user. It does not confine
+all framework reads or arbitrary files supplied by a test.
+
+`tests/state_isolation_tests.py` launches the actual executable directly with a
+disposable caller profile. Its `--full-suite` mode runs every State test first
+and checks that caller-home and shared-temp sentinels remain unchanged. It then
+checks production save/load, two simultaneous
+distinct roots, setup failure, replacement with a copied marker, normal cleanup,
+termination and unchanged caller-home/shared-temp sentinels. `run-tests.sh` and
+the Windows CI State step use that full-suite mode; the shell path preserves any
+`ANAMORPH_TEST_RUNNER` prefix. CI execution on each platform
+is required evidence; source inspection of a platform is not an executed result.
+The [Linux execution record](../../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
+binds the local full-suite output to its source inputs and test binaries; it is
+supporting engineering evidence, not native acceptance.
+
 
 ## SpectrumImager teardown coverage — NR-029 / KI-037
 
@@ -311,14 +347,14 @@ saves passing. Under Accepted ADR-0067/0068 both are passing regressions in the 
 (State 146/148), with their focused CLI entry points retained. Expanded State 147/148 cover
 every parameter and complete nested callback state. Finite output alone is insufficient:
 the existing self-heal produces finite zeroes, so audio controls remain required.
-Run all state probes serially with the default suite because they share the process's
-preset folder. Direct State-suite invocations and `scripts/run-tests.sh` use the
-caller environment and can reach real presets; setting only `XDG_CONFIG_HOME` is
-insufficient with pinned JUCE on Linux. The nonshipping
+At this historical checkpoint, State invocations used the caller environment and
+could reach real presets; setting only `XDG_CONFIG_HOME` was insufficient with
+pinned JUCE on Linux. The subsequent [State filesystem fixture](#state-suite-filesystem-isolation)
+gives the current State executable a separate test-owned preset/temp root. The nonshipping
 [NR-026 reproduction wrapper](../../worklogs/engineering-review/nr026-repro/README.md)
 runs its complete suite and diagnostic cases with individually verified disposable
 HOME/config/temp directories, with negative, concurrency and interruption controls.
-This wrapper does not change the behavior of the general test commands.
+That historical wrapper is separate from the general State executable's fixture.
 
 `python3 scripts/check-release-notes.py --self-test` precedes the ordinary check in the same
 `source-lint` job. It permits customer changes, evidence citations and actual signing/CPU
@@ -5231,16 +5267,16 @@ spinners were starving the message thread they were supposed to be running under
 of what State test 39's 20.4 s was. Any new long-lived worker in this suite uses it, and asserts its
 non-vacuity counter.
 
-**One instance at a time.** The state suite writes into the REAL user preset folder (the production
-path — that is the point of it), parks and restores any genuine preset that shares a harness name,
-and several tests assert the folder's *listing* (row order, a deleted preset ticking nothing, a
+**Historical shared-folder concurrency finding.** Before the State filesystem fixture, the suite
+wrote into the real user preset folder, parked and restored same-named presets,
+and several tests asserted the folder's *listing* (row order, a deleted preset ticking nothing, a
 foreign file's position). Two instances running concurrently therefore read each other's files:
 measured in round 10, a plain run overlapping the `tsan` lane's own suite run failed State test 52
 leg (i) about 1 run in 9 — a probe preset reloaded with the other process's bytes — and two
 deliberately concurrent plain runs failed 2 and 8 checks across tests 10, 12, 13, 24 and 28. Nothing
-is wrong with any of those tests; the harness assumes exclusive use of the folder, as the CI jobs
-give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
-copy of itself.
+is wrong with any of those tests; the old harness assumed exclusive use of the folder. The current
+State executable gives each process its own preset/temp root and the direct-launch controls exercise
+overlap. Other resources and performance-sensitive measurements may still require serial execution.
 
 ### 0.9.10 focused state and host interaction coverage
 
@@ -5268,7 +5304,7 @@ host/text/restore semantics. `--restore-lock-probe` measures F9's outer-held-loc
 `--restore-reentry-probe` retains the original assertions and also runs inside State 148.
 It checks saves inside the latency callback so an adoption guard cannot hide a mixed snapshot;
 Accepted ADR-0068 fixes its former metadata failures by committing before the callback.
-Run state processes serially: these probes share the real preset folder, just like the full suite.
+These direct State probes initialise the same per-process filesystem fixture as the full suite.
 Evidence, negative controls, commands and environment limits:
 `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 
