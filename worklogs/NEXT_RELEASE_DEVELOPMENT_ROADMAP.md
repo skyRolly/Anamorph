@@ -2172,6 +2172,14 @@ design. No candidate selected and no production patch applied. See the
 [revalidation packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026-revalidation-on-integrated-juce-9-0-5--2026-11-05)
 and [evidence ledger](engineering-review/nr026-juce905.json).
 
+**Next batch:** the owner/Architecture Review selects the NR-026 direction before any gated
+implementation. In parallel, continue a bounded source-backed audit of remaining Settings and
+parameter-attachment teardown callbacks not exercised by NR-024–029. A new correction requires an
+actual production entry point, a live control, a destructive ASan reproduction with relevant JUCE
+GUI modules instrumented, and checks for parameter, gesture and Undo/history outcomes with original
+and guard-removal controls. If that audit yields no witness, preserve current behavior. Native/DAW
+acceptance remains owner-deferred.
+
 ### NR-027 — Scale and mode callbacks stop after synchronous editor destruction
 
 **Confirmed P1 on `29150f3`; implemented in commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`,
