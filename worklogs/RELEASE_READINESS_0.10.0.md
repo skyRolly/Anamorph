@@ -15,8 +15,8 @@ passed all 16 selected jobs, with three optional/routing jobs skipped. Attempts
 Level-5 listening and native/manual acceptance for the JUCE 9.0.5 upgrade are
 **PASS — owner-attested**, with exact tested payload/environment not recorded.
 That does not establish NR-006/010 performance budgets, the deferred NR-014
-UX/assistive and host matrix, or acceptance of a future candidate. NR-026's
-9.0.4 lifetime witness requires current-pin revalidation. Owner/legal distribution
+UX/assistive and host matrix, or acceptance of a future candidate. NR-026's Width-wheel UAF remains reproducible on integrated JUCE 9.0.5; the
+source-bound evidence and architecture gate are recorded in the roadmap and callback review. Owner/legal distribution
 and JUCE rights (NR-018) and signing/notarization provisioning (NR-019) are
 separate gates from technical/native acceptance.
 
@@ -28,6 +28,16 @@ separate gates from technical/native acceptance.
 | Defer selection | Retains all options while technical risks and human gates are assessed; provides no new release artifact. |
 
 No version, tag, asset, draft or publication operation is authorized by this assessment.
+
+### Current NR-026 release impact
+
+The 9.0.5 live-editor wheel/Undo controls pass, but synchronous editor destruction
+reproduces UAF in both standalone JUCE wheel scope and the held-knob product path.
+This remains a confirmed P1 release risk with no native incidence rate. The upgrade's
+owner-attested acceptance does not include this separately investigated failure mode.
+Any selected candidate that includes a correction needs its own final-source CI and
+applicable acceptance. Shipping the existing draft or current source with the issue
+requires explicit owner risk disposition; do not infer it from the upgrade attestation.
 
 ## Historical #211 integration and #212 provenance review — before #212 merged
 

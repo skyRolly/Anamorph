@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "date": "2026-11-05 UTC",
+  "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+  "dependency": {
+    "version": "9.0.5",
+    "commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+    "source_path": "modules/juce_gui_basics/widgets/juce_Slider.cpp"
+  },
+  "comparison": {
+    "previous": {
+      "version": "9.0.4",
+      "commit": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+      "slider_cpp_sha256": "250992695ada52dc4500a32c5d24eed908d645fc5e169c33c45e04977195d7d4"
+    },
+    "current": {
+      "version": "9.0.5",
+      "commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "slider_cpp_sha256": "b0faf21b6bf1a36f33e7ebc5cb6b02eaf35b64f83423c08538a4b0f284a149e2"
+    },
+    "relevant_change": "Only Slider.cpp difference is popup display DesktopWindowOptions.withAssociatedComponent; mouseWheelMove, ScopedDragNotification ctor/dtor, Slider header, SliderParameterAttachment and AudioProcessorParameter listener delivery are byte-identical between pins.",
+    "old_witness_path": "Slider::Pimpl::mouseWheelMove -> ScopedDragNotification(owner) -> synchronous setValue -> attached parameter listener destroys editor/Slider -> scope destructor reads sliderBeingDragged.pimpl.",
+    "current_source_lines": {
+      "wheel": "juce_Slider.cpp:1142-1171",
+      "scope": "juce_Slider.cpp:1432-1442",
+      "parameter_dispatch": "juce_AudioProcessorParameter.cpp:112-120",
+      "attachment": "juce_ParameterAttachments.cpp:189-241"
+    }
+  },
+  "build": {
+    "system": "managed Linux native image",
+    "compiler": "GCC 14.2.0",
+    "cmake": "3.31.6",
+    "configuration": "CMake Release target AnamorphStateTests; exact JUCE 9.0.5 git checkout verified by CMake",
+    "instrumentation": "all five juce_gui_basics translation units, production PluginEditor.cpp and probe compiled with -O1 -g -fsanitize=address -fno-omit-frame-pointer; other linked product/JUCE objects from the same 9.0.5 Release target remain uninstrumented",
+    "negative_control": "same actual Width wheel interaction with editor kept alive; Xvfb used for the existing GUI fixture requirement",
+    "probe_source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+    "held_probe_source_sha256": "e20828e57c312770529fe39d397f0723bbf2dca283accb01bbb6c8b5c9810c5a",
+    "command_manifest_sha256": "646f187ccc84037ae87f48b65aaa00ec609ea9b2b7c8305195ea1c2278f16cf6",
+    "result_sha256": "8270b9c2359a978e318c5e8fd3252846d96c84bd9991d2a3f0e83043c5f2a233",
+    "held_result_sha256": "b58226a41c71e71229f5094f4ca452c47cbbcd863374ffa87c5293cb0ee6182a",
+    "binary_sha256": "e8a8f508c05076fb2fe40f7ca7a7ffceaf8092a8c93b651d7a049d844b652cef",
+    "held_binary_sha256": "214d3a5eb966619328b19c7aff703213990a091f8448a50a68c6bf5c4f6c42d1"
+  },
+  "results": [
+    {
+      "case": "standalone-wheel-editor-live",
+      "exit": 0,
+      "width": "0.50 -> 0.53",
+      "gesture_begins": 1,
+      "gesture_ends": 1,
+      "asan": "clean"
+    },
+    {
+      "case": "standalone-wheel-editor-destroyed-synchronously",
+      "exit": 1,
+      "asan": "heap-use-after-free",
+      "read": "Slider::ScopedDragNotification::~ScopedDragNotification, JUCE 9.0.5 juce_Slider.cpp:1440",
+      "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
+    },
+    {
+      "case": "held-knob-press-wheel-editor-live",
+      "exit": 0,
+      "width": "0.50 -> 0.53",
+      "gesture_begins": 1,
+      "gesture_ends": 1,
+      "asan": "clean"
+    },
+    {
+      "case": "held-knob-press-wheel-editor-destroyed-synchronously",
+      "exit": 1,
+      "asan": "heap-use-after-free",
+      "read": "Slider::getValue via Knob::takeWheelNotch after setValue returns; wheelTakenByAnyPress dispatch path",
+      "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
+    }
+  ],
+  "existing_regression": "State suite on the same Release target: 13,959 checks, 0 failures. State 86 verifies normal wheel grouping/Undo; State 88 verifies a wheel notch during an owned held press and exact Undo. These tests do not destroy the editor during the wheel parameter notification.",
+  "limitations": [
+    "Deterministic headless/Xvfb component reproduction, not DAW incidence or native host acceptance.",
+    "ASan coverage is focused to Editor, probe and all juce_gui_basics translation units; linked JUCE parameter dispatch and other product objects are not ASan-instrumented.",
+    "Teardown cases abort at the UAF, so their gesture close, Undo history and post-destruction completion are not validly observed.",
+    "No shipping dependency or production source was patched in this investigation."
+  ]
+}

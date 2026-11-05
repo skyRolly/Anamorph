@@ -11,8 +11,8 @@ Remote `main` is `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` (PR #214). PRs
 #207/208/209/210/211/212/213/214 are merged; NR-023/024/025/027/028/029
 are integrated. #212 merged `82c98e45`, resolving KI-037 within its tested
 scope; retained controls and boundaries are in [INC-025](../docs/POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
-The 9.0.4 NR-026/KI-035 witness remains historical until tested on 9.0.5;
-Architecture Review is required before gated production changes.
+NR-026/KI-035 remains confirmed on JUCE 9.0.5; see the current revalidation
+packet below. Architecture Review is required before gated production changes.
 
 JUCE #213 post-merge [Build](https://github.com/skyRolly/Anamorph/actions/runs/41840722187),
 CodeQL and MSVC analysis succeeded on `18a51df`. The separate #214 main
@@ -1633,7 +1633,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
 | NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | State157 follow-up integrated by #211; actual main validation recorded above |
-| NR-026 | P1 | Current-pin revalidation pending | JUCE 9.0.4 wheel-scope teardown UAF; 9.0.5 must be tested | Human review before any gated implementation |
+| NR-026 | P1 | Confirmed on JUCE 9.0.5; Architecture Review pending | Standalone JUCE wheel-scope UAF plus held-wheel editor-lifetime witness; no production patch selected | Owner selects bounded dependency repair, product-owned path or risk hold before gated implementation |
 | NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and sanitizer controls | Native incidence unverified |
 | NR-028 | P1 | Completed / integrated #211 / c35a9d6b | Same-processor A→B→C→B parameter-trigger adoption cycle; guards already integrated #209 | Actual combined-main validation and preserved negative controls |
 | NR-029 | P1 | Completed / integrated #212 / 82c98e45 / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; original/fixed controls retained | Native incidence and broader acceptance remain unverified |
@@ -2155,16 +2155,22 @@ all first attempts, with historical unrelated signal exits still unattributed. [
 
 ### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
 
-Actual Width wheel plus synchronous parameter-listener editor deletion reproduces
-UAF inside JUCE9.0.4's `Slider::ScopedDragNotification` destructor. Rebuilding all
-actual GUI-basics TUs exposes the read; Editor-only ASan had missed it. Live
-control passes. No native occurrence rate or attribution of old signal exits.
-Hold production dependency changes for human Architecture Review. The
-[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026--ki-035--pinned-juce-wheel-teardown-review-packet)
-compares bounded dependency repair, product event redesign and retained risk;
-recommend a consistent nonshipping prototype including gesture cleanup before
-selecting an exact patch/version/ADR. No pin, dependency bytes or Accepted
-protocol changed. Continue independent source review while that decision is held.
+**Confirmed on integrated JUCE 9.0.5.** Exact 9.0.4/9.0.5 source comparison shows the
+Slider wheel and drag-scope code is unchanged; the only `juce_Slider.cpp` difference is popup
+window association. The original attached Width wheel plus synchronous editor destruction
+reproduces UAF in `ScopedDragNotification::~ScopedDragNotification` when all five GUI-basics TUs,
+the editor and probe are ASan-instrumented. Live wheel behavior changes Width 0.50→0.53 with one
+balanced gesture. A held-knob press wheel also reproduces a product-side UAF in
+`Knob::takeWheelNotch` after `setValue` returns to freed storage; its live control also balances
+one gesture. Full current-pin State suite passes 13,959 checks; State 86/88 cover ordinary
+wheel/Undo but not teardown during the notification. No native incidence is established.
+
+ADR-0071 does not authorize further JUCE changes. The architecture package compares a bounded
+JUCE repair, product-owned wheel handling and retaining the risk. A dependency fix requires a
+human Architecture Review, exact patch/source identity and a validated exactly-once gesture cleanup
+design. No candidate selected and no production patch applied. See the
+[revalidation packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026-revalidation-on-integrated-juce-9-0-5--2026-11-05)
+and [evidence ledger](engineering-review/nr026-juce905.json).
 
 ### NR-027 — Scale and mode callbacks stop after synchronous editor destruction
 

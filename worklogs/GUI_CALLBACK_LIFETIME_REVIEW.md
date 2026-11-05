@@ -1,5 +1,52 @@
 # GUI callback lifetime review — NR-025 / NR-026
 
+## NR-026 revalidation on integrated JUCE 9.0.5 — 2026-11-05
+
+**Disposition: confirmed still present; architecture/dependency review remains required.** The
+9.0.4 and 9.0.5 `juce_Slider.cpp` files differ only in Slider popup-window association. The
+wheel path (`Pimpl::mouseWheelMove` → `ScopedDragNotification` → synchronous `setValue`) and
+scope constructor/destructor are unchanged. JUCE Slider header, parameter attachment and
+parameter listener delivery files are byte-identical between pins. Exact source identities and
+paths are recorded in the [revalidation evidence](engineering-review/nr026-juce905.json).
+
+The original Width wheel probe was recovered byte-for-byte from the source-bound ledger. CMake
+configured the real `AnamorphStateTests` target against verified JUCE `d60b7a78030661574a615b586d9325ba7a7fa7dd`.
+The editor, probe and all five actual `juce_gui_basics` translation units were ASan-instrumented;
+other linked objects were unchanged. Under Xvfb the live control changes Width 0.50→0.53, sends
+one gesture begin/end, exits 0 and reports no ASan error. Synchronous editor destruction during
+the same notification reports UAF in `juce::Slider::ScopedDragNotification::~ScopedDragNotification`
+at JUCE `juce_Slider.cpp:1440`; the storage is freed by the Width parameter listener dispatch.
+This confirms the original NR-026 failure still occurs under 9.0.5.
+
+A separate held-knob-press probe also uses the production event route. Its live control changes
+Width 0.50→0.53 and balances one begin/end. When the same listener destroys the editor, ASan
+reports a second read-after-destruction at `Slider::getValue()` inside `Knob::takeWheelNotch`,
+after its synchronous `setValue` returns to freed component storage. The dispatcher reaches this
+via `wheelTakenByAnyPress`. This is a companion product-side lifetime witness in the held-wheel
+path; it does not replace or resolve the standalone JUCE scope failure.
+
+On the same exact target, the full State suite passes 13,959 checks. State 86 confirms ordinary
+scroll grouping and Undo; State 88 confirms an in-press wheel notch and Undo. Neither drives
+synchronous editor destruction from the Width notification. The teardown cases terminate at ASan,
+so gesture cleanup, Undo state and further teardown are not certified for those cases. This is a
+deterministic component reproduction, not DAW incidence or native/manual acceptance. Exact commands,
+source hashes, output identities and limitations are in the linked JSON. No product or dependency
+source was changed during this investigation.
+
+### Architecture Review decision package
+
+The Accepted ADR-0071 authorizes the JUCE 9.0.5 pin only. The Architecture Review Gate and
+Dependency Policy still require human review for a dependency source/pin/patch change. Do not
+interpret the passing JUCE upgrade acceptance or CI as approval for an added JUCE patch.
+
+| Candidate | Evidence and costs | Gate / disposition |
+|---|---|---|
+| Bounded JUCE repair | The invalid read is JUCE's RAII drag scope retaining a `Slider&` across synchronous listener delivery. A repair must safely handle component and Pimpl destruction, preserve exactly-once begin/end for a live slider, and define gesture cleanup if the slider dies during dispatch. A pointer-only check after `Slider::mouseWheelMove` cannot stop the current destructor read. | Dependency/build change; requires a proposed ADR, exact source diff and JUCE patch identity, compatibility review and owner Architecture Review before implementation/integration. No exact patch selected yet because gesture ownership on destruction needs a validated design. |
+| Product-owned wheel handling | Could avoid JUCE's standalone scope, but must reproduce delta direction, interval floor, snapping, duplicate filtering, attachment notification and one-step Undo. It also needs stack-owned component checks after synchronous writes. Broadens ownership beyond this proven event and risks Accepted ADR-0053 semantics. | Keep as an alternative for review; no product redesign selected without focused prototype and differential regression. |
+| Retain current JUCE and document risk | Preserves approved dependency provenance and current event behavior; leaves both verified teardown paths reachable under the tested synchronous-destruction premise. | A hold disposition, not a correction. Requires an explicit owner risk/release disposition if shipping while unresolved. |
+
+Recommended review question: select whether to pursue a bounded upstream JUCE repair or a product-owned wheel path, with gesture cleanup and Undo acceptance conditions above. If a dependency patch is selected, the follow-up implementation must be separately authorized after Architecture Review. Native DAW incidence remains unknown and no manual host run was initiated.
+
 ## Current integrated restoration and SpectrumImager review
 
 PR #211 is integrated at `c35a9d6b` with State157 A→B→C→B coverage; its production

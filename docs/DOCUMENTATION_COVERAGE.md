@@ -13,6 +13,17 @@ history. The exact-main macOS capacity cancellation, separate successful #213
 runs, owner attestation limits, deferred native gates and unchanged draft are
 recorded without implying release authorization.
 
+## NR-026 current JUCE 9.0.5 revalidation
+
+Compare the pinned 9.0.4 and 9.0.5 Slider/attachment/listener sources and rerun
+the recovered original probe with the actual JUCE GUI implementation under ASan.
+Record standalone and held-wheel teardown witnesses, live behavior, gesture results,
+full State suite, limitations and source/output identities in
+`engineering-review/nr026-juce905.json` and the callback worklog. Update KI-035,
+NR-026, handover and candidate readiness; preserve State86/88 scope and deferred
+native acceptance. Prepare dependency alternatives under the Architecture Review
+gate. No product or JUCE source change is included before that disposition.
+
 ## Historical #211 integration and #212 provenance audit
 
 Record the owner-authorized #211 merge `c35a9d6b` and retain States155–157 plus
