@@ -12,9 +12,10 @@ Remote main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` includes #207–#214.
 NR-029/KI-037 was integrated through #212 (`82c98e45`), with source and
 regression provenance in [INC-025](POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
 NR-026's ASan witness is for JUCE 9.0.4 and requires current-pin revalidation.
-The latest main Build run [41861863098](https://github.com/skyRolly/Anamorph/actions/runs/41861863098)
-failed after an unacquired macOS ARM runner was cancelled; JUCE #213's separate
-post-merge Build, CodeQL and MSVC runs succeeded. Owner-deferred native acceptance,
+The #214 main Build [attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
+completed successfully with 16 selected jobs passed and three optional/routing
+jobs skipped; attempts 1–5 had cancelled macOS jobs. JUCE #213's separate
+post-merge Build, CodeQL and MSVC runs also succeeded. Owner-deferred native acceptance,
 commercial and signing/provisioning decisions, and the unchanged draft remain
 separate; see the [release assessment](../worklogs/RELEASE_READINESS_0.10.0.md).
 

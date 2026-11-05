@@ -16,10 +16,10 @@ Architecture Review is required before gated production changes.
 
 JUCE #213 post-merge [Build](https://github.com/skyRolly/Anamorph/actions/runs/41840722187),
 CodeQL and MSVC analysis succeeded on `18a51df`. The separate #214 main
-[Build](https://github.com/skyRolly/Anamorph/actions/runs/41861863098) failed
-because its macOS ARM job was not acquired and was cancelled after capacity
-constraints; other selected jobs succeeded, optional jobs were skipped. This is
-not a complete exact-main pass or a product-test failure. Native NR-006/010/014
+[Build attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
+completed successfully: all 16 selected jobs passed and three optional/routing
+jobs were skipped. Attempts 1–5 had one or more cancelled macOS jobs; retain
+that runner history without treating it as the final result. Native NR-006/010/014
 work remains owner-deferred; NR-018/019 remain separate commercial/provisioning
 gates. The [candidate assessment](RELEASE_READINESS_0.10.0.md) distinguishes
 the protected draft from current source.
