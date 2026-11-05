@@ -133,17 +133,24 @@ namespace state_test_filesystem
             return false;
         }
 
-        ~Profile()
+        bool cleanup()
         {
-            if (root == juce::File()) return;
+            if (root == juce::File()) return true;
             // Never follow a replaced root/symlink or remove an unmarked tree.
             // This is an accidental-collision safeguard, not a hostile-user sandbox.
             if (root.isSymbolicLink() || root.getFileIdentifier() != rootIdentifier
                 || marker.isSymbolicLink() || ! marker.existsAsFile()
                 || marker.loadFileAsString() != token || ! root.deleteRecursively (false))
+            {
                 std::fprintf (stderr, "State test profile preserved; cleanup refused or failed: %s\n",
                               root.getFullPathName().toRawUTF8());
+                return false;
+            }
+            root = juce::File();
+            return true;
         }
+
+        ~Profile() { (void) cleanup(); }
 
         const juce::File& directory() const { return root; }
 

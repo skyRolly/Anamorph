@@ -19029,6 +19029,14 @@ individual observations, product behavior/versions, fixtures and release objects
 
 ## State-suite filesystem isolation follow-up
 
+The separate fuzz follow-up inventories per-input profile setup/cleanup in
+`fuzz_state.cpp` and `tests/fuzz_isolation_tests.py` in TESTING §Fuzz filesystem
+lifecycle and CI_CD. Actual entry-point inputs, repeated callbacks, concurrent
+processes, normal exit, controlled EOF, replaced-root refusal, forced kill,
+invalid-parent and override-bypass controls are distinguished. JUCE global teardown
+remains intentionally absent. Linux-only fuzz evidence and throughput limits do
+not extend State-suite cross-platform claims or imply preset-write damage.
+
 PR #219 review corrections: TESTING §State-suite filesystem isolation now inventories
 the existing disconnected-controller EOF case (post-readiness stdin close, expected
 exit 3 / `isolation probe release failed`, owned-root cleanup) separately from

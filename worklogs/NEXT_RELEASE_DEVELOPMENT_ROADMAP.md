@@ -1,5 +1,25 @@
 # Next release investigation and development roadmap
 
+## Separate fuzz isolation candidate — 2026-11-05 UTC
+
+Based on corrected PR #219 `b2e36abf`, as a separately reviewable dependent branch.
+The earlier one-input Linux trace established enumeration only, not preset writes,
+damage or an actual libFuzzer/sanitizer result. Source confirms refresh at each
+processor constructor, making caller-specific preset enumeration a reproducibility
+dependency. Selected candidate: per-input disposable storage, with processor
+destruction then checked filesystem cleanup before callback return. Reuse the
+nonshipping seam/ownership checks without reusing State's process-level JUCE
+teardown. The existing intentionally leaked JUCE initialiser stays unchanged.
+
+Alternatives: process-lifetime profile with exit cleanup risks exit-handler order;
+controller-only cleanup does not protect direct fuzz launches; preserving current
+enumeration retains caller-state dependence. Per-input storage has added IO cost,
+to be measured from actual campaign statistics rather than hidden by a larger budget.
+Dedicated actual-entry lifecycle controls cover repeat/concurrency/exit, EOF,
+replacement refusal, forced kill, setup failure and override bypass. Fresh native
+entry and CI libFuzzer/sanitizer results are required; no cross-platform fuzz or
+user-data damage claim is made. This candidate stays separate from Wheel design.
+
 ## Current continuation — PR #219 review corrections (2026-11-05 UTC)
 
 Remote `main` is `c2f8f19b87daae709c015a062a8b771f049da012`, the owner-merged

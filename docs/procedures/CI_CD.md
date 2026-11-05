@@ -1,5 +1,12 @@
 # CI_CD.md
 
+The Linux `fuzz` job now runs `tests/fuzz_isolation_tests.py` on its just-built
+libFuzzer/ASan/UBSan target before the unchanged fixed-seed 90-second campaign.
+It checks per-input filesystem teardown separately from JUCE global shutdown,
+which the harness still deliberately avoids. Lifecycle failures block the job;
+detector options/corpus/budget are preserved. TESTING §Fuzz filesystem lifecycle
+defines the controls and limits; this is not cross-platform fuzz execution.
+
 The Linux/macOS `run-tests.sh` path and the Windows State step run
 `tests/state_isolation_tests.py --full-suite` against the actual State executable,
 including the unchanged State suite; the DSP suite still runs separately. The controls exercise distinct concurrent

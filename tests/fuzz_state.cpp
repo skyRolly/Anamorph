@@ -43,10 +43,12 @@
 // ============================================================================
 
 #include "PluginProcessor.h"
+#include "state_filesystem.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <cstring>
 
 namespace
 {
@@ -70,21 +72,66 @@ extern "C" int LLVMFuzzerTestOneInput (const std::uint8_t* data, std::size_t siz
 
     ensureJuceInitialised();
 
-    AnamorphAudioProcessor processor;
+    // One disposable filesystem per input, destroyed BEFORE returning to the
+    // fuzzer. This never runs JUCE's global shutdown and adds no exit handler.
+    // A reused process must not compare against the previous input's override.
+    anamorph::PresetManager::setTestPresetDirectory ({});
+    state_test_filesystem::Profile profile;
+    auto parent = juce::File::getSpecialLocation (juce::File::tempDirectory);
+    const char* const control = std::getenv ("ANAMORPH_FUZZ_ISOLATION_CONTROL");
+    if (control != nullptr && std::strcmp (control, "invalid-parent") == 0)
+        parent = parent.getNonexistentChildFile ("invalid-fuzz-parent", "");
+    if (! profile.initialise (parent))
+    {
+        (void) profile.cleanup();
+        std::fprintf (stderr, "Fuzz isolation setup failed\n");
+        std::abort();
+    }
+    if (control != nullptr && std::strcmp (control, "bypass") == 0)
+        anamorph::PresetManager::setTestPresetDirectory ({});
+    if (anamorph::PresetManager::presetDirectory() != profile.directory().getChildFile ("presets"))
+    {
+        (void) profile.cleanup();
+        std::fprintf (stderr, "Fuzz isolation override is not active\n");
+        std::abort();
+    }
 
-    // The real restore path, with the bytes exactly as given.
-    processor.setStateInformation (data, static_cast<int> (size));
+    {
+        AnamorphAudioProcessor processor;
 
-    // Round-trip after restore: a blob that leaves the processor in a state it
-    // cannot then SERIALISE is a defect the restore call alone would not
-    // surface, and this is where the A/B-index clamp class showed up.
-    juce::MemoryBlock out;
-    processor.getStateInformation (out);
+        // The real restore path, with the bytes exactly as given.
+        processor.setStateInformation (data, static_cast<int> (size));
 
-    // Restoring what we just produced must also be safe -- the repeated-load
-    // case, and the one a host performs on every session save/reload cycle.
-    if (out.getSize() > 0 && out.getSize() <= static_cast<std::size_t> (std::numeric_limits<int>::max()))
-        processor.setStateInformation (out.getData(), static_cast<int> (out.getSize()));
+        // Round-trip after restore: a blob that leaves the processor in a state it
+        // cannot then SERIALISE is a defect the restore call alone would not
+        // surface, and this is where the A/B-index clamp class showed up.
+        juce::MemoryBlock out;
+        processor.getStateInformation (out);
+
+        // Restoring what we just produced must also be safe -- the repeated-load
+        // case, and the one a host performs on every session save/reload cycle.
+        if (out.getSize() > 0 && out.getSize() <= static_cast<std::size_t> (std::numeric_limits<int>::max()))
+            processor.setStateInformation (out.getData(), static_cast<int> (out.getSize()));
+    } // processor teardown is still part of EVERY input, before profile cleanup
+
+    // Opt-in nonshipping lifecycle witness; ordinary campaigns do not pause.
+    if (control != nullptr && std::strcmp (control, "hold") == 0)
+    {
+        std::printf ("FUZZ_ISOLATION_READY=%s\n", profile.directory().getFullPathName().toRawUTF8());
+        std::fflush (stdout);
+        if (std::getchar() == EOF)
+        {
+            (void) profile.cleanup();
+            std::fprintf (stderr, "Fuzz isolation release failed\n");
+            std::abort();
+        }
+    }
+    anamorph::PresetManager::setTestPresetDirectory ({});
+    if (! profile.cleanup())
+    {
+        std::fprintf (stderr, "Fuzz isolation cleanup failed\n");
+        std::abort();
+    }
 
     return 0;
 }

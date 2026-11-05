@@ -4379,6 +4379,12 @@ jobs:
       - name: Build the fuzz target
         run: cmake --build build-fuzz --target AnamorphFuzzState
 
+      - name: Fuzz filesystem lifecycle controls
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: python3 tests/fuzz_isolation_tests.py ./build-fuzz/AnamorphFuzzState
+
       # `-seed` IS FIXED, and it is fixed for the same reason `run-pluginval.sh`
       # fixes its own: this job is release-blocking through `release.yml`'s
       # aggregate dependency, and a release must not be able to fail on a

@@ -15,9 +15,8 @@ nonshipping State build directs the real `PresetManager` to its `presets` child;
 save, load, enumeration and identity tests still execute the production manager.
 Test-created temporary files use a separate child of the same root. Failure to
 create or identify the root stops the process before tests run. The shipping build
-does not compile the test-directory override. The fuzz target also compiles the
-override under its existing fixture definition but does not install it; this
-change does not claim fuzz-process filesystem isolation.
+does not compile the test-directory override. The separate fuzz lifecycle below
+installs the same nonshipping directory seam with a different teardown scope.
 
 The parent is JUCE's OS temporary directory. The fixture resolves and compares the
 actual production preset path before installing the override, so on Linux that
@@ -79,6 +78,30 @@ TMPDIR, must be rejected before a test can run.
 The [Linux execution record](../../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 binds the local full-suite output to its source inputs and test binaries; it is
 supporting engineering evidence, not native acceptance.
+
+## Fuzz filesystem lifecycle
+
+`tests/fuzz_state.cpp` installs a fresh owned preset/temp profile per supported-size
+input, before the real processor constructor. It clears the previous override
+before setup, retains unmodified input/round-trip behavior and per-input processor
+destruction, and explicitly checks profile cleanup before returning to libFuzzer.
+Setup, inactive override or refused/failed cleanup abort the harness. The intentionally
+leaked JUCE initialiser is unchanged: no global GUI shutdown or new exit handler.
+Per-input storage adds filesystem overhead; campaign duration/seed/corpus/sanitizers
+are unchanged, so input throughput must be read from each actual run.
+
+The Linux `fuzz` CI job runs `tests/fuzz_isolation_tests.py` against the actual
+libFuzzer executable before its ordinary campaign, with the existing detector
+settings. The opt-in `ANAMORPH_FUZZ_ISOLATION_CONTROL=hold` pauses only after the
+actual restore/round-trip and processor destruction. Two inputs per process must
+have different roots; the first is gone before the next readiness and the last
+before normal exit. Two processes must have separate roots. EOF must fail after
+cleanup; replacing a root with a copied marker must refuse deletion and fail;
+forced kill may leave a root. `invalid-parent` and `bypass` fail before processor
+construction, without readiness. Caller-profile sentinels are created only in the
+controller's disposable Linux HOME; all deliberate leftovers/artifacts are confined
+to its disposable parent. This is not Windows/macOS fuzz execution or arbitrary
+file/host isolation. Oversize inputs still return without processor construction.
 
 
 ## SpectrumImager teardown coverage — NR-029 / KI-037
