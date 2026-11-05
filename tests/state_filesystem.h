@@ -3,20 +3,70 @@
 // State-build directory is installed before any processor is constructed.
 #pragma once
 
-#include <filesystem>
 #include <cstdio>
-#include <system_error>
+#include <cstdlib>
+#include <memory>
+#include <vector>
+#if JUCE_WINDOWS
+ #include <filesystem>
+ #include <system_error>
+#else
+ #include <cerrno>
+ #include <stdlib.h> // realpath
+ #include <sys/stat.h>
+#endif
 
 namespace state_test_filesystem
 {
     inline juce::File temporaryDirectory;
 
-    inline std::filesystem::path nativePath (const juce::File& file)
+    // Resolve existing symlinks without requiring the leaf to exist. macOS's
+    // deployment target predates libc++ std::filesystem (10.15), so POSIX
+    // platforms use realpath on the nearest existing ancestor instead.
+    inline juce::File canonicalPath (const juce::File& file)
     {
        #if JUCE_WINDOWS
-        return std::filesystem::path (file.getFullPathName().toWideCharPointer());
+        std::error_code error;
+        const auto path = std::filesystem::weakly_canonical (
+            std::filesystem::path (file.getFullPathName().toWideCharPointer()), error);
+        return error ? juce::File() : juce::File (juce::String (path.c_str()));
        #else
-        return std::filesystem::path (file.getFullPathName().toRawUTF8());
+        auto existing = file;
+        std::vector<juce::String> suffix;
+        while (! existing.exists())
+        {
+            if (existing.isSymbolicLink()) return {};
+            const auto parent = existing.getParentDirectory();
+            if (parent == existing || existing.getFileName().isEmpty()) return {};
+            suffix.push_back (existing.getFileName());
+            existing = parent;
+        }
+        std::unique_ptr<char, decltype (&std::free)> path (
+            ::realpath (existing.getFullPathName().toRawUTF8(), nullptr), &std::free);
+        if (path == nullptr) return {};
+        juce::File result (juce::String::fromUTF8 (path.get()));
+        for (auto it = suffix.rbegin(); it != suffix.rend(); ++it)
+            result = result.getChildFile (*it);
+        return result;
+       #endif
+    }
+
+    inline bool createExclusiveDirectory (const juce::File& directory, bool& collision)
+    {
+       #if JUCE_WINDOWS
+        std::error_code error;
+        const bool created = std::filesystem::create_directory (
+            std::filesystem::path (directory.getFullPathName().toWideCharPointer()), error);
+        collision = ! created && ! error;
+        return created;
+       #else
+        if (::mkdir (directory.getFullPathName().toRawUTF8(), 0700) == 0)
+        {
+            collision = false;
+            return true;
+        }
+        collision = errno == EEXIST;
+        return false;
        #endif
     }
 
@@ -35,41 +85,33 @@ namespace state_test_filesystem
 
         bool initialise (const juce::File& parent)
         {
-            namespace fs = std::filesystem;
-            std::error_code error;
             if (! parent.isDirectory())
                 return false;
 
-            const auto canonicalParent = fs::canonical (nativePath (parent), error);
-            if (error) return false;
+            const auto canonicalParent = canonicalPath (parent);
+            if (canonicalParent == juce::File()) return false;
             const auto productDirectory = anamorph::PresetManager::presetDirectory();
             if (productDirectory == juce::File()) return false;
-            const auto canonicalProduct = fs::weakly_canonical (nativePath (productDirectory), error);
-            if (error) return false;
-            const juce::File product (juce::String (canonicalProduct.c_str()));
+            const auto product = canonicalPath (productDirectory);
+            if (product == juce::File()) return false;
 
             for (int attempt = 0; attempt < 16; ++attempt)
             {
-                const juce::File candidate (juce::String ((canonicalParent / ("anamorph-state-" +
-                                                    juce::Uuid().toString().toStdString())).c_str()));
+                const auto candidate = canonicalParent.getChildFile ("anamorph-state-" + juce::Uuid().toString());
                 // Even a caller-selected temporary parent must not put the test
                 // root inside the actual preset tree, or encompass that tree.
                 if (candidate == product || candidate.isAChildOf (product) || product.isAChildOf (candidate))
                     return false;
 
-                error.clear();
-                if (! fs::create_directory (nativePath (candidate), error))
+                bool collision = false;
+                if (! createExclusiveDirectory (candidate, collision))
                 {
-                    if (error) return false;
+                    if (! collision) return false;
                     continue; // another process already owns that name
                 }
                 root = candidate;
                 rootIdentifier = root.getFileIdentifier();
                 if (rootIdentifier == 0) { root.deleteFile(); root = juce::File(); return false; }
-               #if ! JUCE_WINDOWS
-                fs::permissions (nativePath (root), fs::perms::owner_all, fs::perm_options::replace, error);
-                if (error) { root.deleteFile(); root = juce::File(); return false; }
-               #endif
                 token = juce::Uuid().toString();
                 marker = root.getChildFile (".anamorph-state-owner");
                 if (! marker.replaceWithText (token))

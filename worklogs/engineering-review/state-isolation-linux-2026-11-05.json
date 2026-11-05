@@ -16,14 +16,14 @@
     "src/PresetManager.h": "5d81cd433319f5535984ac53c2afe8f0673576e2a717073cfae68bd4544a6593",
     "tests/state_tests.cpp": "b26943c7825fb758204c2c2d75887bc6dceec1eedc25ad7394676e15b0251cad",
     "tests/p1_resolution_tests.h": "81c3fbd2d6c152f1c7499d6666180f0d05ed7caf135518e0f2dc102532118f19",
-    "tests/state_filesystem.h": "a3cd0b8762dd29fb0673f15fdd0c647e834d670c409235c6a54cb81e10bb2ad4",
-    "tests/state_isolation_tests.py": "b54ced0ab951d05a630a61d5e6c6dde22d220348ccb7927d6039807b93959c7e",
+    "tests/state_filesystem.h": "a80fa03e4cdda6128dbafbe00896fa985e7bafa3f1af1c0c2a731eeb7414f3cc",
+    "tests/state_isolation_tests.py": "3cbe6f9fa914170f38c447576e1a7d73aaa4f39f30899c6abd6e4e4b29b6bcba",
     "scripts/run-tests.sh": "4e03247f1b173820e1c98be7913c17aebf4facedb0c64ddd86beac3ec57e0459",
     ".github/workflows/build.yml": "9020234df255299f3ae79ed0a965d2dfc28415cb90f2b2897b37deb522965df4"
   },
   "binary_sha256": {
     "AnamorphTests": "f8d3d769b47b97e5ca8ae0a50c2693044bcd65be51294e7b0f61583d075d0606",
-    "AnamorphStateTests": "95ba3acababdde6888a437109eedaa88b6549d4b9dbc60428d5cdc70c082c488"
+    "AnamorphStateTests": "3631847b3ced81cd942332930f63e72cd2d7f0215e13c3ec2a2448c21a559bcb"
   },
   "result": {
     "exit": 0,
@@ -31,13 +31,13 @@
     "state_checks": 13959,
     "failures": 0,
     "isolation_controls": "passed",
-    "scope": "fake caller homes, Linux redirected application data, shared-temp sentinels, concurrent process roots, failed setup, replaced-root cleanup and forced termination; full-suite root cleanup checked",
+    "scope": "fake caller homes, Linux redirected application data, symlinked temporary parent, shared-temp sentinels, concurrent probe roots, failed setup, replaced-root cleanup, full-suite cleanup and forced termination",
     "python_optimized_control": "python3 -O refuses to run the assertion-based controls"
   },
   "stdout": {
     "path": "worklogs/engineering-review/state-isolation-linux-2026-11-05.log.gz",
-    "raw_sha256": "c958275106f8a96f711c0ff38681c3a6b79b3b62bcd20f4159e47e559f97a8cc",
-    "gzip_sha256": "8ed1da4b638cb06bd1868391a3fddc65026bcb9a129d24e55a4a7a6ac24f129a"
+    "raw_sha256": "f90cd5567daba7643fda05b9efe8ef8e4970208027de30124f14f3cab821dcf4",
+    "gzip_sha256": "d242e77e2a7cc4dbbbac27646cadc264e3f23a5c642bd54cad3de3bd8bb5bc7c"
   },
   "earlier_setup_attempt": "A run-tests.sh attempt with a symlinked build directory failed binary discovery; copying the two already-built test executables into the expected directory allowed the actual checks to run. This was an infrastructure setup failure, not a test pass.",
   "preprocessor_control": {
@@ -47,5 +47,10 @@
     "fixture_macro_changes_output_and_exposes_setter": true,
     "normalized_with_fixture_sha256": "0b369b5792d8c99da5a8c73ba6e71699b04b9f5df4e5f9b8fa3521346cfba2e9",
     "limit": "This is a source-preprocessing control using State-target flags; it is not a shipping binary identity comparison."
+  },
+  "prior_ci_failure": {
+    "head": "fe7024ddc30d1667374d285ae6f46d63ad279c67",
+    "run": "https://github.com/skyRolly/Anamorph/actions/runs/42053478101/job/127336364638",
+    "classification": "macOS Intel build failure: std::filesystem requires macOS 10.15 but the deployment target is 10.13; corrected by POSIX realpath and exclusive mkdir, pending fresh macOS CI."
   }
 }

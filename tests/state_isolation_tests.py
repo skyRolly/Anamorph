@@ -78,7 +78,12 @@ def main():
         base = Path(directory)
         home, tmp = base / "caller-home", base / "shared-temp"
         home.mkdir()
-        tmp.mkdir()
+        if os.name == "nt":
+            tmp.mkdir()
+        else:
+            target = base / "shared-temp-target"
+            target.mkdir()
+            tmp.symlink_to(target, target_is_directory=True)
         default_presets = home / ".config" / "RollyTech" / "Anamorph" / "Presets"
         redirected_presets = home / "redirected" / "RollyTech" / "Anamorph" / "Presets"
         sentinels = []

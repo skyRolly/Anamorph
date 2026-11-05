@@ -61,6 +61,12 @@ With the test fixture macro omitted, normalized preprocessing of
 different output containing the test setter. This source control is not a
 shipping-binary identity comparison.
 
+The initial review head `fe7024dd` [failed native-Intel macOS compilation](https://github.com/skyRolly/Anamorph/actions/runs/42053478101/job/127336364638):
+`std::filesystem` requires macOS 10.15 while this repository's deployment target
+is 10.13. The subsequent test-only correction uses `realpath` and exclusive
+`mkdir` on POSIX, keeping the existing deployment target; it needs fresh final-head
+Linux, macOS and Windows validation. The failed run remains a failure, not a pass.
+
 Independent follow-up: `tests/fuzz_state.cpp` constructs a processor for each
 input, and the manager constructor calls `refresh()`, which enumerates the
 resolved user preset directory. The fuzz target does not install the State
