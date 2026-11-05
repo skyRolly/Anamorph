@@ -299,7 +299,19 @@ carries its 2026-07-26 review date — its content (product model, distribution 
 owner/legal decisions) is unaffected by the version renumbering, and it is re-dated when its
 substance next changes rather than on every version bump.
 
-## Operational status
+## Operational status — current
+
+Product version is 0.10.0; remote `main` is `f1d3ff81` and uses JUCE 9.0.5.
+The current unpublished draft is ID `429760301`, with 11 assets and annotated
+tag object `1190e455` peeling to `4c136881`. It predates the integrated fixes
+and JUCE upgrade. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
+is the execution register; the [release assessment](../worklogs/RELEASE_READINESS_0.10.0.md)
+records remaining risks, human acceptance, commercial and provisioning gates.
+
+## Historical operational status — earlier 0.10.0 replacement
+
+The following table is a dated historical snapshot. Its former draft ID, tag,
+current-version, blocker and roadmap claims are superseded by the current records above.
 
 | Field | Value |
 |---|---|
