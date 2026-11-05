@@ -47,6 +47,9 @@ PresetManager path witness, isolation failure controls and retained separate
 observation are described in the reproduction README and ledger; TESTING also
 distinguishes this wrapper from general State commands that use the caller's
 environment. Historical diagnostic outputs and hashes remain unchanged.
+The reproduction procedure treats privileged package installation as optional
+environment provisioning; an already provisioned or rootless toolchain runs the
+diagnostic without elevation.
 Proposed ADR-0072 is registered in ADR_INDEX and linked/classified in the repository
 map, source-of-truth document and README Documentation navigation. It records
 alternatives, exact review surfaces, gesture/Undo decisions and validation criteria;

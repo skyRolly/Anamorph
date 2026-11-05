@@ -21,10 +21,10 @@ the wheel's parameter notification. Both cases start from Width 0.50 and use a
 positive `deltaY=0.2` notch. They require a working X11 display; the commands
 below supply Xvfb. They do not simulate a DAW or native hardware acceptance.
 
-On a fresh Linux checkout with the repository's normal build dependencies:
+On a Linux checkout with the repository's normal build dependencies, Git, Ninja,
+CMake, a C++ compiler, Python 3 and Xvfb available without elevation:
 
 ```bash
-./scripts/setup-linux.sh full
 git clone --branch 9.0.5 --depth 1 https://github.com/juce-framework/JUCE.git /tmp/anamorph-nr026-juce
 git -C /tmp/anamorph-nr026-juce rev-parse HEAD
 # Require d60b7a78030661574a615b586d9325ba7a7fa7dd above.
@@ -34,6 +34,11 @@ python3 worklogs/engineering-review/nr026-repro/run.py --build build-nr026 --juc
 python3 worklogs/engineering-review/nr026-repro/verify.py --self-test
 python3 worklogs/engineering-review/nr026-repro/verify.py
 ```
+
+Installing missing system packages is a separate environment-provisioning step.
+The optional `scripts/setup-linux.sh full` uses `sudo apt-get` for a non-root
+user; preinstalled or rootless dependencies also work, as in the retained run.
+The isolation runner itself does not require elevated privileges.
 
 `--out` must be a new path. The runner first builds a read-only path witness
 linked to the same JUCE core and production `PresetManager` as the State suite.
