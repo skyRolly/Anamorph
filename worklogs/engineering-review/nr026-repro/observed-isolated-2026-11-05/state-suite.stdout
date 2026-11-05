@@ -1,0 +1,968 @@
+Anamorph state-compatibility self-tests
+fixtures: /workspace/Anamorph/tests/fixtures
+
+State test 1: serialized schema shape (SERIALIZATION_REGISTRY.md)
+State test 2: parameter registry snapshot
+State test 3: full state round-trip (raw-exact, byte-stable)
+State test 4: legacy 0.2 bare-APVTS session loads
+State test 5: pre-0.6.4 A/B slots + legacy-APVTS settings migrate
+State test 6: pre-0.8.4 view-param session migrates to InternalState
+State test 7: corrupt / foreign state robustness
+State test 8: preset save -> reload round-trip + exclusions
+State test 9: A/B slots + view-param preservation across restore
+State test 10: factory/user preset identity with a shared name
+State test 11: factory-preset id integrity
+State test 12: preset indicator identity survives a session reload
+Wrapper audio path: real processBlock, NaN/Inf/denormal-free (own FTZ guard)
+  noise-phase output RMS 0.9181 over 120 blocks
+State test 16: activation does not duck (engine primed with the live state)
+  fresh instance : block0 0.3553, min(blocks 1-11) 0.3490, settled 0.3553
+  restored raw: outputGain 0.2500 algorithm 1.0000 mbEnable 0.0000
+  restored session: block0 0.0892, min(blocks 1-11) 0.0877, settled 0.0892
+State test 17: a non-finite value in a session is rejected, not adopted
+  width after restoring value="nan": 0.500000
+  output peak over 8 blocks: 0.699720
+  width after loading a preset with value="nan": 0.500000
+State test 18: a PARAM with no value means default, not zero
+  width after the REFUSED value-less preset: 0.950000 (was 0.950000)
+  width after loading a preset with NO width node: 0.500000
+  width after RESTORING a session with a value-less PARAM: 0.500000
+State test 19: a malformed serialized value restores the default, both paths
+  width after restoring raw="inf": 0.500000
+State test 20: a repaired parameter reaches the saved state (not just the live one)
+  live APVTS @value after repair = "1.0"
+  saved @value = "1.0"  @raw = "0.5"
+State test 21: an abandoned value-box press does not block undo (KI-028)
+State test 22: an off-thread latency change is deferred, not delivered (D-1)
+  latency with oversampling Off: 0
+  after a message-thread change: 4 (expected immediate)
+  immediately after an OFF-thread change: 0 (was 0)
+  delivered by the timer after 51 ms: 4
+State test 23: the abandoned-gesture trigger reads PHYSICAL buttons (KI-013/KI-028)
+  cached=1 physical=1
+  (headless, no peer: JUCE's realtime query is the cache here, so this leg
+   checks the forward, not the hardware -- the discriminating check is macOS-only)
+State test 24: a restore reports the RESTORED state's latency
+  second restore: reported 0, restored state predicts 0 (was 4 going in)
+State test 25: a 0.9.5-written session reproduces exactly (cross-version capture)
+  capture fnv1a-64 63512badf96b42a2 (10629 bytes), manifest 87a04bb89d88f423 (228 bytes)
+  slotA width    0.9.5 0.812500 -> 0.9.6 0.812500
+  slotA mix      0.9.5 1.000000 -> 0.9.6 1.000000
+  slotA amount   0.9.5 0.300000 -> 0.9.6 0.300000
+  slotA algo     0.9.5 0.333333 -> 0.9.6 0.333333
+  slotA outGain  0.9.5 0.500000 -> 0.9.6 0.500000
+  preset name: "Gentle Width" (0.9.5: "Gentle Width"), dirty 1 (0.9.5: 1)
+  slotB width    0.9.5 0.250000 -> 0.9.6 0.250000
+  slotB mix      0.9.5 0.900000 -> 0.9.6 0.900000
+  slotB amount   0.9.5 0.111000 -> 0.9.6 0.111000
+  slotB algo     0.9.5 0.333333 -> 0.9.6 0.333333
+  slotB outGain  0.9.5 0.500000 -> 0.9.6 0.500000
+  gate (a) intact: 19 checks, 0 failed, dependent checks ran
+  gate (b) manifest edited: 2 checks, 1 failed, dependent checks did not run
+  gate (c) blob edited: 2 checks, 1 failed, dependent checks did not run
+  gate (d) label rewritten, hash re-pinned: 19 checks, 1 failed, dependent checks ran
+State test 26: a restore with no A/B data resets both slots (ER-STATE-12)
+  previous project A 0.9000 / B 0.1000; 0.2 restores 0.7500
+State test 27: restore/latency integrity (ER-STATE-14/15/16)
+  delivery #1 -> 4 with request #2 made inside it; then -> 0 (expected 0); 2 deliveries
+State test 29: a modern session omitting a Setting resets it (ER-STATE-18)
+State test 30: an off-message-thread prepareToPlay defers its latency report (ER-STATE-19)
+  message-thread truth 4; off-thread prepare: after join 0, served by the timer 4; notifications on the preparing thread: 0
+State test 31: a restore with no A/B data resets the per-slot Level-Match gains (ER-STATE-20)
+  0.2 bare APVTS:              previous project A -2.438 dB / B 2.078 dB; stale 2.078 dB; first switch: reused 0.000 dB vs fresh 0.000 dB
+  modern root, no AB node:     previous project A -2.438 dB / B 2.078 dB; stale 2.078 dB; first switch: reused 0.000 dB vs fresh 0.000 dB
+  AB node, no payloads:        previous project A -2.438 dB / B 2.078 dB; stale -2.438 dB; first switch: reused 0.000 dB vs fresh 0.000 dB
+State test 32: a malformed scope persistence stays finite at the consumer (ER-STATE-21)
+  int_scopePersist=nan    -> tree keeps 0.5   , scope persistence 0.6000
+  int_scopePersist=-1.0   -> tree keeps 0.0   , scope persistence 0.0000
+  int_scopePersist=-0.5   -> tree keeps 0.0   , scope persistence 0.0000
+  int_scopePersist=inf    -> tree keeps 0.5   , scope persistence 0.6000
+State test 34: a foreign preset never overwrites the current sound (ER-STATE-24)
+  before foreign load: drive=0.3100 width=0.7700 algorithm=0.6600 monoMakerFreq=0.4200 chorusRate=0.5800
+  after  foreign load: loadFile returned false | drive=0.3100(default 0.0000) width=0.7700(default 0.5000) algorithm=0.6600(default 0.3333) monoMakerFreq=0.4200(default 0.5000) chorusRate=0.5800(default 0.3832)
+State test 35: a rejected preset load causes no duck (ER-GUI-06)
+  side RMS after a REJECTED preset load: 0.443549 | control (no click): 0.443549 | ratio 1.0000
+  side RMS after a SKIPPING preset step: 0.201786 -> landed on "Default"
+  side RMS after a SUCCESSFUL preset load: 0.201786 (control 0.443549)
+State test 36: a repair equal to the live value still reaches the saved state (ER-STATE-25)
+  victim parameter: channelMode (default normalised 0.000000)
+  cycle 0: live APVTS @value after restore = "0.0"
+  cycle 0: saved @value = "0.0"
+  cycle 1: live APVTS @value after restore = "0.0"
+  cycle 1: saved @value = "0.0"
+  control: valid "0.000000" restored as "0.000000"
+  clamp category: raw="-7" -> live @raw "0.0", normalised 0.000000
+  raw/value fallback: bad raw + value=2.000000 -> normalised 1.000000 (want 1.000000)
+State test 33: present-but-invalid modern Settings are repaired and persisted (ER-STATE-21)
+  int_oversample     2      -> live 2        saved "2"   (valid, preserved)
+  int_oversample     4      -> live 4        saved "4"   (valid, preserved)
+  int_oversample     99     -> live 4        saved "4"
+  int_oversample     -5     -> live 1        saved "1"
+  int_oversample     0      -> live 1        saved "1"
+  int_oversample     2.7    -> live 2        saved "2"
+  int_oversample     abc    -> live 1        saved "1"
+  int_oversample     nan    -> live 1        saved "1"
+  int_oversample     inf    -> live 1        saved "1"
+  int_uiScale        5      -> live 5        saved "5"   (valid, preserved)
+  int_uiScale        99     -> live 5        saved "5"
+  int_uiScale        0      -> live 1        saved "1"
+  int_uiScale        abc    -> live 3        saved "3"
+  int_uiScale        -inf   -> live 3        saved "3"
+  int_scopePersist   0.25   -> live 0.25     saved "0.25"   (valid, preserved)
+  int_scopePersist   5.0    -> live 1        saved "1.0"
+  int_scopePersist   -1.0   -> live 0        saved "0.0"
+  int_scopePersist   nan    -> live 0.5      saved "0.5"
+  int_scopePersist   inf    -> live 0.5      saved "0.5"
+  int_scopePersist   1e39   -> live 0.5      saved "0.5"
+  int_scopePersist   abc    -> live 0.5      saved "0.5"
+  int_metersOn       1      -> live 1        saved "1"   (valid, preserved)
+  int_metersOn       0      -> live 0        saved "0"   (valid, preserved)
+  int_metersOn       abc    -> live 0        saved "0"
+  int_metersOn       2      -> live 0        saved "0"
+  int_metersOn       -1     -> live 0        saved "0"
+  int_metersOn       -2     -> live 0        saved "0"
+  int_metersOn       0.5    -> live 0        saved "0"
+  int_tooltipsOn     1      -> live 1        saved "1"   (valid, preserved)
+  int_tooltipsOn     0      -> live 0        saved "0"   (valid, preserved)
+  int_tooltipsOn     maybe  -> live 0        saved "0"
+  int_tooltipsOn     -1     -> live 0        saved "0"
+  int_tooltipsOn     -0.5   -> live 0        saved "0"
+  int_uiAnimations   0      -> live 0        saved "0"   (valid, preserved)
+  int_uiAnimations   1      -> live 1        saved "1"   (valid, preserved)
+  int_uiAnimations   abc    -> live 1        saved "1"
+  int_uiAnimations   -1     -> live 1        saved "1"
+  int_uiAnimations   -2     -> live 1        saved "1"
+  int_uiAnimations   2      -> live 1        saved "1"
+  => 29 invalid value(s) repaired, 10 valid value(s) preserved
+State test 28: malformed legacy Settings resolve to a valid setting (ER-STATE-17)
+State test 37: A/B state stays coherent across off-message-thread restores (D-2)
+State test 38: restore B -> C -> B -> C off the message thread with audio running (D-2)
+  the audio thread ran 18 block groups under the four restores
+State test 39: preset transitions with audio running and a host thread saving (D-2)
+  9 concurrent host-thread saves during 20 preset loads
+State test 40: restore and re-prepare off the message thread, together (D-2)
+State test 41: undo history is message-thread state a host restore only clears (D-2)
+  22 concurrent host-thread saves during the undo walk
+State test 42: a host-thread save never pairs the restored sound with an older program (D-2 r2)
+State test 43: an older restore's completion cannot overwrite a newer restore's oversampling (D-2 r2)
+State test 44: a Settings edit made after a restore arrived survives its adoption (D-2 r3)
+State test 45: an action in the handoff window cannot split the restored session (D-2 r4)
+State test 46: an inline restore adopts a pending one against its own sound (D-2 r4)
+State test 47: a sound edit made while a restore is pending survives its adoption (D-2 r5)
+State test 48: a replacement overlapping the decode is not the restore's own sound (D-2 r6)
+  overlap = an A/B apply: one coherent session
+  overlap = a preset load: one coherent session
+  overlap = an ordinary edit: one coherent session
+State test 49: a replacement finishing after the restore's cannot wear its metadata (D-2 r7)
+  overlap = an A/B apply finishing last: one coherent session
+  overlap = an undo finishing last: one coherent session
+  overlap = a preset load finishing last: one coherent session
+State test 50: the restore drain reaches a fixed point before the caller acts (D-2 r8)
+State test 51: a preset saved while a restore is pending is clean against its own file (D-2 r8)
+State test 52: a save's bytes and its clean baseline describe one sound (D-2 r9)
+  one mutation in the window: 1 of 2 cycled values read clean
+  sustained cycling automation: 1 of 2 cycled values read clean
+  several parameters in the window: 1 of 2 cycled values read clean
+  a concurrent automation thread: 1 of 2 cycled values read clean
+  save-time signature equality swept over 20001 points x 33 parameters: 0 mismatch(es)
+  save->load round trip over 3000 points: marker wrong 0, sound moved 0, baseline-string drift 2, re-saved-byte drift 347 (the last two are the preset format's own denormalised round trip and move no marker)
+State test 53: an A/B toggle derives its target from the adopted session (D-2 r10)
+  restore flips active 1 -> 0: toggle lands on 1, returns to 0
+  restore flips active 0 -> 1: toggle lands on 0, returns to 1
+State test 54: a Settings publication carries only its field; edits order by observation (D-2 r10)
+State test 55: a loaded preset's baseline is fixed from what the load wrote (D-2 r10, KI-029)
+  load: automation in the window leaves the preset dirty; the file's value reads clean
+  loadFile: automation in the window leaves the preset dirty; the file's value reads clean
+  load-side sweep over 3000 round trips: dirty after load 0, load-side signature mismatches 0 (worst field delta 0), save-side signature mismatches 2 (the reason the two flavours exist)
+State test 56: a preset step derives its target from the adopted selection (D-2 r10)
+State test 57: no tolerance absorbs an automation write into a preset baseline (D-2 r11)
+  parameter grid: 29 grid + 4 gridless; smallest step 8.0764e-05 on chorusRate (8.08 quanta)
+  monoMakerFreq  + band [0.10,0.25): base 0.100004502 nudged 0.100005299 (delta 7.9e-07) -> dirty
+  monoMakerFreq  - band [0.35,0.50): base 0.350005239 nudged 0.350004852 (delta 5.36e-07) -> dirty
+  mbFreqLow      + band [0.60,0.75): base 0.600004494 nudged 0.600005269 (delta 7.75e-07) -> dirty
+  mbFreqLow      - band [0.85,0.98): base 0.850005209 nudged 0.850004792 (delta 4.77e-07) -> dirty
+  amount      (grid): smallest step 0.000999928 (100.0 quanta), cell here 0.00100002 -- inside a cell is not an edit, a step is, and a 3.0e-08 write across a boundary is
+  chorusRate  (grid): smallest step 8.07643e-05 (8.1 quanta), cell here 0.000290066 -- inside a cell is not an edit, a step is, and a 3.0e-08 write across a boundary is
+  accumulation: 42 nudges of 1.0e-07 crossed the 1e-5 quantum
+State test 58: a restore is a fixed point and restores what was stored (D-2 r11)
+  300 sounds x 10 re-applications: values moved 0 (worst 0.000e+00), signatures 0, blobs 0
+  300 project save/reopen round trips: dirty on reopen 0, sound moved 0
+State test 59: a host save inside the pending window carries the edit (D-2 r12)
+State test 60: a restore with no baseline is clean against ITS sound (D-2 r15)
+State test 61: a relative operation acts on the session it observed (D-2 r16)
+State test 62: a settled sound is one session's, never a mixture (D-2 r17)
+  33 of 33 sound parameters distinguish the two sessions
+  overlapped A/B apply: 0 parameter(s) from A, 33 from B, 0 from neither
+  4100 audio blocks processed across the overlap, 48 of them settled
+  saved across the overlap: 0 parameter(s) from A, 33 from B, 0 from neither
+  preset rows exercised: 3
+State test 63: an obsolete restore cannot reassert over a newer authoritative one (D-2 r18)
+State test 64: a durable capture never records a sound assembled from two replacements (D-2 r18)
+  33 of 33 sound parameters distinguish the preset from the session
+  host save across a preset load: 33 parameter(s) from the preset, 0 from the session, 0 from neither
+  host save across an A/B apply: 33 parameter(s) from the incoming, 0 from the outgoing, 0 round-tripped
+State test 95: a restore is consumed only when its sound can go with it (R1792, ADR-0036 §27)
+  [test 95] the timer door returned in 0 ms with a restore pending and the capture open
+State test 65: a legacy A/B slot is canonical at the decode boundary, and no baseline is a live read (ADR-0037)
+  (f) 3216 session-shaped applies on the log-mapped ranges: 0 report a value other than ONE pass of the resolved one, 0 signature mismatches
+State test 66: a split the drag never captured keeps its place when Bands rises (Code Scanning follow-up)
+  imager laid out 904x144 inside a 940x900 editor
+State test 67: an outward drag whose split has vanished removes nothing (stale-drag review)
+State test 68: a gesture whose topology moved writes nothing further (ADR-0038)
+State test 69: a gesture owns the topology it created, and none it did not
+State test 70: a sound change under a gesture voids it, count or no count
+State test 71: a gesture writes only what it owns, and claims only what it wrote
+State test 72: the check is adjacent to EVERY store, including the ones that open a gesture
+State test 73: a coupled update is all of it or none of it
+State test 74: a store is not committed until the parameter says so
+State test 75: a commit that carries no user intent writes nothing
+State test 76: a topology transaction does not commit a layout it does not own
+State test 77: a positional latch is void once its topology moves
+State test 78: a derivation answers under the topology it was given
+State test 79: the far side of a coupled commit is covered by its caller
+State test 80: a wheel notch inside a held press belongs to that press
+  [leg D] sideways notch inside the press: width 1.375 -> 1.195, then 2.000 after 35 px more drag (gesture closes 0)
+State test 81: the plan and the proof are one reading
+State test 82: the add target and its edges answer under one topology
+State test 83: a cancellation closes each open gesture exactly once
+State test 96: Anamorph's own bare brackets declare their endpoint (R1117-1119, ADR-0008)
+  [leg A] the refused Apply recorded no step, so the host's -11.5000 is in none
+State test 97: a deferred baseline is repaired before any entry is built from it, and the editor's tick never waits (M87, M88)
+  [test 97] the slowest 24 Hz pass with a restore pending and the capture open took 0 ms
+State test 98: a multiband topology change is one user action, so it is one undo step (R1092)
+  [leg B] after ONE Undo: bands 2 (started 2), solo 0x2 (started 0x2), more undo available: no
+  [leg F] the Alt-click reset moved 2 of the three splits
+State test 99: a state-replacing command does not run inside a user transaction (R1279-1283)
+  [leg B] after the interrupted Add: bands 2 (started 2), solo 0x2 (started 0x2), Drive 9.00, undo depth non-empty
+  [leg B] 1 Undo step(s) unwound; Drive ended at 3.00
+  [leg C] after the interrupted Add with a Redo pending: bands 3, solo 0x4, Drive 3.00
+  [leg D] preset "Default" -> "Gentle Width"; bands 4, solo 0x0
+  [leg G] after two deferred Undos: bands 2, solo 0x2, Drive 3.00, more undo: no
+  [leg I] inside the burst: bands 2 -> 2, preset 'Default' -> 'Default'; after the press: bands 3, solo 0x4, splits 36/2000/12000, preset 'r25-restore'
+  [leg I] 0 undo step(s) unwound after the truncated transaction
+  [leg J] after the nested deferral: bands 2, solo 0x2, Drive 9.00
+State test 100: the deferred-command flush never waits for a whole-sound replacement (R651)
+  [leg A] pumped transaction took 0.2 ms; bands 2, solo 0x2, Drive 9.00
+  [leg B] with the replacement lock HELD, the pumped transaction took 0.1 ms (holder still parked: yes)
+  [leg B] after the next door: bands 2, solo 0x2, Drive 9.00, more undo: yes
+  [leg D] after the retry: 2 command(s) ran, order preserved; Drive 0.00, slot 0 -> 1
+  [leg E] order: 1 2 3 (expected 1 2 3)
+State test 101: a timer retry never runs a blocking command from inside a parameter dispatch (R1390)
+  [leg A] the pumped timer retry took 0.0 ms; the command ran inside the dispatch: no
+  [leg A] after the next door (outside the dispatch): Drive 9.00, ran: yes
+  [leg B] with the replacement lock HELD, the pumped tick took 0.0 ms
+  [leg C] Undo: ran inside the dispatch: no; ran at the next door: yes
+  [leg D] Redo: ran inside the dispatch: no; ran at the next door: yes
+  [leg E] A/B: ran inside the dispatch: no; ran at the next door: yes
+  [leg F] preset: ran inside the dispatch: no; ran at the next door: yes
+  [leg G] order at the safe boundary: 1 2 (expected 1 2)
+  [leg H] order: 1 2 3 (expected 1 2 3)
+  [leg I] the command ran with the transaction's own step already on the stack: yes (ran: yes)
+  [leg I] after one Undo: Width 1.000 (started 1.000)
+  [leg I2] the flush's own order put the step first: yes (ran: yes)
+  [leg J] the attachment write pumped a tick: fired 1; the command ran inside it: no
+State test 102: a deferred preset operation reports its real result, not its queueing (R640)
+  [leg A] sync save: result completed, completion calls 1, said true, file on disk yes
+  [leg B] illegal name inside a transaction: failed, completion calls 1
+  [leg C] after the boundary: completion calls 1, said true, file yes
+  [leg D] after the boundary: completion calls 1, said false
+  [leg E] foreign file inside a transaction: failed, completion calls 1
+  [leg F] after the safe boundary: completion calls 1, said true, file yes
+  [leg G] completion order: 1 2 (expected 1 2); both files: yes
+  [leg H] editor destroyed before the boundary: completion calls 1, said true, safe pointer null: yes
+  [leg I] with the save QUEUED: panel visible yes, Save enabled no, file no
+  [leg I] after the boundary: panel visible no, file yes
+State test 117: a preset save that did not land reports failure (F4)
+State test 118: a host reset reaches the engine (F2)
+  tail peak into silence: no reset 2.125e+00, after reset 0.000e+00
+  Level Match: converged -5.158 dB, after a host reset -5.158 dB
+State test 119: the reported tail is never shorter than the real one (F3)
+  reported 0.500 s; worst measured tail 0.209 s (44.1/48/96 kHz)
+State test 120: a host reset clears audio and keeps the user's state (R6)
+  Level Match converged -2.7638 dB; without a reset it moves 0.023005 dB over 1.40 s of silence
+  after a host reset the gain moves 0.000000 dB over the same silence
+  a same-rate re-prepare: -2.7399 dB -> -2.7399 dB, then moves 0.000000 dB over the same silence
+  held peak -0.92 dB -> after a host reset -0.92 dB -> after a block -0.92 dB
+  transport: -0.92 dB held across the stop, -33.98 dB after the next play
+State test 121: a host reset arms the next restart (Devin/R7)
+  R7: resume where the transport left off        -0.92 ->  -33.98  cleared
+  R7: resume at the last block's own start       -0.92 ->  -33.98  cleared
+  R7 control: resume at 0 (a seek as well)       -0.92 ->  -33.98  cleared
+  R7: non-playing blocks, reset, then play       -0.92 ->  -33.98  cleared
+  R7: stopped and reset, still stopped, HOLDS    -0.92 ->   -0.92  held
+  R7: 400 more blocks of playback, HOLDS         -0.92 ->   -0.92  held
+  R7: a seek while playing still clears          -0.92 ->  -33.98  cleared
+  R7: the GUI readout click still clears         -0.92 ->  -33.98  cleared
+  R7: no playhead: nothing restarts, HOLDS       -0.92 ->   -0.92  held
+  Level Match -2.7638 dB across the reset, 0.000000 dB of movement on silence
+State test 122: a host reset clears the live meters, and only the live meters
+  active:      dim -6.13 bright -11.17 bar -0.92 RMS -10.87 | held -0.92 | energy 1.659e-01
+  after reset: dim -100.00 bright -100.00 bar -100.00 RMS -100.00 | held -0.92 | energy 0.000e+00
+  resumed:     dim -33.98 bright -43.02 bar -33.98 RMS -42.75 | held -33.98
+  clip, after reset:       pclip 1 rclip 1 | held +3.52 RMS -100.00
+  clip, click + 1 block:   pclip 0 rclip 0 | held -100.00 RMS -100.00
+  clip, play edge + 4:     pclip 0 rclip 0 | held -33.98 RMS -42.75
+  clip, no reset, click:   pclip 0 rclip 0 | held -100.00 RMS -11.04
+  3 s of silence, no reset: dim -93.21 bar -100.00 | held -0.92
+State test 123: a non-finite parameter value from the host does not latch the chain (F14)
+  Haas  : before -11.70 dB, 1 s after the host is finite again  -11.83 dB, output finite 1
+  Velvet: before -10.02 dB, 1 s after the host is finite again   -9.80 dB, output finite 1
+  Chorus: before -14.29 dB, 1 s after the host is finite again  -14.19 dB, output finite 1
+  Dimensional: before -17.23 dB, 1 s after the host is finite again  -16.32 dB, output finite 1
+State test 124: the documented I/O contract -- stereo->stereo and mono->stereo
+  mono->stereo vs stereo->stereo, 200 blocks, widening engaged: bit-identical; output L != R: yes
+State test 125: the transport machine without a sample clock (ppq only; no position)
+  ppq only        continuous playback: held -0.92 dB -> -0.92 dB
+  ppq only        seek while playing: held -0.92 dB -> -33.98 dB
+  ppq only        stop, then play: held -0.92 -> -0.92 while stopped -> -34.00 dB
+  play state only continuous playback: held -0.92 dB -> -0.92 dB
+  play state only stop, then play: held -0.92 -> -0.92 while stopped -> -34.00 dB
+State test 153: transport positions cannot overflow or invent a seek
+State test 126: a host reset keeps the configured Chorus and Dimensional sound
+  Chorus Amount 1.0: first block after the host reset, worst |out - x(1 - Amount)| 0.000e+00
+  Chorus Amount 0.7: first block after the host reset, worst |out - x(1 - Amount)| 2.980e-08
+  Chorus OS Off Amount 1.0: host reset vs fresh prepare, 0 of 47616 samples differ
+  Chorus OS Off Amount 0.7: host reset vs fresh prepare, 0 of 47616 samples differ
+  Chorus OS 2x  Amount 1.0: host reset vs fresh prepare, 0 of 47616 samples differ
+  Chorus OS 2x  Amount 0.7: host reset vs fresh prepare, 0 of 47616 samples differ
+  Chorus silence after loud material, no reset (control): peak 4.954e-01
+  Chorus silence after loud material, after a host reset: peak 0.000e+00
+  Chorus prepareToPlay() then reset() (the AU order): bit-identical to prepareToPlay() alone
+  Dimensional Amount 1.0: first block after the host reset, worst |out - x(1 - Amount)| 0.000e+00
+  Dimensional Amount 0.7: first block after the host reset, worst |out - x(1 - Amount)| 2.980e-08
+  Dimensional OS Off Amount 1.0: host reset vs fresh prepare, 0 of 47616 samples differ
+  Dimensional OS Off Amount 0.7: host reset vs fresh prepare, 0 of 47616 samples differ
+  Dimensional OS 2x  Amount 1.0: host reset vs fresh prepare, 0 of 47616 samples differ
+  Dimensional OS 2x  Amount 0.7: host reset vs fresh prepare, 0 of 47616 samples differ
+  Dimensional silence after loud material, no reset (control): peak 4.789e-01
+  Dimensional silence after loud material, after a host reset: peak 0.000e+00
+  Dimensional prepareToPlay() then reset() (the AU order): bit-identical to prepareToPlay() alone
+State test 127: a host reset inside an A/B, preset, undo or redo swap lands settled
+  A/B, edited B -> A   reset 64 samples in     : bit-identical to a fresh processor
+  A/B, edited B -> A   reset 287 samples in    : bit-identical to a fresh processor
+  A/B, edited B -> A   reset after it finished : bit-identical to a fresh processor
+  A/B, A -> edited B   reset 64 samples in     : bit-identical to a fresh processor
+  A/B, A -> edited B   reset 287 samples in    : bit-identical to a fresh processor
+  A/B, A -> edited B   reset after it finished : bit-identical to a fresh processor
+  preset reload        reset 64 samples in     : bit-identical to a fresh processor
+  preset reload        reset 287 samples in    : bit-identical to a fresh processor
+  preset reload        reset after it finished : bit-identical to a fresh processor
+  undo                 reset 64 samples in     : bit-identical to a fresh processor
+  undo                 reset 287 samples in    : bit-identical to a fresh processor
+  undo                 reset after it finished : bit-identical to a fresh processor
+  redo                 reset 64 samples in     : bit-identical to a fresh processor
+  redo                 reset 287 samples in    : bit-identical to a fresh processor
+  redo                 reset after it finished : bit-identical to a fresh processor
+State test 128: non-finite processor Density renders its default and recovers (ADR-0067)
+  host NaN, live                   bit-identical to the twin, output finite 1, control moved 0.445
+  value box "nan", live            bit-identical to the twin, output finite 1, control moved 0.445
+  host NaN before prepareToPlay    bit-identical to the twin, output finite 1, control moved 0.395
+  host NaN, then a re-prepare      bit-identical to the twin, output finite 1, control moved 0.445
+  control: a host NaN on Mono Maker Freq lands as 500.0 Hz
+State test 129: Level Match Apply never writes a NaN into Output Gain (ADR-0007, F13)
+  A  Apply handed NaN (matcher had -4.915 dB): reached 1, Output Gain -3.000 -> -3.000 dB, Level Match on, host notifications 0 / gestures 0, saved "-3.0|0.4375", then RMS 0.2854
+  B  Apply of the matcher's own -4.915 dB: reached 1, Output Gain -4.920 dB (expect -4.920), Level Match off, host notifications 1 / gestures 2
+  C  real window: 1 audio blocks, published NaN seen and applied 20 time(s); Output Gain -3.000 dB, then RMS 0.3147
+State test 130: Level Match engages at the level it measured (ADR-0007 amendment, KI-031)
+  (1) Drive 8: Undo of Apply                                : LAND   D_F +0.009 dB (g_run -5.857, pub -5.867), max|D| 0.029, envelope +0.000, resid 2.1e-09
+  (1) Drive 8: Redo (Level Match off again)                 : applied gain - Output Gain, worst 0.0000 dB
+  (1) Drive 8: Undo again after Redo (the cycle)            : LAND   D_F +0.002 dB (g_run -6.084, pub -6.086), max|D| 0.007, envelope +0.000, resid 1.9e-10
+  (1) Drive 4: Undo of Apply                                : LAND   D_F +0.006 dB (g_run -3.628, pub -3.635), max|D| 0.020, envelope +0.000, resid 1.3e-09
+  (1) Drive 10: Undo of Apply                               : LAND   D_F +0.009 dB (g_run -6.963, pub -6.972), max|D| 0.029, envelope +0.000, resid 2.2e-09
+  (2) hand re-engage after Apply                            : LAND   D_F +0.010 dB (g_run -5.857, pub -5.867), max|D| 0.031, envelope +0.000, resid 2.1e-09
+  (2) hand engage from Output Gain -12 dB                   : LAND   D_F +0.011 dB (g_run -5.810, pub -5.821), max|D| 0.035, envelope +0.000, resid 3.0e-09
+  (3) positive match: Undo of Apply                         : LAND   D_F -0.012 dB (g_run +7.471, pub +7.483), max|D| 0.037, envelope +0.000, resid 4.1e-09
+  (4) Haas user preset reload #1 (Chorus Rate +1 ulp)       : LAND   D_F +0.009 dB (g_run -5.857, pub -5.867), max|D| 0.029, envelope +0.000, resid 2.1e-09
+  (4) Haas user preset reload #2 (Chorus Rate +0 ulp)       : LAND   D_F +0.004 dB (g_run -6.030, pub -6.033), max|D| 0.012, envelope +0.000, resid 3.6e-10
+  (4) Chorus user preset reload #1 (Chorus Rate +1 ulp)     : LAND   D_F +0.003 dB (g_run -4.244, pub -4.246), max|D| 0.008, envelope +0.000, resid 2.3e-10
+  (4) Chorus user preset reload #2 (Chorus Rate +0 ulp)     : LAND   D_F +0.002 dB (g_run -4.276, pub -4.278), max|D| 0.003, envelope +0.000, resid 5.6e-11
+  (5) user preset: Level Match on + Drive 8 -> 10           : GLIDES D_F +4.702 dB (g_run -1.167, pub -5.869, from +0.000), phi 0.80, resid 3.3e-05
+  (5) Advanced Mode on, Level Match param on, Mix 0.5       : GLIDES D_F +4.660 dB (g_run -1.156, pub -5.816, from +0.000), phi 0.80, resid 3.2e-05
+  (5) control: the same toggle at Mix 1, Multiband off      : LAND   D_F +0.011 dB (g_run -5.810, pub -5.821), max|D| 0.034, envelope +0.000, resid 2.9e-09
+  (6) A/B slot B (off) -> slot A (on), same sound           : D_F -0.000 dB (g_run -6.157, pub -6.157), max|D| 0.002, resid 2.2e-11
+  (6) A/B B (off) -> A (on), Multiband off                  : the run is the twin (slot B kept on) bit for bit from event+8
+  (7) host reset 1 block after Undo of Apply (fade-out)     : D -0.000 dB at the reset (g_run -5.851, pub -5.851), max|D| 0.028, resid 2.1e-09; run energy in the reset block 25.98 (no reset: 7.191)
+  (7) host reset 4 blocks after Undo of Apply (fade-in)     : D -0.000 dB at the reset (g_run -5.856, pub -5.856), max|D| 0.028, resid 2.2e-09; run energy in the reset block 28.12 (no reset: 12.49)
+  (8) Level Match on in both states, Undo: Drive 0 -> 10    : GLIDES D_F +1.861 dB (g_run -1.397, pub -3.258, from -0.633), phi 0.71, resid 6.7e-06
+State test 131: Level Match re-arms what an A/B injects and keeps what a re-prepare did not change (ADR-0007, F13(2))
+  (a) A/B Drive 8 -> 2              : injected -2.757 (source -6.079, fresh -2.827), at the bottom -2.755; D +0.072/+0.080/+0.058/+0.034/+0.012 at 0/0.1/0.5/1/2 s, max|D| 0.081, max|g| 0.075 (resid 1.6e-10); probe -2.757 at the bottom, then moves 0.00e+00
+  (a) A/B Drive 2 -> 8              : injected -6.079 (source -2.824, fresh -6.164), at the bottom -6.077; D +0.087/+0.094/+0.066/+0.040/+0.013 at 0/0.1/0.5/1/2 s, max|D| 0.096, max|g| 0.090 (resid 1.9e-10); probe -6.079 at the bottom, then moves 0.00e+00
+  (f) host reset 1 block into (a)'s A/B: after the reset -2.756 (injected -2.757, fresh -2.827), max|D| 0.080, max|g| 0.074 (resid 1.6e-10); energy in the reset block 27.2 (no reset: 7.264)
+  (g) Apply 0.5 s after (a)'s A/B   : wrote Output Gain -2.770 (published -2.767, fresh -2.826)
+  (a) A/B Drive 10 -> 0             : injected -0.019 (source -7.129, fresh -0.021), at the bottom -0.017; D +0.004/+0.018/+0.017/+0.011/+0.004 at 0/0.1/0.5/1/2 s, max|D| 0.020, max|g| 0.018 (resid 3.2e-10); probe -0.019 at the bottom, then moves 0.00e+00
+  (a) A/B Drive 0 -> 10             : injected -7.129 (source -0.019, fresh -7.266), at the bottom -7.263; D +0.003/+0.020/+0.019/+0.013/+0.005 at 0/0.1/0.5/1/2 s, max|D| 0.022, max|g| 0.018 (resid 4.2e-10); probe -7.266 at the bottom, then moves 0.00e+00
+  (b) the twin (identical slots): injected -3.130 (source -6.154), probe moves 2.124 dB
+  (b) Output Gain -9 / -3       : injected -3.130 (source -6.154), at the bottom -3.386; probe moves 2.124 dB; identical to the twin from event+0
+  (b) Level Match off / on      : injected -3.130 (source -6.154), at the bottom -3.386; probe moves 2.124 dB; identical to the twin from event+8
+  (b) Dimensional Style under Haas: injected -3.130 (source -6.154), at the bottom -3.386; probe moves 2.124 dB; identical to the twin from event+0
+  (b) CONTROL: Width 1.301 / 1.3: injected -3.130 (source -6.155), at the bottom -3.333; probe moves 0.000 dB; identical to the twin from event+122 (not at all in the window)
+  (c) Drive 0 -> 10  Undo        : vs the live edit max|dpub| 0.317 dB from 0.1 s (0.338 from the full-level block); pub -0.412 -> -0.408 -> -4.609 at event-1/+1/+2 (live -4.592 at the event); probe moves 3.901e+00 (live 3.166e+00)
+  (c) Drive 0 -> 10  user preset : vs the live edit max|dpub| 0.317 dB from 0.1 s (0.338 from the full-level block); pub -0.412 -> -0.408 -> -4.609 at event-1/+1/+2 (live -4.592 at the event); probe moves 3.901e+00 (live 3.166e+00)
+  (c) Drive 10 -> 0  Undo        : vs the live edit max|dpub| 0.167 dB from 0.1 s (0.167 from the full-level block); pub -6.961 -> -6.965 -> -6.966 at event-1/+1/+2 (live -6.963 at the event); probe moves 2.125e-01 (live 2.139e-01)
+  (c) Drive 10 -> 0  user preset : vs the live edit max|dpub| 0.167 dB from 0.1 s (0.167 from the full-level block); pub -6.961 -> -6.965 -> -6.966 at event-1/+1/+2 (live -6.963 at the event); probe moves 2.125e-01 (live 2.139e-01)
+  (d) Undo of Apply (Case A)           : max|D| 0.028 dB (pub_F -5.868, resid 2.0e-09)
+  (d) preset: Level Match on + Drive 10: D_F +4.709 dB (pub_F -5.871), phi 0.80 (resid 2.9e-05)
+  (e) converged -6.0315 dB; same-rate re-prepare: kept -6.0315, first block g -1.132 (resid 1.2e-01), proportional from event+3, then max|g| 0.017, max|D| 0.019 over 3 s; probes hold 0.0e+00 (256) / 0.0e+00 (512)
+  (e) 44.1 kHz: +0.0000; restore moving Drive: -6.0315 -> +0.0000; restore of Output Gain only: -6.0315 -> -6.0315 (probe 0.0e+00); Apply after the re-prepare wrote -6.030 (fresh -6.0315)
+  (f) settled host reset: -6.0315 -> -6.0315, probe 0.0e+00 (no reset: moves 9.712e-02)
+  (h) first prepare at 44.1 kHz: sound set first -4.0667 -> -5.8126; default, then the sound -3.7464 -> -5.7965 (|diff| 0.016 dB)
+State test 132: a kept Level-Match result plays from the first quiet block after a same-rate re-prepare (ADR-0007, F13(2) Q5)
+  (1) -70 dBFS, Drive 8                   : kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 6.6e-16)
+  (1) control                             : first resumed block's output energy 1.736e-05 (no re-prepare: 3.677e+00, the loud tail); without the re-prepare the live analysis moves the published value 0.031 dB in 0.21 s (re-prepared: holds)
+  (1) loud resume, Drive 8                : published -6.0306 after prepareToPlay, -6.0287 after the first block; applied -6.0287 at the first sample (|a - P| 0.0000); input mean square >= 9.61e-02
+  (2) -90 dBFS, Drive 8                   : kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 7.8e-16)
+  (2) -125 dBFS, Drive 8                  : kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 7.5e-16)
+  (3) -90 dBFS, Drive 20                  : kept -10.4030 dB (before -10.4030); applied -10.403 / -10.403 / -10.403 / -10.403 / -10.403 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -10.403 (resid 6.8e-16)
+  (3) -90 dBFS, Drive 2 (small)           : kept -2.7572 dB (before -2.7572); applied -2.757 / -2.757 / -2.757 / -2.757 / -2.757 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -2.757 (resid 8.3e-16)
+  (3) -70 dBFS, positive (Width 0)        : kept +7.6606 dB (before +7.6606); applied +7.661 / +7.661 / +7.661 / +7.661 / +7.661 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block +7.661 (resid 7.4e-16)
+  (4) -70 dBFS, prepareToPlay (48 kHz, 512): kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 6.6e-16)
+  (4) -70 dBFS, restore of Output Gain -9 first: kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 6.6e-16)
+  (5) -70 dBFS, restore turning Level Match on: kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 6.6e-16)
+  (5) loud resume, restore turning it on  : published -6.0306 after prepareToPlay, -6.0287 after the first block; applied -6.0287 at the first sample (|a - P| 0.0000); input mean square >= 9.61e-02
+  (6) A/B right after the re-prepare      : kept -6.1603, slot B remembers -4.2688; published -4.2688 at the bottom; applied from event+8 worst |g - slot| 0.0000 (resid 7.9e-16)
+  (6) host reset 4 blocks after           : kept -6.0306 dB (before -6.0306); applied -6.031 / -6.031 / -6.031 / -6.031 / -6.031 dB at 0 / 10 / 30 / 60 / 120 ms (first: sample 0); max|a - P| 0.0000 over 0.12 s; first block -6.031 (resid 6.9e-16)
+  (6) host reset                          : applied -6.0306 before the reset, -6.0306 after it (published -6.0306); reset block energy 1.773e-05 (no reset: 1.96e-05)
+  (6) Apply right after the re-prepare    : kept -6.0306, Apply wrote -6.030; applied from event+8 worst |g - Output Gain| 0.0000 (resid 6.4e-16)
+  (7) Level Match off, then engaged       : kept -6.0306 (before -6.0306); Case A from event+8 worst |g - P| 0.0000 (resid 6.2e-16, duck -57.9 dB); Case B at event+8 g -1.354, P -6.031, phi 0.78 (resid 5.7e-05)
+  (8) 44.1 kHz, -70 dBFS                  : published +0.0000 after prepareToPlay, -4.0572 after the first block; applied -0.001 / -0.275 / -0.851 / -1.794 / -4.057 dB at 0 / 10 / 30 / 60 / 120 ms (phi30 0.79); from 0.13 s max|a - P| 0.0000
+  (8) 44.1 kHz, loud resume               : published +0.0000 after prepareToPlay, -4.0678 after the first block; applied -4.0678 at the first sample (|a - P| 0.0000); input mean square >= 9.61e-02
+  (9) restore moving Drive, -70 dBFS      : published +0.0000 after prepareToPlay, -5.0156 after the first block; applied -0.001 / -0.324 / -1.010 / -2.152 / -5.016 dB at 0 / 10 / 30 / 60 / 120 ms (phi30 0.80); from 0.13 s max|a - P| 0.0000
+  (9) NaN input block                     : published -6.0298 before the NaN block, +0.0000 after it (output energy 32.6), +0.0000 after prepareToPlay
+  (9) NaN block, then re-prepare, -70 dBFS: published +0.0000 after prepareToPlay, -4.0572 after the first block; applied -0.001 / -0.275 / -0.851 / -1.795 / -4.057 dB at 0 / 10 / 30 / 60 / 120 ms (phi30 0.79); from 0.13 s max|a - P| 0.0000
+  (9) +Inf slot gain, Level Match off     : published -6.0274 before the injection, then -nan over the 4 blocks to the re-prepare (output finite: yes); +0.0000 after prepareToPlay
+  (9) non-finite result, re-prepare, -70 dBFS: published +0.0000 after prepareToPlay, -4.0572 after the first block; applied -0.001 / -0.275 / -0.851 / -1.795 / -4.057 dB at 0 / 10 / 30 / 60 / 120 ms (phi30 0.79); from 0.13 s max|a - P| 0.0000
+State test 133: a same-rate re-prepare keeps the Level-Match result only while it is current (ADR-0007, F13(2) Q5; Devin)
+  converged at the start (Width 1.0, Drive 8): -5.5015 dB, drift 0.0124 dB over the last 0.5 s (39 lanes)
+  (1) Width 1.0 -> 2.0 (Devin)  : converged -5.501; published -5.502 before prepareToPlay (fresh at the edited sound -7.780, gap 2.28 dB), +0.0000 after (restore route +0.0000); the next 3 s vs the restore route: published bit-identical, output bit-identical
+  (2) Drive 8 -> 12             : converged -5.501; published -6.000 before prepareToPlay (fresh at the edited sound -7.591, gap 1.59 dB), +0.0000 after (restore route +0.0000); the next 3 s vs the restore route: published bit-identical, output bit-identical
+  (2) Drive 8 -> 2              : converged -5.501; published -5.502 before prepareToPlay (fresh at the edited sound -2.144, gap 3.36 dB), +0.0000 after (restore route +0.0000); the next 3 s vs the restore route: published bit-identical, output bit-identical
+  (2) Mix 1.0 -> 0.5            : converged -5.501; published -5.502 before prepareToPlay (fresh at the edited sound -3.022, gap 2.48 dB), +0.0000 after (restore route +0.0000); the next 3 s vs the restore route: published bit-identical, output bit-identical
+  (2) Amount 0.5 -> 1 (Width 2) : converged -7.780; published -7.780 before prepareToPlay (fresh at the edited sound -10.296, gap 2.52 dB), +0.0000 after (restore route +0.0000); the next 3 s vs the restore route: published bit-identical, output bit-identical
+  (2) Width 1.0 -> 2.0, dragged : converged -5.501; published -5.556 before prepareToPlay (fresh at the edited sound -7.786, gap 2.23 dB), +0.0000 after (restore route +0.0000); the next 3 s vs the restore route: published bit-identical, output bit-identical
+  (1) the flush, then again     : re-prepared -5.5016 -> +0.0000; 1 s later -7.0916, and a second prepareToPlay leaves -7.0916
+  (3) live edit Drive 8 -> 2    : 6.02 s after the event published -2.1601, within 0.0147 dB of a fresh processor at the destination over the last 0.5 s (within 0.05 dB since 4.92 s); after prepareToPlay -2.1601
+  (3) Undo (Drive 2 -> 8)       : published -2.1602 / -4.0462 at event+1 / +2 (no swap: -2.1602 / -2.1601); before prepareToPlay -4.046 (fresh destination -5.520, gap 1.47 dB); after +0.0000; the no-swap lane's re-prepare -2.1601 -> -2.1601
+  (3) Undo, converged           : 6.02 s after the event published -5.5188, within 0.0077 dB of a fresh processor at the destination over the last 0.5 s (within 0.05 dB since 4.34 s); after prepareToPlay -5.5188
+  (3) Redo (Drive 8 -> 2)       : published -5.5188 / -5.5186 at event+1 / +2 (no swap: -5.5188 / -5.5188); before prepareToPlay -5.519 (fresh destination -2.153, gap 3.37 dB); after +0.0000; the no-swap lane's re-prepare -5.5188 -> -5.5188
+  (3) Redo, converged           : 6.02 s after the event published -2.1634, within 0.0147 dB of a fresh processor at the destination over the last 0.5 s (within 0.05 dB since 4.92 s); after prepareToPlay -2.1634
+  (3) user preset (Drive 8 -> 12): published -5.5016 / -6.0003 at event+1 / +2 (no swap: -5.5016 / -5.5017); before prepareToPlay -6.000 (fresh destination -7.591, gap 1.59 dB); after +0.0000; the no-swap lane's re-prepare -5.5017 -> -5.5017
+  (3) user preset, converged    : 6.02 s after the event published -7.6065, within 0.0065 dB of a fresh processor at the destination over the last 0.5 s (within 0.05 dB since 4.19 s); after prepareToPlay -7.6065
+  (3) A/B slot B -> slot A      : slot B (Drive 2) -2.1582 (within 0.0114 dB of fresh), slot A remembers -5.5015; bottom -5.4989 (probe -5.5015); before prepareToPlay -5.4989, after -5.4989; the silence probe moves 0.00e+00 dB
+  (4) Apply / Undo of Apply     : Apply wrote -5.500 (published -5.5015); prepareToPlay one block later -5.5016 -> -5.5016; Undo of Apply 24 blocks later, re-prepared after its bottom: -5.5036 -> -5.5036
+  (5) Output Gain -3 -> -9      : the edit block is bit-identical to the lane without the edit; prepareToPlay -5.5016 -> -5.5016
+  (5) Output Gain, Level Match off: the edit block differs from the lane without the edit; prepareToPlay -5.5016 -> -5.5016
+  (5) Output Balance 0 -> 0.5   : the edit block differs from the lane without the edit; prepareToPlay -5.5016 -> -5.5016
+  (6) Width 1.0 -> 2.0, half-way: 2 s after the edit published -7.3959 (fresh -7.8034, gap 0.408 dB); after prepareToPlay +0.0000
+  (6) Width 1.0 -> 2.0, converged: 6.02 s after the event published -7.7994, within 0.0083 dB of a fresh processor at the destination over the last 0.5 s (within 0.05 dB since 4.40 s); after prepareToPlay -7.7994
+  (7) quiet resume (-70 dBFS)   : kept -7.7994; applied -7.7994 at the first sample (0), max|a - P| 0.0000 over 0.12 s; first block -7.7994 (resid 6.5e-16); input mean square <= 5.11e-08
+  (8) liveness                  : the block after a host reset differs from the same edit without it
+  (8a) Width edit, reset, at once: published -5.5016 / -5.5016 across the reset; -5.5016 before prepareToPlay (fresh -7.7798, gap 2.278 dB), +0.0000 after
+  (8b) Drive 8 -> 12, reset, +1 blk: published -6.0002 / -6.0002 across the reset; -6.0005 before prepareToPlay (fresh -7.5906, gap 1.590 dB), +0.0000 after
+  (8b) Drive 8 -> 12, reset, +0.5 s: published -6.0002 / -6.0002 across the reset; -6.6469 before prepareToPlay (fresh -7.6003, gap 0.953 dB), +0.0000 after
+  (8c) Width, 1.5 s, reset, +1 blk: published -7.1068 / -7.1068 across the reset; -7.1069 before prepareToPlay (fresh -7.8010, gap 0.694 dB), +0.0000 after
+  (8c) Width, 1.5 s, reset, +0.5 s: published -7.1068 / -7.1068 across the reset; -7.3829 before prepareToPlay (fresh -7.8034, gap 0.421 dB), +0.0000 after
+  (8d) reset in the preset's fade: published -5.5016 / -5.5016 across the reset; -5.5016 before prepareToPlay (fresh -7.5905, gap 2.089 dB), +0.0000 after
+  (8d) liveness                 : published -6.0094 in the block after the reset (the swap without it: -5.5016; at its bottom -6.0003)
+  (9) Width edit, new rate      : after prepareToPlay (44.1 kHz) +0.0000
+  (10) ordinary duck, re-prepared: Level Match on alone -5.5016 -> -5.5016; with Width 2 at the entry -5.5018 -> +0.0000, during the fade-out -5.5017 -> +0.0000 (fresh at Width 2 -7.7800)
+  (11) Width edit in the fade-in: run over the no-duck twin: -240.0 dB at the bottom (before the edit), -21.16 dB a block before the edit, -9.94 dB at its first sample (event+4); full level (within 0.05 dB, 0.0057) from event+7; re-prepared 0.20 s after the edit: -5.6187 -> +0.0000 (fresh at Width 2 -7.7855); the duck alone -5.5048 -> -5.5048
+State test 134: an A/B slot's remembered Level-Match gain carries the validity of the result it was taken from (ADR-0007, A/B provenance; Devin)
+  spine: slot B at Drive 8 -5.4983 before the edit (within 0.0153 dB of a fresh Drive 8 over 0.5 s); the edit's block -6.0002 (the predict floor)
+  (B) left 0.1 s after the edit       : remembered -5.9801; bottom -6.0101; before prepareToPlay -6.0168 (fresh destination -7.6233, a keep 1.606 dB off), after +0.0000 -> FLUSH
+  (B) left 0.3 s after the edit       : remembered -6.0693; bottom -6.0739; before prepareToPlay -6.0789 (fresh destination -7.6233, a keep 1.544 dB off), after +0.0000 -> FLUSH
+  (B) left 1.1 s after the edit       : remembered -6.8012; bottom -7.6058; before prepareToPlay -7.6027 (fresh destination -7.6186, a keep 0.016 dB off), after -7.6027 -> KEEP
+  (B) left 1.1 s after the edit       : the bottom publishes -7.6058 (A's live -5.5224, the record -6.8012), 0.0128 dB from a fresh Drive 12
+  (A) left 6 s after the edit         : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (A) left 6 s after the edit         : B left within 0.0066 dB of a fresh Drive 12 over the 0.5 s before it
+  (C) re-confirmed on B               : back on B at -6.0739 (the 0.3 s record); 6 s later within 0.0035 dB of a fresh Drive 12 over 0.5 s; prepareToPlay -7.6092 -> -7.6092
+  (C) re-confirmed, left, back        : remembered -7.6092; bottom -7.6053; before prepareToPlay -7.6018 (fresh destination -7.6184, a keep 0.017 dB off), after -7.6018 -> KEEP
+  (C) the NOT-measured restore        : applied on A -5.5235 before the return (resid 5.2e-16); bottom -6.0739; applied -6.0751 at the first full-level block, then at most 0.0000 dB outside [bottom, P] over 0.12 s (resid 3.4e-08)
+  (D) Output Gain -3 -> -9            : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (D) Output Balance 0 -> 0.5         : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (D) Width 1.0 -> 2.0                : remembered -7.6205; bottom -7.6290; before prepareToPlay -7.6375 (fresh destination -9.7696, a keep 2.132 dB off), after +0.0000 -> FLUSH
+  (a) Drive 12 -> 14, same turn       : remembered -7.6205; bottom -7.6228; before prepareToPlay -7.6250 (fresh destination -8.3995, a keep 0.774 dB off), after +0.0000 -> FLUSH
+  (a) Output Gain -3 -> -9, same turn : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (b) duck + Width, switch in its fade: remembered -7.6205; bottom -7.6290; before prepareToPlay -7.6375 (fresh destination -9.7696, a keep 2.132 dB off), after +0.0000 -> FLUSH
+  (b) the same duck alone             : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (b') the same, 6 s before the switch: remembered -9.7874; bottom -9.7831; before prepareToPlay -9.7788 (fresh destination -9.7696, a keep 0.009 dB off), after -9.7788 -> KEEP
+  (b')                                : the duck's second block -61.4 dB against the lane without it; B left within 0.0048 dB of a fresh Width 2.0 over 0.5 s
+  (c0) A -> B -> A in one turn        : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (c0) A -> B -> A in one turn        : A within 0.0438 dB of a fresh Drive 8 before the event; the event's bottom -5.4926 (the lane without it -5.4930); from B's bottom on bit-identical to the lane without it
+  (c1) A -> B, one block, B -> A      : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (c1) A -> B, one block, B -> A      : A within 0.0438 dB of a fresh Drive 8 before the event; the event's bottom -5.4926 (the lane without it -5.4930); from B's bottom on bit-identical to the lane without it
+  (d) Copy A -> B while on A          : remembered -7.6205; bottom -7.4420; before prepareToPlay -7.4306 (fresh destination -5.5205, a keep 1.910 dB off), after +0.0000 -> FLUSH
+  (e) Oversampling Off -> 2x on A     : remembered -7.6205; bottom -7.6131; before prepareToPlay -7.6061 (fresh destination -7.0261, a keep 0.580 dB off), after +0.0000 -> FLUSH
+  (e) ...and back to Off before       : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (f) Width edit in the return fade   : remembered -7.6205; bottom -7.6290; before prepareToPlay -7.6375 (fresh destination -9.7696, a keep 2.132 dB off), after +0.0000 -> FLUSH
+  (f) Output Balance in the fade      : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (h) switch + Undo in one turn       : remembered -7.6205; bottom -7.4420; before prepareToPlay -7.4306 (fresh destination -5.5205, a keep 1.910 dB off), after +0.0000 -> FLUSH
+  (G) 44.1 kHz on A, back, 44.1 kHz   : remembered -7.6205; bottom -7.6179; before prepareToPlay -7.6152 (fresh destination -7.4287, a keep 0.187 dB off), after +0.0000 -> FLUSH
+  (G) 48 -> 44.1 -> 48 kHz on A       : remembered -7.6205; bottom -7.6181; before prepareToPlay -7.6157 (fresh destination -7.6080, a keep 0.008 dB off), after -7.6157 -> KEEP
+  (W7) switch, suspended, 44.1 kHz    : remembered -7.6205; bottom -7.6172; before prepareToPlay -7.6095 (fresh destination -7.4287, a keep 0.181 dB off), after +0.0000 -> FLUSH
+  (W7) switch, suspended, 48 kHz      : remembered -7.6205; bottom -7.6175; before prepareToPlay -7.6115 (fresh destination -7.6080, a keep 0.003 dB off), after -7.6115 -> KEEP
+  (W7) ...back to A, the prime's record: remembered -5.5177; bottom -5.5154; before prepareToPlay -5.5127 (fresh destination -5.5242, a keep 0.012 dB off), after -5.5127 -> KEEP
+  (W7) ...Copy B -> A, back to A      : remembered -5.5177; bottom -5.6961; before prepareToPlay -5.7074 (fresh destination -7.6142, a keep 1.907 dB off), after +0.0000 -> FLUSH
+  (S) setStateInformation on A        : remembered -7.6205; bottom -6.0102; before prepareToPlay -6.0173 (fresh destination -7.6080, a keep 1.591 dB off), after +0.0000 -> FLUSH
+  (S) switch, then restore, one turn  : active slot after the restore 0; A live -5.5177; bottom -5.5178 (B remembered -7.6205); prepareToPlay -5.5178 -> -5.5178 (fresh Drive 8 -5.5205)
+  (E) P1b silence probes              : the probe moves from the bottom over 1 s: slots differing, measured 0.00e+00 / not measured 0.00e+00 dB; identical, measured 0.0254; Output Gain only, measured 0.0254; identical, NOT measured 1.0111
+  (E) identical slots, B measured     : remembered -5.5081; bottom -5.5083; before prepareToPlay -5.5083 (fresh destination -5.5258, a keep 0.018 dB off), after -5.5083 -> KEEP
+  (E) Output Gain -9 on B, measured   : remembered -5.5081; bottom -5.5083; before prepareToPlay -5.5083 (fresh destination -5.5258, a keep 0.018 dB off), after -5.5083 -> KEEP
+  (E) identical slots, B NOT measured : remembered -4.0315; bottom -4.0404; before prepareToPlay -4.0491 (fresh destination -5.5258, a keep 1.477 dB off), after +0.0000 -> FLUSH
+  (E) never visited, first switch     : remembered +0.0000; bottom -0.4702; before prepareToPlay -0.9000 (fresh destination -5.5258, a keep 4.626 dB off), after +0.0000 -> FLUSH
+  (w5z) A left before the first block : remembered +0.0000; bottom -0.4702; before prepareToPlay -0.9000 (fresh destination -5.5258, a keep 4.626 dB off), after +0.0000 -> FLUSH
+  (w5) A left 0.3 s after the prepare : remembered -4.4559; bottom -4.4622; before prepareToPlay -4.4685 (fresh destination -5.5258, a keep 1.057 dB off), after +0.0000 -> FLUSH
+  (w5) control: A left measured       : remembered -5.5132; bottom -5.5133; before prepareToPlay -5.5133 (fresh destination -5.5258, a keep 0.013 dB off), after -5.5133 -> KEEP
+  (drift) off-grid Multiband / Mono Maker: remembered -5.5068; bottom -5.5038; before prepareToPlay -5.5012 (fresh destination -5.5241, a keep 0.023 dB off), after -5.5012 -> KEEP
+  (drift)                             : Split 1 65.3681335 -> 65.3681259 Hz, Mono Maker 123.637878 -> 123.637833 Hz across the round trip
+  (F2) B at Drive 24, A at Drive 8    : B left at -10.3600 (fresh -10.3584); first return's bottom -11.7892 (the floor); left 4 blocks later at -11.6124
+  (F2) control: B at Drive 4          : B left at -3.1650 (fresh -3.1732); first return's bottom -3.1624
+  (F2) ...second return               : remembered -11.6124; bottom -11.8287; before prepareToPlay -11.6445 (fresh destination -10.3727, a keep 1.272 dB off), after +0.0000 -> FLUSH
+  (F2) control, second return         : remembered -3.1601; bottom -3.1581; before prepareToPlay -3.1557 (fresh destination -3.1805, a keep 0.025 dB off), after -3.1557 -> KEEP
+  (F) negative (Drive 8)              : remembered -5.5086; bottom -5.5055; before prepareToPlay -5.5030 (fresh destination -5.5258, a keep 0.023 dB off), after -5.5030 -> KEEP
+  (F) ...its stale lane               : remembered -3.9497; bottom -3.9558; before prepareToPlay -3.9625 (fresh destination -5.5258, a keep 1.563 dB off), after +0.0000 -> FLUSH
+  (F) negative (Drive 8)              : kept -5.5030; applied -5.5030 at the first sample (0), max|a - P| 0.0000 over 0.12 s; first block -5.5030 (resid 7.0e-16); input mean square <= 5.12e-08
+  (F) POSITIVE (posKv)                : remembered +7.7891; bottom +7.7899; before prepareToPlay +7.7911 (fresh destination +7.7793, a keep 0.012 dB off), after +7.7911 -> KEEP
+  (F) ...its stale lane               : remembered +6.3217; bottom +6.3312; before prepareToPlay +6.3410 (fresh destination +7.7793, a keep 1.438 dB off), after +0.0000 -> FLUSH
+  (F) POSITIVE (posKv)                : kept +7.7911; applied +7.7911 at the first sample (0), max|a - P| 0.0000 over 0.12 s; first block +7.7911 (resid 7.8e-16); input mean square <= 5.56e-08
+State test 135: a gain-only Level-Match engage lands on the value the matcher publishes, current or not (ADR-0007; Devin)
+  (1) Width 1.0 -> 2.0, the toggle 0.3 s later    : before KEPT (-5.517, moved 0.0034 over 0.5 s) | edit FLUSHED | toggle FLUSHED | bottom FLUSHED, P -5.761 (fresh -7.792), plays D +0.000 | after it FLUSHED | P vs on-throughout 0.0e+00 | excursion +0.000
+                                                  : 6 s after the edit KEPT, max|applied - fresh| 0.010 dB over 0.5 s | at 44.1 kHz -7.7963 -> +0.0000
+  (1') the toggle one block after the edit        : before KEPT (-5.517, moved 0.0034 over 0.5 s) | edit FLUSHED | toggle FLUSHED | bottom FLUSHED, P -5.518 (fresh -7.792), plays D -0.000 | after it FLUSHED | P vs on-throughout 0.0e+00 | excursion +0.000
+  (2a) Drive 8 -> 12                              : before KEPT (-5.517, moved 0.0034 over 0.5 s) | edit FLUSHED | toggle FLUSHED | bottom FLUSHED, P -6.082 (fresh -7.608), plays D +0.000 | after it FLUSHED | P vs on-throughout 0.0e+00 | excursion +0.000
+  (2b) Mix 1.0 -> 0.5                             : before KEPT (-5.517, moved 0.0034 over 0.5 s) | edit FLUSHED | toggle FLUSHED | bottom FLUSHED, P -5.327 (fresh -3.032), plays D -0.000 | after it FLUSHED | P vs on-throughout 0.0e+00 | excursion +0.155
+  (3) Undo of Apply on a stale result             : m -5.500 | its bottom FLUSHED | P_F -5.827, D_F +0.006 (resid 7.1e-11) | excursion +0.016, highest +0.000 dB over the level before
+  (4) B left 0.3 s after its edit, back, the toggle: after the return's bottom FLUSHED | the toggle's bottom FLUSHED, P -6.299, plays D -0.000 | after it FLUSHED
+  (4c) B left 6 s after its edit (measured)       : after the return's bottom KEPT | the toggle's bottom KEPT, P -7.776, plays D +0.000 | after it KEPT
+  (C) the toggle 6 s after the edit               : before KEPT (-5.517, moved 0.0034 over 0.5 s) | edit FLUSHED | toggle KEPT | bottom KEPT, P -7.796 (fresh -7.801), plays D +0.000 | after it KEPT | P vs on-throughout - | excursion +0.000
+  (D) Output Gain 0 -> -6                         : before KEPT (-5.517, moved 0.0034 over 0.5 s) | edit KEPT | toggle KEPT | bottom KEPT, P -5.519 (fresh -5.519), plays D +0.000 | after it KEPT | P vs on-throughout - | excursion +0.003
+  (E) Case B: Width and the toggle in one turn    : before KEPT | P_F -5.526, phi 0.799 (resid 2.7e-05) | after its fade-in FLUSHED
+State test 136: a measured A/B gain restored at an upgraded duck's bottom survives a same-rate prepareToPlay in the fade-in (ADR-0007, duckMeasDirty lifecycle; Devin)
+  premise: Bands 4 -> 3, then A/B in the fade-out                   : B left at -7.5946 (fresh -7.5948) | switch block 2.4e-05 of the level before (1.03 without the duck); bit-identical to the duck alone through it: yes
+  premise: the upgraded bottom restores B's record                  : -5.2889 in the switch block, -7.5921 at the bottom (+2) | the duck alone -5.2904 there
+  premise: the fade-in                                              : blocks + 2 / + 4 play 0.00 / 0.22 of a fresh B's energy
+  (B) before the bottom (the fade-out's last gap)                   : -5.2889 -> +0.0000 (FLUSHED) | the first block -7.5921 (the record -7.5946) | 3 blocks later KEPT
+  (C) the earliest fade-in gap                                      : -7.5921 -> -7.5921 (KEPT), 0.024 dB off fresh B | 3 blocks later KEPT
+  (A) ~11 ms into the fade-in (Devin's case)                        : -7.5894 -> -7.5894 (KEPT), 0.027 dB off fresh B | 3 blocks later KEPT
+  (D) ~21 ms into the fade-in                                       : -7.5860 -> -7.5860 (KEPT), 0.030 dB off fresh B | 3 blocks later KEPT
+  (D) the fade-in's last gap                                        : -7.5841 -> -7.5841 (KEPT), 0.032 dB off fresh B | 3 blocks later KEPT
+      control: the first gap after it (Normal)                      : -7.5833 -> -7.5833 (KEPT), 0.033 dB off fresh B | 3 blocks later KEPT
+  (A) NOMB (Bands + Width 1 -> 2), ~11 ms into the fade-in          : -7.5894 -> -7.5894 (KEPT) | applied in the next block -7.5863 (resid 6e-16)
+  (A) NOMB (Bands + Width 1 -> 2), then a quiet resume (-70 dBFS)   : -7.5894 -> -7.5894 (KEPT) | applied in the next block -7.5894 (resid 6e-16)
+      control: the same gap, prepareToPlay at 44.1 kHz              : -7.5894 -> +0.0000 (FLUSHED)
+  (E) the ordinary duck alone (Bands 4 -> 3, Multiband on)          : before the bottom FLUSHED | ~11 ms into the fade-in FLUSHED | 6 s later KEPT
+      controls ~11 ms into their fade-ins                           : the switch alone KEPT | NOMB's band count alone + the switch KEPT
+  (F) Devin's route, B's record NOT measured (its visit 0.5 s)      : B left at -6.6665, 0.950 dB off a converged fresh B | restored -6.6695 | FLUSHED
+  (H1) reset() ~11 ms into the fade-in, prepareToPlay 3 blocks later: Devin's route KEPT (-7.5809) | the switch alone KEPT | the duck alone FLUSHED
+  (H2) abSwitchTo (A) ~11 ms into the fade-in, 1 s, back to B       : B recorded at -7.5894, restored -7.5860 | KEPT (0.038 dB off fresh B) | the switch alone KEPT
+State test 137: an A/B slot left before its Level-Match result is measured carries the measure's post-change evidence -- one visit long enough, or several that add up, come back measured (ADR-0007, A/B provenance: the record's evidence)
+  (A) B before its edit (the block before it)                   : prepareToPlay -5.4436 -> -5.4436 (KEPT) | 1.5 s in: FLUSHED
+  (A) 8 -> 12 left 0.3 s after the edit                          : record -6.0693 (1.506 off fresh; prepareToPlay there FLUSHED) | A -5.2860 | the bottom -6.0758 | prepareToPlay -6.0823 -> +0.0000 (FLUSHED), 1.528 off fresh
+  (A) 8 -> 12 left 0.6 s after the edit                          : record -6.3439 (1.246 off fresh; prepareToPlay there FLUSHED) | A -5.2850 | the bottom -6.3489 | prepareToPlay -6.3545 -> +0.0000 (FLUSHED), 1.258 off fresh
+  (A) 8 -> 12 left 1.1 s after the edit                          : record -6.7998 (0.803 off fresh; prepareToPlay there FLUSHED) | A -5.2874 | the bottom -7.6086 | prepareToPlay -7.6055 -> -7.6055 (KEPT), 0.011 off fresh
+  (A) 8 -> 12 left 2.1 s after the edit                          : record -7.3228 (0.285 off fresh; prepareToPlay there FLUSHED) | A -5.2870 | the bottom -7.6076 | prepareToPlay -7.6048 -> -7.6048 (KEPT), 0.008 off fresh
+  (A) 8 -> 12 left 6.0 s after the edit                          : record -7.6152 (0.004 off fresh; prepareToPlay there KEPT) | A -5.2853 | the bottom -7.6117 | prepareToPlay -7.6084 -> -7.6084 (KEPT), 0.009 off fresh
+  (A) 8 -> 2  left 0.3 s after the edit                          : record -5.2511 (3.108 off fresh; prepareToPlay there FLUSHED) | A -5.3600 | the bottom -4.9542 | prepareToPlay -4.6854 -> +0.0000 (FLUSHED), 2.531 off fresh
+  (A) 8 -> 2  left 0.6 s after the edit                          : record -4.7738 (2.627 off fresh; prepareToPlay there FLUSHED) | A -5.3590 | the bottom -4.5196 | prepareToPlay -4.2890 -> +0.0000 (FLUSHED), 2.136 off fresh
+  (A) 8 -> 2  left 1.1 s after the edit                          : record -3.9033 (1.753 off fresh; prepareToPlay there FLUSHED) | A -5.3617 | the bottom -2.1887 | prepareToPlay -2.1862 -> -2.1862 (KEPT), 0.032 off fresh
+  (A) 8 -> 2  left 2.1 s after the edit                          : record -2.7932 (0.639 off fresh; prepareToPlay there FLUSHED) | A -5.3595 | the bottom -2.1634 | prepareToPlay -2.1611 -> -2.1611 (KEPT), 0.008 off fresh
+  (A) 8 -> 2  left 6.0 s after the edit                          : record -2.1647 (0.009 off fresh; prepareToPlay there KEPT) | A -5.3611 | the bottom -2.1624 | prepareToPlay -2.1600 -> -2.1600 (KEPT), 0.005 off fresh
+  (B) 8 -> 12 visits of 0.3 s                              : #0 FLUSHED #1 FLUSHED #2 FLUSHED #3 KEPT | the first kept return: 0.085 dB off fresh, the bottom 0.557 dB from the value recorded | control (each return's Drive moved 0.01 dB in its turn): FLUSHED
+  (B) 8 -> 12 visits of 0.6 s                              : #0 FLUSHED #1 KEPT | the first kept return: 0.038 dB off fresh, the bottom 0.641 dB from the value recorded | control (each return's Drive moved 0.01 dB in its turn): FLUSHED
+  (B) 8 -> 2  visits of 0.3 s                              : #0 FLUSHED #1 FLUSHED #2 FLUSHED #3 KEPT | the first kept return: 0.054 dB off fresh, the bottom 0.770 dB from the value recorded | control (each return's Drive moved 0.01 dB in its turn): FLUSHED
+  (B) 8 -> 2  visits of 0.6 s                              : #0 FLUSHED #1 KEPT | the first kept return: 0.003 dB off fresh, the bottom 0.917 dB from the value recorded | control (each return's Drive moved 0.01 dB in its turn): FLUSHED
+  (C) 8 -> 12: left at 0.6 s, back, 0.5 s on B, left, back    : the first return FLUSHED | 0.5 s more on B, left, back: KEPT, 0.028 off fresh | control (the first return's Drive moved 0.01 dB): FLUSHED
+  (D) B left at 1.1 s (~0.83 s of evidence); on A, Copy A -> B: the bottom -6.7922 (the record -6.7998), FLUSHED | Copy of an A at B's recorded Drive: the bottom -7.6123, KEPT, 0.005 off fresh
+  (E) left 0.3 s after the edit                               : record -6.0693 | reset() in the return's fade-out: FLUSHED (-6.0881) | primed at 48 kHz: the first block -6.0754, FLUSHED | at 44.1 kHz: -6.0760, FLUSHED
+  (E) left 1.1 s after the edit                               : record -6.7998 | reset() in the return's fade-out: KEPT (-7.6025) | primed at 48 kHz: the first block -7.6093, KEPT | at 44.1 kHz: -6.8016, FLUSHED
+  (F) left 1.1 s after the edit; back; prepareToPlay; -70 dBFS: -7.6055 -> -7.6055 (KEPT) | applied in the first quiet block -7.6055 (resid 6e-16)
+  (F) the same return, no prepareToPlay                       : the bottom published -7.6086 (the record -6.7998) | applied in the first full-level block -7.6100 (resid 2e-10; published -7.5986)
+  (G) left in a duck carrying Width 1 -> 2 (1.1 s after the edit): record -6.8040, the bottom -6.9968, FLUSHED | the band count alone: the bottom -7.6101, KEPT, 0.009 off fresh
+State test 138: a NaN Velvet Density renders the declared default -- identical Velvet slots keep their matched level through an A/B return and a same-rate prepareToPlay (ADR-0007, the non-finite Velvet Density; Devin)
+  (A) premises                                              : raw Density / slot before the leave, in the visit, after the return; at the prepare: 7fc00000/B 7fc00000/A 7fc00000/B 7fc00000 | applied, before the host's write: B at the return 0.5000, A after the verdict 0.5000 (the default 0.5000); the twin's 0.5000 / 0.5000 | Level Match off, the NaN lane's output against its twin's bit-identical: yes
+  (A) identical NaN slots, back, prepareToPlay              : prepareToPlay -8.3245 -> -8.3245 (KEPT) | the twin KEPT (-8.3245) | bit-identical to it: yes
+  (A) premise: B measured when left (the finite twin)       : prepareToPlay at the leave block KEPT (-8.3242), 1.5 s in FLUSHED
+  (A2) identical NaN slots, quiet return                    : B's record -8.3242, A before the return -8.1162, the bottom -8.3248 (without the return -8.1218) | prepareToPlay KEPT | bit-identical to the twin: yes
+  (B) B at Drive 12, A at 8, both NaN, quiet return         : B's record -10.5678, A before the return -8.0841, the bottom -10.5678 | prepareToPlay KEPT | bit-identical to the twin: yes
+  (C) no A/B, prepareToPlay 3.5 s in                        : primed with 7fc00000 | prepareToPlay -8.3246 -> -8.3246 (KEPT) | bit-identical to the twin: yes
+  (D) NaN 7fc00000 until the return, then 7fc00123          : the raw Density before / after the return 7fc00000 / 7fc00123 | prepareToPlay KEPT | bit-identical to the twin: yes
+  (D) NaN 7fc00000 until the return, then ffc00000          : the raw Density before / after the return 7fc00000 / ffc00000 | prepareToPlay KEPT | bit-identical to the twin: yes
+  (E) control: 0.7 for 0.5 s of the visit, then NaN         : prepareToPlay -8.3245 -> -8.3245 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (F) S5: Drive 8 -> 12 at 3.5 s, left 1.1 s later          : B's record -9.5547, the bottom -10.5582 (the evidence's mean) | prepareToPlay KEPT | bit-identical to the twin: yes
+  (G) control: a host NaN into Multiband Split 1 (2 bands)  : primed with 7fc00000 | the block before audible: yes, silent after: 0 of 5 | prepareToPlay -8.3316 -> -8.3316 (KEPT)
+  (G) sibling: Split 1 180 -> 190 Hz at block 5             : prepareToPlay -8.3316 -> -8.3316 (KEPT)
+  (H) A at Haas, the host writes 0.7, then NaN              : B's record -8.3242, the bottom -8.3242 | prepareToPlay -8.3125 -> -8.3125 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (H) control: the same visit, no write                     : B's record -8.3242, the bottom -8.3242 | prepareToPlay -8.3125 -> -8.3125 (KEPT) | the twin KEPT | bit-identical to it: yes
+State test 139: an A/B switch whose forced bottom would have fallen inside the destination's writes adopts the complete destination -- the fixed invariant (KI-032; ADR-0057, Accepted; Devin)
+  (A) premise: the switch writes 8 parameters, each one B's edits change: yes
+  (A) position 0/8: B's (none) written, A's drive width mix outputBalance haasDelay inputBalance monoMakerOn monoMakerFreq | bit-identical to the complete-at-completion twin: yes (first differing block -1) | the partial twin plays something else: yes
+  (A) position 1/8: B's drive written, A's width mix outputBalance haasDelay inputBalance monoMakerOn monoMakerFreq | bit-identical to the complete-at-completion twin: yes (first differing block -1) | the partial twin plays something else: yes
+  (A) position 4/8: B's drive mix haasDelay inputBalance written, A's width outputBalance monoMakerOn monoMakerFreq | bit-identical to the complete-at-completion twin: yes (first differing block -1) | the partial twin plays something else: yes
+  (A) position 7/8: B's drive mix outputBalance haasDelay inputBalance monoMakerOn monoMakerFreq written, A's width | bit-identical to the complete-at-completion twin: yes (first differing block -1) | the partial twin plays something else: yes
+  (A) position 8/8: B's drive width mix outputBalance haasDelay inputBalance monoMakerOn monoMakerFreq written, A's (none) | bit-identical to the complete-at-completion twin: yes (first differing block -1) | the partial twin plays something else: yes
+  (B) position 0/8: after the landing measured yes; prepareToPlay -8.7672 -> -8.7672 (KEPT), the twin -8.7672 -> -8.7672 | back to A, prepareToPlay -5.8077 -> -5.8077 (KEPT)
+  (B) position 4/8: after the landing measured yes; prepareToPlay -8.7672 -> -8.7672 (KEPT), the twin -8.7672 -> -8.7672 | back to A, prepareToPlay -5.8077 -> -5.8077 (KEPT)
+  (B) position 8/8: after the landing measured yes; prepareToPlay -8.7672 -> -8.7672 (KEPT), the twin -8.7672 -> -8.7672 | back to A, prepareToPlay -5.8077 -> -5.8077 (KEPT)
+  (C) position 4: the parameters read B's: yes | the output is the complete-at-completion twin's for 379 blocks: yes (first differing block -1)
+  (D) a host reset one block after the request, position 4: bit-identical to the twin making it before its switch: yes (first differing block -1) | the partial twin differs: yes
+  (D) a same-rate prepareToPlay one block after the request, position 4: bit-identical to the twin making it before its switch: yes (first differing block -1) | the partial twin differs: yes
+  (E) Haas -> Chorus, position 1: algorithm written, chorusRate chorusDepth not | bit-identical to the complete-at-completion twin: yes (first differing block -1) | Chorus at A's rate and depth would differ: yes
+  (F1) an audio thread (paced, then free-running) ran 7221 blocks against 26 switches: blocks that adopted a state neither slot holds 0; output finite: yes; ends on A, nothing pending: yes
+  (F2) 200 swaps: the audio thread read the value written before each completion 200 times, a stale one 0 times
+State test 140: every interleaving of a bulk swap's writes with the audio thread adopts only complete states, on every path that raises one (ADR-0057, Accepted; KI-032)
+  the switch writes: Drive+Width 2, Mix+Amount 2, Haas->Chorus 3, Multiband 4, Eight fields 8
+  S1 A/B, every write position         96 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S1t output twins                     48 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 48, mismatched 0
+  S2 slow writes                       10 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S3 repeated switching               120 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S4 undo                              96 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S5 redo                              96 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S6 factory preset loads              84 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S6f a user preset file (loadFile)    52 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S7 a host reset inside the writes    72 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S8 a re-prepare inside the writes    72 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S9a partial read, then a block       42 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S9b ...and a host reset              42 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S9c ...primed, activated             42 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S9d ...primed, activated, reset      42 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S9e prepareFrom, the switch in its read   28 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S13 a read inside the writes         19 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S13b the switch between the two takes   19 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S10 a completion and a request together   42 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S11 supersession inside a fade      288 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  S12 Copy                             48 cases | a state no swap completed 0 | final wrong 0 | pending 0 | Level Match not measured at landing 0 | output twins 0, mismatched 0
+  total: 1358 cases, 0 with a failure
+State test 141: every bulk swap's request is completed on its refusal and exception paths -- nothing stays pending (ADR-0057)
+  (R) 6 of 6 refusals left nothing pending; next switch lands: yes | (E1) completed: yes, next switch lands: yes | (E2) completed: yes, next switch lands: yes
+State test 103: no state-replacing command waits for a whole-sound replacement (R802-807)
+  [leg A] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg B] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg C] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg C2] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg D] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg E] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg F] pumped command took 0.0 ms; plug-in dispatch depth raised: no; queued 1
+  [leg G] with the plug-in's own depth ALSO raised: 0.0 ms, queued 1
+  [leg H] with a restore pending: 0.2 ms, queued 0
+  [leg K] after the door: completion calls 1, said true, file yes
+  [leg L] after the refused pass: 2 queued, B ran 0 time(s), slot 0 -> 0
+  [leg L] after the retry: slot 1, B saw slot 1 (expected 1)
+  [leg M] order: 1 2 3 (expected 1 2 3)
+State test 104: a save completion only touches the dialog it belongs to (R405-406)
+  [leg A] after the boundary: dialog closed, file written
+  [leg B] after the boundary: dialog open, title "SAVE FAILED"
+  [leg C] file written, preset display "__nmrphR405C_" (was "__nmrphR405__")
+  [leg D] newer dialog open, title "SAVE PRESET", name "__AnamorphR405D2__"; old file written
+  [leg E] newer dialog open, title "SAVE PRESET", outline untouched
+State test 105: the wheel reads both axes and belongs to the press (R3293)
+  [leg A] press on Drive, pointer over the display: Drive 1.920 -> 4.080 -> 5.040
+  [leg B] press on Mono Maker, pointer over Drive: Mono 133.8 -> 176.9 Hz, Drive 0.000 -> 0.000
+  [leg C] press on Bandwidth, pointer over Drive, HORIZONTAL notch: width 2.000 -> 1.820 -> 1.520; Drive 0.000 -> 0.000
+  [leg D] press on the split, pointer outside the display over "", HORIZONTAL notch: split 1043.7 -> 928.8 -> 858.0 Hz; Drive 0.000 -> 0.000
+  [leg K] frozen split (60 px above the frame, under ""): 195.7 -> 195.7 Hz, then 1043.7 on return
+  [leg E] three notches over Width while Drive holds the press: Width 1.0000 -> 1.0000, gestures opened 0
+  [leg F] knob: drag to 0.500, wheel to 0.000, then a full range of drag reaches 1.000 (was capped at the wheel offset before round 29)
+  [leg G] slider: drag to 0.431, wheel to 0.000, then a full travel reaches 1.000
+  [leg H] bandwidth: drag to 1.500, wheel to 0.000, then a full lane of drag reaches 2.000 (max 2.000)
+  [leg I] display: 1.000 -> 0.820 (vertical) -> 0.640 (horizontal only)
+  [leg L] knob: press 0.000, drag 0.250, wheel 0.700, back at the press point 0.450 (the notch's own 0.450, never the bare press's 0.000)
+  [leg L] slider: press 0.050, drag 0.300, wheel 0.750, back at the press point 0.500 (the notch's own 0.500)
+State test 106: a notch inside a velocity drag (R822-828)
+  [leg A] same 40 px of travel: absolute 0.1600, with the velocity modifier 0.0079
+  [leg A] the rotary reports a linear region of 0.0 px (0 is what makes JUCE's own divisor 0)
+  [leg B] clean velocity run: after 2 events 0.0042, after 3 0.0058 (the third event is worth 0.0017)
+  [leg C] velocity + notch: 0.0042 -> notch -> 0.1542 -> next drag 0.1558 (expected 0.1558, error +0.0000)
+  [leg D] velocity boundary: climbed to 0.8000, wheeled to 0.0000, one more event gives 0.2000, then a long climb reaches 1.0000
+  [legs E-J] the interval grid is 0.000417 of the range; tolerance 0.000833
+  [leg E] absolute -> notch -> velocity modifier: 0.0400 -> 0.1900 -> 0.1921 (expected 0.1917, error +0.0004)
+  [leg F] velocity -> notch -> absolute: press 0.0000, drag 0.0362, notch 0.1862, back at the press point 0.1500 (expected 0.1500), then a full range reaches 1.0000
+  [leg G] ctrl: notch 0.1900 -> next drag 0.1921 (expected 0.1917)
+  [leg G] alt: notch 0.1900 -> next drag 0.1921 (expected 0.1917)
+  [leg G] command: notch 0.1900 -> next drag 0.1921 (expected 0.1917)
+  [leg H] modifier down BEFORE the notch: 0.0400 -> 0.1900 -> 0.1921 (expected 0.1917)
+  [leg I] pointer outside, notch delivered to the Mono slider: 0.4421 -> 0.5921 -> 0.5942 (expected 0.5938); Mono 120.0 -> 120.0
+  [leg J] absolute -> notch -> absolute -> velocity: 0.2300 -> 0.2321 (expected 0.2317, error +0.0004)
+State test 107: an ownerless press still owns the wheel (R3302-3304)
+  [leg A] Alt-reset held: Drive 3.000 -> 0.000 (reset) -> 0.000 (3 notches), Width 1.4000 -> 1.4000, gestures on Width 0
+  [leg B] a held button with nothing claimed: Width 1.2000 -> 1.2000, display still
+  [leg C] blank-area press held: display still, Width 1.2000 -> 1.2000
+  [leg D] a real drag keeps the wheel: Drive 3.920 -> 6.080, Width 1.2000 -> 1.2000
+  [leg E] velocity x {vertical, horizontal} x {pointer inside, pointer elsewhere}: four runs, the press took every notch
+  [leg F] Persistence bar: 0.5000 -> 0.5000 while a press is held -> 0.5900 after it
+  [leg G] Alt-reset put Drive at 0.0000; a 40 px drag after it leaves 0.0000
+  [leg H] Width 1.4000 -> 1.4000 under a declined value-box press -> 1.5800 after it
+  [leg I] one device: Drive 3.920 -> notch 6.080 (Width still 1.2000), then after mouse-up a scroll moves Width to 1.3800
+  [leg J] after A then B pressed the same knob: A holds it, B holds nothing
+  [leg K] A released first: B's claim gone; on A's NEXT drag, B's notch moves Drive 3.920 -> 3.920, A's own moves it -> 6.080
+  [leg L] B released first: B's claim gone; on A's NEXT drag, B's notch moves Drive 3.920 -> 3.920, A's own moves it -> 6.080
+  [leg M] after the press ended: holder null
+  [leg N] a LIVE press still takes the notch from under the pointer: Drive 3.920 -> 6.080, Width 1.2000 -> 1.2000
+State test 108: the wheel register is per pointing device (LookAndFeel R16)
+  [leg A] mouse holds A, finger holds B; the mouse's notch went to A x1, B x0
+  [leg B] an idle third device scrolled; mouse still holds A, finger B
+  [leg C] the mouse scrolled with no button; mouse holds nothing, finger B
+  [leg D] after the control's gesture ended, finger holds nothing
+  [leg D] three devices pressed one control: HOLDS / nothing / nothing
+  [leg E] a claimless held device: consumed=1, delivered A x0 B x0
+  [leg F] after the holder was destroyed: holder=null, consumed=1, A x0
+  [leg G] the main mouse source keys as (type 0, index 0)
+  [leg H] A then B pressed one control: only A holds it yes; B's notch consumed=1 delivered x0, A's delivered x1; after the release nothing is held
+  [leg I] A then B pressed one control: only A holds it yes; B's notch consumed=1 delivered x0, A's delivered x1; after the release nothing is held
+  [leg K] the same device pressed a second editor's control: it holds the second; delivered A x0 B x1
+  [leg L] after a lost release and a press on a held control: B holds nothing
+  [leg J] a foreign control released the mouse: it still holds the claimant
+State test 109: an unwired PresetManager runs synchronously (R163-172)
+  [leg A] saveUser: result completed, completion calls 1 (said true), file written
+  [leg B] loadFile: result completed, completion calls 1 (said true), selection "__r32Standalone__"
+  [leg C] step(+1): "__r32Standalone__" -> "Default" (list 11 entries)
+  [leg D] inside a user transaction: result deferred, completion calls 0, file not yet
+  [leg D] after the boundary: completion calls 1 (said true), file written
+State test 110: a refused press establishes nothing (R101-103)
+  [leg A] the first press: thumb=0, holder=the knob, Drive 2.000 -> 3.9200, gesture opens=1 closes=1
+  [leg B1] rotary knob, rival press: mouse holds nothing, finger holds it still, thumb 0 -> 0, Drive 2.9600 -> 2.9600
+  [leg B2] linear knob, rival press: mouse holds nothing, thumb 0 -> 0, MonoFreq 177.9569 -> 177.9569
+  [leg B3] value box: own press holds=1 flag=1; rival press -> mouse holds nothing, Drive 2.0000 -> 2.0000
+  [leg B4] display, rival press: mouse holds nothing, finger holds it still, split 192.988 -> 192.988
+  [leg B4] ...and the owner's next drag moves split 192.988 -> 222.273 (mid 800.000, high 3000.000 unchanged)
+  [leg B5] rival double clicks: knob reset 2.0000 -> 2.0000, box editing after down=0 after double=0, split 180.000 -> 180.000
+  [leg I1] value box, rival drag+release: Drive 2.0000 -> 2.0000, dragging flag 1 -> 1, owner still holds it
+  [leg I2] display, rival drag+release: split 190.312 -> 190.312, owner still holds it, and the owner's next drag moves it to 207.022
+  [leg C/velocity] continuation 5.260000 vs 5.260000, full travel 24.000000 vs 24.000000, thumb 0 -> 0, gesture opens 1/1 closes 1/1, the rival's own three events moved the parameter by 0.000000
+  [leg C/absolute] continuation 226.665314 vs 226.665314, full travel 500.000000 vs 500.000000, thumb 0 -> 0, gesture opens 1/1 closes 1/1, the rival's own three events moved the parameter by 0.000000
+  [leg D] owner's notch: consumed=1 Drive 3.1500 -> 5.3100; rival's: consumed=1 -> 5.3100; Width 1.2000 -> 1.2000
+  [leg E1] the rival released first: thumb 0 -> 0, owner still holds it, gesture closes 0
+  [leg E1] ...and the OWNER's release then ends it: thumb -1, holder null, gesture opens=1 closes=1
+  [leg E2] the owner released first: table empty; the rival's later release left Drive 3.1500 -> 3.1500, closes=1
+  [leg F] one device: claim=1 Drive 2.000 -> 3.9200 -> 6.0800, released=1, Width 1.2000 -> 1.3800, opens=1 closes=1
+  [leg G] a duplicate real press: holder=1, and the drag after it moves Drive 2.000 -> 3.9200
+  [leg H] after the editor-level press: thumb 0 -> 0, holder unchanged, Drive 3.1500 -> 0.0000 (the A/B slot swap's own doing)
+State test 111: nested notifications keep the user endpoint (R256-262)
+  [leg A] A armed A@1.0000, B armed B@0.6500, after B A@1.0000; start 0 user 3 host 1 -> undo 0 redo 3
+  [leg B] A armed A@1.0000 | B outer B@0.6500 | B recursive B@0.8000 | after recursive B@0.6500 | after outer A@1.0000 | after A's hook other#17
+  [leg B] start 0, user selected 3, host wrote 1, A ended at 1; step=1 undo->0 redo->3
+  [leg C] with a re-entrant host write + poll: redo 3; without: redo 3
+  [leg D] sequential: 0 -> 2 -> 1, undo 2 then 0; request before other#17, between other#17
+  [leg E] gesture 1 ended at 3, gesture 2 at 2; undo 3 redo 2; request after gesture 2 other#17
+  [leg F] re-selecting the live index 2: step=0; request other#17 -> other#17
+State test 112: recursive same-control notification endpoint (R280-281)
+  [leg A] outer wasNorm 0.5000, re-entry at param 0.6500 / knob 1.3000; knob at outer exit 1.3000, param 0.8000
+  [leg A] end 1.6000, step=1, undo->1.0000 redo->1.6000
+  [leg B] outer wasNorm 0.5000, re-entrant write -> 0.9000; knob at outer exit 1.3000, param 0.9000; end 1.8000
+  [leg B] step=1, undo->1.0000 redo->1.3000
+  [leg C] plain press: step=1, undo->1.0000 redo->1.3000
+  [leg D] a bare host push to 1.7000: step=0
+  [leg E] press 1 redo->1.6000; press 2 step=1 redo->1.3000
+  [leg F] the register names index 17 (Multiband Enable) at 1.0000 with no notification open
+  [leg F] ...and it has no slider of its own
+  [leg F] a user click on its toggle: 1.0000 -> 0.0000, step=1, undo->1.0000 redo->0.0000 (the stale request holds 1.0000)
+State test 113: the pumped timer's APVTS acquisition is never bare (R1601-1602)
+  [leg A] inside our own dispatch: poll bodies +0, APVTS captures +0; outside it: +1 / +1
+  [leg B] host-started dispatch: plug-in depth raised no; took 0.1 ms; poll bodies +1, APVTS captures +1
+  [leg C] APVTS captures on this thread: 2, of which with the replacement lock already held: 2
+  [leg D] with the lock held elsewhere: took 0.0 ms, APVTS captures +0
+  [leg E] while the tick held the lock: restore finished no, width 1.0500 (expected the pre-restore 1.0500); tick took 120.3 ms
+State test 84: a band move derives its origins from the record it proved
+State test 85: a press hit-test answers under the topology the press proved
+State test 86: a scroll is one undo step, and the next scroll of the same control extends it
+  [leg X] automation INSIDE a held gesture: one Undo puts Drive back to 0.0000 (it was 0.0000) and leaves Width at 1.5000 (the host wrote 1.5000)
+  [leg X] ...and Redo restores Drive 4.8000, leaving Width 1.5000
+  [leg Y] A 0.0000 -> B 1.8000 (user) -> C 7.8000 (automation): Undo gives 0.0000, Redo gives 1.8000
+  [leg W] a host write the signature calls no change still split the scroll: one Undo stopped at 1.8000 rather than 0.0000
+State test 87: holding a band's solo and scrolling moves the band
+State test 88: a wheel notch inside a knob press belongs to that press
+  [leg F] pointer over Width, press held on Drive: Width 1.0000 -> 1.0000, Drive 1.9200 -> 3.7200, then 4.6800 after 10 px more drag
+  [leg G] pointer over the Settings bar, press held on Drive: bar 0.4790 -> 0.4790, Drive 1.9200 -> 3.7200
+State test 89: the A/B copy history obeys ADR-0008's 128-entry cap
+State test 90: a user step's endpoints belong to the user, per parameter
+State test 91: an attachment-driven user endpoint belongs to the user
+
+State test 92: a refused store states no endpoint at all
+  [leg D] after the refused split store: split 7000.0 Hz, controller wrote 7000.0 Hz, undo available 0
+
+State test 93: a complete-gesture endpoint is known before the gesture can be polled
+  [leg B] two-valued parameter: live Mono 0, undo available 0
+  [leg H] the refused store recorded no step at all (width 1.4000, started 1.0000)
+State test 94: bare imager stores declare their endpoint, and the timer's poll never waits
+  [leg F] the nested poll returned in 0 ms; the replacement was held open for 1 ms
+  [leg G] the timer door returned in 0 ms with a restore pending and the replacement lock held elsewhere
+  [leg A] the refused reset recorded no step, and the host's 1.6400 is therefore in none
+  [leg H] after Undo: mask 0.0000 (started 0.0000), Drive 8.0000 (host wrote 8.0000, user never touched it)
+  [leg H2] a step was recorded: Undo -> 0.0000, Redo -> 1.0000 (the user's own click makes 1.0000, the host wrote 2.0000)
+  [leg L] probe fired=1, bands=1, split=900.0 Hz, a step was recorded: no
+State test 114: a preset file is ONE well-formed document (ADR-0055)
+  A. two complete documents in one file
+  B. trailing content after the root element
+  C. malformed structure inside a correct root
+  D. the three shapes that detonate inside the parser
+    the entity-expansion file was answered in 0.0 ms
+  E. the tolerances this boundary preserves
+  F. the user preset list reports, and Next steps over what will not load
+  G. a NUL byte cannot hide the rest of the file
+  H. a file that grows past the cap between the size check and the read
+  I. a row that changes after the candidate pass does not stop navigation
+  J. an XML declaration is only ever the first thing in the file
+  K. invalid encodings are refused before the decode can reinterpret them
+  L. a walk over unreadable rows reads each of them exactly once
+State test 115: PRESET UNREADABLE appears, expires on its own clock, and yields to success
+  A. a refused load shows PRESET UNREADABLE
+  B. it expires on the frame clock alone -- no mouse, no clicks, no other animation
+  C. a successful load clears a warning that is still on screen
+  D. a run of successful loads never shows the warning
+State test 116: the host chunk and each A/B payload are bounded before the parser (ADR-0056)
+  [leg B] the entity-expansion chunk was answered in 0.2 ms
+  [leg C] chunk sizes: 262144 B (cap 262144) and 262145 B
+  [leg D] the payload's entity-expansion DOCTYPE was answered in 0.4 ms
+  [leg F] legacy_0_2_bare_apvts.xml           268 B, width 1.0000 -> 1.5000
+  [leg F] legacy_pre_0_6_4_ab_slots.xml       590 B, width 1.0000 -> 1.2000
+  [leg F] legacy_pre_0_8_4_view_params.xml    740 B, width 1.0000 -> 0.8000
+  [leg F] field_capture_0_9_5.session       10629 B, width 1.0000 -> 1.6250
+  [leg F] this build writes 10444 B against a 262144 B cap
+  [leg F2] legacy_0_2_bare_apvts.bin            268 B, width 1.0000 -> 1.5000
+  [leg F2] legacy_pre_0_6_4_ab_slots.bin        590 B, width 1.0000 -> 1.2000
+  [leg F2] legacy_pre_0_8_4_view_params.bin     740 B, width 1.0000 -> 0.8000
+  [leg G1] with an InputSource: 1 open(s), result <?xml version="1.0" encoding="UTF-8"?> <ANAMORPH><PARAM id="width" value="LEAKED"/></ANAMO
+  [leg G2] present: <?xml version="1.0" encoding="UTF-8"?> <ANAMORPH><PARAM id="width" value="leak"/></ANAMORP
+  [leg G3] absent : <?xml version="1.0" encoding="UTF-8"?> <ANAMORPH><PARAM id="width" value="leak"/></ANAMORP
+Tooltip source of truth: the cached component vs the live pointer
+
+Editor lifetime: construct, lay out and destroy with no window
+  laid out 940x720 with 68 direct children
+  constructed and destroyed 5 times, clean
+State test 142: NaN session saves preserve the encoding without undefined conversion
+State test 143: a nested release cannot clear a half-open band move (F10)
+State test 144: original host bytes, decoded text and separately parsed A/B payloads (RISK-015)
+  outer two documents      bytes 181, decoded 181, strict-text 0: applied first drive
+  outer prose              bytes 105, decoded 105, strict-text 0: applied first drive
+  outer another element    bytes 107, decoded 107, strict-text 0: applied first drive
+  outer binary             bytes 103, decoded 103, strict-text 0: applied first drive
+  outer NUL and document   bytes 182, decoded 100, strict-text 1: applied first drive
+  invalid UTF-8 name retained as raw hex 78 c3 28 79; counted UTF-8 bytes 6
+  reachable inner cap: outer 90290 B, inner stored 90061 B, inner counted 270061 B
+State test 146: finite-default audio through host/text writes (ADR-0067)
+  width host nan lifecycle=0 raw=nan energy=269.236 default=269.236 held=182.875 maxDeltaDefault=0 maxDeltaHeld=0.0978779
+  width host nan lifecycle=1 raw=nan energy=273.665 default=273.665 held=186.258 maxDeltaDefault=0 maxDeltaHeld=0.0944822
+  width host nan lifecycle=2 raw=nan energy=273.665 default=273.665 held=186.258 maxDeltaDefault=0 maxDeltaHeld=0.0944822
+  width host nan lifecycle=3 raw=nan energy=273.665 default=273.665 held=186.258 maxDeltaDefault=0 maxDeltaHeld=0.0944822
+  width host inf lifecycle=0 raw=2 energy=674.056 default=269.236 held=182.875 maxDeltaDefault=0.244695 maxDeltaHeld=0.342573
+  width host inf lifecycle=1 raw=2 energy=683.387 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.330688
+  width host inf lifecycle=2 raw=2 energy=683.387 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.330688
+  width host inf lifecycle=3 raw=2 energy=683.387 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.330688
+  width host -inf lifecycle=0 raw=0 energy=134.296 default=269.236 held=182.875 maxDeltaDefault=0.244695 maxDeltaHeld=0.146817
+  width host -inf lifecycle=1 raw=0 energy=137.091 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.141723
+  width host -inf lifecycle=2 raw=0 energy=137.091 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.141723
+  width host -inf lifecycle=3 raw=0 energy=137.091 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.141723
+  width text nan lifecycle=0 raw=nan energy=269.236 default=269.236 held=182.875 maxDeltaDefault=0 maxDeltaHeld=0.0978779
+  width text nan lifecycle=1 raw=nan energy=273.665 default=273.665 held=186.258 maxDeltaDefault=0 maxDeltaHeld=0.0944822
+  width text nan lifecycle=2 raw=nan energy=273.665 default=273.665 held=186.258 maxDeltaDefault=0 maxDeltaHeld=0.0944822
+  width text nan lifecycle=3 raw=nan energy=273.665 default=273.665 held=186.258 maxDeltaDefault=0 maxDeltaHeld=0.0944822
+  width text inf lifecycle=0 raw=2 energy=674.056 default=269.236 held=182.875 maxDeltaDefault=0.244695 maxDeltaHeld=0.342573
+  width text inf lifecycle=1 raw=2 energy=683.387 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.330688
+  width text inf lifecycle=2 raw=2 energy=683.387 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.330688
+  width text inf lifecycle=3 raw=2 energy=683.387 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.330688
+  width text -inf lifecycle=0 raw=0 energy=134.296 default=269.236 held=182.875 maxDeltaDefault=0.244695 maxDeltaHeld=0.146817
+  width text -inf lifecycle=1 raw=0 energy=137.091 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.141723
+  width text -inf lifecycle=2 raw=0 energy=137.091 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.141723
+  width text -inf lifecycle=3 raw=0 energy=137.091 default=273.665 held=186.258 maxDeltaDefault=0.236206 maxDeltaHeld=0.141723
+  haasDelay host nan lifecycle=0 raw=nan energy=269.236 default=269.236 held=241.239 maxDeltaDefault=0 maxDeltaHeld=0.337105
+  haasDelay host nan lifecycle=1 raw=nan energy=263.798 default=263.798 held=246.118 maxDeltaDefault=0 maxDeltaHeld=0.322421
+  haasDelay host nan lifecycle=2 raw=nan energy=263.798 default=263.798 held=246.118 maxDeltaDefault=0 maxDeltaHeld=0.322421
+  haasDelay host nan lifecycle=3 raw=nan energy=273.665 default=273.665 held=246.118 maxDeltaDefault=0 maxDeltaHeld=0.330378
+  haasDelay host inf lifecycle=0 raw=35 energy=266.906 default=269.236 held=241.239 maxDeltaDefault=0.34745 maxDeltaHeld=0.333774
+  haasDelay host inf lifecycle=1 raw=35 energy=253.816 default=263.798 held=246.118 maxDeltaDefault=0.328714 maxDeltaHeld=0.327467
+  haasDelay host inf lifecycle=2 raw=35 energy=253.816 default=263.798 held=246.118 maxDeltaDefault=0.328714 maxDeltaHeld=0.327467
+  haasDelay host inf lifecycle=3 raw=35 energy=273.591 default=273.665 held=246.118 maxDeltaDefault=0.343787 maxDeltaHeld=0.34608
+  haasDelay host -inf lifecycle=0 raw=1 energy=268.533 default=269.236 held=241.239 maxDeltaDefault=0.347189 maxDeltaHeld=0.338116
+  haasDelay host -inf lifecycle=1 raw=1 energy=266.246 default=263.798 held=246.118 maxDeltaDefault=0.340224 maxDeltaHeld=0.332868
+  haasDelay host -inf lifecycle=2 raw=1 energy=266.246 default=263.798 held=246.118 maxDeltaDefault=0.340224 maxDeltaHeld=0.332868
+  haasDelay host -inf lifecycle=3 raw=1 energy=272.937 default=273.665 held=246.118 maxDeltaDefault=0.346438 maxDeltaHeld=0.337489
+  haasDelay text nan lifecycle=0 raw=nan energy=269.236 default=269.236 held=241.239 maxDeltaDefault=0 maxDeltaHeld=0.337105
+  haasDelay text nan lifecycle=1 raw=nan energy=263.798 default=263.798 held=246.118 maxDeltaDefault=0 maxDeltaHeld=0.322421
+  haasDelay text nan lifecycle=2 raw=nan energy=263.798 default=263.798 held=246.118 maxDeltaDefault=0 maxDeltaHeld=0.322421
+  haasDelay text nan lifecycle=3 raw=nan energy=273.665 default=273.665 held=246.118 maxDeltaDefault=0 maxDeltaHeld=0.330378
+  haasDelay text inf lifecycle=0 raw=35 energy=266.906 default=269.236 held=241.239 maxDeltaDefault=0.34745 maxDeltaHeld=0.333774
+  haasDelay text inf lifecycle=1 raw=35 energy=253.816 default=263.798 held=246.118 maxDeltaDefault=0.328714 maxDeltaHeld=0.327467
+  haasDelay text inf lifecycle=2 raw=35 energy=253.816 default=263.798 held=246.118 maxDeltaDefault=0.328714 maxDeltaHeld=0.327467
+  haasDelay text inf lifecycle=3 raw=35 energy=273.591 default=273.665 held=246.118 maxDeltaDefault=0.343787 maxDeltaHeld=0.34608
+  haasDelay text -inf lifecycle=0 raw=1 energy=268.533 default=269.236 held=241.239 maxDeltaDefault=0.347189 maxDeltaHeld=0.338116
+  haasDelay text -inf lifecycle=1 raw=1 energy=266.246 default=263.798 held=246.118 maxDeltaDefault=0.340224 maxDeltaHeld=0.332868
+  haasDelay text -inf lifecycle=2 raw=1 energy=266.246 default=263.798 held=246.118 maxDeltaDefault=0.340224 maxDeltaHeld=0.332868
+  haasDelay text -inf lifecycle=3 raw=1 energy=272.937 default=273.665 held=246.118 maxDeltaDefault=0.346438 maxDeltaHeld=0.337489
+  chorusRate host nan lifecycle=0 raw=nan energy=144.544 default=144.544 held=144.926 maxDeltaDefault=0 maxDeltaHeld=0.336497
+  chorusRate host nan lifecycle=1 raw=nan energy=148.016 default=148.016 held=146.035 maxDeltaDefault=0 maxDeltaHeld=0.334353
+  chorusRate host nan lifecycle=2 raw=nan energy=148.233 default=148.233 held=148.279 maxDeltaDefault=0 maxDeltaHeld=0.339543
+  chorusRate host nan lifecycle=3 raw=nan energy=148.233 default=148.233 held=148.279 maxDeltaDefault=0 maxDeltaHeld=0.339543
+  chorusRate host inf lifecycle=0 raw=5 energy=142.992 default=144.544 held=144.926 maxDeltaDefault=0.331175 maxDeltaHeld=0.331744
+  chorusRate host inf lifecycle=1 raw=5 energy=146.412 default=148.016 held=146.035 maxDeltaDefault=0.33311 maxDeltaHeld=0.338336
+  chorusRate host inf lifecycle=2 raw=5 energy=146.001 default=148.233 held=148.279 maxDeltaDefault=0.335018 maxDeltaHeld=0.323211
+  chorusRate host inf lifecycle=3 raw=5 energy=146.001 default=148.233 held=148.279 maxDeltaDefault=0.335018 maxDeltaHeld=0.323211
+  chorusRate host -inf lifecycle=0 raw=0.05 energy=145.274 default=144.544 held=144.926 maxDeltaDefault=0.344584 maxDeltaHeld=0.336609
+  chorusRate host -inf lifecycle=1 raw=0.05 energy=145.611 default=148.016 held=146.035 maxDeltaDefault=0.331646 maxDeltaHeld=0.333517
+  chorusRate host -inf lifecycle=2 raw=0.05 energy=147.991 default=148.233 held=148.279 maxDeltaDefault=0.345953 maxDeltaHeld=0.33508
+  chorusRate host -inf lifecycle=3 raw=0.05 energy=147.991 default=148.233 held=148.279 maxDeltaDefault=0.345953 maxDeltaHeld=0.33508
+  chorusRate text nan lifecycle=0 raw=nan energy=144.544 default=144.544 held=144.926 maxDeltaDefault=0 maxDeltaHeld=0.336497
+  chorusRate text nan lifecycle=1 raw=nan energy=148.016 default=148.016 held=146.035 maxDeltaDefault=0 maxDeltaHeld=0.334353
+  chorusRate text nan lifecycle=2 raw=nan energy=148.233 default=148.233 held=148.279 maxDeltaDefault=0 maxDeltaHeld=0.339543
+  chorusRate text nan lifecycle=3 raw=nan energy=148.233 default=148.233 held=148.279 maxDeltaDefault=0 maxDeltaHeld=0.339543
+  chorusRate text inf lifecycle=0 raw=5 energy=142.992 default=144.544 held=144.926 maxDeltaDefault=0.331175 maxDeltaHeld=0.331744
+  chorusRate text inf lifecycle=1 raw=5 energy=146.412 default=148.016 held=146.035 maxDeltaDefault=0.33311 maxDeltaHeld=0.338336
+  chorusRate text inf lifecycle=2 raw=5 energy=146.001 default=148.233 held=148.279 maxDeltaDefault=0.335018 maxDeltaHeld=0.323211
+  chorusRate text inf lifecycle=3 raw=5 energy=146.001 default=148.233 held=148.279 maxDeltaDefault=0.335018 maxDeltaHeld=0.323211
+  chorusRate text -inf lifecycle=0 raw=0.05 energy=145.274 default=144.544 held=144.926 maxDeltaDefault=0.344584 maxDeltaHeld=0.336609
+  chorusRate text -inf lifecycle=1 raw=0.05 energy=145.611 default=148.016 held=146.035 maxDeltaDefault=0.331646 maxDeltaHeld=0.333517
+  chorusRate text -inf lifecycle=2 raw=0.05 energy=147.991 default=148.233 held=148.279 maxDeltaDefault=0.345953 maxDeltaHeld=0.33508
+  chorusRate text -inf lifecycle=3 raw=0.05 energy=147.991 default=148.233 held=148.279 maxDeltaDefault=0.345953 maxDeltaHeld=0.33508
+  outputGain host nan lifecycle=0 raw=nan energy=269.236 default=269.236 held=4.2671 maxDeltaDefault=0 maxDeltaHeld=0.218522
+  outputGain host nan lifecycle=1 raw=nan energy=273.665 default=273.665 held=4.3373 maxDeltaDefault=0 maxDeltaHeld=0.21851
+  outputGain host nan lifecycle=2 raw=nan energy=273.665 default=273.665 held=4.3373 maxDeltaDefault=0 maxDeltaHeld=0.21851
+  outputGain host nan lifecycle=3 raw=nan energy=273.665 default=273.665 held=4.3373 maxDeltaDefault=0 maxDeltaHeld=0.21851
+  outputGain host inf lifecycle=0 raw=24 energy=67629.1 default=269.236 held=4.2671 maxDeltaDefault=3.71215 maxDeltaHeld=3.93068
+  outputGain host inf lifecycle=1 raw=24 energy=68741.6 default=273.665 held=4.3373 maxDeltaDefault=3.71194 maxDeltaHeld=3.93045
+  outputGain host inf lifecycle=2 raw=24 energy=68741.6 default=273.665 held=4.3373 maxDeltaDefault=3.71194 maxDeltaHeld=3.93045
+  outputGain host inf lifecycle=3 raw=24 energy=68741.6 default=273.665 held=4.3373 maxDeltaDefault=3.71194 maxDeltaHeld=3.93045
+  outputGain host -inf lifecycle=0 raw=-24 energy=1.07185 default=269.236 held=4.2671 maxDeltaDefault=0.234221 maxDeltaHeld=0.0156989
+  outputGain host -inf lifecycle=1 raw=-24 energy=1.08948 default=273.665 held=4.3373 maxDeltaDefault=0.234208 maxDeltaHeld=0.015698
+  outputGain host -inf lifecycle=2 raw=-24 energy=1.08948 default=273.665 held=4.3373 maxDeltaDefault=0.234208 maxDeltaHeld=0.015698
+  outputGain host -inf lifecycle=3 raw=-24 energy=1.08948 default=273.665 held=4.3373 maxDeltaDefault=0.234208 maxDeltaHeld=0.015698
+  outputGain text nan lifecycle=0 raw=nan energy=269.236 default=269.236 held=4.2671 maxDeltaDefault=0 maxDeltaHeld=0.218522
+  outputGain text nan lifecycle=1 raw=nan energy=273.665 default=273.665 held=4.3373 maxDeltaDefault=0 maxDeltaHeld=0.21851
+  outputGain text nan lifecycle=2 raw=nan energy=273.665 default=273.665 held=4.3373 maxDeltaDefault=0 maxDeltaHeld=0.21851
+  outputGain text nan lifecycle=3 raw=nan energy=273.665 default=273.665 held=4.3373 maxDeltaDefault=0 maxDeltaHeld=0.21851
+  outputGain text inf lifecycle=0 raw=24 energy=67629.1 default=269.236 held=4.2671 maxDeltaDefault=3.71215 maxDeltaHeld=3.93068
+  outputGain text inf lifecycle=1 raw=24 energy=68741.6 default=273.665 held=4.3373 maxDeltaDefault=3.71194 maxDeltaHeld=3.93045
+  outputGain text inf lifecycle=2 raw=24 energy=68741.6 default=273.665 held=4.3373 maxDeltaDefault=3.71194 maxDeltaHeld=3.93045
+  outputGain text inf lifecycle=3 raw=24 energy=68741.6 default=273.665 held=4.3373 maxDeltaDefault=3.71194 maxDeltaHeld=3.93045
+  outputGain text -inf lifecycle=0 raw=-24 energy=1.07185 default=269.236 held=4.2671 maxDeltaDefault=0.234221 maxDeltaHeld=0.0156989
+  outputGain text -inf lifecycle=1 raw=-24 energy=1.08948 default=273.665 held=4.3373 maxDeltaDefault=0.234208 maxDeltaHeld=0.015698
+  outputGain text -inf lifecycle=2 raw=-24 energy=1.08948 default=273.665 held=4.3373 maxDeltaDefault=0.234208 maxDeltaHeld=0.015698
+  outputGain text -inf lifecycle=3 raw=-24 energy=1.08948 default=273.665 held=4.3373 maxDeltaDefault=0.234208 maxDeltaHeld=0.015698
+State test 147: all parameter boundaries, readback, audio and usable-raw restore windows
+State test 148: complete Settings/A-B/Undo/preset state before nested latency callbacks
+F9 regression: nested restore adoption and callback-save coherence
+State test 149: completed user edits survive direct A/B switches before the poll
+State test 145: advancedMode host writes, resize re-entry and editor lifetime (F12)
+State test 150: scope windows reject reuse and visualizers retain accepted state (ADR-0070)
+  scope sizeof=262152 processor sizeof=273768 cache header sizeof=120
+State test 151: genuinely concurrent scope producer and independent readers (ADR-0070)
+  scope producer: position=1064960 target=1064960 ready=2 observed=1059667/1059667
+  scope reader 0: accepted=70 rejected=10 during-writer=70 bad=0
+  scope reader 1: accepted=92 rejected=0 during-writer=92 bad=0
+State test 152: rotary captions and delivered keys survive editor reopen (NR-014)
+State test 154: Undo/Redo/A-B callbacks survive reentrant editor destruction
+State test 155: preset-menu and timer restore callouts survive editor destruction
+State test 156: editor scaling survives synchronous host-parent teardown
+State test 157: same-processor A -> B -> C -> B restore adoption and lifetime
+  State157 path=timer editor=live leg=0 target=NR028-B notifications=1 closes=0 width=0.6600
+  State157 path=timer editor=live leg=1 target=NR028-C notifications=1 closes=0 width=0.5200
+  State157 path=timer editor=live leg=2 target=NR028-B notifications=1 closes=0 width=0.6600
+  State157 path=timer editor=destroy leg=0 target=NR028-B notifications=2 closes=1 width=0.6600
+  State157 path=timer editor=destroy leg=1 target=NR028-C notifications=2 closes=1 width=0.5200
+  State157 path=timer editor=destroy leg=2 target=NR028-B notifications=2 closes=1 width=0.6600
+  State157 path=preset editor=live leg=0 target=NR028-B notifications=1 closes=0 width=0.6600
+  State157 path=preset editor=live leg=1 target=NR028-C notifications=1 closes=0 width=0.5200
+  State157 path=preset editor=live leg=2 target=NR028-B notifications=1 closes=0 width=0.6600
+  State157 path=preset editor=destroy leg=0 target=NR028-B notifications=2 closes=1 width=0.6600
+  State157 path=preset editor=destroy leg=1 target=NR028-C notifications=2 closes=1 width=0.5200
+  State157 path=preset editor=destroy leg=2 target=NR028-B notifications=2 closes=1 width=0.6600
+NR-029 probe: SpectrumImager survives synchronous editor destruction
+NR-029 probe: inline frequency commit survives synchronous editor destruction
+
+13959 checks, 0 failure(s)

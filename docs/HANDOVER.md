@@ -8,7 +8,11 @@ were not supplied. No release is authorized. Older attestations remain dated his
 
 ## Current handover — 2026-11-05 UTC
 
-Remote main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` includes #207–#214.
+Remote main `b0a063d2db982e3b6cdd1c403abce08098d1cfa1` includes #207–#215.
+Owner-approved #215 merged with a tree identical to reviewed head `a43c9964`;
+its [post-merge Build](https://github.com/skyRolly/Anamorph/actions/runs/42011193651)
+passed 16 selected jobs with three conditional skips. PR #216 is based on main
+and remains open for separate review of isolated NR-026 evidence and Proposed ADR-0072.
 NR-029/KI-037 was integrated through #212 (`82c98e45`), with source and
 regression provenance in [INC-025](POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
 NR-026 remains confirmed on JUCE 9.0.5: standalone wheel teardown UAF plus a held-wheel component-lifetime witness. Architecture review and a release risk disposition remain open.
@@ -302,7 +306,7 @@ substance next changes rather than on every version bump.
 
 ## Operational status — current
 
-Product version is 0.10.0; remote `main` is `f1d3ff81` and uses JUCE 9.0.5.
+Product version is 0.10.0; remote `main` is `b0a063d2` and uses JUCE 9.0.5.
 The current unpublished draft is ID `429760301`, with 11 assets and annotated
 tag object `1190e455` peeling to `4c136881`. It predates the integrated fixes
 and JUCE upgrade. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)

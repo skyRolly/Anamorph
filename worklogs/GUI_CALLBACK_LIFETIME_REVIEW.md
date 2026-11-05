@@ -48,6 +48,17 @@ check State-suite output are retained beside the package. The [ledger](engineeri
 and package verifier check the retained source/output identities and expected result signatures.
 New diagnostic binaries are rebuildable but not archived; the manifest records their hashes.
 
+An independently recorded rerun used a separate verified disposable Linux HOME,
+JUCE application-data path, preset directory and TMPDIR for the complete State
+suite and for each diagnostic case. The linked path witness and positive,
+escape, concurrency and interruption controls are retained with its manifest and
+output hashes in the same [ledger](engineering-review/nr026-juce905.json).
+It again completed 13,959 State checks, both live controls, and both distinct
+ASan teardown witnesses. The earlier observation's direct State invocation and
+XDG-only diagnostic profiles did not establish isolation; its original outputs
+and hashes remain historical. This tooling correction is not a production fix
+or evidence that user files were actually modified.
+
 ### Architecture Review decision package
 
 The Accepted ADR-0071 authorizes the JUCE 9.0.5 pin only. The Architecture Review Gate and
@@ -62,6 +73,13 @@ interpret the passing JUCE upgrade acceptance or CI as approval for an added JUC
 | D. Defer production implementation | Current evidence confirms two distinct read-after-destruction paths but does not settle gesture ownership when the Slider dies during synchronous notification, whether an interrupted one-notch edit must close as one Undo transaction, or whether product wheel ownership may change. Native DAW incidence and host-specific callback ordering are also unmeasured. | Recommended current action: defer gated production changes and present A–C with these decisions to Architecture Review. Diagnostic work remains nonshipping. Resume implementation only after an explicit human design/risk disposition. |
 
 Architecture Review decision request: decide whether to authorize the bounded combined correction in A, the event-model redesign in B, or a documented risk hold in C; also define gesture/Undo expectations when destruction occurs inside the write notification. Option D is the current preparation disposition, not defect resolution. ADR-0071 authorizes JUCE 9.0.5 only. Native DAW incidence remains unknown and no manual host run was initiated.
+
+The formal [Proposed ADR-0072](../docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+records those choices, the exact code surfaces to review and the required live,
+teardown, gesture, Undo and rollback controls. Inspection of the pinned attachment
+destructors adds a specific uncertainty: listener removal does not itself end a
+parameter gesture, so skipping a dead Slider's drag-end notification alone cannot
+be accepted as a complete correction. No production design or risk retention is approved.
 
 ### Bounded Settings and attachment lifecycle audit — 2026-11-05
 

@@ -220,7 +220,7 @@
     },
     "materials": [
       {
-        "path": "worklogs/engineering-review/nr026-repro/README.md",
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/README.md.historical.txt",
         "sha256": "f868d4bd89ca8ddc1f0676276bf555cadaf7e510e6a0fe99ad691298be6713d0"
       },
       {
@@ -232,11 +232,11 @@
         "sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
       },
       {
-        "path": "worklogs/engineering-review/nr026-repro/run.py",
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/run.py.historical.txt",
         "sha256": "8448f0ffec1f93a4af0566aac2257a36f0bd3dbbae00aa4cb3c94ecd57d61679"
       },
       {
-        "path": "worklogs/engineering-review/nr026-repro/verify.py",
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/verify.py.historical.txt",
         "sha256": "59a0ba2b134b980fa47ad2d1181521405828f2443b93dccc141399f5ee9d1848"
       },
       {
@@ -293,6 +293,265 @@
       }
     ],
     "binary_retention": "new run binaries were not committed; their hashes identify the locally executed bytes only. Rebuild from retained commands and sources.",
-    "historical_result_retention": "historical summaries are kept separately above; the old output hashes do not identify retained output bytes."
+    "historical_result_retention": "historical summaries are kept separately above; the old output hashes do not identify retained output bytes.",
+    "preset_isolation_limit": "Historical State invocation did not set an isolated HOME; diagnostic cases set XDG_CONFIG_HOME only. These records do not establish preset isolation or actual user-file changes."
+  },
+  "isolated_observation": {
+    "kind": "separate isolated rerun on 2026-11-05 UTC; earlier output and hashes remain historical",
+    "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+    "execution_checkout": "3199bfbdb4aea33182131fdcb7361b7dfb8e2a05",
+    "execution_checkout_note": "Diagnostic tooling was uncommitted during this run; exact executed tooling bytes are identified by runner_inputs.",
+    "juce_commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+    "compiler": "c++ (Debian 14.2.0-19) 14.2.0",
+    "cmake": "cmake version 3.31.6",
+    "invocation": [
+      "python3",
+      "worklogs/engineering-review/nr026-repro/run.py",
+      "--build",
+      "/workspace/.anamorph-tools/build",
+      "--juce",
+      "/workspace/.anamorph-tools/JUCE",
+      "--out",
+      "/workspace/.anamorph-tools/nr026-isolated-v1"
+    ],
+    "configuration_and_build": "Uses the same verified Release build recorded in new_observation; no production or dependency source changes.",
+    "runner_inputs": [
+      {
+        "path": "worklogs/engineering-review/nr026-repro/run.py",
+        "sha256": "9be0be7f51e092d02205fff65d10ba0bfaa046c21fb40cd54cd73c341d4c8ab2"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/isolation.py",
+        "sha256": "815abf208f8f5f16cf9d48a3874530e29be04b8e59087f302e7eb84e40bda0ae"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/path-probe.cpp",
+        "sha256": "c8606eaa955a5e89225da26507ced779ab4403f0097f6689972acea9460e5be8"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/test_isolation.py.executed.txt",
+        "sha256": "475ff282a594ffa296d838b3b5053f171838dd125cc351e53b15814ecca86f91"
+      }
+    ],
+    "command_manifest": {
+      "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/manifest.json",
+      "sha256": "edb6a3e5b5c854af4cfed3c2f191d10e307c58e7d41c8421b0af0788e8a6d762"
+    },
+    "materials": [
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-held.stderr",
+        "sha256": "a1af01385ea402e40fc2a14177927acd0b544464f6894070ff92ea3ab85ab74d"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-held.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-0.stderr",
+        "sha256": "8661da6c82853cef4d6a218af7d9060afcd3446dad2b5b4c3cc2b8bcb0ff6e0a"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-0.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-1.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-1.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-2.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-2.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-3.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-3.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-4.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-4.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-5.stderr",
+        "sha256": "6631efacf248adfe198b5d434ba4a769e3d4fcfb4dd89c324f2963bfcaa92f12"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-5.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-path-probe.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-path-probe.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-standalone.stderr",
+        "sha256": "e09ed706d9273b423e52fff1f956108d4bdee89d5e41755202e5881f2efd443f"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-standalone.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-close.stderr.gz",
+        "sha256": "790de870f7e84462880f58ce1f3fb4a588f224132b0aa1d1660566cf7fe66110"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-close.stdout",
+        "sha256": "6017d8433058ebbc4c081a94b171f9cb959da3fa8e3f983eec5a9ea6baec03c7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-live.stdout",
+        "sha256": "59e980a18a854c42d4a74b1da0fff35b52b0428f1d2f60950b61cb6c617f12e3"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls.stderr",
+        "sha256": "c5826999859cd302e6bab3a260d52198bdcb2db38b532ae18a4edcb492abcce7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-held.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-held.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-path-probe.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-path-probe.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-standalone.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-standalone.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-close.stderr.gz",
+        "sha256": "1b0f4876a69f382b4f9940c1bd2e00576713a2b025176a0fb219915a84683e49"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-close.stdout",
+        "sha256": "383699fbcb95b52a0d0027d100d0303e28e694c263387d6a0af8d9fb6b8569fe"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-live.stdout",
+        "sha256": "b3a3e07ca5df2b6d0a3fc7ec7b7a331629010766a425a57529a5d77569661747"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/state-suite.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/state-suite.stdout",
+        "sha256": "61c3adc98e0f3c4e1064a7ab25004632df787258f03c500532fe1a4c900f0581"
+      }
+    ],
+    "state_suite": {
+      "exit": 0,
+      "checks": 13959,
+      "failures": 0
+    },
+    "cases": [
+      {
+        "case": "standalone-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"
+      },
+      {
+        "case": "standalone-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"
+      },
+      {
+        "case": "held-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
+      },
+      {
+        "case": "held-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
+      }
+    ],
+    "isolation_controls": "Seven real-path and negative controls passed; raw unittest output is retained in isolation-controls.stderr.",
+    "preset_path_witness": "For State and each case, the manifest records the exact HOME, XDG/TMPDIR and paths returned by the linked JUCE core and production PresetManager before execution. Each profile was fresh and distinct.",
+    "limitations": "Only Linux/Xvfb and the stated ASan instrumentation were tested. No DAW incidence, native acceptance, or teardown gesture/Undo result is inferred. No binary is retained; binary hashes in the manifest identify locally executed bytes only.",
+    "raw_output_storage": "The two ASan stderr streams are gzip-compressed without changing their decompressed bytes; the manifest hashes the original raw streams.",
+    "control_refresh": {
+      "reason": "After the full seven-control run, add an eighth read-only control demonstrating the historical XDG-only environment resolves to the fake caller HOME; rerun all eight controls without repeating unchanged product scenarios.",
+      "source": {
+        "path": "worklogs/engineering-review/nr026-repro/test_isolation.py",
+        "sha256": "8f0d977b87dd9c7917293cf945d3590f24f149e6beaa604912429331d2c149cd"
+      },
+      "invocation": [
+        "python3",
+        "worklogs/engineering-review/nr026-repro/test_isolation.py",
+        "--probe",
+        "/workspace/.anamorph-tools/nr026-isolated-v1/path-probe"
+      ],
+      "environment": {
+        "LD_LIBRARY_PATH": "/workspace/.anamorph-tools/root/usr/lib/x86_64-linux-gnu"
+      },
+      "path_witness_binary_sha256": "343a9c612168d2f485ffe109d86474662cc67ac805a12009e44e4401b59c8478",
+      "exit": 0,
+      "tests": 8,
+      "stdout": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-refresh.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-refresh.stderr",
+        "sha256": "9e320bf515957b20db88749f512fb272b1872f413663094aa2b452d26730f1f8"
+      }
+    }
   }
 }

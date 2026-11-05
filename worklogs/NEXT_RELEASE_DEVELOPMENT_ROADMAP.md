@@ -7,7 +7,44 @@ See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and
 
 ## Current integrated baseline — 2026-11-05 UTC
 
-Remote `main` is `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` (PR #214). PRs
+Owner-reviewed PR #215 merged as `b0a063d2db982e3b6cdd1c403abce08098d1cfa1`;
+its tree is identical to approved head `a43c9964d21a9c6332f4511a25458280309c3a85`.
+The post-merge [Build & Validate run](https://github.com/skyRolly/Anamorph/actions/runs/42011193651)
+completed successfully on that merge: 16 selected jobs passed, with three
+conditional/routing skips. Local documentation self-tests/full checks (700 cases,
+189 files), citation self-tests (298 cases) and the base-specific 609-anchor check
+also passed on the merge tree. GitHub retargeted #216 to `main`; its
+history is preserved through an additive merge of the integrated branch. #216
+remains open, unmerged and without auto-merge, pending separate human review.
+
+The #216 preset-isolation finding was confirmed from the actual pinned JUCE Linux
+path resolver and production `PresetManager`: the old procedure did not isolate
+HOME, and XDG_CONFIG_HOME alone is ineffective. The nonshipping reproduction now
+verifies an isolated HOME, JUCE application-data and preset path, and TMPDIR for
+the full State suite and each wheel case. Eight isolation controls and the separately retained
+isolated observation are in the [reproduction package](engineering-review/nr026-repro/README.md)
+and [ledger](engineering-review/nr026-juce905.json); original outputs remain historical.
+The new run completes 13,959 State checks and reconfirms both live and teardown
+outcomes. This resolves diagnostic isolation only: NR-026/KI-035 remains open and
+requires the Architecture Review disposition in the callback review packet.
+The formal [Proposed ADR-0072](../docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+prepares that decision: A combined bounded correction, B product-owned wheel route,
+C explicit risk retention, or D continued deferral. D remains recommended pending
+owner selection and a teardown gesture/Undo contract. No production patch is approved.
+
+Independent follow-up: `scripts/run-tests.sh` and direct State-suite invocations
+still use the caller's environment, and test 8 plus other preset cases can park,
+write or delete there. The existing testing procedure already required serial
+execution; it did not provide disposable profiles. A general fix needs verified
+JUCE path resolution and safe cleanup on Linux, macOS and Windows, while keeping
+the full suite and its existing CI runners meaningful. Do not copy a Linux-only
+assumption into those general commands. Preserve this confirmed scope for a focused
+cross-platform follow-up; no separate unvalidated production or test-runner PR is
+created here. Native/manual acceptance, release and commercial gates remain separate.
+
+## Historical baseline before #215 integration — 2026-11-05 UTC
+
+At that checkpoint, remote `main` was `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` (PR #214). PRs
 #207/208/209/210/211/212/213/214 are merged; NR-023/024/025/027/028/029
 are integrated. #212 merged `82c98e45`, resolving KI-037 within its tested
 scope; retained controls and boundaries are in [INC-025](../docs/POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
@@ -24,11 +61,10 @@ work remains owner-deferred; NR-018/019 remain separate commercial/provisioning
 gates. The [candidate assessment](RELEASE_READINESS_0.10.0.md) distinguishes
 the protected draft from current source.
 
-PR #215's #214 CI-history correction and PR #216's NR-026 indexing/reproduction
-corrections are being prepared on their existing review stack; both remain open,
-unmerged and with auto-merge disabled. Their final pushed heads and checks are
-recorded in their review evidence after validation. No merge or release
-authorization follows from this documentation/evidence work.
+At that checkpoint, PR #215's #214 CI-history correction and PR #216's NR-026
+indexing/reproduction corrections were being prepared on their review stack;
+both were open and unmerged. The later owner authorization and #215 integration
+are recorded above. No release authorization follows from this evidence work.
 
 ## Historical #211 integration and #212 provenance review — before #212 merged
 

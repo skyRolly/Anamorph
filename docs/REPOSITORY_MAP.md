@@ -20,6 +20,9 @@ and the [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.
 distinct. The [NR-026 reproduction package](../worklogs/engineering-review/nr026-repro/README.md)
 contains diagnostic sources, exact commands, and retained outputs. These records
 support review; the roadmap owns current execution status.
+The [Proposed ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+records the NR-026 architecture alternatives and pending owner decisions. It is a
+developer review proposal and grants no implementation or release approval.
 
 ```
 Anamorph/
@@ -257,6 +260,8 @@ docs/
 │                    LATENCY_MODEL, PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT,
 │                    DSP_ALGORITHMS, COMPATIBILITY_MATRIX, RELEASE_HARDENING_PLAN,
 │                    design-decisions/ADRs)
+│   └── design-decisions/ADR-0072-wheel-callback-lifetime-review.md
+│                           Proposed NR-026 review; no implementation approval.
 ├── procedures/     (DEVELOPMENT, BUILD, CI_CD, PACKAGING, TESTING, RELEASE_PROCESS,
 │                    RELEASE_COMPATIBILITY_CHECKLIST, LEVEL5_AUDITION, TROUBLESHOOTING)
 └── policies/       (REALTIME_AUDIO, THREADING, DSP, COMPATIBILITY family,

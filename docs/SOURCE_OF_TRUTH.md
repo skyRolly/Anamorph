@@ -38,6 +38,9 @@ contains nonshipping diagnostic sources, procedure and observed outputs. These
 records do not change Accepted latency/dependency contracts or authorize merges.
 Accepted ADRs and binding policies govern architecture; the roadmap owns current
 integration/approval status.
+The NR-026 [ADR-0072 proposal](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+is developer architecture-review material with **Proposed** status. It does not
+override Accepted ADR-0053/0071 or grant implementation, merge or risk acceptance.
 
 The 2026-10-31 Linux correction is governed by Accepted
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):

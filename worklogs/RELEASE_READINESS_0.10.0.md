@@ -5,12 +5,15 @@
 Read-only remote inspection: annotated tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
 peels to `4c136881f245470577d66a7603f15b177ddcf3dc`. Draft release ID
 `429760301` is unpublished and has 11 assets. Product version remains 0.10.0.
-Current main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` contains the post-tag
+Current main `b0a063d2db982e3b6cdd1c403abce08098d1cfa1` contains the post-tag
 NR-022/006/023–025/027–029 work and JUCE 9.0.5 (#213); the draft does not.
 Current-source CI is not draft-asset validation. The #213 post-merge Build,
 CodeQL and MSVC runs passed. #214's main [Build attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
 passed all 16 selected jobs, with three optional/routing jobs skipped. Attempts
 1–5 included cancelled macOS jobs; those retries do not change the final result.
+Owner-reviewed #215 is integrated; its [post-merge Build](https://github.com/skyRolly/Anamorph/actions/runs/42011193651)
+passed all 16 selected jobs with three conditional skips. PR #216's evidence and
+Proposed ADR-0072 remain under separate human review against main.
 
 Level-5 listening and native/manual acceptance for the JUCE 9.0.5 upgrade are
 **PASS — owner-attested**, with exact tested payload/environment not recorded.

@@ -30,10 +30,46 @@ git -C /tmp/anamorph-nr026-juce rev-parse HEAD
 # Require d60b7a78030661574a615b586d9325ba7a7fa7dd above.
 cmake -S . -B build-nr026 -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_JUCE=/tmp/anamorph-nr026-juce -DANAMORPH_BUILD_STANDALONE=OFF
 cmake --build build-nr026 --target AnamorphStateTests --parallel 2
-xvfb-run -a build-nr026/AnamorphStateTests_artefacts/Release/AnamorphStateTests > /tmp/nr026-state.stdout 2> /tmp/nr026-state.stderr
 python3 worklogs/engineering-review/nr026-repro/run.py --build build-nr026 --juce /tmp/anamorph-nr026-juce --out /tmp/nr026-new-observation
+python3 worklogs/engineering-review/nr026-repro/verify.py --self-test
 python3 worklogs/engineering-review/nr026-repro/verify.py
 ```
+
+`--out` must be a new path. The runner first builds a read-only path witness
+linked to the same JUCE core and production `PresetManager` as the State suite.
+It runs the isolation controls, the **complete** State suite, and then all four
+ASan cases. It refuses to start the suite or a case if the witness or isolation
+controls fail. Each receives a fresh private 0700 `/tmp/anamorph-nr026-*` tree:
+`HOME` is its `home`, `XDG_CONFIG_HOME` is `home/.config`, and `TMPDIR` and the
+other XDG user directories are separate children. JUCE's resolved home, application
+data, preset and temp paths must exactly match these directories before each run.
+The preset directory is `home/.config/RollyTech/Anamorph/Presets`; State fixtures
+that use `juce::File::createTempFile` also stay inside this tree via `TMPDIR`.
+Each Xvfb child and test inherits that environment. The runner rejects a changed
+or missing environment variable, a non-private directory, any symlink along those
+paths, or a `home/.config/user-dirs.dirs` entry.
+
+This check is necessary because the pinned JUCE Linux `juce_Files_linux.cpp`
+uses `HOME`, reads `~/.config/user-dirs.dirs` for an `XDG_CONFIG_HOME` mapping,
+and otherwise falls back to `~/.config`. It does **not** use the environment
+variable `XDG_CONFIG_HOME` to resolve `userApplicationDataDirectory`.
+`PresetManager::presetDirectory()` appends `RollyTech/Anamorph/Presets`.
+The actual witness checks those linked implementations, rather than assuming a
+conventional XDG implementation. A manually invoked State binary or the general
+`scripts/run-tests.sh` is outside this wrapper and does not acquire its isolation.
+
+The eight isolation controls include a fake caller-home preset sentinel, an actual JUCE
+configuration redirect, a symlink escape, missing/altered variables, an unusable
+temporary parent, two overlapping processes, SIGTERM during a child run, and a
+read-only control showing the old XDG-only environment still resolves to the fake
+caller HOME. The
+sentinel remains unchanged, and the redirected and symlink paths are rejected
+before mutating tests run. Failed-case logs and the incrementally written manifest
+remain in `--out`, outside the profile. On ordinary completion, failure, SIGINT or
+SIGTERM the runner stops the child process group and removes only its own verified
+temporary tree; a changed root identity is never removed. SIGKILL or machine loss
+can leave a private temporary tree behind. This is a Linux test isolation mechanism,
+not a security sandbox against a hostile process running as the same user.
 
 The runner obtains the target's real compile/link commands from Ninja, rebuilds
 `PluginEditor.cpp`, all five `juce_gui_basics` units and each probe with
@@ -43,7 +79,8 @@ contains the **exact argv and working directory** for every compilation, link an
 invocation in the retained 2026-11-05 observation. The remaining product and JUCE
 objects, including parameter dispatch, are not instrumented. `ASAN_OPTIONS` is
 `detect_leaks=0:halt_on_error=1:symbolize=1`; leak detection is outside this
-lifetime diagnostic. Xvfb and a distinct XDG profile are used for each case.
+lifetime diagnostic. Xvfb and a distinct verified disposable user profile are used
+for the State suite and for each case.
 
 A live case must exit 0, move Width 0.50→0.53 and balance one gesture begin/end.
 A close case is expected to exit 1 with ASan heap-use-after-free: the standalone
@@ -66,6 +103,25 @@ recoverable; their historical hashes are recorded only as unretained identifiers
 Binaries from this new run are intentionally not committed (each is about 162 MB);
 rebuild them using the commands above. The observed binaries' local hashes remain
 in the manifest for provenance, not as a claim that their bytes are archived.
+That historical procedure did not set an isolated HOME: its suite invocation was
+direct and its diagnostic runner set only XDG_CONFIG_HOME. Its historical results
+are not evidence of preset isolation; no conclusion about actual user-file changes
+can be drawn from them. Copies of the then-current README, runner and verifier are
+retained as historical text; their original hashes are unchanged.
+
+The separate `observed-isolated-2026-11-05/` directory retains the actual new
+command manifest and output streams, including the initial seven isolation controls and
+the complete State suite. Its two ASan stderr streams are gzip-compressed with
+their original decompressed bytes and raw hashes preserved. The ledger identifies the exact executed runner inputs
+by hash (the tooling was uncommitted during that execution), product/JUCE sources,
+resolved paths and result identities. Its verifier checks both observations and
+has corruption controls. The isolated run again completed 13,959 State checks;
+both live cases passed and the two close cases reported their respective ASan UAFs.
+The results do not establish teardown gesture completion, Undo or DAW incidence.
+The subsequent eighth legacy-XDG control and the independent rerun of all eight
+controls are recorded as `control_refresh` in the ledger. The initial executed
+seven-control source is retained separately as historical text; the current test
+source includes the eighth control. No product scenario changed between them.
 
 The retained run used a rootless Debian 13 tool directory with GCC 14.2.0 and
 CMake 3.31.6. Its exact configuration command was:

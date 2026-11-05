@@ -311,7 +311,14 @@ saves passing. Under Accepted ADR-0067/0068 both are passing regressions in the 
 (State 146/148), with their focused CLI entry points retained. Expanded State 147/148 cover
 every parameter and complete nested callback state. Finite output alone is insufficient:
 the existing self-heal produces finite zeroes, so audio controls remain required.
-Run all state probes serially with the default suite because they share the real preset folder.
+Run all state probes serially with the default suite because they share the process's
+preset folder. Direct State-suite invocations and `scripts/run-tests.sh` use the
+caller environment and can reach real presets; setting only `XDG_CONFIG_HOME` is
+insufficient with pinned JUCE on Linux. The nonshipping
+[NR-026 reproduction wrapper](../../worklogs/engineering-review/nr026-repro/README.md)
+runs its complete suite and diagnostic cases with individually verified disposable
+HOME/config/temp directories, with negative, concurrency and interruption controls.
+This wrapper does not change the behavior of the general test commands.
 
 `python3 scripts/check-release-notes.py --self-test` precedes the ordinary check in the same
 `source-lint` job. It permits customer changes, evidence citations and actual signing/CPU
