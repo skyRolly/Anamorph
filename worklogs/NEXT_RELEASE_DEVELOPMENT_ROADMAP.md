@@ -7,12 +7,50 @@ See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and
 
 ## Current integrated baseline — 2026-11-05 UTC
 
-Remote `main` is `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` (PR #214). PRs
+Owner-reviewed PR #215 merged as `b0a063d2db982e3b6cdd1c403abce08098d1cfa1`;
+its tree is identical to approved head `a43c9964d21a9c6332f4511a25458280309c3a85`.
+The post-merge [Build & Validate run](https://github.com/skyRolly/Anamorph/actions/runs/42011193651)
+completed successfully on that merge: 16 selected jobs passed, with three
+conditional/routing skips. Local documentation self-tests/full checks (700 cases,
+189 files), citation self-tests (298 cases) and the base-specific 609-anchor check
+also passed on the merge tree. GitHub retargeted #216 to `main`; its
+history is preserved through an additive merge of the integrated branch. #216
+remains open, unmerged and without auto-merge, pending separate human review.
+
+The #216 preset-isolation finding was confirmed from the actual pinned JUCE Linux
+path resolver and production `PresetManager`: the old procedure did not isolate
+HOME, and XDG_CONFIG_HOME alone is ineffective. The nonshipping reproduction now
+verifies an isolated HOME, JUCE application-data and preset path, and TMPDIR for
+the full State suite and each wheel case. Nine isolation controls, two weakening
+mutation controls and the separately retained isolated observation are in the
+[reproduction package](engineering-review/nr026-repro/README.md)
+and [ledger](engineering-review/nr026-juce905.json); original outputs remain historical.
+The new run completes 13,959 State checks and reconfirms both live and teardown
+outcomes. This resolves diagnostic isolation only: NR-026/KI-035 remains open and
+requires the Architecture Review disposition in the callback review packet.
+The formal [Proposed ADR-0072](../docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+prepares that decision: A combined bounded correction, B product-owned wheel route,
+C explicit risk retention, or D continued deferral. D remains recommended pending
+owner selection and a teardown gesture/Undo contract. No production patch is approved.
+
+Independent follow-up: `scripts/run-tests.sh` and direct State-suite invocations
+still use the caller's environment, and test 8 plus other preset cases can park,
+write or delete there. The existing testing procedure already required serial
+execution; it did not provide disposable profiles. A general fix needs verified
+JUCE path resolution and safe cleanup on Linux, macOS and Windows, while keeping
+the full suite and its existing CI runners meaningful. Do not copy a Linux-only
+assumption into those general commands. Preserve this confirmed scope for a focused
+cross-platform follow-up; no separate unvalidated production or test-runner PR is
+created here. Native/manual acceptance, release and commercial gates remain separate.
+
+## Historical baseline before #215 integration — 2026-11-05 UTC
+
+At that checkpoint, remote `main` was `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` (PR #214). PRs
 #207/208/209/210/211/212/213/214 are merged; NR-023/024/025/027/028/029
 are integrated. #212 merged `82c98e45`, resolving KI-037 within its tested
 scope; retained controls and boundaries are in [INC-025](../docs/POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
-The 9.0.4 NR-026/KI-035 witness remains historical until tested on 9.0.5;
-Architecture Review is required before gated production changes.
+NR-026/KI-035 remains confirmed on JUCE 9.0.5; see the current revalidation
+packet below. Architecture Review is required before gated production changes.
 
 JUCE #213 post-merge [Build](https://github.com/skyRolly/Anamorph/actions/runs/41840722187),
 CodeQL and MSVC analysis succeeded on `18a51df`. The separate #214 main
@@ -23,6 +61,11 @@ that runner history without treating it as the final result. Native NR-006/010/0
 work remains owner-deferred; NR-018/019 remain separate commercial/provisioning
 gates. The [candidate assessment](RELEASE_READINESS_0.10.0.md) distinguishes
 the protected draft from current source.
+
+At that checkpoint, PR #215's #214 CI-history correction and PR #216's NR-026
+indexing/reproduction corrections were being prepared on their review stack;
+both were open and unmerged. The later owner authorization and #215 integration
+are recorded above. No release authorization follows from this evidence work.
 
 ## Historical #211 integration and #212 provenance review — before #212 merged
 
@@ -1633,7 +1676,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
 | NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | State157 follow-up integrated by #211; actual main validation recorded above |
-| NR-026 | P1 | Current-pin revalidation pending | JUCE 9.0.4 wheel-scope teardown UAF; 9.0.5 must be tested | Human review before any gated implementation |
+| NR-026 | P1 | Confirmed on JUCE 9.0.5; Architecture Review pending | Standalone JUCE wheel-scope UAF plus held-wheel editor-lifetime witness; no production patch selected | Owner selects bounded dependency repair, product-owned path or risk hold before gated implementation |
 | NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and sanitizer controls | Native incidence unverified |
 | NR-028 | P1 | Completed / integrated #211 / c35a9d6b | Same-processor A→B→C→B parameter-trigger adoption cycle; guards already integrated #209 | Actual combined-main validation and preserved negative controls |
 | NR-029 | P1 | Completed / integrated #212 / 82c98e45 / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; original/fixed controls retained | Native incidence and broader acceptance remain unverified |
@@ -2155,16 +2198,41 @@ all first attempts, with historical unrelated signal exits still unattributed. [
 
 ### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
 
-Actual Width wheel plus synchronous parameter-listener editor deletion reproduces
-UAF inside JUCE9.0.4's `Slider::ScopedDragNotification` destructor. Rebuilding all
-actual GUI-basics TUs exposes the read; Editor-only ASan had missed it. Live
-control passes. No native occurrence rate or attribution of old signal exits.
-Hold production dependency changes for human Architecture Review. The
-[review packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026--ki-035--pinned-juce-wheel-teardown-review-packet)
-compares bounded dependency repair, product event redesign and retained risk;
-recommend a consistent nonshipping prototype including gesture cleanup before
-selecting an exact patch/version/ADR. No pin, dependency bytes or Accepted
-protocol changed. Continue independent source review while that decision is held.
+**Confirmed on integrated JUCE 9.0.5.** Exact 9.0.4/9.0.5 source comparison shows the
+Slider wheel and drag-scope code is unchanged; the only `juce_Slider.cpp` difference is popup
+window association. The original attached Width wheel plus synchronous editor destruction
+reproduces UAF in `ScopedDragNotification::~ScopedDragNotification` when all five GUI-basics TUs,
+the editor and probe are ASan-instrumented. Live wheel behavior changes Width 0.50→0.53 with one
+balanced gesture. A held-knob press wheel also reproduces a product-side UAF in
+`Knob::takeWheelNotch` after `setValue` returns to freed storage; its live control also balances
+one gesture. Full current-pin State suite passes 13,959 checks; State 86/88 cover ordinary
+wheel/Undo but not teardown during the notification. No native incidence is established.
+
+ADR-0071 does not authorize further JUCE changes. The architecture package evaluates a combined
+bounded JUCE plus product-continuation correction, product-owned wheel handling, retaining the
+documented risk, and deferring production implementation. A JUCE-only correction cannot resolve the
+separate held-wheel product continuation witness. Any dependency or event-model change requires
+human Architecture Review, exact source identity, compatibility review, and validated gesture and
+Undo behavior. Current disposition is defer pending the owner's architecture/risk selection; no
+production patch is applied. The [review packet](GUI_CALLBACK_LIFETIME_REVIEW.md#nr-026-revalidation-on-integrated-juce-9-0-5--2026-11-05),
+[reproduction package](engineering-review/nr026-repro/README.md) and
+[evidence ledger](engineering-review/nr026-juce905.json) retain the inputs and boundaries.
+
+**Bounded Settings/attachment audit — 2026-11-05:** inspected Oversampling and UI Scale internal
+combos, Scope Persistence's `juce::Value` binding and callback, Tooltips/UI Animations, the
+`InternalState` property listener, APVTS attachment-witness setup and timer-driven scale application.
+`applyUiScale` already checks a `Component::SafePointer` after synchronous resize/transform calls;
+the Scope Persistence consumer updates the Vectorscope value. Existing State 86/88 and the 13,959-
+check suite cover ordinary settings/state, wheel, gesture and Undo behavior, but not destruction
+inside each Settings notification. No concrete failing production entry point or actionable gap was
+found; this bounded negative result does not establish host-specific callback safety. No PR or
+production edit is justified. See the [source review](GUI_CALLBACK_LIFETIME_REVIEW.md#bounded-settings-and-attachment-lifecycle-audit--2026-11-05).
+
+**Next batch:** obtain the owner's NR-026 architecture/risk disposition before any gated
+implementation. Resume Settings/attachment investigation only with a new production-path witness or
+other evidence. Any correction requires a live control, destructive ASan reproduction with relevant
+JUCE GUI modules instrumented, and parameter, gesture and Undo/history oracles with original and
+guard-removal controls. Native/DAW acceptance remains owner-deferred.
 
 ### NR-027 — Scale and mode callbacks stop after synchronous editor destruction
 

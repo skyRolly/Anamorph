@@ -1,0 +1,642 @@
+{
+  "schema": 1,
+  "date": "2026-11-05 UTC",
+  "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+  "dependency": {
+    "version": "9.0.5",
+    "commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+    "source_path": "modules/juce_gui_basics/widgets/juce_Slider.cpp"
+  },
+  "comparison": {
+    "previous": {
+      "version": "9.0.4",
+      "commit": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+      "slider_cpp_sha256": "250992695ada52dc4500a32c5d24eed908d645fc5e169c33c45e04977195d7d4"
+    },
+    "current": {
+      "version": "9.0.5",
+      "commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "slider_cpp_sha256": "b0faf21b6bf1a36f33e7ebc5cb6b02eaf35b64f83423c08538a4b0f284a149e2"
+    },
+    "relevant_change": "Only Slider.cpp difference is popup display DesktopWindowOptions.withAssociatedComponent; mouseWheelMove, ScopedDragNotification ctor/dtor, Slider header, SliderParameterAttachment and AudioProcessorParameter listener delivery are byte-identical between pins.",
+    "old_witness_path": "Slider::Pimpl::mouseWheelMove -> ScopedDragNotification(owner) -> synchronous setValue -> attached parameter listener destroys editor/Slider -> scope destructor reads sliderBeingDragged.pimpl.",
+    "current_source_lines": {
+      "wheel": "juce_Slider.cpp:1142-1171",
+      "scope": "juce_Slider.cpp:1432-1442",
+      "parameter_dispatch": "juce_AudioProcessorParameter.cpp:112-120",
+      "attachment": "juce_ParameterAttachments.cpp:189-241"
+    }
+  },
+  "upstream_release_alternatives": {
+    "checked": "2026-11-05 UTC",
+    "command": "git ls-remote --tags https://github.com/juce-framework/JUCE.git 'refs/tags/9.0.*' 'refs/tags/9.1.*'",
+    "result": "Only 9.0.0 through 9.0.5 release tags were returned; 9.0.5 is d60b7a78030661574a615b586d9325ba7a7fa7dd. No later supported release tag was available to compare.",
+    "disposition": "Do not treat the development default branch as an approved release candidate."
+  },
+  "existing_regression": "State suite on the same Release target: 13,959 checks, 0 failures. State 86 verifies normal wheel grouping/Undo; State 88 verifies a wheel notch during an owned held press and exact Undo. These tests do not destroy the editor during the wheel parameter notification. The 13,959-check state suite was also rerun in the new observation; retained stdout is checksummed in new_observation.",
+  "limitations": [
+    "Deterministic headless/Xvfb component reproduction, not DAW incidence or native host acceptance.",
+    "ASan coverage is focused to Editor, probe and all juce_gui_basics translation units; linked JUCE parameter dispatch and other product objects are not ASan-instrumented.",
+    "Teardown cases abort at the UAF, so their gesture close, Undo history and post-destruction completion are not validly observed.",
+    "No shipping dependency or production source was patched in this investigation.",
+    "Historical held-wheel source, command manifest, raw outputs and binaries are unavailable; only their prior hashes survive, and no historical log was reconstructed.",
+    "New held-wheel source is a separate probe based on State test 88; its SHA-256 and exact source bytes are retained.",
+    "New raw ASan stderr and stdout are committed with SHA-256 identities and validated by the package verifier.",
+    "New full state-suite output is retained; build outputs and 162 MB diagnostic binaries are not committed.",
+    "Both teardown runs abort at ASan; neither gesture completion nor Undo history is observed for those cases."
+  ],
+  "historical_run": {
+    "toolchain": {
+      "system": "managed Linux native image",
+      "compiler": "GCC 14.2.0",
+      "cmake": "3.31.6",
+      "configuration": "CMake Release target AnamorphStateTests; exact JUCE 9.0.5 git checkout verified by CMake",
+      "instrumentation": "all five juce_gui_basics translation units, production PluginEditor.cpp and probe compiled with -O1 -g -fsanitize=address -fno-omit-frame-pointer; other linked product/JUCE objects from the same 9.0.5 Release target remain uninstrumented",
+      "negative_control": "same actual Width wheel interaction with editor kept alive; Xvfb used for the existing GUI fixture requirement"
+    },
+    "summary": [
+      {
+        "case": "standalone-wheel-editor-live",
+        "exit": 0,
+        "width": "0.50 -> 0.53",
+        "gesture_begins": 1,
+        "gesture_ends": 1,
+        "asan": "clean"
+      },
+      {
+        "case": "standalone-wheel-editor-destroyed-synchronously",
+        "exit": 1,
+        "asan": "heap-use-after-free",
+        "read": "Slider::ScopedDragNotification::~ScopedDragNotification, JUCE 9.0.5 juce_Slider.cpp:1440",
+        "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
+      },
+      {
+        "case": "held-knob-press-wheel-editor-live",
+        "exit": 0,
+        "width": "0.50 -> 0.53",
+        "gesture_begins": 1,
+        "gesture_ends": 1,
+        "asan": "clean"
+      },
+      {
+        "case": "held-knob-press-wheel-editor-destroyed-synchronously",
+        "exit": 1,
+        "asan": "heap-use-after-free",
+        "read": "Slider::getValue via Knob::takeWheelNotch after setValue returns; wheelTakenByAnyPress dispatch path",
+        "freed_during": "AudioProcessorParameter::sendValueChangedMessageToListeners from the attached Width write"
+      }
+    ],
+    "unretained_materials": {
+      "standalone_probe": {
+        "sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+        "availability": "recovered byte-for-byte from the committed source-bound historical ledger; current file is independently hashed below"
+      },
+      "held_probe": {
+        "sha256": "e20828e57c312770529fe39d397f0723bbf2dca283accb01bbb6c8b5c9810c5a",
+        "availability": "source bytes unavailable; hash alone did not permit recovery; a new, separately identified held-wheel probe is included"
+      },
+      "command_manifest": {
+        "sha256": "646f187ccc84037ae87f48b65aaa00ec609ea9b2b7c8305195ea1c2278f16cf6",
+        "availability": "bytes unavailable; not reconstructed from summary"
+      },
+      "standalone_result": {
+        "sha256": "8270b9c2359a978e318c5e8fd3252846d96c84bd9991d2a3f0e83043c5f2a233",
+        "availability": "raw output unavailable; not reconstructed from summary"
+      },
+      "held_result": {
+        "sha256": "b58226a41c71e71229f5094f4ca452c47cbbcd863374ffa87c5293cb0ee6182a",
+        "availability": "raw output unavailable; not reconstructed from summary"
+      },
+      "standalone_binary": {
+        "sha256": "e8a8f508c05076fb2fe40f7ca7a7ffceaf8092a8c93b651d7a049d844b652cef",
+        "availability": "binary bytes unavailable"
+      },
+      "held_binary": {
+        "sha256": "214d3a5eb966619328b19c7aff703213990a091f8448a50a68c6bf5c4f6c42d1",
+        "availability": "binary bytes unavailable"
+      }
+    }
+  },
+  "new_observation": {
+    "kind": "new observation; rerun on 2026-11-05 UTC after the historical raw materials proved unavailable",
+    "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+    "execution_checkout": "ad14b3c43fc452f9b765c38b0482f8ee31b4776c",
+    "juce": {
+      "version": "9.0.5",
+      "commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+      "slider_cpp_sha256": "b0faf21b6bf1a36f33e7ebc5cb6b02eaf35b64f83423c08538a4b0f284a149e2"
+    },
+    "toolchain": {
+      "system": "Debian GNU/Linux 13 (trixie), x86_64",
+      "compiler": "c++ (Debian 14.2.0-19) 14.2.0",
+      "cmake": "cmake version 3.31.6",
+      "configuration": "CMake Release AnamorphStateTests target; verified Git JUCE override; standalone plugin target disabled",
+      "display": "Xvfb; separate XDG_CONFIG_HOME for each case"
+    },
+    "instrumentation": "five juce_gui_basics TUs, PluginEditor.cpp and probe; all other linked objects are uninstrumented",
+    "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+    "configure_command": [
+      "cmake",
+      "-S",
+      "/workspace/Anamorph",
+      "-B",
+      "/workspace/.anamorph-tools/build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DFETCHCONTENT_SOURCE_DIR_JUCE=/workspace/.anamorph-tools/JUCE",
+      "-DANAMORPH_BUILD_STANDALONE=OFF",
+      "-DCMAKE_PREFIX_PATH=/workspace/.anamorph-tools/root/usr"
+    ],
+    "build_command": [
+      "cmake",
+      "--build",
+      "/workspace/.anamorph-tools/build",
+      "--target",
+      "AnamorphStateTests",
+      "--parallel",
+      "2"
+    ],
+    "command_manifest": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/manifest.json",
+    "command_manifest_sha256": "7548b4e26ceb7a338643f8c5273791de301efa51dc81ab8f4f253fd866c5e319",
+    "raw_cases": [
+      {
+        "case": "standalone-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+        "stdout": "standalone-live.stdout",
+        "stdout_sha256": "b3a3e07ca5df2b6d0a3fc7ec7b7a331629010766a425a57529a5d77569661747",
+        "stderr": "standalone-live.stderr",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "case": "standalone-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5",
+        "stdout": "standalone-close.stdout",
+        "stdout_sha256": "383699fbcb95b52a0d0027d100d0303e28e694c263387d6a0af8d9fb6b8569fe",
+        "stderr": "standalone-close.stderr.gz",
+        "stderr_sha256": "fbc7d3adabbdcaec106a6603cfad29b89336a940183ffb7befcd1da2e3dd2106"
+      },
+      {
+        "case": "held-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d",
+        "stdout": "held-live.stdout",
+        "stdout_sha256": "59e980a18a854c42d4a74b1da0fff35b52b0428f1d2f60950b61cb6c617f12e3",
+        "stderr": "held-live.stderr",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "case": "held-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d",
+        "stdout": "held-close.stdout",
+        "stdout_sha256": "6017d8433058ebbc4c081a94b171f9cb959da3fa8e3f983eec5a9ea6baec03c7",
+        "stderr": "held-close.stderr.gz",
+        "stderr_sha256": "9aa826ac0d60ad8a4ffc42b8f4c2d3ee033209166877aeabf9dc39c3e44a7a38"
+      }
+    ],
+    "state_suite": {
+      "command": [
+        "xvfb-run",
+        "-a",
+        "/workspace/.anamorph-tools/build/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+      ],
+      "checks": 13959,
+      "failures": 0,
+      "stdout": "state-suite.stdout",
+      "stdout_sha256": "f19fd4953764cea9bba79115d9650bbd3aa597a7f91077df7e059d903cc9357e",
+      "stderr": "state-suite.stderr",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "materials": [
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/README.md.historical.txt",
+        "sha256": "f868d4bd89ca8ddc1f0676276bf555cadaf7e510e6a0fe99ad691298be6713d0"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/original-probe.cpp",
+        "sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/held-wheel-probe.cpp",
+        "sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/run.py.historical.txt",
+        "sha256": "8448f0ffec1f93a4af0566aac2257a36f0bd3dbbae00aa4cb3c94ecd57d61679"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/verify.py.historical.txt",
+        "sha256": "59a0ba2b134b980fa47ad2d1181521405828f2443b93dccc141399f5ee9d1848"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/build.stdout",
+        "sha256": "f95634d146520a0ceb1beb2a42cb8246dc7d6e821fdf28adc7ac18dd7fddf5d7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/configure.stdout",
+        "sha256": "45462ea7c2b90edbf45dda29fb1bbcec07241470015aa1595e84f56b793a4b79"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-close.stderr.gz",
+        "sha256": "35424c304072b65b63c817b82da2a7b9864156fc1b205bfeb53d0a28dde777f8"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-close.stdout",
+        "sha256": "6017d8433058ebbc4c081a94b171f9cb959da3fa8e3f983eec5a9ea6baec03c7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/held-live.stdout",
+        "sha256": "59e980a18a854c42d4a74b1da0fff35b52b0428f1d2f60950b61cb6c617f12e3"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/manifest.json",
+        "sha256": "7548b4e26ceb7a338643f8c5273791de301efa51dc81ab8f4f253fd866c5e319"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-close.stderr.gz",
+        "sha256": "d2f53806c25d14dd7fad9ae48fc55c85e1546c7c0c423fe503e76f5ba770fb52"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-close.stdout",
+        "sha256": "383699fbcb95b52a0d0027d100d0303e28e694c263387d6a0af8d9fb6b8569fe"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/standalone-live.stdout",
+        "sha256": "b3a3e07ca5df2b6d0a3fc7ec7b7a331629010766a425a57529a5d77569661747"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/state-suite.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/state-suite.stdout",
+        "sha256": "f19fd4953764cea9bba79115d9650bbd3aa597a7f91077df7e059d903cc9357e"
+      }
+    ],
+    "binary_retention": "new run binaries were not committed; their hashes identify the locally executed bytes only. Rebuild from retained commands and sources.",
+    "historical_result_retention": "historical summaries are kept separately above; the old output hashes do not identify retained output bytes.",
+    "preset_isolation_limit": "Historical State invocation did not set an isolated HOME; diagnostic cases set XDG_CONFIG_HOME only. These records do not establish preset isolation or actual user-file changes."
+  },
+  "isolated_observation": {
+    "kind": "separate isolated rerun on 2026-11-05 UTC; earlier output and hashes remain historical",
+    "product_source": "f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7",
+    "execution_checkout": "3199bfbdb4aea33182131fdcb7361b7dfb8e2a05",
+    "execution_checkout_note": "Diagnostic tooling was uncommitted during this run; exact executed tooling bytes are identified by runner_inputs.",
+    "juce_commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+    "compiler": "c++ (Debian 14.2.0-19) 14.2.0",
+    "cmake": "cmake version 3.31.6",
+    "invocation": [
+      "python3",
+      "worklogs/engineering-review/nr026-repro/run.py",
+      "--build",
+      "/workspace/.anamorph-tools/build",
+      "--juce",
+      "/workspace/.anamorph-tools/JUCE",
+      "--out",
+      "/workspace/.anamorph-tools/nr026-isolated-v1"
+    ],
+    "configuration_and_build": "Uses the same verified Release build recorded in new_observation; no production or dependency source changes.",
+    "runner_inputs": [
+      {
+        "path": "worklogs/engineering-review/nr026-repro/run.py",
+        "sha256": "9be0be7f51e092d02205fff65d10ba0bfaa046c21fb40cd54cd73c341d4c8ab2"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/isolation.py",
+        "sha256": "815abf208f8f5f16cf9d48a3874530e29be04b8e59087f302e7eb84e40bda0ae"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/path-probe.cpp",
+        "sha256": "c8606eaa955a5e89225da26507ced779ab4403f0097f6689972acea9460e5be8"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/test_isolation.py.executed.txt",
+        "sha256": "475ff282a594ffa296d838b3b5053f171838dd125cc351e53b15814ecca86f91"
+      }
+    ],
+    "command_manifest": {
+      "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/manifest.json",
+      "sha256": "edb6a3e5b5c854af4cfed3c2f191d10e307c58e7d41c8421b0af0788e8a6d762"
+    },
+    "materials": [
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-held.stderr",
+        "sha256": "a1af01385ea402e40fc2a14177927acd0b544464f6894070ff92ea3ab85ab74d"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-held.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-0.stderr",
+        "sha256": "8661da6c82853cef4d6a218af7d9060afcd3446dad2b5b4c3cc2b8bcb0ff6e0a"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-0.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-1.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-1.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-2.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-2.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-3.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-3.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-4.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-4.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-5.stderr",
+        "sha256": "6631efacf248adfe198b5d434ba4a769e3d4fcfb4dd89c324f2963bfcaa92f12"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-overlay-5.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-path-probe.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-path-probe.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-standalone.stderr",
+        "sha256": "e09ed706d9273b423e52fff1f956108d4bdee89d5e41755202e5881f2efd443f"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/compile-standalone.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-close.stderr.gz",
+        "sha256": "790de870f7e84462880f58ce1f3fb4a588f224132b0aa1d1660566cf7fe66110"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-close.stdout",
+        "sha256": "6017d8433058ebbc4c081a94b171f9cb959da3fa8e3f983eec5a9ea6baec03c7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/held-live.stdout",
+        "sha256": "59e980a18a854c42d4a74b1da0fff35b52b0428f1d2f60950b61cb6c617f12e3"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls.stderr",
+        "sha256": "c5826999859cd302e6bab3a260d52198bdcb2db38b532ae18a4edcb492abcce7"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-held.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-held.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-path-probe.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-path-probe.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-standalone.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/link-standalone.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-close.stderr.gz",
+        "sha256": "1b0f4876a69f382b4f9940c1bd2e00576713a2b025176a0fb219915a84683e49"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-close.stdout",
+        "sha256": "383699fbcb95b52a0d0027d100d0303e28e694c263387d6a0af8d9fb6b8569fe"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-live.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/standalone-live.stdout",
+        "sha256": "b3a3e07ca5df2b6d0a3fc7ec7b7a331629010766a425a57529a5d77569661747"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/state-suite.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/state-suite.stdout",
+        "sha256": "61c3adc98e0f3c4e1064a7ab25004632df787258f03c500532fe1a4c900f0581"
+      }
+    ],
+    "state_suite": {
+      "exit": 0,
+      "checks": 13959,
+      "failures": 0
+    },
+    "cases": [
+      {
+        "case": "standalone-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"
+      },
+      {
+        "case": "standalone-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "9e8cc967158158ab9e274251e765e14da2e6865de293184009529cf04a6494c7",
+        "source_sha256": "0d78b980618455fd29f82eaef5390b35a445a4ed5ae8da9827ccc1372ae336a5"
+      },
+      {
+        "case": "held-live",
+        "exit": 0,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
+      },
+      {
+        "case": "held-close",
+        "exit": 1,
+        "expected_outcome_observed": true,
+        "asan_options": "detect_leaks=0:halt_on_error=1:symbolize=1",
+        "binary_sha256": "fe0302bf0999a506c8b24e2b5283a38bea2a69f807ce1baf2b2f54e01e576f15",
+        "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
+      }
+    ],
+    "isolation_controls": "The original isolated reproduction ran seven controls, retained in isolation-controls.stderr. The eight-control refresh and final nine-control suite are recorded separately below.",
+    "preset_path_witness": "For State and each case, the manifest records the exact HOME, XDG/TMPDIR and paths returned by the linked JUCE core and production PresetManager before execution. Each profile was fresh and distinct.",
+    "limitations": "Only Linux/Xvfb and the stated ASan instrumentation were tested. No DAW incidence, native acceptance, or teardown gesture/Undo result is inferred. No binary is retained; binary hashes in the manifest identify locally executed bytes only.",
+    "raw_output_storage": "The two ASan stderr streams are gzip-compressed without changing their decompressed bytes; the manifest hashes the original raw streams.",
+    "control_refresh": {
+      "reason": "After the full seven-control run, add an eighth read-only control demonstrating the historical XDG-only environment resolves to the fake caller HOME; rerun all eight controls without repeating unchanged product scenarios.",
+      "source": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/test_isolation.py.refresh.txt",
+        "sha256": "8f0d977b87dd9c7917293cf945d3590f24f149e6beaa604912429331d2c149cd"
+      },
+      "invocation": [
+        "python3",
+        "worklogs/engineering-review/nr026-repro/test_isolation.py",
+        "--probe",
+        "/workspace/.anamorph-tools/nr026-isolated-v1/path-probe"
+      ],
+      "environment": {
+        "LD_LIBRARY_PATH": "/workspace/.anamorph-tools/root/usr/lib/x86_64-linux-gnu"
+      },
+      "path_witness_binary_sha256": "343a9c612168d2f485ffe109d86474662cc67ac805a12009e44e4401b59c8478",
+      "exit": 0,
+      "tests": 8,
+      "stdout": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-refresh.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-refresh.stderr",
+        "sha256": "9e320bf515957b20db88749f512fb272b1872f413663094aa2b452d26730f1f8"
+      }
+    },
+    "final_controls": {
+      "reason": "A ninth control proves cleanup refuses a replaced profile root without deleting the replacement sentinel. The SIGTERM control now launches a grandchild and verifies that the complete process group stops. These controls strengthen cleanup and interruption coverage without changing the already recorded State or ASan scenarios.",
+      "source": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/test_isolation.py.final.txt",
+        "sha256": "836febac43dd85852c5ffef45789fefd35e4d1f1a4f3b2efbaa716f8d4adcedc"
+      },
+      "invocation": [
+        "python3",
+        "worklogs/engineering-review/nr026-repro/test_isolation.py",
+        "--probe",
+        "/workspace/.anamorph-tools/nr026-isolated-v1/path-probe"
+      ],
+      "environment": {
+        "LD_LIBRARY_PATH": "/workspace/.anamorph-tools/root/usr/lib/x86_64-linux-gnu"
+      },
+      "path_witness_binary_sha256": "343a9c612168d2f485ffe109d86474662cc67ac805a12009e44e4401b59c8478",
+      "exit": 0,
+      "tests": 9,
+      "stdout": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-final.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-final.stderr",
+        "sha256": "1887efe4a7000c1c9be644d0d4c8067d1937ba3bda94639458d8478e8af92234"
+      }
+    },
+    "mutation_controls": {
+      "reason": "Independently weaken profile-root identity cleanup and descendant process-group termination. Each deliberately mutated implementation is rejected by the corresponding named isolation regression.",
+      "source": {
+        "path": "worklogs/engineering-review/nr026-repro/test_isolation_mutations.py",
+        "sha256": "01376ae761b25048d5261b3db58df3e683cd9093c010d09e1395b8e1a7992df1"
+      },
+      "invocation": [
+        "python3",
+        "worklogs/engineering-review/nr026-repro/test_isolation_mutations.py",
+        "--probe",
+        "/workspace/.anamorph-tools/nr026-isolated-v1/path-probe",
+        "--out",
+        "/workspace/.anamorph-tools/nr026-mutation-controls-final"
+      ],
+      "environment": {
+        "LD_LIBRARY_PATH": "/workspace/.anamorph-tools/root/usr/lib/x86_64-linux-gnu"
+      },
+      "path_witness_binary_sha256": "343a9c612168d2f485ffe109d86474662cc67ac805a12009e44e4401b59c8478",
+      "exit": 0,
+      "stdout": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-control-run.stdout",
+        "sha256": "988a328456623c539fe52d8a5b366a7507210b51dd20a3da5d646802230b6b85"
+      },
+      "stderr": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-control-run.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": [
+        {
+          "name": "root-identity",
+          "change": "Remove the device/inode identity comparison before cleanup.",
+          "exit": 1,
+          "expected_failure": "test_cleanup_refuses_a_replaced_root",
+          "stdout": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-root-identity.stdout",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-root-identity.stderr",
+            "sha256": "009ffa4ddfe66881f5b925645a7e4176a2d279e0234c0252c7ccbb1691539e48"
+          }
+        },
+        {
+          "name": "process-group",
+          "change": "Terminate only the direct child instead of the child's process group.",
+          "exit": 1,
+          "expected_failure": "test_interruption_stops_child_and_preserves_external_output",
+          "stdout": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-process-group.stdout",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-process-group.stderr",
+            "sha256": "6ea183a0a13fef918744fe2a7111d3d5856554cfac2ceeb852d1a890257a17f6"
+          }
+        }
+      ]
+    }
+  }
+}

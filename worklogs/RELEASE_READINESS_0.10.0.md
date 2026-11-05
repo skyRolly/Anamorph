@@ -5,18 +5,21 @@
 Read-only remote inspection: annotated tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
 peels to `4c136881f245470577d66a7603f15b177ddcf3dc`. Draft release ID
 `429760301` is unpublished and has 11 assets. Product version remains 0.10.0.
-Current main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` contains the post-tag
+Current main `b0a063d2db982e3b6cdd1c403abce08098d1cfa1` contains the post-tag
 NR-022/006/023–025/027–029 work and JUCE 9.0.5 (#213); the draft does not.
 Current-source CI is not draft-asset validation. The #213 post-merge Build,
 CodeQL and MSVC runs passed. #214's main [Build attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
 passed all 16 selected jobs, with three optional/routing jobs skipped. Attempts
 1–5 included cancelled macOS jobs; those retries do not change the final result.
+Owner-reviewed #215 is integrated; its [post-merge Build](https://github.com/skyRolly/Anamorph/actions/runs/42011193651)
+passed all 16 selected jobs with three conditional skips. PR #216's evidence and
+Proposed ADR-0072 remain under separate human review against main.
 
 Level-5 listening and native/manual acceptance for the JUCE 9.0.5 upgrade are
 **PASS — owner-attested**, with exact tested payload/environment not recorded.
 That does not establish NR-006/010 performance budgets, the deferred NR-014
-UX/assistive and host matrix, or acceptance of a future candidate. NR-026's
-9.0.4 lifetime witness requires current-pin revalidation. Owner/legal distribution
+UX/assistive and host matrix, or acceptance of a future candidate. NR-026's Width-wheel UAF remains reproducible on integrated JUCE 9.0.5; the
+source-bound evidence and architecture gate are recorded in the roadmap and callback review. Owner/legal distribution
 and JUCE rights (NR-018) and signing/notarization provisioning (NR-019) are
 separate gates from technical/native acceptance.
 
@@ -28,6 +31,16 @@ separate gates from technical/native acceptance.
 | Defer selection | Retains all options while technical risks and human gates are assessed; provides no new release artifact. |
 
 No version, tag, asset, draft or publication operation is authorized by this assessment.
+
+### Current NR-026 release impact
+
+The 9.0.5 live-editor wheel/Undo controls pass, but synchronous editor destruction
+reproduces UAF in both standalone JUCE wheel scope and the held-knob product path.
+This remains a confirmed P1 release risk with no native incidence rate. The upgrade's
+owner-attested acceptance does not include this separately investigated failure mode.
+Any selected candidate that includes a correction needs its own final-source CI and
+applicable acceptance. Shipping the existing draft or current source with the issue
+requires explicit owner risk disposition; do not infer it from the upgrade attestation.
 
 ## Historical #211 integration and #212 provenance review — before #212 merged
 

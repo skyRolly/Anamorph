@@ -20,6 +20,41 @@ attempt 6. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md#current
 separately identifies the successful #213 post-merge Build, CodeQL and MSVC runs.
 Owner attestation limits and deferred native/manual gates remain separate from
 automated CI. The existing draft remains unpublished; no release is authorized.
+Owner-approved #215 subsequently merged as `b0a063d2`, retaining the reviewed
+tree. Its [post-merge Build](https://github.com/skyRolly/Anamorph/actions/runs/42011193651)
+passed 16 selected jobs with three conditional skips. Current roadmap, handover
+and candidate-assessment entries now identify this main and the unmerged #216.
+
+## NR-026 current JUCE 9.0.5 revalidation
+
+Compare the pinned 9.0.4 and 9.0.5 Slider/attachment/listener sources and rerun
+the recovered original probe with the actual JUCE GUI implementation under ASan.
+Record standalone and held-wheel teardown witnesses, live behavior, gesture results,
+full State suite, limitations and source/output identities in
+`engineering-review/nr026-juce905.json` and the callback worklog. Update KI-035,
+NR-026, handover and candidate readiness; preserve State86/88 scope and deferred
+native acceptance. Prepare dependency alternatives under the Architecture Review
+gate. No product or JUCE source change is included before that disposition.
+The new ledger is classified as supporting engineering-review evidence and indexed
+in REPOSITORY_MAP, SOURCE_OF_TRUTH and README §Documentation alongside the
+historical 9.0.4 ledger. The new nonshipping reproduction procedure and retained
+diagnostic materials are also indexed/classified in those three surfaces. The
+ledgers remain supporting evidence rather than architectural authority.
+
+The NR-026 procedure now runs its full State suite and each diagnostic in an
+independently verified disposable Linux user profile. The linked JUCE and
+PresetManager path witness, nine isolation controls, two controls that reject
+weakened cleanup/process-group safeguards, and retained separate observation are
+described in the reproduction README and ledger; TESTING also distinguishes this
+wrapper from general State commands that use the caller's environment. Historical
+diagnostic outputs and hashes remain unchanged.
+The reproduction procedure treats privileged package installation as optional
+environment provisioning; an already provisioned or rootless toolchain runs the
+diagnostic without elevation.
+Proposed ADR-0072 is registered in ADR_INDEX and linked/classified in the repository
+map, source-of-truth document and README Documentation navigation. It records
+alternatives, exact review surfaces, gesture/Undo decisions and validation criteria;
+Accepted architecture and owner approval boundaries remain unchanged.
 
 ## Historical #211 integration and #212 provenance audit
 

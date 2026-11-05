@@ -1,0 +1,2 @@
+premise: wheel, destroy=0 calls=0 latency=0 expected=0
+result: calls=1 closes=0 editor=1 latency=0 width=0.53 old=0.5 preset=Default dispatch=0 begins=1 ends=1

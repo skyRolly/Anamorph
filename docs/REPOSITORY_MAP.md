@@ -14,8 +14,15 @@ NR-027's scale teardown probes retain separate original/fixed/guard-removal cont
 Historical standing-programme rounds retain their dated source scopes.
 
 The bounded [GUI callback lifetime review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
-and `worklogs/engineering-review/gui-restore-lifetime.json` retain NR-025 restore
-controls and the distinct NR-026 pinned-framework witness/decision boundary.
+explains the NR-025/026 investigation. Supporting engineering-review evidence keeps
+the [historical JUCE 9.0.4 witness](../worklogs/engineering-review/gui-restore-lifetime.json)
+and the [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.json)
+distinct. The [NR-026 reproduction package](../worklogs/engineering-review/nr026-repro/README.md)
+contains diagnostic sources, exact commands, and retained outputs. These records
+support review; the roadmap owns current execution status.
+The [Proposed ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+records the NR-026 architecture alternatives and pending owner decisions. It is a
+developer review proposal and grants no implementation or release approval.
 
 ```
 Anamorph/
@@ -47,6 +54,10 @@ Anamorph/
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
 ├── worklogs/               Current forward execution register: NEXT_RELEASE_DEVELOPMENT_ROADMAP.md;
 │                           release execution/history: RELEASE_READINESS_0.10.0.md.
+│                           engineering-review/nr026-juce905.json — supporting NR-026
+│                           measurements and provenance, not an architecture decision.
+│                           engineering-review/nr026-repro/ — nonshipping probe sources,
+│                           reproduction procedure, and checksummed raw observations.
 │                           Session-local investigation records for future agents (NOT
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
@@ -249,6 +260,8 @@ docs/
 │                    LATENCY_MODEL, PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT,
 │                    DSP_ALGORITHMS, COMPATIBILITY_MATRIX, RELEASE_HARDENING_PLAN,
 │                    design-decisions/ADRs)
+│   └── design-decisions/ADR-0072-wheel-callback-lifetime-review.md
+│                           Proposed NR-026 review; no implementation approval.
 ├── procedures/     (DEVELOPMENT, BUILD, CI_CD, PACKAGING, TESTING, RELEASE_PROCESS,
 │                    RELEASE_COMPATIBILITY_CHECKLIST, LEVEL5_AUDITION, TROUBLESHOOTING)
 └── policies/       (REALTIME_AUDIO, THREADING, DSP, COMPATIBILITY family,
