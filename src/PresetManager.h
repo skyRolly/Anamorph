@@ -95,10 +95,10 @@ public:
                                             const juce::String& factoryId,
                                             const juce::String& userFile);
 
-    // Local user-preset folder (created on demand):
-    //   macOS  ~/Library/Application Support/RollyTech/Anamorph/Presets
-    //   Win    %APPDATA%/RollyTech/Anamorph/Presets
-    //   Linux  ~/.config/RollyTech/Anamorph/Presets
+    // Local user-preset folder (created on demand; OS/JUCE application-data root):
+    //   macOS  ~/Library/RollyTech/Anamorph/Presets
+    //   Win    CSIDL_APPDATA/RollyTech/Anamorph/Presets (typically %APPDATA%)
+    //   Linux  ~/.config/RollyTech/Anamorph/Presets (default; may be redirected)
     static juce::File presetDirectory();
     static juce::String fileSuffix() { return ".anamorph"; } // shared with the OS chooser filter (#3)
 

@@ -2,6 +2,17 @@
 
 JUCE 9.0.5 integration status is reconciled across the repository map, ADR, dependency policy, handover, build/CI and acceptance records, and [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md); prior review snapshots remain historical.
 
+## Preset path source-comment correction — 2026-11-05
+
+The `PresetManager.h` macOS path comment incorrectly named `Application Support`.
+The pinned JUCE 9.0.5 `juce_Files_mac.mm` returns `~/Library` for
+`userApplicationDataDirectory`; `juce_File.cpp` expands `~` via the user-home
+location, and `PresetManager.cpp` appends `RollyTech/Anamorph/Presets`. The
+existing user manual already matches this source path. Correct the comment and
+clarify that Windows uses JUCE's `CSIDL_APPDATA` lookup and Linux's `~/.config`
+is the default, which JUCE's `user-dirs.dirs` mapping may redirect. These are
+source-inspection findings; no native run, preset migration or behavior change.
+
 
 ## Post-JUCE 9.0.5 current-state reconciliation — 2026-11-05
 
