@@ -24,6 +24,11 @@ in `src/PresetManager.h`. The #216 merge retains both the runner and the origina
 guarded inputs and is the documented detached-worktree baseline. Its retained
 observations still verify; no current-tree observation or binary identity is
 claimed. The comment change does not authorize rewriting the historical source.
+An independent archival rerun on that worktree passed nine isolation controls
+and 13,959 State checks, then reproduced both live controls and both expected
+ASan teardown observations. Its [separate manifest and streams](engineering-review/nr026-repro/observed-archival-rerun-2026-11-05/manifest.json)
+retain checkout, product, dependency, toolchain and command identities; the
+previous observations are unchanged. This is not a combined-main execution.
 
 NR-026/KI-035 remains unresolved, with two distinct component-test UAF paths.
 [ADR-0072](../docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)

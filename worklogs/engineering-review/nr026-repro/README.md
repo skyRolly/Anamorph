@@ -35,6 +35,16 @@ would need its own exact source identity, build inputs, isolation and results;
 relaxing this guard or replacing the historical hash would conflate observations.
 The existing historical and isolated output identities remain unchanged.
 
+A separate archival rerun on 2026-11-05 used checkout `f15236d5`, product inputs
+`f1d3ff81`, JUCE `d60b7a7`, GCC 14.2.0 and CMake 4.4.4. Its
+[command manifest and output streams](observed-archival-rerun-2026-11-05/manifest.json)
+are retained independently: nine isolation controls and 13,959 State checks
+passed, both live cases passed, and the two close cases reported their respective
+expected ASan use-after-free observations. The binaries are not retained. This is
+a new execution at the historical input baseline, not a combined-main result;
+teardown gesture/Undo remains unobserved. `verify.py` checks the new manifest,
+streams, input hashes and result classifications as well as the prior evidence.
+
 `original-probe.cpp` is byte-for-byte the `gui-inventory-probe-v2.cpp` content
 embedded in `gui-restore-lifetime.json` (SHA-256 `0d78b980…ae336a5`). Its
 `wheel live` and `wheel close` selectors exercise the actual attached Width

@@ -1,0 +1,2 @@
+premise: held=1 begins=1 ends=0 values=0 width=0.5 close=0
+result: editor=1 values=1 closes=0 begins=1 ends=1 width=0.53 old=0.5

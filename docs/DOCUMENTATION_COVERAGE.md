@@ -8,7 +8,8 @@ Record both merge identities and release boundaries in the roadmap, handover,
 known-issue entry and candidate assessment. The NR-026 reproduction procedure now explains why the integrated
 comment change fails its original byte guard and how to use the #216 merge as a
 clean, source-matching worktree. Historical observations and source hashes remain
-unchanged. The callback packet distinguishes Accepted live-interaction rules from
+unchanged. A separate archival rerun retains its manifest/streams and is checked
+by the evidence verifier, including an additional corruption control. The callback packet distinguishes Accepted live-interaction rules from
 the pending teardown gesture/Undo decision; ADR-0072 remains Proposed. The general
 State-suite filesystem exposure is a separate follow-up, not covered by the
 Linux diagnostic wrapper.
