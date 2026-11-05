@@ -6,7 +6,19 @@ records source-bound automated evidence and the new **PASS — owner-attested** 
 acceptance for 9.0.5 (recorded 2026-11-04 Asia/Shanghai). Exact tested payload/environment fields
 were not supplied. No release is authorized. Older attestations remain dated history.
 
-## Current #211 integration and #212 provenance review
+## Current handover — 2026-11-05 UTC
+
+Remote main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` includes #207–#214.
+NR-029/KI-037 was integrated through #212 (`82c98e45`), with source and
+regression provenance in [INC-025](POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
+NR-026's ASan witness is for JUCE 9.0.4 and requires current-pin revalidation.
+The latest main Build run [41861863098](https://github.com/skyRolly/Anamorph/actions/runs/41861863098)
+failed after an unacquired macOS ARM runner was cancelled; JUCE #213's separate
+post-merge Build, CodeQL and MSVC runs succeeded. Owner-deferred native acceptance,
+commercial and signing/provisioning decisions, and the unchanged draft remain
+separate; see the [release assessment](../worklogs/RELEASE_READINESS_0.10.0.md).
+
+## Historical #211 integration and #212 provenance review — before #212 merged
 
 Owner-authorized PR #211 merged as
 `c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9`; its tree equals reviewed head

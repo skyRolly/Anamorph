@@ -33,7 +33,7 @@ including in entries written before 0.9.9 gave it that name.
 ### Fixed
 
 - Keep multiband display edits and their Undo gestures consistent when a parameter notification closes the editor.
-  Evidence: commits `af8edfdd` and `05b207e3`; PR #212 (unmerged review branch);
+  Evidence: commits `af8edfdd` and `05b207e3`; [PR #212](https://github.com/skyRolly/Anamorph/pull/212) (merged `82c98e45`);
   NR-029/KI-037; SpectrumImager lifetime/Undo regressions. [Verified]
 - **Scale and mode changes stop safely if a synchronous parent resize callback closes the editor.**
   The editor no longer resumes its scale or timer work through freed component state.

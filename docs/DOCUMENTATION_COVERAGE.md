@@ -3,7 +3,17 @@
 JUCE 9.0.5 integration status is reconciled across the repository map, ADR, dependency policy, handover, build/CI and acceptance records, and [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md); prior review snapshots remain historical.
 
 
-## #211 integration and #212 provenance audit
+## Post-JUCE 9.0.5 current-state reconciliation — 2026-11-05
+
+Remote history confirms #212 merged at `82c98e45`, #213 at `18a51df7` and
+#214 at `f1d3ff81`. The roadmap, handover, candidate assessment, callback review,
+known issues, INC-025 and Unreleased citation now distinguish integrated NR-029 /
+KI-037 from the separate historical NR-026 witness. Dated review snapshots remain
+history. The exact-main macOS capacity cancellation, separate successful #213
+runs, owner attestation limits, deferred native gates and unchanged draft are
+recorded without implying release authorization.
+
+## Historical #211 integration and #212 provenance audit
 
 Record the owner-authorized #211 merge `c35a9d6b` and retain States155–157 plus
 both SpectrumImager fixtures through additive synchronization `15cdd42e`. Update

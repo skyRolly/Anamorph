@@ -1,6 +1,35 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current #211 integration and #212 provenance review
+## Current source and candidate assessment — 2026-11-05 UTC
+
+Read-only remote inspection: annotated tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
+peels to `4c136881f245470577d66a7603f15b177ddcf3dc`. Draft release ID
+`429760301` is unpublished and has 11 assets. Product version remains 0.10.0.
+Current main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` contains the post-tag
+NR-022/006/023–025/027–029 work and JUCE 9.0.5 (#213); the draft does not.
+Current-source CI is not draft-asset validation. The #213 post-merge Build,
+CodeQL and MSVC runs passed; #214's [main Build](https://github.com/skyRolly/Anamorph/actions/runs/41861863098)
+failed when macOS ARM could not acquire a runner, with other selected jobs
+successful and optional jobs skipped. It is not a complete exact-head pass.
+
+Level-5 listening and native/manual acceptance for the JUCE 9.0.5 upgrade are
+**PASS — owner-attested**, with exact tested payload/environment not recorded.
+That does not establish NR-006/010 performance budgets, the deferred NR-014
+UX/assistive and host matrix, or acceptance of a future candidate. NR-026's
+9.0.4 lifetime witness requires current-pin revalidation. Owner/legal distribution
+and JUCE rights (NR-018) and signing/notarization provisioning (NR-019) are
+separate gates from technical/native acceptance.
+
+| Option | Tradeoff and prerequisites |
+|---|---|
+| Hold existing unpublished draft | Preserves original identity and evidence, but excludes integrated corrections; no publication recommendation follows. |
+| Separately authorized replacement candidate | Can include selected integrated fixes; requires an owner-selected identity/recovery plan, exact-source automated gates and applicable human acceptance, then explicit authorization for any release operations. |
+| Later maintenance version, e.g. 0.10.1 | Preserves the existing tag and distinguishes corrected source, but requires owner version/identity selection and the same candidate-specific gates. |
+| Defer selection | Retains all options while technical risks and human gates are assessed; provides no new release artifact. |
+
+No version, tag, asset, draft or publication operation is authorized by this assessment.
+
+## Historical #211 integration and #212 provenance review — before #212 merged
 
 Owner-authorized PR #211 merged as
 `c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9`; its tree equals reviewed head
@@ -43,7 +72,7 @@ The execution register and ledgers track post-merge and final-review-head CI.
 Native acceptance remains owner-deferred. The 0.10.0 tag, unpublished draft,
 11 assets and version are unchanged; post-tag source fixes are absent from it.
 
-## Current candidate boundary after #208/#207 — 2026-11-03 (Asia/Shanghai)
+## Historical candidate boundary after #208/#207 — 2026-11-03 (Asia/Shanghai)
 
 Main `29150f312ec4a43ec85f35e61028d8338057d927` contains owner-approved #208
 and #207. Combined945 DSP/12,234 state checks and retained original/fixed/mutant
