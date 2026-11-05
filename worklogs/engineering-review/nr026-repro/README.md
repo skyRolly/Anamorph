@@ -59,7 +59,8 @@ The `observed-2026-11-05/` directory retains the actual stdout and stderr of
 all four cases, the full state-suite output, and the command manifest. The two nonempty
 ASan teardown stderr files are gzip-compressed without changing their decompressed bytes;
 the manifest hashes the raw output and the verifier checks it after decompression. The JSON
-ledger lists their SHA-256 values and labels this as a **new** observation. The
+ledger lists their SHA-256 values and labels this as a **new** observation. Its verifier
+cross-checks the ledger result/hash fields against the command manifest and retained outputs. The
 original 9.0.5 command manifest, held probe, raw output and binaries were not
 recoverable; their historical hashes are recorded only as unretained identifiers.
 Binaries from this new run are intentionally not committed (each is about 162 MB);

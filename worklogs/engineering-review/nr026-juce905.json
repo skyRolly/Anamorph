@@ -221,7 +221,7 @@
     "materials": [
       {
         "path": "worklogs/engineering-review/nr026-repro/README.md",
-        "sha256": "63fa83473b5e8b8dbd381de8e1d41d4c84245186a7fa94aed3346f9eee8e6d5f"
+        "sha256": "f868d4bd89ca8ddc1f0676276bf555cadaf7e510e6a0fe99ad691298be6713d0"
       },
       {
         "path": "worklogs/engineering-review/nr026-repro/original-probe.cpp",
@@ -237,7 +237,7 @@
       },
       {
         "path": "worklogs/engineering-review/nr026-repro/verify.py",
-        "sha256": "eb0dd59c8f7cba700bdafbf94520d85867b075bf97cf54acec35bfdf5f567593"
+        "sha256": "59a0ba2b134b980fa47ad2d1181521405828f2443b93dccc141399f5ee9d1848"
       },
       {
         "path": "worklogs/engineering-review/nr026-repro/observed-2026-11-05/build.stdout",
