@@ -21,8 +21,9 @@ The #216 preset-isolation finding was confirmed from the actual pinned JUCE Linu
 path resolver and production `PresetManager`: the old procedure did not isolate
 HOME, and XDG_CONFIG_HOME alone is ineffective. The nonshipping reproduction now
 verifies an isolated HOME, JUCE application-data and preset path, and TMPDIR for
-the full State suite and each wheel case. Eight isolation controls and the separately retained
-isolated observation are in the [reproduction package](engineering-review/nr026-repro/README.md)
+the full State suite and each wheel case. Nine isolation controls, two weakening
+mutation controls and the separately retained isolated observation are in the
+[reproduction package](engineering-review/nr026-repro/README.md)
 and [ledger](engineering-review/nr026-juce905.json); original outputs remain historical.
 The new run completes 13,959 State checks and reconfirms both live and teardown
 outcomes. This resolves diagnostic isolation only: NR-026/KI-035 remains open and

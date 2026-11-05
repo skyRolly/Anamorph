@@ -43,10 +43,11 @@ ledgers remain supporting evidence rather than architectural authority.
 
 The NR-026 procedure now runs its full State suite and each diagnostic in an
 independently verified disposable Linux user profile. The linked JUCE and
-PresetManager path witness, isolation failure controls and retained separate
-observation are described in the reproduction README and ledger; TESTING also
-distinguishes this wrapper from general State commands that use the caller's
-environment. Historical diagnostic outputs and hashes remain unchanged.
+PresetManager path witness, nine isolation controls, two controls that reject
+weakened cleanup/process-group safeguards, and retained separate observation are
+described in the reproduction README and ledger; TESTING also distinguishes this
+wrapper from general State commands that use the caller's environment. Historical
+diagnostic outputs and hashes remain unchanged.
 The reproduction procedure treats privileged package installation as optional
 environment provisioning; an already provisioned or rootless toolchain runs the
 diagnostic without elevation.

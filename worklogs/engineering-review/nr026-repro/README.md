@@ -63,18 +63,20 @@ The actual witness checks those linked implementations, rather than assuming a
 conventional XDG implementation. A manually invoked State binary or the general
 `scripts/run-tests.sh` is outside this wrapper and does not acquire its isolation.
 
-The eight isolation controls include a fake caller-home preset sentinel, an actual JUCE
-configuration redirect, a symlink escape, missing/altered variables, an unusable
-temporary parent, two overlapping processes, SIGTERM during a child run, and a
-read-only control showing the old XDG-only environment still resolves to the fake
-caller HOME. The
-sentinel remains unchanged, and the redirected and symlink paths are rejected
-before mutating tests run. Failed-case logs and the incrementally written manifest
-remain in `--out`, outside the profile. On ordinary completion, failure, SIGINT or
-SIGTERM the runner stops the child process group and removes only its own verified
-temporary tree; a changed root identity is never removed. SIGKILL or machine loss
-can leave a private temporary tree behind. This is a Linux test isolation mechanism,
-not a security sandbox against a hostile process running as the same user.
+The nine isolation controls include a fake caller-home preset sentinel, an actual
+JUCE configuration redirect, a symlink escape, missing/altered variables, an
+unusable temporary parent, two overlapping processes, SIGTERM during a child run
+with a grandchild, a read-only control showing the old XDG-only environment still
+resolves to the fake caller HOME, and cleanup against a replaced profile root. The
+sentinel remains unchanged, and redirected and symlink paths are rejected before
+mutating tests run. The root-replacement control confirms cleanup refuses the
+replacement and preserves its sentinel. Failed-case logs and the incrementally
+written manifest remain in `--out`, outside the profile. On ordinary completion,
+failure, SIGINT or SIGTERM the runner stops the child process group and removes only
+its own verified temporary tree; a changed root identity is never removed. SIGKILL
+or machine loss can leave a private temporary tree behind. This is a Linux test
+isolation mechanism, not a security sandbox against a hostile process running as
+the same user.
 
 The runner obtains the target's real compile/link commands from Ninja, rebuilds
 `PluginEditor.cpp`, all five `juce_gui_basics` units and each probe with
@@ -124,9 +126,22 @@ has corruption controls. The isolated run again completed 13,959 State checks;
 both live cases passed and the two close cases reported their respective ASan UAFs.
 The results do not establish teardown gesture completion, Undo or DAW incidence.
 The subsequent eighth legacy-XDG control and the independent rerun of all eight
-controls are recorded as `control_refresh` in the ledger. The initial executed
-seven-control source is retained separately as historical text; the current test
-source includes the eighth control. No product scenario changed between them.
+controls are recorded as `control_refresh` in the ledger. The final nine-control
+run adds root-identity cleanup and descendant termination checks; their exact
+source and raw output are retained separately as `final_controls`. No State or
+ASan product scenario changed or was repeated for these test-only additions.
+
+Two deliberate weakening mutations are also retained in the ledger: removing the
+profile-root identity check and terminating only the direct child each makes its
+specific regression fail. Reproduce them after `run.py` creates the path witness,
+using the same runtime-library environment as the witness:
+
+```bash
+python3 worklogs/engineering-review/nr026-repro/test_isolation_mutations.py --probe /tmp/nr026-new-observation/path-probe --out /tmp/nr026-mutation-controls
+```
+
+The output path must be new. The harness retains each expected failing unittest
+stream and exits successfully only when both mutations are rejected.
 
 The retained run used a rootless Debian 13 tool directory with GCC 14.2.0 and
 CMake 3.31.6. Its exact configuration command was:

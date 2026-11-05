@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,6 +25,14 @@ def wait_for(paths, seconds=20):
     raise AssertionError(f'timed out waiting for {paths}')
 
 
+def process_is_running(pid):
+    try:
+        status = (Path('/proc') / str(pid) / 'stat').read_text()
+    except FileNotFoundError:
+        return False
+    return status.rsplit(')', 1)[1].split()[0] != 'Z'
+
+
 def concurrent_child(probe, shared, name):
     with Profile() as profile:
         profile.validate(probe)
@@ -42,11 +51,15 @@ def interrupt_child(probe, shared):
         with Profile() as profile:
             profile.validate(probe)
             (shared / 'interrupt-ready').write_text(str(profile.root))
-            code = ('import os,sys,time; '
-                    'open(sys.argv[1],"w").write(str(os.getpid())); '
-                    'print("partial evidence",flush=True); time.sleep(120)')
+            code = '''import os, subprocess, sys, time
+grandchild = 'import os,sys,time;open(sys.argv[1],"w").write(str(os.getpid()));time.sleep(120)'
+subprocess.Popen([sys.executable, '-c', grandchild, sys.argv[2]])
+open(sys.argv[1], 'w').write(str(os.getpid()))
+print('partial evidence', flush=True)
+time.sleep(120)
+'''
             with (shared / 'partial.stdout').open('wb') as out, (shared / 'partial.stderr').open('wb') as err:
-                run_child([sys.executable, '-u', '-c', code, str(shared / 'child-pid')],
+                run_child([sys.executable, '-u', '-c', code, str(shared / 'child-pid'), str(shared / 'grandchild-pid')],
                           cwd=shared, env=profile.env, stdout=out, stderr=err)
     except InterruptedError:
         return 73
@@ -140,6 +153,27 @@ class IsolationTests(unittest.TestCase):
                     profile.validate(self.probe)
             self.assertEqual(sentinel.read_bytes(), b'untouched')
 
+    def test_cleanup_refuses_a_replaced_root(self):
+        with tempfile.TemporaryDirectory(prefix='nr026-root-swap-', dir='/tmp') as raw:
+            with Profile(Path(raw)) as profile:
+                original = profile.root
+                parked = original.with_name(original.name + '-original')
+                original.rename(parked)
+                original.mkdir(mode=0o700)
+                sentinel = original / 'sentinel'
+                sentinel.write_bytes(b'belongs to replacement')
+                try:
+                    with self.assertRaises(IsolationError):
+                        profile.cleanup()
+                    self.assertEqual(sentinel.read_bytes(), b'belongs to replacement')
+                finally:
+                    # Both paths were created by this control, not by another run.
+                    if original.exists():
+                        shutil.rmtree(original)
+                    parked.rename(original)
+                    profile.root = original
+            self.assertFalse(original.exists())
+
     def test_parallel_invocations_are_separate(self):
         with tempfile.TemporaryDirectory(prefix='nr026-concurrent-', dir='/tmp') as raw:
             shared = Path(raw)
@@ -168,9 +202,10 @@ class IsolationTests(unittest.TestCase):
             child = subprocess.Popen([sys.executable, __file__, '--interrupt-child', str(self.probe), raw],
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             try:
-                wait_for([shared / 'interrupt-ready', shared / 'child-pid'])
+                wait_for([shared / 'interrupt-ready', shared / 'child-pid', shared / 'grandchild-pid'])
                 root = Path((shared / 'interrupt-ready').read_text())
                 pid = int((shared / 'child-pid').read_text())
+                grandchild_pid = int((shared / 'grandchild-pid').read_text())
                 child.send_signal(signal.SIGTERM)
                 _, err = child.communicate(timeout=20)
                 self.assertEqual(child.returncode, 73, err)
@@ -178,10 +213,23 @@ class IsolationTests(unittest.TestCase):
                 self.assertIn('partial evidence', (shared / 'partial.stdout').read_text())
                 with self.assertRaises(ProcessLookupError):
                     os.kill(pid, 0)
+                # A killed orphan may briefly remain as a zombie until init reaps it.
+                deadline = time.monotonic() + 3
+                while process_is_running(grandchild_pid) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertFalse(process_is_running(grandchild_pid), 'a live grandchild survived interruption')
             finally:
                 if child.poll() is None:
                     child.kill()
                     child.wait()
+                if (shared / 'grandchild-pid').exists() and (shared / 'child-pid').exists():
+                    grandchild_pid = int((shared / 'grandchild-pid').read_text())
+                    try:
+                        # This process was created by this control; guard against PID reuse.
+                        if os.getpgid(grandchild_pid) == int((shared / 'child-pid').read_text()):
+                            os.kill(grandchild_pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
 
 def main():

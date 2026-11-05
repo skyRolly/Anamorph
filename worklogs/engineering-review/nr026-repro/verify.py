@@ -103,6 +103,38 @@ def verify(root):
     assert b'Ran 8 tests' in refreshed_output and b'\nOK\n' in refreshed_output
     assert b'test_legacy_xdg_only_profile_still_resolves_caller_home' in refreshed_output
 
+    final_controls = isolated['final_controls']
+    final_source = final_controls['source']
+    assert hashlib.sha256((root / final_source['path']).read_bytes()).hexdigest() == final_source['sha256']
+    final_stdout = final_controls['stdout']
+    final_stderr = final_controls['stderr']
+    assert hashlib.sha256((root / final_stdout['path']).read_bytes()).hexdigest() == final_stdout['sha256']
+    final_output = (root / final_stderr['path']).read_bytes()
+    assert hashlib.sha256(final_output).hexdigest() == final_stderr['sha256']
+    assert final_controls['exit'] == 0 and final_controls['tests'] == 9
+    assert b'Ran 9 tests' in final_output and b'\nOK\n' in final_output
+    assert b'test_cleanup_refuses_a_replaced_root' in final_output
+    assert b'test_interruption_stops_child_and_preserves_external_output' in final_output
+
+    mutations = isolated['mutation_controls']
+    mutation_source = mutations['source']
+    assert hashlib.sha256((root / mutation_source['path']).read_bytes()).hexdigest() == mutation_source['sha256']
+    mutation_stdout = mutations['stdout']
+    mutation_stderr = mutations['stderr']
+    assert hashlib.sha256((root / mutation_stdout['path']).read_bytes()).hexdigest() == mutation_stdout['sha256']
+    mutation_output = (root / mutation_stderr['path']).read_bytes()
+    assert hashlib.sha256(mutation_output).hexdigest() == mutation_stderr['sha256']
+    assert mutations['exit'] == 0 and b'unsafe mutation rejected' in (root / mutation_stdout['path']).read_bytes()
+    assert not mutation_output
+    for mutant in mutations['mutants']:
+        for stream in ('stdout', 'stderr'):
+            entry = mutant[stream]
+            raw = (root / entry['path']).read_bytes()
+            assert hashlib.sha256(raw).hexdigest() == entry['sha256']
+        failed = (root / mutant['stderr']['path']).read_bytes()
+        assert mutant['exit'] == 1 and mutant['expected_failure'].encode() in failed
+        assert b'FAILED (failures=1)' in failed
+
     profiles = []
     for name in ('state-suite', 'standalone-live', 'standalone-close', 'held-live', 'held-close'):
         entry = commands[name]
@@ -156,7 +188,10 @@ def self_test(root):
         paths = [target / 'nr026-repro/observed-2026-11-05/standalone-close.stderr.gz',
                  target / 'nr026-repro/observed-isolated-2026-11-05/standalone-live.stdout',
                  target / 'nr026-repro/observed-isolated-2026-11-05/manifest.json',
-                 target / 'nr026-repro/path-probe.cpp']
+                 target / 'nr026-repro/path-probe.cpp',
+                 target / 'nr026-repro/observed-isolated-2026-11-05/isolation-controls-final.stderr',
+                 target / 'nr026-repro/observed-isolated-2026-11-05/mutation-process-group.stderr',
+                 target / 'nr026-repro/test_isolation_mutations.py']
         for path in paths:
             original = path.read_bytes()
             path.write_bytes(original + b'altered')
@@ -179,7 +214,7 @@ def self_test(root):
             pass
         else:
             raise AssertionError('failed to reject altered case classification')
-    print('NR-026 evidence verifier: five corruption controls passed')
+    print('NR-026 evidence verifier: eight corruption controls passed')
 
 
 if __name__ == '__main__':

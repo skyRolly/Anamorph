@@ -522,14 +522,14 @@
         "source_sha256": "18bfc2439ca57235dc058a312f9c494f71c6cec64ea7875c87839a700ebe846d"
       }
     ],
-    "isolation_controls": "Seven real-path and negative controls passed; raw unittest output is retained in isolation-controls.stderr.",
+    "isolation_controls": "The original isolated reproduction ran seven controls, retained in isolation-controls.stderr. The eight-control refresh and final nine-control suite are recorded separately below.",
     "preset_path_witness": "For State and each case, the manifest records the exact HOME, XDG/TMPDIR and paths returned by the linked JUCE core and production PresetManager before execution. Each profile was fresh and distinct.",
     "limitations": "Only Linux/Xvfb and the stated ASan instrumentation were tested. No DAW incidence, native acceptance, or teardown gesture/Undo result is inferred. No binary is retained; binary hashes in the manifest identify locally executed bytes only.",
     "raw_output_storage": "The two ASan stderr streams are gzip-compressed without changing their decompressed bytes; the manifest hashes the original raw streams.",
     "control_refresh": {
       "reason": "After the full seven-control run, add an eighth read-only control demonstrating the historical XDG-only environment resolves to the fake caller HOME; rerun all eight controls without repeating unchanged product scenarios.",
       "source": {
-        "path": "worklogs/engineering-review/nr026-repro/test_isolation.py",
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/test_isolation.py.refresh.txt",
         "sha256": "8f0d977b87dd9c7917293cf945d3590f24f149e6beaa604912429331d2c149cd"
       },
       "invocation": [
@@ -552,6 +552,91 @@
         "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-refresh.stderr",
         "sha256": "9e320bf515957b20db88749f512fb272b1872f413663094aa2b452d26730f1f8"
       }
+    },
+    "final_controls": {
+      "reason": "A ninth control proves cleanup refuses a replaced profile root without deleting the replacement sentinel. The SIGTERM control now launches a grandchild and verifies that the complete process group stops. These controls strengthen cleanup and interruption coverage without changing the already recorded State or ASan scenarios.",
+      "source": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/test_isolation.py.final.txt",
+        "sha256": "836febac43dd85852c5ffef45789fefd35e4d1f1a4f3b2efbaa716f8d4adcedc"
+      },
+      "invocation": [
+        "python3",
+        "worklogs/engineering-review/nr026-repro/test_isolation.py",
+        "--probe",
+        "/workspace/.anamorph-tools/nr026-isolated-v1/path-probe"
+      ],
+      "environment": {
+        "LD_LIBRARY_PATH": "/workspace/.anamorph-tools/root/usr/lib/x86_64-linux-gnu"
+      },
+      "path_witness_binary_sha256": "343a9c612168d2f485ffe109d86474662cc67ac805a12009e44e4401b59c8478",
+      "exit": 0,
+      "tests": 9,
+      "stdout": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-final.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/isolation-controls-final.stderr",
+        "sha256": "1887efe4a7000c1c9be644d0d4c8067d1937ba3bda94639458d8478e8af92234"
+      }
+    },
+    "mutation_controls": {
+      "reason": "Independently weaken profile-root identity cleanup and descendant process-group termination. Each deliberately mutated implementation is rejected by the corresponding named isolation regression.",
+      "source": {
+        "path": "worklogs/engineering-review/nr026-repro/test_isolation_mutations.py",
+        "sha256": "01376ae761b25048d5261b3db58df3e683cd9093c010d09e1395b8e1a7992df1"
+      },
+      "invocation": [
+        "python3",
+        "worklogs/engineering-review/nr026-repro/test_isolation_mutations.py",
+        "--probe",
+        "/workspace/.anamorph-tools/nr026-isolated-v1/path-probe",
+        "--out",
+        "/workspace/.anamorph-tools/nr026-mutation-controls-final"
+      ],
+      "environment": {
+        "LD_LIBRARY_PATH": "/workspace/.anamorph-tools/root/usr/lib/x86_64-linux-gnu"
+      },
+      "path_witness_binary_sha256": "343a9c612168d2f485ffe109d86474662cc67ac805a12009e44e4401b59c8478",
+      "exit": 0,
+      "stdout": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-control-run.stdout",
+        "sha256": "988a328456623c539fe52d8a5b366a7507210b51dd20a3da5d646802230b6b85"
+      },
+      "stderr": {
+        "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-control-run.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": [
+        {
+          "name": "root-identity",
+          "change": "Remove the device/inode identity comparison before cleanup.",
+          "exit": 1,
+          "expected_failure": "test_cleanup_refuses_a_replaced_root",
+          "stdout": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-root-identity.stdout",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-root-identity.stderr",
+            "sha256": "009ffa4ddfe66881f5b925645a7e4176a2d279e0234c0252c7ccbb1691539e48"
+          }
+        },
+        {
+          "name": "process-group",
+          "change": "Terminate only the direct child instead of the child's process group.",
+          "exit": 1,
+          "expected_failure": "test_interruption_stops_child_and_preserves_external_output",
+          "stdout": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-process-group.stdout",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "path": "worklogs/engineering-review/nr026-repro/observed-isolated-2026-11-05/mutation-process-group.stderr",
+            "sha256": "6ea183a0a13fef918744fe2a7111d3d5856554cfac2ceeb852d1a890257a17f6"
+          }
+        }
+      ]
     }
   }
 }
