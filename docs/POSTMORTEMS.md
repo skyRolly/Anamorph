@@ -528,14 +528,14 @@ No separate production fix or integration is claimed by that test-only follow-up
 
 ## INC-025 — SpectrumImager synchronous callback teardown (NR-029 / KI-037)
 
-**Candidate in PR #212; not integrated or merge-authorized.** On source baseline
+**Resolved on main:** owner-authorized PR #212 merged as `82c98e45984f5c7bc0f953340622f90523957780`; the unchanged 0.10.0 draft predates this correction. On source baseline
 `29150f3`, a parameter listener can delete the editor during imager mouse helpers
 or gesture dispatch. Resumed component/callback accesses use freed state; nested
 gesture close can also precede the outer begin reaching the processor listener,
 leaving later edits without valid Undo ownership. Original store/end/add/band-move
 ASan failures and begin/next-edit assertions are retained in the evidence ledger.
 
-The candidate copies required callback/processor state onto the stack, checks weak
+The integrated correction copies required callback/processor state onto the stack, checks weak
 component lifetime after synchronous callouts, and completes gesture cleanup after
 begin dispatch returns. Preserve completed processor writes and correct Undo;
 selected nested topology actions cancel before stores rather than commit partial

@@ -6,7 +6,20 @@ records source-bound automated evidence and the new **PASS — owner-attested** 
 acceptance for 9.0.5 (recorded 2026-11-04 Asia/Shanghai). Exact tested payload/environment fields
 were not supplied. No release is authorized. Older attestations remain dated history.
 
-## Current #211 integration and #212 provenance review
+## Current handover — 2026-11-05 UTC
+
+Remote main `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` includes #207–#214.
+NR-029/KI-037 was integrated through #212 (`82c98e45`), with source and
+regression provenance in [INC-025](POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
+NR-026's ASan witness is for JUCE 9.0.4 and requires current-pin revalidation.
+The #214 main Build [attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
+completed successfully with 16 selected jobs passed and three optional/routing
+jobs skipped; attempts 1–5 had cancelled macOS jobs. JUCE #213's separate
+post-merge Build, CodeQL and MSVC runs also succeeded. Owner-deferred native acceptance,
+commercial and signing/provisioning decisions, and the unchanged draft remain
+separate; see the [release assessment](../worklogs/RELEASE_READINESS_0.10.0.md).
+
+## Historical #211 integration and #212 provenance review — before #212 merged
 
 Owner-authorized PR #211 merged as
 `c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9`; its tree equals reviewed head
@@ -287,7 +300,19 @@ carries its 2026-07-26 review date — its content (product model, distribution 
 owner/legal decisions) is unaffected by the version renumbering, and it is re-dated when its
 substance next changes rather than on every version bump.
 
-## Operational status
+## Operational status — current
+
+Product version is 0.10.0; remote `main` is `f1d3ff81` and uses JUCE 9.0.5.
+The current unpublished draft is ID `429760301`, with 11 assets and annotated
+tag object `1190e455` peeling to `4c136881`. It predates the integrated fixes
+and JUCE upgrade. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
+is the execution register; the [release assessment](../worklogs/RELEASE_READINESS_0.10.0.md)
+records remaining risks, human acceptance, commercial and provisioning gates.
+
+## Historical operational status — earlier 0.10.0 replacement
+
+The following table is a dated historical snapshot. Its former draft ID, tag,
+current-version, blocker and roadmap claims are superseded by the current records above.
 
 | Field | Value |
 |---|---|

@@ -3,12 +3,11 @@
 ## Current integrated restoration and SpectrumImager review
 
 PR #211 is integrated at `c35a9d6b` with State157 A→B→C→B coverage; its production
-guards were already supplied by #209. PR #212 additively retains this correction
-and its existing SpectrumImager implementation/tests. The multiband changelog
-note now cites `af8edfdd` and `05b207e3` on the explicitly unmerged review branch.
-Current exact-head evidence is linked from the roadmap. NR-026/KI-035 remains a
-separate unfixed dependency/architecture decision; no new production defect was
-established by this provenance finding. Native/manual acceptance stays deferred.
+guards were already supplied by #209. PR #212 merged at `82c98e45`, retaining
+State157 and the SpectrumImager correction and regression fixtures. The multiband
+changelog cites integrated commits `af8edfdd` and `05b207e3`. NR-026/KI-035 is
+a separate issue; its 9.0.4 witness must be revalidated on 9.0.5. Native/manual
+acceptance stays deferred.
 
 2026-11-03 (Asia/Shanghai). Source baseline:
 `29150f312ec4a43ec85f35e61028d8338057d927`, after owner-authorized #208/#207.
@@ -16,6 +15,8 @@ This is a bounded implementation review, not certification of every GUI event or
 manual host acceptance. Native/manual/performance execution remains owner-deferred.
 
 ## Historical integrated guards and State157 follow-up — 2026-11-03
+
+This snapshot predates the subsequent #211 and #212 merges.
 
 #209 and #210 are merged at `0d395366` and `0cd95120`; retain both actual-editor
 corrections and their independent controls. PR #211's parameter-triggered restore
@@ -85,7 +86,7 @@ production menu/timer action adopts it and delivers the synchronous notification
 Original ASan reports post-adoption UAF in both actions. This does not establish
 named-DAW incidence or the cause of historical validator signal exits.
 
-**Correction in [PR #209](https://github.com/skyRolly/Anamorph/pull/209), unmerged:** method-local `Component::SafePointer` on the stack,
+**Correction in [PR #209](https://github.com/skyRolly/Anamorph/pull/209), integrated at `0d395366`:** method-local `Component::SafePointer` on the stack,
 checked immediately after each processor callout. The preset click additionally
 captures weak ownership and copies it onto the stack before invoking the method;
 a stale copied callback cannot adopt another pending restore after editor death.
@@ -159,8 +160,8 @@ records are separate scopes. Historical GCC ABI failures, unattributed validator
 signal exits, native Intel AU risk and GitHub alert-state403 stay unresolved in
 their original classifications. CodeQL workflow success does not clear alerts.
 
-Next: complete NR-025 final-head CI and human PR review (new merge authorization required); investigate remaining actual
+Next: revalidate NR-026 against the integrated dependency and investigate remaining actual
 Settings/resize and attachment teardown entry points with consistent instrumentation.
-NR-026's production dependency decision remains human-gated. Native performance,
+Any NR-026 production dependency decision remains human-gated. Native performance,
 host/editor visual and assistive acceptance remain deferred without waiver.
 Current main and a reviewed branch are not the protected0.10.0 draft artifacts.

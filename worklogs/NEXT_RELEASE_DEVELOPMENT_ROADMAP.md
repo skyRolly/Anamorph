@@ -5,7 +5,26 @@
 See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and actual post-merge CI. Prior roadmap entries below are dated snapshots.
 
 
-## Current #211 integration and #212 provenance review
+## Current integrated baseline — 2026-11-05 UTC
+
+Remote `main` is `f1d3ff81e0f239d0bec7c8873f54ebfce78e15c7` (PR #214). PRs
+#207/208/209/210/211/212/213/214 are merged; NR-023/024/025/027/028/029
+are integrated. #212 merged `82c98e45`, resolving KI-037 within its tested
+scope; retained controls and boundaries are in [INC-025](../docs/POSTMORTEMS.md#inc-025--spectrumimager-synchronous-callback-teardown-nr-029--ki-037).
+The 9.0.4 NR-026/KI-035 witness remains historical until tested on 9.0.5;
+Architecture Review is required before gated production changes.
+
+JUCE #213 post-merge [Build](https://github.com/skyRolly/Anamorph/actions/runs/41840722187),
+CodeQL and MSVC analysis succeeded on `18a51df`. The separate #214 main
+[Build attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
+completed successfully: all 16 selected jobs passed and three optional/routing
+jobs were skipped. Attempts 1–5 had one or more cancelled macOS jobs; retain
+that runner history without treating it as the final result. Native NR-006/010/014
+work remains owner-deferred; NR-018/019 remain separate commercial/provisioning
+gates. The [candidate assessment](RELEASE_READINESS_0.10.0.md) distinguishes
+the protected draft from current source.
+
+## Historical #211 integration and #212 provenance review — before #212 merged
 
 Owner-authorized PR #211 merged as
 `c35a9d6b68c53142d42c957d9ef6e5ab1b7caac9`; its tree equals reviewed head
@@ -1614,10 +1633,10 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
 | NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | State157 follow-up integrated by #211; actual main validation recorded above |
-| NR-026 | P1 | Architecture/dependency review pending | Actual JUCE wheel-scope teardown UAF; no JUCE patch or pin change | Human review before any gated implementation |
+| NR-026 | P1 | Current-pin revalidation pending | JUCE 9.0.4 wheel-scope teardown UAF; 9.0.5 must be tested | Human review before any gated implementation |
 | NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and sanitizer controls | Native incidence unverified |
 | NR-028 | P1 | Completed / integrated #211 / c35a9d6b | Same-processor A→B→C→B parameter-trigger adoption cycle; guards already integrated #209 | Actual combined-main validation and preserved negative controls |
-| NR-029 | P1 | #212 review-only / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; changelog provenance corrected | Current final-head validation evidence; explicit owner merge review still required |
+| NR-029 | P1 | Completed / integrated #212 / 82c98e45 / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; original/fixed controls retained | Native incidence and broader acceptance remain unverified |
 
 ### NR-001 — Close the Linux architecture/approval record
 
@@ -2186,18 +2205,16 @@ and destruction controls. A skipped final callback and a truncated return leg
 are separate test-only negative controls. No production, schema or dependency
 change is needed. See [the evidence ledger](engineering-review/gui-restore-adoption-lifetime.json).
 The owner authorized #211 and it merged as `c35a9d6b`; the tree equals reviewed
-`58a0dc4f`. #212 now includes that main additively and remains separately open
-and unmerged. Native/host/visual acceptance remains deferred, not passed.
+`58a0dc4f`. #212 included that main additively and merged at `82c98e45`. Native/host/visual acceptance remains deferred, not passed.
 
 ### NR-029 — SpectrumImager teardown, gesture and history (P1 / KI-037)
 
 At source baseline `29150f3`, synchronous parameter notifications can destroy the
 owning editor before imager mouse handlers, multi-store helpers or component-owned
 callbacks resume. Preserve processor actions/gesture cleanup from stack-owned
-state. The candidate corrects component lifetime checks and begin/end ordering;
+state. The integrated correction addresses component lifetime checks and begin/end ordering;
 no processor, DSP, parameter/schema, latency, audio-thread or dependency contract
-changes. The existing source candidate is preserved through additive integration
-with main's restore/scale guards. PR #212 is open and unmerged; no merge authorized.
+changes. The correction was additively synchronized with main's restore/scale guards; PR #212 merged at `82c98e45`.
 
 The description's claimed unaudited reset, inline-frequency, solo/removal and
 wheel groups are actually exercised. TESTING maps each production entry to its
@@ -2209,15 +2226,14 @@ orders and native visual/accessibility acceptance remain unverified/deferred.
 Existing original/fixed/held-wheel mutant evidence is retained and current-head
 results are recorded in the [ledger](engineering-review/spectrum-imager-lifetime.json).
 Initial PR #212 called this KI-035 provisionally; that identifier belongs to
-NR-026's separate unfixed pinned-JUCE Slider defect. KI-037 is the unused current
-identifier, with this historical alias preserved explicitly. INC-025 records the
-candidate without claiming integration. No new source change follows merely
+NR-026's separate 9.0.4 Slider defect, pending current-pin revalidation. KI-037 is the unused current
+identifier, with this historical alias preserved explicitly. INC-025 records the integrated correction. No new source change follows merely
 from correcting the coverage description.
 
 The later changelog provenance finding is documentation-only: `8779db97` added
 the Unreleased bullet without its required Evidence Source. The entry now cites
-the real implementation commits `af8edfdd` / `05b207e3`, PR #212 as an unmerged
-review branch, NR-029/KI-037 and existing lifetime/Undo regressions. Source and
+the real implementation commits `af8edfdd` / `05b207e3`, merged PR #212,
+NR-029/KI-037 and existing lifetime/Undo regressions. Source and
 regression-body bytes remain reviewed; State157 is retained after synchronization.
 Final pushed-head CI and remaining unverified scenarios are in the linked evidence.
 

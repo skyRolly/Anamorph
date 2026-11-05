@@ -3,7 +3,25 @@
 JUCE 9.0.5 integration status is reconciled across the repository map, ADR, dependency policy, handover, build/CI and acceptance records, and [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md); prior review snapshots remain historical.
 
 
-## #211 integration and #212 provenance audit
+## Post-JUCE 9.0.5 current-state reconciliation — 2026-11-05
+
+Remote history confirms #212 merged at `82c98e45`, #213 at `18a51df7` and
+#214 at `f1d3ff81`. The roadmap, handover, candidate assessment, callback review,
+known issues, INC-025 and Unreleased citation now distinguish integrated NR-029 /
+KI-037 from the separate historical NR-026 witness. Dated review snapshots remain
+history. On the #214 merge `f1d3ff81`, [Build & Validate run 41861863098,
+attempt 6](https://github.com/skyRolly/Anamorph/actions/runs/41861863098/attempts/6)
+completed successfully: 16 selected jobs passed; `merge-check` and the two
+optional macOS review jobs were intentionally skipped. Attempts 1, 3, 4 and 5
+concluded failure and attempt 2 was cancelled, with one or more macOS jobs
+cancelled before runner acquisition; the capacity annotations and historical
+attempts remain visible in the run. No selected job remains unresolved in
+attempt 6. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md#current-integrated-baseline--2026-11-05-utc)
+separately identifies the successful #213 post-merge Build, CodeQL and MSVC runs.
+Owner attestation limits and deferred native/manual gates remain separate from
+automated CI. The existing draft remains unpublished; no release is authorized.
+
+## Historical #211 integration and #212 provenance audit
 
 Record the owner-authorized #211 merge `c35a9d6b` and retain States155–157 plus
 both SpectrumImager fixtures through additive synchronization `15cdd42e`. Update
