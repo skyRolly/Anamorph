@@ -23,9 +23,10 @@ The parent is JUCE's OS temporary directory. The fixture resolves and compares t
 actual production preset path before installing the override, so on Linux that
 read-only check can consult the caller's `user-dirs.dirs`. It never enumerates or
 modifies the caller's presets. Directory identity and a unique marker are checked
-before cleanup; a replaced root or symlink is preserved. Normal exits remove the
-owned tree; a crash, SIGKILL, termination or machine loss can leave it under the
-temporary parent. Remove a leftover only after identifying it as test-owned.
+before cleanup; a replaced root or symlink is preserved. Normal exits attempt to
+remove the owned tree; setup/cleanup failure, a crash, SIGKILL, termination or
+machine loss can leave it under the temporary parent. Remove a leftover only
+after identifying it as test-owned.
 The mechanism is for accidental user-data and concurrency isolation, not a
 sandbox against a hostile process running as the same user. It does not confine
 all framework reads or arbitrary files supplied by a test.

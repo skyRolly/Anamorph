@@ -114,6 +114,7 @@ def main():
                 assert all(p.read_text(encoding="utf-8") == "caller preset sentinel" for p in sentinels)
                 assert sentinel.read_text(encoding="utf-8") == "shared temp sentinel"
                 assert mac_sentinel.read_text(encoding="utf-8") == "mac temp sentinel"
+                assert not list(tmp.rglob("anamorph-state-*")), "full State suite left an isolated profile"
 
             invalid = subprocess.run(command + ["--test-invalid-isolation-root"], env=env,
                                      capture_output=True, text=True, timeout=90)

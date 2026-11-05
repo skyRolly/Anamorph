@@ -17,7 +17,7 @@
     "tests/state_tests.cpp": "b26943c7825fb758204c2c2d75887bc6dceec1eedc25ad7394676e15b0251cad",
     "tests/p1_resolution_tests.h": "81c3fbd2d6c152f1c7499d6666180f0d05ed7caf135518e0f2dc102532118f19",
     "tests/state_filesystem.h": "a3cd0b8762dd29fb0673f15fdd0c647e834d670c409235c6a54cb81e10bb2ad4",
-    "tests/state_isolation_tests.py": "bc454e6d000d67f618596560170c80c12236a057ed83dba0efc2750437324c86",
+    "tests/state_isolation_tests.py": "b54ced0ab951d05a630a61d5e6c6dde22d220348ccb7927d6039807b93959c7e",
     "scripts/run-tests.sh": "4e03247f1b173820e1c98be7913c17aebf4facedb0c64ddd86beac3ec57e0459",
     ".github/workflows/build.yml": "9020234df255299f3ae79ed0a965d2dfc28415cb90f2b2897b37deb522965df4"
   },
@@ -31,13 +31,13 @@
     "state_checks": 13959,
     "failures": 0,
     "isolation_controls": "passed",
-    "scope": "fake caller homes, Linux redirected application data, shared-temp sentinels, concurrent process roots, failed setup, replaced-root cleanup and forced termination",
+    "scope": "fake caller homes, Linux redirected application data, shared-temp sentinels, concurrent process roots, failed setup, replaced-root cleanup and forced termination; full-suite root cleanup checked",
     "python_optimized_control": "python3 -O refuses to run the assertion-based controls"
   },
   "stdout": {
     "path": "worklogs/engineering-review/state-isolation-linux-2026-11-05.log.gz",
-    "raw_sha256": "d7cb597d8025008af188d98804df86e2b3a9a96165a72f5910f81505324898c8",
-    "gzip_sha256": "3c305fab2a242e9d2823be09948930ba9ee3a6312825a951b9143714262a703d"
+    "raw_sha256": "c958275106f8a96f711c0ff38681c3a6b79b3b62bcd20f4159e47e559f97a8cc",
+    "gzip_sha256": "8ed1da4b638cb06bd1868391a3fddc65026bcb9a129d24e55a4a7a6ac24f129a"
   },
   "earlier_setup_attempt": "A run-tests.sh attempt with a symlinked build directory failed binary discovery; copying the two already-built test executables into the expected directory allowed the actual checks to run. This was an infrastructure setup failure, not a test pass.",
   "preprocessor_control": {
