@@ -4,6 +4,19 @@
 
 See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and actual post-merge CI. Prior roadmap entries below are dated snapshots.
 
+## Independent preset-path source audit — 2026-11-05 UTC
+
+The Linux NR-026 isolation investigation exposed a separate comment drift:
+`PresetManager.h` named a macOS `Application Support` preset path, while the
+pinned JUCE `juce_Files_mac.mm` resolves application data under `~/Library` and
+the existing user manual already names `~/Library/RollyTech/Anamorph/Presets`.
+Correct the source comment in a focused review-only PR; no preset path or user
+data moves. Windows resolves `CSIDL_APPDATA` through the shell API, and Linux's
+`~/.config` is a default subject to JUCE's `user-dirs.dirs` mapping. This is
+source inspection, not a native platform run. A general State-suite isolation
+mechanism remains a separate cross-platform follow-up; do not assume changing
+only HOME or XDG variables isolates every platform.
+
 
 ## Current integrated baseline — 2026-11-05 UTC
 
