@@ -8,6 +8,9 @@ wheel path (`Pimpl::mouseWheelMove` → `ScopedDragNotification` → synchronous
 scope constructor/destructor are unchanged. JUCE Slider header, parameter attachment and
 parameter listener delivery files are byte-identical between pins. Exact source identities and
 paths are recorded in the [revalidation evidence](engineering-review/nr026-juce905.json).
+An upstream tag check on 2026-11-05 found no later JUCE 9.0.x or 9.1.x release tag than the
+integrated 9.0.5 commit, so a different supported upstream release was not available for this
+disposition. Development HEAD is not treated as a supported release candidate.
 
 The original Width wheel probe was recovered byte-for-byte from the source-bound ledger. CMake
 configured the real `AnamorphStateTests` target against verified JUCE `d60b7a78030661574a615b586d9325ba7a7fa7dd`.

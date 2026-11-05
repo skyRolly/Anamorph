@@ -27,6 +27,12 @@
       "attachment": "juce_ParameterAttachments.cpp:189-241"
     }
   },
+  "upstream_release_alternatives": {
+    "checked": "2026-11-05 UTC",
+    "command": "git ls-remote --tags https://github.com/juce-framework/JUCE.git 'refs/tags/9.0.*' 'refs/tags/9.1.*'",
+    "result": "Only 9.0.0 through 9.0.5 release tags were returned; 9.0.5 is d60b7a78030661574a615b586d9325ba7a7fa7dd. No later supported release tag was available to compare.",
+    "disposition": "Do not treat the development default branch as an approved release candidate."
+  },
   "build": {
     "system": "managed Linux native image",
     "compiler": "GCC 14.2.0",
