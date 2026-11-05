@@ -40,6 +40,8 @@ termination and unchanged caller-home/shared-temp sentinels. `run-tests.sh` and
 the Windows CI State step use that full-suite mode; the shell path preserves any
 `ANAMORPH_TEST_RUNNER` prefix. CI execution on each platform
 is required evidence; source inspection of a platform is not an executed result.
+On Linux a fake redirected preset directory, also reached through a symlinked
+TMPDIR, must be rejected before a test can run.
 The [Linux execution record](../../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 binds the local full-suite output to its source inputs and test binaries; it is
 supporting engineering evidence, not native acceptance.

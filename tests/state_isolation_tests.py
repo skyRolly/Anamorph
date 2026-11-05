@@ -105,6 +105,18 @@ def main():
         env.update(HOME=str(home), TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp),
                    XDG_CONFIG_HOME=str(home / "other-config"))
         try:
+            if sys.platform.startswith("linux"):
+                # The fake JUCE mapping resolves to redirected_presets. Even a
+                # symlinked TMPDIR pointing there must fail before a test runs.
+                overlap = base / "overlapping-temp"
+                overlap.symlink_to(redirected_presets, target_is_directory=True)
+                overlap_env = dict(env, TMPDIR=str(overlap))
+                refused = subprocess.run(command + ["--filesystem-isolation-probe"], env=overlap_env,
+                                         capture_output=True, text=True, timeout=90)
+                assert refused.returncode == 2 and "cannot establish" in refused.stderr, refused
+                assert all(p.read_text(encoding="utf-8") == "caller preset sentinel" for p in sentinels)
+                print("Linux symlinked preset/temp overlap rejected before test execution")
+
             if full_suite:
                 suite = subprocess.Popen(command, stdout=subprocess.PIPE, text=True,
                                          encoding="utf-8", errors="replace", env=env)

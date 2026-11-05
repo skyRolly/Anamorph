@@ -17,7 +17,7 @@
     "tests/state_tests.cpp": "b26943c7825fb758204c2c2d75887bc6dceec1eedc25ad7394676e15b0251cad",
     "tests/p1_resolution_tests.h": "81c3fbd2d6c152f1c7499d6666180f0d05ed7caf135518e0f2dc102532118f19",
     "tests/state_filesystem.h": "a80fa03e4cdda6128dbafbe00896fa985e7bafa3f1af1c0c2a731eeb7414f3cc",
-    "tests/state_isolation_tests.py": "3cbe6f9fa914170f38c447576e1a7d73aaa4f39f30899c6abd6e4e4b29b6bcba",
+    "tests/state_isolation_tests.py": "cca259ca33915ac9d42231aac1c459ff8228ed378535bb6068a1b31155f6d29d",
     "scripts/run-tests.sh": "4e03247f1b173820e1c98be7913c17aebf4facedb0c64ddd86beac3ec57e0459",
     ".github/workflows/build.yml": "9020234df255299f3ae79ed0a965d2dfc28415cb90f2b2897b37deb522965df4"
   },
@@ -31,13 +31,13 @@
     "state_checks": 13959,
     "failures": 0,
     "isolation_controls": "passed",
-    "scope": "fake caller homes, Linux redirected application data, symlinked temporary parent, shared-temp sentinels, concurrent probe roots, failed setup, replaced-root cleanup, full-suite cleanup and forced termination",
+    "scope": "fake caller homes, redirected application data, symlinked temporary parent, rejected symlinked preset/temp overlap, caller and temp sentinels, concurrent probe roots, failed setup, replaced-root cleanup, full-suite cleanup and forced termination",
     "python_optimized_control": "python3 -O refuses to run the assertion-based controls"
   },
   "stdout": {
     "path": "worklogs/engineering-review/state-isolation-linux-2026-11-05.log.gz",
-    "raw_sha256": "f90cd5567daba7643fda05b9efe8ef8e4970208027de30124f14f3cab821dcf4",
-    "gzip_sha256": "d242e77e2a7cc4dbbbac27646cadc264e3f23a5c642bd54cad3de3bd8bb5bc7c"
+    "raw_sha256": "4719530975dec869a1d99c86a906581d3970e1878f6a04dac49a1ce40798f561",
+    "gzip_sha256": "31da04a245b3df216e4d0951e3263336a5757237eafed9e260d8e4821ddcb6fb"
   },
   "earlier_setup_attempt": "A run-tests.sh attempt with a symlinked build directory failed binary discovery; copying the two already-built test executables into the expected directory allowed the actual checks to run. This was an infrastructure setup failure, not a test pass.",
   "preprocessor_control": {
