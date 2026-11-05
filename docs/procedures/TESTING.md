@@ -40,6 +40,40 @@ termination and unchanged caller-home/shared-temp sentinels. `run-tests.sh` and
 the Windows CI State step use that full-suite mode; the shell path preserves any
 `ANAMORPH_TEST_RUNNER` prefix. CI execution on each platform
 is required evidence; source inspection of a platform is not an executed result.
+The save/load probe uses one processor for **A→B→C→B** (normalized Width 0.13→0.73→0.41→0.73),
+verifying each leg; both B applications use the real `loadFile`. Readiness is
+emitted only after the repeat succeeds. `omit-return-load` skips only the last
+application and must exit 3 with `isolation probe return load failed`, without
+readiness, then remove its owned root. Concurrent probes report the effective
+preset/temp paths and create a temporary-file witness in the separate `temp` child.
+
+The disconnected-controller control closes the controller-side stdin **after
+readiness**. The held probe observes EOF, exits 3 with `isolation probe release
+failed`, and its owned root must be gone. This is an expected release failure
+with normal C++ unwinding, distinct from the newline release (exit 0 and cleanup).
+It does not kill the controller or child. The separate child-termination control
+requires a leftover owned root; SIGKILL and machine loss have no cleanup guarantee.
+These controls run in the ordinary Linux, Windows, native Intel macOS, arm64
+macOS and x86-64 Rosetta full-suite configurations. Sanitizer/TSan lanes that launch
+the State binary directly do not thereby execute this Python controller.
+
+`--filesystem-path-witness` exits before fixture/processor construction, reporting
+the production JUCE application-data, `PresetManager::presetDirectory()` and
+temporary-parent paths without creating or enumerating presets. On Windows the
+controller independently compares JUCE's result with `SHGetFolderPathW(CSIDL_APPDATA)`;
+HOME/USERPROFILE/APPDATA guesses are not evidence. It takes a read-only before/after
+snapshot of the actual resolved preset tree (including absence), checking content,
+identity, modes and modification times without following symlinks. **No sentinel
+is written there.** Fake-HOME sentinels remain disposable collision controls and
+do not represent the actual Windows or macOS preset path. Snapshot equality detects
+persistent changes, not transient writes, reads, atime changes or hostile races.
+Unsafe overlap and loss of the installed override are rejected before processor
+construction; `--test-overlapping-isolation-root` and
+`--test-bypass-isolation-override` must fail with exit 2. The latter deliberately
+removes the seam, proving the pre-construction check detects the production path
+without constructing a manager against it. Unreadable protected data fails the
+controller rather than silently claiming preservation. No profile/shell setting changes.
+
 On Linux a fake redirected preset directory, also reached through a symlinked
 TMPDIR, must be rejected before a test can run.
 The [Linux execution record](../../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Exercise direct State launches using only a disposable caller profile."""
 import os
+import hashlib
+import json
 from pathlib import Path
 import queue
 import re
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -12,6 +15,37 @@ import threading
 
 if not __debug__:
     raise SystemExit("State isolation controls require Python assertions")
+
+
+def protected_snapshot(path):
+    """Read-only; never follow links or create a missing production directory."""
+    result = {}
+
+    def visit(item):
+        try:
+            info = item.lstat()
+        except FileNotFoundError:
+            result[str(item.relative_to(path))] = None
+            return
+        key = str(item.relative_to(path))
+        if stat.S_ISLNK(info.st_mode):
+            payload = os.readlink(item)
+        elif getattr(info, "st_file_attributes", 0) & 0x400:
+            raise AssertionError(f"unsupported protected reparse point: {item}")
+        elif stat.S_ISDIR(info.st_mode):
+            payload = None
+            for child in sorted(item.iterdir()):
+                visit(child)
+        elif stat.S_ISREG(info.st_mode):
+            payload = hashlib.sha256(item.read_bytes()).hexdigest()
+        else:
+            raise AssertionError(f"unsupported protected entry: {item}")
+        # Reading may change atime; content, identity, mode and mtime must stay.
+        result[key] = (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                       info.st_mtime_ns, payload)
+
+    visit(path)
+    return result
 
 
 def ready_process(command, env):
@@ -26,7 +60,9 @@ def ready_process(command, env):
         for line in proc.stdout:
             output.append(line)
             if line.startswith("STATE_ISOLATION_READY="):
-                messages.put((Path(line.strip().split("=", 1)[1]), ""))
+                root = Path(line.strip().split("=", 1)[1])
+                paths = dict(entry.strip().split("=", 1) for entry in output if entry.startswith("STATE_ISOLATION_"))
+                messages.put((root, paths))
                 return
         messages.put((None, "".join(output)))
 
@@ -45,6 +81,13 @@ def ready_process(command, env):
         error = proc.stderr.read()
         proc.wait()
         raise AssertionError(f"State isolation probe failed: {output}\n{error}")
+    try:
+        assert Path(output["STATE_ISOLATION_PRESETS"]) == root / "presets"
+        assert Path(output["STATE_ISOLATION_TEMP"]) == root / "temp"
+    except BaseException:
+        proc.kill()
+        proc.communicate(timeout=90)
+        raise
     return proc, root
 
 
@@ -104,7 +147,36 @@ def main():
         env = os.environ.copy()
         env.update(HOME=str(home), TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp),
                    XDG_CONFIG_HOME=str(home / "other-config"))
+        witness = subprocess.run(command + ["--filesystem-path-witness"], env=env,
+                                 capture_output=True, text=True, encoding="utf-8", timeout=90, check=True)
+        paths = json.loads(witness.stdout)
+        product = Path(paths["productionPresets"])
+        assert product == Path(paths["applicationData"]) / "RollyTech" / "Anamorph" / "Presets"
+        assert Path(paths["temporaryParent"]).resolve().is_relative_to(tmp.resolve()), paths
+        assert not product.resolve().is_relative_to(tmp.resolve()), paths
+        assert not tmp.resolve().is_relative_to(product.resolve()), paths
+        if os.name == "nt":
+            # Independent read-only shell API witness, not an APPDATA/HOME guess.
+            import ctypes
+            buffer = ctypes.create_unicode_buffer(32768)
+            status = ctypes.windll.shell32.SHGetFolderPathW(None, 0x001a, None, 0, buffer)
+            assert status == 0 and buffer.value, f"CSIDL_APPDATA resolution failed: {status}"
+            assert Path(paths["applicationData"]).resolve() == Path(buffer.value).resolve(), paths
+        protected = protected_snapshot(product)
+        print("Production path witness: " + json.dumps(paths), flush=True)
         try:
+            overlap = subprocess.run(command + ["--test-overlapping-isolation-root"], env=env,
+                                     capture_output=True, text=True, timeout=90)
+            assert overlap.returncode == 2 and "cannot establish" in overlap.stderr, overlap
+            bypass = subprocess.run(command + ["--test-bypass-isolation-override"], env=env,
+                                    capture_output=True, text=True, timeout=90)
+            assert bypass.returncode == 2 and "override is not active" in bypass.stderr, bypass
+            assert not list(tmp.rglob("anamorph-state-*")), "bypass control left a profile"
+            omitted = subprocess.run(command + ["--filesystem-isolation-probe", "omit-return-load"], env=env,
+                                     capture_output=True, text=True, timeout=90)
+            assert omitted.returncode == 3 and "return load failed" in omitted.stderr, omitted
+            assert "STATE_ISOLATION_READY=" not in omitted.stdout, omitted
+            assert not list(tmp.rglob("anamorph-state-*")), "return-load control left a profile"
             if sys.platform.startswith("linux"):
                 # The fake JUCE mapping resolves to redirected_presets. Even a
                 # symlinked TMPDIR pointing there must fail before a test runs.
@@ -144,6 +216,9 @@ def main():
             assert root1 != root2 and root1.resolve().is_relative_to(tmp.resolve()) and root2.resolve().is_relative_to(tmp.resolve())
             assert (root1 / "presets" / "__isolation_control__.anamorph").is_file()
             assert (root2 / "presets" / "__isolation_control__.anamorph").is_file()
+            for root in (root1, root2):
+                temporary = list((root / "temp").glob("*.probe"))
+                assert len(temporary) == 1 and temporary[0].read_text() == "isolated temporary file"
             finish(first)
             finish(second)
             assert not root1.exists() and not root2.exists(), "normal cleanup left a profile"
@@ -177,12 +252,13 @@ def main():
             assert all(p.read_text(encoding="utf-8") == "caller preset sentinel" for p in sentinels)
             assert sentinel.read_text(encoding="utf-8") == "shared temp sentinel"
             assert mac_sentinel.read_text(encoding="utf-8") == "mac temp sentinel"
+            assert protected_snapshot(product) == protected, "resolved production preset tree changed"
         finally:
             for proc in processes:
                 if proc.poll() is None:
                     proc.kill()
                     proc.communicate(timeout=90)
-    print("State filesystem isolation: save/load, concurrent roots, fail-closed setup, disconnected release, replacement and interruption controls passed")
+    print("State filesystem isolation: path witnesses, protected snapshot, A-B-C-B/omitted return, override bypass, overlap, concurrent roots, fail-closed setup, disconnected release, replacement and interruption controls passed")
 
 
 if __name__ == "__main__":

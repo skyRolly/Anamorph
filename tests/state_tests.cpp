@@ -45938,16 +45938,42 @@ int main (int argc, char* argv[])
     // cannot use anyway.
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
+    // Read-only witness: no fixture, processor, directory creation or preset
+    // enumeration. On Windows this uses JUCE's actual CSIDL_APPDATA route.
+    const auto productPresets = anamorph::PresetManager::presetDirectory();
+    if (argc > 1 && std::strcmp (argv[1], "--filesystem-path-witness") == 0)
+    {
+        auto witness = std::make_unique<juce::DynamicObject>();
+        witness->setProperty ("applicationData", juce::File::getSpecialLocation (
+            juce::File::userApplicationDataDirectory).getFullPathName());
+        witness->setProperty ("productionPresets", productPresets.getFullPathName());
+        witness->setProperty ("temporaryParent", juce::File::getSpecialLocation (
+            juce::File::tempDirectory).getFullPathName());
+        std::printf ("%s\n", juce::JSON::toString (juce::var (witness.release()), true).toRawUTF8());
+        return productPresets == juce::File() ? 2 : 0;
+    }
+
     // This runs for the full suite and every direct probe, before any processor
     // can enumerate or mutate presets. No OS-specific HOME/APPDATA override is
     // assumed; the real manager is given a test-owned root in this build only.
     auto parent = juce::File::getSpecialLocation (juce::File::tempDirectory);
     if (argc > 1 && std::strcmp (argv[1], "--test-invalid-isolation-root") == 0)
         parent = parent.getNonexistentChildFile ("anamorph-invalid-parent", "");
+    if (argc > 1 && std::strcmp (argv[1], "--test-overlapping-isolation-root") == 0)
+        parent = productPresets;
     state_test_filesystem::Profile profile;
     if (! profile.initialise (parent))
     {
         std::fprintf (stderr, "State tests: cannot establish an isolated filesystem\n");
+        return 2;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--test-bypass-isolation-override") == 0)
+        anamorph::PresetManager::setTestPresetDirectory ({});
+    // Fail before processor construction even if the installed seam is lost.
+    if (anamorph::PresetManager::presetDirectory() != profile.directory().getChildFile ("presets"))
+    {
+        std::fprintf (stderr, "State tests: isolation override is not active\n");
         return 2;
     }
 
@@ -45963,7 +45989,22 @@ int main (int argc, char* argv[])
         const auto file = anamorph::PresetManager::presetDirectory().getChildFile ("__isolation_control__.anamorph");
         if (! opCompleted (presets.saveUser ("__isolation_control__")) || ! file.existsAsFile()) return 3;
         setRaw (proc, "width", 0.13f);
+        if (std::abs (rawOf (proc, "width") - 0.13f) > 1.0e-5f) return 3; // A
         if (! opCompleted (presets.loadFile (file)) || std::abs (rawOf (proc, "width") - 0.73f) > 1.0e-5f) return 3;
+        setRaw (proc, "width", 0.41f); // C, on the same processor after the first B
+        if (std::abs (rawOf (proc, "width") - 0.41f) > 1.0e-5f) return 3;
+        const bool omitReturnLoad = argc > 2 && std::strcmp (argv[2], "omit-return-load") == 0;
+        if (! omitReturnLoad && ! opCompleted (presets.loadFile (file))) return 3;
+        if (std::abs (rawOf (proc, "width") - 0.73f) > 1.0e-5f)
+        {
+            std::fprintf (stderr, "State tests: isolation probe return load failed\n");
+            return 3;
+        }
+        if (state_test_filesystem::temporaryDirectory != profile.directory().getChildFile ("temp")) return 3;
+        if (! state_test_filesystem::temporaryFile (".probe").replaceWithText ("isolated temporary file")) return 3;
+        std::printf ("STATE_ISOLATION_PRESETS=%s\nSTATE_ISOLATION_TEMP=%s\n",
+                     anamorph::PresetManager::presetDirectory().getFullPathName().toRawUTF8(),
+                     state_test_filesystem::temporaryDirectory.getFullPathName().toRawUTF8());
         std::printf ("STATE_ISOLATION_READY=%s\n", profile.directory().getFullPathName().toRawUTF8());
         if (argc > 2 && std::strcmp (argv[2], "hold") == 0 && std::getchar() == EOF)
         {

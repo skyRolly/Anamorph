@@ -7,6 +7,14 @@ test-owned roots, the real preset writer/loader, failed setup, replacement-root
 cleanup and termination. Individual direct State probes also initialise the
 test-only profile before constructing processors. The current workflow run is the
 source of execution results; this is not native DAW or release acceptance.
+The controller also requires the post-readiness EOF failure/cleanup, repeated
+same-processor preset load and omitted-return control, read-only production-path
+witness (independent CSIDL_APPDATA comparison on Windows), protected-tree snapshot,
+and pre-construction overlap/override-bypass rejection. See TESTING §State-suite
+filesystem isolation for exact exit codes and limits; fake-HOME sentinels alone
+do not witness the Windows production directory. Full controls run on native
+Intel, arm64 and Rosetta macOS as well as Linux/Windows. Direct sanitizer/TSan
+binary launches install the fixture but do not run the Python controls.
 
 The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) separates source-bound automated
 validation from human evidence. Level-5 listening and native/manual acceptance are now **PASS —

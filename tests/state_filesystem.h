@@ -94,6 +94,7 @@ namespace state_test_filesystem
             if (productDirectory == juce::File()) return false;
             const auto product = canonicalPath (productDirectory);
             if (product == juce::File()) return false;
+            if (canonicalParent == product || canonicalParent.isAChildOf (product)) return false;
 
             for (int attempt = 0; attempt < 16; ++attempt)
             {

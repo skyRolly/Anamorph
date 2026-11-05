@@ -1,5 +1,39 @@
 # Next release investigation and development roadmap
 
+## Current continuation — PR #219 review corrections (2026-11-05 UTC)
+
+Remote `main` is `c2f8f19b87daae709c015a062a8b771f049da012`, the owner-merged
+PR #218. Its historical NR-026 files and source hashes are preserved unchanged.
+PR #219 started at `10146f35ddc954c9a3468e6540f6a4de6bc78e66`; main was merged
+into its existing branch without rewriting history. Earlier snapshots below keep
+their dated scopes. PR #219 stays open/unmerged, auto-merge disabled.
+
+The supplied review findings A–C are corrected in this branch: inventory the
+existing EOF failure/cleanup control; exercise normalized Width
+0.13→0.73→0.41→0.73 on one processor via two real preset loads and require an
+omitted-return-load control to fail before readiness; witness actual production
+JUCE paths, independently compare Windows CSIDL_APPDATA, and compare a read-only
+protected-tree snapshot before/after controls. No sentinel is written to that
+production tree. Effective fixture preset/temp paths and separate temporary-file
+creation are checked. Overlap and override-bypass controls reject setup before
+processor construction. Snapshot equality cannot prove absence of transient
+writes or reads; unreadable/unsupported protected entries fail closed.
+
+Documentation/citation and source-check validation is local; full Linux execution
+and corrected-head cross-platform/sanitizer/analysis CI must be recorded against
+the pushed head in PR #219. Earlier-head CI does not satisfy this requirement.
+The integration cannot read branch-protection configuration (HTTP 403), so no
+claim about inaccessible required-check settings is made.
+
+The owner now prefers ADR-0072 Option B and supplies an explicit surviving-processor
+gesture/Undo contract for bounded design and nonshipping validation. This is
+direction authorization, not final architecture acceptance. ADR-0072 stays Proposed;
+production NR-026/KI-035 remains unresolved. A separate review package follows
+the State corrections, then a separate fuzz-isolation disposition/PR as warranted.
+No new Wheel architecture, dependency modification, version/release operation or
+deferred native work is approved here. NR-006/010/014, NR-013 and host/installation
+acceptance remain pending in their recorded scopes.
+
 **Integration — 2026-11-04:** owner-authorized [PR #213](https://github.com/skyRolly/Anamorph/pull/213) merged as `18a51df773d8701004fe86e85df820fdf6949f2d`; its tree equals approved head `520537e849b3f42a4300d55acc652a354d360025`. ADR-0071 remains **Accepted**. `main` pins JUCE **9.0.5** at `d60b7a78030661574a615b586d9325ba7a7fa7dd`. Level-5 listening and native/manual acceptance are **PASS — owner-attested**; execution date, exact payload and environment were not supplied. No new release is authorized.
 
 See [upgrade worklog](JUCE905_UPGRADE_REVIEW.md) for source-bound validation and actual post-merge CI. Prior roadmap entries below are dated snapshots.

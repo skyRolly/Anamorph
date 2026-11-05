@@ -19029,6 +19029,18 @@ individual observations, product behavior/versions, fixtures and release objects
 
 ## State-suite filesystem isolation follow-up
 
+PR #219 review corrections: TESTING §State-suite filesystem isolation now inventories
+the existing disconnected-controller EOF case (post-readiness stdin close, expected
+exit 3 / `isolation probe release failed`, owned-root cleanup) separately from
+normal newline release and child termination; no SIGKILL/machine-loss cleanup claim.
+The same controller runs in Linux/Windows/native Intel macOS/arm64/Rosetta full-suite
+CI. The direct probe now checks same-processor A→B→C→B and an omitted-final-load
+failure before readiness. Inventory the read-only production JUCE path witness,
+independent Windows CSIDL_APPDATA comparison, protected-tree snapshot and its limits,
+effective preset/temp paths and real temporary-file witness, overlap rejection and
+override-bypass negative control. Fake-HOME sentinels do not establish the Windows
+production path. Sanitizer and TSan direct binary launches have a narrower scope.
+
 Document the nonshipping State preset-directory override, per-process temporary
 fixtures, safe cleanup limits and direct-launch controls in TESTING and CI_CD.
 The production preset writer/loader remains in the State executable. The
