@@ -1,5 +1,32 @@
 # RELEASE_COMPATIBILITY_CHECKLIST.md
 
+## 0.10.1 candidate — preparation in progress (2026-11-06 UTC)
+
+Selected integrated baseline: `55bdbdea090152f635d442916f4f0547e4626600`, JUCE 9.0.5
+`d60b7a78030661574a615b586d9325ba7a7fa7dd`. The version-preparation PR is not yet merged;
+its final head and eventual main commit require their own CI. Neither this baseline nor CI is
+claimed to be the particular artifact used for the owner's human testing. The owner's present
+Level-5 PASS and acceptance of **completed** roadmap work apply to this baseline within their
+recorded scopes; exact tested artifacts, dates, hosts and observations are **NOT RECORDED**.
+Prior completed 0.10.0 host/automation/recall attestations remain valid for their recorded scope;
+the broader named-host matrix NR-003 remains deferred and no unexecuted case is claimed.
+
+| # | Item | Candidate disposition and evidence |
+|---|---|---|
+| 1 | Parameter IDs and ranges | **Baseline verified; final-head CI pending.** `src/PluginParameters.*` and `src/InternalState.h` are unchanged against tag 0.10.0; registry/State tests in baseline Build [42283851839](https://github.com/skyRolly/Anamorph/actions/runs/42283851839). |
+| 2 | Serialization schema | **Baseline verified; final-head CI pending.** Registry diff is citation-line maintenance; legacy/round-trip/restore regressions ran in the baseline Build. ADR-0068 and existing migrations remain. |
+| 3 | Presets | **Baseline verified; final-head CI pending.** Baseline State tests plus owner Level-5 PASS; no individual manual observations supplied. |
+| 4 | Pluginval both modes | **Baseline CI passed; final-head CI pending.** Baseline Build ran the configured platform gates; tag-triggered builds remain independently required. |
+| 5 | Host matrix | **Historical completed gate and owner acceptance retained within their scopes.** No new named DAW or detailed NR-003 cases are asserted. |
+| 6 | Latency/PDC | **Baseline verified; final-head CI pending.** Existing latency and restore regressions ran in the baseline Build; the source diff does not intentionally change latency. |
+| 7 | Automation playback | **Historical completed gate and owner acceptance retained within their scopes.** No specific host or lanes were supplied for the present attestation. |
+| 8 | Session reload | **Baseline verified; final-head CI pending.** Legacy/field-capture and restore regressions plus historical owner acceptance; no new tested artifact is inferred. |
+
+The boxes are not yet declared 8/8 for a final release commit. Final-source CI, the
+ADR-0070 representative performance/cost condition and owner merge remain open. See
+[the execution register](../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
+
 **JUCE 9.0.5 human acceptance: PASS — owner-attested**, recorded 2026-11-04
 (Asia/Shanghai). Level-5 listening and native/manual acceptance are complete for this upgrade;
 this is separate from the historical 9.0.4 approval. Architecture Review remains Accepted.

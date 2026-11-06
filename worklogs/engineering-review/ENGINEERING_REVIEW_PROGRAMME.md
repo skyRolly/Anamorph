@@ -1,5 +1,22 @@
 # Engineering Review Programme — the standing worklog
 
+## 0.10.1 owner acceptance — received 2026-11-06 UTC
+
+The owner states: **“Level-5 testing has been completed and passed”** and **“All work items
+already marked completed in the roadmap have completed the applicable human review and
+acceptance.”** This is direct owner-reported human acceptance, not agent-performed testing or a
+CI-derived decision. It applies to the current completed development work selected for 0.10.1,
+including the integrated ScopeBuffer engineering, JUCE 9.0.5, Undo, callback and B2 corrections,
+within their recorded scopes. RELEASE_POLICY precondition 7 is **PASS — owner-attested**.
+
+Actual test dates, exact tested source and artifact hashes, DAW/version, OS/CPU, format, devices,
+sessions, individual observations and measurements: **NOT RECORDED**. The baseline identity
+`55bdbdea090152f635d442916f4f0547e4626600` identifies the selected integrated source, not a
+claimed human-tested artifact. The attestation does not complete explicitly deferred work:
+ADR-0070 representative native performance measurements and owner cost acceptance remain
+outstanding. No new production behavior is introduced by the version-preparation change.
+Historical records below retain their original scope. See the [current release register](../NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
 **What this is.** The persistent record of the ongoing engineering review & improvement
 programme: an evidence-driven, round-based sweep of the whole repository — problems first,
 then fragile/incomplete areas, then optimisations — with every significant finding

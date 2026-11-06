@@ -21,38 +21,38 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
-## [Unreleased]
+## [0.10.1] — 2026-11-06
 
 ### Changed
 
 - **Upgrade JUCE from 9.0.4 to 9.0.5**, including upstream Windows VST3 scaling, native-window
-  lifecycle and parser hardening changes. Existing default CMake caches must reset both JUCE fields.
+  lifecycle and parser hardening changes.
   Evidence: [PR #213](https://github.com/skyRolly/Anamorph/pull/213); ADR-0071.
-  [Verified — dependency/source; runtime and native acceptance are recorded separately]
+  [Verified]
 
 ### Fixed
 
 - Avoid crashes and lost Undo history when a parameter notification closes the editor during a knob wheel edit.
-  Evidence: [B2 source](https://github.com/skyRolly/Anamorph/commit/f9d8cbd380cc01fc967ae0cae195092001ed00de); ADR-0072.
-  [Verified — automated component/sanitizer regressions; separate implementation review and integration pending]
+  Evidence: [PR #222](https://github.com/skyRolly/Anamorph/pull/222); ADR-0072.
+  [Verified — integrated, automated component/sanitizer regressions with the processor alive]
 
 - Keep multiband display edits and their Undo gestures consistent when a parameter notification closes the editor.
   Evidence: commits `af8edfdd` and `05b207e3`; [PR #212](https://github.com/skyRolly/Anamorph/pull/212) (merged `82c98e45`);
-  NR-029/KI-037; SpectrumImager lifetime/Undo regressions. [Verified]
+  SpectrumImager lifetime/Undo regressions. [Verified]
 - **Scale and mode changes stop safely if a synchronous parent resize callback closes the editor.**
   The editor no longer resumes its scale or timer work through freed component state.
-  Evidence: commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`; NR-027/KI-036;
+  Evidence: commit `15a8995a89bd4718bc650b276ad418aa8e2eeca7`;
   State156 and original/fixed ASan controls. [Verified]
 
 - **Opening the preset menu or polling a restored session no longer accesses an editor closed by a latency notification.**
   Restoration completes; a closed editor skips subsequent display updates.
-  Evidence: commit `b537596`; NR-025/KI-034; State155. [Verified]
+  Evidence: commit `b537596`; State155. [Verified]
 - **Undo, Redo and A/B no longer access an editor destroyed during the command.**
   The processor completes the action while callbacks skip updates to the closed editor.
-  Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; NR-024/KI-033; State154. [Verified]
+  Evidence: commit `bdeeadb7f4430107223f374b748075e4dc37180e`; State154. [Verified]
 - **Invalid host transport timing no longer causes false meter peak resets or overflows seek detection.**
   Ordinary playback, valid seeks, restarts and audio samples retain their behavior.
-  Evidence: commit `137ad083be4a5b2a34c9654ba072f383aeffe5b3`; NR-023; State test153. [Verified]
+  Evidence: commit `137ad083be4a5b2a34c9654ba072f383aeffe5b3`; State test153. [Verified]
 - **Rotary controls expose accessibility titles matching their visible captions.**
   Evidence: commit `d49736e9a496cfb83db67804a8439daa55200f26`; PR #204; State test 152. [Verified]
 - **A completed edit remains undoable after switching A/B before the editor's next update.**
@@ -3029,7 +3029,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
-[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.10.0...HEAD
+[0.10.1]: https://github.com/skyRolly/Anamorph/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/skyRolly/Anamorph/compare/0.9.9...0.10.0
 [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
