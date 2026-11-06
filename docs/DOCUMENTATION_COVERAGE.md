@@ -19029,6 +19029,14 @@ individual observations, product behavior/versions, fixtures and release objects
 
 ## State-suite filesystem isolation follow-up
 
+The separate fuzz follow-up inventories per-input profile setup/cleanup in
+`fuzz_state.cpp` and `tests/fuzz_isolation_tests.py` in TESTING §Fuzz filesystem
+lifecycle and CI_CD. Actual entry-point inputs, repeated callbacks, concurrent
+processes, normal exit, controlled EOF, replaced-root refusal, forced kill,
+invalid-parent and override-bypass controls are distinguished. JUCE global teardown
+remains intentionally absent. Linux-only fuzz evidence and throughput limits do
+not extend State-suite cross-platform claims or imply preset-write damage.
+
 PR #219 review corrections: TESTING §State-suite filesystem isolation now inventories
 the existing disconnected-controller EOF case (post-readiness stdin close, expected
 exit 3 / `isolation probe release failed`, owned-root cleanup) separately from
@@ -19075,3 +19083,22 @@ self-tests use only disposable targets, including changed/broken/outside-boundar
 redirects and a Windows junction fallback. The source-bound Linux comparison
 `state-isolation-symlink-review.json` preserves original missed mutation and the
 corrected refusal; current platform CI remains separate evidence.
+
+
+## Fuzz callback progression and cleanup-failure review
+
+TESTING and CI_CD inventory the actual callback-number/READY/CLEAN protocol,
+at-least-two acceptance with arbitrary additional callbacks, stdout ownership and
+independent stderr capture. Same-invocation corruption controls reject missing,
+repeated, reused, mismatched and unfinished lifecycle transcripts. The real
+entry-point replacement-root control requires a classified cleanup abort and
+preservation of unowned data. Record why ordinary restore cannot replace the root,
+why filesystem/environment failure still blocks the campaign and why this is not
+a product memory-safety classification. Corpus/input semantics, sanitizer options,
+JUCE shutdown avoidance and per-input processor destruction remain unchanged.
+
+
+Fuzz review provenance clarification: bytes identify restore/round-trip sanitizer
+reproductions. Classified filesystem-harness aborts additionally require the
+owned-root/environment history; the source no longer suggests bytes alone can
+reproduce those failures in a host. This changes no input or campaign behavior.

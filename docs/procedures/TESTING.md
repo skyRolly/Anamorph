@@ -15,9 +15,8 @@ nonshipping State build directs the real `PresetManager` to its `presets` child;
 save, load, enumeration and identity tests still execute the production manager.
 Test-created temporary files use a separate child of the same root. Failure to
 create or identify the root stops the process before tests run. The shipping build
-does not compile the test-directory override. The fuzz target also compiles the
-override under its existing fixture definition but does not install it; this
-change does not claim fuzz-process filesystem isolation.
+does not compile the test-directory override. The separate fuzz lifecycle below
+installs the same nonshipping directory seam with a different teardown scope.
 
 The parent is JUCE's OS temporary directory. The fixture resolves and compares the
 actual production preset path before installing the override, so on Linux that
@@ -92,6 +91,49 @@ TMPDIR, must be rejected before a test can run.
 The [Linux execution record](../../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 binds the local full-suite output to its source inputs and test binaries; it is
 supporting engineering evidence, not native acceptance.
+
+## Fuzz filesystem lifecycle
+
+`tests/fuzz_state.cpp` installs a fresh owned preset/temp profile per supported-size
+input, before the real processor constructor. It clears the previous override
+before setup, retains unmodified input/round-trip behavior and per-input processor
+destruction, and explicitly checks profile cleanup before returning to libFuzzer.
+Setup, inactive override or refused/failed cleanup abort the harness with a
+`FUZZ_HARNESS_FAILURE=setup|override|cleanup` classification. EOF release uses
+`release`. These are mandatory harness invariant failures, not automatically
+product memory-safety findings. Valid restore inputs have no operation that replaces
+the profile root/marker; external replacement, damaged ownership or filesystem IO
+failure must stop the campaign rather than continue under broken isolation. The intentionally
+leaked JUCE initialiser is unchanged: no global GUI shutdown or new exit handler.
+Per-input storage adds filesystem overhead; campaign duration/seed/corpus/sanitizers
+are unchanged, so input throughput must be read from each actual run.
+
+The Linux `fuzz` CI job runs `tests/fuzz_isolation_tests.py` against the actual
+libFuzzer executable before its ordinary campaign, with the existing detector
+settings. The opt-in `ANAMORPH_FUZZ_ISOLATION_CONTROL=hold` pauses only after the
+actual restore/round-trip and processor destruction. READY/CLEAN messages identify
+the actual monotonically numbered callback and its root. A `-runs=8` argument bounds
+work only; it is not an exact callback-count oracle. The controller releases and
+checks every reported callback until exit, requiring at least two transitions,
+unique roots, previous-root removal before the next callback, matching post-cleanup
+acknowledgements and final exit cleanup. More than two callbacks are accepted and
+verified. A single stdout reader owns the transcript; stderr is retained separately
+so `communicate()` cannot steal handshake messages. Two processes must have separate roots. EOF must fail after
+cleanup; replacing a root with a copied marker must refuse deletion and abort
+with `FUZZ_HARNESS_FAILURE=cleanup`, preserve the replacement/moved trees, and
+produce no ASan memory-corruption report in that controlled case;
+forced kill may leave a root. `invalid-parent` and `bypass` fail before processor
+construction, without readiness. Caller-profile sentinels are created only in the
+controller's disposable Linux HOME; all deliberate leftovers/artifacts are confined
+to its disposable parent. This is not Windows/macOS fuzz execution or arbitrary
+file/host isolation. Oversize inputs still return without processor construction.
+The same invocation first proves the protocol checker rejects missing callbacks,
+skipped/repeated IDs, reused roots, missing/mismatched cleanup and surviving data;
+`--self-test` runs these disposable controls without a fuzz executable. A normal
+campaign treats an unexpected classified abort as failure, retaining its finding
+artifacts for filesystem/environment triage. Expected negative controls are
+separate subprocesses and never make an ordinary campaign abort acceptable.
+
 
 
 ## NR-026 Option B nonshipping experiment

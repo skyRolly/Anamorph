@@ -1,5 +1,23 @@
 # Next release investigation and development roadmap
 
+## Fuzz review correction — 2026-11-06 (Asia/Shanghai)
+
+#220 remains stacked on corrected #219, which includes integrated #221 main at
+`b9f94d83`; histories and original evidence are preserved without force pushing.
+The callback oracle now consumes actual READY/CLEAN sequence IDs, verifying every
+callback until exit with a minimum of two, independent of exact libFuzzer budget
+semantics. Protocol corruption controls precede actual process controls.
+
+Cleanup refusal remains fail-closed abort, classified `FUZZ_HARNESS_FAILURE=cleanup`.
+A restore input cannot legitimately replace the owned root/marker; environmental
+IO/ownership failure must fail the campaign and preserve replacement data, without
+being automatically labeled product memory corruption. The replacement control
+requires that abort marker and no additional ASan corruption report. Existing
+corpus, fixed-seed campaign, detector options and JUCE teardown model are preserved.
+Current source/control changes require their own final-head execution; earlier
+6,918-input evidence below remains historical. This PR is not authorized to merge.
+
+
 ## State isolation review continuation — 2026-11-06 (Asia/Shanghai)
 
 #221 is merged at `b9f94d83`; its reviewed-head Build 42140914740 completed
@@ -70,6 +88,28 @@ its eleven original asset IDs/sizes remain unchanged. Old draft predates current
 corrections. No release/signing/legal/commercial/distribution authorization.
 
 ## Historical continuation — PR #219 review corrections (2026-11-05 UTC)
+
+## Separate fuzz isolation candidate — 2026-11-05 UTC
+
+Based on corrected PR #219 `b2e36abf`, as a separately reviewable dependent branch.
+The earlier one-input Linux trace established enumeration only, not preset writes,
+damage or an actual libFuzzer/sanitizer result. Source confirms refresh at each
+processor constructor, making caller-specific preset enumeration a reproducibility
+dependency. Selected candidate: per-input disposable storage, with processor
+destruction then checked filesystem cleanup before callback return. Reuse the
+nonshipping seam/ownership checks without reusing State's process-level JUCE
+teardown. The existing intentionally leaked JUCE initialiser stays unchanged.
+
+Alternatives: process-lifetime profile with exit cleanup risks exit-handler order;
+controller-only cleanup does not protect direct fuzz launches; preserving current
+enumeration retains caller-state dependence. Per-input storage has added IO cost,
+to be measured from actual campaign statistics rather than hidden by a larger budget.
+Dedicated actual-entry lifecycle controls cover repeat/concurrency/exit, EOF,
+replacement refusal, forced kill, setup failure and override bypass. Fresh native
+entry and CI libFuzzer/sanitizer results are required; no cross-platform fuzz or
+user-data damage claim is made. This candidate stays separate from Wheel design.
+
+## Current continuation — PR #219 review corrections (2026-11-05 UTC)
 
 Remote `main` is `c2f8f19b87daae709c015a062a8b771f049da012`, the owner-merged
 PR #218. Its historical NR-026 files and source hashes are preserved unchanged.
