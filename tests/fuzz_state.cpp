@@ -33,7 +33,9 @@
 //  restore-then-destroy is where the interesting lifetime bugs are, and a
 //  fuzzer that reused one processor would never see them.
 //
-//  WHAT IT ASSERTS. Nothing, deliberately: the oracle is the sanitizer. A
+//  WHAT IT ASSERTS. The restore oracle is the sanitizer. Separately, mandatory
+//  filesystem setup/ownership/cleanup invariants fail closed with a classified
+//  harness error and abort; those are not automatically memory-safety findings. A
 //  crash, a heap overflow, a use-after-free, an uninitialised read or an
 //  unhandled exception fails the run; a rejected blob is a PASS, because
 //  refusing malformed state is what this path is supposed to do.
@@ -85,6 +87,7 @@ extern "C" int LLVMFuzzerTestOneInput (const std::uint8_t* data, std::size_t siz
     {
         (void) profile.cleanup();
         std::fprintf (stderr, "Fuzz isolation setup failed\n");
+        std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=setup\n");
         std::abort();
     }
     if (control != nullptr && std::strcmp (control, "bypass") == 0)
@@ -93,6 +96,7 @@ extern "C" int LLVMFuzzerTestOneInput (const std::uint8_t* data, std::size_t siz
     {
         (void) profile.cleanup();
         std::fprintf (stderr, "Fuzz isolation override is not active\n");
+        std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=override\n");
         std::abort();
     }
 
@@ -114,15 +118,22 @@ extern "C" int LLVMFuzzerTestOneInput (const std::uint8_t* data, std::size_t siz
             processor.setStateInformation (out.getData(), static_cast<int> (out.getSize()));
     } // processor teardown is still part of EVERY input, before profile cleanup
 
-    // Opt-in nonshipping lifecycle witness; ordinary campaigns do not pause.
-    if (control != nullptr && std::strcmp (control, "hold") == 0)
+    // Report ACTUAL callback progression; libFuzzer's -runs budget is not an
+    // exact entry-count oracle. Ordinary campaigns neither count nor pause here.
+    const bool held = control != nullptr && std::strcmp (control, "hold") == 0;
+    static std::uint64_t callbackSequence = 0;
+    const auto sequence = held ? ++callbackSequence : 0;
+    const auto witnessRoot = held ? profile.directory().getFullPathName() : juce::String();
+    if (held)
     {
-        std::printf ("FUZZ_ISOLATION_READY=%s\n", profile.directory().getFullPathName().toRawUTF8());
+        std::printf ("FUZZ_ISOLATION_READY=%llu\t%s\n", (unsigned long long) sequence,
+                     witnessRoot.toRawUTF8());
         std::fflush (stdout);
         if (std::getchar() == EOF)
         {
             (void) profile.cleanup();
             std::fprintf (stderr, "Fuzz isolation release failed\n");
+            std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=release\n");
             std::abort();
         }
     }
@@ -130,8 +141,15 @@ extern "C" int LLVMFuzzerTestOneInput (const std::uint8_t* data, std::size_t siz
     if (! profile.cleanup())
     {
         std::fprintf (stderr, "Fuzz isolation cleanup failed\n");
+        std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=cleanup\n");
         std::abort();
     }
 
+    if (held)
+    {
+        std::printf ("FUZZ_ISOLATION_CLEAN=%llu\t%s\n", (unsigned long long) sequence,
+                     witnessRoot.toRawUTF8());
+        std::fflush (stdout);
+    }
     return 0;
 }

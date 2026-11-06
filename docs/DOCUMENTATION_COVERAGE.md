@@ -19083,3 +19083,16 @@ self-tests use only disposable targets, including changed/broken/outside-boundar
 redirects and a Windows junction fallback. The source-bound Linux comparison
 `state-isolation-symlink-review.json` preserves original missed mutation and the
 corrected refusal; current platform CI remains separate evidence.
+
+
+## Fuzz callback progression and cleanup-failure review
+
+TESTING and CI_CD inventory the actual callback-number/READY/CLEAN protocol,
+at-least-two acceptance with arbitrary additional callbacks, stdout ownership and
+independent stderr capture. Same-invocation corruption controls reject missing,
+repeated, reused, mismatched and unfinished lifecycle transcripts. The real
+entry-point replacement-root control requires a classified cleanup abort and
+preservation of unowned data. Record why ordinary restore cannot replace the root,
+why filesystem/environment failure still blocks the campaign and why this is not
+a product memory-safety classification. Corpus/input semantics, sanitizer options,
+JUCE shutdown avoidance and per-input processor destruction remain unchanged.

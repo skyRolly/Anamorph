@@ -1,5 +1,23 @@
 # Next release investigation and development roadmap
 
+## Fuzz review correction — 2026-11-06 (Asia/Shanghai)
+
+#220 remains stacked on corrected #219, which includes integrated #221 main at
+`b9f94d83`; histories and original evidence are preserved without force pushing.
+The callback oracle now consumes actual READY/CLEAN sequence IDs, verifying every
+callback until exit with a minimum of two, independent of exact libFuzzer budget
+semantics. Protocol corruption controls precede actual process controls.
+
+Cleanup refusal remains fail-closed abort, classified `FUZZ_HARNESS_FAILURE=cleanup`.
+A restore input cannot legitimately replace the owned root/marker; environmental
+IO/ownership failure must fail the campaign and preserve replacement data, without
+being automatically labeled product memory corruption. The replacement control
+requires that abort marker and no additional ASan corruption report. Existing
+corpus, fixed-seed campaign, detector options and JUCE teardown model are preserved.
+Current source/control changes require their own final-head execution; earlier
+6,918-input evidence below remains historical. This PR is not authorized to merge.
+
+
 ## State isolation review continuation — 2026-11-06 (Asia/Shanghai)
 
 #221 is merged at `b9f94d83`; its reviewed-head Build 42140914740 completed
