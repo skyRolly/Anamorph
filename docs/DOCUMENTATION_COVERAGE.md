@@ -19096,3 +19096,9 @@ preservation of unowned data. Record why ordinary restore cannot replace the roo
 why filesystem/environment failure still blocks the campaign and why this is not
 a product memory-safety classification. Corpus/input semantics, sanitizer options,
 JUCE shutdown avoidance and per-input processor destruction remain unchanged.
+
+
+Fuzz review provenance clarification: bytes identify restore/round-trip sanitizer
+reproductions. Classified filesystem-harness aborts additionally require the
+owned-root/environment history; the source no longer suggests bytes alone can
+reproduce those failures in a host. This changes no input or campaign behavior.

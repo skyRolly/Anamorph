@@ -40,8 +40,10 @@
 //  unhandled exception fails the run; a rejected blob is a PASS, because
 //  refusing malformed state is what this path is supposed to do.
 //
-//  The input is fed to the REAL entry point unmodified, so a crashing case
-//  found here reproduces by handing the same bytes to a host.
+//  The input is fed to the REAL entry point unmodified. Restore/round-trip
+//  sanitizer findings retain those bytes for reproduction. A classified
+//  FUZZ_HARNESS_FAILURE also requires filesystem/environment provenance;
+//  its abort is not reproduced in a host by the input bytes alone.
 // ============================================================================
 
 #include "PluginProcessor.h"
