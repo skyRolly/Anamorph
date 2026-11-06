@@ -1,0 +1,26 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include <memory>
+#include <cstdio>
+static juce::Slider* width(juce::Component& c){if(auto*s=dynamic_cast<juce::Slider*>(&c);s&&s->getTitle()=="Width")return s;for(auto*child:c.getChildren())if(auto*s=width(*child))return s;return nullptr;}
+struct Host final:juce::AudioProcessorListener{
+ juce::RangedAudioParameter& parameter;bool fired=false;
+ explicit Host(juce::RangedAudioParameter&p):parameter(p){}
+ void audioProcessorChanged(juce::AudioProcessor*,const ChangeDetails&)override{}
+ void audioProcessorParameterChanged(juce::AudioProcessor*,int index,float)override{
+  if(index==parameter.getParameterIndex()&&!fired){fired=true;anamorph::param::setValueNotifyingHost(&parameter,0.8f);}
+ }
+};
+int main(){juce::ScopedJuceInitialiser_GUI gui;int failures=0;for(bool box:{false,true}){
+ auto p=std::make_unique<AnamorphAudioProcessor>();p->prepareToPlay(48000,128);
+ std::unique_ptr<juce::AudioProcessorEditor> editor(p->createEditor());auto*s=width(*editor);auto*param=p->getAPVTS().getParameter(pid::width);
+ juce::Component* target=s;if(box)for(auto*child:s->getChildren())if(dynamic_cast<juce::Label*>(child)){target=child;break;}
+ const auto source=juce::Desktop::getInstance().getMainMouseSource();
+ auto event=[&](juce::Component*c,bool down,bool dragged){auto pos=c->getLocalBounds().getCentre().toFloat();auto time=juce::Time(500000);return juce::MouseEvent(source,pos,down?juce::ModifierKeys::leftButtonModifier:juce::ModifierKeys(),1,0,0,0,0,c,c,time,pos,time,1,dragged);};
+ Host host(*param);p->addListener(&host);target->mouseDown(event(target,true,false));juce::MouseWheelDetails w{};w.deltaY=0.2f;s->mouseWheelMove(event(s,true,false),w);
+ const float landed=param->getValue();target->mouseDrag(event(target,true,true));const float continued=param->getValue();target->mouseUp(event(target,false,true));p->removeListener(&host);
+ p->pollUndoCoalesce();bool undoable=p->canUndo();if(undoable)p->undo();const float undone=param->getValue();if(undoable)p->redo();const float redone=param->getValue();
+ std::printf("box=%d host=%d landed=%.9g continued=%.9g undoable=%d undo=%.9g redo=%.9g\n",box,host.fired,landed,continued,undoable,undone,redone);
+ if(!host.fired||std::abs(landed-0.8f)>1e-5f||std::abs(continued-0.8f)>1e-5f||!undoable||std::abs(undone-0.5f)>1e-5f||std::abs(redone-0.53f)>1e-5f)++failures;
+ p->editorBeingDeleted(editor.get());editor.reset();}
+ return failures?1:0;}

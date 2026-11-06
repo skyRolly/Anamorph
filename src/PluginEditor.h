@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gui/KnobParameterBinding.h"
 #include <vector>
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -82,6 +83,7 @@ class AnamorphAudioProcessorEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer,
                                      private juce::ComponentListener // pop-up windows, see PopupShield
 {
+    friend struct AnamorphKnobLifetimeTestAccess; // nonshipping actual-callback regression adapter
 public:
     explicit AnamorphAudioProcessorEditor (AnamorphAudioProcessor&);
     ~AnamorphAudioProcessorEditor() override;
@@ -721,7 +723,8 @@ private:
     // Knob: a slider that resets to its default on a clean double-click OR an
     // Option/Alt-click (#6 / 0.6.7 #21). onSweep lets the editor play the eased
     // position travel when a RESET happens (but not on a drag).
-    struct Knob : public juce::Slider, public anamorph::gui::WheelDragOwner
+    struct Knob : public juce::Slider, public anamorph::gui::WheelDragOwner,
+                  public anamorph::gui::SliderEventSource
     {
         // THE VELOCITY-SWAP MODIFIER, PINNED (round 30, Devin `src/PluginEditor.h:R822-828`).
         // JUCE decides which of its TWO drag mappings an event takes with
@@ -740,6 +743,41 @@ private:
             setVelocityModeParameters (1.0, 1, 0.0, true,
                                        juce::ModifierKeys::ctrlAltCommandModifiers);
         }
+
+        std::shared_ptr<anamorph::gui::KnobParameterBinding> binding;
+        ~Knob() override { if (binding) binding->detach(); }
+        std::shared_ptr<anamorph::gui::SliderEventBoundary> sliderEventBoundary() const override
+        { return binding; }
+
+        bool keyPressed (const juce::KeyPress& key) override
+        {
+            const anamorph::gui::ScopedSliderEvent event (this);
+            return juce::Slider::keyPressed (key);
+        }
+
+        void lookAndFeelChanged() override
+        {
+            juce::Slider::lookAndFeelChanged();
+            // JUCE installs this callback after createSliderTextBox returns. Wrap
+            // its real parser/ScopedDragNotification, rather than duplicate it.
+            for (auto* child : getChildren())
+                if (auto* label = dynamic_cast<juce::Label*> (child); label != nullptr && label->onTextChange)
+                {
+                    const juce::Component::SafePointer<juce::Slider> safe (this);
+                    const auto original = label->onTextChange;
+                    label->onTextChange = [safe, original]
+                    {
+                        const anamorph::gui::ScopedSliderEvent event (safe.getComponent());
+                        const auto callback = original;
+                        if (safe != nullptr) callback();
+                    };
+                }
+        }
+
+        void beginOwnedGesture()
+        { if (binding) binding->begin(); else anamorph::param::beginChangeGesture (resetParam); }
+        void endOwnedGesture()
+        { if (binding) binding->end(); else anamorph::param::endChangeGesture (resetParam); }
 
         double resetValue = 0.0;
         // The attached parameter (null for host-hidden InternalState knobs): the
@@ -813,6 +851,7 @@ private:
         // because `juce::Time::getCurrentTime()` has no finer resolution. It guards this floor, not
         // a delivery.
         juce::Time lastNotchTime;
+        juce::Time lastStandaloneWheelTime; // independent JUCE standalone timestamp semantics
         // The processor, for the wheel's undo grouping (ADR-0053). Null for a knob with no APVTS
         // parameter behind it -- which is the Settings Persistence bar, and exactly the control whose
         // undo participation must not change: with no parameter there is no change gesture and no
@@ -837,11 +876,14 @@ private:
             // snaps the knob straight to the target, which is why alt-click stopped
             // animating; with animations off the knob just snaps, exactly as before.
             getProperties().set ("vpos", (double) valueToProportionOfLength (getValue()));
+            const juce::Component::SafePointer<Knob> alive (this);
+            const auto sweep = onSweep;
             setValue (resetValue, juce::sendNotificationSync);
-            if (onSweep) onSweep();
+            if (alive != nullptr && sweep) sweep();
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
+            const anamorph::gui::ScopedSliderEvent event (this);
             // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
             // cursor travels. Asked for EVERY press, not only one that starts a drag: the rule the
             // owner approved is that no other control may be moved by the wheel while a button is
@@ -870,10 +912,10 @@ private:
                 // latch writes a point for (ADR-0052, round 11 -- the same rule the multiband
                 // wheel branches answer for their own rails).
                 if (! resetWouldMove()) return;
-                anamorph::param::beginChangeGesture (resetParam);
+                beginOwnedGesture();
                 doReset();
                 noteResetProducedNothing();   // round 23, see below
-                anamorph::param::endChangeGesture (resetParam);
+                endOwnedGesture();
                 return;
             }
             juce::Slider::mouseDown (e);
@@ -898,16 +940,17 @@ private:
 
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
+            const anamorph::gui::ScopedSliderEvent event (this);
             // ...AND NOT WHILE ANOTHER DEVICE IS DRAGGING THIS KNOB (round 33). This is the
             // continuation of a press `mouseDown` already refused, and it writes the parameter
             // outright -- a reset landing in the middle of somebody else's drag.
             if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
                 return;
             if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
-            anamorph::param::beginChangeGesture (resetParam);
+            beginOwnedGesture();
             doReset();
             noteResetProducedNothing();   // round 23, see below
-            anamorph::param::endChangeGesture (resetParam);
+            endOwnedGesture();
         }
 
         // ADR-0008, ROUND 23 (Devin R1117-1119). A RESET THAT REACHES ITS CLOSE WITH NOTHING
@@ -1111,7 +1154,7 @@ private:
         // the cursor, so a constant pixel shift is not a constant value shift and this returns a
         // zero offset for it. That is recorded rather than guarded because it is unreachable in this
         // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:577`,
-        // `src/PluginEditor.cpp:728`, `src/PluginEditor.cpp:865`) and none names `Rotary`. The assertion notices if a
+        // `src/PluginEditor.cpp:728`, `src/PluginEditor.cpp:868`) and none names `Rotary`. The assertion notices if a
         // fourth call ever did.
         [[nodiscard]] juce::Point<float> wheelDragShift() const
         {
@@ -1135,6 +1178,7 @@ private:
         // outside it, so the drag keeps its whole remaining travel in both directions.
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            const anamorph::gui::ScopedSliderEvent event (this);
             // A REFUSED PRESS DRAGS NOTHING (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`).
             // `Pimpl::mouseDrag` does not ask whose press it is: it runs on the OWNER's
             // `useDragEvents` and `sliderBeingDragged`, and writes the parameter from whatever
@@ -1157,7 +1201,9 @@ private:
             }
             const auto shift = wheelDragShift();
             lastPassedShift = shift;
+            const juce::Component::SafePointer<Knob> alive (this);
             juce::Slider::mouseDrag (shift.isOrigin() ? e : shifted (e, shift));
+            if (alive == nullptr) return;
             // AND THE INTEGRATOR IS NOW CAUGHT UP, whatever it was owed: `handleAbsoluteDrag` has
             // just written `valueWhenLastDragged` from the shifted position, so the notch is inside
             // it. Clearing unconditionally is the same statement -- a press that banked nothing
@@ -1180,6 +1226,7 @@ private:
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
+            const anamorph::gui::ScopedSliderEvent event (this);
             // A RELEASE ENDS ONLY THE DRAG IT BELONGS TO (round 33). `Pimpl::mouseUp` ends with an
             // unconditional `currentDrag.reset()` (juce_Slider.cpp:997) -- the OWNER's
             // `ScopedDragNotification`, whose destructor calls `sendDragEnd` and puts
@@ -1189,7 +1236,9 @@ private:
             // three, one event after the `mouseDown` that was refused.
             if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
                 return;
+            const juce::Component::SafePointer<Knob> alive (this);
             juce::Slider::mouseUp (e);
+            if (alive == nullptr) return;
             wheelDragPx = 0.0;
             velocityDebt = 0.0;
             injectingVelocity = false;
@@ -1223,8 +1272,10 @@ private:
         // somewhere else entirely. `false` means this press has nothing to add the notch to.
         bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
+            const anamorph::gui::ScopedSliderEvent event (this);
             // `e.mods.isAnyMouseButtonDown()` is the register's precondition, not this hook's:
             // round 30 made `wheelTakenByAnyPress` the only caller and it asks first.
+            if (! std::isfinite (w.deltaX) || ! std::isfinite (w.deltaY)) return true;
             if (isScrollWheelEnabled() && getThumbBeingDragged() >= 0)
             {
                 // What JUCE's own handler would move this slider to for this event -- direction,
@@ -1238,7 +1289,9 @@ private:
                 const double target = anamorph::gui::wheelTargetValue (*this, w, v0);
                 if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
                 const double base = juce::Slider::valueToProportionOfLength (v0);
+                const juce::Component::SafePointer<Knob> alive (this);
                 setValue (target, juce::sendNotificationSync);
+                if (alive == nullptr) return true;
                 // BANK WHAT ACTUALLY MOVED, read back from the slider rather than from the request:
                 // the write is clamped to the range and snapped to the interval grid, and banking
                 // the request instead would leave the drag carrying travel the control never took
@@ -1262,9 +1315,18 @@ private:
                 // Both banks are cheap and neither is a scale of its own: `wheelDragPx` is this
                 // same proportion in the pixels the absolute mapping reads, and the two are
                 // reconciled where they are SPENT, which is the only place that knows the mapping.
-                const double moved = juce::Slider::valueToProportionOfLength (getValue()) - base;
-                wheelDragPx  += moved * pixelsPerWholeRange();
-                velocityDebt += moved;
+                // Parameter feedback now arrives at the event boundary. Bank
+                // after that delivery, from the same live reading as before B2.
+                const auto bank = [alive, base]
+                {
+                    if (auto* knob = alive.getComponent())
+                    {
+                        const double moved = knob->juce::Slider::valueToProportionOfLength (knob->getValue()) - base;
+                        knob->wheelDragPx  += moved * knob->pixelsPerWholeRange();
+                        knob->velocityDebt += moved;
+                    }
+                };
+                if (! event.afterValue (bank)) bank();
                 return true;
             }
             return false;
@@ -1283,7 +1345,10 @@ private:
 
         void mouseWheelMoveTail (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
         {
-            if (onStandaloneWheel) onStandaloneWheel();
+            const juce::Component::SafePointer<Knob> alive (this);
+            const auto callback = onStandaloneWheel;
+            if (callback) callback();
+            if (alive == nullptr) return;
             // (The value box under this knob no longer has to be asked from here. It claims the
             // wheel for itself at its own `mouseDown`, so a notch delivered to this knob during the
             // box's drag is routed by the register above -- one rule for every control instead of
@@ -1323,7 +1388,31 @@ private:
         void sendWheelToJuce (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
         {
             jassert (! e.mods.isAnyMouseButtonDown());   // round 30: the register consumed those
-            juce::Slider::mouseWheelMove (e, w);
+            if (! binding)
+            {
+                juce::Slider::mouseWheelMove (e, w); // host-hidden Persistence retains its binding
+                return;
+            }
+            const anamorph::gui::ScopedSliderEvent event (this);
+            if (! isEnabled() || ! isScrollWheelEnabled())
+            {
+                juce::Component::mouseWheelMove (e, w);
+                return;
+            }
+            if (e.eventTime == lastStandaloneWheelTime) return;
+            lastStandaloneWheelTime = e.eventTime;
+            if (getMaximum() <= getMinimum() || ! std::isfinite (w.deltaX) || ! std::isfinite (w.deltaY)) return;
+            const juce::Component::SafePointer<Knob> alive (this);
+            hideTextBox (false);
+            if (alive == nullptr) return;
+            const double before = getValue();
+            const double target = getNormalisableRange().snapToLegalValue (
+                snapValue (anamorph::gui::wheelTargetValue (*this, w, before), juce::Slider::notDragging));
+            if (! std::isfinite (target) || juce::exactlyEqual (target, before)) return;
+            // Preserve Slider's UI drag callbacks. The product event boundary
+            // drains parameter Begin/value/End only AFTER this JUCE scope exits.
+            const juce::Slider::ScopedDragNotification uiGesture (*this);
+            setValue (target, juce::sendNotificationSync);
         }
     };
 
@@ -1407,6 +1496,7 @@ private:
     // ROUND 27: the slot the A/B letter was last painted for. -1 forces the first tick to
     // paint, which costs one repaint at editor construction and removes a special case.
     int lastAbSlot = -1;
+    std::vector<std::shared_ptr<anamorph::gui::KnobParameterBinding>> knobBindings;
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
     juce::OwnedArray<ComboBoxAttachment> comboAtts;

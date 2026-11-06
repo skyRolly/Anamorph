@@ -30,7 +30,9 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
-The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and [independent experiment manifest](../worklogs/engineering-review/nr026-option-b/execution.json) are supporting developer records. They preserve rejected B1 outcomes and propose B2; owner direction is not final architecture acceptance. ADR-0072 remains Proposed and the roadmap owns current PR/validation status.
+The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and [independent experiment manifest](../worklogs/engineering-review/nr026-option-b/execution.json) are supporting developer records. They preserve rejected B1 outcomes and B2 implementation evidence; those measurements
+do not confer architecture authority. ADR-0072 records explicit owner approval of
+B2, while the roadmap owns current implementation/PR/validation status.
 
 The [GUI callback review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) explains
 NR-025/026. The [historical JUCE 9.0.4 ledger](../worklogs/engineering-review/gui-restore-lifetime.json)
@@ -40,9 +42,11 @@ contains nonshipping diagnostic sources, procedure and observed outputs. These
 records do not change Accepted latency/dependency contracts or authorize merges.
 Accepted ADRs and binding policies govern architecture; the roadmap owns current
 integration/approval status.
-The NR-026 [ADR-0072 proposal](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
-is developer architecture-review material with **Proposed** status. It does not
-override Accepted ADR-0053/0071 or grant implementation, merge or risk acceptance.
+The NR-026 [Accepted ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+records the owner's B2 architecture approval. Its implementation must preserve
+Accepted ADR-0052/0053/0071 and obtain separate PR review/merge authorization.
+`worklogs/engineering-review/nr026-b2/` is supporting execution evidence, not
+implementation acceptance, integration or release authorization.
 
 The 2026-10-31 Linux correction is governed by Accepted
 [ADR-0069](architecture/design-decisions/ADR-0069-linux-plugin-only-installation.md):

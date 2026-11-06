@@ -2143,10 +2143,10 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1228-1237`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2554-2579`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2564-2589`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -2617,7 +2617,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1782-1790`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1792-1800`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -2656,7 +2656,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1739` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1749` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -2666,7 +2666,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2359"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2369"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -2674,10 +2674,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:625` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:627` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1366`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1455`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -2687,7 +2687,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1366`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1455`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -2697,7 +2697,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1366"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1455"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -2737,7 +2737,7 @@ editor rather than from the registration list: **43 of 45** controls carry the s
 two that do not are `titleButton` and `aboutLink`, and neither can produce the reported symptom:
 
   * **`titleButton` — the review's named example — has a DEAD fallback.** It carries componentID
-    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:589` — *before* the
+    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:590` — *before* the
     `animOr (b, "hovA", highlighted)` on `:373` is reached. Its text path ends at
     `LookAndFeel_V4::drawButtonText (g, b, false, false)`, which passes `highlighted` as a literal
     `false`. So the control has no hover visual at all, registered or not; the argument the review
@@ -5365,7 +5365,7 @@ spells out the conversion the compiler was already performing:
 |---|---|---|
 | `src/PluginEditor.cpp:246` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
 | `src/PluginEditor.cpp:247` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
-| `src/gui/LookAndFeel.cpp:482` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
+| `src/gui/LookAndFeel.cpp:483` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
 | `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
 
 **Nothing is suppressed.** No `#pragma`, no `-Wno-…`, no change to
@@ -5446,7 +5446,7 @@ macOS job, not assumed. Linux and Windows were unaffected and green in the same 
 the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
 disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
-`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:482`
+`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:483`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
 float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
 were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
@@ -13212,7 +13212,7 @@ velocity/infinity disposition holds — `dragIsVelocity` still excludes a zero r
 dividing by it, and the genuine JUCE `float-divide-by-zero` is still dispositioned in
 `scripts/ubsan-ignorelist.txt` with the `CCACHE_EXTRAFILES` entry that makes it take effect in CI.
 `src/StateCommandGate.h:8`'s architecture-review gate is closed by ADR-0036 §32's recorded owner
-approval plus the in-source banner. The `src/gui/LookAndFeel.cpp:65` global-state invariants survive
+approval plus the in-source banner. The `src/gui/LookAndFeel.cpp:66` global-state invariants survive
 the new path: `dragWheelHeldByOther` is message-thread only like every caller, adds no cell (so the
 bound is unchanged), compares the same `WheelPointer` value the register keys on, and reads the
 holder through the same `SafePointer`, so a destroyed holder is no device's rival. RISK-009 is
@@ -13262,7 +13262,7 @@ the worklog §90.
 **Trigger.** Five review items on PR #144, all of them against round 30's own work:
 `src/PluginEditor.h:R1045-1047` (*"modifier changes erase wheel adjustments"*),
 `src/gui/LookAndFeel.cpp:R77-82` (*"shared controls lose live wheel claims"*), two investigations at
-`src/gui/LookAndFeel.cpp:36` (cross-instance ownership, device-registry lifetime) and
+`src/gui/LookAndFeel.cpp:37` (cross-instance ownership, device-registry lifetime) and
 `src/PluginEditor.h:R909` (the velocity path's dependency on infinity).
 
 **What the round found.** R1045 is real: round 30 chose the notch's bank from `lastDragMode`, the
@@ -19042,3 +19042,50 @@ KNOWN_ISSUES, HANDOVER, release-readiness and roadmap retain KI-035 unresolved,
 #218 merged, #219 corrected exact-head evidence, separate #220 and protected release
 identities. Historical NR-026 ledgers/observations are untouched; native acceptance
 and commercial/release restrictions stay separate.
+
+
+## ADR-0072 B2 owner approval and implementation authorization
+
+Record the current owner's explicit Architecture Review approval (2026-11-06,
+Asia/Shanghai) in ADR-0072 and ADR_INDEX, bounded to B2's stable interaction record,
+exact-once gestures, processor-owned history, focused binding and synchronous
+staging. Distinguish that decision from unvalidated implementation and separate
+merge/release approval. Retain B1 failures and historical D/Proposed observations.
+The Option B packet, roadmap, handover and KI-035 row reflect that distinction and
+#221's actual reviewed-head validation and merge identity.
+
+
+## ADR-0072 B2 production implementation review
+
+Inventory `KnobParameterBinding.h`, `SliderEventBoundary.h`, focused Knob/ValueBox
+integration and `knob_lifetime_tests.h` in the repository map and TESTING/CI_CD.
+README/SOURCE_OF_TRUTH distinguish the owner-Accepted architecture from supporting
+`nr026-b2/` source/build/mutation evidence, the rejected B1 archive and unmerged
+implementation. The actual-component inventory covers exact host-route gestures,
+Undo/Redo/reopen, no-edit, text/ValueBox, pre/post-edit teardown, host feedback,
+record reuse and existing State86/88/111/112 parity. KI-035 stays unresolved on main.
+
+Binding source movement re-anchors existing citations. Remove 36 spent re-aim
+transitions whose destination already appears in this branch's exact merge base
+`b9f94d83`; no new exemption or checker relaxation is added. Checker self-tests
+remain required. Legal-document changes are citation coordinates only; no legal
+wording or commercial authorization changes. Historical NR-026 ledgers/identities
+are unchanged. The handover/roadmap/release-readiness record owns current status.
+
+
+B2 post-write banking and evidence: inventory the synchronous weak-handle completion
+needed to preserve Knob/ValueBox anchors after reentrant host feedback, retaining
+original/first-candidate/corrected observations separately. Register the B2 bundle
+README, exact source patch, executed test/compiler/probe scripts, seven mutant
+patches and outcomes, compressed streams and verifier with three corruption controls.
+Record local 945/16,074/2,443 and partial-ASan 2,115 counts; final pushed-head CI and
+native scope remain separate. Preserve initial infrastructure/fixture failures as
+troubleshooting rather than relabeling them as final passes. KI-035 is still open.
+
+
+B2 completion checkpoint: the Unreleased changelog cites exact production source
+without changing version/release metadata. INC-026 records component failure,
+correction scope and outstanding integration; KI-035 stays open on main. The
+current roadmap records #221 integration, explicit owner architecture approval,
+corrected #219/#220 heads, local/fault-control results and separate final-head CI.
+The existing native/manual and release restrictions remain independent.

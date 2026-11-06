@@ -1,0 +1,10 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include <cstdio>
+#include <cmath>
+#include <limits>
+#include <memory>
+static int checks=0, failures=0;
+static void check(bool condition,const char* message) {++checks;if(!condition){++failures;std::printf("[FAIL] %s\n",message);}}
+#include "/workspace/Anamorph/tests/knob_lifetime_tests.h"
+int main(){ std::setvbuf(stdout,nullptr,_IONBF,0);juce::ScopedJuceInitialiser_GUI gui;knob_lifetime_tests::test();std::printf("%d checks, %d failures\n",checks,failures);return failures?1:0;}

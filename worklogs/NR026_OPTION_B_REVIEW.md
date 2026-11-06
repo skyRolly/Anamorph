@@ -1,5 +1,13 @@
 # NR-026 Option B continuation and review gate
 
+Current decision — 2026-11-06 (Asia/Shanghai): the owner explicitly approves the
+B2 architecture and authorizes implementation. ADR-0072 is Accepted for that scope;
+PR #221 is integrated at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512` after reviewed-head
+CI completed. This does not accept an implementation, authorize another merge or
+release. The following B1 evidence and pre-approval B2 proposal remain unchanged
+historical investigation. Current implementation status belongs to the roadmap.
+
+
 **Disposition: B-modified for design; D for production integration.** The owner
 selects product-owned Wheel handling as the preferred direction and authorizes
 bounded nonshipping investigation. This is not acceptance of a particular design.
@@ -189,3 +197,109 @@ Rollback for this package is closing its review PR; shipping inputs never moved.
 A future B2 rollback must restore binding, event scopes and gesture record together
 and rerun the accepted interaction matrix against official 9.0.5. No release
 asset rebuild or modification follows from either action.
+
+
+## B2 production implementation — 2026-11-06 (Asia/Shanghai)
+
+The owner's approved B2 architecture is implemented on a separate branch based on
+merged #221 `b9f94d83`. Current code checkpoint is `f9d8cbd380cc01fc967ae0cae195092001ed00de`.
+This selects and implements B2; it does not reopen the already-approved direction,
+accept a release or integrate a production correction. KI-035 remains open on main.
+The [separate B2 bundle](engineering-review/nr026-b2/README.md) retains actual
+source/build/output identities, executed scripts and seven detected fault controls.
+
+```mermaid
+flowchart LR
+    Binding[Knob binding] --> Record[Shared interaction record]
+    Event[Active event stack] --> Record
+    Record -->|weak handle| Component[Knob / ValueBox]
+    Record -->|Begin / value / End| Parameter[Surviving processor parameter]
+    Record -->|endpoint or refusal| History[Processor Undo / coalescer]
+```
+
+`KnobParameterBinding` replaces only the opaque Slider attachment on APVTS Knobs.
+JUCE ParameterAttachment still supplies parameter feedback and its established
+async-update path; range, snap, normalized conversions, text functions and initial
+sync match the official attachment. Buttons/ComboBoxes, Persistence's host-hidden
+binding, Multiband, DSP, parameter/schema/latency registries and JUCE pin are unchanged.
+The processor still owns the sole history/coalescer. The record owns Begin/End and
+stated endpoints; event stacks retain it through editor detachment. The editor
+invalidates bindings before LookAndFeel/ValueBox teardown can end a framework scope.
+
+The record follows idle/beginPending/open/endPending/closed, restarting for later
+edits. Nested UI scopes borrow its open gesture intent; direct recursive value
+writes keep synchronous attachment-request nesting and endpoint ordering. Begin/
+End intents raised during dispatch wait until that edge returns. Component detach
+cancels pending stores, then closes an opened gesture exactly once after an active
+write states/refuses its endpoint. State closes before external End notification.
+No audio-path work, thread, lock or new async delivery is introduced.
+
+Notifications remain synchronous within the original event, but occur after the
+protected JUCE mouse/text frame returns. Standalone Wheel uses first-party target
+arithmetic and an independent timestamp field, preserving Slider UI drag callbacks
+inside that boundary rather than calling Slider::mouseWheelMove. Held Wheel borrows
+the original press. Absolute/relative/velocity math and press/device routing remain
+JUCE/ADR-0053 behavior. The actual ValueBox text parser is wrapped after creation;
+Return/focus/Escape and typed-before-Wheel ordering are retained. A typed commit
+plus moving notch has two distinct host pairs in one named Undo action.
+
+A source comparison found a real first-B2 staging regression: banking before
+parameter delivery loses reentrant host feedback. The first candidate delivered
+Width 0.8 then resumed the drag at 0.53. The corrected record queues a synchronous
+post-write bank completion with weak Knob/ValueBox handles; it reads the actual
+delivered value only while attached. Both now continue at 0.8, Undo restores 0.5
+and Redo restores the owned Wheel endpoint 0.530000031. Original-source anchor and
+history observations are recorded separately; no original ledger is rewritten.
+
+Local corrected results: 945 DSP, 16,074 full State, 2,443 focused State86/88/111/112
+and lifecycle checks; all zero failures. The source-bound partial ASan probe passes
+2,115 assertions over 83 two-cycle cases plus host feedback, repeated scroll and
+reentrant anchor/history controls. It covers pre-edit, Begin/value/End/post-apply
+teardown, no-edit/rails/nonfinite/duplicates/floors, ValueBox, real TextEditor
+commands, Undo/Redo and reopening on a surviving processor.
+
+| Fault control | Observed result |
+|---|---|
+| Missing End | 287 assertion failures; no ASan report |
+| Duplicate End | 145 assertion failures; no ASan report |
+| Lost endpoint | 106 assertion failures; no ASan report |
+| Wrong Redo endpoint | 199 assertion failures; no ASan report |
+| Closed record cannot restart | Four assertion failures; no ASan report |
+| Lost bank completion | Six assertion failures; no ASan report |
+| Missing mouseDown staging | ASan heap-use-after-free; no post-abort history claim |
+
+Unmodified B2 passes again after all seven controls. Initial disk-pressure failures
+and an uninitialized synthetic Wheel fixture are troubleshooting history, explicitly
+separated from final acceptance. They were corrected and rerun; no failure was
+suppressed. The bundle verifier rejects source/matrix/stream corruption.
+
+CI checkpoint `c0a2796c9baf48b569bc72faccf0443daee9306d` in
+[implementation PR #222](https://github.com/skyRolly/Anamorph/pull/222) completes:
+Build 42167007315 (16 successful selected jobs, three intentional skips), merge
+check 42167014032, CodeQL 42167013815, MSVC 42167013716 and dependency 42167013723.
+Linux completes 945 DSP / 16,074 State; Windows 941 / 15,909; macOS arm64, Rosetta
+and native Intel 941 / 15,919 per configuration. Each ordinary platform execution
+reports all 166 matrix rows: 142 with one Begin/End pair, 22 with none and two with
+two pairs for typed commitment followed by a moving notch. Every row satisfies
+its expected parameter/history/teardown assertions; no gesture is left open.
+Full ASan/UBSan passes 941 DSP / 16,074 State and Valgrind passes 934 / 16,074 with
+zero errors (leak checking disabled). Configured TSan/realtime, LTO and pluginval
+lanes pass. The unchanged fuzz campaign executes 7,272 inputs / 91 seconds, peak
+464 MB. Static artifacts contain 64 dependency C++ observations, zero Actions and
+15 PREfast observations, with no affected production-file primary locations.
+The code-scanning alert API itself is unavailable (403); downloaded SARIF was
+inspected. This is not a claim of zero dependency findings.
+
+Full gates must still report on the final pushed documentation head; consult the
+PR check rollup rather than substituting this checkpoint. Native host automation, physical focus/usability,
+processor destruction during dispatch and deferred performance/installation matrices
+are unmeasured. The established owner-lifetime scope requires the processor to
+outlive event completion. Separate human implementation review and merge permission
+remain; the approved architecture itself needs no repeat approval.
+
+Rollback restores the Knob binding, event scopes, text wrapper, post-write banking
+and editor-detachment protocol together, then reruns the accepted interaction matrix.
+It changes no dependency pin, registry or state format. Reverting brings back the
+known NR-026 defects; it is not a release risk disposition. Option A is not required
+by the measured B2 implementation; a future demonstrated architecture conflict
+would return as a specific revision request.

@@ -1,0 +1,67 @@
+from pathlib import Path
+import concurrent.futures,difflib,gzip,hashlib,json,os,shutil,subprocess,sys,tempfile
+sys.path.insert(0,'/workspace/Anamorph/scripts')
+from native_validation import output_path,with_output
+root=Path('/workspace/Anamorph');out=Path('/workspace/scratch/b2');build=Path('/workspace/build-anamorph219');base=json.loads((out/'build.json').read_text())
+original={str(p.relative_to(root/'src')):p.read_bytes() for p in (root/'src').rglob('*') if p.is_file()}
+header_hash=hashlib.sha256((root/'tests/knob_lifetime_tests.h').read_bytes()).hexdigest()
+assert header_hash==base['test_header_sha256']
+cases=[('missing-end','contract'),('duplicate-end','contract'),('lost-endpoint','contract'),('wrong-redo','contract'),('closed-record-reuse','contract'),('lost-bank-continuation','contract'),('missing-press-staging','asan')]
+results=[]
+for tag,expected in cases:
+ work=out/'mutants'/tag;work.mkdir(parents=True,exist_ok=True)
+ for name,data in original.items():
+  dest=work/'src'/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
+ changed=work/'src/gui/KnobParameterBinding.h';text=changed.read_text()
+ if tag=='missing-end':text=text.replace('anamorph::param::endChangeGesture (&parameter);','/* negative control: omitted End */')
+ elif tag=='duplicate-end':text=text.replace('anamorph::param::endChangeGesture (&parameter);','anamorph::param::endChangeGesture (&parameter);\n        anamorph::param::endChangeGesture (&parameter);')
+ elif tag=='lost-endpoint':text=text.replace('processor.noteOwnedParamEndpoint (&parameter, requested);','processor.noteOwnedParamRefused (&parameter);')
+ elif tag=='wrong-redo':text=text.replace('processor.noteOwnedParamEndpoint (&parameter, requested);','processor.noteOwnedParamEndpoint (&parameter, requested + 0.01f);')
+ elif tag=='lost-bank-continuation':text=text.replace('else if (op.kind == Kind::afterValue) op.continuation();','else if (op.kind == Kind::afterValue) { /* negative control: omitted bank */ }')
+ elif tag=='closed-record-reuse':
+  pos=text.index('    void enqueue (Operation op)');at=text.index('if (! attached) return;',pos);text=text[:at]+text[at:].replace('if (! attached) return;','if (! attached || state == State::closed) return;',1)
+ else:
+  changed=work/'src/PluginEditor.h';text=changed.read_text();pos=text.index('        void mouseDown (const juce::MouseEvent& e) override',text.index('    struct Knob :'));at=text.index('            const anamorph::gui::ScopedSliderEvent event (this);',pos);text=text[:at]+text[at:].replace('            const anamorph::gui::ScopedSliderEvent event (this);','            // negative control: missing press staging',1)
+ old=changed.read_text();assert old!=text;changed.write_text(text)
+ patch=''.join(difflib.unified_diff(old.splitlines(True),text.splitlines(True),fromfile='a/src/'+str(changed.relative_to(work/'src')),tofile='b/src/'+str(changed.relative_to(work/'src'))))
+ (work/'mutation.patch.gz').write_bytes(gzip.compress(patch.encode(),mtime=0))
+ tasks=[];objects={}
+ for item in base['commands']:
+  if item['tag']=='link':continue
+  obj=work/(item['tag']+'.o');objects[output_path(item['argv'])]=str(obj)
+  cmd=[x.replace(str(root/'src'),str(work/'src')) for x in item['argv']]
+  tasks.append((item['tag'],with_output(cmd,obj)))
+ def compile(task):
+  unit,cmd=task
+  with (work/(unit+'.compile.log')).open('wb') as log:r=subprocess.run(cmd,cwd=build,stdout=log,stderr=subprocess.STDOUT)
+  return {'tag':unit,'argv':cmd,'exit':r.returncode}
+ with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:compiled=list(pool.map(compile,tasks))
+ record={'case':tag,'expected':expected,'source_commit':base['source_commit'],'test_header_sha256':header_hash,'patch_sha256':hashlib.sha256(patch.encode()).hexdigest(),'commands':compiled}
+ if any(x['exit'] for x in compiled):
+  record['classification']='build-failure';results.append(record);(out/'mutations.json').write_text(json.dumps(results,indent=2));raise SystemExit('mutant build failed: '+tag)
+ link=next(x['argv'] for x in base['commands'] if x['tag']=='link')
+ cmd=with_output([objects.get(x,x) for x in link],work/'probe');record['commands'].append(compile(('link',cmd)))
+ if record['commands'][-1]['exit']:raise SystemExit('mutant link failed: '+tag)
+ record['binary_sha256']=hashlib.sha256((work/'probe').read_bytes()).hexdigest()
+ with tempfile.TemporaryDirectory(prefix='profile-',dir=work) as temp:
+  profile=Path(temp);home=profile/'home';home.mkdir();tmp=profile/'tmp';tmp.mkdir()
+  env=dict(os.environ,HOME=str(home),XDG_CONFIG_HOME=str(home/'.config'),TMPDIR=str(tmp),ASAN_OPTIONS='detect_leaks=0:halt_on_error=1:symbolize=1')
+  run=subprocess.run(['xvfb-run','-a',str(work/'probe')],env=env,capture_output=True,timeout=150)
+ (work/'stdout').write_bytes(run.stdout);(work/'stderr').write_bytes(run.stderr)
+ record.update({'exit':run.returncode,'stdout_sha256':hashlib.sha256(run.stdout).hexdigest(),'stderr_sha256':hashlib.sha256(run.stderr).hexdigest(),'assertion_failures':run.stdout.count(b'[FAIL]'),'asan':'ERROR: AddressSanitizer:' in run.stderr.decode(errors='replace')})
+ detected=run.returncode!=0 and (record['asan'] if expected=='asan' else record['assertion_failures']>0 and not record['asan'])
+ record['detected']=detected
+ results.append(record);(out/'mutations.json').write_text(json.dumps(results,indent=2));print(tag,'detected=',detected,'exit=',run.returncode,'assertions=',record['assertion_failures'],'ASan=',record['asan'],flush=True)
+ # Keep exact patches, commands/hashes and raw streams. These regenerable
+ # task-local objects/binaries are not release objects or evidence sources.
+ for obj in objects.values():Path(obj).unlink()
+ (work/'probe').unlink()
+ if not detected:raise SystemExit('control survived: '+tag)
+assert header_hash==hashlib.sha256((root/'tests/knob_lifetime_tests.h').read_bytes()).hexdigest()
+with tempfile.TemporaryDirectory(prefix='positive-',dir=out) as temp:
+ profile=Path(temp);home=profile/'home';home.mkdir();tmp=profile/'tmp';tmp.mkdir()
+ env=dict(os.environ,HOME=str(home),XDG_CONFIG_HOME=str(home/'.config'),TMPDIR=str(tmp),ASAN_OPTIONS='detect_leaks=0:halt_on_error=1:symbolize=1')
+ run=subprocess.run(['xvfb-run','-a',str(out/'probe')],env=env,capture_output=True,timeout=150)
+(out/'positive-after-controls.stdout').write_bytes(run.stdout);(out/'positive-after-controls.stderr').write_bytes(run.stderr)
+assert run.returncode==0 and b'[FAIL]' not in run.stdout and b'ERROR: AddressSanitizer:' not in run.stderr
+print('Unmodified B2 passes after all seven detected controls',flush=True)

@@ -1,10 +1,87 @@
 # Next release investigation and development roadmap
 
-## Current execution register — 2026-11-06 UTC
+## B2 implementation and isolation review — 2026-11-06 (Asia/Shanghai)
+
+Current main is `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`, the authorized #221
+merge of reviewed head `89af3c19`. Reviewed-head Build 42140914740 passed 16 selected
+jobs with three intentional skips (including completed macOS/sanitizers); merge
+check 42140922089 and Dependency Review 42140921925 passed. Post-merge main Build
+42152331590 passed. Merge tree equals the reviewed tree; shipping inputs, approved
+JUCE 9.0.5 and historical NR-026/B1 evidence were unchanged by that integration.
+
+The owner explicitly approves ADR-0072 B2 in this assignment. The Accepted decision
+record accompanies the separate production implementation; it is not a CI-derived
+approval or invented GitHub review. No further architecture approval is needed
+for this conforming scope. Actual implementation review/merge authorization and
+all native/release acceptance remain separate.
+
+| Work item | Current implementation / evidence | Integration boundary |
+|---|---|---|
+| NR-026 / KI-035 B2 | [Implementation PR #222](https://github.com/skyRolly/Anamorph/pull/222), code `f9d8cbd3`: stable focused binding/event record, exact-once gestures, processor endpoints/Undo, synchronous mouse/text staging, early detachment and post-write weak-handle anchor banking. Local 945 DSP / 16,074 State / 2,443 focused checks pass; partial GUI-module ASan passes 2,115 assertions. Seven copied-source controls detect missing/duplicate End, lost endpoint, wrong Redo, record reuse failure, lost bank completion and missing press staging. [Separate evidence](engineering-review/nr026-b2/README.md). | Independent branch based on this main, open/unmerged, auto-merge off. Consult #222's actual final-head check rollup; human implementation review/merge authorization remain separate. Main is still affected. No Option C risk acceptance. |
+| #219 State isolation | Head `e28d03281cab0f5d4eb231abe28b9dae2f15cc0d`, includes main #221 without history rewriting. Protected redirects in root/ancestors/descendants are explicitly refused; no arbitrary target traversal. Original unchanged-link/changed-target miss and corrected refusal retained. Full local 945/13,959 plus isolation controls pass. Exact-head Build 42154388149, merge check 42154394743, CodeQL 42154394893, MSVC 42154394794 and Dependency Review 42154394791 pass. | Open/unmerged, auto-merge off. Linked production profiles are unsupported by the nonshipping snapshot controller; this does not change product symlink behavior. |
+| #220 fuzz isolation | Stacked on #219; current head `03e6e1f627099046f67cae65abfeaa35338f1c59`. Actual READY/CLEAN callback IDs replace the exact `-runs=2` assumption. Local direct driver verifies five calls/process. Exact-head Build 42162158196 passes real Clang/libFuzzer/ASan/UBSan controls (eight actual calls/process) and 6,923 inputs / 91 seconds, peak 435 MB. Merge check 42162164219, CodeQL 42162160794 and MSVC 42162165418 pass. Cleanup abort remains fail-closed with explicit harness classification and replacement preservation. | Open/unmerged, auto-merge off. No prior-head result substitutes for this head. Main-targeted Dependency Review is unavailable for this stacked base. |
+
+B2 staging exposed an anchor-parity regression before review: reentrant host
+feedback delivered Width 0.8 but the first candidate resumed at 0.53. Guarded
+post-write completion now continues at 0.8 while Undo/Redo preserves the owned
+0.5/0.53 endpoints. Original, initial-candidate and corrected observations have
+separate source/binary/output identities. Normal direct recursive attachment
+writes remain synchronous; State111/112 and State86/88 pass. No second coalescer,
+new thread, audio work, dependency patch or unrelated attachment rewrite is added.
+
+Initial local ENOSPC interrupted a mutant and preset I/O checks; an uninitialized
+synthetic Wheel fixture also failed repeated-scroll assertions. Those runs are
+retained as troubleshooting, not final acceptance. Fields were initialized and
+compilation serialized with bounded cache/task-owned temporary storage. Final
+full State and all seven controls pass their expected classifications; no failure
+was suppressed. A clean ASan exit alone cannot pass the gesture/history oracle.
+
+Implementation CI checkpoint `c0a2796c` completes successfully: Build 42167007315
+(16 selected jobs / three intentional skips), merge check 42167014032, CodeQL
+42167013815, MSVC/PREfast 42167013716 and Dependency Review 42167013723. Linux
+passes 945 DSP / 16,074 State; Windows 941 / 15,909; macOS arm64, Rosetta and native
+Intel 941 / 15,919 each. Full ASan/UBSan and Valgrind execute the lifecycle matrix;
+both State runs pass 16,074 checks, with zero Valgrind errors (leak checking remains
+disabled). Configured TSan/realtime, LTO, fuzz and pluginval lanes pass. Static
+artifacts retain 64 dependency CodeQL observations, zero Actions observations and
+15 PREfast observations; no affected production-file primary location is reported.
+The first push's citation-base failure remains historical; no exemption was added.
+The final documentation head requires its own check rollup in #222.
+
+Next execution is independent human implementation review of #222, preserving
+the final-head gates for any subsequent correction. Only #221 was authorized to
+merge. NR-026 is not resolved on main until a verified correction is integrated.
+NR-006/010/014, NR-013, broader host/installation and native DAW incidence remain
+deferred or unmeasured in their recorded scopes. No new hardware/DAW request.
+Version 0.10.0 and protected tag/draft/eleven assets remain untouched; no release,
+commercial, signing, legal or distribution authorization follows.
+
+
+## Owner-approved B2 implementation — 2026-11-06 (Asia/Shanghai)
+
+PR #221 reviewed head `89af3c19` merged at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`.
+Build 42140914740 completed with 16 selected jobs successful and three intentional
+skips, including successful macOS and sanitizers; merge check 42140922089 and
+Dependency Review 42140921925 succeeded. Shipping source, approved JUCE pin and
+historical NR-026 evidence are unchanged by that integration.
+
+The owner explicitly records completed human Architecture Review and approves
+ADR-0072 B2. The ADR/index acceptance records that instruction, not a GitHub approval
+state. B2 implementation is authorized on a separate branch based on this main;
+production acceptance, integration and release remain outstanding. NR-026/KI-035
+stays unresolved until verified correction is integrated. B1 remains rejected.
+
+#219 symlink-target snapshot coverage and #220 callback-count/cleanup-abort reviews
+are being addressed on the existing unmerged stack. Only #221 is authorized to
+merge. All other PRs retain auto-merge off. Prior execution snapshots below remain
+history; no old CI pass establishes correctness of a changed head.
+
+
+## Historical execution register before owner approval — 2026-11-06 UTC
 
 `main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged
-#218. Historical NR-026 source ledgers remain byte-for-byte intact. The dated
-snapshots below retain their original contexts; this section owns current status.
+#218. Historical NR-026 source ledgers remain byte-for-byte intact. This is the
+pre-approval snapshot; the opening execution register owns current status.
 
 | Work item | Current review state | Actual evidence / remaining boundary |
 |---|---|---|

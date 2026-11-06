@@ -736,7 +736,7 @@ toolchain, so the move took the macOS compiler with it — **AppleClang
 `20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
 build. One measured consequence: AppleClang 21 raised
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:246, 247`,
-`src/gui/LookAndFeel.cpp:482` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
+`src/gui/LookAndFeel.cpp:483` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
 float expression (108 → 126 warning instances on that first job). No warning disappeared and no
 other category appeared. **All four were then fixed** in the follow-up change: each `int` operand
 now carries the explicit `(float)` cast that spells out the conversion the compiler was already
@@ -2638,3 +2638,14 @@ ordering. JUCE package checks/module setup and juceaide may run before verificat
 checks source identity before product targets, not dependency CMake execution or dirty-tree content.
 Directory-entry checks reject dangling/unreadable metadata; explicit metadata-free archives retain
 their warning policy. Alternatives and executed boundary evidence: `worklogs/JUCE905_UPGRADE_REVIEW.md`.
+
+
+## B2 Knob lifecycle acceptance
+
+The existing State target includes `knob_lifetime_tests.h` in every ordinary suite
+configuration, without a new target, dependency or sanitizer suppression. Its
+`--knob-lifetime-probe` also executes State86/88 and 111/112 for focused component,
+gesture/history, coalescing and recursive-binding validation. Normal platform,
+ASan/UBSan/Valgrind, TSan, realtime, fuzz, pluginval and static/documentation lanes
+remain at their existing strictness. A local partial GUI-module ASan experiment
+is separate evidence and never replaces those complete final-head gates.
