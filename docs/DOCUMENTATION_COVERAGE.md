@@ -19027,6 +19027,36 @@ Register `acceptance-reconciliation.json` and `metadata-review.json`; source-loc
 before/after/partial-fix controls cover the corrected literal entry detection. Named-host rows,
 individual observations, product behavior/versions, fixtures and release objects are unchanged.
 
+## State-suite filesystem isolation follow-up
+
+The separate fuzz follow-up inventories per-input profile setup/cleanup in
+`fuzz_state.cpp` and `tests/fuzz_isolation_tests.py` in TESTING §Fuzz filesystem
+lifecycle and CI_CD. Actual entry-point inputs, repeated callbacks, concurrent
+processes, normal exit, controlled EOF, replaced-root refusal, forced kill,
+invalid-parent and override-bypass controls are distinguished. JUCE global teardown
+remains intentionally absent. Linux-only fuzz evidence and throughput limits do
+not extend State-suite cross-platform claims or imply preset-write damage.
+
+PR #219 review corrections: TESTING §State-suite filesystem isolation now inventories
+the existing disconnected-controller EOF case (post-readiness stdin close, expected
+exit 3 / `isolation probe release failed`, owned-root cleanup) separately from
+normal newline release and child termination; no SIGKILL/machine-loss cleanup claim.
+The same controller runs in Linux/Windows/native Intel macOS/arm64/Rosetta full-suite
+CI. The direct probe now checks same-processor A→B→C→B and an omitted-final-load
+failure before readiness. Inventory the read-only production JUCE path witness,
+independent Windows CSIDL_APPDATA comparison, protected-tree snapshot and its limits,
+effective preset/temp paths and real temporary-file witness, overlap rejection and
+override-bypass negative control. Fake-HOME sentinels do not establish the Windows
+production path. Sanitizer and TSan direct binary launches have a narrower scope.
+
+Document the nonshipping State preset-directory override, per-process temporary
+fixtures, safe cleanup limits and direct-launch controls in TESTING and CI_CD.
+The production preset writer/loader remains in the State executable. The
+filesystem contract and platform-evidence boundaries are recorded in the roadmap;
+the Linux-only NR-026 historical runner and its retained source identity stay intact.
+Index the separate local Linux execution ledger and compressed output as supporting
+evidence in the repository map, source-of-truth inventory and README navigation.
+
 ## NR-026 Option B direction and rejected experiment continuation
 
 Register `worklogs/NR026_OPTION_B_REVIEW.md` and
@@ -19043,6 +19073,35 @@ KNOWN_ISSUES, HANDOVER, release-readiness and roadmap retain KI-035 unresolved,
 identities. Historical NR-026 ledgers/observations are untouched; native acceptance
 and commercial/release restrictions stay separate.
 
+
+## State protected snapshot redirect review
+
+TESTING and CI_CD inventory protected root/ancestor/descendant symbolic-link and
+reparse-point refusal, the unchanged-link/changed-target gap, supported regular-tree
+claim and explicitly unsupported linked production profile. Same-invocation
+self-tests use only disposable targets, including changed/broken/outside-boundary
+redirects and a Windows junction fallback. The source-bound Linux comparison
+`state-isolation-symlink-review.json` preserves original missed mutation and the
+corrected refusal; current platform CI remains separate evidence.
+
+
+## Fuzz callback progression and cleanup-failure review
+
+TESTING and CI_CD inventory the actual callback-number/READY/CLEAN protocol,
+at-least-two acceptance with arbitrary additional callbacks, stdout ownership and
+independent stderr capture. Same-invocation corruption controls reject missing,
+repeated, reused, mismatched and unfinished lifecycle transcripts. The real
+entry-point replacement-root control requires a classified cleanup abort and
+preservation of unowned data. Record why ordinary restore cannot replace the root,
+why filesystem/environment failure still blocks the campaign and why this is not
+a product memory-safety classification. Corpus/input semantics, sanitizer options,
+JUCE shutdown avoidance and per-input processor destruction remain unchanged.
+
+
+Fuzz review provenance clarification: bytes identify restore/round-trip sanitizer
+reproductions. Classified filesystem-harness aborts additionally require the
+owned-root/environment history; the source no longer suggests bytes alone can
+reproduce those failures in a host. This changes no input or campaign behavior.
 
 ## ADR-0072 B2 owner approval and implementation authorization
 
@@ -19091,6 +19150,23 @@ corrected #219/#220 heads, local/fault-control results and separate final-head C
 The existing native/manual and release restrictions remain independent.
 
 
+## Post-B2 parent-branch reconciliation
+
+The roadmap has one opening current execution register. Conflicting older current
+sections are explicitly historical; their dates, source hashes and observations
+are preserved. The new register distinguishes #222 integration into main from #220
+merging only into unmerged #219. The combined State main retains both filesystem
+and Knob-lifetime probe dispatch blocks; TESTING/CI_CD retain both inventories.
+Full combined-source and actual-main post-merge validation remain independently
+required. No fixture, sanitizer or release gate was relaxed by conflict resolution.
+
+The State source header now describes directly delivered component events and
+selected peer/popup diagnostic modes, replacing its obsolete no-interaction
+claim. This is a four-line comment correction; runtime statements and line
+coordinates are unchanged. Existing B2/ADR-0053 regressions remain the executable
+surface; no synthetic replacement or native acceptance is inferred.
+
+
 ## Post-B2 development integration and issue lifecycle
 
 The single current roadmap register, NR-026 work-item index/detail, KI-035 removal from active findings and INC-026 now distinguish actual #222 main integration from #220's parent-only merge and open combined #219 review. Historical dates, hashes, rejected B1 outcomes and original failure ledgers are retained. ADR-0072 remains Accepted; its append-only integration note records separate owner implementation review/merge authority. Handover, release assessment, TESTING, the Option B record and the repository documentation navigation are reconciled.
@@ -19098,3 +19174,6 @@ The single current roadmap register, NR-026 work-item index/detail, KI-035 remov
 `worklogs/engineering-review/post-b2-integration.json` and `post-b2-main-streams.json.gz` are supporting engineering evidence: fresh actual-main source/build identity, 945 DSP / 2,443 focused assertions, 166 lifecycle observations, actual path witnesses and wrong-owned-profile rejection. They do not claim full sanitizer/native/host coverage or infer CI outcomes. The source header's four-line capability correction changes no executable statement or line coordinate. Post-merge main and final combined/new-PR checks retain their own identities; no earlier-head pass is substituted. Version/JUCE/tag/draft/eleven-asset and deferred native boundaries are unchanged.
 
 The State-header correction also re-examines its nine evidence citations. Historical INC/ADR/audit/gap disclosures now link the immutable pre-correction `2b256e90` header; current capability notes link the [updated State header](../tests/state_tests.cpp) and the actual B2 event/history surface. ADR-0025 Decisions 1–5 remain unchanged. Its no-surface exception is not used for B2 or automatically extended to other component paths. Remaining exact native/modal/vblank/visual behaviors are unverified, rather than claimed impossible to test or automatically closed. No checker exemption is introduced.
+
+
+Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.

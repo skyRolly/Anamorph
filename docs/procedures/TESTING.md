@@ -7,6 +7,134 @@ CI is recorded separately. Level-5 listening and native/manual acceptance are **
 recorded 2026-11-04 Asia/Shanghai. Exact tested payload/environment and execution date were not
 supplied; historical 9.0.4 attestations retain their scope.
 
+## State-suite filesystem isolation
+
+The State executable creates a fresh, uniquely named test-owned directory before
+constructing any processor, for the full suite and direct probe selectors. The
+nonshipping State build directs the real `PresetManager` to its `presets` child;
+save, load, enumeration and identity tests still execute the production manager.
+Test-created temporary files use a separate child of the same root. Failure to
+create or identify the root stops the process before tests run. The shipping build
+does not compile the test-directory override. The separate fuzz lifecycle below
+installs the same nonshipping directory seam with a different teardown scope.
+
+The parent is JUCE's OS temporary directory. The fixture resolves and compares the
+actual production preset path before installing the override, so on Linux that
+read-only check can consult the caller's `user-dirs.dirs`. It never enumerates or
+modifies the caller's presets. Directory identity and a unique marker are checked
+before cleanup; a replaced root or symlink is preserved. Normal exits attempt to
+remove the owned tree; setup/cleanup failure, a crash, SIGKILL, termination or
+machine loss can leave it under the temporary parent. Remove a leftover only
+after identifying it as test-owned.
+The mechanism is for accidental user-data and concurrency isolation, not a
+sandbox against a hostile process running as the same user. It does not confine
+all framework reads or arbitrary files supplied by a test.
+
+`tests/state_isolation_tests.py` launches the actual executable directly with a
+disposable caller profile. Its `--full-suite` mode runs every State test first
+and checks that caller-home and shared-temp sentinels remain unchanged. It then
+checks production save/load, two simultaneous
+distinct roots, setup failure, replacement with a copied marker, normal cleanup,
+termination and unchanged caller-home/shared-temp sentinels. `run-tests.sh` and
+the Windows CI State step use that full-suite mode; the shell path preserves any
+`ANAMORPH_TEST_RUNNER` prefix. CI execution on each platform
+is required evidence; source inspection of a platform is not an executed result.
+The save/load probe uses one processor for **A→B→C→B** (normalized Width 0.13→0.73→0.41→0.73),
+verifying each leg; both B applications use the real `loadFile`. Readiness is
+emitted only after the repeat succeeds. `omit-return-load` skips only the last
+application and must exit 3 with `isolation probe return load failed`, without
+readiness, then remove its owned root. Concurrent probes report the effective
+preset/temp paths and create a temporary-file witness in the separate `temp` child.
+
+The disconnected-controller control closes the controller-side stdin **after
+readiness**. The held probe observes EOF, exits 3 with `isolation probe release
+failed`, and its owned root must be gone. This is an expected release failure
+with normal C++ unwinding, distinct from the newline release (exit 0 and cleanup).
+It does not kill the controller or child. The separate child-termination control
+requires a leftover owned root; SIGKILL and machine loss have no cleanup guarantee.
+These controls run in the ordinary Linux, Windows, native Intel macOS, arm64
+macOS and x86-64 Rosetta full-suite configurations. Sanitizer/TSan lanes that launch
+the State binary directly do not thereby execute this Python controller.
+
+`--filesystem-path-witness` exits before fixture/processor construction, reporting
+the production JUCE application-data, `PresetManager::presetDirectory()` and
+temporary-parent paths without creating or enumerating presets. On Windows the
+controller independently compares JUCE's result with `SHGetFolderPathW(CSIDL_APPDATA)`;
+HOME/USERPROFILE/APPDATA guesses are not evidence. It takes a read-only before/after
+snapshot of the actual resolved preset tree (including absence), checking content,
+identity, modes and modification times. A symbolic link or reparse point in the
+protected root, any ancestor or any descendant is explicitly unsupported: the
+controller refuses before trusting the snapshot, rather than treating unchanged
+link metadata as unchanged target contents. Production PresetManager may still use
+a linked preset directory; this nonshipping controller does not verify that setup.
+It never recursively follows arbitrary link targets. **No sentinel
+is written there.** Fake-HOME sentinels remain disposable collision controls and
+do not represent the actual Windows or macOS preset path. Snapshot equality detects
+persistent changes, not transient writes, reads, atime changes or hostile races.
+The same invocation first runs disposable snapshot controls: regular-tree equality
+and content mutation; unchanged redirect/target; unchanged redirect with changed
+target; ancestor/descendant redirect; changed/outside-boundary redirect; and broken
+redirect. Windows uses a directory junction if symbolic-link privilege is absent.
+`--self-test` runs these without launching State. The immutable original snapshot
+misses a target mutation and fails the new controls; the corrected controller
+refuses it. The supporting `state-isolation-symlink-review.json` records that Linux
+comparison; platform execution still belongs to the final-head CI.
+Unsafe overlap and loss of the installed override are rejected before processor
+construction; `--test-overlapping-isolation-root` and
+`--test-bypass-isolation-override` must fail with exit 2. The latter deliberately
+removes the seam, proving the pre-construction check detects the production path
+without constructing a manager against it. Unreadable protected data fails the
+controller rather than silently claiming preservation. No profile/shell setting changes.
+
+On Linux a fake redirected preset directory, also reached through a symlinked
+TMPDIR, must be rejected before a test can run.
+The [Linux execution record](../../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
+binds the local full-suite output to its source inputs and test binaries; it is
+supporting engineering evidence, not native acceptance.
+
+## Fuzz filesystem lifecycle
+
+`tests/fuzz_state.cpp` installs a fresh owned preset/temp profile per supported-size
+input, before the real processor constructor. It clears the previous override
+before setup, retains unmodified input/round-trip behavior and per-input processor
+destruction, and explicitly checks profile cleanup before returning to libFuzzer.
+Setup, inactive override or refused/failed cleanup abort the harness with a
+`FUZZ_HARNESS_FAILURE=setup|override|cleanup` classification. EOF release uses
+`release`. These are mandatory harness invariant failures, not automatically
+product memory-safety findings. Valid restore inputs have no operation that replaces
+the profile root/marker; external replacement, damaged ownership or filesystem IO
+failure must stop the campaign rather than continue under broken isolation. The intentionally
+leaked JUCE initialiser is unchanged: no global GUI shutdown or new exit handler.
+Per-input storage adds filesystem overhead; campaign duration/seed/corpus/sanitizers
+are unchanged, so input throughput must be read from each actual run.
+
+The Linux `fuzz` CI job runs `tests/fuzz_isolation_tests.py` against the actual
+libFuzzer executable before its ordinary campaign, with the existing detector
+settings. The opt-in `ANAMORPH_FUZZ_ISOLATION_CONTROL=hold` pauses only after the
+actual restore/round-trip and processor destruction. READY/CLEAN messages identify
+the actual monotonically numbered callback and its root. A `-runs=8` argument bounds
+work only; it is not an exact callback-count oracle. The controller releases and
+checks every reported callback until exit, requiring at least two transitions,
+unique roots, previous-root removal before the next callback, matching post-cleanup
+acknowledgements and final exit cleanup. More than two callbacks are accepted and
+verified. A single stdout reader owns the transcript; stderr is retained separately
+so `communicate()` cannot steal handshake messages. Two processes must have separate roots. EOF must fail after
+cleanup; replacing a root with a copied marker must refuse deletion and abort
+with `FUZZ_HARNESS_FAILURE=cleanup`, preserve the replacement/moved trees, and
+produce no ASan memory-corruption report in that controlled case;
+forced kill may leave a root. `invalid-parent` and `bypass` fail before processor
+construction, without readiness. Caller-profile sentinels are created only in the
+controller's disposable Linux HOME; all deliberate leftovers/artifacts are confined
+to its disposable parent. This is not Windows/macOS fuzz execution or arbitrary
+file/host isolation. Oversize inputs still return without processor construction.
+The same invocation first proves the protocol checker rejects missing callbacks,
+skipped/repeated IDs, reused roots, missing/mismatched cleanup and surviving data;
+`--self-test` runs these disposable controls without a fuzz executable. A normal
+campaign treats an unexpected classified abort as failure, retaining its finding
+artifacts for filesystem/environment triage. Expected negative controls are
+separate subprocesses and never make an ordinary campaign abort acceptable.
+
+
 
 ## NR-026 B2 Knob lifecycle regression
 
@@ -385,14 +513,14 @@ saves passing. Under Accepted ADR-0067/0068 both are passing regressions in the 
 (State 146/148), with their focused CLI entry points retained. Expanded State 147/148 cover
 every parameter and complete nested callback state. Finite output alone is insufficient:
 the existing self-heal produces finite zeroes, so audio controls remain required.
-Run all state probes serially with the default suite because they share the process's
-preset folder. Direct State-suite invocations and `scripts/run-tests.sh` use the
-caller environment and can reach real presets; setting only `XDG_CONFIG_HOME` is
-insufficient with pinned JUCE on Linux. The nonshipping
+At this historical checkpoint, State invocations used the caller environment and
+could reach real presets; setting only `XDG_CONFIG_HOME` was insufficient with
+pinned JUCE on Linux. The subsequent [State filesystem fixture](#state-suite-filesystem-isolation)
+gives the current State executable a separate test-owned preset/temp root. The nonshipping
 [NR-026 reproduction wrapper](../../worklogs/engineering-review/nr026-repro/README.md)
 runs its complete suite and diagnostic cases with individually verified disposable
 HOME/config/temp directories, with negative, concurrency and interruption controls.
-This wrapper does not change the behavior of the general test commands.
+That historical wrapper is separate from the general State executable's fixture.
 
 `python3 scripts/check-release-notes.py --self-test` precedes the ordinary check in the same
 `source-lint` job. It permits customer changes, evidence citations and actual signing/CPU
@@ -5305,16 +5433,16 @@ spinners were starving the message thread they were supposed to be running under
 of what State test 39's 20.4 s was. Any new long-lived worker in this suite uses it, and asserts its
 non-vacuity counter.
 
-**One instance at a time.** The state suite writes into the REAL user preset folder (the production
-path — that is the point of it), parks and restores any genuine preset that shares a harness name,
-and several tests assert the folder's *listing* (row order, a deleted preset ticking nothing, a
+**Historical shared-folder concurrency finding.** Before the State filesystem fixture, the suite
+wrote into the real user preset folder, parked and restored same-named presets,
+and several tests asserted the folder's *listing* (row order, a deleted preset ticking nothing, a
 foreign file's position). Two instances running concurrently therefore read each other's files:
 measured in round 10, a plain run overlapping the `tsan` lane's own suite run failed State test 52
 leg (i) about 1 run in 9 — a probe preset reloaded with the other process's bytes — and two
 deliberately concurrent plain runs failed 2 and 8 checks across tests 10, 12, 13, 24 and 28. Nothing
-is wrong with any of those tests; the harness assumes exclusive use of the folder, as the CI jobs
-give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
-copy of itself.
+is wrong with any of those tests; the old harness assumed exclusive use of the folder. The current
+State executable gives each process its own preset/temp root and the direct-launch controls exercise
+overlap. Other resources and performance-sensitive measurements may still require serial execution.
 
 ### 0.9.10 focused state and host interaction coverage
 
@@ -5342,7 +5470,7 @@ host/text/restore semantics. `--restore-lock-probe` measures F9's outer-held-loc
 `--restore-reentry-probe` retains the original assertions and also runs inside State 148.
 It checks saves inside the latency callback so an adoption guard cannot hide a mixed snapshot;
 Accepted ADR-0068 fixes its former metadata failures by committing before the callback.
-Run state processes serially: these probes share the real preset folder, just like the full suite.
+These direct State probes initialise the same per-process filesystem fixture as the full suite.
 Evidence, negative controls, commands and environment limits:
 `worklogs/STATE_HOST_HARDENING_0.9.10.md`.
 
@@ -7482,3 +7610,6 @@ Windows ACL behavior. Original and IS_SYMLINK-only failures are retained in `met
 Owner Level-5/native/manual acceptance for 9.0.5 is **PASS — owner-attested**, recorded 2026-11-04
 Asia/Shanghai; exact tested payload/environment and individual observations are not supplied.
 No repeat acceptance is requested. Source-bound automated CI remains independently mandatory.
+
+
+Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.

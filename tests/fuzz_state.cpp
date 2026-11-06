@@ -33,20 +33,26 @@
 //  restore-then-destroy is where the interesting lifetime bugs are, and a
 //  fuzzer that reused one processor would never see them.
 //
-//  WHAT IT ASSERTS. Nothing, deliberately: the oracle is the sanitizer. A
+//  WHAT IT ASSERTS. The restore oracle is the sanitizer. Separately, mandatory
+//  filesystem setup/ownership/cleanup invariants fail closed with a classified
+//  harness error and abort; those are not automatically memory-safety findings. A
 //  crash, a heap overflow, a use-after-free, an uninitialised read or an
 //  unhandled exception fails the run; a rejected blob is a PASS, because
 //  refusing malformed state is what this path is supposed to do.
 //
-//  The input is fed to the REAL entry point unmodified, so a crashing case
-//  found here reproduces by handing the same bytes to a host.
+//  The input is fed to the REAL entry point unmodified. Restore/round-trip
+//  sanitizer findings retain those bytes for reproduction. A classified
+//  FUZZ_HARNESS_FAILURE also requires filesystem/environment provenance;
+//  its abort is not reproduced in a host by the input bytes alone.
 // ============================================================================
 
 #include "PluginProcessor.h"
+#include "state_filesystem.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <cstring>
 
 namespace
 {
@@ -70,21 +76,82 @@ extern "C" int LLVMFuzzerTestOneInput (const std::uint8_t* data, std::size_t siz
 
     ensureJuceInitialised();
 
-    AnamorphAudioProcessor processor;
+    // One disposable filesystem per input, destroyed BEFORE returning to the
+    // fuzzer. This never runs JUCE's global shutdown and adds no exit handler.
+    // A reused process must not compare against the previous input's override.
+    anamorph::PresetManager::setTestPresetDirectory ({});
+    state_test_filesystem::Profile profile;
+    auto parent = juce::File::getSpecialLocation (juce::File::tempDirectory);
+    const char* const control = std::getenv ("ANAMORPH_FUZZ_ISOLATION_CONTROL");
+    if (control != nullptr && std::strcmp (control, "invalid-parent") == 0)
+        parent = parent.getNonexistentChildFile ("invalid-fuzz-parent", "");
+    if (! profile.initialise (parent))
+    {
+        (void) profile.cleanup();
+        std::fprintf (stderr, "Fuzz isolation setup failed\n");
+        std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=setup\n");
+        std::abort();
+    }
+    if (control != nullptr && std::strcmp (control, "bypass") == 0)
+        anamorph::PresetManager::setTestPresetDirectory ({});
+    if (anamorph::PresetManager::presetDirectory() != profile.directory().getChildFile ("presets"))
+    {
+        (void) profile.cleanup();
+        std::fprintf (stderr, "Fuzz isolation override is not active\n");
+        std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=override\n");
+        std::abort();
+    }
 
-    // The real restore path, with the bytes exactly as given.
-    processor.setStateInformation (data, static_cast<int> (size));
+    {
+        AnamorphAudioProcessor processor;
 
-    // Round-trip after restore: a blob that leaves the processor in a state it
-    // cannot then SERIALISE is a defect the restore call alone would not
-    // surface, and this is where the A/B-index clamp class showed up.
-    juce::MemoryBlock out;
-    processor.getStateInformation (out);
+        // The real restore path, with the bytes exactly as given.
+        processor.setStateInformation (data, static_cast<int> (size));
 
-    // Restoring what we just produced must also be safe -- the repeated-load
-    // case, and the one a host performs on every session save/reload cycle.
-    if (out.getSize() > 0 && out.getSize() <= static_cast<std::size_t> (std::numeric_limits<int>::max()))
-        processor.setStateInformation (out.getData(), static_cast<int> (out.getSize()));
+        // Round-trip after restore: a blob that leaves the processor in a state it
+        // cannot then SERIALISE is a defect the restore call alone would not
+        // surface, and this is where the A/B-index clamp class showed up.
+        juce::MemoryBlock out;
+        processor.getStateInformation (out);
 
+        // Restoring what we just produced must also be safe -- the repeated-load
+        // case, and the one a host performs on every session save/reload cycle.
+        if (out.getSize() > 0 && out.getSize() <= static_cast<std::size_t> (std::numeric_limits<int>::max()))
+            processor.setStateInformation (out.getData(), static_cast<int> (out.getSize()));
+    } // processor teardown is still part of EVERY input, before profile cleanup
+
+    // Report ACTUAL callback progression; libFuzzer's -runs budget is not an
+    // exact entry-count oracle. Ordinary campaigns neither count nor pause here.
+    const bool held = control != nullptr && std::strcmp (control, "hold") == 0;
+    static std::uint64_t callbackSequence = 0;
+    const auto sequence = held ? ++callbackSequence : 0;
+    const auto witnessRoot = held ? profile.directory().getFullPathName() : juce::String();
+    if (held)
+    {
+        std::printf ("FUZZ_ISOLATION_READY=%llu\t%s\n", (unsigned long long) sequence,
+                     witnessRoot.toRawUTF8());
+        std::fflush (stdout);
+        if (std::getchar() == EOF)
+        {
+            (void) profile.cleanup();
+            std::fprintf (stderr, "Fuzz isolation release failed\n");
+            std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=release\n");
+            std::abort();
+        }
+    }
+    anamorph::PresetManager::setTestPresetDirectory ({});
+    if (! profile.cleanup())
+    {
+        std::fprintf (stderr, "Fuzz isolation cleanup failed\n");
+        std::fprintf (stderr, "FUZZ_HARNESS_FAILURE=cleanup\n");
+        std::abort();
+    }
+
+    if (held)
+    {
+        std::printf ("FUZZ_ISOLATION_CLEAN=%llu\t%s\n", (unsigned long long) sequence,
+                     witnessRoot.toRawUTF8());
+        std::fflush (stdout);
+    }
     return 0;
 }

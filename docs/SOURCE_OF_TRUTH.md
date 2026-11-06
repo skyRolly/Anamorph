@@ -42,6 +42,10 @@ contains nonshipping diagnostic sources, procedure and observed outputs. These
 records do not change Accepted latency/dependency contracts or authorize merges.
 Accepted ADRs and binding policies govern architecture; the roadmap owns current
 integration/approval status.
+The [protected redirect review](../worklogs/engineering-review/state-isolation-symlink-review.json)
+records disposable original/corrected snapshot evidence and the unsupported linked-profile boundary.
+The [State isolation Linux record](../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
+is supporting test evidence, not architectural authority or native acceptance.
 The NR-026 [Accepted ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
 records the owner's B2 architecture approval. Its implementation must preserve
 Accepted ADR-0052/0053/0071 and obtain separate PR review/merge authorization.

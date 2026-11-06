@@ -1,0 +1,56 @@
+{
+  "classification": "Local Linux regression evidence for an unmerged test-only State filesystem isolation candidate; not native DAW or release acceptance.",
+  "base_commit": "09cf18876d6ad09dabf9878fc0c719d0c49f10c7",
+  "juce_commit": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0",
+  "cmake": "4.4.4",
+  "generator": "Ninja, Release, ANAMORPH_BUILD_STANDALONE=OFF",
+  "commands": [
+    "cmake -S /workspace/Anamorph-state -B /workspace/anamorph-tools/build-state -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_JUCE=/workspace/JUCE-9.0.5 -DANAMORPH_BUILD_STANDALONE=OFF",
+    "cmake --build /workspace/anamorph-tools/build-state --target AnamorphStateTests AnamorphTests --parallel 1",
+    "xvfb-run -a ./scripts/run-tests.sh"
+  ],
+  "inputs_sha256": {
+    "CMakeLists.txt": "da5db108adf080e1a367e6fe592fcb1898f17f2a89b37ac0427676f9f51ce40a",
+    "src/PresetManager.cpp": "216859f1e717c5d42b94944cdfad99390c7d886454207e07d474609e249d0337",
+    "src/PresetManager.h": "5d81cd433319f5535984ac53c2afe8f0673576e2a717073cfae68bd4544a6593",
+    "tests/state_tests.cpp": "b26943c7825fb758204c2c2d75887bc6dceec1eedc25ad7394676e15b0251cad",
+    "tests/p1_resolution_tests.h": "81c3fbd2d6c152f1c7499d6666180f0d05ed7caf135518e0f2dc102532118f19",
+    "tests/state_filesystem.h": "a80fa03e4cdda6128dbafbe00896fa985e7bafa3f1af1c0c2a731eeb7414f3cc",
+    "tests/state_isolation_tests.py": "cca259ca33915ac9d42231aac1c459ff8228ed378535bb6068a1b31155f6d29d",
+    "scripts/run-tests.sh": "4e03247f1b173820e1c98be7913c17aebf4facedb0c64ddd86beac3ec57e0459",
+    ".github/workflows/build.yml": "9020234df255299f3ae79ed0a965d2dfc28415cb90f2b2897b37deb522965df4"
+  },
+  "binary_sha256": {
+    "AnamorphTests": "f8d3d769b47b97e5ca8ae0a50c2693044bcd65be51294e7b0f61583d075d0606",
+    "AnamorphStateTests": "3631847b3ced81cd942332930f63e72cd2d7f0215e13c3ec2a2448c21a559bcb"
+  },
+  "result": {
+    "exit": 0,
+    "dsp_checks": 945,
+    "state_checks": 13959,
+    "failures": 0,
+    "isolation_controls": "passed",
+    "scope": "fake caller homes, redirected application data, symlinked temporary parent, rejected symlinked preset/temp overlap, caller and temp sentinels, concurrent probe roots, failed setup, replaced-root cleanup, full-suite cleanup and forced termination",
+    "python_optimized_control": "python3 -O refuses to run the assertion-based controls"
+  },
+  "stdout": {
+    "path": "worklogs/engineering-review/state-isolation-linux-2026-11-05.log.gz",
+    "raw_sha256": "4719530975dec869a1d99c86a906581d3970e1878f6a04dac49a1ce40798f561",
+    "gzip_sha256": "31da04a245b3df216e4d0951e3263336a5757237eafed9e260d8e4821ddcb6fb"
+  },
+  "earlier_setup_attempt": "A run-tests.sh attempt with a symlinked build directory failed binary discovery; copying the two already-built test executables into the expected directory allowed the actual checks to run. This was an infrastructure setup failure, not a test pass.",
+  "preprocessor_control": {
+    "method": "Use the State target compile command for PresetManager.cpp as -E -P, omit ANAMORPH_FIXTURE_DIR and normalize the two checkout paths; compare the candidate against base source. Separately retain the fixture macro in the candidate command as a positive control.",
+    "candidate_equals_base_without_fixture_macro": true,
+    "normalized_equal_output_sha256": "19492175afb39c9c9770822e94dbc8b573ff447b8541c5b64e029803c2a2fd53",
+    "fixture_macro_changes_output_and_exposes_setter": true,
+    "normalized_with_fixture_sha256": "0b369b5792d8c99da5a8c73ba6e71699b04b9f5df4e5f9b8fa3521346cfba2e9",
+    "limit": "This is a source-preprocessing control using State-target flags; it is not a shipping binary identity comparison."
+  },
+  "prior_ci_failure": {
+    "head": "fe7024ddc30d1667374d285ae6f46d63ad279c67",
+    "run": "https://github.com/skyRolly/Anamorph/actions/runs/42053478101/job/127336364638",
+    "classification": "macOS Intel build failure: std::filesystem requires macOS 10.15 but the deployment target is 10.13; corrected by POSIX realpath and exclusive mkdir, pending fresh macOS CI."
+  }
+}

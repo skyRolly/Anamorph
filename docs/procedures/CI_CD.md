@@ -1,5 +1,33 @@
 # CI_CD.md
 
+The Linux `fuzz` job now runs `tests/fuzz_isolation_tests.py` on its just-built
+libFuzzer/ASan/UBSan target before the unchanged fixed-seed 90-second campaign.
+It checks per-input filesystem teardown separately from JUCE global shutdown,
+which the harness still deliberately avoids. Actual READY/CLEAN callback IDs and
+post-cleanup acknowledgements replace the old exact `-runs=2` assumption; all
+callbacks until exit are verified, with at least two required. Same-invocation
+protocol corruption controls precede the real process controls. Cleanup refusal
+remains a classified fail-closed harness abort. Lifecycle failures block the job;
+detector options/corpus/budget are preserved. TESTING §Fuzz filesystem lifecycle
+defines the controls and limits; this is not cross-platform fuzz execution.
+
+The Linux/macOS `run-tests.sh` path and the Windows State step run
+`tests/state_isolation_tests.py --full-suite` against the actual State executable,
+including the unchanged State suite; the DSP suite still runs separately. The controls exercise distinct concurrent
+test-owned roots, the real preset writer/loader, failed setup, replacement-root
+cleanup and termination. Individual direct State probes also initialise the
+test-only profile before constructing processors. The current workflow run is the
+source of execution results; this is not native DAW or release acceptance.
+The controller also requires the post-readiness EOF failure/cleanup, repeated
+same-processor preset load and omitted-return control, read-only production-path
+witness (independent CSIDL_APPDATA comparison on Windows), protected-tree snapshot (refusing protected symbolic-link/reparse redirects, with
+disposable target-change/refusal controls in that same invocation),
+and pre-construction overlap/override-bypass rejection. See TESTING §State-suite
+filesystem isolation for exact exit codes and limits; fake-HOME sentinels alone
+do not witness the Windows production directory. Full controls run on native
+Intel, arm64 and Rosetta macOS as well as Linux/Windows. Direct sanitizer/TSan
+binary launches install the fixture but do not run the Python controls.
+
 The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) separates source-bound automated
 validation from human evidence. Level-5 listening and native/manual acceptance are now **PASS —
 owner-attested for 9.0.5**, recorded 2026-11-04 (Asia/Shanghai); exact tested payload/environment
@@ -2649,3 +2677,6 @@ gesture/history, coalescing and recursive-binding validation. Normal platform,
 ASan/UBSan/Valgrind, TSan, realtime, fuzz, pluginval and static/documentation lanes
 remain at their existing strictness. A local partial GUI-module ASan experiment
 is separate evidence and never replaces those complete final-head gates.
+
+
+Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.

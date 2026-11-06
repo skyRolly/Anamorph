@@ -110,6 +110,43 @@ merge. All other PRs retain auto-merge off. Prior execution snapshots below rema
 history; no old CI pass establishes correctness of a changed head.
 
 
+## Historical fuzz review correction — 2026-11-06 (Asia/Shanghai)
+
+#220 remains stacked on corrected #219, which includes integrated #221 main at
+`b9f94d83`; histories and original evidence are preserved without force pushing.
+The callback oracle now consumes actual READY/CLEAN sequence IDs, verifying every
+callback until exit with a minimum of two, independent of exact libFuzzer budget
+semantics. Protocol corruption controls precede actual process controls.
+
+Cleanup refusal remains fail-closed abort, classified `FUZZ_HARNESS_FAILURE=cleanup`.
+A restore input cannot legitimately replace the owned root/marker; environmental
+IO/ownership failure must fail the campaign and preserve replacement data, without
+being automatically labeled product memory corruption. The replacement control
+requires that abort marker and no additional ASan corruption report. Existing
+corpus, fixed-seed campaign, detector options and JUCE teardown model are preserved.
+Current source/control changes require their own final-head execution; earlier
+6,918-input evidence below remains historical. This PR is not authorized to merge.
+
+
+## Historical State isolation review continuation — 2026-11-06 (Asia/Shanghai)
+
+#221 is merged at `b9f94d83`; its reviewed-head Build 42140914740 completed
+successfully, including macOS and sanitizer lanes (16 successful jobs, three
+intentional skips). This main was merged into #219 without rewriting history.
+The owner's current assignment approves ADR-0072 B2 architecture and separate
+implementation work; that does not integrate a product correction or authorize
+merging #219/#220. Historical B1 and NR-026 evidence is retained.
+
+Confirmed snapshot gap: unchanged symbolic-link metadata could miss target content
+changes. The controller now refuses protected redirects at the root, in ancestors
+or descendants; it does not traverse arbitrary targets. Disposable controls cover
+regular mutation, unchanged/modified/changed/broken/outside-boundary redirects.
+The original function misses the controlled linked-target mutation and fails the
+new controls. `state-isolation-symlink-review.json` records actual Linux evidence;
+Windows junction/macOS and full final-head results require this branch's CI.
+All earlier #219 results below describe their named historical heads.
+
+
 ## Historical execution register before owner approval — 2026-11-06 UTC
 
 `main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged
@@ -159,6 +196,62 @@ Read-only release refresh: version 0.10.0; annotated tag object
 `4c136881f245470577d66a7603f15b177ddcf3dc`, unpublished draft `429760301` and
 its eleven original asset IDs/sizes remain unchanged. Old draft predates current
 corrections. No release/signing/legal/commercial/distribution authorization.
+
+## Historical continuation — PR #219 review corrections (2026-11-05 UTC)
+
+## Separate fuzz isolation candidate — 2026-11-05 UTC
+
+Based on corrected PR #219 `b2e36abf`, as a separately reviewable dependent branch.
+The earlier one-input Linux trace established enumeration only, not preset writes,
+damage or an actual libFuzzer/sanitizer result. Source confirms refresh at each
+processor constructor, making caller-specific preset enumeration a reproducibility
+dependency. Selected candidate: per-input disposable storage, with processor
+destruction then checked filesystem cleanup before callback return. Reuse the
+nonshipping seam/ownership checks without reusing State's process-level JUCE
+teardown. The existing intentionally leaked JUCE initialiser stays unchanged.
+
+Alternatives: process-lifetime profile with exit cleanup risks exit-handler order;
+controller-only cleanup does not protect direct fuzz launches; preserving current
+enumeration retains caller-state dependence. Per-input storage has added IO cost,
+to be measured from actual campaign statistics rather than hidden by a larger budget.
+Dedicated actual-entry lifecycle controls cover repeat/concurrency/exit, EOF,
+replacement refusal, forced kill, setup failure and override bypass. Fresh native
+entry and CI libFuzzer/sanitizer results are required; no cross-platform fuzz or
+user-data damage claim is made. This candidate stays separate from Wheel design.
+
+## Historical continuation — PR #219 review corrections (2026-11-05 UTC)
+
+Remote `main` is `c2f8f19b87daae709c015a062a8b771f049da012`, the owner-merged
+PR #218. Its historical NR-026 files and source hashes are preserved unchanged.
+PR #219 started at `10146f35ddc954c9a3468e6540f6a4de6bc78e66`; main was merged
+into its existing branch without rewriting history. Earlier snapshots below keep
+their dated scopes. PR #219 stays open/unmerged, auto-merge disabled.
+
+The supplied review findings A–C are corrected in this branch: inventory the
+existing EOF failure/cleanup control; exercise normalized Width
+0.13→0.73→0.41→0.73 on one processor via two real preset loads and require an
+omitted-return-load control to fail before readiness; witness actual production
+JUCE paths, independently compare Windows CSIDL_APPDATA, and compare a read-only
+protected-tree snapshot before/after controls. No sentinel is written to that
+production tree. Effective fixture preset/temp paths and separate temporary-file
+creation are checked. Overlap and override-bypass controls reject setup before
+processor construction. Snapshot equality cannot prove absence of transient
+writes or reads; unreadable/unsupported protected entries fail closed.
+
+Documentation/citation and source-check validation is local; full Linux execution
+and corrected-head cross-platform/sanitizer/analysis CI must be recorded against
+the pushed head in PR #219. Earlier-head CI does not satisfy this requirement.
+The integration cannot read branch-protection configuration (HTTP 403), so no
+claim about inaccessible required-check settings is made.
+
+The owner now prefers ADR-0072 Option B and supplies an explicit surviving-processor
+gesture/Undo contract for bounded design and nonshipping validation. This is
+direction authorization, not final architecture acceptance. ADR-0072 stays Proposed;
+production NR-026/KI-035 remains unresolved. A separate review package follows
+the State corrections, then a separate fuzz-isolation disposition/PR as warranted.
+No new Wheel architecture, dependency modification, version/release operation or
+deferred native work is approved here. NR-006/010/014, NR-013 and host/installation
+acceptance remain pending in their recorded scopes.
 
 **Integration — 2026-11-04:** owner-authorized [PR #213](https://github.com/skyRolly/Anamorph/pull/213) merged as `18a51df773d8701004fe86e85df820fdf6949f2d`; its tree equals approved head `520537e849b3f42a4300d55acc652a354d360025`. ADR-0071 remains **Accepted**. `main` pins JUCE **9.0.5** at `d60b7a78030661574a615b586d9325ba7a7fa7dd`. Level-5 listening and native/manual acceptance are **PASS — owner-attested**; execution date, exact payload and environment were not supplied. No new release is authorized.
 
@@ -224,7 +317,78 @@ mechanism remains a separate cross-platform follow-up; do not assume changing
 only HOME or XDG variables isolates every platform.
 
 
-## Historical integrated baseline — 2026-11-05 UTC
+## Cross-platform State filesystem follow-up — review branch
+
+The investigation starts from combined main `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`,
+after owner-authorized #216 (`f15236d5598efb5346a962643fecd1aca778a38a`) and #217.
+ADR-0072 remains Proposed; NR-026/KI-035 and the release/native gates remain open.
+
+Source inspection found that the ordinary State executable constructs the real
+`PresetManager`, including in State 8, 10, 12, 51/52/57, 109, 117, 130/131/133,
+141 and the state-hardening fixture. It enumerates the preset directory and
+some fixtures save, load, park, rename or delete files there. Fixed names under
+JUCE's temporary directory are another collision/cleanup surface. The diagnostic
+runner's isolated Linux profile does not protect those direct or normal CI runs.
+
+Pinned JUCE Linux uses `HOME`, reads `~/.config/user-dirs.dirs`, and otherwise
+uses `~/.config`; XDG_CONFIG_HOME alone does not override that implementation.
+macOS uses `NSHomeDirectory()` and `~/Library`; Windows asks the shell for
+`CSIDL_APPDATA`. JUCE uses TMPDIR on Linux/macOS and `GetTempPath` on Windows.
+These are source findings; no native host test is implied.
+
+The review-branch correction installs a unique test-owned preset root in the
+nonshipping State target before processor construction and moves its temporary
+fixtures under that root, retaining the real save/load/list code. It checks root
+identity and marker before cleanup, fails closed if setup fails, and leaves an
+owned temporary tree on forced termination. Direct-launch controls cover real
+save/load, separate concurrent roots, fake caller-home/temp sentinels during the
+complete suite and direct probes, invalid
+setup, replaced-root cleanup and interruption. This is not a hostile-user
+sandbox; the read-only production-path check can consult user configuration.
+Linux/macOS/Windows execution is established only by completed runs on the
+actual review head. NR-026's historical guard and production event architecture
+remain unchanged. The proposed correction is unmerged pending review.
+
+The local Linux Release run completed 945 DSP and 13,959 State checks with zero
+failures, plus the full-suite and direct-launch isolation controls. The separate
+[execution record](engineering-review/state-isolation-linux-2026-11-05.json)
+identifies the input and binary hashes, toolchain and retained output. A prior
+symlinked-build invocation failed at binary discovery and is recorded as setup
+failure. macOS and Windows execution for this candidate remains CI-dependent.
+With the test fixture macro omitted, normalized preprocessing of
+`PresetManager.cpp` matched combined main; retaining the macro produced a
+different output containing the test setter. This source control is not a
+shipping-binary identity comparison.
+
+The initial review head `fe7024dd` [failed native-Intel macOS compilation](https://github.com/skyRolly/Anamorph/actions/runs/42053478101/job/127336364638):
+`std::filesystem` requires macOS 10.15 while this repository's deployment target
+is 10.13. The subsequent test-only correction uses `realpath` and exclusive
+`mkdir` on POSIX, keeping the existing deployment target. Corrected head
+`12a0129d` completed [Build & Validate](https://github.com/skyRolly/Anamorph/actions/runs/42056675277):
+all 16 selected jobs passed and three conditional jobs skipped. The State suite and
+isolation controls actually ran on Linux, Windows, and both macOS configurations;
+the failed initial run remains a failure. MSVC analysis subsequently flagged an
+ignored return value in the new isolation probe. The follow-up makes a disconnected
+probe controller fail explicitly and checks cleanup on that path. Fresh checks are
+required on the resulting head; do not attribute the earlier green CI to it.
+The separate [Linux disconnect-control record](engineering-review/state-isolation-linux-2026-11-05-disconnect.json)
+retains its own input and binary hashes and output: 945 DSP and 13,959 State
+checks passed, including the new failure-and-cleanup control. The earlier
+execution record and output remain intact.
+
+Independent follow-up: `tests/fuzz_state.cpp` constructs a processor for each
+input, and the manager constructor calls `refresh()`, which enumerates the
+resolved user preset directory. The fuzz target does not install the State
+profile. This is a source-reviewed read/dependency on caller state, not evidence
+that fuzzing writes user presets: `encodeSelection`/`decodeSelection` carry
+metadata and do not open a preset file. The harness deliberately avoids JUCE
+static teardown at libFuzzer exit, so a State-style RAII profile needs its own
+lifetime and cleanup validation. Investigate separately before claiming fuzz
+isolation; no fuzz runtime observation was collected here.
+
+<a id="historical-integrated-baseline--2026-11-05-utc"></a>
+
+## Historical baseline before #216/#217 — 2026-11-05 UTC
 
 Owner-reviewed PR #215 merged as `b0a063d2db982e3b6cdd1c403abce08098d1cfa1`;
 its tree is identical to approved head `a43c9964d21a9c6332f4511a25458280309c3a85`.

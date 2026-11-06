@@ -46,7 +46,7 @@
 
 #include <cmath>
 #include <cstdarg>
-#include <cstdio>
+#include "state_filesystem.h"
 #include <cstdlib>
 #include <atomic>
 #include <cstring>
@@ -881,10 +881,10 @@ static void testPresetSaveReloadRoundTrip()
     auto presetFile = anamorph::PresetManager::presetDirectory()
                           .getChildFile (name + anamorph::PresetManager::fileSuffix());
 
-    // The test writes into the REAL user preset folder (the production path).
-    // If a genuine user preset with the harness name exists, park it and put it
-    // back afterwards — the test must never destroy user data on a dev machine.
-    auto parked = juce::File::createTempFile (".parked");
+    // The real manager writes into this process's disposable preset directory.
+    // Retain the existing park/restore protocol for a same-named fixture within it.
+    // The caller's user preset directory is not the State target's destination.
+    auto parked = state_test_filesystem::temporaryFile (".parked");
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
 
@@ -937,7 +937,7 @@ static void testPresetSaveReloadRoundTrip()
     check (! presets.isDirty(), "reloaded preset is clean");
 
     // The OS-chooser path (loadFile) on a copy of the same file.
-    auto tempCopy = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+    auto tempCopy = state_test_filesystem::temporaryFile (anamorph::PresetManager::fileSuffix());
     if (presetFile.copyFileTo (tempCopy))
     {
         setRaw (p, "drive", 0.9f);
@@ -952,8 +952,8 @@ static void testPresetSaveReloadRoundTrip()
     checkStr (presets.currentName(), "Default", "factory preset 0 loads");
     check (! presets.isDirty(), "factory preset load is clean");
 
-    // Leave no residue in the user's real preset folder (and un-park a real
-    // user file of the same name if one was present).
+    // Remove this fixture and restore a same-named file if one was staged in
+    // the isolated directory.
     check (presetFile.deleteFile(), "test preset file removed");
     if (hadUserFile) parked.moveFileTo (presetFile);
     presets.refresh();
@@ -1087,11 +1087,11 @@ static void testDuplicateNameFactoryVsUserPreset()
     check (factoryIdx >= 0, "the shared-name factory preset ships");
     if (factoryIdx < 0) return;
 
-    // Same protocol as test 8: the harness writes into the REAL user preset folder,
-    // so park a genuine file of that name and put it back afterwards.
+    // Same protocol as test 8, within the process-owned preset directory:
+    // park a same-named fixture if one was staged and put it back afterwards.
     auto presetFile = anamorph::PresetManager::presetDirectory()
                           .getChildFile (shared + anamorph::PresetManager::fileSuffix());
-    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+    auto parked = state_test_filesystem::temporaryDirectory
                       .getChildFile ("AnamorphDupNameHarness.parked");
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
@@ -1162,7 +1162,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     // A `.anamorph` file from OUTSIDE the preset folder is on no menu row, so nothing is
     // ticked -- it must NOT fall back to the same-named factory row.
     {
-        auto outside = juce::File::getSpecialLocation (juce::File::tempDirectory)
+        auto outside = state_test_filesystem::temporaryDirectory
                            .getChildFile (shared + anamorph::PresetManager::fileSuffix());
         outside.deleteFile();
         // Asserted, not skipped: a silent `if` here would let the suite report 0 failures on a
@@ -1308,7 +1308,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
 
     auto presetFile = anamorph::PresetManager::presetDirectory()
                           .getChildFile (shared + anamorph::PresetManager::fileSuffix());
-    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+    auto parked = state_test_filesystem::temporaryDirectory
                       .getChildFile ("AnamorphIndicatorHarness.parked");
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
@@ -12730,7 +12730,7 @@ static void testAPresetFileIsOneWellFormedDocument()
     auto& pm = proc.getPresets();
     using Op = anamorph::PresetManager::OpResult;
 
-    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+    auto dir = state_test_filesystem::temporaryDirectory
                    .getChildFile ("AnamorphAdr0055Harness");
     dir.deleteRecursively();
     check (dir.createDirectory(), "harness directory available");
@@ -13911,7 +13911,7 @@ namespace
     {
         ExternalEntityProbe r;
 
-        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+        auto dir = state_test_filesystem::temporaryDirectory
                        .getChildFile ("anamorph-risk014");
         dir.createDirectory();
         auto external = dir.getChildFile ("external.dtd");
@@ -14431,7 +14431,7 @@ static void testHostStateIsBoundedBeforeTheParser()
         // G4 -- and through the real entry points the question is now moot TWICE OVER: the
         // boundary refuses the `DOCTYPE` before `parseXML` is reached at all, on top of the
         // parser having no InputSource to open anything with.
-        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+        auto dir = state_test_filesystem::temporaryDirectory
                        .getChildFile ("anamorph-risk014");
         dir.createDirectory();
         auto external = dir.getChildFile ("external.dtd");
@@ -14716,7 +14716,7 @@ static void testNonFiniteParameterInStateIsRejected()
         viaPreset.prepareToPlay (48000.0, 256);
         auto& pm = viaPreset.getPresets();
 
-        const auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+        const auto presetFile = state_test_filesystem::temporaryDirectory
                                     .getChildFile ("anamorph_nonfinite_probe.anamorph");
         presetFile.deleteFile();
 
@@ -14774,7 +14774,7 @@ static void testValuelessParamMeansDefault()
     // confused with "was never touched".
     setRaw (proc, pid::width, 0.95f);
 
-    const auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+    const auto presetFile = state_test_filesystem::temporaryDirectory
                                 .getChildFile ("anamorph_valueless_probe.anamorph");
     presetFile.deleteFile();
 
@@ -15244,7 +15244,7 @@ static void testMalformedValuesRestoreDefaults()
             // confusable with "was never touched" -- the vacuity that hid ER-STATE-08.
             rp->setValueNotifyingHost (def > 0.5f ? 0.1f : 0.9f);
 
-            const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+            const auto f = state_test_filesystem::temporaryDirectory
                                .getChildFile ("anamorph_malformed_probe.anamorph");
             f.deleteFile();
             auto tree = juce::ValueTree ("ANAMORPH");
@@ -15617,7 +15617,7 @@ static int runPresetSemanticsProbe()
             rp2->setValueNotifyingHost (def > 0.5f ? 0.1f : 0.9f);
             const float before = rp2->getValue();
 
-            const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+            const auto f = state_test_filesystem::temporaryDirectory
                                .getChildFile ("anamorph_r3_probe.anamorph");
             f.deleteFile();
             auto tree = juce::ValueTree ("ANAMORPH");
@@ -21651,9 +21651,9 @@ static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
     const juce::String name ("AnamorphHarness-D2R8");
     auto presetFile = anamorph::PresetManager::presetDirectory()
                           .getChildFile (name + anamorph::PresetManager::fileSuffix());
-    // The test writes into the REAL user preset folder (the production path), so a
-    // genuine user preset with the harness name is parked and put back afterwards.
-    auto parked = juce::File::createTempFile (".d2r8parked");
+    // A same-named fixture in the process-owned preset directory is parked and
+    // put back afterwards. Production save/load code remains under test.
+    auto parked = state_test_filesystem::temporaryFile (".d2r8parked");
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
 
@@ -21769,15 +21769,15 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     auto presetFile = anamorph::PresetManager::presetDirectory()
                           .getChildFile (name + anamorph::PresetManager::fileSuffix());
 
-    // The test writes into the REAL user preset folder (the production path), so a
-    // genuine user preset with the harness name is parked and put back afterwards.
-    // RAII, not a trailing pair of statements: an assertion that aborts the process
-    // mid-leg must not leave a user's preset parked in the temp directory.
+    // A same-named fixture in the process-owned preset directory is parked and
+    // put back afterwards. Production save/load code remains under test.
+    // RAII also restores that fixture if an early return leaves a leg.
+    // A process crash may leave only the disposable root for later cleanup.
     struct ParkedPreset
     {
         explicit ParkedPreset (juce::File f)
             : live (std::move (f)),
-              parked (juce::File::createTempFile (".d2r9parked")),
+              parked (state_test_filesystem::temporaryFile (".d2r9parked")),
               had (live.existsAsFile())
         {
             if (had) { parked.deleteFile(); live.moveFileTo (parked); }
@@ -22115,7 +22115,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
                     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q))
                         ranged.push_back (rp);
 
-        auto probe = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+        auto probe = state_test_filesystem::temporaryFile (anamorph::PresetManager::fileSuffix());
         juce::uint32 lcg = 0x5EED1234u;
         int sigDrift = 0, byteDrift = 0, markerWrong = 0, soundMoved = 0, loadsFailed = 0;
         const int points = 3000;
@@ -22382,7 +22382,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
     {
         explicit ParkedPreset (juce::File f)
             : live (std::move (f)),
-              parked (juce::File::createTempFile (".d2r10parked")),
+              parked (state_test_filesystem::temporaryFile (".d2r10parked")),
               had (live.existsAsFile())
         { if (had) { parked.deleteFile(); live.moveFileTo (parked); } }
         ~ParkedPreset() { live.deleteFile(); if (had) { parked.moveFileTo (live); parked.deleteFile(); } }
@@ -22455,7 +22455,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
                 if (! pid::isPresetExcluded (wid->paramID))
                     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
 
-        auto probe = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+        auto probe = state_test_filesystem::temporaryFile (anamorph::PresetManager::fileSuffix());
         juce::uint32 lcg = 0x5EED1234u;
         int afterLoadingMismatch = 0, savedTreeMismatch = 0, dirtyAfterLoad = 0, loadsFailed = 0;
         double worstFieldDelta = 0.0;
@@ -22701,16 +22701,16 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
     auto presetFile = anamorph::PresetManager::presetDirectory()
                           .getChildFile (name + anamorph::PresetManager::fileSuffix());
 
-    // The harness writes into the REAL user preset folder, so a developer's own preset of
-    // this name is moved aside and put back. The park path is a UNIQUE temp file, not a
-    // fixed one: a fixed shared path is what produced round 10's misdiagnosis, and this
-    // round is not adding another. (The folder itself is still shared -- docs/procedures/
-    // TESTING.md's one-instance-at-a-time rule is what covers that, and it still applies.)
+    // A same-named fixture is moved aside and restored in this process's preset root.
+    // The park path is unique and lies under the same disposable profile.
+    // A fixed shared path produced round 10's misdiagnosis; the isolation
+    // fixture also prevents concurrent State processes sharing this directory.
+    // Cleanup after an uncatchable termination remains a manual temp-root operation.
     struct ParkedPreset
     {
         explicit ParkedPreset (juce::File f)
             : live (std::move (f)),
-              parked (juce::File::createTempFile (".d2r11parked")),
+              parked (state_test_filesystem::temporaryFile (".d2r11parked")),
               had (live.existsAsFile())
         {
             if (! had) { ok = true; return; }
@@ -23067,7 +23067,7 @@ static void testARestoreIsAFixedPoint()
                 if (! pid::isPresetExcluded (wid->paramID))
                     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
 
-        auto probe = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+        auto probe = state_test_filesystem::temporaryFile (anamorph::PresetManager::fileSuffix());
         juce::uint32 lcg = 0x1234ABCDu;
         int dirtyBeforeSave = 0, dirtyAfterReopen = 0, sigMoved = 0, loadsFailed = 0;
         const int points = 300;
@@ -35335,7 +35335,7 @@ static void testADeferredPresetOperationReportsItsRealResult()
     //  BYTES, which is knowable without any plug-in state, so it is decided before anything is
     //  queued -- and the deferred half then has no failure mode left to discard.
     {
-        auto foreign = juce::File::createTempFile (".anamorph");
+        auto foreign = state_test_filesystem::temporaryFile (".anamorph");
         foreign.replaceWithText ("<NOTANAMORPH><PARAM id=\"drive\" value=\"5\"/></NOTANAMORPH>");
 
         int calls = 0; bool said = true;
@@ -35928,10 +35928,10 @@ static void testAFailedPresetWriteReportsFailure()
 {
     std::printf ("State test 117: a preset save that did not land reports failure (F4)\n");
 
-    // The preset folder is userApplicationDataDirectory/RollyTech/Anamorph/Presets
-    // (PresetManager.cpp:76-80) and on Linux that resolves through `~/.config`
-    // (juce_Files_linux.cpp:135), so the test cannot simply redirect it. It works
-    // on the real folder, under a name no human would pick, and removes it after.
+    // The State target redirects the manager to its process-owned preset root.
+    // Production still resolves userApplicationDataDirectory/RollyTech/Anamorph/Presets.
+    // This test exercises the real save path and failure reporting in that root,
+    // under its own fixture name, and removes the fixture afterwards.
     const auto dir  = anamorph::PresetManager::presetDirectory();
     const juce::String probeName ("__anamorph_r5_f4_probe__");
     const auto file = dir.getChildFile (probeName + ".anamorph");
@@ -38523,14 +38523,14 @@ static void testLevelMatchEngagesAtTheLevelItMeasured()
         expectLand ("(3) positive match: Undo of Apply", q, ev, ev + full, (double) m, true);
     }
 
-    // ---- (4)/(5) user presets. The suite writes the REAL preset folder (State test 8): unique names,
-    //      a same-named user file is parked and put back, ours are deleted before and after. ----
+    // ---- (4)/(5) user presets in the process-owned preset directory (State test 8): unique names,
+    //      a same-named fixture is parked and put back, ours are deleted before and after. ----
     const juce::String onName ("__anamorph_st130_match_on__"), offName ("__anamorph_st130_match_off__");
     const juce::File presetDir = anamorph::PresetManager::presetDirectory();
     const juce::File onFile  = presetDir.getChildFile (onName  + anamorph::PresetManager::fileSuffix());
     const juce::File offFile = presetDir.getChildFile (offName + anamorph::PresetManager::fileSuffix());
-    const juce::File parkedOn  = juce::File::createTempFile (".st130on.parked");
-    const juce::File parkedOff = juce::File::createTempFile (".st130off.parked");
+    const juce::File parkedOn  = state_test_filesystem::temporaryFile (".st130on.parked");
+    const juce::File parkedOff = state_test_filesystem::temporaryFile (".st130off.parked");
     const bool hadOn = onFile.existsAsFile(), hadOff = offFile.existsAsFile();
     if (hadOn)  { parkedOn.deleteFile();  onFile.moveFileTo (parkedOn); }
     if (hadOff) { parkedOff.deleteFile(); offFile.moveFileTo (parkedOff); }
@@ -39269,13 +39269,13 @@ static void testLevelMatchReArmsWhatAnAbInjectsAndKeepsWhatAPrepareKept()
         }
     }
 
-    // ---- user presets (the browser's path). The suite writes the REAL preset folder (State test 8) ----
+    // ---- user presets (the browser's path), under the process-owned State directory ----
     const juce::String onName ("__anamorph_st131_match_on__"), offName ("__anamorph_st131_match_off__");
     const juce::File presetDir = anamorph::PresetManager::presetDirectory();
     const juce::File onFile  = presetDir.getChildFile (onName  + anamorph::PresetManager::fileSuffix());
     const juce::File offFile = presetDir.getChildFile (offName + anamorph::PresetManager::fileSuffix());
-    const juce::File parkedOn  = juce::File::createTempFile (".st131on.parked");
-    const juce::File parkedOff = juce::File::createTempFile (".st131off.parked");
+    const juce::File parkedOn  = state_test_filesystem::temporaryFile (".st131on.parked");
+    const juce::File parkedOff = state_test_filesystem::temporaryFile (".st131off.parked");
     const bool hadOn = onFile.existsAsFile(), hadOff = offFile.existsAsFile();
     if (hadOn)  { parkedOn.deleteFile();  onFile.moveFileTo (parkedOn); }
     if (hadOff) { parkedOff.deleteFile(); offFile.moveFileTo (parkedOff); }
@@ -40615,12 +40615,12 @@ static void testLevelMatchReprepareKeepsOnlyACurrentResultThroughTheProcessor()
     const int fadeIn = addLane (baseOff, kNever), fadeCtl = addLane (baseOff, kNever), fadeTwin = addLane (base, kNever);
     const int cFade = addCmp (fadeIn, fadeTwin, E0);
 
-    // ---- the user preset (the browser's path). The suite writes the REAL preset folder (State test 8):
-    //      a unique name, a same-named user file parked and put back, ours deleted before and after ----
+    // ---- the user preset (the browser's path), under the process-owned State directory:
+    //      a unique name, a same-named fixture parked and put back, ours deleted before and after ----
     const juce::String pName ("__anamorph_st133_drive12__");
     const juce::File presetDir = anamorph::PresetManager::presetDirectory();
     const juce::File pFile  = presetDir.getChildFile (pName + anamorph::PresetManager::fileSuffix());
-    const juce::File parked = juce::File::createTempFile (".st133.parked");
+    const juce::File parked = state_test_filesystem::temporaryFile (".st133.parked");
     const bool hadFile = pFile.existsAsFile();
     if (hadFile) { parked.deleteFile(); pFile.moveFileTo (parked); }
     {
@@ -45254,7 +45254,7 @@ static void testEveryInterleavingOfABulkSwapAdoptsOnlyCompleteStates()
         // The destination's sound, written to a file the way a user preset is (the APVTS tree, one document).
         for (const auto& [id, v] : c.a) store (p, id, v);
         for (const auto& [id, v] : c.b) store (p, id, v);
-        auto file = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+        auto file = state_test_filesystem::temporaryFile (anamorph::PresetManager::fileSuffix());
         {
             const auto xml = p.getAPVTS().copyState().createXml();
             check (xml != nullptr && file.replaceWithText (xml->toString()), "State test 140 (S6f) premise: the preset file is written");
@@ -45939,7 +45939,81 @@ int main (int argc, char* argv[])
     // cannot use anyway.
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
+    // Read-only witness: no fixture, processor, directory creation or preset
+    // enumeration. On Windows this uses JUCE's actual CSIDL_APPDATA route.
+    const auto productPresets = anamorph::PresetManager::presetDirectory();
+    if (argc > 1 && std::strcmp (argv[1], "--filesystem-path-witness") == 0)
+    {
+        auto witness = std::make_unique<juce::DynamicObject>();
+        witness->setProperty ("applicationData", juce::File::getSpecialLocation (
+            juce::File::userApplicationDataDirectory).getFullPathName());
+        witness->setProperty ("productionPresets", productPresets.getFullPathName());
+        witness->setProperty ("temporaryParent", juce::File::getSpecialLocation (
+            juce::File::tempDirectory).getFullPathName());
+        std::printf ("%s\n", juce::JSON::toString (juce::var (witness.release()), true).toRawUTF8());
+        return productPresets == juce::File() ? 2 : 0;
+    }
+
+    // This runs for the full suite and every direct probe, before any processor
+    // can enumerate or mutate presets. No OS-specific HOME/APPDATA override is
+    // assumed; the real manager is given a test-owned root in this build only.
+    auto parent = juce::File::getSpecialLocation (juce::File::tempDirectory);
+    if (argc > 1 && std::strcmp (argv[1], "--test-invalid-isolation-root") == 0)
+        parent = parent.getNonexistentChildFile ("anamorph-invalid-parent", "");
+    if (argc > 1 && std::strcmp (argv[1], "--test-overlapping-isolation-root") == 0)
+        parent = productPresets;
+    state_test_filesystem::Profile profile;
+    if (! profile.initialise (parent))
+    {
+        std::fprintf (stderr, "State tests: cannot establish an isolated filesystem\n");
+        return 2;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--test-bypass-isolation-override") == 0)
+        anamorph::PresetManager::setTestPresetDirectory ({});
+    // Fail before processor construction even if the installed seam is lost.
+    if (anamorph::PresetManager::presetDirectory() != profile.directory().getChildFile ("presets"))
+    {
+        std::fprintf (stderr, "State tests: isolation override is not active\n");
+        return 2;
+    }
+
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--filesystem-isolation-probe") == 0)
+    {
+        auto [owner, proc] = heapProcessorFixture();
+        auto& presets = proc.getPresets();
+        for (const auto& entry : presets.entries())
+            if (! entry.isFactory) return 3;
+        setRaw (proc, "width", 0.73f);
+        const auto file = anamorph::PresetManager::presetDirectory().getChildFile ("__isolation_control__.anamorph");
+        if (! opCompleted (presets.saveUser ("__isolation_control__")) || ! file.existsAsFile()) return 3;
+        setRaw (proc, "width", 0.13f);
+        if (std::abs (rawOf (proc, "width") - 0.13f) > 1.0e-5f) return 3; // A
+        if (! opCompleted (presets.loadFile (file)) || std::abs (rawOf (proc, "width") - 0.73f) > 1.0e-5f) return 3;
+        setRaw (proc, "width", 0.41f); // C, on the same processor after the first B
+        if (std::abs (rawOf (proc, "width") - 0.41f) > 1.0e-5f) return 3;
+        const bool omitReturnLoad = argc > 2 && std::strcmp (argv[2], "omit-return-load") == 0;
+        if (! omitReturnLoad && ! opCompleted (presets.loadFile (file))) return 3;
+        if (std::abs (rawOf (proc, "width") - 0.73f) > 1.0e-5f)
+        {
+            std::fprintf (stderr, "State tests: isolation probe return load failed\n");
+            return 3;
+        }
+        if (state_test_filesystem::temporaryDirectory != profile.directory().getChildFile ("temp")) return 3;
+        if (! state_test_filesystem::temporaryFile (".probe").replaceWithText ("isolated temporary file")) return 3;
+        std::printf ("STATE_ISOLATION_PRESETS=%s\nSTATE_ISOLATION_TEMP=%s\n",
+                     anamorph::PresetManager::presetDirectory().getFullPathName().toRawUTF8(),
+                     state_test_filesystem::temporaryDirectory.getFullPathName().toRawUTF8());
+        std::printf ("STATE_ISOLATION_READY=%s\n", profile.directory().getFullPathName().toRawUTF8());
+        if (argc > 2 && std::strcmp (argv[2], "hold") == 0 && std::getchar() == EOF)
+        {
+            std::fprintf (stderr, "State tests: isolation probe release failed\n");
+            return 3;
+        }
+        return 0;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--knob-lifetime-probe") == 0)
     {
