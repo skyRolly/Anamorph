@@ -81,6 +81,28 @@ binds the local full-suite output to its source inputs and test binaries; it is
 supporting engineering evidence, not native acceptance.
 
 
+## NR-026 Option B nonshipping experiment
+
+The [review packet](../../worklogs/NR026_OPTION_B_REVIEW.md) inventories the separate
+B1 overlay and proposed B2 contract. It does not change ordinary State86/88 or
+claim their baseline results validate a new Wheel implementation. The retained
+49-case matrix crosses standalone/held, live/begin/value/end, signed/horizontal/
+reverse/zero/duplicate input with two attempted cycles on one surviving processor.
+Final host-route gesture/Undo/Redo/reopen witnesses distinguish parameter-listener
+redispatch; the earlier observer calibration is retained separately. Twelve ASan
+aborts and six contract failures (including the deliberate omitted-End control)
+reject B1. Text/ValueBox, full drag/modifier/parity and native hosts remain unmeasured
+for B2. Never count an equality check as Redo when no Undo step exists.
+
+Run `python3 worklogs/engineering-review/nr026-option-b/verify.py --self-test`
+to check retained source/stream/matrix identities and its three corruption controls.
+This verifies the evidence bundle, not production correctness. Executed build and
+probe snapshots are retained with their original absolute paths; reproduction uses
+a separate disposable b2e36abf checkout/build and official JUCE 9.0.5, stages the
+exact patch in a source copy, and re-aims recorded build/output paths. Do not apply
+the rejected overlay to shipping source or weaken the historical NR-026 runner's
+source guard. Every new observation needs its own identities and untouched outputs.
+
 ## SpectrumImager teardown coverage — NR-029 / KI-037
 
 The actual editor and laid-out imager are used with production hit-testing and

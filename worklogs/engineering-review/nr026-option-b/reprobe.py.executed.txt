@@ -1,0 +1,6 @@
+import json,pathlib,subprocess
+out=pathlib.Path('/workspace/scratch/optionb');m=json.loads((out/'build.json').read_text())
+for tag in ['probe','link']:
+    c=next(c for c in m['commands'] if c['tag']==tag)
+    with (out/(tag+'.recompile.log')).open('wb') as log:
+        subprocess.run(c['argv'],cwd='/workspace/build-anamorph219',stdout=log,stderr=subprocess.STDOUT,check=True)

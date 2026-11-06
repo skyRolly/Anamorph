@@ -1,0 +1,792 @@
+{
+  "prototype": "B1 - intentionally incomplete held gesture ownership; review-only",
+  "binary_sha256": "5365774ba054f5488a7b6857b5e5e96995de2a499b67c66de682603769c78688",
+  "probe_sha256": "c2d8423ce6f707b2168d43aa5a5fb986d63bede5a3208d01b07e0e87af89c1c6",
+  "profile_sha256": "3a25ef62040a5ca11634e5671d5c4168badb956e40115cdefa3f1499f565d516",
+  "results": [
+    {
+      "case": "00-standalone-live-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "positive"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/live/positive cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/live/positive cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "110ab6570f9452d0d4bdb5e90c0b5e2d0f4eb92d7200655110cb201accd22923",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "01-standalone-live-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "negative"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/live/negative cycle=0 before=0.5 after=0.470000029 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/live/negative cycle=1 before=0.470000029 after=0.440000027 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "7130c1a30a93e63b6ebba0fce1d085e8c4b1e27465e29a29442986789fb23a75",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "02-standalone-live-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "horizontal"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/live/horizontal cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/live/horizontal cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "e28c47b92243d552084214551835d941449fe1a43773dbefc2e97882c6cb0d46",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "03-standalone-live-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "reverse"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/live/reverse cycle=0 before=0.5 after=0.470000029 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/live/reverse cycle=1 before=0.470000029 after=0.440000027 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "c1fa9da1b16663921de645cd2fcf95a2cf878a7e63d36ab801f3f5b44d447d31",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "04-standalone-live-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "zero"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/live/zero cycle=0 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/live/zero cycle=1 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "31bc0810dd7e57fff98eaf59d58fc330a1d14516e13705b0bf7efd47334661a5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "05-standalone-live-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "duplicate"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/live/duplicate cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/live/duplicate cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "bbd0048f48d2d4a6cfc219a482f4937c8e490d4234ad96388d1521427643bc54",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "06-standalone-begin-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "begin",
+        "positive"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/begin/positive cycle=0 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/begin/positive cycle=1 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "079000d96b394dfe1ba3ccfc4031a67aedd086627a3825733f0130f1975acdc8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "07-standalone-begin-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "begin",
+        "negative"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/begin/negative cycle=0 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/begin/negative cycle=1 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "1212861615dafc27cf42504ef6b4959b953e3dc269059d0b80a73aef1ad19955",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "08-standalone-begin-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "begin",
+        "horizontal"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/begin/horizontal cycle=0 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/begin/horizontal cycle=1 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "56cef1b8929cd5de56b7d16341ad33a1679401c72ff9215dc1781a96101d69b2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "09-standalone-begin-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "begin",
+        "reverse"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/begin/reverse cycle=0 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/begin/reverse cycle=1 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "174e192f2088d839b890879edb1920e83c01688d50db22430551dcfe030fb79a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "10-standalone-begin-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "begin",
+        "zero"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/begin/zero cycle=0 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/begin/zero cycle=1 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "c8a9807ddf7f15fc772dfd626e74c3b02feb77744906fe11c1c6ffc1c868871a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "11-standalone-begin-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "begin",
+        "duplicate"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/begin/duplicate cycle=0 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/begin/duplicate cycle=1 before=0.5 after=0.5 begin=2 end=1 closes=1 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "b3c9a3f3595e48e0fe4c0e783b43180296d4addcb4bbc7463bcd4adf9970ce55",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "12-standalone-value-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "value",
+        "positive"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/value/positive cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/value/positive cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "5a89ec5e0d2e8b79d86fb57e333d7b6e583502d98c8f498cfac16ca005562e5c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "13-standalone-value-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "value",
+        "negative"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/value/negative cycle=0 before=0.5 after=0.470000029 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/value/negative cycle=1 before=0.470000029 after=0.440000027 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "0ea26589dc0e5943fbf5fff25135c07e9258a5137c0b85bb372a901c2c119e3e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "14-standalone-value-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "value",
+        "horizontal"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/value/horizontal cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/value/horizontal cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "eeb87dbbf39152a7f0c5d2b7c7933446b9f6f59f7e23af79575f5c9ff2aca0a1",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "15-standalone-value-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "value",
+        "reverse"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/value/reverse cycle=0 before=0.5 after=0.470000029 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/value/reverse cycle=1 before=0.470000029 after=0.440000027 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "4a8c53839fa1e889300d01d98ed3756f53d699a78624c53e16f50cbf999cdfc2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "16-standalone-value-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "value",
+        "zero"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/value/zero cycle=0 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/value/zero cycle=1 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "79886ea383c403cf26e2dba70b08abd0a40e13add93de6fecb0ab3fa33c7cde0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "17-standalone-value-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "value",
+        "duplicate"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/value/duplicate cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/value/duplicate cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=1 values=2 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "f9b3b77766e4db43fbbf1095eddf751bf11e8618b6a98374d188783f618b2e1d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "18-standalone-end-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "end",
+        "positive"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/end/positive cycle=0 before=0.5 after=0.530000031 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/end/positive cycle=1 before=0.530000031 after=0.560000002 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "2b87ecb3aaefb50edef877592dd8fbd898f913b723950382633c84d75f8eea25",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "19-standalone-end-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "end",
+        "negative"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/end/negative cycle=0 before=0.5 after=0.470000029 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/end/negative cycle=1 before=0.470000029 after=0.440000027 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "0d2e0404c4499a0d2ed9969711efd32c29f2a7d3469f71f3ce8f1da39dbd87e5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "20-standalone-end-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "end",
+        "horizontal"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/end/horizontal cycle=0 before=0.5 after=0.530000031 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/end/horizontal cycle=1 before=0.530000031 after=0.560000002 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "421f7310a983b8f8bc47e49d2a4141c94e03ed25074d45ee0dfe1e6d9ebc6fc9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "21-standalone-end-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "end",
+        "reverse"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/end/reverse cycle=0 before=0.5 after=0.470000029 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/end/reverse cycle=1 before=0.470000029 after=0.440000027 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "19c0d2ad57e54d29434d7b231db8a434a5d62087b948ec3d3f49adbe46fcad47",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "22-standalone-end-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "end",
+        "zero"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "standalone/end/zero cycle=0 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nstandalone/end/zero cycle=1 before=0.5 after=0.5 begin=0 end=0 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "c3d18f3b0426484b63f7c322f53b2229c3e04f962aba91fdf94cd74bf8805e0a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "23-standalone-end-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "end",
+        "duplicate"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/end/duplicate cycle=0 before=0.5 after=0.530000031 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/end/duplicate cycle=1 before=0.530000031 after=0.560000002 begin=1 end=2 closes=1 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "95df4d12ec6d12a5bc2c1d68298026ff2cf45c29554a772b4283711232042b88",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "24-held-live-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "live",
+        "positive"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/live/positive cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/live/positive cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "8567fee7c6e34db0ce387110e6e1d968e53b38a05fe648f0df52c91585840551",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "25-held-live-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "live",
+        "negative"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/live/negative cycle=0 before=0.5 after=0.470000029 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/live/negative cycle=1 before=0.470000029 after=0.440000027 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "6b574e1073982c8176b614c154bdf380926708424b2b51dab4fda481e8556313",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "26-held-live-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "live",
+        "horizontal"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/live/horizontal cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/live/horizontal cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "a3ff0bc2e3760e2557537cd832b051b0b91614a85688808556cdb04545e316a8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "27-held-live-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "live",
+        "reverse"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/live/reverse cycle=0 before=0.5 after=0.470000029 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/live/reverse cycle=1 before=0.470000029 after=0.440000027 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "9bfadb8300f79a66a99cd4dca6219588f96720dc85f35f0439bdae010f63bafd",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "28-held-live-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "live",
+        "zero"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/live/zero cycle=0 before=0.5 after=0.5 begin=1 end=1 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/live/zero cycle=1 before=0.5 after=0.5 begin=1 end=1 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "a398cc56af38453494c45b10209801b4b614e3184909cd38999ad5dc01316cb0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "29-held-live-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "live",
+        "duplicate"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/live/duplicate cycle=0 before=0.5 after=0.530000031 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/live/duplicate cycle=1 before=0.530000031 after=0.560000002 begin=1 end=1 closes=0 values=1 applied=1 undoable=1 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "bfc4b46df6edecda8cfaaa3fc56c925badca76c70b34f4ed6e462cb3b0983c6e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "30-held-begin-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "begin",
+        "positive"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "44b4361916e90c59569c158d810a7023fa02fb15493abff76bbe5075ceb44e16"
+    },
+    {
+      "case": "31-held-begin-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "begin",
+        "negative"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "a744566ac530718aa1cdcdbbea1d63330a9cdfe568725ea0a6ee97d8e89a84a6"
+    },
+    {
+      "case": "32-held-begin-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "begin",
+        "horizontal"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "3aafe44474cdb53e59f61c60ce7cc5ff05c897b870abf65500aef5991acdedb2"
+    },
+    {
+      "case": "33-held-begin-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "begin",
+        "reverse"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "4a24a3337a3a309b4ce754354cf93678254376bcb8a07379035a8abc6e14b3bd"
+    },
+    {
+      "case": "34-held-begin-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "begin",
+        "zero"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e383d9da5e7dbc4830898c92fbd3701afc9d70d6c71f6a3d85fabd9a6355b27f"
+    },
+    {
+      "case": "35-held-begin-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "begin",
+        "duplicate"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "3f118c937d46a3ade5b1d4db4153fd14a818cbb27d560e0c7bf3feb0b6049b65"
+    },
+    {
+      "case": "36-held-value-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "value",
+        "positive"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "held/value/positive cycle=0 before=0.5 after=0.530000031 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\nheld/value/positive cycle=1 before=0.530000031 after=0.560000002 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "2d25ac7328a4ad00fe6229a5a6ff5e2db48391779d0ee9724c2cbb4612846848",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "37-held-value-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "value",
+        "negative"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "held/value/negative cycle=0 before=0.5 after=0.470000029 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\nheld/value/negative cycle=1 before=0.470000029 after=0.440000027 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "507e3e4c0c5f664d35ccf7dbdf98e3eaefe841206b9907118ab410218072903f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "38-held-value-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "value",
+        "horizontal"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "held/value/horizontal cycle=0 before=0.5 after=0.530000031 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\nheld/value/horizontal cycle=1 before=0.530000031 after=0.560000002 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "5d250c9c0bdb53f781b1389d07156eee75f956e7c59c0de7be1a69113a42cbf3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "39-held-value-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "value",
+        "reverse"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "held/value/reverse cycle=0 before=0.5 after=0.470000029 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\nheld/value/reverse cycle=1 before=0.470000029 after=0.440000027 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "460fb373d59749ee23dfd24e6a946cc3ac7b1932af40ed221545df260030ffb5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "40-held-value-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "value",
+        "zero"
+      ],
+      "exit": 0,
+      "asan": false,
+      "stdout": "held/value/zero cycle=0 before=0.5 after=0.5 begin=1 end=1 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\nheld/value/zero cycle=1 before=0.5 after=0.5 begin=1 end=1 closes=0 values=0 applied=0 undoable=0 undo=1 redo=1 reopen=1 dispatch=0 accepted=1\n",
+      "stdout_sha256": "dde5556b8254463e44ec4f9248ff9f3e514639ed7598e85e6c311cbcbacd5e23",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "41-held-value-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "value",
+        "duplicate"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "held/value/duplicate cycle=0 before=0.5 after=0.530000031 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\nheld/value/duplicate cycle=1 before=0.530000031 after=0.560000002 begin=1 end=0 closes=1 values=2 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "20e24bf52fe2e51b5e8e59c8876ef9d1947e789ba6b41ed0c9b318deb9934c2b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "42-held-end-positive",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "end",
+        "positive"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "1399ecb394888e7afa4ca5f77c4ba0a23655b2df9e14381308f520604a5585ca"
+    },
+    {
+      "case": "43-held-end-negative",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "end",
+        "negative"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "c1b028f2848773dd2d10862bc55aa45b3d514dc9131431baebcd2f5370e03a01"
+    },
+    {
+      "case": "44-held-end-horizontal",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "end",
+        "horizontal"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "987e2160bd6f932c76f4794dd30761a09d9dec7b53cae7a558988b57fb64c5ed"
+    },
+    {
+      "case": "45-held-end-reverse",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "end",
+        "reverse"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "d98e171eb82332f244acfb039847de931358da67b007342e286d9024194d5ea9"
+    },
+    {
+      "case": "46-held-end-zero",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "end",
+        "zero"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "2b81bf2db42959cfd7e49cf28a3ec3b51607e66fc73d76be987d979cb559f347"
+    },
+    {
+      "case": "47-held-end-duplicate",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "held",
+        "end",
+        "duplicate"
+      ],
+      "exit": 1,
+      "asan": true,
+      "stdout": "",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "9769069e5ee50ce25f1e24591e55cff795b6180133f26aaf2b1df5bbc568b187"
+    },
+    {
+      "case": "48-standalone-live-positive-omit-end",
+      "argv": [
+        "xvfb-run",
+        "-a",
+        "/workspace/scratch/optionb/probe",
+        "standalone",
+        "live",
+        "positive"
+      ],
+      "exit": 1,
+      "asan": false,
+      "stdout": "standalone/live/positive cycle=0 before=0.5 after=0.530000031 begin=1 end=0 closes=0 values=1 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\nstandalone/live/positive cycle=1 before=0.530000031 after=0.560000002 begin=1 end=0 closes=0 values=1 applied=1 undoable=0 undo=0 redo=1 reopen=1 dispatch=0 accepted=0\n",
+      "stdout_sha256": "e37b5fe07c35058e2c7806e280a995f491c138077983f628f0e961399f100567",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

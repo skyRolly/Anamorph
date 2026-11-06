@@ -19048,3 +19048,19 @@ filesystem contract and platform-evidence boundaries are recorded in the roadmap
 the Linux-only NR-026 historical runner and its retained source identity stay intact.
 Index the separate local Linux execution ledger and compressed output as supporting
 evidence in the repository map, source-of-truth inventory and README navigation.
+
+## NR-026 Option B direction and rejected experiment continuation
+
+Register `worklogs/NR026_OPTION_B_REVIEW.md` and
+`worklogs/engineering-review/nr026-option-b/` as supporting developer evidence in
+README, REPOSITORY_MAP and SOURCE_OF_TRUTH. The separate manifest, exact B1 patch,
+executed sources/commands, matrix, compressed streams, earlier observer calibration
+and three corruption controls preserve source and result provenance. TESTING
+inventories actual host-route gesture/history/reopen assertions and rejected
+ASan/contract cases; no B2 text/mapping/native coverage is invented. ADR-0072 and
+ADR_INDEX record owner-preferred B with explicit lifecycle acceptance, rejected B1,
+proposed/unimplemented B2 and the remaining concrete human architecture gate.
+KNOWN_ISSUES, HANDOVER, release-readiness and roadmap retain KI-035 unresolved,
+#218 merged, #219 corrected exact-head evidence, separate #220 and protected release
+identities. Historical NR-026 ledgers/observations are untouched; native acceptance
+and commercial/release restrictions stay separate.

@@ -1,0 +1,40 @@
+import concurrent.futures, hashlib, json, pathlib, subprocess, sys
+sys.path.insert(0,'/workspace/Anamorph/scripts')
+from native_validation import command_args, output_path, with_output
+root=pathlib.Path('/workspace/Anamorph')
+build=pathlib.Path('/workspace/build-anamorph219')
+out=pathlib.Path('/workspace/scratch/optionb')
+commands=[command_args(s,False) for s in subprocess.check_output(['ninja','-C',str(build),'-t','commands','AnamorphStateTests'],text=True).splitlines()]
+compiles=[c for c in commands if '-c' in c and 'AnamorphStateTests.dir' in output_path(c)]
+def source(c): return next((pathlib.Path(x) for x in c if x.endswith('.cpp')),None)
+selected=[c for c in compiles if source(c) and (source(c).parent.name=='juce_gui_basics' or source(c).name in ('PluginEditor.cpp','PluginProcessor.cpp'))]
+state=next(c for c in compiles if source(c)==root/'tests/state_tests.cpp')
+link=next(c for c in commands if '-c' not in c and '-o' in c and 'AnamorphStateTests_artefacts/' in output_path(c))
+flags=['-O1','-g','-fsanitize=address','-fno-omit-frame-pointer']
+manifest={'base':'b2e36abf423813adb1db126192b7690354f99863','juce':'d60b7a78030661574a615b586d9325ba7a7fa7dd','compiler':subprocess.check_output(['c++','--version'],text=True).splitlines()[0],'instrumentation':'five JUCE gui TUs, PluginEditor.cpp, PluginProcessor.cpp and probe; remaining linked objects uninstrumented','commands':[]}
+repl={}
+tasks=[]
+for i,c in enumerate(selected):
+    obj=out/f'overlay-{i}.o';repl[output_path(c)]=str(obj)
+    cmd=[x.replace(str(root/'src'),str(out/'src')) for x in c]
+    tasks.append((f'overlay-{i}',with_output(cmd,obj)+flags))
+obj=out/'probe.o';repl[output_path(state)]=str(obj)
+cmd=[str(out/'probe.cpp') if x==str(root/'tests/state_tests.cpp') else x.replace(str(root/'src'),str(out/'src')) for x in state]
+tasks.append(('probe',with_output(cmd,obj)+flags))
+def run(task):
+    tag,cmd=task
+    with (out/(tag+'.compile.log')).open('wb') as f:
+        r=subprocess.run(cmd,cwd=build,stdout=f,stderr=subprocess.STDOUT)
+    return {'tag':tag,'argv':cmd,'exit':r.returncode}
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+    for result in pool.map(run,tasks):
+        manifest['commands'].append(result)
+        (out/'build.json').write_text(json.dumps(manifest,indent=2))
+        print(result['tag'],result['exit'],flush=True)
+if any(r['exit'] for r in manifest['commands']):sys.exit(1)
+cmd=with_output([repl.get(x,x) for x in link],out/'probe')+['-fsanitize=address']
+result=run(('link',cmd));manifest['commands'].append(result)
+manifest['binary_sha256']=hashlib.sha256((out/'probe').read_bytes()).hexdigest() if not result['exit'] else None
+manifest['inputs_sha256']={str(p.relative_to(out)):hashlib.sha256(p.read_bytes()).hexdigest() for p in list((out/'src').rglob('*'))+[out/'probe.cpp',out/'b1.patch'] if p.is_file()}
+(out/'build.json').write_text(json.dumps(manifest,indent=2))
+sys.exit(result['exit'])

@@ -181,6 +181,7 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 - **How-to:** [`docs/procedures/`](docs/procedures/) (build, CI/CD, testing, packaging, release)
 - **Rules (binding):** [`docs/policies/`](docs/policies/) (real-time audio, threading, DSP, compatibility, AI-agent)
 - **History & status:** [`CHANGELOG.md`](CHANGELOG.md) · [`docs/POSTMORTEMS.md`](docs/POSTMORTEMS.md) · [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) · [`docs/FUTURE_RISKS.md`](docs/FUTURE_RISKS.md)
+- **Option B review:** [bounded experiment and B2 architecture proposal](worklogs/NR026_OPTION_B_REVIEW.md) · [separate retained outcomes](worklogs/engineering-review/nr026-option-b/execution.json) (supporting evidence; architecture approval pending)
 - **Callback investigation:** [review and decisions](worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) · [JUCE 9.0.4 evidence](worklogs/engineering-review/gui-restore-lifetime.json) · [JUCE 9.0.5 NR-026 evidence](worklogs/engineering-review/nr026-juce905.json) · [reproduction package](worklogs/engineering-review/nr026-repro/README.md) · [Proposed ADR-0072](docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md) (human review pending)
 - **Test isolation:** [Linux State-suite execution evidence](worklogs/engineering-review/state-isolation-linux-2026-11-05.json) · [disconnect-control execution](worklogs/engineering-review/state-isolation-linux-2026-11-05-disconnect.json) (supporting engineering records)
 
