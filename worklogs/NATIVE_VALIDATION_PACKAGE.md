@@ -24,13 +24,19 @@ metric groups and 38 comparisons reconcile. An independent recomputation of each
 median, minimum, maximum, spread and worst observed call, plus each relative comparison,
 agrees with `analysis.json`/`summary.json`. The two summary files agree. All paired
 original/corrected no-reader records have matching input/audio hashes and latency for
-all five repeats. Raw result stdout/stderr and per-case controls were checked; zero raw
-stderr files were nonempty. This is evidence review, not an independent rerun on the
-Mac. Reproduce the independent check with
+all five repeats. For each raw row, the independent verifier checks the reported
+publication counters, non-sentinel consumption hashes, working-engine liveness,
+timing, numeric, floating-point and reader-progress controls; all raw stderr files
+were empty. These checks validate the recorded control values, not the original
+sample buffers or an independent rerun on the Mac. Reproduce the check with
 `python3 worklogs/native-validation/verify-adr0070-archive.py <archive.zip>` in a
 checkout containing the measured commit; it reads the ZIP without extracting or
 modifying it. Disposable negative controls detected a changed raw file, a changed
 timing with refreshed manifest, and a duplicated comparison with refreshed manifest.
+Synthetic archive controls also detect incorrect publication, inert consumption,
+an inert working engine and zero timings after recomputing both hashes and summaries.
+The previous PR-head verifier accepted all four repacked controls; the corrected
+verifier rejects each. These fixtures are synthetic, not new native measurements.
 The uploaded archive must be retained separately.
 
 `source.json` and `run-status.json` identify reviewed PR #225 head

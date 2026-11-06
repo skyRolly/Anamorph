@@ -353,7 +353,10 @@ For the supplied 2026-11-07 owner evidence, run the following from this checkout
 python3 worklogs/native-validation/verify-adr0070-archive.py <archive.zip>
 ```
 It checks the archive manifest, source hashes, all 400 request/raw records, paired
-outputs and independently recomputed aggregates without extracting or changing data.
+outputs, reported per-probe publication/consumption/liveness controls and independently
+recomputed aggregates without extracting or changing data. The native-validation tests
+include synthetic archives with regenerated checksums and summaries that must reject
+failed publication, inert consumption, an inert working engine and zero timings.
 The owner-approved scope and measurement limitations are in the native package.
 
 Follow the [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md) for

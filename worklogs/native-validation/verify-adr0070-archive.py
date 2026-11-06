@@ -30,6 +30,49 @@ def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT)
 
 
+def verify_probe(row, request, index):
+    """Check the probe's reported controls independently of its saved summary."""
+    for key in ("kind", "case", "variant", "rate", "block", "window", "reader", "paced", "rep", "seconds", "smoke"):
+        require(row.get(key) == request[key], f"row {index}: {key}")
+    require(row.get("schema") == 2 and bool(row.get("cpu")), f"row {index}: schema/CPU")
+    require(row.get("fp_denormals_disabled") is True and row.get("fp_round_to_nearest") is True,
+            f"row {index}: FP setup")
+    require(type(row.get("rss_available")) is bool, f"row {index}: RSS availability")
+    require(not (row["variant"] == "original" and row["reader"] != "none"),
+            f"row {index}: unsafe original reader")
+    values = row.get("block_ns")
+    require(isinstance(values, list) and all(type(x) is int and x >= 0 for x in values),
+            f"row {index}: bad timing")
+    count = (0 if row["kind"] == "memory" else request["iterations"]
+             if row["kind"].startswith("scope-") else math.ceil(row["seconds"] * row["rate"] / row["block"]))
+    denom = row["window"] if row["kind"] == "scope-read" else row["block"]
+    require(len(values) == count and row.get("samples") == count * denom,
+            f"row {index}: timing/sample count")
+    require(not values or any(values), f"row {index}: zero timing control")
+    if row["reader"] != "none":
+        require(row.get("reader_accepted", 0) > 0, f"row {index}: inactive reader")
+        if row["reader"] == "stalled":
+            require(row.get("stall_frames", 0) > 0, f"row {index}: no producer progress")
+    for key in ("audio_hash", "input_hash", "reader_hash"):
+        value = row.get(key)
+        require(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{16}", value),
+                f"row {index}: invalid {key}")
+    if row["kind"] == "engine" and row["case"] == "working":
+        require(row["audio_hash"] != row["input_hash"], f"row {index}: inert working engine")
+    if row["kind"].startswith("scope-"):
+        expected_end = 16384 + (request["iterations"] * row["block"] if row["kind"] == "scope-push" else 0)
+        require(row.get("scope_start") == 16384 and row.get("scope_end") == expected_end,
+                f"row {index}: scope publication control")
+        require(row["audio_hash"] != "cbf29ce484222325", f"row {index}: inert scope consumption")
+    for key in ("engine_bytes", "scope_bytes", "rss_before", "rss_constructed", "rss_prepared",
+                "reader_accepted", "reader_rejected", "stall_frames", "clock_min_ns", "clock_max_ns",
+                "latency_samples", "scope_start", "scope_end"):
+        value = row.get(key)
+        require(type(value) is int and value >= 0, f"row {index}: invalid {key}")
+    require(row["clock_min_ns"] <= row["clock_max_ns"], f"row {index}: reversed clock calibration")
+    require(not row["rss_available"] or row["rss_prepared"] > 0, f"row {index}: missing RSS observation")
+
+
 def main(path):
     require(hashlib.sha256(path.read_bytes()).hexdigest() == EXPECTED, "archive digest differs")
     with zipfile.ZipFile(path) as z:
@@ -64,19 +107,7 @@ def main(path):
             require(request == expected and len(lines) == 1, f"request/output mismatch: {i}")
             require(not z.read(f"raw/{i:04}.stderr.log").strip(), f"nonempty stderr: {i}")
             row = json.loads(lines[0])
-            for key in ("kind", "case", "variant", "rate", "block", "window", "reader", "paced", "rep", "seconds", "smoke"):
-                require(row[key] == request[key], f"row {i}: {key}")
-            count = (0 if row["kind"] == "memory" else request["iterations"]
-                     if row["kind"].startswith("scope-") else math.ceil(row["seconds"] * row["rate"] / row["block"]))
-            denom = row["window"] if row["kind"] == "scope-read" else row["block"]
-            require(len(row["block_ns"]) == count and row["samples"] == count * denom,
-                    f"row {i}: timing/sample count")
-            require(all(type(x) is int and x >= 0 for x in row["block_ns"]), f"row {i}: bad timing")
-            require(row["fp_denormals_disabled"] and row["fp_round_to_nearest"], f"row {i}: FP setup")
-            if row["reader"] != "none":
-                require(row["reader_accepted"] > 0, f"row {i}: inactive reader")
-                if row["reader"] == "stalled":
-                    require(row["stall_frames"] > 0, f"row {i}: no producer progress")
+            verify_probe(row, request, i)
             groups[tuple(row[k] for k in FIELDS)].append(row)
         summary = read("summary.json")
         require(summary == read("analysis.json"), "analysis and summary differ")

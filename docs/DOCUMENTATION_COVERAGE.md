@@ -8,6 +8,9 @@ roadmap, handover, acceptance and compatibility records. Preserved historical ra
 null fields and distinguished actual host/GUI coverage from modeled readers. A
 nonshipping archive verifier makes the checks reproducible; the repository map and
 TESTING procedure identify it. The reviewed evidence-update PR, final-source CI and actual tag date remain separate.
+The PR review correction independently checks every raw row's reported publication,
+consumption and liveness controls; synthetic, consistently repacked negative controls
+exercise the verifier path rather than relying on the fixed ZIP digest.
 
 ## 0.10.1 release-preparation audit — 2026-11-06 UTC
 
