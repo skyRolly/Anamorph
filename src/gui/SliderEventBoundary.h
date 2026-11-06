@@ -12,6 +12,7 @@ struct SliderEventBoundary
     virtual ~SliderEventBoundary() = default;
     virtual void enterEvent() = 0;
     virtual void leaveEvent() = 0;
+    virtual void afterValue (std::function<void()> continuation) = 0;
 };
 
 struct SliderEventSource
@@ -30,6 +31,12 @@ public:
         if (record) record->enterEvent();
     }
     ~ScopedSliderEvent() { if (record) record->leaveEvent(); }
+    bool afterValue (std::function<void()> continuation) const
+    {
+        if (! record) return false;
+        record->afterValue (std::move (continuation));
+        return true;
+    }
     ScopedSliderEvent (const ScopedSliderEvent&) = delete;
     ScopedSliderEvent& operator= (const ScopedSliderEvent&) = delete;
 private:

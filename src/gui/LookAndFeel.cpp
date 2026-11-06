@@ -1177,7 +1177,13 @@ namespace
             // What ACTUALLY moved, read back after the snap -- the anchor must not bank travel the
             // slider refused, or the next drag event applies it as a jump. ...and the drag carries
             // on from here.
-            downProp += s->valueToProportionOfLength (s->getValue()) - base;
+            const juce::Component::SafePointer<juce::Slider> parent (s);
+            const auto bank = [alive, parent, base]
+            {
+                if (auto* box = alive.getComponent(); box != nullptr && parent != nullptr)
+                    box->downProp += parent->valueToProportionOfLength (parent->getValue()) - base;
+            };
+            if (! event.afterValue (bank)) bank();
             return true;
         }
         void editorShown (juce::TextEditor* ed) override

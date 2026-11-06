@@ -262,11 +262,72 @@ namespace knob_lifetime_tests
         editor.reset();
     }
 
+    static void reentrantHostWheelAnchor()
+    {
+        for (bool valueBox : { false, true })
+        {
+            auto processor = std::make_unique<AnamorphAudioProcessor>();
+            processor->prepareToPlay (48000.0, 128);
+            std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditor());
+            auto* parameter = processor->getAPVTS().getParameter (pid::width);
+            auto* slider = widthSlider (*editor);
+            juce::Component* press = slider;
+            if (valueBox)
+                for (auto* child : slider->getChildren())
+                    if (dynamic_cast<juce::Label*> (child)) { press = child; break; }
+            struct Host final : juce::AudioProcessorListener
+            {
+                juce::RangedAudioParameter& parameter;
+                bool fired = false;
+                explicit Host (juce::RangedAudioParameter& p) : parameter (p) {}
+                void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+                void audioProcessorParameterChanged (juce::AudioProcessor*, int index, float) override
+                {
+                    if (index == parameter.getParameterIndex() && ! fired)
+                    {
+                        fired = true;
+                        anamorph::param::setValueNotifyingHost (&parameter, 0.8f);
+                    }
+                }
+            } host (*parameter);
+            processor->addListener (&host);
+            auto event = [&] (juce::Component* c, bool down, bool dragged)
+            {
+                const auto pos = c->getLocalBounds().getCentre().toFloat();
+                const auto time = juce::Time (500000);
+                return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), pos,
+                    down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                    1.0f, 0, 0, 0, 0, c, c, time, pos, time, 1, dragged);
+            };
+            press->mouseDown (event (press, true, false));
+            juce::MouseWheelDetails wheel {};
+            wheel.deltaY = 0.2f;
+            slider->mouseWheelMove (event (slider, true, false), wheel);
+            check (host.fired && std::abs (parameter->getValue() - 0.8f) < 1.0e-5f,
+                   "B2 Wheel delivered actual reentrant host feedback");
+            press->mouseDrag (event (press, true, true));
+            check (std::abs (parameter->getValue() - 0.8f) < 1.0e-5f,
+                   "B2 Knob/ValueBox drag banks the delivered value, not a pre-notification prediction");
+            press->mouseUp (event (press, false, true));
+            processor->removeListener (&host);
+            processor->pollUndoCoalesce();
+            check (processor->canUndo(), "B2 reentrant-feedback press keeps meaningful user history");
+            processor->undo();
+            check (std::abs (parameter->getValue() - 0.5f) < 1.0e-5f, "B2 feedback press Undo restores the preceding value");
+            processor->redo();
+            check (std::abs (parameter->getValue() - 0.53f) < 1.0e-5f,
+                   "B2 feedback press Redo restores the owned Wheel endpoint");
+            processor->editorBeingDeleted (editor.get());
+            editor.reset();
+        }
+    }
+
     static void test()
     {
         std::printf ("NR-026 B2: Knob, held press and text gesture/Undo lifecycle\n");
         hostFeedbackTeardown();
         repeatedLiveScroll();
+        reentrantHostWheelAnchor();
         for (bool held : { false, true })
             for (auto phase : { Phase::live, Phase::begin, Phase::value, Phase::end })
                 for (auto input : { Input::positive, Input::negative, Input::horizontal, Input::reverse,

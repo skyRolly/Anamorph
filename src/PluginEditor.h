@@ -1315,9 +1315,18 @@ private:
                 // Both banks are cheap and neither is a scale of its own: `wheelDragPx` is this
                 // same proportion in the pixels the absolute mapping reads, and the two are
                 // reconciled where they are SPENT, which is the only place that knows the mapping.
-                const double moved = juce::Slider::valueToProportionOfLength (getValue()) - base;
-                wheelDragPx  += moved * pixelsPerWholeRange();
-                velocityDebt += moved;
+                // Parameter feedback now arrives at the event boundary. Bank
+                // after that delivery, from the same live reading as before B2.
+                const auto bank = [alive, base]
+                {
+                    if (auto* knob = alive.getComponent())
+                    {
+                        const double moved = knob->juce::Slider::valueToProportionOfLength (knob->getValue()) - base;
+                        knob->wheelDragPx  += moved * knob->pixelsPerWholeRange();
+                        knob->velocityDebt += moved;
+                    }
+                };
+                if (! event.afterValue (bank)) bank();
                 return true;
             }
             return false;

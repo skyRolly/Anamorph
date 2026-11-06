@@ -44,13 +44,15 @@ public:
         if (eventDepth == 0 && processing == 0) close();
     }
 
-    void begin() { enqueue ({ Kind::begin, 0.0f }); }
-    void end()   { enqueue ({ Kind::end,   0.0f }); }
+    void begin() { enqueue ({ Kind::begin, 0.0f, {} }); }
+    void end()   { enqueue ({ Kind::end,   0.0f, {} }); }
+    void afterValue (std::function<void()> continuation) override
+    { enqueue ({ Kind::afterValue, 0.0f, std::move (continuation) }); }
 
 private:
     enum class State { idle, beginPending, open, endPending, closed };
-    enum class Kind  { begin, value, end };
-    struct Operation { Kind kind; float normalised; };
+    enum class Kind  { begin, value, end, afterValue };
+    struct Operation { Kind kind; float normalised; std::function<void()> continuation; };
 
     KnobParameterBinding (AnamorphAudioProcessor& p, juce::RangedAudioParameter& rp, juce::Slider& s)
         : processor (p), parameter (rp), slider (&s),
@@ -92,7 +94,7 @@ private:
     {
         const auto keepAlive = shared_from_this();
         if (! ignoreCallbacks)
-            enqueue ({ Kind::value, parameter.convertTo0to1 ((float) s->getValue()) });
+            enqueue ({ Kind::value, parameter.convertTo0to1 ((float) s->getValue()), {} });
     }
     void sliderDragStarted (juce::Slider*) override { begin(); }
     void sliderDragEnded (juce::Slider*) override   { end(); }
@@ -133,6 +135,7 @@ private:
         ++processing;
         if      (op.kind == Kind::begin) open();
         else if (op.kind == Kind::value) write (op.normalised);
+        else if (op.kind == Kind::afterValue) op.continuation();
         else if (gestureDepth > 0 && --gestureDepth == 0) close();
         --processing;
     }
