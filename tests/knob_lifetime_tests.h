@@ -108,7 +108,7 @@ namespace knob_lifetime_tests
             auto* press = target == Target::valueBox ? static_cast<juce::Component*> (box)
                                                      : static_cast<juce::Component*> (slider);
             if (held) press->mouseDown (event (press, true));
-            juce::MouseWheelDetails wheel;
+            juce::MouseWheelDetails wheel {};
             wheel.deltaX = input == Input::horizontal ? -0.2f : 0.0f;
             wheel.deltaY = input == Input::zero || input == Input::horizontal ? 0.0f
                          : input == Input::negative ? -0.2f
@@ -241,7 +241,7 @@ namespace knob_lifetime_tests
             const auto time = juce::Time (200000 + notch);
             const juce::MouseEvent event (juce::Desktop::getInstance().getMainMouseSource(), position, {},
                 1.0f, 0, 0, 0, 0, slider, slider, time, position, time, 1, false);
-            juce::MouseWheelDetails wheel;
+            juce::MouseWheelDetails wheel {};
             wheel.deltaY = 0.2f;
             slider->mouseWheelMove (event, wheel);
             processor->pollUndoCoalesce();
