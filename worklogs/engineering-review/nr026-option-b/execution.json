@@ -1,0 +1,35 @@
+{
+  "classification": "Nonshipping rejected B1 experiment; B2 architecture is proposed and unimplemented. No production acceptance.",
+  "recorded_at": "2026-11-06T00:11:06.406945+00:00",
+  "main": "c2f8f19b87daae709c015a062a8b771f049da012",
+  "product_base": "b2e36abf423813adb1db126192b7690354f99863",
+  "fixture_base": "046569242ed7b570c0b45636a663260cab2f3a6d",
+  "juce": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "compiler": "GCC 14.2.0 (Debian 14.2.0-19)",
+  "instrumentation": "ASan O1/g/frame pointers: 5 JUCE gui TUs, processor, editor and probe. Other linked objects uninstrumented. detect_leaks=0. Not full UBSan/host coverage.",
+  "binary_sha256": "468ea9580b9445ca57113252abca8ab87c63758c7408d515aa30e5baf25e85ef",
+  "results": {
+    "pass": 31,
+    "asan_failure": 12,
+    "contract_failure": 6
+  },
+  "source_base_sha256": "7947a00556502d169bbb94634b9513dd9da96ca63b3d4076505b9b47a1f60892",
+  "overlay_header_sha256": "41a8198b5ddb6d26bb1774b47c0a437771c759f42630351bf09b3dd060aa542f",
+  "initial_build_note": "initial-build.json binds initial compile/link commands and the earlier probe hash. reprobe.py.executed.txt recompiles/relinks the final host observer with the same command flags. matrix.json and this manifest bind the FINAL probe/binary. The old parameter-only observer is retained separately for oracle calibration, not host counts.",
+  "payloads_sha256": {
+    "build.py.executed.txt": "28c66efbe27fb22241d0349bdbcc79fb638cf77280b6310c620c346578aef13c",
+    "initial-build.json": "18bfd756ac1b2fca521c6b4a66a6415ed0d83beaae1a66ed3dc04146876bf560",
+    "matrix.json": "66b0397b732e33c38c717dfe11fdf8c918e64f4b8973eb08a490bf00f32e10f1",
+    "parameter-observer-streams.json.gz": "ab9db49967cbb9b70105845d20dc43ee1b35a3c85df9a7cdf7f8b2f834e8a0c5",
+    "parameter-observer.cpp.executed.txt": "c2d8423ce6f707b2168d43aa5a5fb986d63bede5a3208d01b07e0e87af89c1c6",
+    "parameter-observer.json": "6d545e8fa383cb5d814588b62df1df6e8d3256642532b3c308dce4a826fae4d1",
+    "prepare.py.executed.txt": "3c8834cb7af4e0ce18636df38baa9026393a4a1706aa99d4a61286945201f4a9",
+    "probe.cpp.executed.txt": "49566fc27e87302f2a5934cc302f417effd94170eef253186458e8c817a55b28",
+    "profile.h.executed.txt": "3a25ef62040a5ca11634e5671d5c4168badb956e40115cdefa3f1499f565d516",
+    "reprobe.py.executed.txt": "29a20591190cabaa8d3483300bf7410848a546fe417304086b89a55f217a6aa1",
+    "run-matrix.py.executed.txt": "5794b2e15edbc0baea7a070fae895bd58ded88626a9fad041afc885c76cb2ce2",
+    "streams.json.gz": "00629f82d5f575b9ea0e6e5593c1771e5eb7d3488fc2f52bbb6e3c7d1a1c7a95",
+    "b1.patch.gz": "a116a3d86cbd5619e3359d85065a9166b1b7708f1132a4bdd2f436ae9dc12bb6"
+  },
+  "original_patch_sha256": "8b986a36f8f01cb964da0a7912ae9e8efa7465052d3b688bb5690ea5491a3f9e"
+}

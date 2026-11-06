@@ -30,6 +30,8 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
+The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and [independent experiment manifest](../worklogs/engineering-review/nr026-option-b/execution.json) are supporting developer records. They preserve rejected B1 outcomes and propose B2; owner direction is not final architecture acceptance. ADR-0072 remains Proposed and the roadmap owns current PR/validation status.
+
 The [GUI callback review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) explains
 NR-025/026. The [historical JUCE 9.0.4 ledger](../worklogs/engineering-review/gui-restore-lifetime.json)
 and [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.json)
