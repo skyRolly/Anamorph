@@ -147,6 +147,9 @@ Current static-diagnostic evidence: [`worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY
 
 ## `tests/`, `scripts/`, `packaging/`, `.github/`
 
+The nonshipping `worklogs/native-validation/verify-adr0070-archive.py` checks the
+owner-supplied ADR-0070 archive, source hashes and raw aggregate calculations.
+
 Native validation: `tests/native_validation_bench.h` is an opt-in JSON mode of
 the existing Bench; `scripts/run-native-validation.py` / `native_validation.py`
 collect/analyze/archive paired evidence without shipping changes or installs.

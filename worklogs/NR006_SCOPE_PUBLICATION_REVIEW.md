@@ -1,5 +1,11 @@
 # NR-006 — ScopeBuffer publication review packet
 
+**2026-11-07 owner continuation (Asia/Shanghai):** the owner approves ADR-0070
+item 5 for the supplied measured native cost and attests applicable manual validation
+complete. See the [native evidence](NATIVE_VALIDATION_PACKAGE.md) for verification,
+scope and limitations. Earlier pending statements below retain their checkpoint dates;
+untested hardware and actual GUI/FFT costs are not claimed measured.
+
 ## Integrated production checkpoint — 2026-11-02 (Asia/Shanghai)
 
 Owner-approved #199/#202 merged at `303d37c`/`4255393`; the atomic implementation

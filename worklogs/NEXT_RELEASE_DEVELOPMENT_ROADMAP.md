@@ -1,6 +1,40 @@
 # Next release investigation and development roadmap
 
-## Current 0.10.1 release-preparation register — 2026-11-06 UTC
+## Current 0.10.1 owner-acceptance and release register — 2026-11-07 (Asia/Shanghai)
+
+Owner-reviewed PR #225 head `a0a48290479cac99f74c6a1391990263c82dbf29` merged as
+`1a4927636f7229ddb64748590f2bf295c6f865ec`. Its first parent is PR #226's merge
+`13a0df9934dee4d8bfb951dd696c6f2144f9460f`; the measured #225 head differs from the
+merge tree only in #226's CodeQL/MSVC action pins (4.39.1 → 4.39.2). The post-merge
+Build 42309303938, CodeQL 42309303932 and PREfast 42309303934 require their own final
+conclusions; do not equate earlier-head CI with them. PR #226's head CI passed; its
+main Build 42307791341 was cancelled when main advanced. No new PR has merge authorization.
+
+The owner explicitly attests **Level-5 PASS**, completion of all other applicable
+manual validations, and human acceptance of completed roadmap work. Individual host
+observations, manual dates and tested artifact identity are **NOT RECORDED**.
+The owner also explicitly **approves ADR-0070 item 5**, accepting the measured cost on
+the supplied physical Intel Mac and specified workloads. Archive integrity, independently
+recomputed metrics and remaining measurement boundaries are in the [native evidence](NATIVE_VALIDATION_PACKAGE.md).
+The historical raw worksheet's null fields are not altered. The acceptance does not
+claim measurements on untested hardware or actual GUI/FFT/DAW processing.
+
+| Release item | Current disposition |
+|---|---|
+| NR-006 / ADR-0070 item 5 | **APPROVED — owner-accepted measured native cost.** Integrated engineering and Level-5/manual acceptance retained; technical coverage limitations are documented, not treated as another request for that decision. |
+| NR-004/005/007/008/009/013; KI-008/018/019/020 and Level Match | Existing bounded, trigger-dependent or external dispositions remain; no new reproducible release defect is established. |
+| NR-010/014 and NR-003/015 | Owner confirms applicable manual validation is complete; unrecorded individual host/accessibility results and unmeasured broader hardware/cost cases are not fabricated. |
+| NR-018/019 | Commercial/legal and signing/provisioning decisions remain applicable to their distribution routes; they do not themselves prevent an authorized unpublished draft. |
+| NR-021 | Version 0.10.1 is integrated. This evidence/acceptance update requires its own owner review and merge; final-main CI, the actual UTC tag date and tag-triggered Release remain to be verified. |
+
+The `0.10.1` Changelog heading dated 2026-11-06 is provisional. Confirm it matches the
+actual UTC tag date; if not, correct it through a separately reviewed PR before tagging.
+No 0.10.1 tag or draft has been created. Existing 0.10.0 tag/draft/11 assets remain
+unchanged. The [compatibility record](../docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md)
+distinguishes human acceptance from automated source and artifact checks.
+
+
+## Historical 0.10.1 release-preparation register — 2026-11-06 UTC
 
 Remote main at investigation: `55bdbdea090152f635d442916f4f0547e4626600` (PR #224).
 The owner selects **0.10.1**, retains the existing 0.10.0 tag/draft unchanged, and authorizes
@@ -2160,7 +2194,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-003 | P2 | Deferred | Named host/lifecycle coverage — establish evidence | 1 / next validation cycle |
 | NR-004 | P2 | Deferred | AU teardown cause — retain occasional-failure disposition | 1 / recurrence-triggered |
 | NR-005 | P2 | Deferred | Restore/listener lock edge — investigate only on trigger | 1 / conditional maintenance |
-| NR-006 | P1 | Integrated / native execution owner-deferred | Accepted ADR-0070/#202; cost/visual/lifecycle acceptance outstanding, not waived | Later native acceptance |
+| NR-006 | P1 | Integrated / owner acceptance complete for recorded scope | ADR-0070/#202 and measured native cost approved; broader unmeasured cases remain explicit | Completed within accepted scope |
 | NR-007 | P2 | Deferred | Rosetta assertion/debugger causes — bounded recurrence work | 1 / recurrence-triggered |
 | NR-008 | P2 | Deferred | Additional state rejection — preserve acceptance pending ruling | 2 / approved hardening only |
 | NR-009 | P2 | Deferred | Multiband snapshot coherence — retain bounded model | 2 / approved architecture only |
@@ -2175,7 +2209,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-018 | P1 | Blocked | Public/commercial distribution decisions — owner/legal | 0 decision / commercial lane |
 | NR-019 | P2 | Blocked | Signing/notarization — design after owner provisioning | 3 / commercial readiness |
 | NR-020 | P3 | Deferred | Preset/onboarding/product enhancements — select scope | 3 / possible future minor |
-| NR-021 | P2 | Disposition prepared / release held | Old draft excludes integrated fixes; selected-source native acceptance and release authorization still required | 4 / selected candidate |
+| NR-021 | P2 | 0.10.1 preparation integrated; follow-up review pending | Owner acceptance supplied; evidence record, final-source CI, date and release workflow remain | Release preparation |
 | NR-022 | P2 | Merged / Integrated | Undo retention correction/regression integrated via #196 at `49958ae`; current draft assets unchanged | 1 / unreleased maintenance |
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
@@ -2266,7 +2300,9 @@ unverified; broad real-machine approval of NR-002 does not mark them passed.
 
 ### NR-006 — Complete native acceptance of the integrated ScopeBuffer correction
 
-**Execution owner-deferred this round; human acceptance remains outstanding.**
+**Current:** item 5 and applicable human validation are owner-accepted as described in the opening register. The following original execution status is historical.
+
+**Execution owner-deferred at that checkpoint; human acceptance then remained outstanding.**
 Preserve all existing requirements and tooling without requesting hardware.
 
 **Accepted and integrated:** architecture #199 merge`303d37c`, implementation
@@ -2584,7 +2620,7 @@ This baseline does not substitute for current-head analysis or current alert-sta
 
 ### NR-021 — Validate the selected candidate and prepare a release decision
 
-**Current disposition:** publication hold for unchanged draft429760301 at`4c13688`;
+**Historical disposition before the 0.10.1 owner selection:** publication hold for unchanged draft429760301 at`4c13688`;
 its bytes lack NR-022/NR-006 and NR-014 titles. Integrated main`34cc369` is a distinct source, with
 current automated gates complete and representative native performance/manual
 acceptance pending. [Release comparison](RELEASE_READINESS_0.10.0.md). Recommending

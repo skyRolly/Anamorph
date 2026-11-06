@@ -2,8 +2,9 @@
 
 ## RISK-018 — ScopeBuffer reusable plain payload can race with GUI reads
 
-- **Original exposure mitigated on main / unchanged draft and acceptance still open,
-  2026-11-02 (Asia/Shanghai); original mechanism Verified, field incidence Unverified.** The audio
+- **Original exposure mitigated on main / unchanged historical 0.10.0 draft;
+  measured native cost owner-approved 2026-11-07 (Asia/Shanghai); original mechanism
+  Verified, field incidence Unverified.** The audio
   producer release-publishes a total after copying samples; no reader-to-next-
   overwrite happens-before relation protects the reusable plain arrays. A lapped
   `readLatest` can conflict with a later push. Individual/stereo/window coherence
@@ -18,8 +19,10 @@
   Review was cleared by explicit owner approval 2026-11-01. The atomic-window
   correction/regressions are integrated on main through owner-approved #199/#202,
   final main `4255393`. Selected current-main CI, native guards and reviewed codegen
-  pass. Representative native costs/owner cost acceptance and native scope/FFT/
-  editor-lifecycle acceptance remain pending. The original plain-storage exposure
+  pass. The owner has approved ADR-0070 item 5 for the measured Intel Mac/workload
+  scope and attests applicable manual validation completed; individual host outcomes,
+  other-machine and actual GUI/FFT costs remain unrecorded or unmeasured. See the
+  [native evidence](../worklogs/NATIVE_VALIDATION_PACKAGE.md). The original plain-storage exposure
   is absent from this main implementation but still present in unchanged draft
   source `4c13688`; main validation does not retroactively fix those artifacts.
   Current 0.10.0 requires a reviewed mitigation or explicit human risk disposition

@@ -5,10 +5,11 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Pre-release checklist
 
-**0.10.1 preparation:** the owner has attested Level-5 PASS for completed development work;
-see `LEVEL5_AUDITION.md` and the candidate checklist. Final-source automated gates and
-ADR-0070's outstanding representative performance/cost condition remain separate. The
-Changelog date in the preparation PR is provisional until the actual tag date is known.
+**0.10.1 preparation:** the owner attests Level-5 and all applicable manual validation
+complete and explicitly approves ADR-0070 item 5 for the measured native cost; see
+`LEVEL5_AUDITION.md`, the candidate checklist and `worklogs/NATIVE_VALIDATION_PACKAGE.md`.
+Final-source automated gates and review/merge of this evidence record remain separate.
+The Changelog date remains provisional until the actual UTC tag date is known.
 
 1. **Version bump** — update `project(Anamorph VERSION x.y.z ...)` in `CMakeLists.txt:14`.
    The citation gate does not treat this as drift: that line is declared in

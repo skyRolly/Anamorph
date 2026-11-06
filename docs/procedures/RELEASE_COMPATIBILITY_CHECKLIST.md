@@ -1,5 +1,21 @@
 # RELEASE_COMPATIBILITY_CHECKLIST.md
 
+## 0.10.1 owner continuation — 2026-11-07 (Asia/Shanghai)
+
+PR #225 is merged as `1a4927636f7229ddb64748590f2bf295c6f865ec`, including PR #226's
+workflow-only changes. The owner directly attests Level-5 PASS, all other applicable
+manual validations complete, and applicable human acceptance of completed roadmap work.
+The owner separately approves ADR-0070 item 5's measured cost in the documented scope.
+No specific DAW, host configuration, tested artifact hash or individual observation is
+inferred; these are **NOT RECORDED**. Existing detailed host-matrix expansion is not
+invented. See the [native evidence](../../worklogs/NATIVE_VALIDATION_PACKAGE.md).
+
+Items 1–8 retain the 0.10.1 candidate assessments below. Human portions are complete by
+owner attestation within the stated scope; the prior exact-head CI passed. Post-merge
+Build 42309303938, CodeQL 42309303932 and PREfast 42309303934 must complete on the
+merged source, and the separately reviewed evidence-update PR needs its own final-head
+checks. This record is not a claim about release artifacts that do not yet exist.
+
 ## 0.10.1 candidate — preparation in progress (2026-11-06 UTC)
 
 Selected integrated baseline: `55bdbdea090152f635d442916f4f0547e4626600`, JUCE 9.0.5

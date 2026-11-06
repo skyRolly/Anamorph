@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.1 native performance acceptance — 2026-11-07 (Asia/Shanghai)
+
+Recorded the supplied archive's integrity, source/build provenance, independently
+recomputed performance and bounded owner decision in the native package, ADR-0070,
+roadmap, handover, acceptance and compatibility records. Preserved historical raw
+null fields and distinguished actual host/GUI coverage from modeled readers. A
+nonshipping archive verifier makes the checks reproducible; the repository map and
+TESTING procedure identify it. The reviewed evidence-update PR, final-source CI and actual tag date remain separate.
+
 ## 0.10.1 release-preparation audit — 2026-11-06 UTC
 
 Updated the version, release Changelog, project status, acceptance and compatibility records

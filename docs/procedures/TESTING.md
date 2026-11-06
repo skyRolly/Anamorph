@@ -347,6 +347,15 @@ requirements and worksheets remain outstanding; continue independent automated w
 
 ## Owner-native evidence collection — NR-006 / NR-010 / NR-014
 
+For the supplied 2026-11-07 owner evidence, run the following from this checkout:
+
+```sh
+python3 worklogs/native-validation/verify-adr0070-archive.py <archive.zip>
+```
+It checks the archive manifest, source hashes, all 400 request/raw records, paired
+outputs and independently recomputed aggregates without extracting or changing data.
+The owner-approved scope and measurement limitations are in the native package.
+
 Follow the [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md) for
 platform commands and the exact host/AX procedure. The existing opt-in Bench's
 `--native-json` mode retains per-call timings and consumption/latency controls;

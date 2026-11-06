@@ -1,6 +1,14 @@
 # HANDOVER.md
 
-**0.10.1 preparation (2026-11-06 UTC):** selected integrated baseline is
+**0.10.1 owner continuation (2026-11-07 Asia/Shanghai):** #225 merged as `1a492763`,
+following #226 at `13a0df99`. The owner attests Level-5 and all other applicable manual
+validations complete, completed-roadmap human acceptance, and approves ADR-0070 item 5
+for the measured Intel Mac/workload scope. [Native evidence](../worklogs/NATIVE_VALIDATION_PACKAGE.md)
+records the data and limits. The evidence-update branch still requires independent
+review/merge; final-main CI and the actual tag date must be checked before release.
+No 0.10.1 tag or draft exists; the 0.10.0 draft remains untouched.
+
+**Historical 0.10.1 preparation (2026-11-06 UTC):** selected integrated baseline is
 `55bdbdea090152f635d442916f4f0547e4626600`; JUCE remains 9.0.5. The owner attests
 Level-5 PASS and completed-roadmap human acceptance. Exact human test metadata is NOT
 RECORDED. The release-preparation branch requires CI and owner review/merge; it is not yet
@@ -10,7 +18,7 @@ cost acceptance remain outstanding. No repeat Level-5 is requested. See the
 The existing 0.10.0 tag and draft remain unchanged; publication is not authorized.
 
 
-Current handover — 2026-11-07 (Asia/Shanghai): owner-reviewed #223 merged at
+Historical handover — 2026-11-07 (Asia/Shanghai): owner-reviewed #223 merged at
 `a0b9d4bb9b1b1615ec8aec9cdbcf41318a596b24`, then #219 at
 `395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`. The latter includes #220's
 `de66265e31fdfcb10b77cc6fc1aada9033849d5f` parent merge and has the identical
