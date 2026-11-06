@@ -1,8 +1,23 @@
 # HANDOVER.md
 
-Post-integration handover — 2026-11-06 (Asia/Shanghai): #222 is merged on main at `2b256e90`, with Accepted ADR-0072 and official JUCE 9.0.5 unchanged. Actual-main component verification reproduces 945 DSP / 2,443 focused checks and all 166 lifecycle observations. KI-035 / NR-026 is resolved within that surviving-processor component scope; native DAW behavior and simultaneous processor teardown remain unmeasured.
+Current handover — 2026-11-07 (Asia/Shanghai): owner-reviewed #223 merged at
+`a0b9d4bb9b1b1615ec8aec9cdbcf41318a596b24`, then #219 at
+`395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`. The latter includes #220's
+`de66265e31fdfcb10b77cc6fc1aada9033849d5f` parent merge and has the identical
+tree to reviewed #219 `7490b296` and synchronized head `dabe1c32`. State and
+fuzz filesystem isolation and the #222 B2 correction are integrated. ADR-0072
+remains Accepted; KI-035 / NR-026 is resolved within the verified surviving-processor
+component contract. Native DAW behavior and simultaneous processor destruction
+remain unmeasured. Exact source and CI identities are in the [current register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
 
-#220 is merged at `de66265e` only into `codex/state-suite-isolation`; #219 remains open/unmerged and now contains State plus fuzz isolation. Its combination with B2 requires its own final-head validation and human review. Post-integration status/evidence changes are proposed separately in [PR #223](https://github.com/skyRolly/Anamorph/pull/223); it remains unmerged and no new PR merge is authorized. See the [current register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) and [source-bound post-merge evidence](../worklogs/engineering-review/post-b2-integration.json). Deferred native acceptance and protected version/tag/draft/eleven assets remain unchanged. Earlier handovers below are historical checkpoints.
+The existing 0.10.0 tag, unpublished draft and eleven assets remain unchanged.
+Deferred native/manual acceptance and commercial/signing decisions remain separate;
+the [candidate decision package](../worklogs/RELEASE_READINESS_0.10.0.md) requests
+no release operation. A new follow-up PR requires its own review and merge authority.
+
+Historical post-#222 handover, before #223/#219 integration — 2026-11-06 (Asia/Shanghai): #222 is merged on main at `2b256e90`, with Accepted ADR-0072 and official JUCE 9.0.5 unchanged. Actual-main component verification reproduces 945 DSP / 2,443 focused checks and all 166 lifecycle observations. KI-035 / NR-026 is resolved within that surviving-processor component scope; native DAW behavior and simultaneous processor teardown remain unmeasured.
+
+At that checkpoint #220 had merged at `de66265e` only into `codex/state-suite-isolation`; #219 remained open/unmerged and contained State plus fuzz isolation. Its combination with B2 still needed final-head validation and human review. Post-integration status/evidence changes were proposed separately in [PR #223](https://github.com/skyRolly/Anamorph/pull/223), then unmerged. See the [current register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) and [source-bound post-merge evidence](../worklogs/engineering-review/post-b2-integration.json). Deferred native acceptance and protected version/tag/draft/eleven assets remained unchanged. Earlier handovers below are historical checkpoints.
 
 Historical B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai): #221 is merged at
 `b9f94d83`, with successful reviewed-head and post-merge CI. Owner-approved ADR-0072

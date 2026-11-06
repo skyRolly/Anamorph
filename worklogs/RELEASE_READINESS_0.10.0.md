@@ -1,6 +1,51 @@
 # Release readiness — 0.10.0 (draft only)
 
-## Current B2 integration assessment — 2026-11-06 (Asia/Shanghai)
+## Candidate decision package — 2026-11-06 (Asia/Shanghai)
+
+**Recommendation:** retain the existing unpublished draft and defer selection until
+the owner chooses a candidate source and identity. Prefer a separately authorized
+candidate containing the integrated corrections; do not publish the older draft on
+the strength of current-source checks. The [current execution register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
+owns the exact integrated source and CI status.
+
+The integrated development checkpoint is `395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`:
+it contains #222, #223 and the combined #219/#220 State/fuzz isolation. Exact-head
+PR validation and the separately identified post-merge main Build, CodeQL and
+PREfast checks passed. Integration is not candidate or publication approval.
+
+The annotated `0.10.0` tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
+peels to `4c136881f245470577d66a7603f15b177ddcf3dc`. Unpublished draft `429760301`
+retains eleven assets. That source uses JUCE 9.0.4 and predates the ScopeBuffer,
+Undo, callback-lifetime, JUCE 9.0.5 and B2 changes in development. The version
+in the development tree is still 0.10.0; this does not make the two source trees
+or their artifacts interchangeable.
+
+| Option | Evidence and decision |
+|---|---|
+| Retain the existing draft | Preserves its established tag, draft and assets; it omits later corrections. Hold rather than infer permission to publish. |
+| Separately authorized replacement candidate | Can include the chosen integrated source. Requires an explicit identity and recovery plan, exact-source gates and applicable candidate-specific human acceptance before any authorized replacement. |
+| Later maintenance version, for example 0.10.1 | Can preserve the old identity and distinguish newer source. The owner must choose the version and scope; compatibility and candidate gates still apply. |
+| Defer selection | Preserves all options while the candidate, distribution and acceptance decisions remain open. This is the present disposition. |
+
+Before a candidate can be approved, record its exact source and artifacts; complete
+the applicable automated build, sanitizer, pluginval and release gates; reconcile
+parameter, state/preset/session, automation, latency and host compatibility under
+the release checklist, including the documented pre-0.9.1 plug-in identity break
+and recovery; and obtain the relevant targeted Level-5/native acceptance.
+Existing owner attestations apply only to their recorded scopes, not automatically
+to later candidate bytes. NR-006/010/014, NR-013 and broader host/install work stay
+owner-deferred; this assessment does not request a new broad testing round.
+
+For public or commercial distribution, NR-018 requires the owner's legal, licence,
+JUCE entitlement and distribution decisions. If signed/notarized distribution is
+selected, NR-019 also needs provisioned accounts, a reviewed custody/build design
+and verification of final signed bytes. Third-party notices must accompany the
+chosen distribution; reverify their inventory against the selected JUCE pin.
+A replacement could affect the existing tag, draft and assets;
+a later version would require its own metadata, tag and artifacts. All such actions,
+including publication, require a separate explicit owner decision and authorization.
+
+## Historical B2 integration assessment — 2026-11-06 (Asia/Shanghai)
 
 Owner-reviewed #222 is integrated on main at `2b256e90`; its tree equals reviewed head `5888bb65`. The original standalone/held component-lifetime defects are resolved within the verified surviving-processor scope. Fresh actual-main tests execute 945 DSP / 2,443 focused checks and 166 lifecycle observations with real gesture/history/reopening witnesses. [New evidence](engineering-review/post-b2-integration.json) and the [current register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) distinguish local verification, post-merge CI and combined-branch validation.
 
@@ -1185,7 +1230,7 @@ added to this release. No new release/tag operation is needed or performed again
 verified replacement. The original request's P1, approval, replacement and asset-validation
 requirements are complete. Publication remains a separate, unauthorized owner action.
 
-## Read-only continuation — 2026-11-06 UTC
+## Historical read-only continuation — 2026-11-06 UTC
 
 Main is `c2f8f19b` after owner-merged #218. #219 (`b2e36abf`), separate #220
 (`04656924`) and architecture review #221 remain open; exact-head CI scopes are in the roadmap. NR-026
@@ -1198,7 +1243,7 @@ original assets are unchanged by this work. Deferred NR-006/010/014, NR-013 and
 host/installation acceptance, legal/commercial/signing/distribution gates remain.
 
 
-## B2 architecture approval and implementation review — 2026-11-06 (Asia/Shanghai)
+## Historical B2 architecture approval and implementation review — 2026-11-06 (Asia/Shanghai)
 
 #221 is owner-authorized and merged at `b9f94d83` after final CI, including macOS
 and sanitizers; post-merge main Build 42152331590 passes. The owner separately

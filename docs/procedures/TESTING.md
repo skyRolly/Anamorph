@@ -9,6 +9,12 @@ supplied; historical 9.0.4 attestations retain their scope.
 
 ## State-suite filesystem isolation
 
+Owner-reviewed #219 merged at `395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`,
+including #220's fuzz isolation and #222's B2 source. Its tree equals the
+reviewed isolation tree. Synchronized-head [Build 42244850092](https://github.com/skyRolly/Anamorph/actions/runs/42244850092)
+passed the selected cross-platform, sanitizer, isolation and fuzz jobs. The
+separately triggered combined-main results are tracked in the [current register](../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+
 The State executable creates a fresh, uniquely named test-owned directory before
 constructing any processor, for the full suite and direct probe selectors. The
 nonshipping State build directs the real `PresetManager` to its `presets` child;
