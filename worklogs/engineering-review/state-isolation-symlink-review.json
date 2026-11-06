@@ -1,0 +1,12 @@
+{
+  "baseline": "b2e36abf423813adb1db126192b7690354f99863",
+  "main_merged": "b9f94d83bb7ed3fde97240ca0868ed7ac1d97512",
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "source_sha256": "9e95e08b8dbcc173f10c6f995156cf97daf1f3fff86e9d934ee232fe63fc3b43",
+  "original_unchanged_link_misses_target_mutation": true,
+  "corrected_redirect_refused": true,
+  "corrected_disposable_controls": "pass",
+  "original_function_against_new_controls": "protected redirect was accepted",
+  "scope": "Controlled Linux fixtures only; Windows junction and macOS controls require final-head CI. No user preset mutation or arbitrary target traversal."
+}

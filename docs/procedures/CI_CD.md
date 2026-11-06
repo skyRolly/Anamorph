@@ -16,7 +16,8 @@ test-only profile before constructing processors. The current workflow run is th
 source of execution results; this is not native DAW or release acceptance.
 The controller also requires the post-readiness EOF failure/cleanup, repeated
 same-processor preset load and omitted-return control, read-only production-path
-witness (independent CSIDL_APPDATA comparison on Windows), protected-tree snapshot,
+witness (independent CSIDL_APPDATA comparison on Windows), protected-tree snapshot (refusing protected symbolic-link/reparse redirects, with
+disposable target-change/refusal controls in that same invocation),
 and pre-construction overlap/override-bypass rejection. See TESTING §State-suite
 filesystem isolation for exact exit codes and limits; fake-HOME sentinels alone
 do not witness the Windows production directory. Full controls run on native

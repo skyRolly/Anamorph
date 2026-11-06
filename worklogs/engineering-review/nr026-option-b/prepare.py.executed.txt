@@ -1,0 +1,57 @@
+from pathlib import Path
+import difflib
+base=Path('/workspace/Anamorph/src/PluginEditor.h')
+s=base.read_text()
+s=s.replace('''                const double base = juce::Slider::valueToProportionOfLength (v0);
+                setValue (target, juce::sendNotificationSync);''','''                const double base = juce::Slider::valueToProportionOfLength (v0);
+                const juce::Component::SafePointer<Knob> alive (this);
+                setValue (target, juce::sendNotificationSync);
+                if (alive == nullptr) return true; // B1: deliberately no gesture repair''')
+s=s.replace('''            if (onStandaloneWheel) onStandaloneWheel();''','''            const juce::Component::SafePointer<Knob> alive (this);
+            const auto callback = onStandaloneWheel;
+            if (callback) callback();
+            if (alive == nullptr) return;''')
+s=s.replace('''            juce::Slider::mouseWheelMove (e, w);''','''            // B1 experiment only: component-independent stack gesture for standalone.
+            if (! isEnabled() || ! isScrollWheelEnabled() || getMaximum() <= getMinimum()) return;
+            if (e.eventTime == lastNotchTime) return;
+            lastNotchTime = e.eventTime;
+            const juce::Component::SafePointer<Knob> alive (this);
+            hideTextBox (false);
+            if (alive == nullptr) return;
+            const double value = getValue();
+            const double target = getNormalisableRange().snapToLegalValue (
+                snapValue (anamorph::gui::wheelTargetValue (*this, w, value), juce::Slider::notDragging));
+            if (juce::exactlyEqual (value, target)) return;
+            auto* const parameter = resetParam;
+            auto* const processor = owner;
+            if (parameter == nullptr || processor == nullptr)
+            {
+                setValue (target, juce::sendNotificationSync);
+                return;
+            }
+            struct Lease
+            {
+                juce::RangedAudioParameter* parameter;
+                ~Lease()
+                {
+                    if (std::getenv ("NR026_OMIT_END") == nullptr)
+                        anamorph::param::endChangeGesture (parameter);
+                }
+            } lease { parameter };
+            anamorph::param::beginChangeGesture (parameter);
+            if (alive == nullptr)
+            {
+                processor->noteOwnedParamRefused (parameter);
+                return;
+            }
+            const float before = parameter->getValue();
+            const float expected = parameter->convertTo0to1 ((float) target);
+            setValue (target, juce::sendNotificationSync);
+            // Only processor/parameter storage is accessed after the notification.
+            if (juce::approximatelyEqual (parameter->getValue(), expected))
+                processor->noteOwnedParamWrite (parameter, before, expected);
+            else
+                processor->noteOwnedParamRefused (parameter);''')
+assert s!=base.read_text()
+Path('/workspace/scratch/optionb/src/PluginEditor.h').write_text(s)
+Path('/workspace/scratch/optionb/b1.patch').write_text(''.join(difflib.unified_diff(base.read_text().splitlines(True),s.splitlines(True),fromfile='a/src/PluginEditor.h',tofile='b/src/PluginEditor.h')))

@@ -30,6 +30,8 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
+The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and [independent experiment manifest](../worklogs/engineering-review/nr026-option-b/execution.json) are supporting developer records. They preserve rejected B1 outcomes and propose B2; owner direction is not final architecture acceptance. ADR-0072 remains Proposed and the roadmap owns current PR/validation status.
+
 The [GUI callback review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) explains
 NR-025/026. The [historical JUCE 9.0.4 ledger](../worklogs/engineering-review/gui-restore-lifetime.json)
 and [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.json)
@@ -38,6 +40,8 @@ contains nonshipping diagnostic sources, procedure and observed outputs. These
 records do not change Accepted latency/dependency contracts or authorize merges.
 Accepted ADRs and binding policies govern architecture; the roadmap owns current
 integration/approval status.
+The [protected redirect review](../worklogs/engineering-review/state-isolation-symlink-review.json)
+records disposable original/corrected snapshot evidence and the unsupported linked-profile boundary.
 The [State isolation Linux record](../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 is supporting test evidence, not architectural authority or native acceptance.
 The NR-026 [ADR-0072 proposal](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)

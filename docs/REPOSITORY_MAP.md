@@ -13,6 +13,8 @@ NR-027's scale teardown probes retain separate original/fixed/guard-removal cont
 [`gui-scale-callback-lifetime.json`](../worklogs/engineering-review/gui-scale-callback-lifetime.json).
 Historical standing-programme rounds retain their dated source scopes.
 
+The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and `worklogs/engineering-review/nr026-option-b/` contain a rejected nonshipping B1 overlay, executed sources, source/build/result identities, compressed streams and verifier, plus the unimplemented B2 proposal. They are supporting developer evidence; ADR-0072 remains Proposed.
+
 The bounded [GUI callback lifetime review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
 explains the NR-025/026 investigation. Supporting engineering-review evidence keeps
 the [historical JUCE 9.0.4 witness](../worklogs/engineering-review/gui-restore-lifetime.json)
@@ -20,6 +22,8 @@ and the [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.
 distinct. The [NR-026 reproduction package](../worklogs/engineering-review/nr026-repro/README.md)
 contains diagnostic sources, exact commands, and retained outputs. These records
 support review; the roadmap owns current execution status.
+The [protected redirect review](../worklogs/engineering-review/state-isolation-symlink-review.json)
+records disposable original/corrected snapshot evidence and the unsupported linked-profile boundary.
 The [State isolation Linux record](../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 and its compressed output retain test-only execution evidence, not a product decision.
 The [Proposed ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)

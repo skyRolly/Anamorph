@@ -1,0 +1,18 @@
+from pathlib import Path
+import hashlib,json,os,subprocess,tempfile
+out=Path('/workspace/scratch/optionb')
+results=[]
+cases=[(mode,phase,delta,False) for mode in ['standalone','held'] for phase in ['live','begin','value','end'] for delta in ['positive','negative','horizontal','reverse','zero','duplicate']]
+cases += [('standalone','live','positive',True)]
+for i,(mode,phase,delta,omit) in enumerate(cases):
+    tag=f'{i:02d}-{mode}-{phase}-{delta}'+('-omit-end' if omit else '')
+    with tempfile.TemporaryDirectory(prefix='nr026-b1-',dir=out/'temporary') as temp:
+        root=Path(temp);home=root/'home';home.mkdir();tmp=root/'tmp';tmp.mkdir()
+        env=dict(os.environ,HOME=str(home),TMPDIR=str(tmp),ASAN_OPTIONS='detect_leaks=0:halt_on_error=1:symbolize=1')
+        if omit:env['NR026_OMIT_END']='1'
+        cmd=['xvfb-run','-a',str(out/'probe'),mode,phase,delta]
+        p=subprocess.run(cmd,env=env,capture_output=True,timeout=90)
+    (out/(tag+'.stdout')).write_bytes(p.stdout);(out/(tag+'.stderr')).write_bytes(p.stderr)
+    results.append({'case':tag,'argv':cmd,'exit':p.returncode,'asan':'AddressSanitizer' in p.stderr.decode(errors='replace'),'stdout':p.stdout.decode(errors='replace'),'stdout_sha256':hashlib.sha256(p.stdout).hexdigest(),'stderr_sha256':hashlib.sha256(p.stderr).hexdigest()})
+    print(tag,p.returncode,results[-1]['asan'],flush=True)
+(out/'matrix.json').write_text(json.dumps({'prototype':'B1 - intentionally incomplete held gesture ownership; review-only','binary_sha256':hashlib.sha256((out/'probe').read_bytes()).hexdigest(),'probe_sha256':hashlib.sha256((out/'probe.cpp').read_bytes()).hexdigest(),'profile_sha256':hashlib.sha256((out/'state_filesystem.h').read_bytes()).hexdigest(),'results':results},indent=2))

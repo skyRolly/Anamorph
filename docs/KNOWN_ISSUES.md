@@ -15,7 +15,7 @@ shipping correction. State 86/88 confirm ordinary wheel/Undo behavior but do not
 cover editor destruction during notification. No native incidence rate is known.
 [Source comparison, evidence and alternatives](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md).
 The integrated [ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
-is Proposed; it does not authorize a production fix or accept the release risk.
+is Proposed. The owner prefers Option B; its bounded B1 experiment fails held gesture/Undo and press-boundary acceptance. The [B2 review proposal](../worklogs/NR026_OPTION_B_REVIEW.md) remains unimplemented and architecture-gated; production stays unfixed and no release risk is accepted.
 
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is

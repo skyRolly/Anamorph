@@ -1,5 +1,76 @@
 # Next release investigation and development roadmap
 
+## State isolation review continuation — 2026-11-06 (Asia/Shanghai)
+
+#221 is merged at `b9f94d83`; its reviewed-head Build 42140914740 completed
+successfully, including macOS and sanitizer lanes (16 successful jobs, three
+intentional skips). This main was merged into #219 without rewriting history.
+The owner's current assignment approves ADR-0072 B2 architecture and separate
+implementation work; that does not integrate a product correction or authorize
+merging #219/#220. Historical B1 and NR-026 evidence is retained.
+
+Confirmed snapshot gap: unchanged symbolic-link metadata could miss target content
+changes. The controller now refuses protected redirects at the root, in ancestors
+or descendants; it does not traverse arbitrary targets. Disposable controls cover
+regular mutation, unchanged/modified/changed/broken/outside-boundary redirects.
+The original function misses the controlled linked-target mutation and fails the
+new controls. `state-isolation-symlink-review.json` records actual Linux evidence;
+Windows junction/macOS and full final-head results require this branch's CI.
+All earlier #219 results below describe their named historical heads.
+
+
+## Current execution register — 2026-11-06 UTC
+
+`main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged
+#218. Historical NR-026 source ledgers remain byte-for-byte intact. The dated
+snapshots below retain their original contexts; this section owns current status.
+
+| Work item | Current review state | Actual evidence / remaining boundary |
+|---|---|---|
+| #219 State filesystem isolation | Open, unmerged; head `b2e36abf423813adb1db126192b7690354f99863`; main merged into existing branch without history rewriting; auto-merge off | A: EOF failure/cleanup documented; B: same-processor A→B→C→B plus omitted-return failure; C: actual JUCE path witness, independent Windows CSIDL_APPDATA, protected snapshot and overlap/override-bypass rejection. Final-head Build 42117181553 and merge check 42117188690 pass; CodeQL 42117188656, MSVC 42117188626 and Dependency Review 42117188774 pass. |
+| #220 fuzz filesystem isolation | Separate open review PR, based on unmerged #219; head `046569242ed7b570c0b45636a663260cab2f3a6d`; auto-merge off | Per-input profile, processor destruction then checked cleanup, original JUCE shutdown avoidance retained. Build 42118522365, merge check 42118625016, CodeQL 42132849955 and MSVC/PREfast 42132855537 pass at this head. Actual Clang/libFuzzer/ASan/UBSan lifecycle controls pass; fixed-seed campaign executes 6,918 inputs / 91 seconds, 76/sec, peak RSS 436 MB. Dependency Review does not trigger for this stacked base (main-only event), and cannot be manually dispatched. |
+| NR-026 / KI-035 / ADR-0072 | Unfixed in production. Preferred B direction authorized; B1 rejected, B2 proposed/unimplemented, human review pending | [Concrete package](NR026_OPTION_B_REVIEW.md): exact B1 overlay, 49-case host-observer matrix (31 pass, 12 ASan failure, six contract failure including omit-End), separate source/build/result identities and B2 stable gesture-owner proposal. D remains production disposition; ADR stays Proposed. No Option C risk acceptance. |
+| #221 NR-026 architecture review | Open, unmerged; based on current main | Separate review-only ADR-0072, B1 evidence and B2 design package. No shipping Wheel change or JUCE pin change. Consult the PR check rollup for its final pushed head; the human architecture decision remains pending. |
+
+#219 actual full controls run on Linux (945 DSP / 13,959 State), Windows (941 /
+13,794), native Intel macOS (941 / 13,804), arm64 macOS and x86-64 Rosetta (941 /
+13,804 each). Windows witnesses `C:\Users\runneradmin\AppData\Roaming` and its
+production `RollyTech/Anamorph/Presets` child, independently compared with the shell
+API; no actual-preset sentinel is written. Protected snapshot equality checks
+persistent changes, not transient writes/reads/atime or hostile races. Native CI
+passes do not establish arbitrary user-profile layouts; unreadable/unsupported
+protected entries refuse the controller. macOS deployment target stays 10.13.
+
+#219 ASan/UBSan, TSan, realtime, LTO, fuzz, pluginval, source and documentation
+lanes pass in configured scopes. Valgrind reports zero errors for both suites,
+with leak checking disabled (934 DSP / 13,959 State in that lane). Build selects
+16 successful jobs and three intentional conditional/routing skips. No prior-head
+pass is substituted. Local GCC14 run also completes 945/13,959 with the corrected
+controls; State binary SHA-256 `4bee71166c9f809e930153646e49c2a1825257f8b907f6959bafd9cac72e61da`.
+Branch-protection settings are inaccessible (403), not inferred from check status.
+
+Independent engineering found an oracle hazard: parameter-listener removal during
+JUCE's backwards array dispatch can repeat the test observer. B1 retains its
+initial evidence and uses the surviving host-route observer for final gesture
+counts. Missing held End/Undo remains a real rejection under that oracle. Press
+begin/end teardown also reaches unguarded framework continuations in B1's unchanged
+mouse paths. These inform B2's review boundary, not a new broad GUI rewrite.
+
+Next independent tasks: owner review of B2's stable
+record/binding/synchronous staging boundary, then a separate exact implementation
+and complete parity matrix if approved. No additional unsupported production
+finding is manufactured. Deferred NR-006 representative performance/visual,
+NR-010 physical budgets, NR-014 native usability, NR-013 pinned REAPER/OS and
+host/installation matrices remain deferred. No repeat hardware/DAW request.
+
+Read-only release refresh: version 0.10.0; annotated tag object
+`1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`, source
+`4c136881f245470577d66a7603f15b177ddcf3dc`, unpublished draft `429760301` and
+its eleven original asset IDs/sizes remain unchanged. Old draft predates current
+corrections. No release/signing/legal/commercial/distribution authorization.
+
+## Historical continuation — PR #219 review corrections (2026-11-05 UTC)
+
 ## Separate fuzz isolation candidate — 2026-11-05 UTC
 
 Based on corrected PR #219 `b2e36abf`, as a separately reviewable dependent branch.
@@ -1858,7 +1929,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
 | NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | State157 follow-up integrated by #211; actual main validation recorded above |
-| NR-026 | P1 | Confirmed on JUCE 9.0.5; Architecture Review pending | Standalone JUCE wheel-scope UAF plus held-wheel editor-lifetime witness; no production patch selected | Owner selects bounded dependency repair, product-owned path or risk hold before gated implementation |
+| NR-026 | P1 | Confirmed; owner prefers Option B; Architecture Review pending | B1 experiment rejected by held gesture/Undo and press-boundary failures; B2 stable-record design proposed/unimplemented | Review B2 binding/staging boundary, then exact implementation/parity evidence; D remains production hold |
 | NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and sanitizer controls | Native incidence unverified |
 | NR-028 | P1 | Completed / integrated #211 / c35a9d6b | Same-processor A→B→C→B parameter-trigger adoption cycle; guards already integrated #209 | Actual combined-main validation and preserved negative controls |
 | NR-029 | P1 | Completed / integrated #212 / 82c98e45 / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; original/fixed controls retained | Native incidence and broader acceptance remain unverified |
