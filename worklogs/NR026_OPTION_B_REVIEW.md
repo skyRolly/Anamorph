@@ -1,6 +1,6 @@
 # NR-026 Option B continuation and review gate
 
-Current decision — 2026-11-06 (Asia/Shanghai): the owner explicitly approves the
+Historical approval checkpoint — 2026-11-06 (Asia/Shanghai): the owner explicitly approves the
 B2 architecture and authorizes implementation. ADR-0072 is Accepted for that scope;
 PR #221 is integrated at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512` after reviewed-head
 CI completed. This does not accept an implementation, authorize another merge or
@@ -303,3 +303,10 @@ It changes no dependency pin, registry or state format. Reverting brings back th
 known NR-026 defects; it is not a release risk disposition. Option A is not required
 by the measured B2 implementation; a future demonstrated architecture conflict
 would return as a specific revision request.
+
+
+## Owner-authorized B2 integration and scoped closure — 2026-11-06 (Asia/Shanghai)
+
+The owner completed implementation review and explicitly authorized #222. Reviewed head `5888bb6578aa2ead92cc8b862da6a2349190a407` merged on main as `2b256e90adab35077fa5906419743ee6a69c606e`; the trees match. Accepted ADR-0072 remains the architecture decision. A fresh actual-main build reproduces 945 DSP / 2,443 focused checks and 166 lifecycle observations, with exact host-route gestures, surviving parameter endpoints, real Undo/Redo and reopening. The [separate post-integration record](engineering-review/post-b2-integration.json) preserves its own source/build/stream identities.
+
+The confirmed component defects are resolved within that surviving-processor scope. Native DAW behavior and simultaneous processor destruction are not covered; neither architecture approval nor development integration approves a release. Seven original fault controls and all original/B1 failed records remain unchanged. #220 was separately authorized only into the unmerged #219 parent at `de66265e`; State/fuzz isolation is not main integration. Combined-source CI and any new record PR remain separately reviewable. Earlier package statuses above retain their historical dates and identities.

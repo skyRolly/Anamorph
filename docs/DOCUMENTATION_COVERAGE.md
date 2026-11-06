@@ -41,7 +41,7 @@ optional macOS review jobs were intentionally skipped. Attempts 1, 3, 4 and 5
 concluded failure and attempt 2 was cancelled, with one or more macOS jobs
 cancelled before runner acquisition; the capacity annotations and historical
 attempts remain visible in the run. No selected job remains unresolved in
-attempt 6. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md#current-integrated-baseline--2026-11-05-utc)
+attempt 6. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md#historical-integrated-baseline--2026-11-05-utc)
 separately identifies the successful #213 post-merge Build, CodeQL and MSVC runs.
 Owner attestation limits and deferred native/manual gates remain separate from
 automated CI. The existing draft remains unpublished; no release is authorized.
@@ -1671,7 +1671,7 @@ every entry on every run, so retiring one drops that assertion.
   `isBusesLayoutSupported`, `updateLatency`, `applyAutoGain`, "Nothing is ever drawn on the audio
   thread". Each retired entry's expectation was that same symbol, so the identical claim is now
   asserted by the permanent mechanism instead of the one-shot one, base-independently, on every run.
-* **Three do lose their only content check.** The `tests/state_tests.cpp:6-11` anchors in
+* **Three do lose their only content check.** The [pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11) anchors in
   `POSTMORTEMS.md`, `procedures/TESTING.md` and ADR-0025 are not in `GLOSS_CHECKED_DOCS`, and opting
   those documents in would buy nothing today: measured, all three carry **zero** glossed citations,
   because those references are written as prose rather than as a parenthetical after the anchor.
@@ -19089,3 +19089,12 @@ correction scope and outstanding integration; KI-035 stays open on main. The
 current roadmap records #221 integration, explicit owner architecture approval,
 corrected #219/#220 heads, local/fault-control results and separate final-head CI.
 The existing native/manual and release restrictions remain independent.
+
+
+## Post-B2 development integration and issue lifecycle
+
+The single current roadmap register, NR-026 work-item index/detail, KI-035 removal from active findings and INC-026 now distinguish actual #222 main integration from #220's parent-only merge and open combined #219 review. Historical dates, hashes, rejected B1 outcomes and original failure ledgers are retained. ADR-0072 remains Accepted; its append-only integration note records separate owner implementation review/merge authority. Handover, release assessment, TESTING, the Option B record and the repository documentation navigation are reconciled.
+
+`worklogs/engineering-review/post-b2-integration.json` and `post-b2-main-streams.json.gz` are supporting engineering evidence: fresh actual-main source/build identity, 945 DSP / 2,443 focused assertions, 166 lifecycle observations, actual path witnesses and wrong-owned-profile rejection. They do not claim full sanitizer/native/host coverage or infer CI outcomes. The source header's four-line capability correction changes no executable statement or line coordinate. Post-merge main and final combined/new-PR checks retain their own identities; no earlier-head pass is substituted. Version/JUCE/tag/draft/eleven-asset and deferred native boundaries are unchanged.
+
+The State-header correction also re-examines its nine evidence citations. Historical INC/ADR/audit/gap disclosures now link the immutable pre-correction `2b256e90` header; current capability notes link the [updated State header](../tests/state_tests.cpp) and the actual B2 event/history surface. ADR-0025 Decisions 1–5 remain unchanged. Its no-surface exception is not used for B2 or automatically extended to other component paths. Remaining exact native/modal/vblank/visual behaviors are unverified, rather than claimed impossible to test or automatically closed. No checker exemption is introduced.

@@ -54,6 +54,12 @@ ASan. The unmodified probe passes after those controls. Run the B2 bundle's
 `verify.py --self-test` for payload integrity and three corruption controls. These
 local counts do not replace full final-head CI or native/manual acceptance.
 
+### Post-integration source verification
+
+#222 integrated the correction at main `2b256e90`. A fresh build of that exact source executes the existing focused probe (2,443 assertions, all 166 lifecycle observations) and 945 DSP checks. The [execution record](../../worklogs/engineering-review/post-b2-integration.json) retains compiler/link commands, binary/source hashes, actual read-only JUCE/PresetManager path witnesses and compressed raw streams. A different disposable profile is rejected by the same path verification before test launch; no live-user preset sentinel is written. This is a Linux GCC14 component run, not ASan or native host evidence. Post-merge main and combined-isolation CI have separate source/run identities.
+
+The State source header now describes direct component events and selected peer/popup diagnostic modes accurately. This four-line comment update changes no runtime statement or line coordinates. KI-035 closure is limited to the executed editor-only contract; processor loss during callbacks, native focus/usability and DAW incidence remain unmeasured.
+
 ## NR-026 Option B nonshipping experiment
 
 The [review packet](../../worklogs/NR026_OPTION_B_REVIEW.md) inventories the separate
@@ -6544,6 +6550,10 @@ exactly when the raw SARIF is most worth keeping.
 
 ## Gaps in the automated coverage (known, deliberate)
 
+**Current surface reconciliation — 2026-11-06 (Asia/Shanghai).** The harness now directly delivers component mouse/Wheel/drag/key and TextEditor events (`tests/state_tests.cpp:7-10`); the B2 tests execute real value/gesture/history/reopening paths (`tests/knob_lifetime_tests.h:125-179`). State154–158 and the selected displayed popup probe also provide specific callback surfaces. A blanket claim that all GUI interaction or lifetime has no automated surface is obsolete; B2 uses ordinary regression tests, not ADR-0025's exception.
+
+The older four-part disclosures below are retained as **historical absence rationales**, with their old header references bound to the pre-correction source snapshot. They do not justify omitting a test for a path today's harness reaches. Exact native modal-pointer/focus delivery, vblank arrival, visual/menu-rendering and hover contracts are not all established by the newer component tests. Their remaining coverage must be assessed per behavior before any future exception is invoked; neither the header update nor B2 marks those gaps closed. The original human visual attestations retain only their recorded scope.
+
 Things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist. One entry — automated AU validation — is now **closed** and kept struck through
 rather than deleted, because a gap that was real and is now covered is worth being able to find.
@@ -6566,7 +6576,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   1. *Why no reliable test exists.* The promotion lives in `SpectrumImager::tick (double)`, which is
      private (`src/gui/SpectrumImager.h:66`) and is driven only by `juce::VBlankAttachment`
      (`FrameClock::start`, `src/gui/FrameClock.h:44-58`). The suite constructs the editor but never
-     shows it (`tests/state_tests.cpp:6-11`: "no peer, no message loop, no interaction"), and a
+     shows it ([pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11): "no peer, no message loop, no interaction"), and a
      component with no peer receives no vblank, so nothing in the harness can make a tick happen. No
      existing test drives one. **Corrected 2026-09-08 (ADR-0044's round), because the original
      disclosure understated the depth:** the vblank is not the only obstacle. `tick` opens with
@@ -6601,7 +6611,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:
 
   1. *Why no reliable test exists.* The Level-2/3 surface is two console targets
-     (`scripts/run-tests.sh`), and `tests/state_tests.cpp:6-11` records that it constructs and
+     (`scripts/run-tests.sh`), and [pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11) records that it constructs and
      destroys the editor but never SHOWS it — "no peer, no message loop, no interaction". A defect
      that exists only while a
      **modal child is open and its owner is destroyed** — the 0.9.2 preset drop-down crash,
@@ -6644,7 +6654,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      vblank tick plus pointer motion over a settled spectrum for the first, JUCE's modal machinery
      delivering a real mouse-down for the shield, and a rasteriser plus a font for the menu-width and
      disabled-item rendering. The editor is constructed but never shown
-     (`tests/state_tests.cpp:6-11`), and neither suite has a pointer or a display.
+     ([pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11)), and neither suite has a pointer or a display.
   2. *What replaced it.* Every root cause was traced to specific lines — our own S2 repaint gate for
      the first, `juce_Component.cpp:2507-2544` and `juce_ModalComponentManager.cpp:81-89` in the
      pinned tree for the shield, and the mismatch between `getIdealPopupMenuItemSize` and
@@ -6683,7 +6693,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   written fresh per ADR-0025 §3 rather than deferred to the entry above:
 
   1. *Why no reliable regression test exists.* It would have to live on the Level-2/3 surface, and
-     that surface has no pointer and nothing on screen: `tests/state_tests.cpp:6-11` records that it
+     that surface has no pointer and nothing on screen: [pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11) records that it
      "constructs and destroys the editor but never shows it", and the defect is
      a property of `Component::getMouseXYRelative()` — `getLocalPoint (nullptr,
      Desktop::getMousePositionFloat())` (`juce_Component.cpp:3233-3236`) — so reproducing it needs a

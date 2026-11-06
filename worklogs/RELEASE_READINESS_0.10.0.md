@@ -1,6 +1,12 @@
 # Release readiness — 0.10.0 (draft only)
 
-## B2 implementation review — 2026-11-06 (Asia/Shanghai)
+## Current B2 integration assessment — 2026-11-06 (Asia/Shanghai)
+
+Owner-reviewed #222 is integrated on main at `2b256e90`; its tree equals reviewed head `5888bb65`. The original standalone/held component-lifetime defects are resolved within the verified surviving-processor scope. Fresh actual-main tests execute 945 DSP / 2,443 focused checks and 166 lifecycle observations with real gesture/history/reopening witnesses. [New evidence](engineering-review/post-b2-integration.json) and the [current register](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) distinguish local verification, post-merge CI and combined-branch validation.
+
+#220 merged only into the unmerged #219 branch at `de66265e`; neither isolation implementation is on main. The parent now requires review of the combined State/fuzz/B2 source. No #219 or newly created PR merge is authorized. The existing 0.10.0 tag/draft/assets predate B2; current-source tests do not validate or replace them. Deferred NR-006/010/014, NR-013, host/install, native candidate, signing and legal/commercial gates remain in force. The assessments below retain their original checkpoint context.
+
+## Historical B2 implementation review — 2026-11-06 (Asia/Shanghai)
 
 Authorized #221 is integrated at `b9f94d83`, with successful reviewed-head and
 post-merge CI. Owner-approved ADR-0072 B2 is implemented separately in
@@ -32,7 +38,7 @@ The API digest for each of the 11 assets still matches the recorded inventory;
 the combined-main Build, CodeQL and MSVC runs passed on `09cf1887`, within their
 automated scope. No draft artifact was rebuilt or replaced.
 
-## Current source and candidate assessment — 2026-11-05 UTC
+## Historical source and candidate assessment — 2026-11-05 UTC
 
 Read-only remote inspection: annotated tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`
 peels to `4c136881f245470577d66a7603f15b177ddcf3dc`. Draft release ID
@@ -64,7 +70,7 @@ separate gates from technical/native acceptance.
 
 No version, tag, asset, draft or publication operation is authorized by this assessment.
 
-### Current NR-026 release impact
+### Historical NR-026 release impact before B2 integration
 
 The 9.0.5 live-editor wheel/Undo controls pass, but synchronous editor destruction
 reproduces UAF in both standalone JUCE wheel scope and the held-knob product path.
