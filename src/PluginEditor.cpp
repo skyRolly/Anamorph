@@ -823,6 +823,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
 {
+    // Detach before LookAndFeel/ValueBox teardown can destroy a drag scope.
+    // An active event retains the record and closes only after its write returns.
+    for (const auto& binding : knobBindings) binding->detach();
     // Release the per-frame callbacks FIRST, before anything they touch is torn down:
     // the VBlank lambda captures `this` and can trigger a repaint, so it must be stopped
     // before the timer / GL / look-and-feels go away (defensive editor-lifecycle hygiene).
@@ -894,12 +897,19 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     // ADR-0008 round 18: the witness straddles the attachment, so it can tell a user write (which
     // moves the parameter inside the attachment's own callback) from a host push (which moved it
     // before the control was touched at all). Registration ORDER is the whole mechanism.
-    auto* w = makeWitness (id);
-    if (w != nullptr) w->listenBefore (s);
-    sliderAtts.add (new SliderAttachment (processor.getAPVTS(), id, s));
-    if (w != nullptr) w->listenAfter (s);
-
     auto* p = processor.getAPVTS().getParameter (id);
+    if (auto* knob = dynamic_cast<Knob*> (&s); knob != nullptr && p != nullptr)
+    {
+        knob->binding = anamorph::gui::KnobParameterBinding::create (processor, *p, s);
+        knobBindings.push_back (knob->binding);
+    }
+    else
+    {
+        auto* w = makeWitness (id);
+        if (w != nullptr) w->listenBefore (s);
+        sliderAtts.add (new SliderAttachment (processor.getAPVTS(), id, s));
+        if (w != nullptr) w->listenAfter (s);
+    }
     if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
     {
         k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
