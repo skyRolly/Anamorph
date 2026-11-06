@@ -1,3 +1,4 @@
+#include "SliderEventBoundary.h"
 #include "LookAndFeel.h"
 
 #include <vector>
@@ -26,7 +27,7 @@ namespace anamorph::gui
 //
 //  ROUND 31, AND THE TWO QUESTIONS THE SHARED TABLE RAISES, BOTH ANSWERED FROM SOURCE:
 //
-//  * ACROSS PLUG-IN INSTANCES (Devin `src/gui/LookAndFeel.cpp:36`). Two instances in one host share
+//  * ACROSS PLUG-IN INSTANCES (Devin `src/gui/LookAndFeel.cpp:37`). Two instances in one host share
 //    this static -- one process, one copy -- and they share `juce::Desktop`'s source list with it,
 //    so a device has the SAME identity in both. That is the reason the sharing is harmless rather
 //    than a defect: the key is the device, and a device has exactly one press at a time. Its button
@@ -39,7 +40,7 @@ namespace anamorph::gui
 //    the cell is reused by the next press or emptied by the next button-up scroll. State test 108
 //    legs F and K.
 //
-//  * WITHOUT BOUND (Devin `src/gui/LookAndFeel.cpp:36`, the registry-lifetime question). Cells are
+//  * WITHOUT BOUND (Devin `src/gui/LookAndFeel.cpp:37`, the registry-lifetime question). Cells are
 //    emptied and never erased, so the question is whether the KEYS are bounded -- and they are, by
 //    JUCE's own identity model rather than by anything here. `getOrCreateMouseInputSource` keeps
 //    exactly one `mouse` source and one `pen` source, matched on TYPE alone, so replugging a mouse
@@ -1027,6 +1028,7 @@ namespace
 
         void mouseDown (const juce::MouseEvent& e) override
         {
+            const ScopedSliderEvent event (getParentComponent());
             // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
             // cursor goes. Asked HERE rather than for every press, because a press this branch
             // declines -- a double click, one on a non-rotary parent -- takes over no drag and has
@@ -1068,6 +1070,7 @@ namespace
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
+            const ScopedSliderEvent event (getParentComponent());
             // A RELEASE ENDS ONLY THE DRAG IT BELONGS TO (round 33). `abortDragGesture` speaks for
             // the BOX -- it closes the box's host gesture and hands back the box's claim -- so a
             // rival's release reaching it would end the gesture another device is mid-drag in.
@@ -1083,6 +1086,7 @@ namespace
         // the owner's `mouseDrag`; the override exists only to ask the question first.
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
+            const ScopedSliderEvent event (getParentComponent());
             if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
             juce::Label::mouseDoubleClick (e);
         }
@@ -1097,6 +1101,7 @@ namespace
         // about -- both say this box's gesture is over, and that is a statement about the box.
         void abortDragGesture() override
         {
+            const ScopedSliderEvent event (getParentComponent());
             releaseDragWheel (*this);   // ADR-0053 round 29: the press is over, wherever it ended
             dragGesture.reset();
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
@@ -1107,6 +1112,7 @@ namespace
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            const ScopedSliderEvent event (getParentComponent());
             // A REFUSED PRESS DRAGS NOTHING (round 33). `downProp` is the OWNER's anchor, so the
             // mapping below would write the owner's parameter from a rival's cursor -- the same
             // defect as overwriting the anchor, reached one event later.
@@ -1151,6 +1157,8 @@ namespace
         // knob's ask would come straight back through `Label::mouseWheelMove` if it did.
         bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
+            const ScopedSliderEvent event (getParentComponent());
+            if (! std::isfinite (w.deltaX) || ! std::isfinite (w.deltaY)) return true;
             auto* s = rotaryParent (getParentComponent());
             if (dragGesture == nullptr || s == nullptr || isBeingEdited()) return false;
             if (e.eventTime == lastNotchTime) return true;   // JUCE's duplicate filter, see the knob's
@@ -1162,11 +1170,20 @@ namespace
             const double target = anamorph::gui::wheelTargetValue (*s, w, v0);
             if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
             const double base = s->valueToProportionOfLength (v0);
+            if (! std::isfinite (target)) return true;
+            const juce::Component::SafePointer<ValueBox> alive (this);
             s->setValue (target, juce::sendNotificationSync);
+            if (alive == nullptr) return true;
             // What ACTUALLY moved, read back after the snap -- the anchor must not bank travel the
             // slider refused, or the next drag event applies it as a jump. ...and the drag carries
             // on from here.
-            downProp += s->valueToProportionOfLength (s->getValue()) - base;
+            const juce::Component::SafePointer<juce::Slider> parent (s);
+            const auto bank = [alive, parent, base]
+            {
+                if (auto* box = alive.getComponent(); box != nullptr && parent != nullptr)
+                    box->downProp += parent->valueToProportionOfLength (parent->getValue()) - base;
+            };
+            if (! event.afterValue (bank)) bank();
             return true;
         }
         void editorShown (juce::TextEditor* ed) override

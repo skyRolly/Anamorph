@@ -6967,7 +6967,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2705),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2715),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -45925,6 +45925,7 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "gui_scale_lifetime_tests.h"
 #include "spectrum_imager_lifetime_tests.h"
 #include "editor_restore_lifetime_tests.h"
+#include "knob_lifetime_tests.h"
 
 int main (int argc, char* argv[])
 {
@@ -46012,6 +46013,17 @@ int main (int argc, char* argv[])
             return 3;
         }
         return 0;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--knob-lifetime-probe") == 0)
+    {
+        knob_lifetime_tests::test();
+        testNestedNotificationsKeepTheUserEndpoint();
+        testRecursiveNotificationKeepsTheLatestEndpoint();
+        testAScrollIsOneUndoStep();
+        testAWheelNotchInsideAKnobPressBelongsToIt();
+        std::printf ("%d checks, %d failure(s)\n", checks, failures);
+        return failures == 0 ? 0 : 1;
     }
 
     if (argc > 1 && std::strcmp (argv[1], "--transport-position-probe") == 0)
@@ -46461,6 +46473,7 @@ int main (int argc, char* argv[])
     testEditorRestoreAdoptionLifetimes();
     testSpectrumImagerCallbackLifetimes();
     spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes();
+    knob_lifetime_tests::test();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

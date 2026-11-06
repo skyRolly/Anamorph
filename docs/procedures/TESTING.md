@@ -136,6 +136,52 @@ separate subprocesses and never make an ordinary campaign abort acceptable.
 
 
 
+## NR-026 B2 Knob lifecycle regression
+
+Accepted ADR-0072 is the owner's architecture decision, not implementation or
+release acceptance. `tests/knob_lifetime_tests.h` runs in the ordinary State suite
+and `--knob-lifetime-probe`; the focused launch also runs State86/88 and 111/112.
+It drives the real Width Knob, ValueBox, parameter notifications and TextEditor
+command path against a surviving processor, with two edit/destroy/reopen cycles
+per case on that same processor. It checks exact host-route Begin/End counts,
+known normalized Width endpoints, meaningful Undo, actual Redo, reopened state
+and balanced dispatch. Parameter-listener callback multiplicity is not a host count.
+
+The matrix covers live/begin/value/end, standalone/held, signed/horizontal/reverse,
+zero/duplicate, tiny interval-floor, rail/nonfinite/disabled input, ValueBox held
+teardown, actual typed commit followed by Wheel (including zero delta), Return,
+focus-loss and Escape. Dedicated cases destroy before edit and after application,
+including interrupted no-edit input. Host feedback destroys the editor inside
+Slider notification without creating a gesture, echo or user history. Repeated
+notches on one live binding must restart its closed record and remain one Undo
+step. Reentrant host feedback must be banked after value delivery, for both Knob
+and ValueBox: a delivered 0.8 stays 0.8 on drag continuation while Undo/Redo retains
+the user's 0.5/0.53 endpoints. Dropping this guarded completion is a detected control.
+State86/88 and the existing ADR-0053 cases retain routing, multi-device,
+drag continuation, modifier/absolute/relative/velocity and unrelated-edit grouping.
+
+A typed commit and a subsequent moving notch have two distinct host pairs in one
+named Undo action. Teardown during the typed edit cancels the not-yet-applied notch;
+Begin-time teardown cancels its pending store and still closes once. Standalone
+no-edit input has no pair; a held no-edit press retains its original one pair and
+no meaningful Undo. The test-only friend adapter reaches the actual copied
+standalone callback for pre-edit destruction; it adds no shipping UI API.
+Text tests dispatch the pinned TextEditor messages through Component's public
+virtual command API; they are automated component evidence, not native focus/DAW
+acceptance. The processor must outlive the complete event/record close.
+
+`worklogs/engineering-review/nr026-b2/` retains separate source/build/output and
+mutation identities. Original NR-026 diagnostics and rejected B1 records remain
+untouched. A partial local GUI-module ASan build is explicitly distinguished from
+full-suite ASan/UBSan/Valgrind and platform CI. No detector option is relaxed for B2.
+
+Source checkpoint `f9d8cbd3` passes 16,074 full State and 2,443 focused checks
+locally; the partial ASan probe passes 2,115. Six copied-source mutants fail
+gesture/history/anchor assertions without ASan, and missing press staging triggers
+ASan. The unmodified probe passes after those controls. Run the B2 bundle's
+`verify.py --self-test` for payload integrity and three corruption controls. These
+local counts do not replace full final-head CI or native/manual acceptance.
+
 ## NR-026 Option B nonshipping experiment
 
 The [review packet](../../worklogs/NR026_OPTION_B_REVIEW.md) inventories the separate

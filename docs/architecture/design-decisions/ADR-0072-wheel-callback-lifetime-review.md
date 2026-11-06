@@ -1,9 +1,27 @@
 # ADR-0072 — Wheel callback lifetime and gesture ownership (NR-026 / KI-035)
 
-**Status:** Proposed — human Architecture Review pending, 2026-11-05 UTC.
-The owner now authorizes the Option B direction and bounded nonshipping validation;
-final implementation, integration, risk-retention and release acceptance remain separate.
-See the current continuation below; the original interim D recommendation is retained.
+**Status:** Accepted for the B2 architecture — owner approval recorded 2026-11-06 (Asia/Shanghai).
+
+The owner explicitly states in the current assignment that human Architecture Review
+is complete and approves B2 as reviewed in PR #221. That PR's reviewed head
+`89af3c1940613b67fa5010a13f0d03d0ee8bc8b8` is integrated by merge
+`b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`. This is owner-provided approval
+provenance, not an inferred GitHub approval or an invented earlier review date.
+
+Approved scope: a lifetime-stable message-thread interaction record; exact-once
+host gesture ownership; processor-owned Undo/endpoints; standalone event lease;
+held Wheel borrowing the press record; lifecycle-safe detachment; focused Knob
+binding adaptation and synchronous event-boundary staging; preservation of JUCE
+drag calculations and Accepted ADR-0052/0053; official JUCE 9.0.5 unchanged.
+The lifecycle contract in the continuation below is binding implementation acceptance.
+
+Implementation is authorized but not yet validated or integrated at this approval
+checkpoint. Each actual production diff requires regression/compatibility evidence,
+separate human PR review and separate merge authorization. No unrelated attachment
+family, DSP, threading, parameter/schema/latency, dependency, native acceptance or
+release change is approved. A demonstrated conflict requiring an architecture
+revision must return with that specific conflict. The historical D recommendation,
+B1 rejection and earlier Proposed-stage wording below remain dated history.
 
 ## Context
 
@@ -175,3 +193,36 @@ ownership), with explicit dependency provenance/maintenance/rollback costs. No J
 change is authorized here. If neither has an acceptance argument or required approval,
 continue D. C requires a separate explicit owner risk disposition. ADR-0072 remains
 **Proposed** until separately documented human architecture acceptance.
+
+
+## Accepted B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai)
+
+The current owner assignment supplies the human Architecture Review decision.
+Approved B2 replaces the affected standalone Wheel route and owns gesture lifetime
+in Anamorph while preserving official JUCE 9.0.5. The lifecycle requirements in the
+owner-directed continuation are now the binding implementation acceptance contract.
+The earlier Proposed-stage gate and D recommendation above are historical.
+
+Implementation starts from merged #221 main `b9f94d83`, with production source
+checkpoint `d8e28787`. `KnobParameterBinding` retains JUCE ParameterAttachment's
+feedback/update model, configures the same conversion/range/text behavior, owns
+one gesture intent stack, and states/refuses endpoints through the existing
+processor. Event scopes retain the record across component detachment; the editor
+detaches bindings before child/look-and-feel teardown. Begin/value/End notifications
+are drained synchronously after the enclosing Knob/ValueBox/text framework frame
+returns. Direct recursive value writes retain existing synchronous request nesting.
+
+The standalone path keeps JUCE Slider UI drag notifications within this staging
+boundary, without calling the affected `Slider::mouseWheelMove`; the record alone
+owns host Begin/End. Held Wheel borrows the press record and retains existing drag
+math/banks. The actual text parser is wrapped after JUCE creates each ValueBox;
+Return/focus/Escape and typed-before-Wheel ordering remain framework behavior.
+A typed commit and its following notch retain separate host pairs but one named
+Undo action, as Accepted ADR-0053 already specifies.
+
+This source checkpoint is not final implementation acceptance or integration.
+Actual component/host-route history, reentrancy, feedback, mapping, no-edit and
+sanitizer/mutation results belong to TESTING, the Option B packet and supporting
+B2 execution bundle. Final-head CI and separate human PR review/merge authorization
+remain required. Processor destruction during dispatch, native DAW automation and
+deferred host/manual matrices are outside the established automated scope.

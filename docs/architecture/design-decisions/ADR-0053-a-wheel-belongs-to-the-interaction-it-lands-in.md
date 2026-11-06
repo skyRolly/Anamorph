@@ -957,7 +957,7 @@ a control holds exactly one anchor. The separate name is the point: an ordinary 
 the broad path by forgetting an argument.
 
 **3. THE PROCESS-WIDE TABLE ACROSS INSTANCES: reachable, and correctly isolated** (Devin
-`src/gui/LookAndFeel.cpp:36`). Two Anamorph instances in one host share this static — one process,
+`src/gui/LookAndFeel.cpp:37`). Two Anamorph instances in one host share this static — one process,
 one copy — and share `juce::Desktop`'s source list with it, so a device has the same identity in
 both. That is what makes the sharing right rather than dangerous: the key is the DEVICE, and a device
 has one press at a time. Its button state lives in its own `MouseInputSourceImpl` and JUCE routes
@@ -967,7 +967,7 @@ replace the earlier, which is the live press. An editor destroyed mid-press leav
 that reads back null. No production change; State test 108 legs F and K.
 
 **4. THE DEVICE KEYS ARE BOUNDED, so the table cannot grow without bound** (Devin
-`src/gui/LookAndFeel.cpp:36`, the registry-lifetime question). Cells are emptied and never erased, so
+`src/gui/LookAndFeel.cpp:37`, the registry-lifetime question). Cells are emptied and never erased, so
 the question is the key space, and JUCE fixes it: `getOrCreateMouseInputSource` keeps exactly one
 `mouse` and one `pen` source matched on TYPE alone — replugging a mouse or adding a second mints no
 new key — and touch sources are matched on (type, finger slot) under JUCE's own

@@ -1,6 +1,115 @@
 # Next release investigation and development roadmap
 
-## Fuzz review correction — 2026-11-06 (Asia/Shanghai)
+## Current execution register — 2026-11-06 (Asia/Shanghai)
+
+This opening register alone owns current execution status. All dated checkpoints
+below are historical observations with their original source/result identities;
+their former approval, PR and issue states do not describe the present.
+
+Current main is `2b256e90adab35077fa5906419743ee6a69c606e`: owner-authorized #222
+merged reviewed head `5888bb6578aa2ead92cc8b862da6a2349190a407`. Its tree equals
+that reviewed head. Earlier #221 remains merged at
+`b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`; #218 ancestry is preserved.
+The owner separately authorizes #220 into its existing parent branch. No #219 or
+new-PR merge is authorized, and auto-merge remains disabled for open work.
+
+| Work item | Actual integration state | Validation and remaining boundary |
+|---|---|---|
+| ADR-0072 / B2 | Accepted architecture and production implementation integrated via #222 at `2b256e90`. Official JUCE 9.0.5 is unchanged. | Reviewed-head Build 42201478195, merge 42201486922, CodeQL 42201487056, MSVC 42201486907 and Dependency Review 42201486953 passed. Post-merge source validation is being collected independently. |
+| NR-026 / KI-035 | The B2 correction is on main. Original standalone Slider-scope and held-Knob continuation failures remain immutable historical evidence. | Reproduce the reviewed surviving-processor value, gesture, Undo/Redo and reopening results on integrated source before recording scoped closure. Native DAW behavior and simultaneous processor destruction remain separate, unmeasured boundaries. |
+| #220 fuzz isolation | Merged as `de66265e31fdfcb10b77cc6fc1aada9033849d5f` into `codex/state-suite-isolation`, from reviewed head `03e6e1f6`. It is not on main. | Exact-head Build 42162158196, merge 42162164219, CodeQL 42162160794 and MSVC 42162165418 passed; Dependency Review was unavailable for that stacked base. Reviewed campaign: 6,923 inputs / 91 seconds. |
+| #219 combined State/fuzz isolation | Open and unmerged. The parent received #220, then is reconciled with integrated B2 main without rewriting history. Its effective review diff now includes both nonshipping isolation implementations. | Previous State/fuzz results do not validate this combined source. The latest pushed head and checks are authoritative in [PR #219](https://github.com/skyRolly/Anamorph/pull/219). Full combined validation remains required; passing does not authorize merge. |
+
+State isolation retains the real same-processor A→B→C→B preset loads, omitted-return
+control, actual JUCE/Windows shell-folder path witness, separated temporary storage,
+EOF/ownership/concurrency controls and fail-closed symlink/reparse refusal. Fuzz
+isolation retains numbered callback acknowledgements, per-input checked cleanup,
+classified harness aborts and the distinct JUCE teardown model. Their fixtures and
+detectors are not weakened for B2.
+
+NR-006/010/014, NR-013 and broader native host/install acceptance remain deferred.
+Version 0.10.0, approved JUCE pin, annotated tag, unpublished draft and eleven assets
+remain protected. Development integration is not release or commercial/signing/legal
+authorization.
+
+## Historical B2 implementation and isolation review — 2026-11-06 (Asia/Shanghai)
+
+Current main is `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`, the authorized #221
+merge of reviewed head `89af3c19`. Reviewed-head Build 42140914740 passed 16 selected
+jobs with three intentional skips (including completed macOS/sanitizers); merge
+check 42140922089 and Dependency Review 42140921925 passed. Post-merge main Build
+42152331590 passed. Merge tree equals the reviewed tree; shipping inputs, approved
+JUCE 9.0.5 and historical NR-026/B1 evidence were unchanged by that integration.
+
+The owner explicitly approves ADR-0072 B2 in this assignment. The Accepted decision
+record accompanies the separate production implementation; it is not a CI-derived
+approval or invented GitHub review. No further architecture approval is needed
+for this conforming scope. Actual implementation review/merge authorization and
+all native/release acceptance remain separate.
+
+| Work item | Current implementation / evidence | Integration boundary |
+|---|---|---|
+| NR-026 / KI-035 B2 | [Implementation PR #222](https://github.com/skyRolly/Anamorph/pull/222), code `f9d8cbd3`: stable focused binding/event record, exact-once gestures, processor endpoints/Undo, synchronous mouse/text staging, early detachment and post-write weak-handle anchor banking. Local 945 DSP / 16,074 State / 2,443 focused checks pass; partial GUI-module ASan passes 2,115 assertions. Seven copied-source controls detect missing/duplicate End, lost endpoint, wrong Redo, record reuse failure, lost bank completion and missing press staging. [Separate evidence](engineering-review/nr026-b2/README.md). | Independent branch based on this main, open/unmerged, auto-merge off. Consult #222's actual final-head check rollup; human implementation review/merge authorization remain separate. Main is still affected. No Option C risk acceptance. |
+| #219 State isolation | Head `e28d03281cab0f5d4eb231abe28b9dae2f15cc0d`, includes main #221 without history rewriting. Protected redirects in root/ancestors/descendants are explicitly refused; no arbitrary target traversal. Original unchanged-link/changed-target miss and corrected refusal retained. Full local 945/13,959 plus isolation controls pass. Exact-head Build 42154388149, merge check 42154394743, CodeQL 42154394893, MSVC 42154394794 and Dependency Review 42154394791 pass. | Open/unmerged, auto-merge off. Linked production profiles are unsupported by the nonshipping snapshot controller; this does not change product symlink behavior. |
+| #220 fuzz isolation | Stacked on #219; current head `03e6e1f627099046f67cae65abfeaa35338f1c59`. Actual READY/CLEAN callback IDs replace the exact `-runs=2` assumption. Local direct driver verifies five calls/process. Exact-head Build 42162158196 passes real Clang/libFuzzer/ASan/UBSan controls (eight actual calls/process) and 6,923 inputs / 91 seconds, peak 435 MB. Merge check 42162164219, CodeQL 42162160794 and MSVC 42162165418 pass. Cleanup abort remains fail-closed with explicit harness classification and replacement preservation. | Open/unmerged, auto-merge off. No prior-head result substitutes for this head. Main-targeted Dependency Review is unavailable for this stacked base. |
+
+B2 staging exposed an anchor-parity regression before review: reentrant host
+feedback delivered Width 0.8 but the first candidate resumed at 0.53. Guarded
+post-write completion now continues at 0.8 while Undo/Redo preserves the owned
+0.5/0.53 endpoints. Original, initial-candidate and corrected observations have
+separate source/binary/output identities. Normal direct recursive attachment
+writes remain synchronous; State111/112 and State86/88 pass. No second coalescer,
+new thread, audio work, dependency patch or unrelated attachment rewrite is added.
+
+Initial local ENOSPC interrupted a mutant and preset I/O checks; an uninitialized
+synthetic Wheel fixture also failed repeated-scroll assertions. Those runs are
+retained as troubleshooting, not final acceptance. Fields were initialized and
+compilation serialized with bounded cache/task-owned temporary storage. Final
+full State and all seven controls pass their expected classifications; no failure
+was suppressed. A clean ASan exit alone cannot pass the gesture/history oracle.
+
+Implementation CI checkpoint `c0a2796c` completes successfully: Build 42167007315
+(16 selected jobs / three intentional skips), merge check 42167014032, CodeQL
+42167013815, MSVC/PREfast 42167013716 and Dependency Review 42167013723. Linux
+passes 945 DSP / 16,074 State; Windows 941 / 15,909; macOS arm64, Rosetta and native
+Intel 941 / 15,919 each. Full ASan/UBSan and Valgrind execute the lifecycle matrix;
+both State runs pass 16,074 checks, with zero Valgrind errors (leak checking remains
+disabled). Configured TSan/realtime, LTO, fuzz and pluginval lanes pass. Static
+artifacts retain 64 dependency CodeQL observations, zero Actions observations and
+15 PREfast observations; no affected production-file primary location is reported.
+The first push's citation-base failure remains historical; no exemption was added.
+The final documentation head requires its own check rollup in #222.
+
+Next execution is independent human implementation review of #222, preserving
+the final-head gates for any subsequent correction. Only #221 was authorized to
+merge. NR-026 is not resolved on main until a verified correction is integrated.
+NR-006/010/014, NR-013, broader host/installation and native DAW incidence remain
+deferred or unmeasured in their recorded scopes. No new hardware/DAW request.
+Version 0.10.0 and protected tag/draft/eleven assets remain untouched; no release,
+commercial, signing, legal or distribution authorization follows.
+
+
+## Historical owner-approved B2 implementation — 2026-11-06 (Asia/Shanghai)
+
+PR #221 reviewed head `89af3c19` merged at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`.
+Build 42140914740 completed with 16 selected jobs successful and three intentional
+skips, including successful macOS and sanitizers; merge check 42140922089 and
+Dependency Review 42140921925 succeeded. Shipping source, approved JUCE pin and
+historical NR-026 evidence are unchanged by that integration.
+
+The owner explicitly records completed human Architecture Review and approves
+ADR-0072 B2. The ADR/index acceptance records that instruction, not a GitHub approval
+state. B2 implementation is authorized on a separate branch based on this main;
+production acceptance, integration and release remain outstanding. NR-026/KI-035
+stays unresolved until verified correction is integrated. B1 remains rejected.
+
+#219 symlink-target snapshot coverage and #220 callback-count/cleanup-abort reviews
+are being addressed on the existing unmerged stack. Only #221 is authorized to
+merge. All other PRs retain auto-merge off. Prior execution snapshots below remain
+history; no old CI pass establishes correctness of a changed head.
+
+
+## Historical fuzz review correction — 2026-11-06 (Asia/Shanghai)
 
 #220 remains stacked on corrected #219, which includes integrated #221 main at
 `b9f94d83`; histories and original evidence are preserved without force pushing.
@@ -18,7 +127,7 @@ Current source/control changes require their own final-head execution; earlier
 6,918-input evidence below remains historical. This PR is not authorized to merge.
 
 
-## State isolation review continuation — 2026-11-06 (Asia/Shanghai)
+## Historical State isolation review continuation — 2026-11-06 (Asia/Shanghai)
 
 #221 is merged at `b9f94d83`; its reviewed-head Build 42140914740 completed
 successfully, including macOS and sanitizer lanes (16 successful jobs, three
@@ -37,11 +146,11 @@ Windows junction/macOS and full final-head results require this branch's CI.
 All earlier #219 results below describe their named historical heads.
 
 
-## Current execution register — 2026-11-06 UTC
+## Historical execution register before owner approval — 2026-11-06 UTC
 
 `main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged
-#218. Historical NR-026 source ledgers remain byte-for-byte intact. The dated
-snapshots below retain their original contexts; this section owns current status.
+#218. Historical NR-026 source ledgers remain byte-for-byte intact. This is the
+pre-approval snapshot; the opening execution register owns current status.
 
 | Work item | Current review state | Actual evidence / remaining boundary |
 |---|---|---|
@@ -109,7 +218,7 @@ replacement refusal, forced kill, setup failure and override bypass. Fresh nativ
 entry and CI libFuzzer/sanitizer results are required; no cross-platform fuzz or
 user-data damage claim is made. This candidate stays separate from Wheel design.
 
-## Current continuation — PR #219 review corrections (2026-11-05 UTC)
+## Historical continuation — PR #219 review corrections (2026-11-05 UTC)
 
 Remote `main` is `c2f8f19b87daae709c015a062a8b771f049da012`, the owner-merged
 PR #218. Its historical NR-026 files and source hashes are preserved unchanged.

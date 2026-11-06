@@ -32,6 +32,10 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- Avoid crashes and lost Undo history when a parameter notification closes the editor during a knob wheel edit.
+  Evidence: [B2 source](https://github.com/skyRolly/Anamorph/commit/f9d8cbd380cc01fc967ae0cae195092001ed00de); ADR-0072.
+  [Verified — automated component/sanitizer regressions; separate implementation review and integration pending]
+
 - Keep multiband display edits and their Undo gestures consistent when a parameter notification closes the editor.
   Evidence: commits `af8edfdd` and `05b207e3`; [PR #212](https://github.com/skyRolly/Anamorph/pull/212) (merged `82c98e45`);
   NR-029/KI-037; SpectrumImager lifetime/Undo regressions. [Verified]
