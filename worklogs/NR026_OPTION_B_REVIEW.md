@@ -273,8 +273,25 @@ and an uninitialized synthetic Wheel fixture are troubleshooting history, explic
 separated from final acceptance. They were corrected and rerun; no failure was
 suppressed. The bundle verifier rejects source/matrix/stream corruption.
 
-Full platform/ASan+UBSan/Valgrind/TSan/realtime/fuzz/pluginval/static gates must report
-on the final pushed PR head. Native host automation, physical focus/usability,
+CI checkpoint `c0a2796c9baf48b569bc72faccf0443daee9306d` in
+[implementation PR #222](https://github.com/skyRolly/Anamorph/pull/222) completes:
+Build 42167007315 (16 successful selected jobs, three intentional skips), merge
+check 42167014032, CodeQL 42167013815, MSVC 42167013716 and dependency 42167013723.
+Linux completes 945 DSP / 16,074 State; Windows 941 / 15,909; macOS arm64, Rosetta
+and native Intel 941 / 15,919 per configuration. Each ordinary platform execution
+reports all 166 matrix rows: 142 with one Begin/End pair, 22 with none and two with
+two pairs for typed commitment followed by a moving notch. Every row satisfies
+its expected parameter/history/teardown assertions; no gesture is left open.
+Full ASan/UBSan passes 941 DSP / 16,074 State and Valgrind passes 934 / 16,074 with
+zero errors (leak checking disabled). Configured TSan/realtime, LTO and pluginval
+lanes pass. The unchanged fuzz campaign executes 7,272 inputs / 91 seconds, peak
+464 MB. Static artifacts contain 64 dependency C++ observations, zero Actions and
+15 PREfast observations, with no affected production-file primary locations.
+The code-scanning alert API itself is unavailable (403); downloaded SARIF was
+inspected. This is not a claim of zero dependency findings.
+
+Full gates must still report on the final pushed documentation head; consult the
+PR check rollup rather than substituting this checkpoint. Native host automation, physical focus/usability,
 processor destruction during dispatch and deferred performance/installation matrices
 are unmeasured. The established owner-lifetime scope requires the processor to
 outlive event completion. Separate human implementation review and merge permission

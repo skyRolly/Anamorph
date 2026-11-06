@@ -10,6 +10,9 @@ The current main remains affected by NR-026/KI-035. #219 and stacked #220 have
 corrected final-head CI and remain unmerged; the [roadmap](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
 records their identities. No new PR has merge authorization. Version, annotated
 tag, unpublished draft and all eleven assets remain protected and unchanged.
+Final read-only comparison matches the retained release metadata and each asset's
+ID, name, size, digest and timestamp. Successful implementation CI at checkpoint
+`c0a2796c` does not validate or replace those older draft assets.
 Deferred native/manual, legal/commercial and signing gates remain in force.
 Earlier dated assessments below retain their checkpoint context.
 

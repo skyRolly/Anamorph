@@ -36,10 +36,21 @@ compilation serialized with bounded cache/task-owned temporary storage. Final
 full State and all seven controls pass their expected classifications; no failure
 was suppressed. A clean ASan exit alone cannot pass the gesture/history oracle.
 
-Next execution: complete the production PR's actual final-head platform/static/
-sanitizer/Valgrind/TSan/realtime/fuzz/pluginval gates, address real failures, and
-present the implementation for independent human review. Only #221 was authorized
-to merge. NR-026 is not resolved on main until a verified correction is integrated.
+Implementation CI checkpoint `c0a2796c` completes successfully: Build 42167007315
+(16 selected jobs / three intentional skips), merge check 42167014032, CodeQL
+42167013815, MSVC/PREfast 42167013716 and Dependency Review 42167013723. Linux
+passes 945 DSP / 16,074 State; Windows 941 / 15,909; macOS arm64, Rosetta and native
+Intel 941 / 15,919 each. Full ASan/UBSan and Valgrind execute the lifecycle matrix;
+both State runs pass 16,074 checks, with zero Valgrind errors (leak checking remains
+disabled). Configured TSan/realtime, LTO, fuzz and pluginval lanes pass. Static
+artifacts retain 64 dependency CodeQL observations, zero Actions observations and
+15 PREfast observations; no affected production-file primary location is reported.
+The first push's citation-base failure remains historical; no exemption was added.
+The final documentation head requires its own check rollup in #222.
+
+Next execution is independent human implementation review of #222, preserving
+the final-head gates for any subsequent correction. Only #221 was authorized to
+merge. NR-026 is not resolved on main until a verified correction is integrated.
 NR-006/010/014, NR-013, broader host/installation and native DAW incidence remain
 deferred or unmeasured in their recorded scopes. No new hardware/DAW request.
 Version 0.10.0 and protected tag/draft/eleven assets remain untouched; no release,

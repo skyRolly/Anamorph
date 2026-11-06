@@ -5,8 +5,10 @@ B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai): #221 is merged at
 B2 is implemented in [PR #222](https://github.com/skyRolly/Anamorph/pull/222) at code checkpoint `f9d8cbd3`: stable binding/event
 record, exact-once gestures, processor Undo and guarded post-write banking. Local
 945 DSP / 16,074 State / 2,443 focused and partial-ASan 2,115 pass; seven incorrect
-source controls are detected. Final-head CI, independent implementation review and
-merge authorization remain separate. KI-035 is unresolved on main. #219/#220 remain
+source controls are detected. CI checkpoint `c0a2796c` passes full platform,
+ASan/UBSan, Valgrind, configured TSan/realtime/fuzz/pluginval and static gates;
+consult #222's final-head rollup after documentation updates. Independent human
+implementation review and merge authorization remain separate. KI-035 is unresolved on main. #219/#220 remain
 unmerged; their review corrections and current heads are in the roadmap. No release
 or deferred native acceptance follows from these automated results.
 
