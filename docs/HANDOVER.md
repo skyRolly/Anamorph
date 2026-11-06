@@ -1,5 +1,7 @@
 # HANDOVER.md
 
+Current continuation: #218 is merged at `c2f8f19b`; #219 corrections at `b2e36abf` remain open/unmerged with exact-head cross-platform CI recorded in the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md). Separate fuzz PR #220 at `04656924` remains open. The owner prefers Option B for NR-026; [B1 is rejected and B2 proposed](../worklogs/NR026_OPTION_B_REVIEW.md). ADR-0072 remains Proposed, production KI-035 unresolved and concrete architecture review required. No version/dependency/release changes or deferred native acceptance. Dated handovers below remain history.
+
 JUCE 9.0.5 is integrated on main by PR #213 (`18a51df773d8701004fe86e85df820fdf6949f2d`) under owner-Accepted ADR-0071.
 Product version and existing release assets are unchanged. The [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md)
 records source-bound automated evidence and the new **PASS — owner-attested** Level-5/native/manual

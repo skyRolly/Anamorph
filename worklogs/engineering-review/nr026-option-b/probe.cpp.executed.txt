@@ -1,0 +1,114 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include "state_filesystem.h"
+#include <memory>
+#include <cstdio>
+#include <cstring>
+
+struct Witness final : juce::AudioProcessorParameter::Listener, juce::AudioProcessorListener
+{
+    AnamorphAudioProcessor& processor;
+    std::unique_ptr<juce::AudioProcessorEditor>& editor;
+    const char* phase;
+    bool armed = false;
+    int begins = 0, ends = 0, values = 0, closes = 0;
+    int parameterBegins = 0, parameterEnds = 0, parameterValues = 0;
+    Witness (AnamorphAudioProcessor& p, std::unique_ptr<juce::AudioProcessorEditor>& e, const char* f)
+        : processor (p), editor (e), phase (f) {}
+    void fire (const char* f)
+    {
+        if (armed && std::strcmp (phase, f) == 0 && editor)
+        { ++closes; processor.editorBeingDeleted (editor.get()); editor.reset(); }
+    }
+    void parameterValueChanged (int, float) override { ++parameterValues; fire ("value"); }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int index, float) override
+    { if (index == processor.getAPVTS().getParameter (pid::width)->getParameterIndex()) ++values; }
+    void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int index) override
+    { if (index == processor.getAPVTS().getParameter (pid::width)->getParameterIndex()) ++begins; }
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int index) override
+    { if (index == processor.getAPVTS().getParameter (pid::width)->getParameterIndex()) ++ends; }
+    void parameterGestureChanged (int, bool start) override
+    { if (start) ++parameterBegins; else ++parameterEnds; fire (start ? "begin" : "end"); }
+};
+static juce::Slider* widthSlider (juce::Component& component)
+{
+    if (auto* s = dynamic_cast<juce::Slider*> (&component); s && s->getTitle() == "Width") return s;
+    for (auto* child : component.getChildren()) if (auto* s = widthSlider (*child)) return s;
+    return nullptr;
+}
+int main (int argc, char** argv)
+{
+    std::setvbuf (stdout, nullptr, _IONBF, 0);
+    if (argc != 4) return 2;
+    const bool held = std::strcmp (argv[1], "held") == 0;
+    const char* phase = argv[2];
+    const char* delta = argv[3];
+    state_test_filesystem::Profile profile;
+    if (! profile.initialise (juce::File::getSpecialLocation (juce::File::tempDirectory))) return 2;
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto processor = std::make_unique<AnamorphAudioProcessor>();
+    processor->prepareToPlay (48000, 128);
+    bool all = true;
+    for (int cycle = 0; cycle < 2; ++cycle)
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditor());
+        auto* parameter = processor->getAPVTS().getParameter (pid::width);
+        auto* slider = editor ? widthSlider (*editor) : nullptr;
+        if (! parameter || ! slider) return 2;
+        processor->pollUndoCoalesce();
+        const float before = parameter->getValue();
+        Witness witness (*processor, editor, phase);
+        parameter->addListener (&witness);
+        processor->addListener (&witness);
+        const auto source = juce::Desktop::getInstance().getMainMouseSource();
+        const auto position = slider->getLocalBounds().getCentre().toFloat();
+        const auto time = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (cycle + 1);
+        auto event = [&] (bool down) { return juce::MouseEvent (source, position,
+            down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+            1.0f, 0, 0, 0, 0, slider, slider, time, position, time, 1, false); };
+        witness.armed = true;
+        if (held) slider->mouseDown (event (true));
+        juce::MouseWheelDetails wheel;
+        wheel.deltaX = std::strcmp (delta, "horizontal") == 0 ? -0.2f : 0;
+        wheel.deltaY = (std::strcmp (delta, "zero") == 0 || std::strcmp (delta, "rail") == 0) || wheel.deltaX != 0 ? 0 :
+                       std::strcmp (delta, "negative") == 0 ? -0.2f : 0.2f;
+        wheel.isReversed = std::strcmp (delta, "reverse") == 0;
+        wheel.isSmooth = false; wheel.isInertial = false;
+        if (editor) slider->mouseWheelMove (event (held), wheel);
+        if (editor && std::strcmp (delta, "duplicate") == 0) slider->mouseWheelMove (event (held), wheel);
+        if (held && editor) slider->mouseUp (event (false));
+        witness.armed = false;
+        parameter->removeListener (&witness);
+        processor->removeListener (&witness);
+        const float after = parameter->getValue();
+        const bool applied = ! juce::exactlyEqual (before, after);
+        processor->pollUndoCoalesce();
+        const bool undoable = processor->canUndo();
+        if (undoable) processor->undo();
+        const bool undo = juce::exactlyEqual (parameter->getValue(), before);
+        if (undoable) processor->redo();
+        const bool redo = juce::exactlyEqual (parameter->getValue(), after);
+        if (editor) { processor->editorBeingDeleted (editor.get()); editor.reset(); }
+        editor.reset (processor->createEditor());
+        auto* reopened = editor ? widthSlider (*editor) : nullptr;
+        const bool reopen = reopened && std::abs (reopened->getValue() - parameter->convertFrom0to1 (after)) < 1.0e-5;
+        const bool balanced = witness.begins == witness.ends && witness.ends <= 1;
+        const bool expectedEdit = std::strcmp (delta, "zero") != 0 && !(std::strcmp (phase, "begin") == 0);
+        const bool expectedClose = std::strcmp (phase, "live") != 0
+            && (std::strcmp (phase, "value") == 0 ? expectedEdit : (std::strcmp (delta, "zero") != 0 || held));
+        const bool good = balanced && applied == expectedEdit && undo && redo && reopen
+                          && undoable == applied && witness.closes == (expectedClose ? 1 : 0)
+                          && ! anamorph::param::insideDispatch()
+                          && (std::strcmp (delta, "duplicate") != 0 || witness.values <= 1);
+        std::printf ("%s/%s/%s cycle=%d before=%.9g after=%.9g begin=%d end=%d closes=%d values=%d parameterBegin=%d parameterEnd=%d parameterValues=%d applied=%d undoable=%d undo=%d redo=%d reopen=%d dispatch=%d accepted=%d\n",
+            argv[1], phase, delta, cycle, before, after, witness.begins, witness.ends, witness.closes, witness.values, witness.parameterBegins, witness.parameterEnds, witness.parameterValues,
+            applied, undoable, undo, redo, reopen, anamorph::param::insideDispatch(), good);
+        all &= good;
+        processor->editorBeingDeleted (editor.get()); editor.reset();
+        // Undo/Redo leaves a step in history. A fresh state adoption is deliberately
+        // not used: cycle two must use the SAME surviving processor and history.
+        if (cycle == 0 && ! applied && undoable) all = false;
+    }
+    return all ? 0 : 1;
+}

@@ -1,7 +1,9 @@
 # ADR-0072 — Wheel callback lifetime and gesture ownership (NR-026 / KI-035)
 
 **Status:** Proposed — human Architecture Review pending, 2026-11-05 UTC.
-This proposal grants no implementation, merge, risk-retention or release approval.
+The owner now authorizes the Option B direction and bounded nonshipping validation;
+final implementation, integration, risk-retention and release acceptance remain separate.
+See the current continuation below; the original interim D recommendation is retained.
 
 ## Context
 
@@ -50,7 +52,7 @@ reported latency, DSP order and realtime behavior. No new audio-thread work,
 allocation, blocking or cross-thread path is proposed. A source/pin change is gated
 by the Dependency Policy; an event-ownership change requires review against ADR-0053.
 
-## Decision (proposed)
+## Historical interim decision (before the owner-directed Option B continuation)
 
 Recommend **D now**, pending explicit owner review of A–C. The evidence distinguishes
 the two lifetime paths but does not yet justify selecting a complete gesture owner
@@ -112,3 +114,64 @@ results in the linked ledger. **Proposed:** teardown gesture contract, correctio
 route and expanded validation matrix. **Unmeasured:** post-teardown Undo/gesture
 outcomes in sanitizer-terminated cases, native host incidence and processor teardown.
 The roadmap owns execution status; supporting ledgers do not authorize architecture.
+
+## Owner-directed Option B continuation — 2026-11-06 UTC
+
+The owner explicitly prefers **B, product-owned handling**, preserving official
+JUCE 9.0.5 and Accepted ADR-0052/0053/0071. This authorizes investigation and bounded
+nonshipping experiments, not unconditional implementation/integration or Accepted
+status. The earlier recommendation of D above was the previous interim disposition.
+The [concrete review packet](../../../worklogs/NR026_OPTION_B_REVIEW.md) supplies
+an exact rejected B1 overlay, separate source/build/result identities and the
+proposed B2 ownership boundary. Historical NR-026 observations are unchanged.
+
+The proposed acceptance contract is now explicit:
+
+- An applied edit survives editor destruction while the processor lives. Require
+  exactly one host Begin and End, no open gesture or duplicate End, meaningful
+  Undo to the preceding value, actual Redo to the applied value, and correct state
+  after reopen. No destroyed component, attachment or editor may be accessed.
+- No-edit events produce no meaningful Undo, manufactured change or unrelated edit.
+  Preserve zero/invalid/rail behavior and duplicate suppression under ADR-0052.
+- A held Wheel belongs to the press owner under ADR-0053. It updates that drag's
+  actual anchor/banks with no separate step/gesture and preserves routing,
+  absolute/relative/velocity mapping, modifiers, snapping, intervals, multi-device
+  ownership, cancellation and once-only completion.
+- Standalone input preserves direction/reverse/axis selection, range/snap/interval
+  rules, named-control coalescing, unrelated-edit separation and text commitment.
+- Investigate destruction before edit, during Begin/value/End, after application,
+  interrupted no-edit cases and repeated edit/destroy/reopen cycles. Processor
+  destruction is a separate boundary, outside this surviving-processor contract.
+
+**Observed B1:** actual Width components and parameter callbacks, two cycles on
+one surviving processor per non-aborting case, with host-route witnesses. Of 49
+cases, 31 pass, 12 ASan-fail in held press begin/release end continuations, and six
+fail the gesture/history oracle (five held-value cases and one intentional omitted
+End). Standalone's 24 cases pass the limited matrix. Held-value teardown leaves
+Begin=1/End=0 and no Undo despite an applied value and clean ASan return. B1 does
+not satisfy the contract. Parameter-listener duplication during attachment removal
+is recorded separately and is not mistaken for duplicate host gestures.
+
+**B-modified proposal:** a lifetime-stable message-thread interaction record,
+shared by the active event stack and binding, owns exact-once gesture completion
+and survives editor detachment. The processor retains endpoint/Undo ownership.
+Standalone uses an event lease; held input borrows the original press record.
+Reuse Wheel helpers, routing, dispatch, refusal/endpoint and coalescing infrastructure.
+The review surface includes the Knob binding and synchronous event-boundary staging
+of teardown-capable notifications, preserving JUCE's drag math rather than rewriting
+it. Pending text commitment can re-enter JUCE's textChanged scope and needs its own
+proof. The packet identifies exact affected functions, state transitions, compatibility
+risks, validation gaps and rollback. B2 is proposed and unimplemented; no final
+production diff or complete parity argument is claimed.
+
+**Current decision gate:** recommend further B-modified review; retain D in
+production. Review the stable-record, binding replacement and within-event gesture
+timing against Accepted ADR-0052/0053 under ARCHITECTURE_REVIEW_GATE Procedure 2–3.
+The direction instruction is not that concrete approval. After review, an exact
+implementation returns in a separate PR with the complete lifecycle/interaction
+matrix and final-head validation. If bounded B2 cannot preserve framework behavior,
+evaluate combined A (JUCE plus held product continuation and stable gesture/Undo
+ownership), with explicit dependency provenance/maintenance/rollback costs. No JUCE
+change is authorized here. If neither has an acceptance argument or required approval,
+continue D. C requires a separate explicit owner risk disposition. ADR-0072 remains
+**Proposed** until separately documented human architecture acceptance.

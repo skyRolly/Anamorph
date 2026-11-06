@@ -1162,3 +1162,15 @@ PR #189; no cause or crash fix is claimed here and none of its experimental sour
 added to this release. No new release/tag operation is needed or performed against the
 verified replacement. The original request's P1, approval, replacement and asset-validation
 requirements are complete. Publication remains a separate, unauthorized owner action.
+
+## Read-only continuation — 2026-11-06 UTC
+
+Main is `c2f8f19b` after owner-merged #218. #219 (`b2e36abf`) and separate #220
+(`04656924`) remain review-only; exact-head CI scopes are in the roadmap. NR-026
+Option B is the owner-preferred direction, but B1 fails the complete lifecycle
+contract and B2 remains proposed/unimplemented under ADR-0072. No release risk
+acceptance or architecture acceptance follows from this experiment or passing CI.
+Version 0.10.0, tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`, tagged source
+`4c136881f245470577d66a7603f15b177ddcf3dc`, unpublished draft 429760301 and eleven
+original assets are unchanged by this work. Deferred NR-006/010/014, NR-013 and
+host/installation acceptance, legal/commercial/signing/distribution gates remain.
