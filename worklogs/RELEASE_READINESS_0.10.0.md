@@ -1165,8 +1165,8 @@ requirements are complete. Publication remains a separate, unauthorized owner ac
 
 ## Read-only continuation — 2026-11-06 UTC
 
-Main is `c2f8f19b` after owner-merged #218. #219 (`b2e36abf`) and separate #220
-(`04656924`) remain review-only; exact-head CI scopes are in the roadmap. NR-026
+Main is `c2f8f19b` after owner-merged #218. #219 (`b2e36abf`), separate #220
+(`04656924`) and architecture review #221 remain open; exact-head CI scopes are in the roadmap. NR-026
 Option B is the owner-preferred direction, but B1 fails the complete lifecycle
 contract and B2 remains proposed/unimplemented under ADR-0072. No release risk
 acceptance or architecture acceptance follows from this experiment or passing CI.
