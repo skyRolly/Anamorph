@@ -1,37 +1,79 @@
 # Next release investigation and development roadmap
 
-## Current execution register — 2026-11-06 (Asia/Shanghai)
+## Current execution register — 2026-11-07 (Asia/Shanghai)
 
 This opening register alone owns current execution status. Dated checkpoints below
 retain their original source/result identities and historical approval/PR states.
 The stable NR work-item index and detailed NR-026 disposition refer to this register.
 
-Current main is `2b256e90adab35077fa5906419743ee6a69c606e`: owner-reviewed #222
-head `5888bb6578aa2ead92cc8b862da6a2349190a407` merged under explicit authorization;
-the merge tree equals that head. Earlier #221 remains merged at
-`b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`; #218 ancestry is preserved.
-The same owner instruction authorized #220 only into its existing parent branch.
-No #219 or newly created PR merge is authorized. Open work retains auto-merge off.
+Current main is `395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`, with tree
+`2d3887df75a0298896d1577e9e5c23d7c355a85e`. The owner separately authorized #223
+and #219 after human review. #223 merged first; #219 then merged the new main into
+its existing branch. The synchronization tree and final main tree both equal the
+reviewed #219 tree. No newly created PR is authorized to merge or auto-merge.
 
 | Work item | Actual integration state | Evidence and remaining boundary |
 |---|---|---|
-| ADR-0072 / B2 | Accepted architecture and production implementation integrated through #222 at `2b256e90`. Official JUCE 9.0.5 is unchanged. | Reviewed-head Build 42201478195, merge 42201486922, CodeQL 42201487056, MSVC 42201486907 and Dependency Review 42201486953 passed. Post-merge main Build 42218768056, CodeQL 42218768047 and MSVC 42218768022 are separately identified; consult their actual conclusions. |
+| ADR-0072 / B2 | Accepted architecture and owner-reviewed #222 head `5888bb6578aa2ead92cc8b862da6a2349190a407` integrated at `2b256e90adab35077fa5906419743ee6a69c606e`. Official JUCE 9.0.5 is unchanged. | Reviewed-head Build 42201478195, merge 42201486922, CodeQL 42201487056, MSVC 42201486907 and Dependency Review 42201486953 passed. Post-#222 main Build 42218768056, CodeQL 42218768047 and MSVC 42218768022 also passed. |
 | NR-026 / KI-035 | Resolved within the verified surviving-processor component scope on integrated main. Both previously confirmed standalone and held-Wheel lifetime failures are corrected. | A fresh actual-main build passes 945 DSP / 2,443 focused checks, all 166 lifecycle observations, exact host-route gestures, real Undo/Redo and reopening. [New execution record](engineering-review/post-b2-integration.json); immutable original/B1 failures are retained. Native DAW behavior and simultaneous processor destruction remain unmeasured, separate boundaries. |
-| #220 fuzz isolation | Merged as `de66265e31fdfcb10b77cc6fc1aada9033849d5f` into `codex/state-suite-isolation` from reviewed head `03e6e1f6`. It is not on main. | Reviewed-head Build 42162158196, merge 42162164219, CodeQL 42162160794 and MSVC 42162165418 passed. Dependency Review was unavailable for that stacked base. Reviewed campaign: 6,923 inputs / 91 seconds. |
-| #219 combined isolation | Open and unmerged. The parent received #220, then incorporates B2 main without rewriting reviewed history. Combined source checkpoint `6dcf93f0` retains both isolation implementations and both focused probe dispatch paths. | This expands #219's effective review diff. Earlier independent results do not validate the combination; actual latest pushed head and completed checks are authoritative in [PR #219](https://github.com/skyRolly/Anamorph/pull/219). Passing does not authorize merge. |
-| Post-integration status/evidence follow-up | [PR #223](https://github.com/skyRolly/Anamorph/pull/223), open/unmerged and independently based on main; auto-merge off. No new production behavior or release operation. | Scoped KI-035 closure, source-bound main execution, handover/testing/incident records and the obsolete no-interaction description are reconciled. ADR-0025 decisions are unchanged; historical header evidence is immutable. Consult the PR’s final-head check rollup. |
+| #223 documentation and evidence | Reviewed head `fbca30d2639d24925e81febac06d319ad30b9a24` merged as `a0b9d4bb9b1b1615ec8aec9cdbcf41318a596b24`, with its reviewed tree. | Preserves scoped KI-035 closure, Accepted ADR-0025/0072 and the source-bound [post-B2 record](engineering-review/post-b2-integration.json). Reviewed-head Build 42226952744, merge 42226962237, CodeQL 42226962154, PREfast 42226962327 and Dependency Review 42226962372 passed. |
+| #220 fuzz isolation | Reviewed head `03e6e1f627099046f67cae65abfeaa35338f1c59` merged into the #219 parent as `de66265e31fdfcb10b77cc6fc1aada9033849d5f`; that commit is now in main ancestry through #219. | Per-input profiles, actual READY/CLEAN accounting, processor-before-cleanup ordering and classified fail-closed refusal are retained. #220 was not reopened or merged separately into main. |
+| #219 combined isolation | Reviewed head `7490b296d9b77de3e3a53780fd40c2875e0c9945` synchronized with #223 as `dabe1c329087df37ca3b6d586cfcc55ca77c7f1c`, with no tree change; merged as `395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`. | Exact synchronized-head Build 42244850092 passed 16 selected jobs with three conditional skips; merge check 42244859399, CodeQL 42244859267, PREfast 42244859273 and Dependency Review 42244859248 passed. The final tree equals the reviewed tree. |
+| Combined main CI | Build [42251214855](https://github.com/skyRolly/Anamorph/actions/runs/42251214855), CodeQL [42251214698](https://github.com/skyRolly/Anamorph/actions/runs/42251214698), and PREfast [42251214765](https://github.com/skyRolly/Anamorph/actions/runs/42251214765) ran on exact main `395e06d3`. | **Passed:** Build completed 16 selected jobs with three conditional skips; CodeQL and PREfast passed. For #223 main `a0b9d4bb`, Build 42244646995 attempt 1 failed after 14 selected jobs passed because two macOS jobs never acquired a hosted runner; attempt 2 was cancelled when main advanced. CodeQL 42244646991 and PREfast 42244647088 passed. |
 
 State isolation retains real same-processor A→B→C→B preset loads and the omitted-return
 control, actual JUCE/Windows shell-folder path witnesses, separated temporary files,
 EOF/ownership/concurrency controls and fail-closed symlink/reparse refusal. Fuzz
 isolation retains actual numbered callbacks, checked per-input cleanup, classified
 abort controls and its distinct JUCE teardown model. No fixture or detector is relaxed.
+The snapshot controller refuses linked/reparse protected profiles rather than
+following them. Snapshot equality does not prove the absence of reads, transient
+writes, access-time changes or hostile filesystem races.
+
+An isolated Linux GCC 14.2 run on final main `395e06d3` passes 945 DSP / 16,074
+State checks, the State isolation controls and 166 B2 observation rows. Its binaries were
+built at synchronized head `dabe1c32`, whose tree equals final main, and reused after
+checkout of the merged commit. DSP binary SHA-256 is
+`90e20e693e57d62b7bb66f9215e688da8f836d11a659d2243fb12d3d7fdbe933`;
+State binary SHA-256 is `1f40cbef74adad546757e407a9e6f3e89131735f570af9fb8d3c1a7e31f73ea9`.
+The raw stream is retained only in the local workspace; its SHA-256 is
+`d5e97246761328f1fcc580a3c32256aee84beccb2131e4414ddba1ab5d4e208c`;
+it is local evidence, not a substitute for the separately identified main CI.
+
+The merged-main sanitizer job passed ASan/UBSan and Valgrind for both suites.
+The existing Valgrind gate disables leak checking and relaxes the denormal
+assertion under emulation; native lanes retain it. Valgrind disables the allocation
+guard, and Windows/macOS do not compile its raw-malloc half; the separate
+RealtimeSanitizer lane covers exercised paths below its annotated engine entry.
+The reporting-only cross-slice
+comparison observed 32/32 differing scenarios with default flags and 24/32
+with contraction disabled; cross-architecture bit identity is not its contract.
+Current code-scanning alert state and a sampled raw artifact download returned
+HTTP 403, so successful analysis jobs do not establish an empty diagnostic inventory.
 
 NR-006/010/014, NR-013 and broader native host/install acceptance remain deferred.
 Version 0.10.0, official JUCE pin, protected tag, unpublished draft and eleven assets
 are unchanged. Development integration is not release, commercial, legal or signing
-authorization. Next work is separate review of the combined isolation diff and the
-post-integration record; new production investigations require fresh evidence.
+authorization. This status reconciliation and any later PR require separate review;
+new production investigations require fresh evidence.
+
+### Next-work dispositions
+
+| Candidate | Evidence, governing contract and disposition |
+|---|---|
+| Combined-source regression | The isolated Linux run on final main `395e06d3`, using binaries built from identical tree `2d3887df75a0298896d1577e9e5c23d7c355a85e`, passes 945 DSP / 16,074 State checks, the filesystem controls and 166 B2 observations. The synchronized-head platform and sanitizer gates passed; track the separate main run above and investigate a reproducible failure before proposing a focused correction. No new regression is established by the local run. |
+| NR-026 / KI-035 | The Accepted ADR-0072 and #222 evidence close the confirmed component defects within the surviving-processor contract. Preserve the correction and the original/B1 witnesses; native DAW behavior and simultaneous processor destruction are unmeasured, not additional closed cases. |
+| NR-013 / KI-009 | A host-specific focus failure is reported but its pinned REAPER/OS reproduction is unavailable. Defer the correction until that reproducer exists; changing focus speculatively would not validate the reported behavior. |
+| NR-004/005/007 | The intermittent Intel AU abort, restore/listener lock witness and Rosetta diagnostics remain distinct. Preserve their recurrence or supported-host triggers; neither a blanket retry nor a threading change is justified by the present evidence. |
+| KI-008/018/019/020; Level Match finite burst | Documented external/interaction limitations and the finite-burst measurement remain. Preserve the existing contracts or seek an owner/architecture decision on a specific changed contract; no in-scope correction is established here. |
+| NR-008/009 | Parser acceptance and multiband snapshot changes affect compatibility or threading. Preserve the bounded current models pending a specific owner decision and required Architecture Review. |
+| NR-006/010/014, NR-003/015 | Representative performance, visual/accessibility and broader host/install acceptance are deferred by the owner or need a selected scope and suitable machine. Keep their unexecuted results unverified. |
+| NR-018/019/021 | Distribution/legal terms, signing provisioning and candidate identity require owner decisions. Hold the existing draft and use the [candidate decision package](RELEASE_READINESS_0.10.0.md); no release operation follows. |
+
+The completed bounded NR-011/012/017 work and integrated callback/restore fixes do
+not justify repeating their investigations without new evidence. Beyond the focused
+status reconciliation, no independently executable correctness fix has been selected
+from this register.
 
 ## Historical B2 implementation and isolation review — 2026-11-06 (Asia/Shanghai)
 
@@ -1798,18 +1840,17 @@ No PR merge, tag change, release modification or publication is authorized.
 
 ## 1. Recommendation
 
-Hold the already-built 0.10.0 draft unchanged. NR-001/002, the approved five-PR
-stack and #204/#205/#206
-integration are complete; do not repeat them. Current main contains the atomic
-scope correction and NR-022 Undo fix, while the draft does not. NR-021 therefore
-recommends selecting a later source/candidate under separate authorization after
-remaining NR-006 native performance/manual acceptance, rather than publishing the
-old bytes on the strength of current-main CI.
+Hold the already-built 0.10.0 draft unchanged. It predates the integrated ScopeBuffer,
+Undo, callback-lifetime and B2 corrections, as well as JUCE 9.0.5. NR-021 recommends
+a separately selected source and candidate identity under owner authorization, with
+candidate-specific automated, compatibility and applicable human acceptance evidence.
+Current-source CI does not validate the older draft's bytes.
 
-PR #207/#208, NR-025/#209 and NR-027/#210 corrections are integrated; #211/#212 remain
-review-only until separately authorized. Continue the source-backed GUI lifetime
-inventory and other independently testable checks. Native/manual/hardware execution
-is owner-deferred for this round; preserve the
+PR #211/#212 and the B2 implementation #222 are integrated, alongside #207–#210.
+NR-026/KI-035 is resolved within the tested surviving-processor component contract;
+native DAW behavior and simultaneous processor destruction remain unmeasured.
+Investigate another product change only when new reproducible evidence justifies it.
+Native/manual/hardware execution is owner-deferred for this round; preserve the
 [package](NATIVE_VALIDATION_PACKAGE.md) and outstanding acceptance. Do not request
 native inputs. NR-013 still requires a pinned host reproducer and NR-015 useful
 scope/authorized isolation when resumed. NR-018/019/020 remain owner-dependent.
@@ -2697,9 +2738,10 @@ Final pushed-head CI and remaining unverified scenarios are in the linked eviden
 ## 5. Version and release strategy
 
 1. **Existing draft: 0.10.0, held unchanged.** It includes #187/#191/#193 but lacks
-   post-tag NR-022/NR-006, NR-023/024 and NR-027 corrections. NR-001/002 are complete. NR-021 recommends a separately
-   selected integrated source after native acceptance; no retag/replacement/version
-   execution is authorized. Retain the current draft and all provenance.
+   post-tag NR-022/NR-006, NR-023–029 (including B2) and the JUCE 9.0.5 upgrade.
+   NR-001/002 are complete. NR-021 recommends separately selecting an integrated
+   source and candidate identity, followed by applicable candidate-specific acceptance;
+   no retag/replacement/version execution is authorized. Retain draft provenance.
 2. **Later maintenance:** if an evidence-backed, compatible defect correction is selected after
    this baseline, propose a patch release. **0.10.1 is a conditional candidate**, not a reserved
    decision. If 0.10.0 remains unpublished, the owner can instead choose to revise that candidate
@@ -2729,9 +2771,9 @@ NR-022/006 and bounded NR-014 source work is integrated; native/manual execution
 is owner-deferred without waiving acceptance. Review state/preset/Undo, DSP/RT
 boundaries, publications/lifetimes, component callbacks and verification oracles
 for new reproducible evidence. Establish original/negative controls before fixing;
-use focused independent PRs and preserve Accepted contracts. NR-023/024 are
-integrated; NR-025/#209 and NR-027/#210 are integrated; NR-026 remains
-architecture/dependency-gated. NR-003/013/015 and recurrence/owner gates remain;
+use focused independent PRs and preserve Accepted contracts. NR-023/024,
+NR-025/#209, NR-027/#210, NR-028/#211, NR-029/#212 and the scoped B2 correction
+for NR-026/#222 are integrated. NR-003/013/015 and recurrence/owner gates remain;
 unrelated source correctness does not wait for physical-machine performance.
 
 ### Phase 2 — Measurement inputs before optimization or expanded installation
@@ -2824,6 +2866,9 @@ Binding references: [TESTING_POLICY](../docs/policies/TESTING_POLICY.md),
   or final commercial readiness from draft creation or conformance tests.
 
 ## 9. Investigation limits and open decisions
+
+The following describes the original investigation checkpoint; the opening current
+register records subsequent source, integration and CI outcomes.
 
 This assignment inspects current source and relevant historical findings; it does not run a DAW,
 audio device, visual/accessibility audition, fresh native build or exhaustive security scan. It

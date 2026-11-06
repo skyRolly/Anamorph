@@ -544,7 +544,8 @@ selected nested topology actions cancel before stores rather than commit partial
 count/solo state. Current probes include resets, Return-key frequency commit,
 solo/removal and wheel helpers with exact gesture/history oracles. TESTING states
 the remaining phase/routing gaps. The historical provisional KI-035 is reconciled
-to unused KI-037; NR-026/KI-035's pinned-JUCE Slider scope remains unfixed.
+to unused KI-037. At the #212 checkpoint, the separate NR-026/KI-035 pinned-JUCE
+Slider scope was still unfixed; its subsequent B2 disposition is recorded in INC-026.
 
 No DSP, parameter/schema, latency, threading protocol, dependency or release change
 is included. Headless/sanitizer results are not native GUI acceptance; it remains

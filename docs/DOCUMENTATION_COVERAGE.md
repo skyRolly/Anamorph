@@ -19177,3 +19177,16 @@ The State-header correction also re-examines its nine evidence citations. Histor
 
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
+
+## Combined isolation integration and candidate decision
+
+The opening roadmap register and HANDOVER record #223 and #219 integration,
+the #220 ancestry, exact reviewed/synchronized/main trees, separate CI identities
+and the remaining native/release boundaries. TESTING identifies the integrated
+isolation source and keeps its real filesystem, lifecycle and snapshot limits.
+POSTMORTEMS dates INC-025's earlier NR-026 status; SOURCE_OF_TRUTH and the Option B
+review distinguish the parent-only #220 checkpoint from its later main integration.
+The release-readiness package compares the preserved
+draft, separately authorized candidate, later maintenance version and deferral
+without selecting a version or modifying release objects. Existing evidence and
+historical approval records remain intact.
