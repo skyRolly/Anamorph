@@ -1,6 +1,39 @@
 # Next release investigation and development roadmap
 
-## B2 implementation and isolation review — 2026-11-06 (Asia/Shanghai)
+## Current execution register — 2026-11-06 (Asia/Shanghai)
+
+This opening register alone owns current execution status. Dated checkpoints below
+retain their original source/result identities and historical approval/PR states.
+The stable NR work-item index and detailed NR-026 disposition refer to this register.
+
+Current main is `2b256e90adab35077fa5906419743ee6a69c606e`: owner-reviewed #222
+head `5888bb6578aa2ead92cc8b862da6a2349190a407` merged under explicit authorization;
+the merge tree equals that head. Earlier #221 remains merged at
+`b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`; #218 ancestry is preserved.
+The same owner instruction authorized #220 only into its existing parent branch.
+No #219 or newly created PR merge is authorized. Open work retains auto-merge off.
+
+| Work item | Actual integration state | Evidence and remaining boundary |
+|---|---|---|
+| ADR-0072 / B2 | Accepted architecture and production implementation integrated through #222 at `2b256e90`. Official JUCE 9.0.5 is unchanged. | Reviewed-head Build 42201478195, merge 42201486922, CodeQL 42201487056, MSVC 42201486907 and Dependency Review 42201486953 passed. Post-merge main Build 42218768056, CodeQL 42218768047 and MSVC 42218768022 are separately identified; consult their actual conclusions. |
+| NR-026 / KI-035 | Resolved within the verified surviving-processor component scope on integrated main. Both previously confirmed standalone and held-Wheel lifetime failures are corrected. | A fresh actual-main build passes 945 DSP / 2,443 focused checks, all 166 lifecycle observations, exact host-route gestures, real Undo/Redo and reopening. [New execution record](engineering-review/post-b2-integration.json); immutable original/B1 failures are retained. Native DAW behavior and simultaneous processor destruction remain unmeasured, separate boundaries. |
+| #220 fuzz isolation | Merged as `de66265e31fdfcb10b77cc6fc1aada9033849d5f` into `codex/state-suite-isolation` from reviewed head `03e6e1f6`. It is not on main. | Reviewed-head Build 42162158196, merge 42162164219, CodeQL 42162160794 and MSVC 42162165418 passed. Dependency Review was unavailable for that stacked base. Reviewed campaign: 6,923 inputs / 91 seconds. |
+| #219 combined isolation | Open and unmerged. The parent received #220, then incorporates B2 main without rewriting reviewed history. Combined source checkpoint `6dcf93f0` retains both isolation implementations and both focused probe dispatch paths. | This expands #219's effective review diff. Earlier independent results do not validate the combination; actual latest pushed head and completed checks are authoritative in [PR #219](https://github.com/skyRolly/Anamorph/pull/219). Passing does not authorize merge. |
+| Post-integration status/evidence follow-up | [PR #223](https://github.com/skyRolly/Anamorph/pull/223), open/unmerged and independently based on main; auto-merge off. No new production behavior or release operation. | Scoped KI-035 closure, source-bound main execution, handover/testing/incident records and the obsolete no-interaction description are reconciled. ADR-0025 decisions are unchanged; historical header evidence is immutable. Consult the PR’s final-head check rollup. |
+
+State isolation retains real same-processor A→B→C→B preset loads and the omitted-return
+control, actual JUCE/Windows shell-folder path witnesses, separated temporary files,
+EOF/ownership/concurrency controls and fail-closed symlink/reparse refusal. Fuzz
+isolation retains actual numbered callbacks, checked per-input cleanup, classified
+abort controls and its distinct JUCE teardown model. No fixture or detector is relaxed.
+
+NR-006/010/014, NR-013 and broader native host/install acceptance remain deferred.
+Version 0.10.0, official JUCE pin, protected tag, unpublished draft and eleven assets
+are unchanged. Development integration is not release, commercial, legal or signing
+authorization. Next work is separate review of the combined isolation diff and the
+post-integration record; new production investigations require fresh evidence.
+
+## Historical B2 implementation and isolation review — 2026-11-06 (Asia/Shanghai)
 
 Current main is `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`, the authorized #221
 merge of reviewed head `89af3c19`. Reviewed-head Build 42140914740 passed 16 selected
@@ -57,7 +90,7 @@ Version 0.10.0 and protected tag/draft/eleven assets remain untouched; no releas
 commercial, signing, legal or distribution authorization follows.
 
 
-## Owner-approved B2 implementation — 2026-11-06 (Asia/Shanghai)
+## Historical owner-approved B2 implementation — 2026-11-06 (Asia/Shanghai)
 
 PR #221 reviewed head `89af3c19` merged at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`.
 Build 42140914740 completed with 16 selected jobs successful and three intentional
@@ -191,7 +224,7 @@ mechanism remains a separate cross-platform follow-up; do not assume changing
 only HOME or XDG variables isolates every platform.
 
 
-## Current integrated baseline — 2026-11-05 UTC
+## Historical integrated baseline — 2026-11-05 UTC
 
 Owner-reviewed PR #215 merged as `b0a063d2db982e3b6cdd1c403abce08098d1cfa1`;
 its tree is identical to approved head `a43c9964d21a9c6332f4511a25458280309c3a85`.
@@ -1621,7 +1654,7 @@ Stable NR IDs include decisions and investigations, not just bugs.
 ## 2. Verified baseline
 
 This section preserves the original 2026-10-31 release/investigation snapshot.
-The integrated baseline above and live register below supersede its main/PR statuses.
+The opening current execution register supersedes its main/PR/approval statuses.
 
 ### 2.1 Repository, versions and release identities
 
@@ -1828,6 +1861,8 @@ corrections. Historical dated statements and unprovided host details must remain
 
 ## 4. Work-item register
 
+This is the stable NR work-package index. The opening current execution register is the sole authority for present branch, integration and check state; historical checkpoint statements do not override it.
+
 Priorities follow demonstrated user impact and release risk, not old commercial “P0” labels.
 **P0:** confirmed severe/release-blocking defect; **P1:** important near-term gate/reliability;
 **P2:** meaningful bounded defect, investigation or engineering gap; **P3:** optional polish/content.
@@ -1862,7 +1897,7 @@ owner/legal or manual requirements are stated below. Statuses are execution stat
 | NR-023 | P2 | Integrated via #207 / 29150f3 | Bound transport arithmetic; combined-main validation and original/fixed UBSan controls retained | Completed source correction; old draft remains unchanged |
 | NR-024 | P1 | Integrated via #208 / a78b733 | Editor Undo/Redo/A-B lifetime guards; State154 and original/fixed/reference-mutant ASan controls | Completed source correction; old draft remains unchanged |
 | NR-025 | P1 | Integrated #209 / 0d395366 | Preset-menu adoption and timer restore callout lifetime controls | State157 follow-up integrated by #211; actual main validation recorded above |
-| NR-026 | P1 | Confirmed; owner prefers Option B; Architecture Review pending | B1 experiment rejected by held gesture/Undo and press-boundary failures; B2 stable-record design proposed/unimplemented | Review B2 binding/staging boundary, then exact implementation/parity evidence; D remains production hold |
+| NR-026 | P1 component correction verified | Resolved within surviving-processor component scope; B2 integrated via #222 at `2b256e90` | Actual-main focused lifecycle/gesture/Undo/reopen observations; original and B1 evidence preserved | Native DAW behavior and simultaneous processor teardown remain unmeasured; do not reopen the approved architecture without a new conflict |
 | NR-027 | P1 | Integrated #210 / 0cd95120 | Scale/resize callback lifetime; State156 and sanitizer controls | Native incidence unverified |
 | NR-028 | P1 | Completed / integrated #211 / c35a9d6b | Same-processor A→B→C→B parameter-trigger adoption cycle; guards already integrated #209 | Actual combined-main validation and preserved negative controls |
 | NR-029 | P1 | Completed / integrated #212 / 82c98e45 / KI-037 | SpectrumImager callback lifetime, gesture and Undo consistency; original/fixed controls retained | Native incidence and broader acceptance remain unverified |
@@ -2384,6 +2419,10 @@ all first attempts, with historical unrelated signal exits still unattributed. [
 
 ### NR-026 — Pinned JUCE wheel teardown (P1 / KI-035)
 
+**Current disposition:** B2 is integrated at `2b256e90` and the confirmed component-lifetime defects are resolved within the tested surviving-processor contract. A fresh main build reproduces 2,443 focused checks / 166 lifecycle observations, exact-once host gestures, actual Undo/Redo and editor reopening. See [post-integration evidence](engineering-review/post-b2-integration.json) and INC-026. Native host incidence and simultaneous processor destruction remain separate unmeasured boundaries.
+
+**Historical diagnosis and options before B2 integration:** the original source identities, failures, interim D disposition and rejected B1 evidence below remain unchanged observations.
+
 **Confirmed on integrated JUCE 9.0.5.** Exact 9.0.4/9.0.5 source comparison shows the
 Slider wheel and drag-scope code is unchanged; the only `juce_Slider.cpp` difference is popup
 window association. The original attached Width wheel plus synchronous editor destruction
@@ -2414,7 +2453,7 @@ inside each Settings notification. No concrete failing production entry point or
 found; this bounded negative result does not establish host-specific callback safety. No PR or
 production edit is justified. See the [source review](GUI_CALLBACK_LIFETIME_REVIEW.md#bounded-settings-and-attachment-lifecycle-audit--2026-11-05).
 
-**Next batch:** obtain the owner's NR-026 architecture/risk disposition before any gated
+**Historical next batch (before B2 integration):** obtain the owner's NR-026 architecture/risk disposition before any gated
 implementation. Resume Settings/attachment investigation only with a new production-path witness or
 other evidence. Any correction requires a live control, destructive ASan reproduction with relevant
 JUCE GUI modules instrumented, and parameter, gesture and Undo/history oracles with original and

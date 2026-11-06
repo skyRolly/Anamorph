@@ -226,3 +226,10 @@ sanitizer/mutation results belong to TESTING, the Option B packet and supporting
 B2 execution bundle. Final-head CI and separate human PR review/merge authorization
 remain required. Processor destruction during dispatch, native DAW automation and
 deferred host/manual matrices are outside the established automated scope.
+
+
+## Production integration — 2026-11-06 (Asia/Shanghai)
+
+The owner separately reviewed and explicitly authorized PR #222. Its reviewed head `5888bb6578aa2ead92cc8b862da6a2349190a407` is integrated on main at `2b256e90adab35077fa5906419743ee6a69c606e`, with the same tree. This records implementation review/merge provenance separately from the earlier architecture approval. A fresh integrated-source component run reproduces 2,443 focused checks and all 166 lifecycle observations; supporting source/build/results are in the post-integration record and TESTING.
+
+The original standalone/held component defects are resolved within the surviving-processor contract. Native DAW behavior and simultaneous processor destruction remain separate unmeasured boundaries. No architecture revision, official JUCE 9.0.5 pin change, risk retention or release authorization is inferred. Earlier approval/implementation checkpoints and original D/B1 reasoning above remain history. New production changes still require their applicable review and merge authorization.

@@ -116,16 +116,18 @@ revisited and the test written; the entry is removed only when the gap is actual
   something with a test still fails CI.
 
 ## Related code
+
+The source-capability descriptions and header links in this historical evidence list are bound to the pre-correction main `2b256e90` snapshot. They record what the earlier disclosures cited; that snapshot is not being represented as the original August fix source. The dated reconciliation below owns the present capability assessment.
 - `docs/policies/TESTING_POLICY.md` §Rules rule 1 (the amended rule)
 - `docs/procedures/TESTING.md` §"Gaps in the automated coverage (known, deliberate)" (the register)
 - `docs/POSTMORTEMS.md` INC-010 (the first invocation)
-- `tests/state_tests.cpp:6-11` — the harness comment recording that the editor is constructed and
+- [pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11) — the harness comment recording that the editor is constructed and
   destroyed but never SHOWN, which is the surface boundary this ADR is about (it read "linked but
   never instantiated" when this ADR was accepted; the boundary the ADR turns on — no pointer, no
   display, nothing on screen — is unchanged)
 
 Evidence [Verified]:
-- Source: `tests/state_tests.cpp:6-11` (the editor is constructed and destroyed, never shown);
+- Source: [pre-correction harness-header snapshot](https://github.com/skyRolly/Anamorph/blob/2b256e90adab35077fa5906419743ee6a69c606e/tests/state_tests.cpp#L6-L11) (the editor is constructed and destroyed, never shown);
   `scripts/run-tests.sh`
   (the two console targets are the whole Level-2/3 surface); `scripts/run-pluginval.sh` (Level 4
   drives a host the plug-in does not control).
@@ -134,3 +136,10 @@ Evidence [Verified]:
 - Precedent for the register: `docs/procedures/TESTING.md` §Gaps, cited as canonical by
   `docs/KNOWN_ISSUES.md` KI-014 and `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-F3.
 - History: PR #100; INC-010.
+
+
+## Automated-surface reconciliation — 2026-11-06 (Asia/Shanghai)
+
+Status remains Accepted and Decision sections 1–5 are unchanged. The former blanket no-interaction/no-GUI-lifetime premise is no longer current. The State harness directly delivers component mouse/Wheel/drag/key and TextEditor commands (`tests/state_tests.cpp:7-10`); B2's real notification, Undo/Redo and reopening assertions execute through `tests/knob_lifetime_tests.h:125-179`. Fresh integrated-main evidence at `2b256e90` reproduces 2,443 focused checks / 166 lifecycle observations. B2 therefore uses regression coverage, not this exception.
+
+Historical disclosures remain preserved through immutable source references. TESTING's gap register now distinguishes current component coverage from exact modal/native-pointer, vblank and visual behaviors that have not been established. A future fix must assess the specific reachable surface under the existing rule; the historical blanket premise cannot grant another waiver. This note adds no exception, changes no architecture decision and does not infer native/DAW acceptance or retroactively invent tests for earlier releases.
