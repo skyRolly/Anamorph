@@ -63,10 +63,23 @@ temporary-parent paths without creating or enumerating presets. On Windows the
 controller independently compares JUCE's result with `SHGetFolderPathW(CSIDL_APPDATA)`;
 HOME/USERPROFILE/APPDATA guesses are not evidence. It takes a read-only before/after
 snapshot of the actual resolved preset tree (including absence), checking content,
-identity, modes and modification times without following symlinks. **No sentinel
+identity, modes and modification times. A symbolic link or reparse point in the
+protected root, any ancestor or any descendant is explicitly unsupported: the
+controller refuses before trusting the snapshot, rather than treating unchanged
+link metadata as unchanged target contents. Production PresetManager may still use
+a linked preset directory; this nonshipping controller does not verify that setup.
+It never recursively follows arbitrary link targets. **No sentinel
 is written there.** Fake-HOME sentinels remain disposable collision controls and
 do not represent the actual Windows or macOS preset path. Snapshot equality detects
 persistent changes, not transient writes, reads, atime changes or hostile races.
+The same invocation first runs disposable snapshot controls: regular-tree equality
+and content mutation; unchanged redirect/target; unchanged redirect with changed
+target; ancestor/descendant redirect; changed/outside-boundary redirect; and broken
+redirect. Windows uses a directory junction if symbolic-link privilege is absent.
+`--self-test` runs these without launching State. The immutable original snapshot
+misses a target mutation and fails the new controls; the corrected controller
+refuses it. The supporting `state-isolation-symlink-review.json` records that Linux
+comparison; platform execution still belongs to the final-head CI.
 Unsafe overlap and loss of the installed override are rejected before processor
 construction; `--test-overlapping-isolation-root` and
 `--test-bypass-isolation-override` must fail with exit 2. The latter deliberately

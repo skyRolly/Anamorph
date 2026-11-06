@@ -21,6 +21,18 @@ def protected_snapshot(path):
     """Read-only; never follow links or create a missing production directory."""
     result = {}
 
+    def reject_redirect(item, info):
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise AssertionError(f"unsupported protected redirect: {item}")
+
+    # A link in an ancestor redirects access just as a linked root does. Check
+    # from the filesystem root down before reading any protected tree contents.
+    for item in reversed((path, *path.parents)):
+        try:
+            reject_redirect(item, item.lstat())
+        except FileNotFoundError:
+            pass
+
     def visit(item):
         try:
             info = item.lstat()
@@ -28,11 +40,8 @@ def protected_snapshot(path):
             result[str(item.relative_to(path))] = None
             return
         key = str(item.relative_to(path))
-        if stat.S_ISLNK(info.st_mode):
-            payload = os.readlink(item)
-        elif getattr(info, "st_file_attributes", 0) & 0x400:
-            raise AssertionError(f"unsupported protected reparse point: {item}")
-        elif stat.S_ISDIR(info.st_mode):
+        reject_redirect(item, info)
+        if stat.S_ISDIR(info.st_mode):
             payload = None
             for child in sorted(item.iterdir()):
                 visit(child)
@@ -46,6 +55,71 @@ def protected_snapshot(path):
 
     visit(path)
     return result
+
+
+def protected_snapshot_controls():
+    """Prove refusal before trusting a snapshot, using only disposable targets."""
+    with tempfile.TemporaryDirectory(prefix="anamorph-snapshot-controls-") as directory:
+        base = Path(directory).resolve()
+        target, other = base / "target", base / "outside-approved-boundary"
+        target.mkdir()
+        other.mkdir()
+        content = target / "preset"
+        content.write_text("before", encoding="utf-8")
+        before = protected_snapshot(target)
+        assert protected_snapshot(target) == before
+        content.write_text("after", encoding="utf-8")
+        assert protected_snapshot(target) != before, "regular target mutation went undetected"
+        content.write_text("before", encoding="utf-8")
+
+        link = base / "link"
+        junction = False
+
+        def redirect(destination):
+            nonlocal junction
+            try:
+                link.symlink_to(destination, target_is_directory=True)
+                junction = False
+            except OSError:
+                if os.name != "nt":
+                    raise
+                # Hosted Windows may lack symbolic-link privilege. A directory
+                # junction exercises the same fail-closed reparse-point rule.
+                subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(destination)],
+                               check=True, capture_output=True, text=True)
+                junction = True
+
+        def unlink():
+            if junction:
+                link.rmdir()
+            else:
+                link.unlink()
+
+        def refused(path):
+            try:
+                protected_snapshot(path)
+            except AssertionError as error:
+                assert "unsupported protected redirect" in str(error), error
+            else:
+                raise AssertionError("protected redirect was accepted")
+
+        redirect(target)
+        identity = link.lstat()
+        refused(link)                         # unchanged link and target
+        content.write_text("linked mutation", encoding="utf-8")
+        assert link.lstat().st_mtime_ns == identity.st_mtime_ns
+        refused(link)                         # unchanged link, changed target
+        refused(link / "preset")              # ancestor redirect
+        refused(base)                         # descendant redirect
+        unlink()
+        redirect(other)
+        refused(link)                         # changed link / outside boundary
+        unlink()
+        redirect(target)
+        content.unlink()
+        target.rmdir()
+        refused(link)                         # broken link still fails closed
+        unlink()
 
 
 def ready_process(command, env):
@@ -107,7 +181,10 @@ def main():
     signal.signal(signal.SIGTERM, stop_on_term)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    protected_snapshot_controls()
     command = sys.argv[1:]
+    if command == ["--self-test"]:
+        return
     full_suite = bool(command and command[0] == "--full-suite")
     if full_suite:
         command = command[1:]

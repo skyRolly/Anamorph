@@ -19064,3 +19064,14 @@ KNOWN_ISSUES, HANDOVER, release-readiness and roadmap retain KI-035 unresolved,
 #218 merged, #219 corrected exact-head evidence, separate #220 and protected release
 identities. Historical NR-026 ledgers/observations are untouched; native acceptance
 and commercial/release restrictions stay separate.
+
+
+## State protected snapshot redirect review
+
+TESTING and CI_CD inventory protected root/ancestor/descendant symbolic-link and
+reparse-point refusal, the unchanged-link/changed-target gap, supported regular-tree
+claim and explicitly unsupported linked production profile. Same-invocation
+self-tests use only disposable targets, including changed/broken/outside-boundary
+redirects and a Windows junction fallback. The source-bound Linux comparison
+`state-isolation-symlink-review.json` preserves original missed mutation and the
+corrected refusal; current platform CI remains separate evidence.

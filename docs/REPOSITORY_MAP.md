@@ -22,6 +22,8 @@ and the [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.
 distinct. The [NR-026 reproduction package](../worklogs/engineering-review/nr026-repro/README.md)
 contains diagnostic sources, exact commands, and retained outputs. These records
 support review; the roadmap owns current execution status.
+The [protected redirect review](../worklogs/engineering-review/state-isolation-symlink-review.json)
+records disposable original/corrected snapshot evidence and the unsupported linked-profile boundary.
 The [State isolation Linux record](../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 and its compressed output retain test-only execution evidence, not a product decision.
 The [Proposed ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)

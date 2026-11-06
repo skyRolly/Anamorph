@@ -1,5 +1,24 @@
 # Next release investigation and development roadmap
 
+## State isolation review continuation — 2026-11-06 (Asia/Shanghai)
+
+#221 is merged at `b9f94d83`; its reviewed-head Build 42140914740 completed
+successfully, including macOS and sanitizer lanes (16 successful jobs, three
+intentional skips). This main was merged into #219 without rewriting history.
+The owner's current assignment approves ADR-0072 B2 architecture and separate
+implementation work; that does not integrate a product correction or authorize
+merging #219/#220. Historical B1 and NR-026 evidence is retained.
+
+Confirmed snapshot gap: unchanged symbolic-link metadata could miss target content
+changes. The controller now refuses protected redirects at the root, in ancestors
+or descendants; it does not traverse arbitrary targets. Disposable controls cover
+regular mutation, unchanged/modified/changed/broken/outside-boundary redirects.
+The original function misses the controlled linked-target mutation and fails the
+new controls. `state-isolation-symlink-review.json` records actual Linux evidence;
+Windows junction/macOS and full final-head results require this branch's CI.
+All earlier #219 results below describe their named historical heads.
+
+
 ## Current execution register — 2026-11-06 UTC
 
 `main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged
