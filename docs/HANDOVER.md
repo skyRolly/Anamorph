@@ -2,7 +2,7 @@
 
 B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai): #221 is merged at
 `b9f94d83`, with successful reviewed-head and post-merge CI. Owner-approved ADR-0072
-B2 is implemented separately at code checkpoint `f9d8cbd3`: stable binding/event
+B2 is implemented in [PR #222](https://github.com/skyRolly/Anamorph/pull/222) at code checkpoint `f9d8cbd3`: stable binding/event
 record, exact-once gestures, processor Undo and guarded post-write banking. Local
 945 DSP / 16,074 State / 2,443 focused and partial-ASan 2,115 pass; seven incorrect
 source controls are detected. Final-head CI, independent implementation review and
@@ -17,7 +17,7 @@ but not yet accepted/integrated. #219/#220 remain unmerged with new review corre
 in progress. See the roadmap for current execution; earlier handovers retain history.
 
 
-Current continuation: #218 is merged at `c2f8f19b`; #219 corrections at `b2e36abf` remain open/unmerged with exact-head cross-platform CI recorded in the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md). Separate fuzz PR #220 at `04656924` and NR-026 design review #221 remain open. The owner prefers Option B for NR-026; [B1 is rejected and B2 proposed](../worklogs/NR026_OPTION_B_REVIEW.md). ADR-0072 remains Proposed, production KI-035 unresolved and concrete architecture review required. No version/dependency/release changes or deferred native acceptance. Dated handovers below remain history.
+Historical continuation before the current owner approval: #218 is merged at `c2f8f19b`; #219 corrections at `b2e36abf` remain open/unmerged with exact-head cross-platform CI recorded in the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md). Separate fuzz PR #220 at `04656924` and NR-026 design review #221 remain open. At that checkpoint the owner preferred Option B for NR-026; [B1 was rejected and B2 proposed](../worklogs/NR026_OPTION_B_REVIEW.md). ADR-0072 remained Proposed, production KI-035 unresolved and concrete architecture review required. No version/dependency/release changes or deferred native acceptance. Dated handovers below remain history.
 
 JUCE 9.0.5 is integrated on main by PR #213 (`18a51df773d8701004fe86e85df820fdf6949f2d`) under owner-Accepted ADR-0071.
 Product version and existing release assets are unchanged. The [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md)

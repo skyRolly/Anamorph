@@ -17,9 +17,9 @@ all native/release acceptance remain separate.
 
 | Work item | Current implementation / evidence | Integration boundary |
 |---|---|---|
-| NR-026 / KI-035 B2 | Code `f9d8cbd3`: stable focused binding/event record, exact-once gestures, processor endpoints/Undo, synchronous mouse/text staging, early detachment and post-write weak-handle anchor banking. Local 945 DSP / 16,074 State / 2,443 focused checks pass; partial GUI-module ASan passes 2,115 assertions. Seven copied-source controls detect missing/duplicate End, lost endpoint, wrong Redo, record reuse failure, lost bank completion and missing press staging. [Separate evidence](engineering-review/nr026-b2/README.md). | Correction implemented on a separate branch based on this main. Final pushed-head CI and human implementation review/merge authorization remain separate; main is still affected. No Option C risk acceptance. |
+| NR-026 / KI-035 B2 | [Implementation PR #222](https://github.com/skyRolly/Anamorph/pull/222), code `f9d8cbd3`: stable focused binding/event record, exact-once gestures, processor endpoints/Undo, synchronous mouse/text staging, early detachment and post-write weak-handle anchor banking. Local 945 DSP / 16,074 State / 2,443 focused checks pass; partial GUI-module ASan passes 2,115 assertions. Seven copied-source controls detect missing/duplicate End, lost endpoint, wrong Redo, record reuse failure, lost bank completion and missing press staging. [Separate evidence](engineering-review/nr026-b2/README.md). | Independent branch based on this main, open/unmerged, auto-merge off. Consult #222's actual final-head check rollup; human implementation review/merge authorization remain separate. Main is still affected. No Option C risk acceptance. |
 | #219 State isolation | Head `e28d03281cab0f5d4eb231abe28b9dae2f15cc0d`, includes main #221 without history rewriting. Protected redirects in root/ancestors/descendants are explicitly refused; no arbitrary target traversal. Original unchanged-link/changed-target miss and corrected refusal retained. Full local 945/13,959 plus isolation controls pass. Exact-head Build 42154388149, merge check 42154394743, CodeQL 42154394893, MSVC 42154394794 and Dependency Review 42154394791 pass. | Open/unmerged, auto-merge off. Linked production profiles are unsupported by the nonshipping snapshot controller; this does not change product symlink behavior. |
-| #220 fuzz isolation | Stacked on #219; current head `03e6e1f627099046f67cae65abfeaa35338f1c59`. Actual READY/CLEAN callback IDs replace the exact `-runs=2` assumption. Local direct driver verifies five calls/process. Runtime correction at `be7d489e` passed real Clang/libFuzzer/ASan/UBSan controls (eight actual calls/process) and 7,017 inputs / 91 seconds, peak 437 MB; the current head only clarifies filesystem-abort provenance and requires its own CI. Cleanup abort remains fail-closed with explicit harness classification and replacement preservation. | Open/unmerged, auto-merge off. Current-head CI is recorded in the PR check rollup, not inferred from its predecessor. Main-targeted Dependency Review is unavailable for this stacked base. |
+| #220 fuzz isolation | Stacked on #219; current head `03e6e1f627099046f67cae65abfeaa35338f1c59`. Actual READY/CLEAN callback IDs replace the exact `-runs=2` assumption. Local direct driver verifies five calls/process. Exact-head Build 42162158196 passes real Clang/libFuzzer/ASan/UBSan controls (eight actual calls/process) and 6,923 inputs / 91 seconds, peak 435 MB. Merge check 42162164219, CodeQL 42162160794 and MSVC 42162165418 pass. Cleanup abort remains fail-closed with explicit harness classification and replacement preservation. | Open/unmerged, auto-merge off. No prior-head result substitutes for this head. Main-targeted Dependency Review is unavailable for this stacked base. |
 
 B2 staging exposed an anchor-parity regression before review: reentrant host
 feedback delivered Width 0.8 but the first candidate resumed at 0.53. Guarded
@@ -66,11 +66,11 @@ merge. All other PRs retain auto-merge off. Prior execution snapshots below rema
 history; no old CI pass establishes correctness of a changed head.
 
 
-## Current execution register — 2026-11-06 UTC
+## Historical execution register before owner approval — 2026-11-06 UTC
 
 `main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged
-#218. Historical NR-026 source ledgers remain byte-for-byte intact. The dated
-snapshots below retain their original contexts; this section owns current status.
+#218. Historical NR-026 source ledgers remain byte-for-byte intact. This is the
+pre-approval snapshot; the opening execution register owns current status.
 
 | Work item | Current review state | Actual evidence / remaining boundary |
 |---|---|---|

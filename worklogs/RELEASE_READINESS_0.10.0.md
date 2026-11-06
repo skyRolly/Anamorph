@@ -1,5 +1,18 @@
 # Release readiness — 0.10.0 (draft only)
 
+## B2 implementation review — 2026-11-06 (Asia/Shanghai)
+
+Authorized #221 is integrated at `b9f94d83`, with successful reviewed-head and
+post-merge CI. Owner-approved ADR-0072 B2 is implemented separately in
+[PR #222](https://github.com/skyRolly/Anamorph/pull/222); architecture acceptance,
+branch validation, human implementation review and integration are distinct.
+The current main remains affected by NR-026/KI-035. #219 and stacked #220 have
+corrected final-head CI and remain unmerged; the [roadmap](NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
+records their identities. No new PR has merge authorization. Version, annotated
+tag, unpublished draft and all eleven assets remain protected and unchanged.
+Deferred native/manual, legal/commercial and signing gates remain in force.
+Earlier dated assessments below retain their checkpoint context.
+
 ## Integration update — 2026-11-05 UTC
 
 Owner-authorized #216 and #217 merged at `f15236d5598efb5346a962643fecd1aca778a38a`
