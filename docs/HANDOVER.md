@@ -1,5 +1,15 @@
 # HANDOVER.md
 
+**0.10.1 preparation (2026-11-06 UTC):** selected integrated baseline is
+`55bdbdea090152f635d442916f4f0547e4626600`; JUCE remains 9.0.5. The owner attests
+Level-5 PASS and completed-roadmap human acceptance. Exact human test metadata is NOT
+RECORDED. The release-preparation branch requires CI and owner review/merge; it is not yet
+a tagged source. ADR-0070's representative native performance measurements and owner
+cost acceptance remain outstanding. No repeat Level-5 is requested. See the
+[current execution register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+The existing 0.10.0 tag and draft remain unchanged; publication is not authorized.
+
+
 Current handover — 2026-11-07 (Asia/Shanghai): owner-reviewed #223 merged at
 `a0b9d4bb9b1b1615ec8aec9cdbcf41318a596b24`, then #219 at
 `395e06d3cf9c19b3f59b64c026c83f2baf55a0d0`. The latter includes #220's

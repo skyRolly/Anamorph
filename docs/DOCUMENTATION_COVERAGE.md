@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.1 release-preparation audit — 2026-11-06 UTC
+
+Updated the version, release Changelog, project status, acceptance and compatibility records
+and current roadmap from the owner instruction and source audit. Historical 0.10.0 evidence
+is retained. The Level-5 owner result is separate from final-source CI and ADR-0070's
+still-deferred representative performance/cost acceptance. The versioned heading's date is
+provisional until the actual tag date. No release asset or published identity was changed.
+
+
 JUCE 9.0.5 integration status is reconciled across the repository map, ADR, dependency policy, handover, build/CI and acceptance records, and [upgrade worklog](../worklogs/JUCE905_UPGRADE_REVIEW.md); prior review snapshots remain historical.
 
 ## Combined #216/#217 baseline — 2026-11-05

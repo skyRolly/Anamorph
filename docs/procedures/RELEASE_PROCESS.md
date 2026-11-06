@@ -5,6 +5,11 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Pre-release checklist
 
+**0.10.1 preparation:** the owner has attested Level-5 PASS for completed development work;
+see `LEVEL5_AUDITION.md` and the candidate checklist. Final-source automated gates and
+ADR-0070's outstanding representative performance/cost condition remain separate. The
+Changelog date in the preparation PR is provisional until the actual tag date is known.
+
 1. **Version bump** — update `project(Anamorph VERSION x.y.z ...)` in `CMakeLists.txt:14`.
    The citation gate does not treat this as drift: that line is declared in
    `VERSIONED_LINES` (`scripts/check-citations.py`), which replaces the base comparison

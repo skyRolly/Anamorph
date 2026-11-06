@@ -1,6 +1,84 @@
 # Next release investigation and development roadmap
 
-## Current execution register — 2026-11-07 (Asia/Shanghai)
+## Current 0.10.1 release-preparation register — 2026-11-06 UTC
+
+Remote main at investigation: `55bdbdea090152f635d442916f4f0547e4626600` (PR #224).
+The owner selects **0.10.1**, retains the existing 0.10.0 tag/draft unchanged, and authorizes
+an independent draft after the mandatory PR and release gates. The present branch prepares
+that version; it is not release source until reviewed and merged. No PR merge or auto-merge
+is authorized. The dated Changelog heading is a **provisional planned UTC tag date**:
+confirm it is the actual tag date before tagging and update through review if it changes.
+
+**Human evidence:** Level-5 **PASS — owner-attested**; all work items already completed in
+this roadmap have completed applicable human review and acceptance, **owner-attested**.
+The attestation is for completed development work in its actual scope; exact test dates,
+hardware, DAW versions, artifacts and measurements are **NOT RECORDED**. It is not an agent
+execution or a claim that deferred work was completed. See [Level-5](../docs/procedures/LEVEL5_AUDITION.md)
+and the [candidate checklist](../docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md).
+Accepted ADR-0070/0071/0072, integrated ScopeBuffer, State/fuzz isolation, Undo, transport,
+restore, callback and B2 work retain their completed engineering and owner-accepted scopes.
+NR-026/KI-035 is resolved within the surviving-processor component contract only.
+
+| Candidate | Disposition for an unpublished 0.10.1 draft |
+|---|---|
+| NR-004/005/007 | Defer under the existing recurrence/supported-host triggers. Historical Intel AU abort, lock witness and Rosetta diagnostics do not establish a present supported-host defect or failing baseline gate. Do not weaken tests or speculate about ownership. |
+| NR-008/009 | Retain the bounded parser and multiband models under Accepted ADRs; changes need a specific compatibility/threading decision and Architecture Review. |
+| NR-013/KI-009 | Blocked on the pinned REAPER/OS reproducer; no evidenced bounded fix. |
+| NR-006 | Integrated engineering and human Level-5 acceptance retained. **ADR-0070 acceptance condition 5 remains open:** representative native performance measurements and owner cost acceptance were deferred, not supplied by the completed-work attestation. This is a pre-tag architecture condition, not a request to repeat Level-5. |
+| NR-010/014, NR-003/015 | Broader representative budget, assistive/visual and named-host/install coverage remain deferred or unverified, except for the completed work expressly accepted above. No unsupported cases are marked passed. |
+| KI-008/018/019/020; Level Match finite burst | Retain documented external/interaction limitations and the existing ADR-0007 measurement behavior; no newly evidenced mandatory correction. |
+| NR-018/019 | Legal/commercial decisions and signing/notarization provisioning remain open for their respective distribution routes. They do not prevent creating the authorized unpublished draft; no commercial entitlement or signature is inferred. |
+| NR-021 | 0.10.1 source and independent identity are selected. Release preparation, exact final-source CI, ADR-0070 condition 5, owner PR merge and tag-triggered validation remain open. |
+
+No new production engineering fix has been established by this review. Baseline Build
+[42283851839](https://github.com/skyRolly/Anamorph/actions/runs/42283851839) passed 16
+selected jobs; merge-check and two optional macOS review jobs were skipped. This is baseline
+CI, not release-PR or tag-triggered evidence. The historical Valgrind configuration disables
+leak checking; successful analysis does not establish an empty inaccessible alert inventory.
+The 0.10.0 tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`, its source
+`4c136881f245470577d66a7603f15b177ddcf3dc` and unpublished draft `429760301` with eleven
+assets were verified unchanged. No 0.10.1 tag or release existed at inspection.
+
+### 0.10.1 release gate and packaging evidence
+
+| RELEASE_POLICY precondition | Current assessment |
+|---|---|
+| 1 Tests green | Baseline Build 42283851839 passed its selected matrix on `55bdbdea`. Exact release-PR head and post-merge main tests/pluginval remain required; the old local cache resolves JUCE 9.0.4 and is not candidate evidence. |
+| 2 Compatibility checklist | Candidate evaluation is recorded in `RELEASE_COMPATIBILITY_CHECKLIST.md`; final-source CI and release-tree completion remain open. Pre-0.9.1 `Anmf` to `RTec` identity break and documented re-insertion/preset recovery remain unchanged (ADR-0023/KI-016). |
+| 3 Version | Prepared as 0.10.1 in CMake; pending merge. |
+| 4 Changelog | Release entry and 0.10.0 comparison link prepared; date provisional pending actual tag day. |
+| 5 Architecture | ADR-0070/0071/0072 accepted and their completed work owner-accepted. ADR-0070 §Acceptance and rollback item 5 still requires representative native performance measurements and owner cost acceptance; the owner explicitly left deferred work outside the completed-work attestation. |
+| 6 Documentation | Candidate records updated on this branch; final documentation/citation checks and owner review remain required. |
+| 7 Manual audition | **PASS — owner-attested Level-5** for the accepted completed baseline. Exact tested artifact/environment is NOT RECORDED. Not an agent-performed test. |
+
+`CMakeLists.txt` supplies `PROJECT_VERSION` to JUCE and the About display; the Windows
+installer and macOS package scripts receive the CMake version from `build.yml`. Build number
+remains CI's run number. `RTec`/`Anmr`, `tech.rolly.anamorph`, Windows AppId
+`D1E3D8F8-C9CE-415C-AC73-A6AA842987BD`, macOS component receipt identifiers and VST3/AU/
+Standalone format selection are unchanged against 0.10.0. This source inspection does not
+certify yet-unbuilt 0.10.1 binaries or installer metadata.
+
+`release.yml` uses `validate → build → draft-release`, requires an annotated bare tag and
+matching CMake/dated Changelog, and reuses the full build gates. It restores and checks Unix
+executable bits, stages the two installers without repacking, extracts the version section,
+and creates a draft with Linux/Windows/macOS ZIPs, Windows installer, macOS package, manual,
+NOTICE, THIRD_PARTY_LICENSES, SUPPORT, SHA256SUMS and manifest (eleven assets). Debug symbols
+remain separate CI artifacts. No 0.10.1 assets or tag-triggered workflow exist yet.
+
+NOTICE and THIRD_PARTY_LICENSES identify JUCE 9.0.5. ADR-0071 and
+`JUCE905_UPGRADE_REVIEW.md` record the 47-file licence-text comparison and compiled-object
+inventory; MP3/Opus/WebP remain disabled. These source and prior-build findings do not
+constitute a new final-artifact audit or a commercial licence grant. The workflow attaches
+both required notice assets. Existing CI uses ad-hoc macOS signatures without notarization;
+Windows installers are not Authenticode signed. Signing, legal entitlement and public
+distribution decisions remain separate from the authorized unpublished draft.
+
+Next: validate the review branch and obtain independent owner review/merge. Before any tag,
+verify actual main, date, exact-source gates, ADR-0070's outstanding cost condition and absence
+of conflicting release identities. Do not tag or create a draft from this branch.
+
+
+## Historical execution register — 2026-11-07 (Asia/Shanghai)
 
 This opening register alone owns current execution status. Dated checkpoints below
 retain their original source/result identities and historical approval/PR states.

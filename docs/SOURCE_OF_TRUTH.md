@@ -73,9 +73,10 @@ records the selected design, explicitly approved by the owner on 2026-11-01 for
 implementation subject to native portability/performance/validation gates. Its
 atomic-window implementation and live contracts are integrated on main via
 #199 (`303d37c`) and #202 (`4255393`) under separate explicit owner merge approval.
-Current native CI/compile guards and reviewed codegen are complete; representative
-native costs/owner cost acceptance and targeted visual/editor-lifecycle acceptance
-remain pending. New PR merges remain separately gated. The unchanged tag/draft
+Current native CI/compile guards and reviewed codegen are complete. The 2026-11-06
+owner Level-5 attestation covers completed development work; representative native
+cost measurements and owner cost acceptance remain deferred under ADR-0070. New PR
+merges remain separately gated. The unchanged tag/draft
 retain the original plain-storage exposure.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
