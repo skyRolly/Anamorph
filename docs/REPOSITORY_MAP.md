@@ -28,7 +28,7 @@ records disposable original/corrected snapshot evidence and the unsupported link
 The [State isolation Linux record](../worklogs/engineering-review/state-isolation-linux-2026-11-05.json)
 and its compressed output retain test-only execution evidence, not a product decision.
 The [Accepted ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
-records owner-approved B2, with implementation review/integration separate.
+records owner-approved B2, integrated through separately owner-reviewed #222 at `2b256e90`.
 `src/gui/KnobParameterBinding.h` owns the stable record and focused parameter binding;
 `SliderEventBoundary.h` connects Knob/ValueBox event scopes. Actual-component
 regressions live in `tests/knob_lifetime_tests.h`; separate source/build/mutation
@@ -379,3 +379,5 @@ regressions, exact test/configuration evidence and final-head CI scope.
 `worklogs/juce905-review/acceptance-reconciliation.json` records the new 9.0.5 owner attestation,
 its scope and unsupplied provenance fields; `worklogs/juce905-review/metadata-review.json` records
 source-classification, before/after/partial-fix tests and retained configuration-order evidence.
+
+The [post-integration record](../worklogs/engineering-review/post-b2-integration.json) and its compressed streams retain actual-main component/path evidence. They are supporting engineering data, not policy or native/release acceptance.

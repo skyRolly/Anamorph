@@ -1,6 +1,10 @@
 # HANDOVER.md
 
-B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai): #221 is merged at
+Post-integration handover — 2026-11-06 (Asia/Shanghai): #222 is merged on main at `2b256e90`, with Accepted ADR-0072 and official JUCE 9.0.5 unchanged. Actual-main component verification reproduces 945 DSP / 2,443 focused checks and all 166 lifecycle observations. KI-035 / NR-026 is resolved within that surviving-processor component scope; native DAW behavior and simultaneous processor teardown remain unmeasured.
+
+#220 is merged at `de66265e` only into `codex/state-suite-isolation`; #219 remains open/unmerged and now contains State plus fuzz isolation. Its combination with B2 requires its own final-head validation and human review. Post-integration status/evidence changes are proposed separately in [PR #223](https://github.com/skyRolly/Anamorph/pull/223); it remains unmerged and no new PR merge is authorized. See the [current register](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) and [source-bound post-merge evidence](../worklogs/engineering-review/post-b2-integration.json). Deferred native acceptance and protected version/tag/draft/eleven assets remain unchanged. Earlier handovers below are historical checkpoints.
+
+Historical B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai): #221 is merged at
 `b9f94d83`, with successful reviewed-head and post-merge CI. Owner-approved ADR-0072
 B2 is implemented in [PR #222](https://github.com/skyRolly/Anamorph/pull/222) at code checkpoint `f9d8cbd3`: stable binding/event
 record, exact-once gestures, processor Undo and guarded post-write banking. Local
@@ -13,7 +17,7 @@ unmerged; their review corrections and current heads are in the roadmap. No rele
 or deferred native acceptance follows from these automated results.
 
 
-Owner continuation — 2026-11-06 (Asia/Shanghai): #221 is merged at `b9f94d83` and
+Historical owner continuation — 2026-11-06 (Asia/Shanghai): #221 is merged at `b9f94d83` and
 ADR-0072 B2 architecture is owner-approved. A separate B2 implementation is authorized
 but not yet accepted/integrated. #219/#220 remain unmerged with new review corrections
 in progress. See the roadmap for current execution; earlier handovers retain history.
@@ -27,7 +31,7 @@ records source-bound automated evidence and the new **PASS — owner-attested** 
 acceptance for 9.0.5 (recorded 2026-11-04 Asia/Shanghai). Exact tested payload/environment fields
 were not supplied. No release is authorized. Older attestations remain dated history.
 
-## Current handover after #216/#217 — 2026-11-05 UTC
+## Historical handover after #216/#217 — 2026-11-05 UTC
 
 Owner-authorized #216 merged at `f15236d5598efb5346a962643fecd1aca778a38a`
 and #217 at `09cf18876d6ad09dabf9878fc0c719d0c49f10c7`, the current combined

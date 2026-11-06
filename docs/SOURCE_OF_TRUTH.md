@@ -204,3 +204,5 @@ The [JUCE 9.0.5 investigation](../worklogs/JUCE905_UPGRADE_REVIEW.md) and
 `worklogs/juce905-review/` ledgers are supporting evidence for **Accepted ADR-0071**.
 The owner approved this ADR on 2026-11-04 (“approve ADR / dont merge PR”).
 Main pins 9.0.5 after PR #213; native/Level-5 acceptance is owner-attested, distinct from source-bound automated evidence.
+
+The [post-B2 integration record](../worklogs/engineering-review/post-b2-integration.json) is supporting execution data for main `2b256e90`: compiler/source/binary identities, path witnesses and raw component outcomes. The owner's separate #222 authorization supplies merge authority; measurement does not. #220 merging into the unmerged #219 parent is not main integration.

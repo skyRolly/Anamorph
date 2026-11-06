@@ -2677,3 +2677,6 @@ gesture/history, coalescing and recursive-binding validation. Normal platform,
 ASan/UBSan/Valgrind, TSan, realtime, fuzz, pluginval and static/documentation lanes
 remain at their existing strictness. A local partial GUI-module ASan experiment
 is separate evidence and never replaces those complete final-head gates.
+
+
+Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
