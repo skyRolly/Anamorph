@@ -1,5 +1,25 @@
 # Next release investigation and development roadmap
 
+## Owner-approved B2 implementation — 2026-11-06 (Asia/Shanghai)
+
+PR #221 reviewed head `89af3c19` merged at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`.
+Build 42140914740 completed with 16 selected jobs successful and three intentional
+skips, including successful macOS and sanitizers; merge check 42140922089 and
+Dependency Review 42140921925 succeeded. Shipping source, approved JUCE pin and
+historical NR-026 evidence are unchanged by that integration.
+
+The owner explicitly records completed human Architecture Review and approves
+ADR-0072 B2. The ADR/index acceptance records that instruction, not a GitHub approval
+state. B2 implementation is authorized on a separate branch based on this main;
+production acceptance, integration and release remain outstanding. NR-026/KI-035
+stays unresolved until verified correction is integrated. B1 remains rejected.
+
+#219 symlink-target snapshot coverage and #220 callback-count/cleanup-abort reviews
+are being addressed on the existing unmerged stack. Only #221 is authorized to
+merge. All other PRs retain auto-merge off. Prior execution snapshots below remain
+history; no old CI pass establishes correctness of a changed head.
+
+
 ## Current execution register — 2026-11-06 UTC
 
 `main` refreshed read-only: `c2f8f19b87daae709c015a062a8b771f049da012`, owner-merged

@@ -1,9 +1,27 @@
 # ADR-0072 — Wheel callback lifetime and gesture ownership (NR-026 / KI-035)
 
-**Status:** Proposed — human Architecture Review pending, 2026-11-05 UTC.
-The owner now authorizes the Option B direction and bounded nonshipping validation;
-final implementation, integration, risk-retention and release acceptance remain separate.
-See the current continuation below; the original interim D recommendation is retained.
+**Status:** Accepted for the B2 architecture — owner approval recorded 2026-11-06 (Asia/Shanghai).
+
+The owner explicitly states in the current assignment that human Architecture Review
+is complete and approves B2 as reviewed in PR #221. That PR's reviewed head
+`89af3c1940613b67fa5010a13f0d03d0ee8bc8b8` is integrated by merge
+`b9f94d83bb7ed3fde97240ca0868ed7ac1d97512`. This is owner-provided approval
+provenance, not an inferred GitHub approval or an invented earlier review date.
+
+Approved scope: a lifetime-stable message-thread interaction record; exact-once
+host gesture ownership; processor-owned Undo/endpoints; standalone event lease;
+held Wheel borrowing the press record; lifecycle-safe detachment; focused Knob
+binding adaptation and synchronous event-boundary staging; preservation of JUCE
+drag calculations and Accepted ADR-0052/0053; official JUCE 9.0.5 unchanged.
+The lifecycle contract in the continuation below is binding implementation acceptance.
+
+Implementation is authorized but not yet validated or integrated at this approval
+checkpoint. Each actual production diff requires regression/compatibility evidence,
+separate human PR review and separate merge authorization. No unrelated attachment
+family, DSP, threading, parameter/schema/latency, dependency, native acceptance or
+release change is approved. A demonstrated conflict requiring an architecture
+revision must return with that specific conflict. The historical D recommendation,
+B1 rejection and earlier Proposed-stage wording below remain dated history.
 
 ## Context
 

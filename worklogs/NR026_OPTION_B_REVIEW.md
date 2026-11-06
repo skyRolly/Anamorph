@@ -1,5 +1,13 @@
 # NR-026 Option B continuation and review gate
 
+Current decision — 2026-11-06 (Asia/Shanghai): the owner explicitly approves the
+B2 architecture and authorizes implementation. ADR-0072 is Accepted for that scope;
+PR #221 is integrated at `b9f94d83bb7ed3fde97240ca0868ed7ac1d97512` after reviewed-head
+CI completed. This does not accept an implementation, authorize another merge or
+release. The following B1 evidence and pre-approval B2 proposal remain unchanged
+historical investigation. Current implementation status belongs to the roadmap.
+
+
 **Disposition: B-modified for design; D for production integration.** The owner
 selects product-owned Wheel handling as the preferred direction and authorizes
 bounded nonshipping investigation. This is not acceptance of a particular design.

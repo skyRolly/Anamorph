@@ -19042,3 +19042,14 @@ KNOWN_ISSUES, HANDOVER, release-readiness and roadmap retain KI-035 unresolved,
 #218 merged, #219 corrected exact-head evidence, separate #220 and protected release
 identities. Historical NR-026 ledgers/observations are untouched; native acceptance
 and commercial/release restrictions stay separate.
+
+
+## ADR-0072 B2 owner approval and implementation authorization
+
+Record the current owner's explicit Architecture Review approval (2026-11-06,
+Asia/Shanghai) in ADR-0072 and ADR_INDEX, bounded to B2's stable interaction record,
+exact-once gestures, processor-owned history, focused binding and synchronous
+staging. Distinguish that decision from unvalidated implementation and separate
+merge/release approval. Retain B1 failures and historical D/Proposed observations.
+The Option B packet, roadmap, handover and KI-035 row reflect that distinction and
+#221's actual reviewed-head validation and merge identity.
