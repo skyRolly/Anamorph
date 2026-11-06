@@ -5,10 +5,10 @@
 //  (SESSION_COMPATIBILITY_POLICY / PARAMETER_COMPATIBILITY_POLICY): it
 //  exercises the REAL AnamorphAudioProcessor (this target compiles the plugin
 //  sources), so every check runs the exact production serialization code paths.
-//  Since 2026-08-21 it also CONSTRUCTS AND DESTROYS the real editor -- but never
-//  SHOWS it: no peer, no message loop, no interaction. A defect that needs a
-//  component on screen still has no surface here; a defect in the editor's
-//  construction or teardown now does.
+//  The harness constructs/destroys real editors and directly delivers component
+//  mouse/Wheel/drag/key and TextEditor commands, including teardown callbacks.
+//  Ordinary cases are headless; selected diagnostic modes use peers/popups.
+//  Native focus/usability, DAW incidence and simultaneous processor teardown remain unmeasured.
 //
 //    1. Serialized schema shape: AnamorphRoot / ANAMORPH / ANAMORPH_INTERNAL /
 //       AB fields exist exactly as SERIALIZATION_REGISTRY.md records them.

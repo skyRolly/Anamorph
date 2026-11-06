@@ -19159,3 +19159,9 @@ merging only into unmerged #219. The combined State main retains both filesystem
 and Knob-lifetime probe dispatch blocks; TESTING/CI_CD retain both inventories.
 Full combined-source and actual-main post-merge validation remain independently
 required. No fixture, sanitizer or release gate was relaxed by conflict resolution.
+
+The State source header now describes directly delivered component events and
+selected peer/popup diagnostic modes, replacing its obsolete no-interaction
+claim. This is a four-line comment correction; runtime statements and line
+coordinates are unchanged. Existing B2/ADR-0053 regressions remain the executable
+surface; no synthetic replacement or native acceptance is inferred.
