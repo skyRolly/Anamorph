@@ -1174,3 +1174,16 @@ Version 0.10.0, tag object `1190e455c7c3a1b97bd4262360fdbeb8cea3c5b0`, tagged so
 `4c136881f245470577d66a7603f15b177ddcf3dc`, unpublished draft 429760301 and eleven
 original assets are unchanged by this work. Deferred NR-006/010/014, NR-013 and
 host/installation acceptance, legal/commercial/signing/distribution gates remain.
+
+
+## B2 architecture approval and implementation review — 2026-11-06 (Asia/Shanghai)
+
+#221 is owner-authorized and merged at `b9f94d83` after final CI, including macOS
+and sanitizers; post-merge main Build 42152331590 passes. The owner separately
+approves ADR-0072 B2. The acceptance record accompanies the unmerged production
+implementation, based on that main, with source checkpoint `f9d8cbd3` and separate
+component/gesture/history/sanitizer/control evidence. NR-026/KI-035 remains unresolved
+on main until a verified correction is integrated. Architecture approval is not
+implementation acceptance or release permission. #219/#220 remain unmerged.
+The protected version/tag/draft/eleven assets and all deferred NR-006/010/014,
+NR-013, host/installation, legal/commercial/signing/distribution requirements remain.

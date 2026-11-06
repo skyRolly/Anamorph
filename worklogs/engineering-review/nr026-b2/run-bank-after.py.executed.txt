@@ -1,0 +1,12 @@
+from pathlib import Path
+import hashlib,json,os,subprocess,tempfile
+out=Path('/workspace/scratch/b2');records=[]
+for tag in ['bank-after']:
+ with tempfile.TemporaryDirectory(prefix='bank-profile-',dir=out) as temp:
+  home=Path(temp)/'home';home.mkdir();tmp=Path(temp)/'tmp';tmp.mkdir()
+  env=dict(os.environ,HOME=str(home),XDG_CONFIG_HOME=str(home/'.config'),TMPDIR=str(tmp))
+  run=subprocess.run(['xvfb-run','-a',str(out/tag)],env=env,capture_output=True,timeout=90)
+ (out/(tag+'.stdout')).write_bytes(run.stdout);(out/(tag+'.stderr')).write_bytes(run.stderr)
+ records.append({'case':tag,'exit':run.returncode,'stdout':run.stdout.decode(),'binary_sha256':hashlib.sha256((out/tag).read_bytes()).hexdigest()})
+ print(tag,run.returncode,run.stdout.decode(),flush=True)
+(out/'bank-corrected.json').write_text(json.dumps(records,indent=2))

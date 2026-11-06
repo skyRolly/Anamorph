@@ -193,3 +193,36 @@ ownership), with explicit dependency provenance/maintenance/rollback costs. No J
 change is authorized here. If neither has an acceptance argument or required approval,
 continue D. C requires a separate explicit owner risk disposition. ADR-0072 remains
 **Proposed** until separately documented human architecture acceptance.
+
+
+## Accepted B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai)
+
+The current owner assignment supplies the human Architecture Review decision.
+Approved B2 replaces the affected standalone Wheel route and owns gesture lifetime
+in Anamorph while preserving official JUCE 9.0.5. The lifecycle requirements in the
+owner-directed continuation are now the binding implementation acceptance contract.
+The earlier Proposed-stage gate and D recommendation above are historical.
+
+Implementation starts from merged #221 main `b9f94d83`, with production source
+checkpoint `d8e28787`. `KnobParameterBinding` retains JUCE ParameterAttachment's
+feedback/update model, configures the same conversion/range/text behavior, owns
+one gesture intent stack, and states/refuses endpoints through the existing
+processor. Event scopes retain the record across component detachment; the editor
+detaches bindings before child/look-and-feel teardown. Begin/value/End notifications
+are drained synchronously after the enclosing Knob/ValueBox/text framework frame
+returns. Direct recursive value writes retain existing synchronous request nesting.
+
+The standalone path keeps JUCE Slider UI drag notifications within this staging
+boundary, without calling the affected `Slider::mouseWheelMove`; the record alone
+owns host Begin/End. Held Wheel borrows the press record and retains existing drag
+math/banks. The actual text parser is wrapped after JUCE creates each ValueBox;
+Return/focus/Escape and typed-before-Wheel ordering remain framework behavior.
+A typed commit and its following notch retain separate host pairs but one named
+Undo action, as Accepted ADR-0053 already specifies.
+
+This source checkpoint is not final implementation acceptance or integration.
+Actual component/host-route history, reentrancy, feedback, mapping, no-edit and
+sanitizer/mutation results belong to TESTING, the Option B packet and supporting
+B2 execution bundle. Final-head CI and separate human PR review/merge authorization
+remain required. Processor destruction during dispatch, native DAW automation and
+deferred host/manual matrices are outside the established automated scope.

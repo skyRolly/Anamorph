@@ -1,0 +1,6 @@
+import json,pathlib,subprocess,sys
+sys.path.insert(0,'/workspace/Anamorph/scripts');from native_validation import command_args,with_output,output_path
+root=pathlib.Path(sys.argv[1]);build=pathlib.Path(sys.argv[2]);tag=sys.argv[3];out=pathlib.Path('/workspace/scratch/b2');commands=[command_args(s,False) for s in subprocess.check_output(['ninja','-C',str(build),'-t','commands','AnamorphStateTests'],text=True).splitlines()];state=next(c for c in commands if '-c' in c and str(root/'tests/state_tests.cpp') in c)
+cmd=with_output([str(out/'bank-probe.cpp') if x==str(root/'tests/state_tests.cpp') else x for x in state],out/(tag+'.o'));subprocess.run(cmd,cwd=build,check=True)
+link=next(c for c in commands if '-c' not in c and '-o' in c and 'AnamorphStateTests_artefacts/' in output_path(c));link=with_output([str(out/(tag+'.o')) if x==output_path(state) else x for x in link],out/tag);subprocess.run(link,cwd=build,check=True)
+(out/(tag+'.json')).write_text(json.dumps({'compile':cmd,'link':link},indent=2))

@@ -1,0 +1,40 @@
+import concurrent.futures,hashlib,json,pathlib,subprocess,sys
+sys.path.insert(0,'/workspace/Anamorph/scripts')
+from native_validation import command_args,output_path,with_output
+root=pathlib.Path('/workspace/Anamorph');build=pathlib.Path('/workspace/build-anamorph219');out=pathlib.Path('/workspace/scratch/b2')
+commands=[command_args(s,False) for s in subprocess.check_output(['ninja','-C',str(build),'-t','commands','AnamorphStateTests'],text=True).splitlines()]
+compiles=[c for c in commands if '-c' in c and 'AnamorphStateTests.dir' in output_path(c)]
+def source(c):return next((pathlib.Path(x) for x in c if x.endswith('.cpp')),None)
+state=next(c for c in compiles if source(c)==root/'tests/state_tests.cpp')
+link=next(c for c in commands if '-c' not in c and '-o' in c and 'AnamorphStateTests_artefacts/' in output_path(c))
+previous=json.loads(pathlib.Path('/workspace/scratch/optionb/build.json').read_text())
+repl={};tasks=[];manifest={'main':'b9f94d83bb7ed3fde97240ca0868ed7ac1d97512','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'commands':[],'reused_juce':[]}
+initial_sources={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (root/'src').rglob('*') if p.is_file()}
+manifest['test_header_sha256']=hashlib.sha256((root/'tests/knob_lifetime_tests.h').read_bytes()).hexdigest()
+manifest['probe_sha256']=hashlib.sha256((out/'probe.cpp').read_bytes()).hexdigest()
+flags=['-O1','-g','-fsanitize=address','-fno-omit-frame-pointer']
+for c in compiles:
+ src=source(c)
+ if src and src.parent.name=='juce_gui_basics':
+  old=next(x for x in previous['commands'] if any(str(src)==arg for arg in x['argv']))
+  repl[output_path(c)]=output_path(old['argv']);manifest['reused_juce'].append(old)
+ if src and src.name in ['PluginEditor.cpp','PluginProcessor.cpp','LookAndFeel.cpp']:
+  dest=out/(src.stem+'.o');repl[output_path(c)]=str(dest);tasks.append((src.stem,with_output(c,dest)+flags))
+repl[output_path(state)]=str(out/'probe.o')
+cmd=[str(out/'probe.cpp') if x==str(root/'tests/state_tests.cpp') else x for x in state]
+tasks.append(('probe',with_output(cmd,out/'probe.o')+flags))
+def run(task):
+ tag,cmd=task
+ with (out/(tag+'.compile.log')).open('wb') as f:r=subprocess.run(cmd,cwd=build,stdout=f,stderr=subprocess.STDOUT)
+ return {'tag':tag,'argv':cmd,'exit':r.returncode}
+with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+ for x in pool.map(run,tasks):manifest['commands'].append(x);print(x['tag'],x['exit'],flush=True)
+if not any(x['exit'] for x in manifest['commands']):
+ cmd=with_output([repl.get(x,x) for x in link],out/'probe')+['-fsanitize=address']
+ manifest['commands'].append(run(('link',cmd)))
+manifest['binary_sha256']=hashlib.sha256((out/'probe').read_bytes()).hexdigest() if (out/'probe').exists() else None
+manifest['sources_sha256']={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (root/'src').rglob('*') if p.is_file()}
+assert manifest['sources_sha256']==initial_sources, 'source changed during build'
+assert manifest['test_header_sha256']==hashlib.sha256((root/'tests/knob_lifetime_tests.h').read_bytes()).hexdigest(), 'test changed during build'
+(out/'build.json').write_text(json.dumps(manifest,indent=2))
+sys.exit(any(x['exit'] for x in manifest['commands']))

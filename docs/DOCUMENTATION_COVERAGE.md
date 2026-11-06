@@ -2143,7 +2143,7 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1222-1231`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1228-1237`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
 `animToggle` 455–481 (`src/PluginEditor.cpp:2564-2589`). Taking each control's centre and
@@ -2677,7 +2677,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:627` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1446`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1455`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -2687,7 +2687,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1446`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1455`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -2697,7 +2697,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1446"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1455"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -19053,3 +19053,39 @@ staging. Distinguish that decision from unvalidated implementation and separate
 merge/release approval. Retain B1 failures and historical D/Proposed observations.
 The Option B packet, roadmap, handover and KI-035 row reflect that distinction and
 #221's actual reviewed-head validation and merge identity.
+
+
+## ADR-0072 B2 production implementation review
+
+Inventory `KnobParameterBinding.h`, `SliderEventBoundary.h`, focused Knob/ValueBox
+integration and `knob_lifetime_tests.h` in the repository map and TESTING/CI_CD.
+README/SOURCE_OF_TRUTH distinguish the owner-Accepted architecture from supporting
+`nr026-b2/` source/build/mutation evidence, the rejected B1 archive and unmerged
+implementation. The actual-component inventory covers exact host-route gestures,
+Undo/Redo/reopen, no-edit, text/ValueBox, pre/post-edit teardown, host feedback,
+record reuse and existing State86/88/111/112 parity. KI-035 stays unresolved on main.
+
+Binding source movement re-anchors existing citations. Remove 36 spent re-aim
+transitions whose destination already appears in this branch's exact merge base
+`b9f94d83`; no new exemption or checker relaxation is added. Checker self-tests
+remain required. Legal-document changes are citation coordinates only; no legal
+wording or commercial authorization changes. Historical NR-026 ledgers/identities
+are unchanged. The handover/roadmap/release-readiness record owns current status.
+
+
+B2 post-write banking and evidence: inventory the synchronous weak-handle completion
+needed to preserve Knob/ValueBox anchors after reentrant host feedback, retaining
+original/first-candidate/corrected observations separately. Register the B2 bundle
+README, exact source patch, executed test/compiler/probe scripts, seven mutant
+patches and outcomes, compressed streams and verifier with three corruption controls.
+Record local 945/16,074/2,443 and partial-ASan 2,115 counts; final pushed-head CI and
+native scope remain separate. Preserve initial infrastructure/fixture failures as
+troubleshooting rather than relabeling them as final passes. KI-035 is still open.
+
+
+B2 completion checkpoint: the Unreleased changelog cites exact production source
+without changing version/release metadata. INC-026 records component failure,
+correction scope and outstanding integration; KI-035 stays open on main. The
+current roadmap records #221 integration, explicit owner architecture approval,
+corrected #219/#220 heads, local/fault-control results and separate final-head CI.
+The existing native/manual and release restrictions remain independent.

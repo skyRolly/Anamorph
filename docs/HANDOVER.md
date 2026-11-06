@@ -1,5 +1,16 @@
 # HANDOVER.md
 
+B2 implementation checkpoint — 2026-11-06 (Asia/Shanghai): #221 is merged at
+`b9f94d83`, with successful reviewed-head and post-merge CI. Owner-approved ADR-0072
+B2 is implemented separately at code checkpoint `f9d8cbd3`: stable binding/event
+record, exact-once gestures, processor Undo and guarded post-write banking. Local
+945 DSP / 16,074 State / 2,443 focused and partial-ASan 2,115 pass; seven incorrect
+source controls are detected. Final-head CI, independent implementation review and
+merge authorization remain separate. KI-035 is unresolved on main. #219/#220 remain
+unmerged; their review corrections and current heads are in the roadmap. No release
+or deferred native acceptance follows from these automated results.
+
+
 Owner continuation — 2026-11-06 (Asia/Shanghai): #221 is merged at `b9f94d83` and
 ADR-0072 B2 architecture is owner-approved. A separate B2 implementation is authorized
 but not yet accepted/integrated. #219/#220 remain unmerged with new review corrections

@@ -13,7 +13,8 @@ NR-027's scale teardown probes retain separate original/fixed/guard-removal cont
 [`gui-scale-callback-lifetime.json`](../worklogs/engineering-review/gui-scale-callback-lifetime.json).
 Historical standing-programme rounds retain their dated source scopes.
 
-The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and `worklogs/engineering-review/nr026-option-b/` contain a rejected nonshipping B1 overlay, executed sources, source/build/result identities, compressed streams and verifier, plus the unimplemented B2 proposal. They are supporting developer evidence; ADR-0072 remains Proposed.
+The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and `worklogs/engineering-review/nr026-option-b/` contain a rejected nonshipping B1 overlay, executed sources, source/build/result identities, compressed streams and verifier, plus B2 implementation and acceptance status. They are supporting developer
+evidence; ADR-0072 records the owner's Accepted B2 architecture decision.
 
 The bounded [GUI callback lifetime review](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md)
 explains the NR-025/026 investigation. Supporting engineering-review evidence keeps
@@ -22,9 +23,12 @@ and the [JUCE 9.0.5 NR-026 ledger](../worklogs/engineering-review/nr026-juce905.
 distinct. The [NR-026 reproduction package](../worklogs/engineering-review/nr026-repro/README.md)
 contains diagnostic sources, exact commands, and retained outputs. These records
 support review; the roadmap owns current execution status.
-The [Proposed ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
-records the NR-026 architecture alternatives and pending owner decisions. It is a
-developer review proposal and grants no implementation or release approval.
+The [Accepted ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
+records owner-approved B2, with implementation review/integration separate.
+`src/gui/KnobParameterBinding.h` owns the stable record and focused parameter binding;
+`SliderEventBoundary.h` connects Knob/ValueBox event scopes. Actual-component
+regressions live in `tests/knob_lifetime_tests.h`; separate source/build/mutation
+evidence lives in `worklogs/engineering-review/nr026-b2/`. No release is approved.
 
 ```
 Anamorph/

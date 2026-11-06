@@ -10,12 +10,17 @@ KI-033 is resolved on main through #208 at `a78b733`; see INC-022 in
 notification can synchronously delete its Slider; JUCE's `ScopedDragNotification`
 destructor then reads freed component storage. A held-knob wheel also resumes into
 a freed Knob after the synchronous write. Focused GUI-module ASan reproduces both;
-live controls pass. **Unfixed; dependency/architecture review required** before
-shipping correction. State 86/88 confirm ordinary wheel/Undo behavior but do not
-cover editor destruction during notification. No native incidence rate is known.
+live controls pass. **Unfixed on main.** Owner-approved B2 architecture now has a
+separate production implementation under review; it requires complete acceptance
+evidence and separate merge authorization. State86/88 remain ordinary interaction
+regressions; `knob_lifetime_tests.h` adds actual-component teardown/history oracles
+on the implementation branch. No native incidence rate is known.
 [Source comparison, evidence and alternatives](../worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md).
 The integrated [ADR-0072](architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md)
-is Proposed. The owner prefers Option B; its bounded B1 experiment fails held gesture/Undo and press-boundary acceptance. The [B2 review proposal](../worklogs/NR026_OPTION_B_REVIEW.md) remains unimplemented and architecture-gated; production stays unfixed and no release risk is accepted.
+is Accepted for the B2 architecture by explicit owner approval recorded 2026-11-06
+(Asia/Shanghai). B1 remains rejected. The [B2 implementation record](../worklogs/NR026_OPTION_B_REVIEW.md)
+separates the approved architecture, branch implementation, validation and integration.
+No release risk is accepted; KI-035 remains open until an accepted correction is integrated.
 
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is

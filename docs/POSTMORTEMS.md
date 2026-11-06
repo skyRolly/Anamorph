@@ -547,3 +547,29 @@ to unused KI-037; NR-026/KI-035's pinned-JUCE Slider scope remains unfixed.
 No DSP, parameter/schema, latency, threading protocol, dependency or release change
 is included. Headless/sanitizer results are not native GUI acceptance; it remains
 owner-deferred. See [control provenance](../worklogs/engineering-review/spectrum-imager-lifetime.json).
+
+
+## INC-026 — Knob Wheel callback teardown and gesture ownership (NR-026 / KI-035)
+
+**Status:** B2 correction on an unmerged implementation branch; main remains affected.
+The owner approves ADR-0072 B2 architecture in the current assignment (recorded
+2026-11-06 Asia/Shanghai). That decision does not merge or release the implementation.
+
+JUCE 9.0.5 standalone Slider Wheel scope cleanup accesses destroyed storage when
+parameter notification deletes the editor. Held Wheel resumes into destroyed Knob
+banking state. Historical original-source ASan witnesses and rejected B1 results
+remain intact: B1 also loses held End/Undo and reaches unsafe press/release scopes.
+
+B2 source `f9d8cbd3` uses a stable binding/event record, exact-once gestures,
+processor-owned endpoints/history, synchronous framework-boundary staging and early
+editor detachment. Post-write weak-handle bank completions preserve actual feedback
+and drag anchors. Real text parsing, drag mappings, wheel routing and coalescing
+remain existing behavior. No JUCE pin, parameter/schema, latency or DSP change.
+
+The [implementation record](../worklogs/NR026_OPTION_B_REVIEW.md) and separate B2
+bundle retain local full/focused/partial-ASan observations, seven detected incorrect
+source controls and original/corrected anchor results. A clean sanitizer exit alone
+is insufficient: missing/duplicate End, lost/wrong history and lost continuation
+all fail surviving host/processor assertions. Final-head CI, separate PR review and
+merge permission remain necessary. Native host incidence and processor destruction
+inside notification are unmeasured; no release risk is accepted.
