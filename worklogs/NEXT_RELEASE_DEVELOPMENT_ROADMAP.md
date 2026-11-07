@@ -1,6 +1,27 @@
 # Next release investigation and development roadmap
 
-## Current 0.10.1 owner-acceptance and release register — 2026-11-07 (Asia/Shanghai)
+## Current 0.10.1 UTC date-correction register — 2026-11-07 UTC
+
+Owner-reviewed PR #227 head `4e98cd0ab8cca340dfb147f53478ec0020e08d0f` merged as
+`31cec040a7daf2d637e3e2f9e1ba33ca29de6102`, with the same tree. It integrates the
+corrected archive verifier, its four repacked negative controls, ADR-0070 item-5 owner
+acceptance and completed applicable manual attestations. Its exact-head Build
+42311608546, merge check 42311613211, CodeQL 42311613379, PREfast 42311613132 and
+Dependency Review 42311613204 passed. Post-#225 main Build 42309303938, CodeQL
+42309303932 and PREfast 42309303934 passed. Post-#227 main Build 42316248559 passed
+16 selected jobs with three conditional skips; CodeQL 42316248679 and PREfast
+42316248708 passed. Valgrind leak checking was disabled in the configured gate.
+
+The previous 0.10.1 heading, 2026-11-06, was provisional; no tag was created that UTC
+day. This branch proposes 2026-11-07 as the planned UTC tag date. Confirm it matches
+the actual UTC date immediately before tagging; if the date changes, correct it through
+a separately reviewed PR. This date-correction branch requires owner review/merge and
+its own CI. Only #227 was authorized for merge; no new PR is authorized automatically.
+No 0.10.1 tag or draft exists. The existing 0.10.0 tag, draft and eleven assets remain
+unchanged. Owner-attested Level-5 and other applicable manual validations, completed
+roadmap acceptance and ADR-0070 item 5 remain complete within their recorded scopes.
+
+## Historical 0.10.1 owner-acceptance and release register — 2026-11-07 (Asia/Shanghai)
 
 Owner-reviewed PR #225 head `a0a48290479cac99f74c6a1391990263c82dbf29` merged as
 `1a4927636f7229ddb64748590f2bf295c6f865ec`. Its first parent is PR #226's merge

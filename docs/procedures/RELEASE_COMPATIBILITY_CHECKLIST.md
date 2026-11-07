@@ -1,5 +1,22 @@
 # RELEASE_COMPATIBILITY_CHECKLIST.md
 
+## 0.10.1 post-#227 source — 2026-11-07 UTC
+
+Owner-reviewed #227 merged as `31cec040a7daf2d637e3e2f9e1ba33ca29de6102`, with the
+same tree as reviewed head `4e98cd0ab8cca340dfb147f53478ec0020e08d0f`. Its exact-head
+Build 42311608546, merge check 42311613211, CodeQL 42311613379, PREfast 42311613132
+and Dependency Review 42311613204 passed. The post-#225 main Build 42309303938,
+CodeQL 42309303932 and PREfast 42309303934 also passed. Post-#227 main Build
+42316248559 passed 16 selected jobs with three conditional skips; CodeQL 42316248679
+and PREfast 42316248708 passed. The separate UTC date-correction PR and eventual
+final-main source require their own checks; tag-triggered release validation has not
+run. No new product behavior is introduced by these records.
+
+The candidate assessments below and completed owner-attested manual gates retain
+their recorded scopes. ADR-0070 item 5 is owner-approved as recorded in the integrated
+evidence. The date-correction branch does not add named-host observations or establish
+the identity of a human-tested artifact.
+
 ## 0.10.1 owner continuation — 2026-11-07 (Asia/Shanghai)
 
 PR #225 is merged as `1a4927636f7229ddb64748590f2bf295c6f865ec`, including PR #226's
