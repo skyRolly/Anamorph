@@ -1,6 +1,57 @@
 # Next release investigation and development roadmap
 
-## Current 0.10.1 reader-consumption verification register — 2026-11-07 UTC
+## Current 0.10.1 unpublished draft — 2026-11-07 UTC
+
+The owner-merged [PR #229](https://github.com/skyRolly/Anamorph/pull/229) produced
+release commit `8a0bdbc0e1beb48988fe73e0aca193c2d8d1d18c`, with the reviewed tree.
+Annotated tag `0.10.1` is object `0c9340e48b1a9a05f1dcb12475aecec645b16849` and peels
+to that commit. [Release workflow 42361592620](https://github.com/skyRolly/Anamorph/actions/runs/42361592620)
+passed as a tag push (build number 8): 16 selected build jobs, metadata validation and
+draft creation passed; merge-check and two optional macOS review jobs were skipped.
+Final-main Build 42358123032, CodeQL 42358123009 and PREfast 42358123012 also passed.
+The configured Valgrind gate disables leak detection; the code-scanning alert inventory
+was inaccessible (HTTP 403), so neither is represented as a clean result outside its scope.
+
+[Draft release 437502618](https://github.com/skyRolly/Anamorph/releases/tag/untagged-83cae18fbcf2649340f4)
+is **unpublished** (`draft=true`, no publication timestamp). Its extracted notes match
+the dated `0.10.1` Changelog section. All eleven downloaded assets match GitHub's
+SHA-256 digests; the nine payload checksums and manifest agree. The three archives and
+two installers match, byte for byte by payload, the corresponding validated artifacts
+from this release run. Archive structure, executable modes, VST3/AU identities,
+`0.10.1` versions, Windows installer version, macOS component IDs, and arm64/x86_64
+bundle slices were inspected. The manual, support and required attribution assets match
+the tagged source. The manifest identifies the source commit and workflow run; JUCE
+`9.0.5` at `d60b7a78030661574a615b586d9325ba7a7fa7dd` is verified separately from
+the tagged source and build logs, not stated as a dependency field in that manifest.
+The five matching workflow staging artifact IDs are Linux `13569599378`, Windows
+`13570343140`, macOS `13570691683`, Windows installer `13570725471`, and macOS
+installer `13570477949`; each downloaded staging archive matched its GitHub digest.
+
+| Release asset | Asset ID | Bytes | SHA-256 |
+|---|---:|---:|---|
+| `Anamorph-0.10.1-Linux.zip` | 720373559 | 5932953 | `0d740a6f5215c1f921af52de0415528b95ad5f35a2ea4f321ebeb3a6f50a8781` |
+| `Anamorph-0.10.1-Windows.zip` | 720373567 | 7767653 | `c688a04304352fd817c9b25a5e5e04ece470f96482248f017fd160e37bca3442` |
+| `Anamorph-0.10.1-macOS.zip` | 720373570 | 17043028 | `fd06dc02140482f39e5ed15316e5e14423539fe489a20c88ff3e179320dab17c` |
+| `Anamorph-0.10.1-Windows-Installer.exe` | 720373565 | 7479979 | `519fffec239346a2f35b5254e3f980593dafaf9d65e60fc4a73eebf1eaf2af70` |
+| `Anamorph-0.10.1-macOS.pkg` | 720373564 | 17067078 | `6481bf001675d1b97770257ad8092cb4ef1fcfbf4f45156b2907216e6d649390` |
+| `Anamorph-0.10.1-UserManual.md` | 720373607 | 39261 | `074ff9c913aa1bfe12fa21e0e805ee044a6ff24d76781b060df34ac5e3de5610` |
+| `Anamorph-0.10.1-NOTICE.txt` | 720373605 | 17369 | `932000fdf57cd77e0ff9c1d3de795f7102083f66153b3c1049f8923d4510db7d` |
+| `Anamorph-0.10.1-THIRD_PARTY_LICENSES.md` | 720373609 | 19859 | `c2496c1dd901b665a30325ef639fc53b6af6184ca2406a84515847244f33621f` |
+| `Anamorph-0.10.1-SUPPORT.md` | 720373619 | 8841 | `00ebf8f6ebc80888a999cee28b500f4f11d132b06b19a12fd3e3fa86cdd9dd92` |
+| `SHA256SUMS.txt` | 720373627 | 862 | `caf110e54540695161467ea3362735072227b70522f18e0c014ecdce0549279b` |
+| `RELEASE_MANIFEST.txt` | 720373629 | 1187 | `669a4c87913b3674a1d515c2e1f8f9aaa108f3ebfbcee93aafbf89b9c9f33e2b` |
+
+Level-5 is **PASS — owner-attested**; completed roadmap work and all other applicable
+manual validation are also owner-attested. ADR-0070 item 5 is owner-approved within
+the measured Intel Mac/workload scope. Manual test dates, hosts, observations and tested
+artifact identities remain **NOT RECORDED**. The existing 0.10.0 tag, draft and eleven
+asset identities remain unchanged. Wider host/native coverage, signing/notarization and
+commercial/legal decisions retain their separate dispositions; publication is not
+authorized. The Windows installer has no embedded Authenticode signature and the macOS
+package has no XAR signature record; the macOS bundles follow the existing ad-hoc,
+non-notarized route. This post-tag record is not part of the tagged 0.10.1 source.
+
+## Historical 0.10.1 reader-consumption verification register — 2026-11-07 UTC
 
 Owner-merged PR #228 produced main `82a0a54867dc6c237d5d7de1dafeff347afff3b6` with
 the reviewed tree. Its Build [42325517624](https://github.com/skyRolly/Anamorph/actions/runs/42325517624)

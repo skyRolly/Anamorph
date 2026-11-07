@@ -7,13 +7,16 @@ owner/legal decisions are still open. It **indexes** the authoritative records r
 restating them; where this file and the record it cites disagree, the cited record wins
 (`SOURCE_OF_TRUTH.md`).
 
-Candidate update 2026-11-06 UTC: 0.10.1 is in preparation; the 0.10.0 draft remains unchanged. The legal decisions below remain open.
+Draft update 2026-11-07 UTC: 0.10.1 is tagged and has an unpublished, verified Draft Release;
+the 0.10.0 draft remains unchanged. The legal decisions below remain open.
 
 Last reviewed: **2026-07-26**. One change of substance since: on 2026-09-27 decision 6 (§4) was narrowed to
 the trademark status of the product and company names, when the fourth widening algorithm was renamed
 **Dimensional**. The release then in preparation was
 0.9.0. The annotated **0.10.0** tag now peels to `4c13688`; its GitHub Release is an
-unpublished draft (Release 7). `CMakeLists.txt:14` is 0.10.1 on the release-preparation branch; its dated Changelog entry is provisional until the tag date. Nothing in this document — the product model, the
+unpublished draft (Release 7). `CMakeLists.txt:14` is 0.10.1 in the tagged source;
+the independent 0.10.1 draft is recorded in the
+[roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
 
@@ -31,11 +34,11 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 candidate (**0.10.1** in preparation; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 candidate (**0.10.1** unpublished draft; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
-  with annotated tags 0.9.9 and 0.10.0 and two unpublished drafts — `docs/procedures/PACKAGING.md`. Publishing a release
+  with annotated tags 0.9.9, 0.10.0 and 0.10.1 and three unpublished drafts — `docs/procedures/PACKAGING.md`. Publishing a release
   is a manual maintainer action after the Level-5 audition (`docs/policies/RELEASE_POLICY.md`
   precondition 7).
 - **No licence is in force** (`EULA.md` §0, and §1 above). Testers hold builds by the owner's
