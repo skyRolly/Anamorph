@@ -1,5 +1,16 @@
 # RELEASE_COMPATIBILITY_CHECKLIST.md
 
+## 0.10.1 reader-consumption follow-up — 2026-11-07 UTC
+
+After PR #228, main `82a0a54867dc6c237d5d7de1dafeff347afff3b6` passed Build
+42325517624, CodeQL 42325776630 and PREfast 42325776544. A separately reviewable
+evidence-tool correction now rejects an unchanged checksum for enabled readers; the
+supplied archive passes the stronger control. This changes no product or compatibility
+contract and does not reopen the owner's completed human acceptance or ADR-0070 item 5.
+[PR #229](https://github.com/skyRolly/Anamorph/pull/229) requires owner review/merge and
+the resulting final source requires CI before a tag. Existing named-host and artifact-specific
+observations remain within the scopes below.
+
 ## 0.10.1 post-#227 source — 2026-11-07 UTC
 
 Owner-reviewed #227 merged as `31cec040a7daf2d637e3e2f9e1ba33ca29de6102`, with the

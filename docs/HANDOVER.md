@@ -1,6 +1,15 @@
 # HANDOVER.md
 
-**0.10.1 release preparation — 2026-11-07 UTC:** owner-reviewed #227 merged as
+**0.10.1 release preparation — 2026-11-07 UTC:** PR #228 is merged at `82a0a548`,
+with its final-main Build, CodeQL and PREfast passing. A subsequent reader-consumption
+control gap in the native evidence verifier was reproduced and corrected on a separate
+review branch; see the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) and
+[native record](../worklogs/NATIVE_VALIDATION_PACKAGE.md). [PR #229](https://github.com/skyRolly/Anamorph/pull/229)
+requires owner review and merge, then CI on the resulting main and an actual UTC tag-date check. Level-5,
+other applicable manual acceptance and ADR-0070 item 5 remain owner-approved in their
+recorded scopes. No 0.10.1 tag or draft exists; 0.10.0 is unchanged.
+
+**Historical 0.10.1 release preparation — 2026-11-07 UTC:** owner-reviewed #227 merged as
 `31cec040a7daf2d637e3e2f9e1ba33ca29de6102`, integrating the ADR-0070 item-5 owner
 approval and corrected evidence verifier. Its reviewed-head CI passed; the merged-main
 CI is tracked in the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).

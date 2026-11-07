@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.1 reader-consumption verification — 2026-11-07 UTC
+
+Corrected the native collector and independent archive verifier to reject an initial
+reader checksum for enabled readers. Updated the testing procedure and native evidence
+record, including a consistently repacked negative control and the unchanged owner
+archive's result. The roadmap, compatibility checklist and handover retain the owner
+attestations while recording the separate review/merge and final-source CI boundary.
+This changes evidence validation only, not product behavior or accepted architecture.
+
 ## 0.10.1 UTC date correction — 2026-11-07
 
 The prior 2026-11-06 Changelog heading was provisional and no tag was created on that

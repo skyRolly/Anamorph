@@ -321,6 +321,23 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsafe"):
             native.validate_record(observation(unsafe), unsafe)
 
+    def test_reader_consumption_hash_controls(self):
+        seed = "cbf29ce484222325"
+        no_reader = request()
+        unconsumed = dict(observation(no_reader), reader_hash=seed)
+        native.validate_record(unconsumed, no_reader)
+        verifier.verify_probe(unconsumed, no_reader, 0)
+        for mode in ("active", "stalled"):
+            req = request(reader=mode, paced=True, seconds=1.1)
+            row = observation(req)
+            native.validate_record(row, req)
+            verifier.verify_probe(row, req, 0)
+            unconsumed = dict(row, reader_hash=seed)
+            with self.subTest(reader=mode, check="collector"), self.assertRaisesRegex(ValueError, "reader consumption"):
+                native.validate_record(unconsumed, req)
+            with self.subTest(reader=mode, check="independent verifier"), self.assertRaisesRegex(ValueError, "reader consumption"):
+                verifier.verify_probe(unconsumed, req, 0)
+
     def test_independent_verifier_rejects_reported_probe_failures(self):
         for req in (request(), request(kind="scope-push"), request(kind="scope-read"),
                     request(reader="stalled", paced=True, seconds=1.1), request(kind="memory")):
@@ -369,6 +386,8 @@ class EvidenceTests(unittest.TestCase):
             elif mutation == "zero timing":
                 row = next(r for r in rows if r["kind"] == "scope-push")
                 row["block_ns"] = [0] * len(row["block_ns"])
+            elif mutation == "reader consumption":
+                next(r for r in rows if r["reader"] == "active")["reader_hash"] = "cbf29ce484222325"
             summary = native.summarize(rows, 5, False)
             data = {
                 "plan.json": json.dumps(plan).encode(),
@@ -402,7 +421,8 @@ class EvidenceTests(unittest.TestCase):
             directory = Path(temporary)
             run_packet(directory, None)
             for mutation, message in (("publication", "publication"), ("consumption", "consumption"),
-                                      ("liveness", "inert working engine"), ("zero timing", "zero timing")):
+                                      ("liveness", "inert working engine"), ("zero timing", "zero timing"),
+                                      ("reader consumption", "reader consumption")):
                 with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, message):
                     run_packet(directory, mutation)
 
