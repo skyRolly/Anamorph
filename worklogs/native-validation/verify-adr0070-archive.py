@@ -57,6 +57,8 @@ def verify_probe(row, request, index):
         value = row.get(key)
         require(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{16}", value),
                 f"row {index}: invalid {key}")
+    if row["reader"] != "none":
+        require(row["reader_hash"] != "cbf29ce484222325", f"row {index}: inert reader consumption")
     if row["kind"] == "engine" and row["case"] == "working":
         require(row["audio_hash"] != row["input_hash"], f"row {index}: inert working engine")
     if row["kind"].startswith("scope-"):

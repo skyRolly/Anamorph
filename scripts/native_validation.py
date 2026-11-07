@@ -389,6 +389,8 @@ def validate_record(row, request):
     for key in ("audio_hash", "input_hash", "reader_hash"):
         if not re.fullmatch(r"[0-9a-f]{16}", row.get(key, "")):
             raise ValueError("missing data-consumption control hash")
+    if row["reader"] != "none" and row["reader_hash"] == "cbf29ce484222325":
+        raise ValueError("reader consumption control is inert")
     if row["kind"] == "engine" and row["case"] == "working" and row["audio_hash"] == row["input_hash"]:
         raise ValueError("working engine is inert")
     if row["kind"].startswith("scope-"):

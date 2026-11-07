@@ -356,7 +356,10 @@ It checks the archive manifest, source hashes, all 400 request/raw records, pair
 outputs, reported per-probe publication/consumption/liveness controls and independently
 recomputed aggregates without extracting or changing data. The native-validation tests
 include synthetic archives with regenerated checksums and summaries that must reject
-failed publication, inert consumption, an inert working engine and zero timings.
+failed publication, inert scope or reader consumption, an inert working engine and zero
+timings. For active/stalled readers the collector and verifier also reject the initial
+FNV checksum when no sample consumption is observable; it remains valid with no reader.
+This is a liveness control, not a reconstruction of sample buffers.
 The owner-approved scope and measurement limitations are in the native package.
 
 Follow the [native package](../../worklogs/NATIVE_VALIDATION_PACKAGE.md) for

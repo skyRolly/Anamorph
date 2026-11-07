@@ -1,6 +1,24 @@
 # Next release investigation and development roadmap
 
-## Current 0.10.1 UTC date-correction register — 2026-11-07 UTC
+## Current 0.10.1 reader-consumption verification register — 2026-11-07 UTC
+
+Owner-merged PR #228 produced main `82a0a54867dc6c237d5d7de1dafeff347afff3b6` with
+the reviewed tree. Its Build [42325517624](https://github.com/skyRolly/Anamorph/actions/runs/42325517624)
+passed 16 selected jobs with three conditional skips; CodeQL 42325776630 and PREfast
+42325776544 passed on that commit. Valgrind's configured gate disables leak checking.
+
+Before tagging, a new evidence-verifier gap was reproduced: a reader can report accepted
+windows while its checksum remains at the initial FNV value. A consistently repacked
+archive with that altered raw control and a refreshed manifest passed the old verifier.
+The supplied archive itself is unchanged and all 20 active/stalled reader checksums differ
+from the initial value. This branch corrects the collector and verifier and adds direct
+and repacked regression controls; see the [native record](NATIVE_VALIDATION_PACKAGE.md).
+It does not alter shipping behavior or the owner's ADR-0070, Level-5 and completed-roadmap
+acceptances. The follow-up PR requires separate owner review and merge, followed by CI on
+the actual resulting main. Recheck the provisional 2026-11-07 Changelog date against the
+actual UTC tag date. No 0.10.1 tag or draft exists; the 0.10.0 draft remains unchanged.
+
+## Historical 0.10.1 UTC date-correction register — 2026-11-07 UTC
 
 Owner-reviewed PR #227 head `4e98cd0ab8cca340dfb147f53478ec0020e08d0f` merged as
 `31cec040a7daf2d637e3e2f9e1ba33ca29de6102`, with the same tree. It integrates the
