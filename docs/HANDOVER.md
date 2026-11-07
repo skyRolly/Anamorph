@@ -1,6 +1,15 @@
 # HANDOVER.md
 
-**0.10.1 owner continuation (2026-11-07 Asia/Shanghai):** #225 merged as `1a492763`,
+**0.10.1 release preparation — 2026-11-07 UTC:** owner-reviewed #227 merged as
+`31cec040a7daf2d637e3e2f9e1ba33ca29de6102`, integrating the ADR-0070 item-5 owner
+approval and corrected evidence verifier. Its reviewed-head CI passed; the merged-main
+CI is tracked in the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+The planned Changelog date is updated to 2026-11-07 UTC on a separate branch and must
+match the actual tag date. That change requires independent review/merge; no tag or
+0.10.1 draft exists. The owner-attested Level-5 and other applicable manual acceptance
+remain complete, within their recorded scope.
+
+**Historical 0.10.1 owner continuation (2026-11-07 Asia/Shanghai):** #225 merged as `1a492763`,
 following #226 at `13a0df99`. The owner attests Level-5 and all other applicable manual
 validations complete, completed-roadmap human acceptance, and approves ADR-0070 item 5
 for the measured Intel Mac/workload scope. [Native evidence](../worklogs/NATIVE_VALIDATION_PACKAGE.md)

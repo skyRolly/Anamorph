@@ -21,7 +21,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
-## [0.10.1] — 2026-11-06
+## [0.10.1] — 2026-11-07
 
 ### Changed
 

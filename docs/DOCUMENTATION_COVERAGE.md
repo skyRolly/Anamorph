@@ -1,5 +1,12 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.1 UTC date correction — 2026-11-07
+
+The prior 2026-11-06 Changelog heading was provisional and no tag was created on that
+UTC date. Updated it to the current planned UTC tag date and refreshed the current
+handover and compatibility records after #227 integration. Recheck the actual UTC tag
+date before tagging; this documentation branch requires separate owner review and merge.
+
 ## 0.10.1 native performance acceptance — 2026-11-07 (Asia/Shanghai)
 
 Recorded the supplied archive's integrity, source/build provenance, independently
