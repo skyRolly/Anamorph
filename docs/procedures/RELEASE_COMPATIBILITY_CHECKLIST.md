@@ -1,5 +1,27 @@
 # RELEASE_COMPATIBILITY_CHECKLIST.md
 
+## 0.10.1 tagged draft — 2026-11-07 UTC
+
+Tagged source `8a0bdbc0e1beb48988fe73e0aca193c2d8d1d18c` passed final-main Build
+42358123032 and tag-triggered Release 42361592620. The [roadmap](../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md)
+records independently inspected release metadata and assets. The applicable checklist is
+complete within the scopes below; no specific human-tested artifact or named DAW result is
+inferred from the owner's attestation.
+
+| # | Item | Disposition |
+|---|---|---|
+| 1 | Parameter IDs and ranges | **PASS** — unchanged registry source, State tests and inspected plugin identities. |
+| 2 | Serialization schema | **PASS** — registry and legacy/round-trip State regressions on the tagged build. |
+| 3 | Presets | **PASS** — State/preset tests and the owner's completed applicable manual validation. |
+| 4 | Pluginval | **PASS** — configured strictness and both modes in the tagged platform jobs. |
+| 5 | Host matrix | **PASS — owner-attested** within the previously accepted scope; broader NR-003 cases remain deferred. |
+| 6 | Latency/PDC | **PASS** — existing latency and restore regressions on the tagged source. |
+| 7 | Automation playback | **PASS — owner-attested** within the recorded scope; individual hosts and lanes are NOT RECORDED. |
+| 8 | Session reload | **PASS** — State/legacy restore regressions and completed applicable owner-attested manual validation. |
+
+The pre-0.9.1 `Anmf` to `RTec` identity limitation remains documented under ADR-0023/KI-016.
+This post-tag record is not part of the tagged source; publication remains unauthorized.
+
 ## 0.10.1 reader-consumption follow-up — 2026-11-07 UTC
 
 After PR #228, main `82a0a54867dc6c237d5d7de1dafeff347afff3b6` passed Build

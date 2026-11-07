@@ -14,12 +14,12 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 
-**0.10.1 is in release preparation**, based on integrated main `31cec040` and JUCE 9.0.5.
+**0.10.1 has an unpublished Draft Release**, built from tag `0.10.1` on commit
+`8a0bdbc0` with JUCE 9.0.5. Its eleven assets were independently verified; see the
+[current roadmap](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) for provenance and hashes.
 Level-5, other applicable manual validation and completed-roadmap acceptance are
 owner-attested. ADR-0070 item 5 performance cost is owner-approved for the measured
-Intel Mac/workload scope. The evidence record is integrated; final-source CI and a
-Changelog date matching the UTC tag date remain release requirements;
-no 0.10.1 tag or draft has been created. See the [current roadmap](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
+Intel Mac/workload scope. Public publication is not authorized.
 The following 0.10.0 draft description is historical.
 
 **0.10.0 draft release / JUCE 9.0.4 (verified 2026-10-31 UTC).** The [GitHub draft](https://github.com/skyRolly/Anamorph/releases/tag/untagged-5c0f02d1d702f1d4bf30)
@@ -57,7 +57,7 @@ is owner-deferred for the current independent engineering-review round; acceptan
 The [release-readiness record](worklogs/RELEASE_READINESS_0.10.0.md) preserves earlier
 identities and original/P1 human attestations with their scope. The earlier
 [state/host record](worklogs/STATE_HOST_HARDENING_0.9.10.md) retains its development filename.
-- **Version 0.10.1** (pre-1.0, in preparation), in the **internal-testing phase** — builds go to testers for
+- **Version 0.10.1** (pre-1.0, unpublished draft), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - **0.9.5 is a performance release, and it changes nothing you can hear.** With Velvet Noise

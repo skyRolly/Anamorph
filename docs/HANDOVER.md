@@ -1,6 +1,15 @@
 # HANDOVER.md
 
-**0.10.1 release preparation — 2026-11-07 UTC:** PR #228 is merged at `82a0a548`,
+**0.10.1 unpublished draft — 2026-11-07 UTC:** annotated tag `0.10.1` points to
+`8a0bdbc0e1beb48988fe73e0aca193c2d8d1d18c`; [Release 437502618](https://github.com/skyRolly/Anamorph/releases/tag/untagged-83cae18fbcf2649340f4)
+is a draft with eleven independently verified assets. [Release workflow 42361592620](https://github.com/skyRolly/Anamorph/actions/runs/42361592620)
+passed. The [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) records tag,
+source, asset hashes, validation scope and remaining publication/commercial gates.
+Level-5, other applicable manual work and completed-roadmap acceptance are owner-attested;
+ADR-0070 item 5 is owner-approved within its measured scope. This post-tag record is not
+included in the tagged source. No public release is authorized.
+
+**Historical 0.10.1 release preparation — 2026-11-07 UTC:** PR #228 is merged at `82a0a548`,
 with its final-main Build, CodeQL and PREfast passing. A subsequent reader-consumption
 control gap in the native evidence verifier was reproduced and corrected on a separate
 review branch; see the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) and

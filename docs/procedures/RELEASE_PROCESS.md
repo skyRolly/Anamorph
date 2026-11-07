@@ -5,7 +5,12 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Pre-release checklist
 
-**0.10.1 preparation:** the owner attests Level-5 and all applicable manual validation
+**0.10.1 draft:** the annotated `0.10.1` tag and unpublished draft were created from
+`8a0bdbc0`; the [roadmap](../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) records
+the release workflow, asset identities and verification. This post-tag record is not
+included in that tagged tree, and does not authorize publication.
+
+**Historical 0.10.1 preparation:** the owner attests Level-5 and all applicable manual validation
 complete and explicitly approves ADR-0070 item 5 for the measured native cost; see
 `LEVEL5_AUDITION.md`, the candidate checklist and `worklogs/NATIVE_VALIDATION_PACKAGE.md`.
 The evidence record is integrated. Final-source automated gates remain separate. The

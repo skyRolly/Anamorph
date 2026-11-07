@@ -1,5 +1,13 @@
 # DOCUMENTATION_COVERAGE.md
 
+## 0.10.1 draft release record — 2026-11-07 UTC
+
+Recorded the independent annotated tag, release source, successful tag-triggered workflow,
+draft identity, eleven asset hashes and staging comparisons in the roadmap. Refreshed the
+handover, compatibility checklist, release procedure, README status and commercial index.
+Owner-attested manual acceptance, the bounded ADR-0070 decision and publication-only gates
+retain their scopes. These post-tag documentation changes are not in the tagged source.
+
 ## 0.10.1 reader-consumption verification — 2026-11-07 UTC
 
 Corrected the native collector and independent archive verifier to reject an initial
