@@ -14,9 +14,10 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 
-**0.10.1 is in release preparation**, based on integrated main `55bdbdea` and JUCE 9.0.5.
-Level-5 and completed-roadmap human acceptance are owner-attested. Final-source CI, the
-representative performance/cost condition in ADR-0070, and owner review/merge remain open;
+**0.10.1 is in release preparation**, based on integrated main `1a492763` and JUCE 9.0.5.
+Level-5, other applicable manual validation and completed-roadmap acceptance are
+owner-attested. ADR-0070 item 5 performance cost is owner-approved for the measured
+Intel Mac/workload scope. Final-source CI and review of the evidence record remain open;
 no 0.10.1 tag or draft has been created. See the [current roadmap](worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
 The following 0.10.0 draft description is historical.
 

@@ -73,10 +73,11 @@ records the selected design, explicitly approved by the owner on 2026-11-01 for
 implementation subject to native portability/performance/validation gates. Its
 atomic-window implementation and live contracts are integrated on main via
 #199 (`303d37c`) and #202 (`4255393`) under separate explicit owner merge approval.
-Current native CI/compile guards and reviewed codegen are complete. The 2026-11-06
-owner Level-5 attestation covers completed development work; representative native
-cost measurements and owner cost acceptance remain deferred under ADR-0070. New PR
-merges remain separately gated. The unchanged tag/draft
+Current native CI/compile guards and reviewed codegen are complete. The owner has
+attested completed Level-5 and applicable manual validation and approved ADR-0070
+item 5 for the supplied measured Intel Mac/workload scope; see the
+[native evidence package](../worklogs/NATIVE_VALIDATION_PACKAGE.md). Other unmeasured
+platforms and host behavior remain unverified. New PR merges remain separately gated. The unchanged tag/draft
 retain the original plain-storage exposure.
 The [NR-017 diagnostic inventory](../worklogs/NR017_STATIC_DIAGNOSTIC_INVENTORY.md) and
 its CSV preserve analyzer observations/dispositions, not GitHub alert state or new approval.
@@ -93,8 +94,9 @@ retained controls are supporting developer evidence for rotary metadata and dire
 delivered component keys, not native screen-reader, global focus or host acceptance.
 The bounded correction is integrated via #204 at`34cc369`. The
 [native validation package](../worklogs/NATIVE_VALIDATION_PACKAGE.md) and
-[manual worksheet](../worklogs/native-validation/manual-acceptance-template.json)
-are developer test procedures/data templates supporting NR-006/010/014, integrated
+[manual worksheet](../worklogs/native-validation/manual-acceptance-template.json),
+and [archive verifier](../worklogs/native-validation/verify-adr0070-archive.py)
+are supporting developer procedures/data and integrity checks supporting NR-006/010/014, integrated
 via owner-approved #205 at`109d183`. Their
 scripts, smoke runs and reader-load models do not confer representative cost,
 native visual/assistive-device, architecture, merge or release acceptance.

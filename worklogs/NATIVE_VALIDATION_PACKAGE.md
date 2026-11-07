@@ -1,6 +1,126 @@
 # NR-006 / NR-010 / NR-014 native evidence package
 
-## Scope and current disposition
+## Owner-accepted native performance evidence — 2026-11-07 (Asia/Shanghai)
+
+The owner supplied `anamorph-native-evidence.zip` (SHA-256
+`2468efadf36730029b135996908c696e829eccd9cbb57a95249920aca5ae7c9e`) and explicitly
+**approved ADR-0070 Acceptance and rollback item 5**, accepting the measured native
+performance cost for the supplied machine and workloads with the stated limitations.
+The later owner decision is separate from the archive: its `performance_acceptance`,
+`performance_cost_owner_acceptance` and `representative_acceptance` fields were null
+when collected and remain unchanged. The owner also states Level-5 and all other
+applicable manual validations are completed, and completed roadmap work has its
+applicable human acceptance. These are owner attestations, not individual agent-observed
+host results. Exact human-tested artifact, DAW/versions, session, individual results and
+actual manual test dates are **NOT RECORDED**; do not derive them from the benchmark.
+
+### Provenance and integrity
+
+The supplied ZIP is held with the owner handoff; it is not embedded in this repository.
+Independent verification found 1,229 ZIP entries, including `SHA256.json`; all 1,228
+manifest entries exist and match, with no unlisted payloads or duplicate/unsafe paths.
+The 400 planned requests, 400 one-line raw outputs, completion journal, 80 five-repeat
+metric groups and 38 comparisons reconcile. An independent recomputation of each group
+median, minimum, maximum, spread and worst observed call, plus each relative comparison,
+agrees with `analysis.json`/`summary.json`. The two summary files agree. All paired
+original/corrected no-reader records have matching input/audio hashes and latency for
+all five repeats. For each raw row, the independent verifier checks the reported
+publication counters, non-sentinel consumption hashes, working-engine liveness,
+timing, numeric, floating-point and reader-progress controls; all raw stderr files
+were empty. These checks validate the recorded control values, not the original
+sample buffers or an independent rerun on the Mac. Reproduce the check with
+`python3 worklogs/native-validation/verify-adr0070-archive.py <archive.zip>` in a
+checkout containing the measured commit; it reads the ZIP without extracting or
+modifying it. Disposable negative controls detected a changed raw file, a changed
+timing with refreshed manifest, and a duplicated comparison with refreshed manifest.
+Synthetic archive controls also detect incorrect publication, inert consumption,
+an inert working engine and zero timings after recomputing both hashes and summaries.
+The previous PR-head verifier accepted all four repacked controls; the corrected
+verifier rejects each. These fixtures are synthetic, not new native measurements.
+The uploaded archive must be retained separately.
+
+`source.json` and `run-status.json` identify reviewed PR #225 head
+`a0a48290479cac99f74c6a1391990263c82dbf29`; all 65 listed source-file SHA-256 values
+match that Git commit. The historical ScopeBuffer fixture SHA-256
+`1be1baed6bbb439ad5b517ea2efe4cacd80fbb849959224c2561c38a84588e60` and Git blob
+`ed24ceab5ced2784d9fe96effdc46f8aeb03f472` match both the fixture and source commit
+`00de8c7796f37d08a338256e01830bb312ba105c`. The original overlay compiles that old
+header with the current benchmark/engine layout in a nonshipping build; it does not
+replace production source. Only two original objects and their output paths differ;
+recorded compiler flags and the other linked objects are shared. Original concurrent
+reads are deliberately excluded because the old plain storage has a data race.
+
+The archive reports a physical Intel MacBookPro16,1, i9-9980HK (8 cores/16 logical),
+64 GiB, macOS 15.8.1 build 24H32 x86_64, on AC power without heavy background work.
+This is representative of the owner's accepted **measured Intel Mac scope**, not proof
+for other machines or a population-wide sample. It records Apple Clang 17.0.0.17000604,
+CMake 4.4.4, Ninja 1.13.2, Python 3.11.0, JUCE 9.0.5 at
+`d60b7a78030661574a615b586d9325ba7a7fa7dd`, Release, `-O3`, `-flto`,
+`-march=haswell`, `-ffp-contract=off`, C++23 and NDEBUG. Both variants explicitly use
+`-nostdinc++ -isystem` with the Command Line Tools `MacOSX.sdk/usr/include/c++/v1`.
+The owner reports this header selection was needed because the default Command Line
+Tools libc++ 13 headers lacked `std::bit_cast`; a separate failed-build log is not in
+the archive. The CMake compiler description records implicit `c++` linkage. The archive
+does not record an SDK version/header digest, resolved SDK symlink target or `otool -L` runtime
+linkage, so those cannot be independently identified here; CI's actual shipping
+compiler/deployment and package checks remain authoritative. Benchmark binary hashes
+are reported as original `c9fda8e6f7b0cac7c46cf7a9564d80b38e0bef798a7a3f300746e03130291bc2`
+and corrected `3a5f3df1a5f466ef8016376d5a08031efa996c8c845c0a3b90d37e4b64af0c85`;
+the binaries themselves are not in the ZIP, so their hashes and runtime linkage were
+not independently rechecked. The merge source `1a4927636f7229ddb64748590f2bf295c6f865ec`
+differs from the measured head only in PR #226's CodeQL/MSVC workflow action pins;
+source equivalence is not a claim of binary identity.
+
+### Measurement results and interpretation
+
+Each reported median below is the median of **five per-run average nanoseconds per
+frame**, not the median of individual calls. Spread is `(max run average − min run
+average) / median`. Original and corrected runs alternate order. The clock is included,
+not subtracted; the observed calibration range is significant for very short pushes.
+
+| Measurement | Original median | Corrected median | Change / scope |
+|---|---:|---:|---|
+| Scope push, 48 kHz / 128 frames | 0.4755 ns/frame | 1.3487 ns/frame | +183.7%; about +0.112 µs per block in this microbenchmark; run spreads 14.2% / 2.3% |
+| Scope push, 48 kHz / 512 frames | 0.1909 ns/frame | 1.1452 ns/frame | +499.9%; about +0.489 µs per block; run spreads 39.4% / 8.4% |
+| Scope read, 8,192 frames | 0.2007 ns/frame | 2.2519 ns/frame | +1,022.3%; about 1.64 µs / 18.45 µs per read; run spreads 6.2% / 6.2% |
+| Working engine, 48 kHz / 128, unpaced | 153.011 ns/frame | 152.183 ns/frame | −0.54%; spreads 9.0% / 10.3% |
+| Working engine, 48 kHz / 128, paced, no reader | 269.051 ns/frame | 283.755 ns/frame | +5.47%; spreads 19.6% / 10.7% |
+
+Across 27 comparable engine cells the median changes span −4.47% to +7.55%; this is
+not a universal CPU bound. Isolated read ratios are large; their absolute measurements
+must not be read as a whole-editor multiplier. The corrected-only model reads 8,000- and
+8,192-frame windows at approximately 60 Hz. Their isolated median reads total about
+36.4 µs per refresh, or 2.18 ms of measured read time per second at that cadence,
+excluding consumption, FFT, painting, scheduling and host overhead. Actual GUI/FFT
+and DAW performance were not measured. Unpaced silence represents a stopped/idle
+engine case; active and 750 ms stalled readers are **models**, measured only for the
+corrected implementation. Reader acceptance and producer progress were nonzero.
+
+At 48 kHz / 128 frames the nominal interval is 2.667 ms. Unpaced working-engine worst
+observed process calls were 0.116 ms original / 0.456 ms corrected; the corrected
+0.456 ms maximum occurred in one repeat, while its other repeat maxima were below
+0.102 ms. Paced no-reader maxima were 0.654 ms original / 0.905 ms corrected; in
+18,750 calls per variant, two original and four corrected calls exceeded 0.5 ms.
+Corrected stalled-reader maximum was 1.786 ms, one call above 0.5 ms among 18,750.
+These outliers warrant attention but the data do not identify cause or establish a
+formal worst-case time: scheduler/clock and process-only measurements exclude the
+wrapper, host and device. At 48 kHz / 16,401 frames the nominal interval is
+341.688 ms; paced no-reader observed maxima were 4.781 / 4.803 ms. These intervals
+are context, not proof that callbacks always meet deadlines.
+
+ScopeBuffer size is 131,080 / 262,152 bytes and Engine object size is
+139,648 / 270,720 bytes, each **+131,072 bytes (+128 KiB)** per object. In the
+192 kHz / 16,401-frame / 8× memory case, median fresh-process preparation RSS deltas
+were 4,329,472 / 4,341,760 bytes, a 12,288-byte observed difference. RSS samples,
+allocator granularity and page commitment are not object size and do not negate the
+128 KiB increase; multi-instance process RSS was not measured.
+
+**Disposition:** owner-approved ADR-0070 item 5 for this measured scope. No additional
+measurement is required to repeat that accepted decision. Other hardware, actual host/
+GPU/FFT behavior, page-residency scaling and formal WCET remain unmeasured; no numerical
+budget, real-time deadline guarantee or universal performance equivalence is inferred.
+
+## Historical collection disposition
 
 **Owner-deferred execution — 2026-11-02 (Asia/Shanghai).** Keep this package and
 all acceptance/provenance requirements for a later assignment. Do not request

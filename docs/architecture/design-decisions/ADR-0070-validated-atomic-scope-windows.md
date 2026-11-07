@@ -1,5 +1,17 @@
 # ADR-0070 — Generation-validated atomic stereo windows for ScopeBuffer
 
+**2026-11-07 (Asia/Shanghai) owner decision:** ADR-0070 Acceptance and rollback
+item 5 is **APPROVED — owner acceptance of measured native performance cost**, for
+the supplied physical Intel Mac and measured workloads. The independently checked
+archive, measured source, five-repeat results, provenance and explicit limitations are
+recorded in the [native evidence package](../../../worklogs/NATIVE_VALIDATION_PACKAGE.md#owner-accepted-native-performance-evidence--2026-11-07-asiashanghai).
+The owner also attests Level-5 and all other applicable manual validations completed;
+individual host results and tested artifact identities remain NOT RECORDED. This later
+decision is separate from the archive's historical null acceptance fields. It does not
+assert GUI/FFT, other-machine or WCET measurements. Later PR merges remain separate.
+
+**Historical integration status:**
+
 **Status: Accepted.** The owner explicitly approved ADR-0070 for implementation
 on 2026-11-01 (Asia/Shanghai), replying “Approve ADR-0070 for implementation” to
 the submitted PR #199 architecture question, subject to its native portability,
@@ -7,8 +19,8 @@ performance and validation gates. Originally proposed by the agent on that date,
 against integrated `main` `00de8c7796f37d08a338256e01830bb312ba105c`.
 The architecture approval is **cleared**. The owner subsequently separately approved
 integration of #199/#202, now on main via `303d37c`/`4255393` (2026-11-02,
-Asia/Shanghai). Representative performance/owner cost acceptance and targeted native
-visual/editor-lifecycle acceptance remain pending; new PR merges remain separate. The new scope-affinity contract
+Asia/Shanghai). At that integration checkpoint representative performance/owner cost acceptance and targeted native
+visual/editor-lifecycle acceptance remained pending; new PR merges remain separate. The new scope-affinity contract
 is effective for the approved atomic implementation, not an exception permitting
 the old plain-payload race. Existing release objects remain unchanged.
 
@@ -225,8 +237,9 @@ Accepted contract. This integration grants no release operation or future PR mer
    measurements, at least five repeats with CPU/OS/compiler/flags/block/rate,
    median/spread/worst observed block, large blocks, active/idle/stalled GUI and
    footprint. Shared-runner results are synthetic only. Representative hardware
-   and owner acceptance of the measured cost are outstanding conditions, not an
-   invented numeric budget or the old Wave 4 measurement reused as new evidence.
+   and owner acceptance of the measured cost were outstanding conditions at that
+   checkpoint. The 2026-11-07 owner decision and evidence above record item 5 as
+   approved within its measured scope, without an invented numeric budget.
 6. **Compatibility/manual:** unchanged same-machine/same-build engine samples and
    latency, full mandatory CI, then targeted native scope/FFT visual audition and
    editor lifecycle checks. Earlier manual approval does not apply to this design.
@@ -258,9 +271,10 @@ mitigation. Do not publish or replace 0.10.0 from this decision.
 - **Verified for recorded configurations:** integrated production implementation,
   native compile guards and matching Windows/macOS product/debug codegen,
   deterministic/concurrent/regression controls and final-main CI.
-- **Unverified/pending:** representative native production and full-engine/GUI
-  costs/owner cost acceptance, and targeted native visual/editor-lifecycle audition.
-  No user-visible failure rate or supported-host crash attribution.
+- **Later evidence/decision:** owner-approved item-5 performance cost on the measured
+  Intel Mac and owner-attested applicable manual validation are recorded above.
+  Actual GUI/FFT costs, other-hardware performance and a user-visible failure rate
+  or supported-host crash attribution remain unmeasured or unverified.
 
 ## Historical production checkpoint — 2026-11-01
 

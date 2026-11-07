@@ -1,5 +1,17 @@
 # LEVEL5_AUDITION.md
 
+## 0.10.1 owner continuation — 2026-11-07 (Asia/Shanghai)
+
+The owner states that **Level-5 testing passed**, **all other applicable manual
+validations were completed**, and **completed roadmap work received applicable human
+acceptance**. These are owner attestations for the selected completed development
+scope, not agent-performed tests. Exact manual test dates, DAW/host versions,
+format/device/session, individual observations and human-tested artifact hashes are
+**NOT RECORDED**. The owner separately approved ADR-0070 item 5's measured performance
+cost on the supplied Intel Mac; see the [native evidence](../../worklogs/NATIVE_VALIDATION_PACKAGE.md).
+The historical archive's unfilled manual worksheet is unchanged and does not assert
+per-case results. No repeated general Level-5 or previously completed manual test is requested.
+
 ## 0.10.1 owner acceptance — received 2026-11-06 UTC
 
 The owner states: **“Level-5 testing has been completed and passed”** and **“All work items
@@ -12,9 +24,8 @@ within their recorded scopes. RELEASE_POLICY precondition 7 is **PASS — owner-
 Actual test dates, exact tested source and artifact hashes, DAW/version, OS/CPU, format, devices,
 sessions, individual observations and measurements: **NOT RECORDED**. The baseline identity
 `55bdbdea090152f635d442916f4f0547e4626600` identifies the selected integrated source, not a
-claimed human-tested artifact. The attestation does not complete explicitly deferred work:
-ADR-0070 representative native performance measurements and owner cost acceptance remain
-outstanding. No new production behavior is introduced by the version-preparation change.
+claimed human-tested artifact. At the time of this earlier attestation ADR-0070 representative native performance
+measurements and owner cost acceptance were outstanding; the later decision is recorded above. No new production behavior is introduced by the version-preparation change.
 Historical records below retain their original scope. See the [current release register](../../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md).
 
 ## Owner continuation decisions — 2026-10-31 (Asia/Shanghai)

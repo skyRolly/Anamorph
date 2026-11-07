@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Parser/control fixtures, never hardware measurements or performance targets."""
 import copy
+import contextlib
+import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
@@ -16,6 +19,10 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("native_validation", ROOT / "scripts/native_validation.py")
 native = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(native)
+verifier_spec = importlib.util.spec_from_file_location(
+    "adr0070_archive_verifier", ROOT / "worklogs/native-validation/verify-adr0070-archive.py")
+verifier = importlib.util.module_from_spec(verifier_spec)
+verifier_spec.loader.exec_module(verifier)
 
 
 def request(**changes):
@@ -313,6 +320,91 @@ class EvidenceTests(unittest.TestCase):
         unsafe = request(variant="original", reader="active", paced=True, seconds=1.1)
         with self.assertRaisesRegex(ValueError, "unsafe"):
             native.validate_record(observation(unsafe), unsafe)
+
+    def test_independent_verifier_rejects_reported_probe_failures(self):
+        for req in (request(), request(kind="scope-push"), request(kind="scope-read"),
+                    request(reader="stalled", paced=True, seconds=1.1), request(kind="memory")):
+            verifier.verify_probe(observation(req), req, 0)
+        cases = [
+            (request(kind="scope-push"), {"scope_end": 0}, "publication"),
+            (request(kind="scope-read"), {"scope_start": 0}, "publication"),
+            (request(kind="scope-read"), {"audio_hash": "cbf29ce484222325"}, "consumption"),
+            (request(), {"audio_hash": "0000000000000001"}, "inert working engine"),
+            (request(), {"block_ns": [0] * 19}, "zero timing"),
+            (request(), {"schema": 1}, "schema/CPU"),
+            (request(), {"cpu": ""}, "schema/CPU"),
+            (request(), {"rss_available": None}, "RSS availability"),
+            (request(), {"reader_hash": "bad"}, "reader_hash"),
+            (request(), {"clock_min_ns": 3}, "clock calibration"),
+            (request(), {"latency_samples": -1}, "latency_samples"),
+            (request(reader="stalled", paced=True, seconds=1.1), {"stall_frames": 0}, "producer progress"),
+            (request(variant="original", reader="active", paced=True, seconds=1.1), {}, "unsafe original reader"),
+        ]
+        for req, change, message in cases:
+            with self.subTest(change=change, message=message), self.assertRaisesRegex(ValueError, message):
+                verifier.verify_probe(dict(observation(req), **change), req, 0)
+
+    def test_archive_verifier_runs_probe_controls_after_consistent_repacking(self):
+        # A small synthetic 400-row packet has fresh manifests AND summaries.
+        # The digest is replaced only in this fixture; production pins its ZIP.
+        plan = native.make_plan(False, 5)
+        for req in plan:
+            req.update(seconds=0.0001, iterations=2)
+        fixture_source = b"synthetic source, not repository evidence"
+
+        def run_packet(directory, mutation):
+            rows = [observation(req) for req in plan]
+            if mutation == "publication":
+                next(r for r in rows if r["kind"] == "scope-push")["scope_end"] = 0
+            elif mutation == "consumption":
+                for row in rows:
+                    if row["kind"] == "scope-read" and row["rep"] == 0 and row["window"] == 1200:
+                        row["audio_hash"] = "cbf29ce484222325"
+            elif mutation == "liveness":
+                for row in rows:
+                    if (row["kind"] == "engine" and row["case"] == "working" and row["rep"] == 0
+                            and row["block"] == 128 and row["rate"] == 48000 and row["reader"] == "none"
+                            and not row["paced"]):
+                        row["audio_hash"] = row["input_hash"]
+            elif mutation == "zero timing":
+                row = next(r for r in rows if r["kind"] == "scope-push")
+                row["block_ns"] = [0] * len(row["block_ns"])
+            summary = native.summarize(rows, 5, False)
+            data = {
+                "plan.json": json.dumps(plan).encode(),
+                "run-status.json": json.dumps({"source_commit": verifier.SOURCE,
+                                                "completed": list(range(400)), "current": None}).encode(),
+                "source.json": json.dumps({"commit": verifier.SOURCE, "status": "", "files_sha256": {
+                    f"fixture/file{i}": hashlib.sha256(fixture_source).hexdigest() for i in range(65)}}).encode(),
+                "summary.json": json.dumps(summary).encode(),
+                "analysis.json": json.dumps(summary).encode(),
+            }
+            for i, (req, row) in enumerate(zip(plan, rows)):
+                data[f"raw/{i:04}.request.json"] = json.dumps(req).encode()
+                data[f"raw/{i:04}.stdout.jsonl"] = (json.dumps(row) + "\n").encode()
+                data[f"raw/{i:04}.stderr.log"] = b""
+            for i in range(1228 - len(data)):
+                data[f"padding/{i:02}.txt"] = b""
+            data["SHA256.json"] = json.dumps({k: hashlib.sha256(v).hexdigest() for k, v in data.items()}).encode()
+            archive = directory / f"{mutation or 'valid'}.zip"
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as z:
+                for name, content in data.items():
+                    z.writestr(name, content)
+            def fake_git(*args):
+                if args[0] == "rev-parse":
+                    return b"ed24ceab5ced2784d9fe96effdc46f8aeb03f472\n"
+                return fixture_source
+            with mock.patch.object(verifier, "EXPECTED", hashlib.sha256(archive.read_bytes()).hexdigest()), \
+                 mock.patch.object(verifier, "git", side_effect=fake_git), contextlib.redirect_stdout(io.StringIO()):
+                verifier.main(archive)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            run_packet(directory, None)
+            for mutation, message in (("publication", "publication"), ("consumption", "consumption"),
+                                      ("liveness", "inert working engine"), ("zero timing", "zero timing")):
+                with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, message):
+                    run_packet(directory, mutation)
 
     def test_summary_refuses_missing_rep_duplicate_or_changed_audio_latency(self):
         rows = [observation(request(variant=variant, rep=rep)) for rep in range(5) for variant in ("original", "corrected")]
