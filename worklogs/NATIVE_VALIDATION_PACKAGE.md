@@ -49,8 +49,9 @@ positive acceptance and a non-initial reader checksum; their rejection counters 
 The collector and independent verifier now reject that initial checksum when a reader is
 enabled, while allowing it with no reader. Synthetic repacked controls exercise this
 check after regenerated hashes and summaries. A different checksum is a liveness control,
-not proof of the original sample contents. This finding does not revoke the owner's
-recorded ADR-0070, Level-5 or other manual acceptance, or claim a new native run.
+not proof of the original sample contents; an FNV collision could in principle return to
+the initial value after consumption. This finding does not revoke the owner's recorded
+ADR-0070, Level-5 or other manual acceptance, or claim a new native run.
 
 `source.json` and `run-status.json` identify reviewed PR #225 head
 `a0a48290479cac99f74c6a1391990263c82dbf29`; all 65 listed source-file SHA-256 values

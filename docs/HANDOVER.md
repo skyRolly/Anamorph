@@ -4,8 +4,8 @@
 with its final-main Build, CodeQL and PREfast passing. A subsequent reader-consumption
 control gap in the native evidence verifier was reproduced and corrected on a separate
 review branch; see the [roadmap](../worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md) and
-[native record](../worklogs/NATIVE_VALIDATION_PACKAGE.md). Its PR requires owner review
-and merge, then CI on the resulting main and an actual UTC tag-date check. Level-5,
+[native record](../worklogs/NATIVE_VALIDATION_PACKAGE.md). [PR #229](https://github.com/skyRolly/Anamorph/pull/229)
+requires owner review and merge, then CI on the resulting main and an actual UTC tag-date check. Level-5,
 other applicable manual acceptance and ADR-0070 item 5 remain owner-approved in their
 recorded scopes. No 0.10.1 tag or draft exists; 0.10.0 is unchanged.
 

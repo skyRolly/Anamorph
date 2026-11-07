@@ -7,8 +7,9 @@ After PR #228, main `82a0a54867dc6c237d5d7de1dafeff347afff3b6` passed Build
 evidence-tool correction now rejects an unchanged checksum for enabled readers; the
 supplied archive passes the stronger control. This changes no product or compatibility
 contract and does not reopen the owner's completed human acceptance or ADR-0070 item 5.
-Its PR requires owner review/merge and the resulting final source requires CI before a
-tag. Existing named-host and artifact-specific observations remain within the scopes below.
+[PR #229](https://github.com/skyRolly/Anamorph/pull/229) requires owner review/merge and
+the resulting final source requires CI before a tag. Existing named-host and artifact-specific
+observations remain within the scopes below.
 
 ## 0.10.1 post-#227 source — 2026-11-07 UTC
 

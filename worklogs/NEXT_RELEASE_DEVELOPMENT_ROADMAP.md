@@ -14,9 +14,10 @@ The supplied archive itself is unchanged and all 20 active/stalled reader checks
 from the initial value. This branch corrects the collector and verifier and adds direct
 and repacked regression controls; see the [native record](NATIVE_VALIDATION_PACKAGE.md).
 It does not alter shipping behavior or the owner's ADR-0070, Level-5 and completed-roadmap
-acceptances. The follow-up PR requires separate owner review and merge, followed by CI on
-the actual resulting main. Recheck the provisional 2026-11-07 Changelog date against the
-actual UTC tag date. No 0.10.1 tag or draft exists; the 0.10.0 draft remains unchanged.
+acceptances. [PR #229](https://github.com/skyRolly/Anamorph/pull/229) requires separate
+owner review and merge, followed by CI on the actual resulting main. Recheck the provisional
+2026-11-07 Changelog date against the actual UTC tag date. No 0.10.1 tag or draft exists;
+the 0.10.0 draft remains unchanged.
 
 ## Historical 0.10.1 UTC date-correction register — 2026-11-07 UTC
 
