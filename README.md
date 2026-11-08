@@ -196,6 +196,9 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 
 The documentation falls into **four classes**, kept deliberately separate:
 
+[Proposed ADR-0073](docs/architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+is a developer decision record for the Linux shipping/TSan environment repair, pending review.
+
 | Class | Documents | Audience |
 |---|---|---|
 | **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |

@@ -3,6 +3,9 @@
 Directory and file map with per-component responsibilities. Architecture rationale is in
 `docs/architecture/ARCHITECTURE.md`.
 
+Developer decision record: [Proposed ADR-0073](architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+describes PR #231's measured Linux shipping/TSan runner correction and pending independent review.
+
 ## Top level
 
 Current engineering review follows `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`.

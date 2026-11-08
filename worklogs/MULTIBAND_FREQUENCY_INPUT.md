@@ -204,3 +204,62 @@ Measured through the production converters and two-band inline editor at the def
 | `0.000001` | 20 | 20 | 20 | 35.80882 |
 | `1Hz` | 20 | 20 | 1000 | 999.9996 |
 | `9999999999999999999999999999999999999999999999999999k` | 20000 | 20000 | 20000 | 15121.99 |
+
+## CI environment repair (PR #231)
+
+2026-11-08 UTC: PR #231 remained open, unmerged and auto-merge disabled at
+`5ab9d4668ccc8600115ceeb687560b640cdc1e9b`. Completed push run
+[42473360414](https://github.com/skyRolly/Anamorph/actions/runs/42473360414)
+failed only `linux` and `tsan`. Only those two jobs were retried (attempt 2),
+without an empty commit; both failed again. Product functionality is not implicated.
+
+| Measured environment | Last passing main, run 42367437446 at da0429b9 | PR #231, run 42473360414 |
+|---|---|---|
+| Hosted image | Ubuntu 24.04.5, ubuntu-24.04, 20261101.360.1 | Ubuntu 26.04.1, ubuntu-26.04, 20261101.186.1 (both attempts) |
+| Shipping libc6 | 2.39-0ubuntu8.9 | 2.43-2ubuntu2.4 |
+| Image libstdc++6 | 14.2.0-4ubuntu2~24.04.1 | 16-20260322-1ubuntu1 |
+| Shipping compiler/linker | Clang/lld 22.1.8, upstream ca7933e47d3a | Same pinned compiler/linker |
+| Actual VST3 and Standalone ABI maxima | GLIBC_2.38, GLIBCXX_3.4.31, CXXABI_1.3.9 | GLIBC_2.43, GLIBCXX_3.4.31, CXXABI_1.3.9 (both attempts) |
+| Imported sqrtf / atan2f / log10f | GLIBC_2.2.5 in both formats | GLIBC_2.43 in both formats |
+| TSan kernel | 7.0.0-1017-azure | 7.0.0-1019-azure (original failure) |
+| TSan entropy / seccomp | 28 / 2 | 32 / 2 (original failure) |
+| TSan container and runtime | Ubuntu 24.04.5; libclang-rt-22-dev 1:22.1.8~++20260714014902+ca7933e47d3a-1~exp1~20260714135019.80 | Identical userspace and runtime package |
+
+Sources: passing Linux/TSan jobs 128388364557/128388364523 and original failed
+jobs 128709107788/128709107564. Actual shipping artifacts 13572109096 and
+13614099980 were inspected with `objdump -T`; retained TSan artifacts
+13571874818 and 13614442338 provide kernel, entropy, compiler/runtime and
+canary results. Image package versions were independently read from the public
+runner-image SBOMs at releases `ubuntu24/20261101.360` and `ubuntu26/20261101.186`;
+job package logs corroborate libc versions. A newer supplied libc does not imply
+the binary requires all its symbols: the actual imported versions are authoritative.
+
+The original TSan canary exited 66 without a race diagnostic, correctly failing
+the gate. Retry job 128772509596 reported the real seeded race, built the actual
+instrumented State target, then failed TSan startup in the first
+`--state-thread-probe`. This demonstrates why a canary pass alone cannot certify
+the environment. Retry Linux job 128772509275 rebuilt/staged both formats and
+the unchanged checker again rejected GLIBC_2.43. Its 19 self-tests passed.
+The prior main TSan run completed the actual probes, suite and four suppression
+entries with the identical runtime; no kernel/security setting changed.
+
+The selected correction changes only `linux`/`tsan` to `ubuntu-24.04` and the
+requested-runner metadata to match. Reusing the measured supported image family
+is smaller than adding a shipping container/sysroot or changing runtime/symbol
+linkage. The existing TSan container already demonstrates that userspace alone
+does not fix a host layout failure. Compiler, ABI ceilings, Haswell/Excavator
+flags, packaging, pluginval, test bodies, suppressions and Multiband sources remain
+unchanged. [Proposed ADR-0073](../docs/architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+flags the shipping-label decision for independent architecture review before merge.
+
+Local checks cover production routing self-tests/report, documentation/citation
+self-tests and checks, actionlint on Build/Release, six executions of the unchanged
+canary shell gate with inert success/failure controls, and the unchanged ABI
+checker's 19 self-tests plus positive/negative actual CI artifact controls.
+Whole-tree actionlint 1.7.12 separately flags the pre-existing `runner.workspace`
+expression in unchanged `codeql.yml:171`; the affected Build/Release workflows
+are clean, and the CodeQL workflow is outside this repair. Final validation must use
+the corrected exact head's hosted canary, all five probes x5, complete instrumented
+State suite, suppression liveness and rebuilt shipping-artifact ABI gate. Those
+results and the complete check inventory are recorded on PR #231; earlier passing
+main evidence is a comparison, not a substitute for corrected-head validation.

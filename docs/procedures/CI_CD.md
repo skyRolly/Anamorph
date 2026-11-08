@@ -1,5 +1,15 @@
 # CI_CD.md
 
+## Linux runner rollout correction (PR #231, 2026-11-08 UTC)
+
+Only `linux` and `tsan` select `ubuntu-24.04` after both failed on Ubuntu 26.04
+and their targeted retries also failed. TSan's Ubuntu 24.04 container, pinned
+Clang/lld 22, ABI ceilings, CPU flags and validation bodies are unchanged.
+[Proposed ADR-0073](../architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+records the options, review gate and measured evidence. Earlier dated runner
+observations below remain historical. Final acceptance requires the exact-head
+hosted checks linked from PR #231, including real TSan and shipping ABI results.
+
 The Linux `fuzz` job now runs `tests/fuzz_isolation_tests.py` on its just-built
 libFuzzer/ASan/UBSan target before the unchanged fixed-seed 90-second campaign.
 It checks per-input filesystem teardown separately from JUCE global shutdown,
@@ -368,9 +378,9 @@ jobs that guard classes the build matrix cannot see:
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint; the checkout fetches the full history, every branch and every tag, `fetch-depth: 0` and `fetch-tags: true`, because the `CHANGELOG.md` link check reads which versions were released from the git tags on the release line — the tags `origin/main` holds but those cut after `HEAD`, since a same-repo PR is checked at its tip — and requires an entry for each — `CHANGELOG_POLICY.md` rule 8) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, `check-realtime.py`, `check-dispatch.py`, `check-state-coverage.py`, then `check-citations.py --check`; plus `check-dsp-dump.py --self-test`, `test-pluginval-acquisition.py` and the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
 | **native-evidence-smoke** | `ubuntu-latest`, `macos-latest`, `windows-latest` | Existing opt-in Bench/DSP/state targets, Ninja Release; original/current overlays and parser controls | Complete/partial diagnostic logs only; synthetic, no cost threshold or native acceptance |
-| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below), the six blocking race probes, and the **XML boundary differential** (`tests/xml_boundary_differential.cpp`, ADR-0056 — compiled here like the two realtime canaries, Linux-only because it contains its parses in forked children on 1 MB `pthread` stacks) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
+| **linux** | `ubuntu-24.04` + **pinned `clang`/`lld`** (Proposed ADR-0073) | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below), the six blocking race probes, and the **XML boundary differential** (`tests/xml_boundary_differential.cpp`, ADR-0056 — compiled here like the two realtime canaries, Linux-only because it contains its parses in forked children on 1 MB `pthread` stacks) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
-| **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
+| **tsan** | `ubuntu-24.04`, `ubuntu:24.04` container (Proposed ADR-0073) | Clang ThreadSanitizer build of the state suite; the five cross-thread/scope probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036/0070) | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
@@ -608,8 +618,8 @@ edge above must not be read as release non-blocking.
   mechanical guard for D-2 / RISK-007: the plug-in's program state is message-thread-owned and a host
   thread reaches it only through two lock-free exchange cells, and this is the one tool in the
   pipeline that can see a torn read — ASan, UBSan, valgrind and RTSan all treat one as correct code.
-  It runs the four opt-in probes the suite never runs on its own (`--state-thread-probe`,
-  `--state-prepare-race-probe`, `--reprepare-race-probe`, `--d2-stress-probe`) **five times each**,
+  It runs the five opt-in probes the suite never runs on its own (`--state-thread-probe`,
+  `--state-prepare-race-probe`, `--reprepare-race-probe`, `--d2-stress-probe`, `--scope-snapshot-probe`) **five times each**,
   because a race that failed to reproduce is not one that was eliminated, and then the whole suite
   once under the instrument. Its own job by driver restriction (clang rejects `thread` alongside
   `address`, `undefined` or `realtime`), its own build directory and ccache lineage.
@@ -1335,7 +1345,7 @@ confirmed to describe this compiler. Bump the pin and re-baseline in the **same*
 
 **The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
 not *newest* and not *whatever Ubuntu packages*. Ubuntu's own archives stop at `clang-20` for noble,
-the userspace retained for the test-only TSan container. The rolling `ubuntu-latest` host label is measured independently. The toolchain is installed by
+the userspace retained for the test-only TSan container. The `linux` and `tsan` hosts select `ubuntu-24.04` (Proposed ADR-0073); other Ubuntu hosts still float. The toolchain is installed by
 `scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel. Ubuntu's
 packaging boundary is a fact about Ubuntu's release process, not about this project, and it is not
 allowed to hold the warning gate, the sanitizer host and — since ADR-0030 — the shipped Linux compiler

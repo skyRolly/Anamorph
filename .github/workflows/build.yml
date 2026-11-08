@@ -736,7 +736,7 @@ jobs:
           python3 scripts/check-citations.py --check --base "$BASE"
 
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ADR-0073: retain the shipped Linux ABI contract.
     timeout-minutes: 60
     if: >-
       github.event_name != 'pull_request' ||
@@ -4098,7 +4098,7 @@ jobs:
   # and, like them, still release-blocking through `release.yml`'s aggregate
   # dependency on this workflow.
   tsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ADR-0073: measured compatible shadow-memory host.
     container: ubuntu:24.04
     defaults:
       run:
@@ -4143,7 +4143,7 @@ jobs:
           compiler = 'clang++-' + os.environ['ANAMORPH_CLANG_VERSION']
           status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
           Path('build/tsan-host.json').write_text(json.dumps({
-              'requested_runner': 'ubuntu-latest',
+              'requested_runner': 'ubuntu-24.04',
               'runner_image': os.environ.get('ImageOS'),
               'runner_image_version': os.environ.get('ImageVersion'),
               'kernel': platform.release(),

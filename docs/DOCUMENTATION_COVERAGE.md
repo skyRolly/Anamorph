@@ -1,5 +1,15 @@
 # DOCUMENTATION_COVERAGE.md
 
+## PR #231 Linux CI environment repair — 2026-11-08 UTC
+
+Registered Proposed ADR-0073 and classified it as developer evidence in README,
+REPOSITORY_MAP and SOURCE_OF_TRUTH. BUILD, CI_CD, TESTING and DEPENDENCY_POLICY
+describe the two Ubuntu 24.04 selections, unchanged compiler/ABI/ISA/test gates,
+and the pending independent architecture review. Corrected CI_CD's current
+four-probe description to the five probes already run by the workflow.
+The existing Multiband worklog retains the exact failed/retried and passing
+environment comparison; exact corrected-head results belong to PR #231's checks.
+
 ## Multiband frequency text and animation — 2026-11-08 (Asia/Shanghai)
 
 Recorded the pre-change lifecycle investigation and minimal semantic rules in

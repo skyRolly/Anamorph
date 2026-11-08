@@ -4,6 +4,10 @@ Defines documentation authority and conflict resolution for the Anamorph reposit
 When two sources disagree, the **higher** source in the list below wins, and the lower
 source must be corrected to match.
 
+[Proposed ADR-0073](architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+is developer-class CI decision evidence. Its runner measurements support review;
+its Proposed status does not confer architecture acceptance.
+
 ## Authority order (highest → lowest)
 
 1. **Source Code** (`src/**`) — the running behaviour. The ultimate ground truth.
