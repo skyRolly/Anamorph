@@ -1096,7 +1096,7 @@ State test 112, legs A–F. Mutation coverage M213–M219.
 - `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `onOwnedRefused`, `onUserTransaction`,
   `ScopedUserTransaction`, `storeOwned`, `setParam`, `addBandAt`, `removeBand`, `resetCrossover`,
   `commitFreqEditor`, `spreadSplits`
-- `src/PluginParameters.h:65-88` (view/preset exclusion lists)
+- `src/PluginParameters.h:66-89` (view/preset exclusion lists)
 
 Evidence [Verified]:
 - Source: src/PluginProcessor.cpp:576-1036, :340-520

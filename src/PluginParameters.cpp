@@ -9,6 +9,35 @@ using juce::NormalisableRange;
 using juce::StringArray;
 using juce::ParameterID;
 
+std::optional<float> anamorph::parseMultibandFrequency (const juce::String& text)
+{
+    juce::String s;
+    for (auto c : text.toLowerCase())
+        if (juce::CharacterFunctions::isLetterOrDigit (c) || c == '.'
+            || (c == '-' && s.isEmpty()))
+            s += c;
+
+    const int unitLength = s.endsWith ("khz") ? 3 : s.endsWith ("hz") ? 2 : s.endsWith ("k") ? 1 : 0;
+    const bool kilo = unitLength == 1 || unitLength == 3;
+    s = s.dropLastCharacters (unitLength);
+    auto chars = s.getCharPointer();
+    if (*chars == '-') ++chars;
+    bool digit = false, decimal = false;
+    while (const auto c = chars.getAndAdvance())
+    {
+        if (c >= '0' && c <= '9') digit = true;
+        else if (c == '.' && ! decimal) decimal = true;
+        else return std::nullopt;
+    }
+    if (! digit) return std::nullopt;
+
+    double value = s.getDoubleValue();
+    if (kilo || (unitLength == 0 && value > 0.0 && value < 20.0)) value *= 1000.0;
+    // Validate before conversion; bound in double before narrowing. Even a
+    // decimal too large for double resolves to a finite endpoint, never Inf/NaN.
+    return (float) juce::jlimit (20.0, 20000.0, value);
+}
+
 // pluginval's "Plugin state restoration" sets a RAW normalised value on each parameter and checks
 // getValue() back within 0.1. Stock AudioParameterBool/Choice/Int SNAP getValue() to the nearest
 // legal step -- and make getValue()/setValue() PRIVATE, so they cannot be subclassed for this -- so
@@ -141,6 +170,25 @@ static juce::NormalisableRange<float> logFreqRangeCentred (float lo, float hi, f
         [] (float s, float e, float v) { return juce::jlimit (s, e, v); } };
 }
 
+namespace
+{
+// The host API cannot return "invalid". Preserve current normalized readback
+// on rejection; stock AudioParameterFloat still owns all numerical state/mapping.
+struct MultibandFrequencyParameter final : AudioParameterFloat
+{
+    MultibandFrequencyParameter (const char* id, const char* nm, float def)
+        : AudioParameterFloat (ParameterID { id, kVersion }, nm, logFreqRange (20.0f, 20000.0f), def,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (
+                [def] (float frequency, int length) { return hz (std::isfinite (frequency) ? frequency : def, length); })) {}
+
+    float getValueForText (const juce::String& text) const override
+    {
+        if (const auto frequency = anamorph::parseMultibandFrequency (text)) return convertTo0to1 (*frequency);
+        return static_cast<const juce::RangedAudioParameter&> (*this).getValue();
+    }
+};
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -197,16 +245,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
         if (v < 0.0f) return "L -" + juce::String (-v * 100.0f, 1) + "%";
         return "R " + juce::String (v * 100.0f, 1) + "%";
     };
-    // Mid/Hi crossover edits in kHz: bare 1-10 (or "5k") -> 1-10 kHz (#4).
-    auto khzFrom = [] (const juce::String& t)
-    {
-        auto s = t.toLowerCase().trim();
-        const bool k = s.containsChar ('k');
-        const float v = s.removeCharacters ("khz ").getFloatValue();
-        if (k) return v * 1000.0f;
-        return (v <= 20.0f) ? v * 1000.0f : v;
-    };
-
     // --- Input conditioning ---
     layout.add (std::make_unique<RawChoice> (ParameterID { pid::channelMode, kVersion },
         "Input Channel", StringArray { "Stereo", "Left Only", "Right Only" }, 0));
@@ -249,9 +287,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<RawInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
     // Full-range splits: the display enforces a minimum on-screen gap and the DSP
     // re-orders them, so a split may be dragged anywhere (0.6.10 #5/#26).
-    floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (20.0f, 20000.0f), 180.0f,  hz, hzFrom);
-    floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (20.0f, 20000.0f), 800.0f,  hz, hzFrom);
-    floatParam (pid::mbFreqHigh, "Multiband Split 3", logFreqRange (20.0f, 20000.0f), 3000.0f, hz, khzFrom);
+    layout.add (std::make_unique<MultibandFrequencyParameter> (pid::mbFreqLow,  "Multiband Split 1", 180.0f));
+    layout.add (std::make_unique<MultibandFrequencyParameter> (pid::mbFreqMid,  "Multiband Split 2", 800.0f));
+    layout.add (std::make_unique<MultibandFrequencyParameter> (pid::mbFreqHigh, "Multiband Split 3", 3000.0f));
     floatParam (pid::mbWidthLow,   "Multiband Width 1", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthMid,   "Multiband Width 2", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthHiMid, "Multiband Width 3", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);

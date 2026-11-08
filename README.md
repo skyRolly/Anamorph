@@ -192,8 +192,12 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 - **Option B review:** [bounded experiment and B2 implementation record](worklogs/NR026_OPTION_B_REVIEW.md) · [separate retained outcomes](worklogs/engineering-review/nr026-option-b/execution.json) (supporting evidence; B2 integrated through owner-reviewed #222, native/release acceptance separate) · [B2 execution evidence](worklogs/engineering-review/nr026-b2/) · [integrated-source component verification](worklogs/engineering-review/post-b2-integration.json)
 - **Callback investigation:** [review and decisions](worklogs/GUI_CALLBACK_LIFETIME_REVIEW.md) · [JUCE 9.0.4 evidence](worklogs/engineering-review/gui-restore-lifetime.json) · [JUCE 9.0.5 NR-026 evidence](worklogs/engineering-review/nr026-juce905.json) · [reproduction package](worklogs/engineering-review/nr026-repro/README.md) · [Accepted ADR-0072](docs/architecture/design-decisions/ADR-0072-wheel-callback-lifetime-review.md) (B2 integrated through owner-reviewed #222)
 - **Test isolation:** [Linux State-suite execution evidence](worklogs/engineering-review/state-isolation-linux-2026-11-05.json) · [disconnect-control execution](worklogs/engineering-review/state-isolation-linux-2026-11-05-disconnect.json) (supporting engineering records) · [protected redirect review](worklogs/engineering-review/state-isolation-symlink-review.json)
+- **Multiband text input:** [focused investigation and regression evidence](worklogs/MULTIBAND_FREQUENCY_INPUT.md).
 
 The documentation falls into **four classes**, kept deliberately separate:
+
+[Proposed ADR-0073](docs/architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+is a developer decision record for the Linux shipping/TSan environment repair, pending review.
 
 | Class | Documents | Audience |
 |---|---|---|

@@ -3,6 +3,9 @@
 Directory and file map with per-component responsibilities. Architecture rationale is in
 `docs/architecture/ARCHITECTURE.md`.
 
+Developer decision record: [Proposed ADR-0073](architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+describes PR #231's measured Linux shipping/TSan runner correction and pending independent review.
+
 ## Top level
 
 Current engineering review follows `worklogs/NEXT_RELEASE_DEVELOPMENT_ROADMAP.md`.
@@ -64,6 +67,7 @@ Anamorph/
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
 ├── worklogs/               Current forward execution register: NEXT_RELEASE_DEVELOPMENT_ROADMAP.md;
 │                           release execution/history: RELEASE_READINESS_0.10.0.md.
+│                           MULTIBAND_FREQUENCY_INPUT.md — focused text-entry/animation investigation.
 │                           engineering-review/nr026-juce905.json — supporting NR-026
 │                           measurements and provenance, not an architecture decision.
 │                           engineering-review/nr026-repro/ — nonshipping probe sources,

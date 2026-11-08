@@ -62,6 +62,7 @@ public:
     // Wired up by the editor. The momentary solo audition is a non-undoable engine
     // override (#8); onSweep / isSweeping share the editor's eased-position window so
     // a reset / preset / A-B / undo travels the split & width lines (#1).
+    // Typed split edits arm the same display easing without extending the global window.
     std::function<void(int)> onSoloPreview;
     std::function<void()>    onClearSoloPreview;
     std::function<void()>    onSweep;
@@ -131,6 +132,7 @@ private:
     };
 
     void tick (double dt); // FrameClock callback (display-rate; dt-corrected eases/decays)
+    void advanceFrame (double dt); // visible-frame body; also driven by deterministic component tests
     void visibilityChanged() override; // Advanced-only: no vblank ticks while hidden (Simple mode)
     bool pushFFT();        // runs the FFT only when the window changed; true = new magnitudes
     void runTransform();   // the unchanged mix + Hann + transform body
@@ -333,7 +335,6 @@ private:
     void openFreqEditor (int i);
     void commitFreqEditor();
     void closeFreqEditor();
-    static float parseFreq (const juce::String&);
 
     anamorph::ScopeBuffer& scope;
     juce::AudioProcessorValueTreeState& apvts;

@@ -13,7 +13,7 @@ parameter. Changing this surface breaks sessions, automation, and presets in the
 Enforced by convention + the version field: all parameters use `ParameterID { id, kVersion }`
 with `kVersion = 1`. The string `id` (not the display name) is the persistent key.
 
-Evidence [Verified]: src/PluginParameters.cpp:104 (`kVersion = 1`); src/PluginParameters.h:15-89.
+Evidence [Verified]: src/PluginParameters.cpp:133 (`kVersion = 1`); src/PluginParameters.h:16-90.
 
 ## Non-finite processor values (0.10.0 / Accepted ADR-0067)
 
@@ -75,16 +75,16 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `bypass` | Bypass | B | false | — | yes (host bypass) | yes | yes ◊ |
 | `advancedMode` | Advanced Mode | B | false | — | yes | **no** ◊◊ | yes |
 
-36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:144-298 (`createAnamorphLayout`).
+36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:192-336 (`createAnamorphLayout`).
 
 Footnotes:
 - **‡** `mbBands`/`mbSolo` are now **fully automatable and visible** in the host's automation list
   (the previous `withAutomatable(false)` was removed); they are still primarily driven by the
   drag-to-split display. Source: src/PluginParameters.cpp (`mbBands`/`mbSolo`, no `withAutomatable`).
 - **†** `mbSolo` is **excluded from presets** (`isPresetExcluded`): a preset load resets solo to
-  off. It still travels with A/B + Undo. Source: src/PluginParameters.h:85-88.
+  off. It still travels with A/B + Undo. Source: src/PluginParameters.h:86-89.
 - **◊** `bypass` is a **view param** (`pid::viewParams`): excluded from A/B, Undo, and presets,
-  but still serialized in the main session state. Source: src/PluginParameters.h:71-73.
+  but still serialized in the main session state. Source: src/PluginParameters.h:72-74.
 - **◊◊** `advancedMode` is a UI-layout toggle: **not host-automatable** (`isAutomatable()` returns
   `false`). A layout toggle has no place in an automation lane, and automating it flips the editor
   layout — driving editor **resizes** (`applyUiScale`) whose `ConfigureNotify` storm hits a
@@ -98,10 +98,10 @@ Footnotes:
   Native host window-grant behavior remains outside that headless fixture.
   This is a recorded automation-flag change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the
   ID/range/default are unchanged, so sessions and existing state are unaffected. Source:
-  src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:85-88.
+  src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:86-89.
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
-  src/PluginParameters.cpp:144-145.
+  src/PluginParameters.cpp:270.
 - **§** Display names changed in 0.9.9 with the **IDs unchanged**: the fourth `algorithm` choice
   reads `Dimensional`, and `dimMode` is shown as `Dimensional Style`. Choice order, ranges,
   defaults and every stored value are unchanged, so sessions, presets, A/B slots and automation
@@ -110,16 +110,16 @@ Footnotes:
   choice's pre-0.9.9 label no longer resolves: it takes the fallback any unknown text takes, the
   first choice (Haas). Nothing Anamorph persists stores parameter text, so sessions, presets, A/B
   slots and automation are unaffected. **Owner decision, 2026-09-28: not fixed** — no alias for the
-  former label is added. Evidence [Verified]: src/PluginParameters.cpp:44 (`getValueForText`);
-  src/PluginParameters.cpp:225-226;
-  src/PluginParameters.cpp:238-239; `tests/fixtures/parameter_registry.snapshot` (the rename
+  former label is added. Evidence [Verified]: src/PluginParameters.cpp:73 (`getValueForText`);
+  src/PluginParameters.cpp:263-264;
+  src/PluginParameters.cpp:276-277; `tests/fixtures/parameter_registry.snapshot` (the rename
   re-froze these two strings only); CHANGELOG.md [0.9.9].
 - **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
   `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:72): when Advanced
   Mode is off, `toEngine` skips the multiband section, so the engine sees the neutral POD default
   and the multiband stage is inactive in Simple mode. The two differing defaults are intentional
   and serve different roles — host-facing default vs. Simple-mode neutral state.
-  Evidence [Verified]: src/PluginParameters.cpp:243,383-433; src/dsp/EngineParameters.h:72.
+  Evidence [Verified]: src/PluginParameters.cpp:281,421-471; src/dsp/EngineParameters.h:72.
 
 ## Host-hidden parameters (InternalState — NOT APVTS)
 

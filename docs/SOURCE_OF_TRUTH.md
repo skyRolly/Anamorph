@@ -4,6 +4,10 @@ Defines documentation authority and conflict resolution for the Anamorph reposit
 When two sources disagree, the **higher** source in the list below wins, and the lower
 source must be corrected to match.
 
+[Proposed ADR-0073](architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+is developer-class CI decision evidence. Its runner measurements support review;
+its Proposed status does not confer architecture acceptance.
+
 ## Authority order (highest → lowest)
 
 1. **Source Code** (`src/**`) — the running behaviour. The ultimate ground truth.
@@ -29,6 +33,10 @@ source must be corrected to match.
 > Architecture because a Policy is a hard rule, not a description.
 
 ## Root-level contributor instructions
+
+The [Multiband frequency input investigation](../worklogs/MULTIBAND_FREQUENCY_INPUT.md)
+records source behavior, alternatives and regression evidence for the focused text-entry
+correction. It is supporting developer evidence; Accepted ownership/lifetime ADRs remain binding.
 
 The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and [independent experiment manifest](../worklogs/engineering-review/nr026-option-b/execution.json) are supporting developer records. They preserve rejected B1 outcomes and B2 implementation evidence; those measurements
 do not confer architecture authority. ADR-0072 records explicit owner approval of

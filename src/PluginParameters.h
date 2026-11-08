@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <optional>
 #include "dsp/EngineParameters.h"
 #include "SerializedNumber.h"   // the malformed-value predicate the session resolver below applies
 
@@ -164,6 +165,10 @@ inline float normalisedAsRendered (const juce::AudioProcessorParameter& p) noexc
 // ---------------------------------------------------------------------------
 namespace anamorph
 {
+    // Multiband text only: a value is valid and range-limited; nullopt rejects
+    // the whole expression without treating malformed input as zero.
+    std::optional<float> parseMultibandFrequency (const juce::String&);
+
     struct SessionValue { float normalised; bool repaired; };
 
     // The predicate on the INPUT text, before any clamp can launder an infinity into a range
