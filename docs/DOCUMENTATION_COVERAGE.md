@@ -1,5 +1,13 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Multiband frequency text and animation — 2026-11-08 (Asia/Shanghai)
+
+Recorded the pre-change lifecycle investigation and minimal semantic rules in
+`worklogs/MULTIBAND_FREQUENCY_INPUT.md`, classified as developer evidence by the
+README, repository map and source-of-truth index. State test 158 exercises real
+host text conversions, inline commits, placement, display movement and Undo.
+Historical audit records retain their original shorthand observations.
+
 ## 0.10.1 draft release record — 2026-11-07 UTC
 
 Recorded the independent annotated tag, release source, successful tag-triggered workflow,
@@ -11187,7 +11195,7 @@ overrides, so no seam was ever needed and none was added. The out-of-tree harnes
 proof for the hour it took to write, and the wrong thing to leave standing.
 
 **BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1168`: `pid::viewParams`
-(src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
+(src/PluginParameters.h:72) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
@@ -11245,7 +11253,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:2282`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:2300`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.

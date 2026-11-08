@@ -1108,7 +1108,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // occurrences across the `replaceState` / `reassertParameters` calls between them: it explored
     // {first loop 0 trips} x {second loop >= 1 trip} and reported `saved` read uninitialised at the
     // write-back. That path does not exist -- `viewParams` has exactly one element
-    // (src/PluginParameters.h:71), both loops are unconditional, and nothing between them can
+    // (src/PluginParameters.h:72), both loops are unconditional, and nothing between them can
     // divert control -- but the analyzer cannot see it while the bound is written twice. Written
     // once, a flow that assumes it is zero in the first loop must assume it is zero in the second
     // too, and the read disappears with it.

@@ -42,7 +42,7 @@ ADR-0067 adds stateless finite-default substitution before snapshot conversions.
 bound once beside the atomic pointers; finite values and the ADR-0057 ordering stay unchanged.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:350-437 (`toEngine`)
+- Source: src/PluginParameters.cpp:388-475 (`toEngine`)
 - Source: src/PluginProcessor.cpp:496-503 (per-block read inside `engine.setParametersFrom` → `engine.process`)
 
 ## 3. Module inventory

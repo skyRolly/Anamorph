@@ -79,7 +79,7 @@ The rendered-grid/signature equivalence above describes finite values. Invalid s
 retain their existing signature, readback and restore rules; the ADR-0067 finite processing
 boundary does not rewrite them or equate their serialized identity with a finite default.
 
-Evidence [Verified]: src/PluginParameters.h:195-210, :74-87; .cpp:53-300.
+Evidence [Verified]: src/PluginParameters.h:200-215, :74-87; .cpp:53-300.
 
 ## `InternalState` — `src/InternalState.h`
 

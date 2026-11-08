@@ -639,7 +639,7 @@ preset completion point; the A/B completion point after the Bypass / view write-
   `completeBulkApply`), `src/dsp/AnamorphEngine.cpp:672-727` (`takeRequestWord`), `src/dsp/AnamorphEngine.cpp:729-790`
   (`startTakenRequests`, `takeRequests`, `switchAbSlots`), `src/dsp/AnamorphEngine.cpp:854-878` (`setParameters`,
   `primeSnapshot`, `adoptSnapshot`).
-- `src/PluginParameters.cpp:350` (`toEngine`, precondition 2); `scripts/check-realtime.py` (the seeds, `WEAK_ORDER`).
+- `src/PluginParameters.cpp:388` (`toEngine`, precondition 2); `scripts/check-realtime.py` (the seeds, `WEAK_ORDER`).
 
 ## Evidence + confidence
 

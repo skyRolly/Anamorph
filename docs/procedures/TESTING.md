@@ -1,5 +1,21 @@
 # TESTING.md
 
+## Multiband frequency input and animation (State 158)
+
+`AnamorphStateTests --multiband-frequency-probe` runs the full required input table
+and additional boundary/normalization cases through all three production parameter
+converters and the inline editor's Enter/focus callbacks. It checks invalid/no-op
+side effects, every active endpoint layout, coordinated display movement, interruption
+and exact whole-row Undo/Redo. The same tests run in the ordinary State suite.
+The [investigation record](../../worklogs/MULTIBAND_FREQUENCY_INPUT.md) distinguishes
+parsed targets from projected positions and records original/fixed results.
+
+The small private `advanceFrame(dt)` body is the same code the visibility-guarded
+FrameClock callback calls. The existing friend adapter drives it at deterministic
+time steps without adding a native window, a clock or another easing implementation.
+Native focus delivery, OS vblank scheduling, visual appearance and real DAW behavior
+remain separate from these component callback/paint/frame assertions.
+
 The [JUCE 9.0.5 review packet](../../worklogs/JUCE905_UPGRADE_REVIEW.md) records
 executed old/new comparisons and the exact remaining native checklist. Linux GCC 14 comparisons
 are bit-identical (32 steady / five transitions and cross-version session renders); shipping-toolchain
@@ -6719,7 +6735,12 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   suites. None of these can exhibit a weak-ordering reordering on demand: the suites passing on arm64 is
   evidence the protocol's logic holds there, not proof its ordering is exercised.
 
-- **The `FrameClock` tick has no headless test.** A **`TESTING_POLICY` rule-1 exception under
+- **Former gap: the `FrameClock` tick had no headless test.** Revisited 2026-11-08:
+  State 158 drives `SpectrumImager::advanceFrame(dt)`, the production visible-frame
+  body, including a stale held-solo promotion and its live control. The display/hold
+  body no longer needs the exception; native vblank delivery and visibility remain
+  outside that deterministic surface. The original disclosures below are historical.
+  A **`TESTING_POLICY` rule-1 exception under
   ADR-0025**, invoked by ADR-0043 for the held-solo audition. Its four required disclosures:
 
   1. *Why no reliable test exists.* The promotion lives in `SpectrumImager::tick (double)`, which is

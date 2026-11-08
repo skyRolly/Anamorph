@@ -64,6 +64,7 @@ Anamorph/
 │                        opt-in benchmark / fuzz / compile-only realtime targets.
 ├── worklogs/               Current forward execution register: NEXT_RELEASE_DEVELOPMENT_ROADMAP.md;
 │                           release execution/history: RELEASE_READINESS_0.10.0.md.
+│                           MULTIBAND_FREQUENCY_INPUT.md — focused text-entry/animation investigation.
 │                           engineering-review/nr026-juce905.json — supporting NR-026
 │                           measurements and provenance, not an architecture decision.
 │                           engineering-review/nr026-repro/ — nonshipping probe sources,

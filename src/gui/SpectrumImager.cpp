@@ -1958,14 +1958,6 @@ void SpectrumImager::removeBand (int b, int expectedBands)
 // ----------------------------------------------------------------------------
 //  Frequency text editor
 // ----------------------------------------------------------------------------
-float SpectrumImager::parseFreq (const juce::String& t)
-{
-    auto s = t.toLowerCase().trim();
-    const bool k = s.containsChar ('k');
-    const float v = s.removeCharacters ("khz ").getFloatValue();
-    if (k) return v * 1000.0f;
-    return (v <= 20.0f) ? v * 1000.0f : v;
-}
 void SpectrumImager::openFreqEditor (int i)
 {
     if (i < 0 || i >= bandCount() - 1) return;
@@ -2001,7 +1993,7 @@ void SpectrumImager::openFreqEditor (int i)
         addAndMakeVisible (*freqEditor);
     }
     auto chip = numberChip (i).expanded (6.0f, 4.0f);
-    freqEditor->setBounds (chip.toNearestInt());
+    freqEditor->setBounds (chip.toNearestInt().constrainedWithin (getLocalBounds()));
     // `false` is the argument this overload takes -- juce::TextEditor::setText is
     // (const String&, bool sendTextChangeMessage), NOT the (String, NotificationType) of
     // juce::Label. `juce::dontSendNotification` compiled here only because it is 0.
@@ -2015,7 +2007,6 @@ void SpectrumImager::openFreqEditor (int i)
 void SpectrumImager::commitFreqEditor()
 {
     // ADR-0008 round 24 (R1092): same shape as `resetCrossover` -- store, close, then spread.
-    const ScopedUserTransaction wholeCommit (*this);
     if (editingHandle < 0) return;
     const int i = editingHandle;
     // ADR-0039's rule, at this commit point too: the handle names a split by POSITION, and
@@ -2041,6 +2032,9 @@ void SpectrumImager::commitFreqEditor()
     // that never happened. A typed value is a different matter entirely and still wins: the user's
     // own action is the newer authority (ADR-0036 section 25).
     if (! editTextEdited && freqEditor->getText() == editOpenText) { closeFreqEditor(); return; }
+    const auto parsed = anamorph::parseMultibandFrequency (freqEditor->getText());
+    if (! parsed) { closeFreqEditor(); return; }
+    const float want = *parsed;
     const juce::Component::SafePointer<SpectrumImager> safeThis (this);
     const auto originalPlot = plot();
     std::array<juce::RangedAudioParameter*, 3> splitParameters {};
@@ -2050,7 +2044,6 @@ void SpectrumImager::commitFreqEditor()
     const auto notifyRefused = onOwnedRefused;
     auto* p = splitParameters[(size_t) i];
     if (p == nullptr) { closeFreqEditor(); return; }
-    const float want = juce::jlimit (kFreqLo, kFreqHi, parseFreq (freqEditor->getText()));
 
     // ADR-0043. THE PLAN IS COMPUTED AFTER THE GESTURE OPENS. `projectGaps` pins the edited split
     // and then slides the WHOLE cluster -- the pin included -- back inside the plot edges by an
@@ -2077,30 +2070,50 @@ void SpectrumImager::commitFreqEditor()
     };
     const auto projectActionGaps = [&actionPlot] (float* xs, int count, int pin)
     {
-        if (count <= 0) return;
-        const float lo = actionPlot.getX() + kMinGapPx;
-        const float hi = actionPlot.getRight() - kMinGapPx;
-        if (pin >= 0 && pin < count)
+        // Text entry can target the full frequency range. Keep the spacing
+        // between splits; drag/scroll/reset retain their existing edge margins.
+        const float lo = actionPlot.getX();
+        const float hi = actionPlot.getRight();
+        // Reserve the space each slot needs before pushing its neighbours.
+        // Sliding the whole cluster would walk an unrelated far neighbour by
+        // another gap every time an interior endpoint is entered again.
+        for (int k = 0; k < count; ++k)
+            xs[k] = juce::jlimit (lo + (float) k * kMinGapPx,
+                                 hi - (float) (count - 1 - k) * kMinGapPx, xs[k]);
+        for (int k = pin - 1; k >= 0; --k) xs[k] = juce::jmin (xs[k], xs[k + 1] - kMinGapPx);
+        for (int k = pin + 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
+    };
+    const auto primaryWouldMove = [p] (float plain, float was)
+    {
+        // Float conversion tolerance is only for predicting no-ops. Store
+        // readback and every ownership proof below still compare exactly.
+        const float norm = p->convertTo0to1 (plain);
+        return ! juce::approximatelyEqual (was, p->convertTo0to1 (p->convertFrom0to1 (norm)));
+    };
+    const auto planAction = [&] (int count, float* xs, float* was, float& primary)
+    {
+        for (int k = 0; k < count; ++k)
         {
-            xs[pin] = juce::jlimit (lo, hi, xs[pin]);
-            for (int k = pin - 1; k >= 0; --k) xs[k] = juce::jmin (xs[k], xs[k + 1] - kMinGapPx);
-            for (int k = pin + 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
+            // ADR-0047: one reading supplies both geometry and ownership.
+            auto* const parameter = splitParameters[(size_t) k];
+            was[k] = parameter != nullptr ? parameter->getValue() : 0.0f;
+            xs[k] = freqToActionX (parameter != nullptr ? parameter->convertFrom0to1 (was[k]) : kFreqLo);
         }
-        else
-        {
-            for (int k = 1; k < count; ++k) xs[k] = juce::jmax (xs[k], xs[k - 1] + kMinGapPx);
-        }
-        if (xs[0] < lo)
-        {
-            const float shift = lo - xs[0];
-            for (int k = 0; k < count; ++k) xs[k] += shift;
-        }
-        if (xs[count - 1] > hi)
-        {
-            const float shift = xs[count - 1] - hi;
-            for (int k = 0; k < count; ++k) xs[k] -= shift;
-        }
-        for (int k = 0; k < count; ++k) xs[k] = juce::jlimit (lo, hi, xs[k]);
+        // Retyping the current frequency must not repair or displace a layout
+        // installed by the host, even if its neighbours are currently crowded.
+        if (! primaryWouldMove (want, was[i])) return false;
+        const float targetX = freqToActionX (want);
+        xs[i] = targetX;
+        projectActionGaps (xs, count, i);
+        // Avoid an inverse-axis round trip when the requested frequency fits.
+        primary = juce::exactlyEqual (xs[i], targetX)
+                ? want : juce::jlimit (kFreqLo, kFreqHi, actionXToFreq (xs[i]));
+        if (primaryWouldMove (primary, was[i])) return true;
+        for (int k = 0; k < count; ++k)
+            if (k != i && splitParameters[(size_t) k] != nullptr
+                && std::abs (freqToActionX (splitParameters[(size_t) k]->convertFrom0to1 (was[k])) - xs[k]) > kSplitMovedPx)
+                return true;
+        return false;
     };
     const auto storeActionValue = [&] (juce::RangedAudioParameter* parameter,
                                        float plain, float& ownedNorm)
@@ -2120,27 +2133,32 @@ void SpectrumImager::commitFreqEditor()
         return true;
     };
 
+    float xs[3] {}, was[3] {}, primary = want, owned = 0.0f;
+    const int previewCount = readBands() - 1;
+    if (i >= previewCount || ! planAction (previewCount, xs, was, primary))
+    {
+        closeFreqEditor();
+        return;
+    }
+
+    const ScopedUserTransaction wholeCommit (*this);
     anamorph::param::beginChangeGesture (p);
     // Use the post-open geometry when the editor survived. If it did not,
     // continue the already-started processor action using the stable snapshot.
     if (safeThis != nullptr) actionPlot = safeThis->plot();
     const int M = readBands() - 1;
-    float xs[3] {}, was[3] {}, owned = 0.0f;
-    bool ok = (i < M);
-    if (ok)
+    bool ok = false;
+    // The preflight only predicts a no-op. Re-plan after Begin has dispatched
+    // (ADR-0043), even when it destroyed the editor; never store the preview.
+    if (i < M && planAction (M, xs, was, primary))
     {
-        for (int k = 0; k < M && k < (int) splitParameters.size(); ++k)
-        {
-            // ADR-0047: one reading answers both -- the plan below and the ownership baseline
-            // `spreadSplits` proves each neighbour against.
-            auto* const parameter = splitParameters[(size_t) k];
-            was[k] = parameter != nullptr ? parameter->getValue() : 0.0f;
-            xs[k] = freqToActionX (parameter != nullptr
-                                   ? parameter->convertFrom0to1 (was[k]) : kFreqLo);
-        }
-        xs[i] = freqToActionX (want);
-        projectActionGaps (xs, M, i);
-        ok = storeActionValue (p, juce::jlimit (kFreqLo, kFreqHi, actionXToFreq (xs[i])), owned);
+        // Arm before a value notification can repaint. This is the existing
+        // dt-corrected display tail, shared by all moved neighbours, and never
+        // delays the authoritative parameter/DSP update or extends knob sweeps.
+        if (safeThis != nullptr && (safeThis->animOnP == nullptr || safeThis->animOnP->load() > 0.5f))
+            safeThis->dispEasing = true;
+        owned = was[i];
+        ok = ! primaryWouldMove (primary, was[i]) || storeActionValue (p, primary, owned);
     }
     if (notifyRefused) notifyRefused (p);   // ROUND 22, RISK-012 -- see `resetCrossover`
     anamorph::param::endChangeGesture (p);
@@ -2365,6 +2383,11 @@ void SpectrumImager::tick (double dt)
         wasShowing = false;
         return;
     }
+    advanceFrame (dt);
+}
+
+void SpectrumImager::advanceFrame (double dt)
+{
     if (! wasShowing)
     {
         wasShowing = true;
@@ -2510,7 +2533,7 @@ void SpectrumImager::tick (double dt)
     if (soloHoldActive) soloCurveBand = soloPressBand;
     ease (soloCurveA, soloHoldActive ? 1.0f : 0.0f);
 
-    // Display-eased split / width positions: a sweep (reset / preset / A-B / undo) glides
+    // Display-eased split / width positions: typed edits and sweeps (reset / preset / A-B / undo) glide
     // them to the new spots; a drag / scroll / automation snaps 1:1. Once a sweep is armed
     // the glide keeps running until it CONVERGES, so it never stops by snapping the last few
     // pixels when the editor's sweep window closes (0.6.15 #5).
@@ -2693,11 +2716,11 @@ void SpectrumImager::paint (juce::Graphics& g)
         const int Nb = bandCount();
         // Snap to live values unless a sweep is open OR still gliding to its target (so the
         // glide is never cut short by a mid-frame snap); a band-count change always snaps.
-        if (busy || Nb != lastBandCount || (! inSweepWindow && ! dispEasing))
+        if (busy || ! animOn || Nb != lastBandCount || (! inSweepWindow && ! dispEasing))
         {
             for (int i = 0; i < 3; ++i) drawnF[i] = crossover (i);
             for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
-            if (Nb != lastBandCount) dispEasing = false;
+            if (! animOn || Nb != lastBandCount) dispEasing = false;
         }
         lastBandCount = Nb;
     }

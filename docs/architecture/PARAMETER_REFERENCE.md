@@ -2,7 +2,7 @@
 
 Purpose, behaviour, and UI mapping of each parameter. IDs, types, defaults, and ranges are in
 `PARAMETER_REGISTRY.md` (the compatibility ledger). This document describes *what each control
-does*. Evidence: src/PluginParameters.cpp:144-298 (`createAnamorphLayout`), :350-437 (`toEngine`),
+does*. Evidence: src/PluginParameters.cpp:192-336 (`createAnamorphLayout`), :350-437 (`toEngine`),
 src/dsp/AnamorphEngine.cpp (application).
 
 ## Advanced-mode gating
@@ -11,7 +11,7 @@ When **Advanced Mode** is off, the Input module, Multiband module, and Output mo
 parameters are forced to neutral defaults in `toEngine` (their tree values are preserved so
 re-enabling restores them). Only the core widening controls (Drive, Algorithm, Amount,
 per-algorithm shaping, Width, Oversampling, Bypass) are always active.
-Evidence [Verified]: src/PluginParameters.cpp:350-437.
+Evidence [Verified]: src/PluginParameters.cpp:388-475.
 
 ## Input conditioning (Advanced)
 
@@ -41,7 +41,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1050-1128, :614-617.
 | `dimMode` (Dimensional Style) | Dimensional voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. Read only by the Dimensional algorithm, so a move made under any other algorithm is adopted without a transition duck (ADR-0004, Correction of 2026-09-21). |
 | `width` | Global MS width: 0 = mono, 1.0 = identity, 2 = wide. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:950-1047, :442-469, :648-653; src/PluginParameters.cpp:271.
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:950-1047, :442-469, :648-653; src/PluginParameters.cpp:309.
 
 ## Multiband (Advanced)
 
@@ -56,6 +56,20 @@ Driven primarily by the drag-to-split `SpectrumImager` display.
 | `mbWidthLow/Mid/HiMid/High` | Per-band MS width 0..2 (bands 1..4). |
 
 Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cpp:988-997.
+
+Multiband split text entry (inline and host converters): positive bare values below
+20 mean kHz; `20` and larger values mean Hz. Explicit `Hz`, `k` or `kHz` units take
+precedence, case-insensitively. Whitespace and punctuation are ignored except decimal
+points and a leading minus; commas concatenate digits (`1,5k` = 15 kHz). Valid numbers
+are limited to 20–20,000 Hz; malformed/empty text preserves the current value.
+Typed placement uses the full axis while keeping neighboring splits 46 px apart, so
+an interior split can be constrained away from a parsed endpoint. Changed typed edits
+use the existing display easing when animations are on; sound updates immediately.
+These text rules do not apply to Mono Maker or Chorus.
+
+Evidence [Verified]: src/PluginParameters.cpp (`parseMultibandFrequency`, Multiband
+parameter text conversion); src/gui/SpectrumImager.cpp (`commitFreqEditor`, `paint`,
+`advanceFrame`); State test 158.
 
 ## Mono Maker / Mix / Output (Advanced)
 

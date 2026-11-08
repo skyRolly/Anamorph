@@ -36,6 +36,15 @@ struct ScopeVisualTestAccess
     static const std::vector<float>& points (const Vectorscope& view) { return view.snapshot.left(); }
     static const std::vector<float>& magnitudes (const SpectrumImager& view) { return view.fftData; }
     static bool silent (const SpectrumImager& view) { return view.lastWindowSilent; }
+    static void tick (SpectrumImager& view, double dt) { view.tick (dt); }
+    static void advanceFrame (SpectrumImager& view, double dt) { view.advanceFrame (dt); }
+    static float drawnSplit (const SpectrumImager& view, int i) { return view.drawnF[i]; }
+    static bool easing (const SpectrumImager& view) { return view.dispEasing; }
+    static auto chip (const SpectrumImager& view, int i) { return view.numberChip (i); }
+    static auto plot (const SpectrumImager& view) { return view.plot(); }
+    static float splitX (const SpectrumImager& view, float hz) { return view.freqToX (hz); }
+    static auto solo (const SpectrumImager& view, int band) { return view.soloBox (band); }
+    static void ageSoloPress (SpectrumImager& view) { view.soloPressMs -= 300u; }
 };
 }
 

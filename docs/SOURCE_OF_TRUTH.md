@@ -30,6 +30,10 @@ source must be corrected to match.
 
 ## Root-level contributor instructions
 
+The [Multiband frequency input investigation](../worklogs/MULTIBAND_FREQUENCY_INPUT.md)
+records source behavior, alternatives and regression evidence for the focused text-entry
+correction. It is supporting developer evidence; Accepted ownership/lifetime ADRs remain binding.
+
 The [Option B continuation](../worklogs/NR026_OPTION_B_REVIEW.md) and [independent experiment manifest](../worklogs/engineering-review/nr026-option-b/execution.json) are supporting developer records. They preserve rejected B1 outcomes and B2 implementation evidence; those measurements
 do not confer architecture authority. ADR-0072 records explicit owner approval of
 B2, while the roadmap owns current implementation/PR/validation status.

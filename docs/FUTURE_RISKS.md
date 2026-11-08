@@ -780,7 +780,7 @@ risks. This qualifies earlier current-state claims; it does not undo the measure
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
-  **ten separate `std::atomic<float>::load()` calls** (`src/PluginParameters.cpp:396-405`), with no
+  **ten separate `std::atomic<float>::load()` calls** (`src/PluginParameters.cpp:434-443`), with no
   seqlock, generation counter or coherence guard. The audio thread can therefore observe a band
   count from one instant and a solo word, width or split from another. The GUI is not the only
   writer: host automation writes these parameters from the audio thread through the format wrapper.
@@ -792,7 +792,7 @@ risks. This qualifies earlier current-state claims; it does not undo the measure
   count under newer values, is reachable. **Narrowed 2026-09-08 (ADR-0046 round), because the
   sentence used to claim more than is proved (and, 2026-09-08 wheel-gesture round, "read
   **first**" corrected to what is actually true — `e.mbEnable` is loaded at
-  `src/PluginParameters.cpp:396`, one line ahead of the count, and no topology transaction writes
+  `src/PluginParameters.cpp:434`, one line ahead of the count, and no topology transaction writes
   `mbEnable`; the solo word, the splits and the widths, which ARE the parameters the count
   reinterprets, are all loaded after it):** the store-order argument covers
   `addBandAt` and `removeBand`, the only writers that order their stores deliberately. It does
