@@ -21,6 +21,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 The fourth widening algorithm is called by its current name, **Dimensional**, throughout this file —
 including in entries written before 0.9.9 gave it that name.
 
+## [Unreleased]
+
+### Fixed
+
+- **Multiband frequency text entry consistently interprets units, punctuation and the exact 20 Hz boundary.**
+  Invalid or unchanged input leaves the layout and Undo history alone. Typed changes glide when UI
+  Animations is enabled, and split endpoints are reachable where neighboring spacing permits.
+  Evidence: commit `92a14e1a`; State test 158. [Verified]
+
 ## [0.10.1] — 2026-11-07
 
 ### Changed
@@ -3029,6 +3038,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[Unreleased]: https://github.com/skyRolly/Anamorph/compare/0.10.1...HEAD
 [0.10.1]: https://github.com/skyRolly/Anamorph/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/skyRolly/Anamorph/compare/0.9.9...0.10.0
 [0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/0.9.9

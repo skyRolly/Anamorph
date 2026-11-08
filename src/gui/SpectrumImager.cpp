@@ -2045,13 +2045,13 @@ void SpectrumImager::commitFreqEditor()
     auto* p = splitParameters[(size_t) i];
     if (p == nullptr) { closeFreqEditor(); return; }
 
-    // ADR-0043. THE PLAN IS COMPUTED AFTER THE GESTURE OPENS. `projectGaps` pins the edited split
-    // and then slides the WHOLE cluster -- the pin included -- back inside the plot edges by an
-    // amount derived from the NEIGHBOURS, and `beginChangeGesture` dispatches to the host before the
-    // store. Computed before the open, the stored value could therefore be a projection of a world
-    // that had already moved: measured `8440.1 / 3000.0 / 19500.0`, the first split above the
-    // second. Computed here, `projectGaps` is pure and nothing dispatches between the snapshot and
-    // the store, so the projection is a function of the world one statement earlier.
+    // ADR-0043. THE PLAN IS COMPUTED AFTER THE GESTURE OPENS. The original min-gap projection slid
+    // the WHOLE cluster, including the pin, using NEIGHBOURS' positions. With a pre-open plan,
+    // beginChangeGesture could dispatch a host change and leave the store projecting an obsolete
+    // world: measured `8440.1 / 3000.0 / 19500.0`, the first split above the second. The typed
+    // projection now reserves per-slot space, but its neighbour targets still depend on the fresh
+    // layout. Plan after Begin, so nothing dispatches between the single snapshot and primary
+    // store; retain exact ownership checks throughout the following spread.
     juce::Rectangle<float> actionPlot = originalPlot;
     const auto freqToActionX = [&actionPlot] (float hz)
     {
@@ -2533,10 +2533,10 @@ void SpectrumImager::advanceFrame (double dt)
     if (soloHoldActive) soloCurveBand = soloPressBand;
     ease (soloCurveA, soloHoldActive ? 1.0f : 0.0f);
 
-    // Display-eased split / width positions: typed edits and sweeps (reset / preset / A-B / undo) glide
-    // them to the new spots; a drag / scroll / automation snaps 1:1. Once a sweep is armed
-    // the glide keeps running until it CONVERGES, so it never stops by snapping the last few
-    // pixels when the editor's sweep window closes (0.6.15 #5).
+    // Typed edits and sweeps (reset / preset / A-B / undo) glide the displayed split/width positions.
+    // Outside a glide, scroll / automation tracks 1:1; an active drag always snaps.
+    // A glide continues until it CONVERGES, so closing the shared sweep window cannot
+    // snap the last few pixels (0.6.15 #5).
     float prevF[3], prevW[4];
     for (int i = 0; i < 3; ++i) prevF[i] = drawnF[i];
     for (int b = 0; b < 4; ++b) prevW[b] = drawnW[b];
@@ -2705,9 +2705,9 @@ void SpectrumImager::ensureBottomLayer (juce::Graphics& g, juce::Rectangle<float
 
 void SpectrumImager::paint (juce::Graphics& g)
 {
-    // Eased split / width positions only lag during a sweep window (reset / preset / A-B /
-    // undo); a band-count change or any direct interaction snaps them to the live values
-    // BEFORE the first paint, so a split never flashes from a stale spot and every follower
+    // Typed edits and sweeps (reset / preset / A-B / undo) ease split / width positions. A
+    // band-count change or direct interaction snaps them to live values before the first
+    // paint, so a split never flashes from a stale spot and every follower
     // (pin, width dot, headphones) stays in step while dragging (0.6.11 #6/#15, 0.6.12 #8).
     {
         const bool animOn = animOnP == nullptr || animOnP->load() > 0.5f;

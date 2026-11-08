@@ -7,6 +7,8 @@ Recorded the pre-change lifecycle investigation and minimal semantic rules in
 README, repository map and source-of-truth index. State test 158 exercises real
 host text conversions, inline commits, placement, display movement and Undo.
 Historical audit records retain their original shorthand observations.
+The parameter reference and Unreleased changelog describe the corrected contract;
+other affected evidence anchors are re-derived without changing policy/ADR decisions.
 
 ## 0.10.1 draft release record — 2026-11-07 UTC
 

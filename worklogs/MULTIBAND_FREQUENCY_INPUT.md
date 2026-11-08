@@ -100,7 +100,38 @@ invalid/no-op effects, all endpoint layouts, Enter/focus/Escape, animation progr
 neighbor convergence, exact Undo/Redo and interruptions. Existing State 75 and the
 SpectrumImager callback/frequency-editor lifetime suites retain their reentrant oracles.
 
-Execution results and remaining limitations are recorded below after validation.
+Final local verification (Linux x86-64, GCC 14.2, official JUCE 9.0.5
+`d60b7a78030661574a615b586d9325ba7a7fa7dd`):
+
+- State 158: **461 checks / 0 failures**, including 57 valid inputs through all
+  four production paths, 19 invalid inputs, every active endpoint layout,
+  equivalent/crowded-layout no-ops, 60/120 Hz progression, converged neighbors,
+  Enter/focus/Escape, rapid commits, real drag/wheel takeovers, host retargeting,
+  animations-off paint, topology, hide/show and existing reset/preset/A/B/Undo/Redo.
+- Canonical `scripts/run-tests.sh`: **945 DSP checks / 0 failures** and
+  **16,535 State checks / 0 failures**, with filesystem-isolation controls.
+  Existing State 75 and callback/frequency-editor destruction/Undo tests run in
+  that complete suite; registry, state compatibility and unrelated parsers remain guarded.
+- Release VST3 and Standalone builds complete with the existing flags. The
+  prepared helper caches were regenerated for 9.0.5; no build/dependency pin changed.
+- Documentation/release-note, portability, realtime, dispatch, state-coverage and
+  citation checks run with their liveness self-tests. Citation changes only
+  repair evidence locations, including old rationale/version references that a
+  mechanical offset left on unrelated statements.
+
+The aggregate local preflight stops at its ABI check: this prepared Debian/GCC 14
+toolchain produces `CXXABI_1.3.15`, above the shipping floor `1.3.14`. The floor is
+unchanged; shipping-toolchain ABI, sanitizer and cross-platform results belong to
+the PR CI record. All remaining local source/citation/test checks were run separately.
+Native DAW automation, OS focus delivery/vblank cadence, visual audition and
+simultaneous processor destruction are not established by these component tests.
+The existing surviving-processor lifetime contract is unchanged.
+Final pluginval and CI status are reported in the PR to avoid duplicating mutable results.
+Local VST3 pluginval subsequently completed **strictness 10, deterministic ×3 and
+randomise ×3**, all on their first attempt. Its initial download returned HTTP 503;
+the retained official 1.0.4 archive was verified against the locked archive hash,
+byte count and executable hash using the production acquisition verifier before
+seeding the content cache. Both unmodified gate commands then verified that cache.
 
 The first probe setup could not advance frames because `isShowing()` requires a
 native peer. That result is not used as frame-progression evidence. A five-line,
