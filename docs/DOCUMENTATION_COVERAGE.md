@@ -4,9 +4,9 @@
 
 Recorded the owner's explicit acceptance and cleared Architecture Review Gate in
 ADR-0073 and ADR_INDEX, including the verified final-PR-head and post-merge Linux
-and TSan CI evidence. Updated active navigation, dependency policy and build/CI/
-testing references to Accepted status. The original environment failures and
-retry history remain preserved.
+and TSan CI evidence. Updated README and active navigation, dependency policy and
+build/CI/testing references to Accepted status. The original environment failures
+and retry history remain preserved.
 
 ## PR #231 Linux CI environment repair — 2026-11-08 UTC
 

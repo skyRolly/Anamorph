@@ -196,8 +196,8 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 
 The documentation falls into **four classes**, kept deliberately separate:
 
-[Proposed ADR-0073](docs/architecture/design-decisions/ADR-0073-linux-ci-environments.md)
-is a developer decision record for the Linux shipping/TSan environment repair, pending review.
+[Accepted ADR-0073](docs/architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+records the owner-approved Linux shipping/TSan environment decision; the Architecture Review Gate is approved and cleared.
 
 | Class | Documents | Audience |
 |---|---|---|
