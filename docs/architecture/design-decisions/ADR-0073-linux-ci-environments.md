@@ -1,9 +1,10 @@
 # ADR-0073 — Preserve Linux ABI and TSan coverage across runner rollouts
 
-**Status:** **Proposed** (2026-11-08 UTC). The owner authorized investigating and
-correcting PR #231's two CI environments. The shipping-label pin is flagged under
-`ARCHITECTURE_REVIEW_GATE.md` rule 3 for independent human review before merge;
-this record does not assert architecture acceptance or authorize a release.
+**Status:** **Accepted** — the owner explicitly approved this decision on
+2026-11-09 (Asia/Shanghai). The Architecture Review Gate is **APPROVED and
+CLEARED**. The approval retains the `ubuntu-24.04` runner family for the Linux
+shipping and ThreadSanitizer CI jobs, preserving the existing Linux ABI
+compatibility requirements and genuine TSan validation.
 
 ## Context
 
@@ -43,7 +44,7 @@ The same Clang/TSan package passed on the preceding Ubuntu 24.04 run with
 
 ## Decision
 
-Propose option 2. `linux` and `tsan` select `ubuntu-24.04`. TSan keeps its
+Accept option 2. `linux` and `tsan` select `ubuntu-24.04`. TSan keeps its
 `ubuntu:24.04` container; its recorded requested runner is updated to match.
 Other jobs keep their existing environments. No compiler, dependency, ISA,
 product source, canary, suppression, sanitizer option, ABI check or packaging
@@ -71,6 +72,7 @@ do not weaken the detector or change kernel/security settings to accommodate it.
 128709107788/128709107564 and targeted retry jobs 128772509275/128772509596.
 Actual shipping artifacts and retained TSan metadata were inspected, not synthetic
 substitutes. The [investigation record](../../../worklogs/MULTIBAND_FREQUENCY_INPUT.md#ci-environment-repair-pr-231)
-contains image/package versions and measurements. Corrected exact-HEAD hosted
-results are recorded on [PR #231](https://github.com/skyRolly/Anamorph/pull/231);
-prior passing evidence alone does not certify the corrected head.
+contains image/package versions and measurements. The corrected Linux and TSan
+jobs passed on the final [PR #231](https://github.com/skyRolly/Anamorph/pull/231)
+head and again after merge to `main` at `130bb7e87f1b7757236a3bae5e587915908042bf`
+([post-merge CI run](https://github.com/skyRolly/Anamorph/actions/runs/42498827779)).

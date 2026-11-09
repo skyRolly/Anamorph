@@ -4,9 +4,8 @@ Defines documentation authority and conflict resolution for the Anamorph reposit
 When two sources disagree, the **higher** source in the list below wins, and the lower
 source must be corrected to match.
 
-[Proposed ADR-0073](architecture/design-decisions/ADR-0073-linux-ci-environments.md)
-is developer-class CI decision evidence. Its runner measurements support review;
-its Proposed status does not confer architecture acceptance.
+[Accepted ADR-0073](architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+records the owner-approved CI decision and verified runner evidence.
 
 ## Authority order (highest → lowest)
 

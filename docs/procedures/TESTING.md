@@ -3,13 +3,14 @@
 ## Linux CI environment repair (PR #231)
 
 `linux` and `tsan` select `ubuntu-24.04`; TSan keeps `ubuntu:24.04` userspace.
-[Proposed ADR-0073](../architecture/design-decisions/ADR-0073-linux-ci-environments.md)
-records the original and targeted-retry failures and the prior passing comparison.
+[Accepted ADR-0073](../architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+records the original and targeted-retry failures, the prior passing comparison and
+the corrected jobs' final-head and post-merge CI passes.
 Run `scripts/test-workflow-routing.py --self-test` and its ordinary report invocation
 after workflow edits. These fixtures do not establish native sanitizer or ABI success.
-The corrected exact head must report its real seeded race with a nonzero exit, run
-all five TSan probes x5, the complete state suite and suppression liveness, and pass
-the unchanged `check-linux-abi.py` on both rebuilt shipping formats. All packaging,
+The required TSan evidence is the real seeded race with a nonzero exit, all five
+probes x5, the complete state suite and suppression liveness; Linux must pass the
+unchanged `check-linux-abi.py` on both rebuilt shipping formats. All packaging,
 pluginval and existing Multiband regressions retain their normal CI gates.
 
 ## Multiband frequency input and animation (State 158)

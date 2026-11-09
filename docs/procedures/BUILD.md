@@ -8,8 +8,8 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
 
 The shipping `linux` job selects `ubuntu-24.04` with the existing pinned Clang/lld.
 Ubuntu 26.04's libm raised both shipping formats' imported GLIBC requirements above
-the unchanged production ABI ceiling. [Proposed ADR-0073](../architecture/design-decisions/ADR-0073-linux-ci-environments.md)
-records the measured environment correction and its independent review requirement.
+the unchanged production ABI ceiling. [Accepted ADR-0073](../architecture/design-decisions/ADR-0073-linux-ci-environments.md)
+records the measured environment correction and owner approval.
 
 ## Product icon inputs
 
