@@ -25,6 +25,11 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **Non-finite input discarded by input routing cannot re-enter the output through Bypass.**
+  Raw-delay readback replaces only NaN/Inf with zero; finite audio and the existing
+  processed-path self-heal are preserved.
+  Evidence: commit `49a17ace`; DSP Test 59 extension; ADR-0009. [Verified]
+
 - **Multiband frequency text entry consistently interprets units, punctuation and the exact 20 Hz boundary.**
   Invalid or unchanged input leaves the layout and Undo history alone. Typed changes glide when UI
   Animations is enabled, and split endpoints are reachable where neighboring spacing permits.
