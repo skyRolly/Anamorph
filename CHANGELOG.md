@@ -25,6 +25,11 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **True Bypass preserves the exact delay-aligned input once its fade reaches Bypass On.**
+  Non-neutral processing no longer rounds or erases quiet raw samples at the endpoint.
+  Fade timing and processing/analysis during bypass are preserved.
+  Evidence: commit `f20fa6ee`; DSP Test 76; ADR-0004. [Verified]
+
 - **Multiband frequency text entry consistently interprets units, punctuation and the exact 20 Hz boundary.**
   Invalid or unchanged input leaves the layout and Undo history alone. Typed changes glide when UI
   Animations is enabled, and split endpoints are reachable where neighboring spacing permits.
