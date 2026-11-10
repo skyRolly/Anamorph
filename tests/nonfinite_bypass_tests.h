@@ -76,6 +76,13 @@ static void testNonFiniteBypassBoundary()
                                     // takes ADR-0009's existing stateful reset.
                                     if (discarded || ! invalid)
                                         differences += ! sameBits (output, clean.getSample (ch, i));
+                                    // Both twins would share an accidental finite
+                                    // clamp. With this channel routed away, wet is
+                                    // zero and the settled raw endpoint is exact
+                                    // even before D-01: check the input bits too.
+                                    if (! invalid && discarded && phase == 1 && ch == channel
+                                        && juce::exactlyEqual (coefficient, 1.0f))
+                                        differences += ! sameBits (output, value);
                                     if (phase >= 3) recovered = recovered && std::isfinite (output);
                                 }
                             }
@@ -86,7 +93,7 @@ static void testNonFiniteBypassBoundary()
                     std::printf ("  block %d OS %d routing %d input %g: nonfinite %d control differences %d\n",
                                  block, (int) factor, (int) routing, (double) value, nonFinite, differences);
                     check (nonFinite == 0, "T-01: final host-facing output is finite at both endpoints and inside both ramps");
-                    check (differences == 0, "T-01: discarded poison and valid finite input match the finite control bit-for-bit");
+                    check (differences == 0, "T-01: discarded poison matches its finite twin; finite raw input bits survive readback");
                     check (off > 0 && on > 0 && interior > 0, "T-01 premise: off, interior and on coefficients were all exercised");
                     check (recovered, "T-01: finite input stays finite when re-entering bypass over previously stored bad history");
                     check (measured, "T-01: the Level-Match result stays finite after the existing processed-path self-heal");

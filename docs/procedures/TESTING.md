@@ -9,6 +9,8 @@ Oversampling Off/2x/8x with Drive engaging the selected filters, settled endpoin
 both ramp directions, the earlier forced-duck scratch consumer and re-entry over
 raw history written with bypass off.
 Finite controls include headroom above unity and very small normal samples.
+For the routed-away finite channel, settled bypass also compares directly with
+the raw input bits: comparing two engines alone would miss a clamp shared by both.
 Discarded poison must match a zero-substituted twin bit-for-bit without an extra
 DSP reset; poison reaching the processed path retains the existing self-heal.
 The assertion observes final output after bypass. Headless engine tests do not
