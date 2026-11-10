@@ -302,3 +302,14 @@ Lock-free SPSC stereo ring, fixed `capacity = 1<<14` (16384) frames, power-of-tw
 `push` (audio) writes then `write.store(release)`; `readLatest` (GUI) `write.load(acquire)` then
 copies the most-recent N oldest-first. No reader index — a fast producer may overwrite mid-read
 (acceptable tearing for a decimated scope view).
+
+
+## Raw bypass readback validity (T-01)
+
+Within the existing raw-capture stage, every delay read into `bypassDryScratch`
+copies finite samples unchanged and substitutes zero for NaN/Inf. This protects
+both the final bypass blend and forced-duck fill, including raw history recorded
+with bypass off. Input conditioning, the processed-output self-heal and its reset
+ordering are unchanged. Test 59's `testNonFiniteBypassBoundary` extension covers
+routing-discarded poison separately from poison reaching processed DSP. D-02's
+whole-scratch clear on extreme finite wet overflow remains a separate limitation.

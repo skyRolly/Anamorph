@@ -1651,7 +1651,13 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
                 bdL[bypassDelayWrite] = L[i];
                 bdR[bypassDelayWrite] = R[i];
                 int rp = bypassDelayWrite - readLat; if (rp < 0) rp += bdSize;
-                bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
+                // ADR-0009 also covers raw samples discarded by input routing:
+                // those never reach the processed-output guard. Validate every
+                // read, including history recorded with bypass off. Finite raw
+                // bits pass unchanged; no stateful node or reset order moves.
+                const float rawL = bdL[rp], rawR = bdR[rp];
+                bxL[i] = std::isfinite (rawL) ? rawL : 0.0f;
+                bxR[i] = std::isfinite (rawR) ? rawR : 0.0f;
                 // Wrap by branch, not %: the index advances by exactly 1 from
                 // within [0, size), so this is integer-identical and avoids a
                 // hardware division per sample (S6b; matches the read wrap above).

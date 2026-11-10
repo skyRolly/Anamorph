@@ -6398,6 +6398,8 @@ static void testInertDimModeDoesNotReArmLevelMatch()
 //  untouched and the guard does not fire; the chain itself recovers within 0.1 s, but the
 //  Level-Match analysis stays displaced for seconds (worklog R7, §F14). That belongs to
 //  Level Match, not to this guard.
+#include "nonfinite_bypass_tests.h"
+
 static void testNonFiniteBurstSelfHeals()
 {
     std::printf ("Test 59: a non-finite burst from the host self-heals (ADR-0009, F14)\n");
@@ -6504,6 +6506,7 @@ static void testNonFiniteBurstSelfHeals()
     check (gainFinite, "F14: the published Level-Match gain is never left non-finite");
     check (tracks,     "F14: the chain is not left latched -- within 6 dB of its twin from 10 blocks on");
     check (returns,    "F14: Haas and Velvet return to the twin within 0.1 dB (Level Match off)");
+    testNonFiniteBypassBoundary();
 }
 
 // ---------------------------------------------------------------------------
@@ -14675,6 +14678,13 @@ int main (int argc, char* argv[])
     // point it happened, on every platform, without a `stdbuf` wrapper the Windows job
     // cannot use anyway.
     std::setvbuf (stdout, nullptr, _IONBF, 0);
+
+    if (argc > 1 && std::strcmp (argv[1], "--nonfinite-bypass-probe") == 0)
+    {
+        testNonFiniteBypassBoundary();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--match-inject-probe") == 0)
         return runMatchInjectProbe();
