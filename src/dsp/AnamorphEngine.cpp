@@ -2340,8 +2340,18 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         for (int i = 0; i < n; ++i)
         {
             const float bb = bypassBlend.getNextValue();
-            L[i] += bb * (bxL[i] - L[i]);
-            R[i] += bb * (bxR[i] - R[i]);
+            // ADR-0004: select exact endpoints even when a ramp ends inside
+            // this block. wet + (raw - wet) can round away raw's low bits.
+            if (juce::exactlyEqual (bb, 1.0f))
+            {
+                L[i] = bxL[i];
+                R[i] = bxR[i];
+            }
+            else if (bb > 0.0f)
+            {
+                L[i] += bb * (bxL[i] - L[i]);
+                R[i] += bb * (bxR[i] - R[i]);
+            }
         }
     }
 

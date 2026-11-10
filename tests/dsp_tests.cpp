@@ -14664,6 +14664,122 @@ static void testABulkSwapIsAdoptedOnlyWhenComplete()
         check (allocations == 0, "Test 75: the handshake allocates nothing -- every engine call armed, the message-thread ones included");
 }
 
+// ADR-0004, D-01: a transparent chain cannot discriminate the endpoint from
+// wet + 1 * (raw - wet). Compare the actual float representations with altered
+// processing, and use a continuously active twin to expose a cold bypassed chain.
+// The independent JUCE smoother supplies the prescribed 10 ms transition timing;
+// interior samples must retain the original arithmetic, including the block in
+// which the ramp reaches its endpoint. No private engine state is inspected.
+static void testBypassExactEndpoints()
+{
+    std::printf ("Test 76: true-bypass endpoints and unchanged interior crossfade (D-01)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const auto sameBits = [] (float a, float b) { return std::memcmp (&a, &b, sizeof (float)) == 0; };
+    const auto inputAt = [] (int channel, int sample)
+    {
+        if (sample < 0) return 0.0f; // prepare cleared the raw latency ring
+        if (channel == 0)
+            return sample % 257 == 0 ? 1.0f : 0.2f * std::sin ((float) sample * 0.017f);
+        // Unequal magnitudes, small NORMAL values, signed zero and ordinary audio.
+        switch (sample % 5)
+        {
+            case 0: return 1.0e-8f;
+            case 1: return -1.0e-20f;
+            case 2: return -0.0f;
+            default: return 0.1f * std::cos ((float) sample * 0.031f);
+        }
+    };
+
+    for (const double rate : { 44100.0, 48000.0 })
+        for (const int block : { 1, 64, 127, 512 })
+            for (const auto factor : { anamorph::OversampleFactor::Off, anamorph::OversampleFactor::x2,
+                                      anamorph::OversampleFactor::x4, anamorph::OversampleFactor::x8 })
+                for (const bool monoMaker : { false, true })
+                    for (const bool initiallyBypassed : { false, true })
+                    {
+                        anamorph::EngineParameters p;
+                        p.bypass = initiallyBypassed;
+                        p.oversample = factor;
+                        // Drive actually engages every selected oversampling filter.
+                        p.driveDb = 8.0f;
+                        p.algorithm = anamorph::Algorithm::Chorus;
+                        p.algoAmount = 0.65f;
+                        p.monoSum = ! monoMaker;
+                        p.monoMakerEnable = monoMaker;
+                        p.outputGainDb = monoMaker ? -6.0f : 24.0f;
+                        p.mix = 0.7f;
+                        auto activeP = p;
+                        activeP.bypass = false;
+                        auto actual = std::make_unique<anamorph::AnamorphEngine>();
+                        auto active = std::make_unique<anamorph::AnamorphEngine>();
+                        actual->primeParameters (p); actual->prepare (rate, block);
+                        active->primeParameters (activeP); active->prepare (rate, block);
+                        const int latency = actual->getLatencySamples();
+                        juce::SmoothedValue<float> blend;
+                        blend.reset (rate, 0.010);
+                        blend.setCurrentAndTargetValue (initiallyBypassed ? 1.0f : 0.0f);
+                        juce::AudioBuffer<float> work (2, block), wet (2, block);
+                        int position = 0, onSamples = 0, offSamples = 0, interiorSamples = 0;
+                        int badOn = 0, badOff = 0, badInterior = 0;
+                        bool different = false, analysisSame = true, latencySame = true;
+                        bool rise = false, fall = false;
+                        const int warmBlocks = (int) std::ceil (0.08 * rate / (double) block);
+                        const int phaseBlocks = (int) std::ceil (0.03 * rate / (double) block) + 1;
+                        // A -> B -> A -> B -> A, plus settled-on activation.
+                        for (int phase = 0; phase < 5; ++phase)
+                        {
+                            p.bypass = phase == 0 ? initiallyBypassed : (phase % 2 != 0);
+                            blend.setTargetValue (p.bypass ? 1.0f : 0.0f);
+                            const int blocks = phase == 0 ? warmBlocks : phaseBlocks;
+                            for (int b = 0; b < blocks; ++b)
+                            {
+                                for (int ch = 0; ch < 2; ++ch)
+                                    for (int i = 0; i < block; ++i)
+                                        work.setSample (ch, i, inputAt (ch, position + i));
+                                wet.makeCopyOf (work);
+                                actual->setParameters (p); active->setParameters (activeP);
+                                actual->process (work); active->process (wet);
+                                for (int i = 0; i < block; ++i)
+                                {
+                                    const float coefficient = blend.getNextValue();
+                                    const bool on = juce::exactlyEqual (coefficient, 1.0f);
+                                    const bool off = ! (coefficient > 0.0f);
+                                    if (on) ++onSamples;
+                                    else if (off) ++offSamples;
+                                    else { ++interiorSamples; if (p.bypass) rise = true; else fall = true; }
+                                    for (int ch = 0; ch < 2; ++ch)
+                                    {
+                                        const float raw = inputAt (ch, position + i - latency);
+                                        const float processed = wet.getSample (ch, i);
+                                        const float expected = on ? raw : off ? processed
+                                            : processed + coefficient * (raw - processed);
+                                        const bool equal = sameBits (work.getSample (ch, i), expected);
+                                        if (on) badOn += ! equal;
+                                        else if (off) badOff += ! equal;
+                                        else badInterior += ! equal;
+                                        different = different || std::abs (processed - raw) > 0.01f;
+                                    }
+                                }
+                                position += block;
+                                analysisSame = analysisSame && sameBits (actual->getMatchGainDb(), active->getMatchGainDb());
+                                latencySame = latencySame && actual->getLatencySamples() == latency
+                                                          && active->getLatencySamples() == latency;
+                            }
+                        }
+                        std::printf ("  %.0f Hz block %d OS %d MonoMaker %d initial %d: on/off/interior mismatches %d/%d/%d\n",
+                                     rate, block, (int) factor, (int) monoMaker, (int) initiallyBypassed,
+                                     badOn, badOff, badInterior);
+                        check (onSamples > 0 && badOn == 0, "D-01: Bypass On copies latency-aligned raw float bits");
+                        check (offSamples > 0 && badOff == 0, "D-01: Bypass Off equals continuously processed float bits, including return from bypass");
+                        check (interiorSamples > 0 && rise && fall && badInterior == 0,
+                               "D-01: both transition interiors retain the exact original crossfade");
+                        check (different, "D-01 premise: the processed signal differs from raw input");
+                        check (analysisSame, "D-01: analysis keeps running identically during bypass");
+                        check (latencySame && (factor == anamorph::OversampleFactor::Off ? latency == 0 : latency > 0),
+                               "D-01: latency remains the selected factor's delay through every transition");
+                    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -14675,6 +14791,13 @@ int main (int argc, char* argv[])
     // point it happened, on every platform, without a `stdbuf` wrapper the Windows job
     // cannot use anyway.
     std::setvbuf (stdout, nullptr, _IONBF, 0);
+
+    if (argc > 1 && std::strcmp (argv[1], "--bypass-endpoint-probe") == 0)
+    {
+        testBypassExactEndpoints();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--match-inject-probe") == 0)
         return runMatchInjectProbe();
@@ -14777,6 +14900,7 @@ int main (int argc, char* argv[])
     testAbRecordCarriesThePostChangeEvidence();
     testANonFiniteVelvetDensityIsTheHeldDensity();
     testABulkSwapIsAdoptedOnlyWhenComplete();
+    testBypassExactEndpoints();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

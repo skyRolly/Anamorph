@@ -19263,3 +19263,16 @@ The release-readiness package compares the preserved
 draft, separately authorized candidate, later maintenance version and deferral
 without selecting a version or modifying release objects. Existing evidence and
 historical approval records remain intact.
+
+
+## D-01 true-bypass endpoint correction
+
+`AnamorphEngine::process` selects exact bypass endpoints within the existing final
+blend and retains its interior arithmetic and smoother. `testBypassExactEndpoints`
+(Test 76, also `--bypass-endpoint-probe`) compares float bits against raw-delay and
+continuously active references across routing/Mono Maker, engaged oversampling,
+small unequal samples, initial states and both ramp directions. TESTING, its policy
+count, the repository map, README count, DSP algorithms, signal-flow/graph references,
+ADR-0004's append-only implementation note and the Unreleased changelog are synced.
+No version, parameter, persistence, latency, graph or threading contract changes.
+Historical evidence and the separate T-01/D-02 dispositions are retained.

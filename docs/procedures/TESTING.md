@@ -1,5 +1,19 @@
 # TESTING.md
 
+## True-bypass exact endpoints (D-01, Test 76)
+
+`AnamorphTests --bypass-endpoint-probe` runs the same regression as the full DSP
+suite. Test 76 compares float representations against latency-aligned raw samples
+at Bypass On and a continuously processed twin at Bypass Off. It covers both
+transition directions, initial On/Off, 44.1/48 kHz, blocks 1/64/127/512, all four
+oversampling selections with Drive and Chorus actually engaging the selected
+filters, input Mono and Mono Maker, unequal magnitudes, small normal samples and
+signed zero. Interior samples must retain the original 10 ms crossfade arithmetic,
+including blocks in which a ramp reaches an endpoint. The twin and identical
+Level-Match readings also check that bypass does not suspend processing/analysis.
+This is engine evidence; it makes no native-DAW claim. Existing Test 3+4 and
+Tests 20–22 remain enabled.
+
 ## Linux CI environment repair (PR #231)
 
 `linux` and `tsan` select `ubuntu-24.04`; TSan keeps `ubuntu:24.04` userspace.
@@ -746,7 +760,7 @@ with broken metadata are refused. Archive tests reach a deliberate product-targe
 marker after the provenance check. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
-`tests/dsp_tests.cpp` has **75 DSP tests** (Test 1 to Test 75; Tests 3 and 4 run as one) and the A/B
+`tests/dsp_tests.cpp` has **76 DSP tests** (Test 1 to Test 76; Tests 3 and 4 run as one) and the A/B
 active-slot clamp guard, using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match

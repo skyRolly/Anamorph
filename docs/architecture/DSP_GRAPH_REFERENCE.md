@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2358 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2368 (`process`).
 
 ## Topology table
 
@@ -23,7 +23,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2358 (`process`).
 | 5 | Output stage (Gain/Match/Balance + duck) | post-Mono-Maker | Band Solo | No | Level Match measures here; gain/balance are final trims. :1110-1253 |
 | 6 | Band Solo monitor | produced output | NaN heal / Bypass | No | POST-EVERYTHING audition; mask 0 = identity. :1254 |
 | 6b | NaN/Inf self-heal | produced output | Bypass | No | Last-line finite guard; only touches non-finite samples. :1256-1300 |
-| 7 | Bypass crossfade | produced output + raw dry (0b) | meters | No | Final processed↔raw crossfade. :1302-1327 |
+| 7 | Bypass crossfade | produced output + raw dry (0b) | meters | No | Final processed↔raw crossfade; exact endpoint selection preserves raw/processed float bits, with the original interior ramp (Test 76). `AnamorphEngine::process`, `bypassBlend` |
 | 8 | Metering tap | final output | GUI | No | Taps the monitored (post-everything) output. :1329-1338 |
 
 "Partial" = limited internal freedom (e.g. Drive before the algorithm; which oversampler

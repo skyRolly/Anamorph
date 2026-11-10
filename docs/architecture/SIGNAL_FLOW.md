@@ -5,7 +5,7 @@ order guarantees. Reorder constraints are formalised in `DSP_GRAPH_REFERENCE.md`
 order itself is a binding invariant (`docs/policies/DSP_POLICY.md`).
 
 Evidence [Verified] for the entire chain:
-- Source: src/dsp/AnamorphEngine.cpp:1388-2358 (`process`)
+- Source: src/dsp/AnamorphEngine.cpp:1388-2368 (`process`)
 - Source: src/dsp/AnamorphEngine.h:23-42 (chain header comment)
 - Tests: tests/dsp_tests.cpp :: testMonoMakerPostMix, testSoloMonitor, testMultibandMonoCompat,
   testLevelMatchAndSolo, testNoClicksAcrossTransitions
@@ -75,8 +75,8 @@ which is what it is for and what does not rot.
 | 5 · Output stage | src/dsp/AnamorphEngine.cpp:2117-2249 |
 | 6 · Band Solo monitor | src/dsp/AnamorphEngine.cpp:2267 (`soloMonitor.process`) |
 | 6b · NaN/Inf self-heal | src/dsp/AnamorphEngine.cpp:2269-2319 |
-| 7 · Bypass crossfade | src/dsp/AnamorphEngine.cpp:2321-2346 (`bypassBlend`) |
-| 8 · Metering tap | src/dsp/AnamorphEngine.cpp:2348-2357 (`scope.pushBlock`) |
+| 7 · Bypass crossfade | src/dsp/AnamorphEngine.cpp:2321-2356 (`bypassBlend`) |
+| 8 · Metering tap | src/dsp/AnamorphEngine.cpp:2358-2367 (`scope.pushBlock`) |
 
 ## Invariants (must hold; each is testable)
 
@@ -91,7 +91,7 @@ which is what it is for and what does not rot.
 | **Oversampling wraps only Drive + Chorus/Dimensional**; linear stages stay outside; OS off ⇒ 0 latency. | src/dsp/AnamorphEngine.cpp (`osActiveFor`, the wrap and its `else` arm) | testBypassNullAndLatency |
 | **Engaging / disengaging the oversampling wrap is a CROSSFADE, not a ducked switch** (ADR-0035). `osBlend` (12 ms) mixes the base-rate and the wrapped path, which is only possible because ADR-0034 gave them the same latency and so made them sample-aligned. A duck cannot mask this swap: the duck's gain is applied at the output stage, downstream of Haas (12–35 ms) and Velvet (~21 ms), so the handover's discontinuity entered their delay lines at full level and re-emerged after the fade. An oversampling **factor** change still ducks — that one moves the latency, so the paths are not aligned and must not be mixed; that duck therefore **settles** the blend on the state it adopts rather than carrying it across, and the mix reads its wrapped path from the live oversampler pointer, so it can never weight a path that does not exist. | src/dsp/AnamorphEngine.cpp (`osBlend`, the two paths and their mix) | testDriveCrossingIsSeamlessWithOversampling, testOversamplingOffHandoffKeepsProcessing |
 | **Reported latency follows the SELECTED FACTOR, not the wrap's engagement** (ADR-0034). Where the wrap is skipped for want of nonlinear work, a 2-channel integer ring stands in for its group delay **in the wrap's own place in the chain**, so the five `-lat` ring reads below measure from an unchanged point and no parameter can move the host's PDC. | src/dsp/AnamorphEngine.cpp (`osCompDelayBuffer`, `osLatencyFor`) | testOversamplingLatencyIsFactorOnly |
-| **Bypass is a click-free crossfade to the delay-aligned RAW input**, not a mute; chain + analysis always run. | src/dsp/AnamorphEngine.cpp:1607-1678, 2321-2346 (`bypassBlend`) | testBypassCrossfadeClickFree, testLevelMatchRunsInBypass |
+| **Bypass is a click-free crossfade to the delay-aligned RAW input**, not a mute; exact endpoint selection preserves raw/processed float bits while interior ramp arithmetic and running chain/analysis are unchanged. | src/dsp/AnamorphEngine.cpp:1607-1678, 2321-2356 (`bypassBlend`) | testBypassCrossfadeClickFree, testLevelMatchRunsInBypass, testBypassExactEndpoints |
 | **Level Match measures the post-Mono-Maker output vs the delay-aligned reconstruction A(dry).** | src/dsp/AnamorphEngine.cpp:2127-2132 (`loudness.process`) | testLevelMatchUnity, testMultibandUnityMatch |
 
 ## Notes
@@ -113,7 +113,7 @@ which is what it is for and what does not rot.
   Correction of 2026-09-21 also glides the reconstructed dry `A(dry)` toward the clean dry on the
   same curve, so the Mix stage's dry source is never switched in one sample; Band Solo at
   src/dsp/AnamorphEngine.cpp:2267 (`soloMonitor.process`); the Bypass crossfade at
-  src/dsp/AnamorphEngine.cpp:2321-2346 (`bypassBlend`).
+  src/dsp/AnamorphEngine.cpp:2321-2356 (`bypassBlend`).
 - **Forced bulk swaps** (undo / redo / A/B / preset — `requestDuck()` / `requestAbSwitch()`) run the same duck, but
   its output is **dry-filled**: stage 5 crossfades toward the delay-aligned raw input (the
   true-bypass ring) instead of dipping to silence, so the swap is heard as a short dip to the
