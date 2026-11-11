@@ -25,6 +25,11 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **True Bypass preserves the exact delay-aligned input once its fade reaches Bypass On.**
+  Non-neutral processing no longer rounds or erases quiet raw samples at the endpoint.
+  Fade timing and processing/analysis during bypass are preserved.
+  Evidence: commit `f20fa6ee`; DSP Test 76; ADR-0004. [Verified]
+
 - **Non-finite input discarded by input routing cannot re-enter the output through Bypass.**
   Raw-delay readback replaces only NaN/Inf with zero; finite audio and the existing
   processed-path self-heal are preserved.

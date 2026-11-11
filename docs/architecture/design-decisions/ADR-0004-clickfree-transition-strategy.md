@@ -169,3 +169,18 @@ Evidence [Verified]:
 - History [Partially Verified]: CHANGELOG.md [0.8.1], [0.8.6], [0.8.7]
 - Related incidents: `../../POSTMORTEMS.md` INC-001 (Solo ghost), INC-005 (Bypass click),
   INC-007 (Multiband Enable mute), INC-009 (Solo + Multiband Enable click)
+
+
+## D-01 implementation correction — exact bypass endpoints
+
+The accepted endpoint requirement remains unchanged. The original final blend
+computed `processed + b * (raw - processed)` even at `b == 1`; cancellation rounded
+or erased finite raw samples under non-neutral processing. Per-sample endpoint
+selection now copies raw at one and retains processed at zero, including a ramp
+that finishes inside a block. A settled-block-only shortcut would miss that last
+case; rewriting the entire blend would change interior rounding. Interior arithmetic,
+10 ms timing, graph, reported latency and always-running processing/analysis are
+preserved. Test 76 (`testBypassExactEndpoints`) supplies a non-neutral, latency-aligned
+float-bit oracle and a continuously active twin. This implements the existing
+Decision within the same stage; it adds no architecture decision or approval.
+T-01's non-finite raw path is a separate contract investigation.

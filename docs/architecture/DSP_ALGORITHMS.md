@@ -304,6 +304,17 @@ copies the most-recent N oldest-first. No reader index — a fast producer may o
 (acceptable tearing for a decimated scope view).
 
 
+## True-bypass endpoint arithmetic (D-01)
+
+The existing final `bypassBlend` stage selects the raw delay sample at coefficient
+one and leaves the processed sample untouched at coefficient zero. Interior
+coefficients retain `processed + b * (raw - processed)`, with the existing 10 ms
+linear smoother. Evaluating that expression at one lost raw bits when the processed
+signal differed in magnitude; Test 76 uses non-neutral processing and bit comparisons
+to discriminate the correction. Processing and analysis still run while bypassed;
+no delay, stage, parameter or latency changes. The non-finite raw-readback correction
+(T-01 / historical ER-DSP-04) and extreme finite scratch clear (D-02) are separate.
+
 ## Raw bypass readback validity (T-01)
 
 Within the existing raw-capture stage, every delay read into `bypassDryScratch`
