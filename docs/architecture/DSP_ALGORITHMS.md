@@ -323,4 +323,20 @@ both the final bypass blend and forced-duck fill, including raw history recorded
 with bypass off. Input conditioning, the processed-output self-heal and its reset
 ordering are unchanged. Test 59's `testNonFiniteBypassBoundary` extension covers
 routing-discarded poison separately from poison reaching processed DSP. D-02's
-whole-scratch clear on extreme finite wet overflow remains a separate limitation.
+independent self-heal correction below preserves valid raw scratch and history.
+
+## Raw bypass retention during wet self-heal (D-02)
+
+A finite input near `1e38` at +24 dB Output Gain can overflow processed output.
+The existing self-heal replaces non-finite processed samples with zero and resets
+all its stateful wet nodes and conditioned dry/OS delay rings. It now retains the
+independent raw bypass ring and current scratch: T-01 validates every consuming
+read before either scratch consumer, including reads of poison retained in history.
+An inactive scratch has no consumer and is refilled before use. Clearing it muted
+valid raw audio for a whole block; clearing only the ring also lost later delayed
+samples. Prepare and explicit reset still clear raw history as before.
+
+`testSelfHealRetainsRawBypass` (Test 59 extension) checks raw bits, both channels,
+both ramp directions, forced-duck consumption, actual engaged oversampling and
+subsequent history. R-01's finite-endpoint interpolation overflow is independent
+and is not corrected here. No graph, gain, latency, reset-order or smoothing change.

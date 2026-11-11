@@ -2312,16 +2312,18 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         haas.reset(); velvet.reset(); chorus.reset();
         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
         loudness.reset();
-        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear(); bypassDelayBuffer.clear();
+        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
         // The oversampling latency stand-in is a delay line on the MAIN path and was
         // written further up this very block, so a non-finite sample is already
         // inside it and would be handed back `lat` samples later -- exactly the
-        // re-entry the three rings above are cleared to prevent. Contents only, like
+        // re-entry the conditioned dry rings above are cleared to prevent. Contents only, like
         // them: the write index may keep advancing, since every read now returns 0.
         osCompDelayBuffer.clear();
-        // Also flush this block's delay-aligned dry scratch, so the Bypass crossfade
-        // below can't re-introduce a non-finite sample from pathological host input.
-        bypassDryScratch.clear();
+        // Raw bypass data is independent of this wet-path failure. A consuming
+        // block already filled finite scratch, and every future ring read validates
+        // again (ADR-0009 / T-01). Retain both scratch and raw history: clearing
+        // either discards valid bypass audio in this block or after its latency.
+        // An inactive scratch has no consumer and is refilled before later use.
     }
 
     // ======================== BYPASS CROSSFADE ==============================

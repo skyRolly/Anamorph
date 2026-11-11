@@ -6399,6 +6399,7 @@ static void testInertDimModeDoesNotReArmLevelMatch()
 //  Level-Match analysis stays displaced for seconds (worklog R7, §F14). That belongs to
 //  Level Match, not to this guard.
 #include "nonfinite_bypass_tests.h"
+#include "bypass_selfheal_tests.h"
 
 static void testNonFiniteBurstSelfHeals()
 {
@@ -6507,6 +6508,7 @@ static void testNonFiniteBurstSelfHeals()
     check (tracks,     "F14: the chain is not left latched -- within 6 dB of its twin from 10 blocks on");
     check (returns,    "F14: Haas and Velvet return to the twin within 0.1 dB (Level Match off)");
     testNonFiniteBypassBoundary();
+    testSelfHealRetainsRawBypass();
 }
 
 // ---------------------------------------------------------------------------
@@ -14805,6 +14807,13 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--nonfinite-bypass-probe") == 0)
     {
         testNonFiniteBypassBoundary();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--bypass-selfheal-probe") == 0)
+    {
+        testSelfHealRetainsRawBypass();
         std::printf ("%d checks, %d failures\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }

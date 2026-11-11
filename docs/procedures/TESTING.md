@@ -1,5 +1,26 @@
 # TESTING.md
 
+## Raw bypass retention during wet self-heal (D-02, Test 59 extension)
+
+`AnamorphTests --bypass-selfheal-probe` selects the same additional Test 59 matrix
+run by the full suite. It supplies 1,512 assertions across blocks 1/64/512,
+Oversampling Off/2x/8x, Drive off/on (actual filters engaged), both bad-channel
+orientations, `1e38`, NaN, both infinities, finite headroom and small normal inputs.
+Raw samples are compared by float bits against an independent latency/history
+oracle; a continuously active production twin supplies the processed endpoint.
+The test covers settled On/Off, both ramps, forced-duck scratch consumption and
+subsequent clean recovery. The forced-duck leg allows its bulk smoother snap and
+block-level retirement before requesting the next bypass ramp. Original Test 59
+and T-01 assertions remain unchanged; the numbered inventory remains 76 tests.
+
+On merged main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`, this extension fails
+252/1,512 assertions; the original block-64 witness mutes the unaffected channel
+for 64/64 samples. Retaining scratch alone still fails 140 assertions because it
+loses future raw-delay history. Retaining both validated raw buffers passes the
+matrix; conditioned/wet resets and explicit engine reset remain active. R-01's
+independent interior overflow is outside this correction. Headless engine evidence
+does not establish DAW incidence.
+
 ## True-bypass exact endpoints (D-01, Test 76)
 
 `AnamorphTests --bypass-endpoint-probe` runs the same regression as the full DSP
