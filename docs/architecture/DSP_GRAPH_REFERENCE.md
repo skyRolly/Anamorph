@@ -22,7 +22,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2376 (`process`).
 | 4 | Mono Maker | mixed signal | Output stage | No | Must be POST-Mix so lows are mono at any Mix amount (0.8.0). :1108 |
 | 5 | Output stage (Gain/Match/Balance + duck) | post-Mono-Maker | Band Solo | No | Level Match measures here; gain/balance are final trims. :1110-1253 |
 | 6 | Band Solo monitor | produced output | NaN heal / Bypass | No | POST-EVERYTHING audition; mask 0 = identity. :1254 |
-| 6b | NaN/Inf self-heal | produced output | Bypass | No | Replaces non-finite processed samples and resets wet/conditioned delay state; preserves independently validated raw bypass scratch/history (ADR-0009 / D-02). :1256-1300 |
+| 6b | NaN/Inf self-heal | produced output | Bypass | No | Replaces non-finite processed samples and resets wet/conditioned delay state; preserves independently validated raw bypass scratch/history (ADR-0009 / D-02). `AnamorphEngine::process`, `nonFinite` (source interval in `SIGNAL_FLOW.md`) |
 | 7 | Bypass crossfade | produced output + raw dry (0b) | meters | No | Final processed↔raw crossfade; exact endpoint selection preserves raw/processed float bits, with the original interior ramp (Test 76). `AnamorphEngine::process`, `bypassBlend` |
 | 8 | Metering tap | final output | GUI | No | Taps the monitored (post-everything) output. :1329-1338 |
 

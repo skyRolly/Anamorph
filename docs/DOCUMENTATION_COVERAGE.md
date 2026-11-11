@@ -19299,5 +19299,7 @@ all prior assertions and adds `testSelfHealRetainsRawBypass` (1,512 assertions;
 252 failures on integrated main, zero after; scratch-only control still fails 140).
 The numbered test count remains 76. Every raw read retains finite validation,
 all wet/conditioned resets remain, and explicit reset still clears raw history.
+The changed graph row's inherited bare line range was outside the current function;
+it now names the guard symbol, with its checked source interval in SIGNAL_FLOW.
 R-01 remains independently reproducible; no graph, latency, thread, parameter,
 serialization, version or dependency contract changes.
