@@ -29,7 +29,10 @@ static void testD02WrappedModulationSelfHeal()
             wrappedP.driveDb = 0.0f;
             wrappedP.algoAmount = 0.0f;
             auto baseP = wrappedP; baseP.oversample = anamorph::OversampleFactor::Off;
-            anamorph::AnamorphEngine wrapped, base;
+            auto wrappedFixture = heapEngineFixture();
+            auto& wrapped = wrappedFixture.second;
+            auto baseFixture = heapEngineFixture();
+            auto& base = baseFixture.second;
             wrapped.primeParameters (wrappedP); wrapped.prepare (rate, block);
             base.primeParameters (baseP); base.prepare (rate, block);
             const int latency = wrapped.getLatencySamples();
@@ -87,7 +90,10 @@ static void testD02WrappedModulationSelfHeal()
                 p.oversample = factor;
                 p.bypass = true;
                 auto activeP = p; activeP.bypass = false;
-                anamorph::AnamorphEngine actual, wet;
+                auto actualFixture = heapEngineFixture();
+                auto& actual = actualFixture.second;
+                auto wetFixture = heapEngineFixture();
+                auto& wet = wetFixture.second;
                 actual.primeParameters (p); actual.prepare (rate, block);
                 wet.primeParameters (activeP); wet.prepare (rate, block);
                 const int latency = actual.getLatencySamples();
