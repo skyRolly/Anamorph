@@ -184,3 +184,36 @@ preserved. Test 76 (`testBypassExactEndpoints`) supplies a non-neutral, latency-
 float-bit oracle and a continuously active twin. This implements the existing
 Decision within the same stage; it adds no architecture decision or approval.
 T-01's non-finite raw path is a separate contract investigation.
+
+## R-01 implementation correction — exceptional finite-endpoint overflow
+
+Baseline: merged main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`, after #233/#234.
+With raw input `1.5e38`, polarity inversion and +6 dB Output Gain, the processed
+endpoint was finite (`-2.99289e38`) but the interior subtraction overflowed. The
+production witness counted 958 non-finite interior samples across both ramp
+directions and zero at either exact endpoint. Upstream self-heal/readback checks
+cannot prevent this newly created arithmetic overflow.
+
+The existing strict-interior branch retains the original float calculation when
+finite, including its rounding. Only a non-finite result is recalculated with the
+same affine expression in double and converted once to float. All endpoints are
+finite after the preceding wet guard/raw validation; a convex combination of two
+float endpoints fits the wider evaluation. Exact endpoints, 10 ms timing, one
+smoother advance per sample, processing order and latency remain unchanged. This
+implements the existing finite-output/click-free contract within node 7; it adds
+no stage, limiter, parameter, thread or architecture decision.
+
+Alternatives: globally evaluating interiors in double failed 72/756 focused
+assertions by changing valid float results. A float convex fallback is possible,
+but wider evaluation directly preserves the established affine expression without
+its intermediate overflow. Moving/adding a final guard would be gated and could
+merely mask the infinity with silence. Retaining the limitation would leave a
+small, independently correctable numerical failure. D-02 is a separate raw-reset
+problem and remains reproducible with R-01 alone.
+
+Evidence [Verified]: `testBypassFiniteEndpointOverflow`, Test 76 extension, also
+`AnamorphTests --bypass-overflow-probe`; 756 assertions, 54 failures on the baseline
+and zero after. The independent D-02 extension still fails 252/1,512 assertions
+with R-01 alone. The oracle measures ordinary float-bit identity, exceptional
+wide-reference error and the switch boundary; it is not universal floating-point
+or native-DAW acceptance evidence. Earlier notes retain their historical scope.
