@@ -3290,7 +3290,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2269-2319` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2275-2325` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -19276,3 +19276,15 @@ count, the repository map, README count, DSP algorithms, signal-flow/graph refer
 ADR-0004's append-only implementation note and the Unreleased changelog are synced.
 No version, parameter, persistence, latency, graph or threading contract changes.
 Historical evidence and the separate T-01/D-02 dispositions are retained.
+
+## T-01 non-finite bypass readback correction
+
+ADR-0009's append-only implementation note distinguishes the unapproved output
+exception from historical ER-DSP-04's meter correction. The existing raw-delay
+readback now substitutes zero only for non-finite samples, covering both scratch
+consumers and stale raw history. No graph, threading, parameter, latency or reset
+ordering changes. Test 59 keeps all original assertions and calls the new
+`tests/nonfinite_bypass_tests.h` boundary matrix; TESTING, the repository map,
+DSP algorithm/graph/signal-flow references and the Unreleased changelog describe
+that scope. D-01's precision correction and D-02's extreme finite whole-scratch
+clear remain independently classified; neither is assumed fixed by this check.

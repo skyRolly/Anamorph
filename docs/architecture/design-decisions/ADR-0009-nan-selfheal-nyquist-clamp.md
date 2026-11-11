@@ -86,7 +86,7 @@ value-box text).
   guard never saw it, and it does not reset `matchGainSmooth`. A burst (a NaN in every 97th sample
   for 1 s) therefore ramped the applied gain to silence with Level Match on — 164–165 of 187 blocks
   exact zeros against 0–2 with it off. A NaN reading now keeps the current target
-  (`src/dsp/AnamorphEngine.cpp:2133-2134`); every finite reading is unchanged. Test 65. The gain the
+  (`src/dsp/AnamorphEngine.cpp:2139-2140`); every finite reading is unchanged. Test 65. The gain the
   full `loudness.reset()` discards after the burst is the owner question below, not changed.
 
 **Recorded, not changed:**
@@ -108,14 +108,49 @@ value-box text).
 
 ## Related code
 - `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.h:36-39` (setFrequency clamp)
-- `src/dsp/AnamorphEngine.cpp:2269-2319` (NaN/Inf self-heal)
+- `src/dsp/AnamorphEngine.cpp:2275-2325` (NaN/Inf self-heal)
 - `src/dsp/LevelMeters.h:98-102, 167` (`sanitize`)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2269-2319; src/dsp/LevelMeters.h
+- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2275-2325; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples,
   testNonFiniteBurstSelfHeals (Test 59), testAHostNanParameterDoesNotLatchTheChain (State test 123),
   testNonFiniteGlideTargetsDoNotLatch (Test 64), testNonFiniteBurstKeepsLevelMatchAudible (Test 65),
   testANonFiniteVelvetDensityDoesNotFreezeTheDensity (State test 128)
 - History [Partially Verified]: CHANGELOG.md [0.8.2], [0.8.3]
 - Related incidents: `../../POSTMORTEMS.md` INC-003 (crossover explosion), INC-004 (meter NaN-latch)
+
+
+## T-01 implementation correction — validate raw delay readback
+
+The established output-finiteness requirement has no approved raw-bypass exception.
+Historical ER-DSP-04 fixed the correlation-meter latch, while noting that bypass
+could reintroduce non-finite raw samples after the processed-output guard. Test 59's
+original Stereo/non-bypassed matrix did not exercise that path. Its assertions are
+preserved and extended by `testNonFiniteBypassBoundary`.
+
+A non-finite sample can be captured by the raw delay, then discarded by Left/Right
+Only input conditioning. The processed output is finite, so the existing guard
+correctly performs no reset; its conditional bypass-scratch clear never runs. Every
+read from the existing raw delay into `bypassDryScratch` now substitutes zero for a
+non-finite value. This covers both bypass and forced-duck consumers and history
+recorded by the unchanged write-only path. The ring can retain invalid bits until
+overwritten, but no consumer receives them: all reads pass through this boundary.
+Finite values, including signed zero and headroom above unity, copy unchanged.
+
+Alternatives considered: normalizing on every raw-ring write would also close the
+path, but adds work to the common write-only branch; normalizing only in the final
+bypass blend leaves the earlier forced-duck consumer uncovered; moving/duplicating
+the processed-output guard would alter stage placement and require Architecture
+Review. The selected check is within the existing raw-capture/readback node, with
+no new node, signal-order change, thread path, buffering or reset-order change. It
+implements this accepted requirement rather than choosing a new contract.
+
+D-01's endpoint selection is independent: coefficient zero must retain processed
+bits, interior coefficients keep their blend, and coefficient one must select the
+validated raw sample. Tests cover the unmodified blend and combined correction.
+D-02 remains distinct: an extreme finite sample (about `1e38` at +24 dB Output Gain)
+can overflow the processed path and trigger its existing whole-scratch clear,
+muting an unaffected channel. A finite-only readback check deliberately does not
+change that reset or its Level-Match consequences. No broader scratch/reset
+redesign or finite-audio limiter is authorized here.

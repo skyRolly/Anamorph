@@ -312,5 +312,15 @@ coefficients retain `processed + b * (raw - processed)`, with the existing 10 ms
 linear smoother. Evaluating that expression at one lost raw bits when the processed
 signal differed in magnitude; Test 76 uses non-neutral processing and bit comparisons
 to discriminate the correction. Processing and analysis still run while bypassed;
-no delay, stage, parameter or latency changes. The non-finite raw-readback question
+no delay, stage, parameter or latency changes. The non-finite raw-readback correction
 (T-01 / historical ER-DSP-04) and extreme finite scratch clear (D-02) are separate.
+
+## Raw bypass readback validity (T-01)
+
+Within the existing raw-capture stage, every delay read into `bypassDryScratch`
+copies finite samples unchanged and substitutes zero for NaN/Inf. This protects
+both the final bypass blend and forced-duck fill, including raw history recorded
+with bypass off. Input conditioning, the processed-output self-heal and its reset
+ordering are unchanged. Test 59's `testNonFiniteBypassBoundary` extension covers
+routing-discarded poison separately from poison reaching processed DSP. D-02's
+whole-scratch clear on extreme finite wet overflow remains a separate limitation.

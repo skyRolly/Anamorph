@@ -1923,7 +1923,7 @@ The probe is opt-in, so the guard step never runs it; `--risk014-probe census` w
 **Re-measured for PR #156's one new claim, and DISPOSED `DO NOT FIX`.** Diffed by *byte value* across
 the `prefast-sarif-*` artifacts: `main` at `659ca0a` carries 179 `C6262`, and every head of this PR
 from `f155978` on carries 180 — **one added, none removed**: `Function uses '20528' bytes of stack` at
-`tests/dsp_tests.cpp:7537`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
+`tests/dsp_tests.cpp:7540`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
 It is absent on `5f28e2b`, the commit before the test landed, and unchanged on every later head. The
 other 127 claims in `state_tests.cpp` each moved by an exact multiple of **64 bytes** — one
 `std::function` (MSVC's size) per stack-allocated `AnamorphAudioProcessor`, the State-test-129 seam

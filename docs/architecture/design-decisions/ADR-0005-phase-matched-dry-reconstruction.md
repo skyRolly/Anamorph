@@ -84,6 +84,6 @@ control; it fails against the pre-correction engine on 20 of its 22 checks.
 - `src/dsp/AnamorphEngine.cpp:1370-1467` (A(dry) production), `:726-759` (smoothstep Mix)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:1879-1998
+- Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:1885-2004
 - Tests: testMultibandMonoCompat, testMultibandUnityMatch, testMultibandEnableDrySourceNoStep
 - History [Partially Verified]: CHANGELOG.md [0.7.5]-[0.7.0] (0.7.2)

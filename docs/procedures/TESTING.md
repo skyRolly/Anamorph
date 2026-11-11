@@ -14,6 +14,23 @@ Level-Match readings also check that bypass does not suspend processing/analysis
 This is engine evidence; it makes no native-DAW claim. Existing Test 3+4 and
 Tests 20–22 remain enabled.
 
+## Non-finite raw bypass readback (T-01, Test 59 extension)
+
+`AnamorphTests --nonfinite-bypass-probe` selects the extension also run by ordinary
+Test 59. Every original Test 59 assertion remains. The extension covers NaN and
+both infinities, Stereo/Left Only/Right Only routing, block sizes 1/64/512,
+Oversampling Off/2x/8x with Drive engaging the selected filters, settled endpoints,
+both ramp directions, the earlier forced-duck scratch consumer and re-entry over
+raw history written with bypass off.
+Finite controls include headroom above unity and very small normal samples.
+For the routed-away finite channel, settled bypass also compares directly with
+the raw input bits: comparing two engines alone would miss a clamp shared by both.
+Discarded poison must match a zero-substituted twin bit-for-bit without an extra
+DSP reset; poison reaching the processed path retains the existing self-heal.
+The assertion observes final output after bypass. Headless engine tests do not
+establish native host incidence. Historical ER-DSP-04 corrected a meter latch;
+it did not approve an exception to ADR-0009 or close this raw bypass path.
+
 ## Linux CI environment repair (PR #231)
 
 `linux` and `tsan` select `ubuntu-24.04`; TSan keeps `ubuntu:24.04` userspace.

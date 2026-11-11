@@ -4,14 +4,14 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2368 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2374 (`process`).
 
 ## Topology table
 
 | # | Node | Input depends on | Output feeds | Can Reorder? | Rationale / ADR |
 |---|---|---|---|---|---|
 | 0 | Input level tap | raw input | meters | No | Must tap the *raw* plugin input (pre-conditioning). :775 |
-| 0b | Bypass dry capture | raw input | Bypass crossfade (7) | No | Must capture RAW input before conditioning so Bypass nulls exactly. :777-812 |
+| 0b | Bypass dry capture | raw input | Bypass crossfade (7) | No | Captures RAW input before conditioning; each raw-delay read substitutes zero only for non-finite samples (ADR-0009 / Test 59 extension). `AnamorphEngine::process`, `bypassDryScratch` |
 | 1 | Input conditioning | raw input | effect engine, dry, Level-Match ref | No | Defines the conditioned signal everything downstream uses. :849 |
 | 1b | M/S Solo | conditioned input | effect engine | No | Must isolate Mid/Side *before* the widener (else widening fights solo). :854-857 |
 | 2a | Drive + Chorus/Dimensional (in OS) | conditioned input | linear algorithm | Partial | Drive must precede the linear algorithm; OS wrap must enclose only nonlinear/mod. :868-883 |
