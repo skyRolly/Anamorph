@@ -14,7 +14,7 @@ that configuration the selected 2x/8x factors use the latency stand-in; the nonl
 wrap is not active. With Drive on, the shaper keeps the finite spike finite, so those
 cases are not described as self-heal executions. `testD02WrappedModulationSelfHeal`
 separately covers Chorus and Dimensional with Drive off at 2x/8x: a latency-aligned
-0.35-fs response differs from the base-rate control, the `1e38`/`+24 dB` case reaches
+0.001-fs response differs from the base-rate control, the `1e38`/`+24 dB` case reaches
 the scrubbed wet sample, and both current raw scratch and the next block's raw-delay
 history remain bit-exact. Both channel orientations and post-heal recovery are checked.
 

@@ -16,7 +16,7 @@ static void testD02WrappedModulationSelfHeal()
     { return std::memcmp (&a, &b, sizeof (float)) == 0; };
 
     // Distinguish the real wrapped DSP path from the selected-factor latency stand-in.
-    // With Drive off, only Chorus / Dimensional can engage it. A finite 0.35 fs sine
+    // With Drive off, only Chorus / Dimensional can engage it. A finite 0.001-fs sine
     // sees the polyphase filters when wrapped; with the wrapper skipped, the selected
     // latency ring is bit-aligned to Oversampling Off. The modulation amount is zero
     // here to keep this control focused on the wrapper itself.
