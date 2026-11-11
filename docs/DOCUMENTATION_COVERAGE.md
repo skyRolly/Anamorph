@@ -19303,3 +19303,16 @@ The changed graph row's inherited bare line range was outside the current functi
 it now names the guard symbol, with its checked source interval in SIGNAL_FLOW.
 R-01 remains independently reproducible; no graph, latency, thread, parameter,
 serialization, version or dependency contract changes.
+
+## R-01 — exceptional bypass arithmetic (2026-11-11)
+
+Live architecture descriptions of unconditional interior float arithmetic drifted
+after this correction. DSP_ALGORITHMS, DSP_GRAPH_REFERENCE node 7, SIGNAL_FLOW,
+ADR-0004's append-only implementation note, TESTING, the test-header map and
+Unreleased changelog now describe preservation of finite original results and
+exception-only double evaluation. Existing ADR/D-01/T-01 history is retained.
+Test 76 keeps its original assertions and adds `testBypassFiniteEndpointOverflow`
+(756 assertions; 54 baseline failures, zero after; globally double control fails
+72 valid-result assertions). The numbered inventory stays 76. Endpoint bits,
+10 ms smoother progression and latency are unchanged. D-02 remains independent;
+no graph, thread, parameter, serialization, version or dependency change.

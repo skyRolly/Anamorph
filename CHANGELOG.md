@@ -30,6 +30,10 @@ including in entries written before 0.9.9 gave it that name.
   the existing self-heal. Non-finite raw samples still become zero at readback.
   Evidence: commit `8c45d802`; DSP Test 59 extension; ADR-0009. [Verified]
 
+- **Bypass fades between extreme finite signals no longer create infinity through interpolation overflow.**
+  Exact endpoints, fade timing and every valid original float result are preserved;
+  only an overflowing blend is recalculated at wider precision.
+  Evidence: commit `01c386b7`; DSP Test 76 extension; ADR-0004. [Verified]
 - **True Bypass preserves the exact delay-aligned input once its fade reaches Bypass On.**
   Non-neutral processing no longer rounds or erases quiet raw samples at the endpoint.
   Fade timing and processing/analysis during bypass are preserved.

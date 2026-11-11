@@ -14675,6 +14675,8 @@ static void testABulkSwapIsAdoptedOnlyWhenComplete()
 // The independent JUCE smoother supplies the prescribed 10 ms transition timing;
 // interior samples must retain the original arithmetic, including the block in
 // which the ramp reaches its endpoint. No private engine state is inspected.
+#include "bypass_overflow_tests.h"
+
 static void testBypassExactEndpoints()
 {
     std::printf ("Test 76: true-bypass endpoints and unchanged interior crossfade (D-01)\n");
@@ -14814,7 +14816,10 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--bypass-selfheal-probe") == 0)
     {
         testSelfHealRetainsRawBypass();
-        std::printf ("%d checks, %d failures\n", checks, failures);
+
+    if (argc > 1 && std::strcmp (argv[1], "--bypass-overflow-probe") == 0)
+    {
+        testBypassFiniteEndpointOverflow();        std::printf ("%d checks, %d failures\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
 
@@ -14920,6 +14925,7 @@ int main (int argc, char* argv[])
     testANonFiniteVelvetDensityIsTheHeldDensity();
     testABulkSwapIsAdoptedOnlyWhenComplete();
     testBypassExactEndpoints();
+    testBypassFiniteEndpointOverflow();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

@@ -21,6 +21,26 @@ matrix; conditioned/wet resets and explicit engine reset remain active. R-01's
 independent interior overflow is outside this correction. Headless engine evidence
 does not establish DAW incidence.
 
+## Finite-endpoint bypass overflow (R-01, Test 76 extension)
+
+`AnamorphTests --bypass-overflow-probe` selects the same additional Test 76 matrix
+run by the full DSP suite. Its 756 assertions span blocks 1/64/512, OS Off/2x/8x,
+either polarity-inverted channel, normal headroom, small normal/signed-zero samples,
+`1.5e38`, maximum float and values straddling the subtraction-overflow threshold.
+Both ramp directions and exact endpoints are checked separately. A continuously
+active production twin provides wet endpoints; independent latency-indexed input
+provides raw endpoints. Every finite original float blend must remain bit-identical.
+Exceptional samples must remain finite and close to an independent long-double
+convex reference, including the fallback boundary's normalized curve/step error.
+Normal-level Drive cases engage the actual selected OS filters; extreme cases use
+the linear latency stand-in so wet endpoints stay finite, isolating R-01 from D-02.
+
+On merged main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`, this matrix fails
+54/756 assertions and the original witness emits 958 non-finite interior samples.
+Exception-only wider evaluation passes; globally wider interpolation fails 72
+assertions by changing valid normal results. Original Test 76 and all Test 59
+assertions remain unchanged; the numbered inventory stays 76. D-02's raw-history
+clear is independently measurable. These are headless engine witnesses.
 ## True-bypass exact endpoints (D-01, Test 76)
 
 `AnamorphTests --bypass-endpoint-probe` runs the same regression as the full DSP
@@ -29,7 +49,7 @@ at Bypass On and a continuously processed twin at Bypass Off. It covers both
 transition directions, initial On/Off, 44.1/48 kHz, blocks 1/64/127/512, all four
 oversampling selections with Drive and Chorus actually engaging the selected
 filters, input Mono and Mono Maker, unequal magnitudes, small normal samples and
-signed zero. Interior samples must retain the original 10 ms crossfade arithmetic,
+signed zero. Interior finite results must retain the original 10 ms float arithmetic,
 including blocks in which a ramp reaches an endpoint. The twin and identical
 Level-Match readings also check that bypass does not suspend processing/analysis.
 This is engine evidence; it makes no native-DAW claim. Existing Test 3+4 and
