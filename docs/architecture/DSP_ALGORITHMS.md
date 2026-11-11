@@ -338,11 +338,14 @@ valid raw audio for a whole block; clearing only the ring also lost later delaye
 samples. Prepare and explicit reset still clear raw history as before.
 
 `testSelfHealRetainsRawBypass` (Test 59 extension) checks raw bits, both channels,
-both ramp directions, forced-duck consumption, actual engaged oversampling and
-subsequent history. R-01's finite-endpoint interpolation overflow is independent
-and is not corrected here. No graph, gain, latency, reset-order or smoothing change.
+both ramp directions, forced-duck consumption and subsequent history. Its finite Haas
+spike asserts self-heal only with Drive off; selected oversampling then uses the latency
+stand-in, while Drive-on finite spikes remain finite after the shaper. The companion
+`testD02WrappedModulationSelfHeal` verifies the actual modulation-only wrap by its
+latency-aligned response and exercises the wet guard, current scratch and later history
+at 2x/8x. R-01's finite-endpoint interpolation overflow remains an independent fix.
+No graph, gain, latency, reset-order or smoothing change.
 
-whole-scratch clear on extreme finite wet overflow remains a separate limitation.
 
 ## Exceptional bypass interpolation overflow (R-01)
 
@@ -360,4 +363,4 @@ by bits and exceptional results with an independent long-double convex reference
 It separates endpoints/interiors and both directions, checks normalized curve and
 step error, and exercises selected latency plus actual engaged OS at normal levels.
 Extreme cases use the linear latency stand-in to keep their wet endpoints finite;
-D-02's scratch invalidation under wet overflow remains independent.
+D-02's raw-history retention correction remains independent of this arithmetic fix.

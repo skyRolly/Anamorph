@@ -14816,10 +14816,14 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--bypass-selfheal-probe") == 0)
     {
         testSelfHealRetainsRawBypass();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--bypass-overflow-probe") == 0)
     {
-        testBypassFiniteEndpointOverflow();        std::printf ("%d checks, %d failures\n", checks, failures);
+        testBypassFiniteEndpointOverflow();
+        std::printf ("%d checks, %d failures\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
 

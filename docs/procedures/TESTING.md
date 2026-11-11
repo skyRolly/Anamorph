@@ -2,24 +2,39 @@
 
 ## Raw bypass retention during wet self-heal (D-02, Test 59 extension)
 
-`AnamorphTests --bypass-selfheal-probe` selects the same additional Test 59 matrix
-run by the full suite. It supplies 1,512 assertions across blocks 1/64/512,
-Oversampling Off/2x/8x, Drive off/on (actual filters engaged), both bad-channel
-orientations, `1e38`, NaN, both infinities, finite headroom and small normal inputs.
-Raw samples are compared by float bits against an independent latency/history
-oracle; a continuously active production twin supplies the processed endpoint.
-The test covers settled On/Off, both ramps, forced-duck scratch consumption and
-subsequent clean recovery. The forced-duck leg allows its bulk smoother snap and
-block-level retirement before requesting the next bypass ramp. Original Test 59
-and T-01 assertions remain unchanged; the numbered inventory remains 76 tests.
+`AnamorphTests --bypass-selfheal-probe` selects the same Test 59 extension run by
+full DSP. The final oracle has 1,358 checks. Its 216-case Haas matrix spans blocks
+1/64/512, selected Oversampling Off/2x/8x, both channels, Drive off/on, and finite,
+NaN, +Inf, -Inf and normal controls. It compares raw output bits against an independent
+latency/history oracle and processed output against a continuously active production
+twin; it retains settled On/Off, both ramps, the forced-duck read and clean recovery.
 
-On merged main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`, this extension fails
-252/1,512 assertions; the original block-64 witness mutes the unaffected channel
-for 64/64 samples. Retaining scratch alone still fails 140 assertions because it
-loses future raw-delay history. Retaining both validated raw buffers passes the
-matrix; conditioned/wet resets and explicit engine reset remain active. R-01's
-independent interior overflow is outside this correction. Headless engine evidence
-does not establish DAW incidence.
+The finite-spike self-heal premise is asserted only for the Drive-off Haas cases. In
+that configuration the selected 2x/8x factors use the latency stand-in; the nonlinear
+wrap is not active. With Drive on, the shaper keeps the finite spike finite, so those
+cases are not described as self-heal executions. `testD02WrappedModulationSelfHeal`
+separately covers Chorus and Dimensional with Drive off at 2x/8x: a latency-aligned
+0.35-fs response differs from the base-rate control, the `1e38`/`+24 dB` case reaches
+the scrubbed wet sample, and both current raw scratch and the next block's raw-delay
+history remain bit-exact. Both channel orientations and post-heal recovery are checked.
+
+A temporary counter at the actual production branches confirmed the six Haas cases:
+Off/Drive 0 = no wrap, one wet non-finite sample, one self-heal; Off/Drive 6 = no
+wrap and no self-heal; 2x/Drive 0 = no wrap, one wet non-finite sample, one heal;
+2x/Drive 6 = wrapped, finite wet output, no heal; 8x/Drive 0 = no wrap, one
+non-finite sample, one heal; 8x/Drive 6 = wrapped, finite wet output, no heal. For
+Chorus/Dimensional at 2x/8x with Drive off, the production wrapped branch ran, each
+wet twin saw four non-finite samples, and each engine entered self-heal.
+
+Negative controls reintroducing both clears fail 268/1,358 checks; scratch-only
+clearing fails the current-block bit oracle (260 failures), history-only clearing
+fails the next-block history oracle (148 failures), disabling the wet scrub fails
+260 checks, and removing modulation-only wrap activation fails the four response
+checks. The predecessor's 1,512-check version reproduced 252 failures on integrated
+main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`; those historical counts retain that
+version's scope. Original Test 59 and independent T-01 assertions remain enabled;
+the numbered DSP inventory stays at 76. This is headless engine evidence, not DAW
+incidence evidence.
 
 ## Finite-endpoint bypass overflow (R-01, Test 76 extension)
 
@@ -38,9 +53,9 @@ the linear latency stand-in so wet endpoints stay finite, isolating R-01 from D-
 On merged main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`, this matrix fails
 54/756 assertions and the original witness emits 958 non-finite interior samples.
 Exception-only wider evaluation passes; globally wider interpolation fails 72
-assertions by changing valid normal results. Original Test 76 and all Test 59
-assertions remain unchanged; the numbered inventory stays 76. D-02's raw-history
-clear is independently measurable. These are headless engine witnesses.
+assertions by changing valid normal results. Original Test 76 and all independent
+Test 59/T-01 assertions remain enabled; the D-02 premise was corrected separately.
+The numbered inventory stays 76. These are headless engine witnesses.
 ## True-bypass exact endpoints (D-01, Test 76)
 
 `AnamorphTests --bypass-endpoint-probe` runs the same regression as the full DSP

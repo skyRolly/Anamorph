@@ -184,3 +184,20 @@ baseline and zero with this correction. The independent R-01 regression still
 fails 54/756 assertions with D-02 alone. These are production-engine witnesses,
 not native-DAW incidence evidence. Earlier implementation notes retain their
 historical scope; no accepted Decision is amended.
+
+### D-02 regression-oracle review correction — 2026-11-11
+
+Review of PR #235 found that its Drive-on premise assertion could pass without an
+observed wet self-heal. The final Test 59 oracle asserts the finite Haas spike's
+scrubbed sample only for Drive-off cases. A temporary counter at the actual production
+branches showed that Haas/Drive-off does not engage the wrap at selected 2x/8x; with
+Drive 6 the wrap runs but this finite input remains finite. The added
+`testD02WrappedModulationSelfHeal` covers Chorus/Dimensional with Drive off, where the
+wrap actually runs and the same `1e38` / +24 dB spike produces four wet non-finite
+samples and one self-heal block per engine. Its latency-aligned finite response differs
+from the base-rate control; current raw scratch and next-block raw history are checked
+by float bits. The final focused probe passes 1,358 checks. Independent controls fail
+on restored scratch clearing, history clearing, disabled wet scrubbing and removed
+modulation-only wrap activation. The earlier 1,512 / 252 / 140 measurements above
+retain their original pre-review oracle and remain historical evidence. No production
+code, reset order or ADR-0009 behavior changed in this review correction.

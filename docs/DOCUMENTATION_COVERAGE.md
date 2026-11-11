@@ -19294,15 +19294,20 @@ clear remain independently classified; neither is assumed fixed by this check.
 Live descriptions of the whole raw-scratch clear drifted after this localized
 correction; DSP_ALGORITHMS, DSP_GRAPH_REFERENCE node 6b, SIGNAL_FLOW, ADR-0009's
 append-only implementation note, TESTING, the test-header map and Unreleased
-changelog are synchronized. Existing T-01/D-01 history is retained. Test 59 keeps
-all prior assertions and adds `testSelfHealRetainsRawBypass` (1,512 assertions;
-252 failures on integrated main, zero after; scratch-only control still fails 140).
-The numbered test count remains 76. Every raw read retains finite validation,
-all wet/conditioned resets remain, and explicit reset still clears raw history.
-The changed graph row's inherited bare line range was outside the current function;
-it now names the guard symbol, with its checked source interval in SIGNAL_FLOW.
-R-01 remains independently reproducible; no graph, latency, thread, parameter,
-serialization, version or dependency contract changes.
+changelog are synchronized. Existing T-01/D-01 history is retained. The review
+correction replaces the vacuous Drive-on premise with Drive-off-only self-heal
+assertions and adds a separate modulation-only wrap witness. The final focused
+selector has 1,358 checks; all pass. Its finite Haas/Drive-off cases do not run the
+wrap, while the Chorus/Dimensional Drive-off cases prove wrapped output differs from
+the latency stand-in and independently observe four wet non-finite samples plus the
+self-heal. Scratch-only, history-only, combined-clear, disabled-guard and disabled-wrap
+controls fail their intended assertions (260, 148, 268, 260 and 4 failures). The
+predecessor's 1,512 checks, 252 baseline failures and 140 scratch-only failures remain
+historical evidence for that earlier oracle. The numbered DSP inventory stays 76.
+Every raw read retains finite validation, all wet/conditioned resets remain, and
+explicit reset still clears raw history. R-01 remains integrated and independently
+covered; no graph, latency, thread, parameter, serialization, version or dependency
+contract changes.
 
 ## R-01 — exceptional bypass arithmetic (2026-11-11)
 
