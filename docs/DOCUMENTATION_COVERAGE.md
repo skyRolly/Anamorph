@@ -19288,3 +19288,16 @@ ordering changes. Test 59 keeps all original assertions and calls the new
 DSP algorithm/graph/signal-flow references and the Unreleased changelog describe
 that scope. D-01's precision correction and D-02's extreme finite whole-scratch
 clear remain independently classified; neither is assumed fixed by this check.
+
+## R-01 — exceptional bypass arithmetic (2026-11-11)
+
+Live architecture descriptions of unconditional interior float arithmetic drifted
+after this correction. DSP_ALGORITHMS, DSP_GRAPH_REFERENCE node 7, SIGNAL_FLOW,
+ADR-0004's append-only implementation note, TESTING, the test-header map and
+Unreleased changelog now describe preservation of finite original results and
+exception-only double evaluation. Existing ADR/D-01/T-01 history is retained.
+Test 76 keeps its original assertions and adds `testBypassFiniteEndpointOverflow`
+(756 assertions; 54 baseline failures, zero after; globally double control fails
+72 valid-result assertions). The numbered inventory stays 76. Endpoint bits,
+10 ms smoother progression and latency are unchanged. D-02 remains independent;
+no graph, thread, parameter, serialization, version or dependency change.

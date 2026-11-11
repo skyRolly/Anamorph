@@ -308,8 +308,9 @@ copies the most-recent N oldest-first. No reader index — a fast producer may o
 
 The existing final `bypassBlend` stage selects the raw delay sample at coefficient
 one and leaves the processed sample untouched at coefficient zero. Interior
-coefficients retain `processed + b * (raw - processed)`, with the existing 10 ms
-linear smoother. Evaluating that expression at one lost raw bits when the processed
+coefficients retain every finite result of `processed + b * (raw - processed)`;
+only a non-finite float result is recomputed in double (R-01 below). The existing
+10 ms linear smoother is unchanged. Evaluating that expression at one lost raw bits when the processed
 signal differed in magnitude; Test 76 uses non-neutral processing and bit comparisons
 to discriminate the correction. Processing and analysis still run while bypassed;
 no delay, stage, parameter or latency changes. The non-finite raw-readback correction
@@ -324,3 +325,21 @@ with bypass off. Input conditioning, the processed-output self-heal and its rese
 ordering are unchanged. Test 59's `testNonFiniteBypassBoundary` extension covers
 routing-discarded poison separately from poison reaching processed DSP. D-02's
 whole-scratch clear on extreme finite wet overflow remains a separate limitation.
+
+## Exceptional bypass interpolation overflow (R-01)
+
+Opposite-sign finite endpoints can overflow `raw - processed` during the existing
+strict-interior bypass blend. The processed guard and raw readback validation
+precede this operation, so they cannot catch that newly created infinity.
+The blend still executes the original float expression and retains its bits when
+finite. Only a non-finite result recomputes the same affine expression in double,
+then converts once to float. Float endpoints and a coefficient strictly within
+zero/one fit this wider calculation; it adds no clipper, limiter or guard stage.
+Endpoint selection and the number of smoother advances are untouched.
+
+`testBypassFiniteEndpointOverflow` (Test 76 extension) compares unaffected results
+by bits and exceptional results with an independent long-double convex reference.
+It separates endpoints/interiors and both directions, checks normalized curve and
+step error, and exercises selected latency plus actual engaged OS at normal levels.
+Extreme cases use the linear latency stand-in to keep their wet endpoints finite;
+D-02's scratch invalidation under wet overflow remains independent.

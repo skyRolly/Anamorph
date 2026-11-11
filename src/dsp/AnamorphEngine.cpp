@@ -2355,8 +2355,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             }
             else if (bb > 0.0f)
             {
+                // Both endpoints are finite after raw validation and the wet
+                // self-heal. Keep every valid float result, including its rounding;
+                // only an overflowing interpolation is evaluated at wider precision.
+                const float wetL = L[i];
                 L[i] += bb * (bxL[i] - L[i]);
+                if (! std::isfinite (L[i]))
+                    L[i] = static_cast<float> (static_cast<double> (wetL)
+                         + static_cast<double> (bb) * (static_cast<double> (bxL[i]) - static_cast<double> (wetL)));
+                const float wetR = R[i];
                 R[i] += bb * (bxR[i] - R[i]);
+                if (! std::isfinite (R[i]))
+                    R[i] = static_cast<float> (static_cast<double> (wetR)
+                         + static_cast<double> (bb) * (static_cast<double> (bxR[i]) - static_cast<double> (wetR)));
             }
         }
     }
