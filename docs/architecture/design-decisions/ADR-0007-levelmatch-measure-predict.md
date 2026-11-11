@@ -277,7 +277,7 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   starts from the value it publishes, converged or still converging on an earlier edit (*Note of
   2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:2136`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:2142`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
@@ -1642,7 +1642,7 @@ the consumers `src/dsp/AnamorphEngine.h:130-138` (the prime) and `src/dsp/Anamor
   un-measure), `:200-226` (measure/hold), `:124-133` (`softReset`: the analysis only), `:65-80` (`reset`:
   both halves), `:230-286` (the result's currency, its confirmation and the post-change evidence; the
   amendments of 2026-09-25 and the revision of 2026-09-26), `:82-95` (`restoreUnmeasured`)
-- `src/dsp/AnamorphEngine.cpp:2011-2012` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
+- `src/dsp/AnamorphEngine.cpp:2017-2018` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
   (silence-edge snap), `:611-692` (the A/B record: request, forget, capture, restore)
 - `src/PluginProcessor.cpp:507` (`applyAutoGain`)
 
