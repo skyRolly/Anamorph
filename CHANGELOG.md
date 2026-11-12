@@ -25,6 +25,11 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **Bypass retains valid raw audio when extreme input overflows the processed signal.**
+  The unaffected channel and later delay-aligned samples no longer disappear during
+  the existing self-heal. Non-finite raw samples still become zero at readback.
+  Evidence: commit `8c45d802`; DSP Test 59 extension; ADR-0009. [Verified]
+
 - **Bypass fades between extreme finite signals no longer create infinity through interpolation overflow.**
   Exact endpoints, fade timing and every valid original float result are preserved;
   only an overflowing blend is recalculated at wider precision.

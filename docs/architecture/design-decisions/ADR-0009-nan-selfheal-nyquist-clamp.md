@@ -108,11 +108,11 @@ value-box text).
 
 ## Related code
 - `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.h:36-39` (setFrequency clamp)
-- `src/dsp/AnamorphEngine.cpp:2275-2325` (NaN/Inf self-heal)
+- `src/dsp/AnamorphEngine.cpp:2275-2327` (NaN/Inf self-heal)
 - `src/dsp/LevelMeters.h:98-102, 167` (`sanitize`)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2275-2325; src/dsp/LevelMeters.h
+- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2275-2327; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples,
   testNonFiniteBurstSelfHeals (Test 59), testAHostNanParameterDoesNotLatchTheChain (State test 123),
   testNonFiniteGlideTargetsDoNotLatch (Test 64), testNonFiniteBurstKeepsLevelMatchAudible (Test 65),
@@ -154,3 +154,50 @@ can overflow the processed path and trigger its existing whole-scratch clear,
 muting an unaffected channel. A finite-only readback check deliberately does not
 change that reset or its Level-Match consequences. No broader scratch/reset
 redesign or finite-audio limiter is authorized here.
+
+## D-02 implementation correction — retain independent raw bypass data
+
+Baseline: merged main `d428cc0a4d21c6a4804c9aad8b85d7fd68eb5c61`, after #233/#234.
+A finite left sample near `1e38`, +24 dB Output Gain, Bypass On and a 64-sample
+block reproduced 64/64 zero samples in the otherwise valid right channel (`0.25`).
+The processed-output guard cleared both channels of the already finite raw scratch,
+then discarded raw-delay history. Its stateful wet resets were necessary; those
+raw clears were not, because T-01 validates every raw read before either consumer.
+
+The same existing guard now retains raw scratch and ring contents. Stateful module,
+Level-Match, conditioned dry and OS compensation resets retain their order and
+scope. Non-finite raw history remains inaccessible without validation; inactive
+scratch is refilled before any consumer can read it. Prepare/explicit reset keep
+clearing raw history. This restores the existing valid-audio requirement inside
+nodes 0b/6b without a graph, stage, threading, latency or parameter change.
+
+Alternatives: retaining scratch alone still failed 140/1,512 focused assertions
+because later latency reads lost valid history. Selectively scanning or clearing
+raw poison adds work already performed at every read. Retaining the limitation
+would preserve a reproducible valid-audio mute despite the small local correction.
+Moving/adding a guard or redesigning self-heal is unnecessary and would need the
+Architecture Review Gate. R-01 is an independent interpolation failure.
+
+Evidence [Verified]: `testSelfHealRetainsRawBypass`, Test 59 extension, also
+`AnamorphTests --bypass-selfheal-probe`; 1,512 assertions, 252 failures on the
+baseline and zero with this correction. The independent R-01 regression still
+fails 54/756 assertions with D-02 alone. These are production-engine witnesses,
+not native-DAW incidence evidence. Earlier implementation notes retain their
+historical scope; no accepted Decision is amended.
+
+### D-02 regression-oracle review correction — 2026-11-11
+
+Review of PR #235 found that its Drive-on premise assertion could pass without an
+observed wet self-heal. The final Test 59 oracle asserts the finite Haas spike's
+scrubbed sample only for Drive-off cases. A temporary counter at the actual production
+branches showed that Haas/Drive-off does not engage the wrap at selected 2x/8x; with
+Drive 6 the wrap runs but this finite input remains finite. The added
+`testD02WrappedModulationSelfHeal` covers Chorus/Dimensional with Drive off, where the
+wrap actually runs and the same `1e38` / +24 dB spike produces four wet non-finite
+samples and one self-heal block per engine. Its latency-aligned finite response differs
+from the base-rate control; current raw scratch and next-block raw history are checked
+by float bits. The final focused probe passes 1,358 checks. Independent controls fail
+on restored scratch clearing, history clearing, disabled wet scrubbing and removed
+modulation-only wrap activation. The earlier 1,512 / 252 / 140 measurements above
+retain their original pre-review oracle and remain historical evidence. No production
+code, reset order or ADR-0009 behavior changed in this review correction.
