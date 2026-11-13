@@ -271,8 +271,8 @@ private:
     // shared by the wet and phase-aligned dry contributions.
     static float blendMultibandEnableSample (float from, float to, float blend) noexcept
     {
-        if (blend <= 0.0f) return from;
-        if (blend >= 1.0f) return to;
+        if (std::abs (blend) <= 0.0f) return from;
+        if (std::abs (blend - 1.0f) <= 0.0f) return to;
         return from + blend * (to - from);
     }
 

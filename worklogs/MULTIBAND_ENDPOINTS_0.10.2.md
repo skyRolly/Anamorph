@@ -94,3 +94,14 @@ The final local full DSP binary passes **4,794 checks** (4,502 existing + 292
 endpoint-extension assertions). Documentation/citation, portability and realtime
 source lints pass. Full platform/sanitizer/State/ABI/pluginval and exact-tip
 hosted evidence remain separate and are recorded when available.
+
+## Endpoint-only review refinement
+
+The final kernel tests exact zero/one by a zero absolute difference, rather than
+clamping coefficients with <=0 / >=1. Thus every other finite coefficient keeps
+the original expression even outside the smoother's expected range. The direct
+preservation grid now includes -.25 and 1.25; the assertion count remains 292.
+This avoids relying on a universal floating-point range claim about recursive
+smoother addition at every possible host sample rate. No new main defect is
+inferred from an unobserved out-of-range coefficient. The initial `391d3f0a`
+measurements/CI remain historical; final-source validation is recorded separately.
