@@ -36,12 +36,12 @@ static void test()
     {
         zero &= bits(kernel(a,b,0),a);one &= bits(kernel(a,b,1),b);
         discriminating += !bits(a+1.0f*(b-a),b);
-        for(float t:{0.0001f,0.125f,0.499f,0.9999f})interior &= bits(kernel(a,b,t),a+t*(b-a));
+        for(float t:{0.0001f,0.125f,0.499f,0.9999f,-0.25f,1.25f})interior &= bits(kernel(a,b,t),a+t*(b-a));
     }
     check(discriminating>0,"N2-03 premise: independent endpoint inputs discriminate the legacy subtraction/addition");
     check(zero,"N2-03 kernel: zero selects exact source, including signed zero");
     check(one,"N2-03 kernel: one selects exact destination bits");
-    check(interior,"N2-03 kernel: every ordinary interior retains historical float arithmetic");
+    check(interior,"N2-03 kernel: interior and other finite non-endpoints retain historical float arithmetic");
 
     struct Format {double rate;int block;};
     for(auto fmt:{Format{44100,64},Format{48000,64},Format{48000,127},Format{96000,256}})
