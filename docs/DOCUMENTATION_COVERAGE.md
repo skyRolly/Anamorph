@@ -19321,3 +19321,6 @@ Test 76 keeps its original assertions and adds `testBypassFiniteEndpointOverflow
 72 valid-result assertions). The numbered inventory stays 76. Endpoint bits,
 10 ms smoother progression and latency are unchanged. D-02 remains independent;
 no graph, thread, parameter, serialization, version or dependency change.
+## 0.10.2 second DSP audit preservation
+
+The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.

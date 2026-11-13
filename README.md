@@ -275,3 +275,5 @@ its installed-receipt implementation is effective on main. ADR-0065 and its
 helper amendment are also effective through PR #175 merge `14bde706e2d121c9970cf00c757cb12d3178b9a5`.
 Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.
+
+Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numerical-audit-0102/README.md), including N2-01–07/V2-01 reproduction and unresolved work.
