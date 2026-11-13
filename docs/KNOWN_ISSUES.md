@@ -6,6 +6,14 @@ KI-033 is resolved on main through #208 at `a78b733`; see INC-022 in
 
 KI-035 / NR-026 is resolved on main through #222 at `2b256e90` within the verified surviving-processor component contract. See INC-026 and the [post-integration record](../worklogs/engineering-review/post-b2-integration.json). Native DAW behavior and simultaneous processor destruction remain separate unmeasured limits, not a universal teardown-safety claim.
 
+N2-01 (P2) and V2-01 remain open on the investigated main: H4 skips recursive dry
+crossover state at full wet, producing a measured low-frequency reconstruction
+transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
+phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
+The original audit's N2-04–07 remain confirmed P3 findings, outside this round's
+implementation scope; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
+are retained. Open correction PRs do not establish integration on main.
+
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.

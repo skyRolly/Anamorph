@@ -1,0 +1,27 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index dde2a12b..65c46c08 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1941,7 +1941,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+         }
+ 
+         if (fullWetIdle)
+-            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
++        {
++            multiband.processBlock (L, R, n,
++                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
++                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
++            dryAligned = true; // diagnostic A: maintain filter AND aligned-delay history
++        }
+         else
+         {
+             multiband.processBlock (L, R, n,
+@@ -2035,7 +2040,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+             adL[dryDelayWrite] = aL[i];
+             adR[dryDelayWrite] = aR[i];
+             int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
+-            lrL[i] = adL[rp]; lrR[i] = adR[rp];
++            lrL[i] = ddL[rp]; lrR[i] = ddR[rp]; // retain H4 clean-dry measurement policy
+             if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
+         }
+     }

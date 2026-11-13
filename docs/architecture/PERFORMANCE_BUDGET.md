@@ -62,9 +62,15 @@ production measurements, not a real-time deadline or representative hardware bud
   0.53 dB worst-case level offset on a near-crossover synthetic, converging over the loudness
   window; the engage is always ducked, and since ADR-0007's Amendment of 2026-09-24 one that
   changes only the gain lands at the silent bottom on that published value rather than gliding).
-  Both dry delay rings stay warm; re-engage is comb-free
-  (`testDryAlignGateRecomb`). Evidence [Verified]: src/dsp/AnamorphEngine.cpp (gate + invariant
-  comment); CHANGELOG [0.8.9].
+  Both dry delay rings advance, but the recursive dry crossover state is skipped.
+  `testDryAlignGateRecomb` establishes aggregate mono RMS for default-crossovers /
+  broadband noise, not sample-level or worst-frequency re-entry reconstruction.
+  N2-01/V2-01 confirm a low-frequency transient after full-wet idle (20 Hz witness:
+  peak error 0.1361084); the production optimization remains unchanged pending
+  [the H4 owner decision](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
+  Historical Class-B measurements remain evidence for the operations they tested;
+  they did not approve this transient. Source: AnamorphEngine.cpp gate;
+  CHANGELOG [0.8.9]; original commit `36e69f9b`.
 - **The LR4 crossovers are a local flat-state clone (Wave 2 / H6).** All ten
   `juce::dsp::LinkwitzRileyFilter<float>` instances (MultibandWidth wet + dry-align banks,
   SoloMonitor, MonoMaker) are replaced by `LR4Xover` — the same coefficient derivation and TPT
