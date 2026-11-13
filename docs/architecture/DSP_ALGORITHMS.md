@@ -364,3 +364,4 @@ It separates endpoints/interiors and both directions, checks normalized curve an
 step error, and exercises selected latency plus actual engaged OS at normal levels.
 Extreme cases use the linear latency stand-in to keep their wet endpoints finite;
 D-02's raw-history retention correction remains independent of this arithmetic fix.
+N2-02: Bypass/Multiband Enable targets remain live during ordinary ducks; complete forced bulk destinations remain deferred to the bottom (ADR-0004 correction, DSP 77 / State 159).
