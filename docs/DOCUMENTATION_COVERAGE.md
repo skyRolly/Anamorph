@@ -19324,3 +19324,7 @@ no graph, thread, parameter, serialization, version or dependency change.
 ## 0.10.2 second DSP audit preservation
 
 The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
+
+## N2-02 ordinary-duck crossfade targets
+
+The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
