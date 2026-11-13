@@ -136,10 +136,10 @@ public:
         primeSnapshot (np, acquireAfterSnapshot (clear));
     }
 
-    // Adopts a new parameter snapshot. Continuous controls update immediately
-    // (they are all smoothed); a change to any DISCRETE control (algorithm,
-    // routing, bypass, ...) is deferred behind a short raised-cosine duck so the
-    // switch is click-free (feedback #10 / #11).
+    // Adopts a new parameter snapshot. Smoothed controls and independently
+    // crossfaded Bypass/Multiband Enable targets stay live during ordinary ducks.
+    // Genuine discrete controls (algorithm, routing, band count, ...) wait for
+    // the duck bottom; forced bulk destinations retain complete-state deferral.
     //
     // Nothing is adopted -- no live edit, no duck entry, no new target -- while a bulk swap's
     // completion is awaited, or from a snapshot that may have been read before it (ADR-0057): the

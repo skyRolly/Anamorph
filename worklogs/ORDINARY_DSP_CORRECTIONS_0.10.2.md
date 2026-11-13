@@ -87,3 +87,7 @@ existing check. Final full-suite and hosted-tip results are recorded separately.
 No listening, native DAW, sample-accurate automation or hardware evidence is claimed.
 
 The full State suite passed **16,555 checks** (16,535 existing + 20 new).
+
+The API comment's obsolete classification of Bypass as a duck-owned control is
+also corrected to match the tested ordinary/forced ownership. No executable
+change follows the initial correction commit `ed296869`.
