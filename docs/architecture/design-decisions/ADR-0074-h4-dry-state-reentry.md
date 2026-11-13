@@ -42,8 +42,9 @@ Successful ordinary diagnostics alone must not be promoted into production.
 **Pending the maintainer.** Recommend the guarded warm-state direction, conditional
 on the packet's recovery, unrelated-state, latency, cost and final-source validation.
 The maintainer must explicitly accept the additional per-block dry work before
-implementation. The unguarded reference costs about +15/+27/+37% whole-engine
-instructions for 2/3/4 bands at 48 kHz/128; guarded measurements are separate.
+implementation. Guarded A2 measures +15.3/+27.4/+36.9% whole-engine instructions for 2/3/4 bands
+at 48 kHz/128; the guard itself adds .13–.27% over the warm-bank reference in
+selected OS-off rows. Clock measurements remain variable.
 Shared-machine clock data are not universal native CPU/instance-count promises.
 
 This proposal preserves DSP topology/order, latency, parameter/persistence and

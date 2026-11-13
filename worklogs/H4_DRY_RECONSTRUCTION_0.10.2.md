@@ -211,6 +211,7 @@ phase-reference envelope, not a replacement for N2-03's exact bit contract.
 | original production H4 | 8 / 2 | first-960 reconstruction error, both witnesses |
 | A | 8 / 0 | warm independent reconstruction |
 | C | 8 / 0 | same |
+| guarded A2 | 8 / 0 | same, with exceptional unused-dry recovery |
 | “never enter H4” mutation | 8 / 2 | H4 execution premise, both witnesses; numeric errors are zero |
 
 Thus the regression cannot pass merely because H4 never executed. The baseline
@@ -234,11 +235,12 @@ witnesses/follow-ups. Candidate review must preserve raw-history/self-heal
 ownership and existing D-01/T-01/D-02/R-01 protections. Final production validation
 must include recovery and actual execution premises, not output finiteness alone.
 
-Next: owner chooses A's measured CPU tradeoff, explicit limitation, or deferral.
-If A is approved, implement bank + aligned-history maintenance together, retain
-H4's wet/measurement policies, integrate the independent regression, then run all
-prescribed final-source checks. Do not silently ship the filters-only diagnostic
-or C's extra interface. No release work follows from this packet.
+Next: owner chooses the guarded A2 direction's measured CPU/recovery tradeoff,
+an explicit limitation, or deferral. If approved, implement bank + aligned-history
+maintenance and scoped recovery together, retain H4's wet/measurement policies,
+integrate the independent regression, then run all prescribed final-source checks.
+Do not ship the unguarded A/C or filters-only diagnostics. No release work follows
+from this packet.
 
 ## Reproduction and durable evidence
 
@@ -277,12 +279,12 @@ Earlier aligned-ring contents are finite by the guarded-write / existing
 consuming-path self-heal invariant. That invariant, latency re-entry and unrelated
 state preservation require explicit validation before a production PR.
 
-Initial A2 stress rows have zero retained invalid states and zero wholly-zero
-dip samples at all three crossovers. Further ordinary-matrix, execution-premise,
-unaffected-channel, negative-control and cost measurements are being retained
-with the final packet. This dry-only guard is a candidate design, not N2-04's
-conditioned-history correction or N2-05/06/07 implementation. The A cost above
-is the unguarded warm-bank reference; guarded final cost must be evaluated too.
+A2 stress rows have zero retained invalid states and zero wholly-zero dip samples
+at all three crossovers. Completed ordinary-matrix, execution-premise,
+unaffected-channel, negative-control and guarded-cost measurements follow below.
+This dry-only guard is a candidate design, not N2-04's conditioned-history
+correction or N2-05/06/07 implementation. The A cost above is the unguarded
+warm-bank reference; A2's separate final measurements include its guard.
 
 ### A2 executed recovery and cost observations
 
@@ -316,9 +318,93 @@ Only the state-preservation condition changes, so the mutation is sensitive to
 the claimed recovery ownership. Trace variants are excluded from performance.
 
 The two completed ordinary DSP corrections also pass a fresh disposable combined
-build at `91db6b0eca57f375472a6f429f309bd67c8c727e`: **5,514 DSP / 16,555 State**
+build, finally at `7764df5c2d02eee7a11c475fcca93097f9559dee`: **5,514 DSP / 16,555 State**
 checks. Combined-source targeted mutations independently preserve sensitivity:
 restoring N2-02 preservation fails 316/720 controls while endpoints pass 292/292;
 restoring N2-03 arithmetic fails 66/292 endpoints while controls pass 720/720.
 This combined source contains no H4 production correction. Separate guarded
 combined-source diagnostics are identified explicitly in the final delivery ledger.
+
+## Final candidate measurement boundaries
+
+At four bands the skipped stage executes six full LR4 splits plus four
+first-section compensation allpass calls per sample; two/three bands execute
+2/4 full splits plus 0/2 compensation calls. The historical “6 LR4” shorthand
+omitted those compensation calls. No allpass or signal graph is replaced.
+
+Guarded A2 adds no state/buffer allocation. It preserves the existing dry-filter
+math, updates all bank/crossover/width clocks through normal processing, and only
+clears affected dry-channel integrators on an observed exceptional output.
+Finite derived samples are preserved; clean/raw/OS histories and the other dry
+channel are not cleared. Its normal 34-case matrix passes the same eight-point
+low-frequency oracle. The combined A+B+A2 diagnostic passes **5,514 full DSP
+checks** using current-source dependent DSP objects; this is explicitly not an
+approved production integration or native DAW validation.
+
+A dependency-consistent five-TU rebuild repeats all **12 A2 Callgrind counts
+identically**, avoiding reliance on a header-stale object. The first three-TU
+measurements remain historical records. Current replay recompiles Engine,
+MultibandWidth, MonoMaker, SoloMonitor and the probe to cover the added LR4
+channel reset declaration consistently. JUCE objects retain their exact pin.
+
+A second balanced wall-clock comparison (baseline-A2-A2-baseline; ten samples per
+cell) reports A2/baseline full-wet OS-off ratios **.859–1.700**, median **1.123**.
+A2 within-cell CV median is **14.6%**, maximum **56.4%**; worst observed wall block
+**11.139 ms**, re-entry **2.616 ms**, including shared-host scheduling. This
+ordering is not a deadline or native CPU guarantee.
+
+The Linux thread-CPU batch check removes off-CPU waiting and includes identical
+pre-generated input copies plus setParameters/process for both variants. It
+also remains variable: full-wet OS-off median ratios **.992–2.088**, median
+**1.407**, with within-cell CV medians **15.0% baseline / 20.0% A2**, maxima
+**47.5% / 101.3%**. These measurements do not support a precise universal CPU
+percentage. Instruction ratios establish extra algorithmic work more reliably;
+cycle cost, SMT/host interference and native instance counts remain unestablished.
+The owner may accept that bounded extra work or request a focused benchmark on
+representative hardware before approving production. A formal budget project is
+not proposed.
+
+The wall/CPU-time stimuli use 20/800/4000 Hz stationary splits (moving low split
+starts toward 100 Hz). Instruction attribution uses a 100 Hz low split and the
+original remaining defaults. Each variant within a comparison uses identical
+parameters/input/flags; absolute times are not cross-compared between harnesses.
+Replay timing recomputes every recorded cutoff, including fixed rows; an
+optimized fixed-coefficient replay could hoist that work. The prototype times
+are illustrative, not a lower bound on every possible replay algorithm.
+
+### Proven sustained gliding and overlapping bank fade
+
+The original low-frequency "moving" rows mostly hit the crossover epsilon snap
+at each block; those rows alone do not prove sustained per-sample coefficient
+work. A separate trajectory probe moves a 1000 Hz split by a smooth half-octave
+trajectory, below the 1.5-octave bank-fade threshold. It checks actual live cutoff,
+bank fade state and a conservative residual-distance/float-rounding bound to
+prove that the per-sample glide continues throughout the qualified blocks.
+At 48/192 kHz it proves 172,032 / 598,816 gliding samples, zero bank-fade blocks.
+Baseline first-window peak errors are .000812493265 / .000635564327; A2 errors
+are zero against the independent continuously warm reference.
+
+A distinct 20-to-800 Hz jump four milliseconds before the Mix dip overlaps an
+actual bank fade for five observed blocks. Baseline peak errors are .000535443425
+without wrapping and .001080095768 with actual x4 Drive. A2 gives zero and
+5.96046448e-8 respectively. This checks both banks' dry progression while fading,
+rather than inferring it from a selected topology. All four rows recover within
+the measured tail window; `trajectory_probe.cpp` and raw streams retain premises.
+
+Instruction attribution of the sustained glide excludes its observer from the
+collection region. It proves 32,768 / 32,768 / 8,192 / 65,280 gliding samples in
+the following 256-block measurements (the final row has one unqualified block).
+
+| Rate / block / bands | Baseline Ir/block | A2 Ir/block | A2 / baseline |
+|---|---:|---:|---:|
+| 48k / 128 / 2 | 87,240.32 | 99,793.33 | 1.14389 |
+| 48k / 128 / 4 | 120,039.41 | 160,523.42 | 1.33726 |
+| 192k / 32 / 4 | 32,665.68 | 42,885.70 | 1.31287 |
+| 192k / 256 / 4 | 233,173.78 | 313,999.82 | 1.34663 |
+
+These are additional bounded-work counts, not native timing or deadline results.
+No replay burst is introduced at re-entry. The A2 exception path scans the block,
+scrubs only invalid derived samples and performs at most 48 integrator writes per
+failed channel; it allocates no new buffer or history. Future production review
+must still validate all recovery/latency interactions and prescribed sanitizer
+and real-time gates on the approved implementation.

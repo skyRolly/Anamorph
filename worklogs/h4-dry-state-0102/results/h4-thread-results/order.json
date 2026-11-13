@@ -1,0 +1,34 @@
+[
+  {
+    "sequence": 0,
+    "variant": "base",
+    "command": [
+      "/workspace/n2-execution/h4-thread-base/probe"
+    ],
+    "output": "/workspace/n2-execution/h4-thread-results/0-base.csv"
+  },
+  {
+    "sequence": 1,
+    "variant": "guard",
+    "command": [
+      "/workspace/n2-execution/h4-thread-guard/probe"
+    ],
+    "output": "/workspace/n2-execution/h4-thread-results/1-guard.csv"
+  },
+  {
+    "sequence": 2,
+    "variant": "guard",
+    "command": [
+      "/workspace/n2-execution/h4-thread-guard/probe"
+    ],
+    "output": "/workspace/n2-execution/h4-thread-results/2-guard.csv"
+  },
+  {
+    "sequence": 3,
+    "variant": "base",
+    "command": [
+      "/workspace/n2-execution/h4-thread-base/probe"
+    ],
+    "output": "/workspace/n2-execution/h4-thread-results/3-base.csv"
+  }
+]

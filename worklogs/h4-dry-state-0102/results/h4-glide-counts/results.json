@@ -1,0 +1,218 @@
+[
+  {
+    "variant": "base",
+    "config": [
+      48000,
+      128,
+      2,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 22333523,
+    "stdout": "256 measured blocks; proved sustained-glide samples 32768; checksum 0.00113144\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/base-48000-128-2-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-base/probe",
+      "48000",
+      "128",
+      "2",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "base",
+    "config": [
+      48000,
+      128,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 30730089,
+    "stdout": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/base-48000-128-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-base/probe",
+      "48000",
+      "128",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "base",
+    "config": [
+      192000,
+      32,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 8362413,
+    "stdout": "256 measured blocks; proved sustained-glide samples 8192; checksum -0.210774\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/base-192000-32-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-base/probe",
+      "192000",
+      "32",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "base",
+    "config": [
+      192000,
+      256,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 59692488,
+    "stdout": "256 measured blocks; proved sustained-glide samples 65280; checksum 0.113922\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/base-192000-256-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-base/probe",
+      "192000",
+      "256",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      2,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 25547093,
+    "stdout": "256 measured blocks; proved sustained-glide samples 32768; checksum 0.00113144\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/guard-48000-128-2-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-guard/probe",
+      "48000",
+      "128",
+      "2",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 41093995,
+    "stdout": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/guard-48000-128-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-guard/probe",
+      "48000",
+      "128",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      192000,
+      32,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10978739,
+    "stdout": "256 measured blocks; proved sustained-glide samples 8192; checksum -0.210774\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/guard-192000-32-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-guard/probe",
+      "192000",
+      "32",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      192000,
+      256,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 80383955,
+    "stdout": "256 measured blocks; proved sustained-glide samples 65280; checksum 0.113922\n",
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-glide-counts/guard-192000-256-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-glide-count-guard/probe",
+      "192000",
+      "256",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  }
+]

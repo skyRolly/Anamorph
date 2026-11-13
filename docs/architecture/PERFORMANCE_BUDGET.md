@@ -54,7 +54,7 @@ production measurements, not a real-time deadline or representative hardware bud
   CHANGELOG [0.8.9].
 - **The multiband dry-align bank is gated in the settled-full-wet state (Wave 2 / H4).** With the
   Mix glide parked at exactly 1, Match off (and not mid-engage), and no enable/bypass crossfade in
-  flight, the A(dry) reconstruction (6 LR4 calls/sample — half the multiband cost, ~20 µs on the
+  flight, the A(dry) reconstruction (at four bands: 6 full LR4 + 4 first-section allpass calls/sample; ~20 µs on the
   shipped default in the Round-2 attribution) and the m=1 blend pass are skipped. Class B: the
   gated output is the exact wet instead of its m=1 float re-blend (measured ≤2.4e-10); the live
   Measure readout follows the delay-aligned clean dry while gated, so a Match engage right after a

@@ -279,3 +279,5 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numerical-audit-0102/README.md), including N2-01–07/V2-01 reproduction and unresolved work.
 
 0.10.2 H4 evidence: [dry-state decision package and verification boundary](worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md), Proposed ADR-0074; production H4 remains unchanged.
+
+0.10.2 delivery: [ordinary DSP correction PRs, final-source validation and H4 owner decision](worklogs/0102_DSP_DELIVERY_2026-11-13.md). All work remains unmerged.

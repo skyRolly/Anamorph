@@ -19326,3 +19326,5 @@ no graph, thread, parameter, serialization, version or dependency change.
 The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
 
 N2-01/V2-01: [the H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) maps the actual gate, independent low-frequency oracle, recovery and cost evidence to Proposed ADR-0074. Test 25 remains an aggregate RMS regression with unchanged assertion conditions; the new failing-on-main oracle remains nonshipping until an approved production correction.
+
+N2-02/N2-03 delivery and cross-finding validation are indexed in the [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md); per-PR records and immutable final source links distinguish independent corrections from H4 diagnostic candidates.

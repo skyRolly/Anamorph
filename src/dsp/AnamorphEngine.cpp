@@ -1917,7 +1917,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // glide parked at exactly 1 the blend is one LSB-level rounding pass of the
         // wet (out = dry + 1*(wet-dry)); with Match off AND not mid-engage the match
         // target is never read. So when no enable/bypass crossfade is in flight
-        // either, the dry bank (6 LR4/sample -- half the multiband cost) and the
+        // either, the dry bank (4 bands: 6 LR4 + 4 allpass calls/sample) and the
         // blend loop are skipped. Class B by design: the gated output is the EXACT
         // wet instead of its m=1 float re-blend, and the live Measure readout
         // follows the delay-aligned CLEAN dry while gated. Both dry delay rings

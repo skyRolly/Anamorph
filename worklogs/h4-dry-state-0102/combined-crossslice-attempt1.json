@@ -1,0 +1,62 @@
+{
+  "job": {
+    "completedAt": "2026-11-13T19:06:53Z",
+    "conclusion": "cancelled",
+    "databaseId": 132085880362,
+    "name": "macos-crossslice",
+    "startedAt": "2026-11-13T18:31:56Z",
+    "status": "completed",
+    "steps": [],
+    "url": "https://github.com/skyRolly/Anamorph/actions/runs/43483529911/job/132085880362"
+  },
+  "annotations": [
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/skyRolly/Anamorph/blob/91db6b0eca57f375472a6f429f309bd67c8c727e/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "failure",
+      "title": "",
+      "message": "The job was not acquired by Runner of type hosted even after multiple attempts",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/skyRolly/Anamorph/blob/91db6b0eca57f375472a6f429f309bd67c8c727e/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/skyRolly/Anamorph/blob/91db6b0eca57f375472a6f429f309bd67c8c727e/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/skyRolly/Anamorph/blob/91db6b0eca57f375472a6f429f309bd67c8c727e/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+      "raw_details": ""
+    }
+  ]
+}

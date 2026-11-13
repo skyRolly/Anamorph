@@ -220,3 +220,5 @@ The [post-B2 integration record](../worklogs/engineering-review/post-b2-integrat
 The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/README.md) is supporting developer evidence: exact baseline SHA/pin, preserved reports, probes, controls and raw logs. It confers no architecture or merge approval.
 
 The [H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) and `worklogs/h4-dry-state-0102/` are supporting measurements, optional failing oracles and diagnostic variants. ADR-0074 is Proposed; these files grant no production or merge approval.
+
+The [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md) records independent PR heads, combined-source checks and explicit H4 owner-decision limits. It is supporting execution evidence, not merge/release or architecture approval.
