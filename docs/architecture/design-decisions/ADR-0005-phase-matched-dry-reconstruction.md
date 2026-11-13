@@ -87,3 +87,12 @@ Evidence [Verified]:
 - Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:1885-2004
 - Tests: testMultibandMonoCompat, testMultibandUnityMatch, testMultibandEnableDrySourceNoStep
 - History [Partially Verified]: CHANGELOG.md [0.7.5]-[0.7.0] (0.7.2)
+
+## N2-03 endpoint implementation note
+
+The enable crossfade's clean-dry/A(dry) endpoint is selected directly at 0/1,
+including the last ramp sample and the settled suffix of that block. The interior
+float expression, dry-bank progression, alignment and Level-Match reference rule
+remain as decided above. This repairs rounding at an existing boundary; H4's cold
+state after full-wet idle remains a separate N2-01 owner decision. Evidence:
+[Test 23 extension](../../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).

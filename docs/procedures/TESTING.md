@@ -7757,3 +7757,21 @@ No repeat acceptance is requested. Source-bound automated CI remains independent
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
 
 DSP Test 77 and State Test 159 (`--n2-controls`) discriminate independently crossfaded Bypass/Multiband Enable adoption from ordinary and forced ducks. They assert next-block targets and smoother progression in addition to readback and audible differences. See `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`.
+
+## Multiband Enable stage endpoints (N2-03, Test 23 extension)
+
+`AnamorphTests --multiband-endpoints` selects 292 checks also run by the complete
+suite. The private production kernel is exercised with independently specified
+endpoint bits, including signed zero, and unchanged interior arithmetic. Engine
+legs copy only the production filter state before processing, then independently
+compute unblended wet/A(dry) destinations from the actual pre-Multiband input.
+They check stage bits and the Level-Match reference, and explicitly model later
+Mix rounding before comparing output. A wet-only mutation must fail output
+checks even when every aligned-dry check passes. A dry-only mutation must fail
+the dry/reference checks. The independent N2-03 inventory remains 76, and this combined source has 77 with N2-02 (an extension to
+existing transition coverage, as with the R-01 Test 76 extension).
+
+44.1/48/96 kHz, blocks 64/127/256, 2/3/4 bands, Mix 1/.4 and Match off/on cover
+both terminal endpoints, subsequent samples within the terminal block, repeated
+and reversed transitions and non-neutral unequal stereo. Source identity,
+negative controls and replay commands: [worklog](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).

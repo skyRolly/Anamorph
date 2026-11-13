@@ -265,6 +265,17 @@ public:
 private:
     void updateDerived();
     void applyInputConditioning (float* L, float* R, int n) noexcept;
+
+    // ADR-0004: select exact Multiband Enable endpoints; keep the historical
+    // float expression for every interior value. Private production kernel,
+    // shared by the wet and phase-aligned dry contributions.
+    static float blendMultibandEnableSample (float from, float to, float blend) noexcept
+    {
+        if (blend <= 0.0f) return from;
+        if (blend >= 1.0f) return to;
+        return from + blend * (to - from);
+    }
+
     // `runMod` is false only for the base-rate call while an OS-path crossfade is in
     // flight: the mod algorithms (Chorus / Dimensional) belong to the wrapped path
     // whenever a factor is selected, and running the ONE chorus instance from both

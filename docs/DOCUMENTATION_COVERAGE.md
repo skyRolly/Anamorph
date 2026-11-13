@@ -19328,3 +19328,7 @@ The worklog archive retains all original reports, diagnostics, reproduction sour
 ## N2-02 ordinary-duck crossfade targets
 
 The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
+
+N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
+[the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
+exact stage endpoints independently of downstream Mix rounding.
