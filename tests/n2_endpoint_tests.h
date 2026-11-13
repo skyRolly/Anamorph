@@ -83,7 +83,8 @@ static void test()
             float previous=clock.getCurrentValue();
             for(int i=0;i<fmt.block;++i)
             {
-                const float b=clock.getNextValue();const bool atZero=b<=0,atOne=b>=1;
+                const float b=clock.getNextValue();
+                const bool atZero=bits(b,0.0f)||bits(b,-0.0f),atOne=bits(b,1.0f);
                 endpointZero+=atZero;endpointOne+=atOne;interiors+=!atZero&&!atOne;
                 if((atZero||atOne)&&!bits(previous,b)&&i>0&&i<fmt.block-1)++terminalInside;
                 previous=b;

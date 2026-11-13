@@ -16,8 +16,8 @@ zero also loses the sign of a negative-zero source for suitable destinations.
 The same loop applied that expression to the clean-dry/A(dry) reference.
 
 A private production sample kernel selects the source for blend 0 and destination
-for blend 1. Targets are booleans and this smoother produces finite values within
-[0,1]. Every strict interior keeps the old float expression. All four existing
+for blend 1. Targets are booleans. Only exact zero/one values select endpoints; every other
+coefficient keeps the old float expression. All four existing
 wet/dry contribution sites use the kernel and still share one getNextValue per
 sample. The helper is actual shipping arithmetic, not a diagnostic hook; its
 private access in tests permits stage-boundary bit assertions before later Mix
@@ -105,3 +105,5 @@ This avoids relying on a universal floating-point range claim about recursive
 smoother addition at every possible host sample rate. No new main defect is
 inferred from an unobserved out-of-range coefficient. The initial `391d3f0a`
 measurements/CI remain historical; final-source validation is recorded separately.
+
+The engine oracle classifies endpoint coefficients by their float bits, independently of the production comparison, while retaining all 292 assertions.
