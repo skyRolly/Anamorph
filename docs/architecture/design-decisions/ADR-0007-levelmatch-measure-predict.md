@@ -1487,7 +1487,7 @@ flag is audio-thread state, written in `process()` beside the report it retires.
 
 Related code (this note): `src/dsp/AnamorphEngine.cpp:1433-1441` (the bottom's report and the retirement),
 `:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:656-659` (the A/B record),
-`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:381-386` (the flag). Tests: Test 72,
+`:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:392-397` (the flag). Tests: Test 72,
 State test 136.
 
 ## Note, 2026-09-26 — a non-finite Velvet Density is the density the Velvet plays (Devin review: "Identical Velvet slots lose matched levels"; "the non-finite Velvet Density")
@@ -1628,7 +1628,7 @@ never runs concurrently with `process()`. This is the guarantee under which the 
 | 3 | if the change is a decision, an ADR is added/updated | this Note, and the in-place clarifications it lists |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
 
-Related code (this note): `src/dsp/AnamorphEngine.h:310-317` (`withPlayedVelvetDensity`, `measurementChangeFrom`),
+Related code (this note): `src/dsp/AnamorphEngine.h:321-328` (`withPlayedVelvetDensity`, `measurementChangeFrom`),
 `src/dsp/AnamorphEngine.cpp:599-603` (`measurementChangeFrom`), `:664` (the capture), `:688-689` (the restore);
 the consumers `src/dsp/AnamorphEngine.h:130-138` (the prime) and `src/dsp/AnamorphEngine.cpp:62`, `:239`, `:796`, `:817`, `:906`,
 `:1289`; `src/dsp/VelvetNoise.h:40-45` (`setDensity`, `getTargetDensity`). Tests: Test 74, State test 138.
