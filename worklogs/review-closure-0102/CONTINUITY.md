@@ -374,3 +374,19 @@ head remains unpushed while the earlier failed-run retry completes. The new
 integration's 35 local source/documentation/fixture commands all passed; the
 fresh full build, mutations, State isolation and clamp replay are separate
 pending executions at this checkpoint.
+
+### Replay inventory supplement
+
+The shared inventory in #237 groups the original historical command records,
+N2/H4 retired relinkers, data oracles, fresh-build runner, receipt-checked
+relinker and combined mutation runner. The later `replay_lr4_witness.py` is a
+maintained, source-checked build of one committed LR4 probe and its committed
+minimal JUCE stub; it does not establish a full JUCE or engine execution.
+`test_replay_provenance.py` is a synthetic guard test, not a product replay.
+The source-specific `record_state_suite.py` and `checks-command-record.py` in
+this review record are one-off execution records for their stated source and
+premises, not alternative maintained general provenance systems. The committed
+benchmark specifications describe a planned shared-runner execution, not a
+measurement. Original `original/*.sh`, comparison scripts and archived data
+remain historical. This supplement does not close R-237-01: several historical
+H4 recovery/trajectory/benchmark scenarios still lack verified actual reruns.
