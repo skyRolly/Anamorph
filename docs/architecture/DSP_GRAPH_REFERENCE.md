@@ -76,3 +76,5 @@ Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 
 Evidence [Verified]: src/dsp/MonoMaker.h:43; MultibandWidth.cpp (fade trigger +
 `setBankCutoffs`); SoloMonitor.cpp (same pattern).
+
+N2-02 changes target adoption inside the existing control layer, not this graph: ordinary ducks retain live Bypass/Multiband Enable crossfades; forced bulk swaps retain whole-destination deferral. Tests 77/159.

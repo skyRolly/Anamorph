@@ -217,3 +217,18 @@ and zero after. The independent D-02 extension still fails 252/1,512 assertions
 with R-01 alone. The oracle measures ordinary float-bit identity, exceptional
 wide-reference error and the switch boundary; it is not universal floating-point
 or native-DAW acceptance evidence. Earlier notes retain their historical scope.
+
+## N2-02 implementation correction — ordinary-duck crossfade ownership
+
+An ordinary duck now merges Bypass and Multiband Enable into the live snapshot,
+where their existing 10/12 ms smoothers receive every block's target. Preserving
+those two values in `copyContinuous` swallowed return pulses during fade-out and
+fade-in. The ordinary bottom still adopts the latest pending discrete state;
+it does not restart these independent ramps. A band-count change still resets
+the Multiband topology there; an enable-only change uses its existing warm/cold
+crossfade path. Forced bulk swaps bypass this merge and defer every destination
+control through completion and fade-out, snapping at the bottom as ADR-0057
+requires. No duration, graph, parameter, latency or synchronization changes.
+Evidence: DSP Test 77 / State Test 159; `--n2-controls`; the retained audit and
+`worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`. This restores Decision 2 rather
+than introducing a new transition mechanism.
