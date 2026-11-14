@@ -509,7 +509,7 @@ jobs:
         run: python3 scripts/diagnose-rosetta-scope.py --self-test --self-test-report rosetta-cleanup-inert.json
 
       - name: Bounded ordinary-user POSIX cleanup cases
-        run: python3 tests/rosetta_cleanup_handshake_tests.py && python3 tests/rosetta_cleanup_process_tests.py --report rosetta-cleanup-processes.json
+        run: python3 tests/rosetta_cleanup_handshake_tests.py && python3 tests/rosetta_cleanup_fault_tests.py && python3 tests/rosetta_cleanup_process_tests.py --report rosetta-cleanup-processes.json
 
       - name: Tiny Rosetta launch route and outcome inert controls
         run: python3 scripts/diagnose-rosetta-launch.py --self-test --report rosetta-launch-inert.json
