@@ -1,0 +1,10 @@
+{
+  "guard_commit": "32e60cb68e2d402247683af4bdcb4769ac3c5e60",
+  "expected_head": "113b9189f0ff4d3b6348c553c559c22ee8ade782",
+  "path": "src/dsp/AnamorphEngine.h",
+  "git_status": "",
+  "guard_result": "accepted modified source",
+  "committed_sha256": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+  "modified_sha256": "570d506a0eb6ed667cc328462ccdf8ef04b0322676dc7bf0fe205d4b0e778993",
+  "scope": "real #237 clean_checkout function; disposable Git worktree"
+}

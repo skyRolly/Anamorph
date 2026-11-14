@@ -1,0 +1,13 @@
+{
+  "purpose": "Fresh source- and dependency-checked DSP, State, focused correction and State isolation validation of the intended combined review source.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "f4d268c17cd6619732f4f998928bcda7ddafc462",
+  "targets": ["AnamorphTests", "AnamorphStateTests"],
+  "runs": [
+    {"program": "AnamorphTests", "args": ["--n2-controls"], "expected_exit": 0},
+    {"program": "AnamorphTests", "args": ["--multiband-endpoints"], "expected_exit": 0},
+    {"program": "AnamorphTests", "args": [], "expected_exit": 0},
+    {"program": "AnamorphStateTests", "prefix": ["xvfb-run", "-a"], "args": ["--n2-controls"], "expected_exit": 0},
+    {"program": "AnamorphStateTests", "prefix": ["xvfb-run", "-a", "python3", "{checkout}/tests/state_isolation_tests.py", "--full-suite", "--"], "args": [], "expected_exit": 0}
+  ]
+}
