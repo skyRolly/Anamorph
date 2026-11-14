@@ -15,6 +15,7 @@ struct MB { friend auto member(MB); };
 struct Banks { friend auto member(Banks); };
 struct Active { friend auto member(Active); };
 struct Haas { friend auto member(Haas); };
+struct Velvet { friend auto member(Velvet); };
 struct S1 { friend auto member(S1); }; struct S2 { friend auto member(S2); };
 struct S3 { friend auto member(S3); }; struct S4 { friend auto member(S4); };
 struct G { friend auto member(G); }; struct R2 { friend auto member(R2); }; struct H { friend auto member(H); };
@@ -23,6 +24,7 @@ template struct Get<MB, &E::multiband>;
 template struct Get<Banks, &anamorph::MultibandWidth::bank>;
 template struct Get<Active, &anamorph::MultibandWidth::active>;
 template struct Get<Haas, &E::haas>;
+template struct Get<Velvet, &E::velvet>;
 template struct Get<S1, &anamorph::LR4Xover::s1>;
 template struct Get<S2, &anamorph::LR4Xover::s2>;
 template struct Get<S3, &anamorph::LR4Xover::s3>;
@@ -59,6 +61,7 @@ void run(const char* mode, float amplitude, bool dip)
     using namespace h4_trace_access;
     constexpr int n = 128;
     anamorph::EngineParameters p;
+    p.algorithm = anamorph::Algorithm::Velvet; p.algoAmount = 0;
     p.width = 0; p.mbEnable = true; p.mbBands = 2;
     p.mbFreqLow = 17851.238f; p.mbFreqMid = 19636.36f; p.mbFreqHigh = 21600.0f; p.mix = 1;
     auto e = std::make_unique<E>(); e->primeParameters(p); e->prepare(48000, n);
@@ -76,7 +79,7 @@ void run(const char* mode, float amplitude, bool dip)
         for (auto& x : bank.dax) inspect(dry[ch], x, ch);
     }
     // Observe the actual LR4 code on a copy of the live wet state. The next
-    // input is known here: Haas Amount is zero, then global Width is zero.
+    // input is known here: Velvet Amount is zero, then global Width is zero.
     // The copy cannot change the engine's subsequent production processing.
     auto filter = banks[active].x[0];
     float inputL = .2f, inputR = .1f, loL, hiL, loR, hiR;
@@ -125,6 +128,7 @@ void run(const char* mode, float amplitude, bool dip)
         }
     }
     if (control == "haas") (e.get()->*member(Haas{})).reset();
+    if (control == "velvet") (e.get()->*member(Velvet{})).reset();
     if (dip) p.mix = .5f;
     e->setParameters(p);
     b.clear();
@@ -154,5 +158,5 @@ int main(int argc, char** argv)
     run("none", .95f, true); run("none", .95f, false);
     run("dry-left", .95f, true); run("wet-left", .95f, true);
     run("wet-right", .95f, true); run("wet-both", .95f, true);
-    run("haas", .95f, true); run("none", .1f, true);
+    run("haas", .95f, true); run("velvet", .95f, true); run("none", .1f, true);
 }

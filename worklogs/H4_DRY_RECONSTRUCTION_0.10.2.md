@@ -431,15 +431,16 @@ combined production `f2686cb5`, the extreme finite input leaves both wet-bank
 channels finite but with state magnitude near `1.81288e38`. The next block first
 shows non-finite signal at the Multiband output, in both channels from sample
 zero, after finite upstream stages. The existing final-output guard then zeros
-those samples and performs its normal reset. A dry-only reset, a Haas reset and
-keeping Mix fully wet do not prevent the observation; resetting both wet banks
+those samples and performs its normal reset. A dry-only reset and keeping Mix
+fully wet do not prevent the observation; resetting both wet banks
 does, while resetting either channel alone does not. A smaller extreme input
 does not reproduce the zero block. These interventions locate the involved wet
-state and stage; they do not establish a suitable production recovery strategy,
-the first overflowing internal expression, or whether the ideal extreme-signal
-tail was representable. The final guard's reaction to its non-finite input is
-consistent with its existing contract. The underlying arithmetic's contract
-classification and relationship to N2-04–07 remain open.
+state and stage; they do not establish a suitable production recovery strategy
+or whether the entire extreme-signal tail was representable. A Haas reset was
+also tried but is not discriminating because Velvet was selected. The final
+guard's reaction to its non-finite input is consistent with its existing
+contract. The underlying arithmetic's contract classification and relationship
+to N2-04–07 remain open pending the narrower arithmetic and active-Velvet controls.
 
 The A2 witness separately retains an invalid dry state with finite monitored
 outputs; its detector remains incomplete. No candidate is selected, no H4

@@ -88,7 +88,8 @@ The separate subsequent zero block has now been traced on the historical
 combined production source: large finite wet-bank state is followed by
 non-finite Multiband output, after which the existing final-output guard zeros
 it and resets state. A diagnostic reset of both wet banks prevents this
-particular block; dry-only and Haas resets and keeping Mix fully wet do not.
+particular block; a dry-only reset and keeping Mix fully wet do not. A reset of
+inactive Haas is not a discriminating control in this Velvet setup.
 This does not attribute the block to A2 or establish the first overflowing
 expression or a distinct contract violation. The state-scan candidate still
 has not established a complete recovery contract or measured cost. See the
