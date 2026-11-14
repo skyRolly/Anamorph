@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local input guards and disposable Ninja rebuild controls; no audio evidence."""
 import os
+import hashlib
 from pathlib import Path
 import subprocess
 import tempfile
@@ -85,6 +86,41 @@ class Provenance(unittest.TestCase):
             prov.verify_variant(self.source, archive, 'diagnostic')
             variant.write_text(variant.read_text()+'unintended\n')
             with self.assertRaises(ValueError): prov.verify_variant(self.source, archive, 'diagnostic')
+
+    def test_expected_dirty_patch_and_unintended_edit(self):
+        expected = git(self.source, 'rev-parse', 'HEAD')
+        self.assertTrue(prov.verify_source_tree(self.source, expected))
+        target = self.source/'src/source.cpp'
+        target.write_text('intended diagnostic\n')
+        patch = self.root/'variant.patch'
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        self.assertTrue(prov.verify_source_tree(self.source, expected, patch, digest))
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected)
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, '0'*64)
+        target.write_text(target.read_text()+'unintended\n')
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, digest)
+        target.write_text('intended diagnostic\n')
+        (self.source/'src/new.h').write_text('untracked')
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, digest)
+
+    def test_fresh_checkout_build_and_patch(self):
+        cmake = self.source/'CMakeLists.txt'
+        cmake.write_text('cmake_minimum_required(VERSION 3.22)\nproject(replay NONE)\nadd_custom_target(AnamorphTests COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/object)\n')
+        git(self.source, 'add', 'CMakeLists.txt'); git(self.source, 'commit', '-qm', 'cmake fixture')
+        source_sha = git(self.source, 'rev-parse', 'HEAD')
+        (self.source/'src/source.cpp').write_text('intended diagnostic\n')
+        patch = self.root/'build.patch'
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        result = prov.fresh_checkout_build(self.source, source_sha, self.juce, self.root/'fresh-variant',
+                                           ['AnamorphTests'], patch, digest)
+        self.assertEqual(result['source_head'], source_sha)
+        self.assertEqual(result['patch_sha256'], digest)
+        self.assertTrue((self.root/'fresh-variant/object').exists())
+        with self.assertRaises(ValueError):
+            prov.fresh_checkout_build(self.source, source_sha, self.juce, self.root/'fresh-variant',
+                                      ['AnamorphTests'], patch, digest)
 
     def test_unverifiable_build_is_never_reused(self):
         fresh = self.root/'fresh'
