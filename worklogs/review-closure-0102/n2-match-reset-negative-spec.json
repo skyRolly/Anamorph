@@ -1,0 +1,29 @@
+{
+  "purpose": "Negative control restoring only N2-02 while checking the same Match/reset probe; retain corrected N2-03.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "75d8becf9c03fb531cf49818accd01e217db88f9",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "n2-match-reset",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/n2-match-reset-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n2-match-reset",
+      "args": [],
+      "expected_exit": 1
+    }
+  ],
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/n2-only.patch",
+    "sha256": "b293dabc2bbf21a1f73b3edf32010337ca7fe9a80fd1bb16a62d1a546060f33d",
+    "purpose": "Restore only ordinary crossfade target preservation."
+  }
+}
