@@ -1,0 +1,8 @@
+{
+  "purpose": "Exercise active, dormant, copied and fading dry crossover bank lifetimes with test-only injected invalid state, without modifying production source.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "f4d268c17cd6619732f4f998928bcda7ddafc462",
+  "targets": ["AnamorphTests"],
+  "probes": [{"name": "h4-bank-lifetime", "target": "AnamorphTests", "commit": "spec", "path": "worklogs/review-closure-0102/h4-bank-lifetime-probe.cpp"}],
+  "runs": [{"program": "h4-bank-lifetime", "args": [], "expected_exit": 0}]
+}
