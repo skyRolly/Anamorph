@@ -1,0 +1,10 @@
+{
+  "source_base": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "spec_commit": "df311a6e82bda374d4b12c0f764bbe24417eae30",
+  "build_parallelism_environment": "CMAKE_BUILD_PARALLEL_LEVEL=2",
+  "positive_outer_exit": 0,
+  "negative_outer_exit": "not observed after session became unavailable",
+  "negative_probe_exit": 1,
+  "negative_expected_exit": 1,
+  "scope": "Four repeated left-only dry heals with finite inputs and wet outputs. Compare opposite-channel dry integrator bits; this does not prove all unrelated state or recovery cases."
+}

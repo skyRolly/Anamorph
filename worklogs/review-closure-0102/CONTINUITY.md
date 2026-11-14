@@ -242,3 +242,76 @@ replacement for processor automation and the full State suite. Exact probe,
 patch, receipt, binary, commands, outputs and exit statuses are in
 `n2-match-reset-results/`; the negative executable's exit 1 is expected, and
 both outer relink runners exited 0.
+
+### Exact combined-source mutation replay (2026-11-14)
+
+The previously fresh-built `9e972572` receipt was independently checked before
+controlled relinks. The nonshipping selector wrapper uses byte-identical copies
+of the three committed N2 selector headers; its support hashes, commands,
+linked-object identities and raw outputs are in `isolated-selector-results/`.
+The actual combined test binary separately passed both registered selectors.
+On this exact source the wrapper records:
+
+| Isolated source | N2-02 DSP | N2-03 endpoint |
+|---|---:|---:|
+| Correct combined source | 720 / 0 failed | 392 / 0 failed |
+| Restore only N2-02 | 720 / 316 failed | 392 / 0 failed |
+| Premature forced adoption | 720 / 8 failed | 392 / 0 failed |
+| Restore both N2-03 call sites | 720 / 0 failed | 392 / 88 failed |
+| Restore only wet call sites | 720 / 0 failed | 392 / 44 failed |
+| Restore only dry call sites | 720 / 0 failed | 392 / 44 failed |
+
+Each selector's recorded exit matched its expected positive or negative result.
+The wrapper's base outer exit was observed as 0; the encompassing five-mutation
+shell session became unavailable after completion, so its aggregate exit was
+not observed. The independent processor mutation was executed on historical
+`f2686cb5` (12/20 failures), whose product and test bytes relevant to it match
+the current combined source; it was not rerun as a separate final-head State
+mutation. The header clamp similarly has a fresh `f2686cb5` diagnostic build,
+not an exact-`9e972572` diagnostic build. These limits do not alter the exact
+combined source's passing 20-check processor and 392-check endpoint selectors.
+
+### Source-bound H4 channel recovery control (2026-11-14)
+
+New fresh diagnostic builds reproduce the earlier A2 opposite-channel check
+with verified source, patch, pinned JUCE, build, probe and binary identities.
+Across four repeated extreme finite left-channel stimuli, the traced A2 guard
+reports finite input and wet output, four left dry heals, zero right dry heals,
+zero final-wet heals and **4/4** right dry-integrator comparisons equal to an
+independent reference. A paired mutation changes only the recovery call to
+reset both dry channels; all those premises and counters remain the same while
+right-state matches become **0/4**. This is a sensitive recovery-ownership
+control for this one workload; it does not establish the complete A2 recovery
+contract or preservation of every other state family. The separately copied
+nonshipping trace support changes counter linkage so a full target can be
+built before its probe; the original diagnostic sources are untouched.
+Receipts and raw outputs are in `h4-channel-recovery-results/`. The positive
+outer runner exit 0 was observed; the negative probe's exit 1 was recorded as
+expected, but its outer session became unavailable after completion. The
+historical instruction ratios still apply only to the original output-guard
+candidate, not the state-scan or these instrumented binaries.
+
+### Exact-head hosted validation and #240 exception
+
+The exact `9e972572` integration passed hosted Build & Validate (16 successful
+jobs, three conditional skips), CodeQL and Microsoft C++ Code Analysis. Hosted
+metadata records the Linux, macOS, native Intel macOS and Windows builds and
+suites, pluginval, packaging and ABI checks; ASan/UBSan/vptr and Valgrind;
+fuzz; and TSan/RTSan with liveness controls. The fuzz findings upload and two
+optional macOS review jobs were skipped under their workflow conditions. The
+Rosetta step has a capability-based skip inside a successful step, so without
+raw logs its execution cannot be inferred solely from the green metadata; the
+native Intel job is separately successful. Raw SARIF was inaccessible.
+
+Exact-head Build & Validate, CodeQL and Microsoft analysis also passed for
+#237 `738b7b23`, #238 `f08d4ebf`, #239 `30560d33`, and #242 `73c68f7a`.
+#240 `df89edb6` passed CodeQL and Microsoft analysis, but its first Build &
+Validate attempt `43623171585` failed in the macOS `DSP + state self-tests,
+x86_64 slice under Rosetta` step. The job's other applicable steps and all
+other applicable jobs succeeded. The raw job log was empty and the macOS debug
+artifact download was forbidden, so the failing assertion or infrastructure
+cause cannot be established. The failed attempt metadata is retained in
+`pr240-hosted-failed-attempt.json`; a failed-job exact-head rerun was requested.
+Do not erase or attribute the initial failure without evidence. An earlier
+intermediate integration `26b39ef2` hosted workflow also concluded cancelled;
+its partial successes do not validate the later combined source.

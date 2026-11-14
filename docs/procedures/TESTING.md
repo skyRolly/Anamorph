@@ -7762,3 +7762,9 @@ adds eight engine lanes with Match on, live independent crossfade adoption and
 clock checks through host reset and changed-sound re-prepare. Its receipt-checked
 combined-source result and isolated original-defect mutation are recorded in
 the continuity worklog; it does not replace the full processor suite.
+
+
+Receipt-checked exact combined-source N2 DSP mutations and fresh H4
+channel-local recovery / reset-both controls are recorded in
+`worklogs/review-closure-0102/CONTINUITY.md`; the processor and header-clamp
+mutations retain their separately identified historical combined-source scope.

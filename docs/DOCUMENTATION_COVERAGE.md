@@ -19337,3 +19337,11 @@ Added a nonshipping source- and object-verified combined-source control for
 ordinary duck, Bypass/Multiband target clocks and Level Match across host reset
 and re-prepare, with an isolated original-defect negative control. TESTING and
 the review continuity record distinguish this from a full measurement oracle.
+
+
+## Review-record isolated controls — 2026-11-14 UTC
+
+The continuity record and TESTING now distinguish exact combined-source DSP
+mutation sensitivity, separately scoped processor/clamp controls, and a fresh
+H4 opposite-channel recovery comparison with a reset-both negative control.
+The recorded hosted #240 Rosetta failure remains unattributed pending evidence.
