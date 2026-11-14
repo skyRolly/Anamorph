@@ -1,0 +1,132 @@
+{
+  "actual_branch_refs": {
+    "237": {
+      "base": "51e6250d34b44d838a51f9a5086105d39d6b0f29",
+      "head": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "changed_files": 195
+    },
+    "238": {
+      "base": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "head": "f08d4ebfdc3710f3d3cae961a8d2c43a74c85fec",
+      "changed_files": 31
+    },
+    "239": {
+      "base": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "head": "30560d330a707f6087f14baacace78ffeac9b4df",
+      "changed_files": 27
+    },
+    "240": {
+      "base": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "head": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "changed_files": 545
+    },
+    "242": {
+      "base": "51e6250d34b44d838a51f9a5086105d39d6b0f29",
+      "head": "73c68f7af90fe0d437ea2087d3cb48f9153b7b89",
+      "changed_files": 12
+    }
+  },
+  "overlaps": {
+    "237-238": {
+      "count": 5,
+      "files": [
+        "README.md",
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/REPOSITORY_MAP.md",
+        "docs/SOURCE_OF_TRUTH.md",
+        "docs/procedures/TESTING.md"
+      ]
+    },
+    "237-239": {
+      "count": 5,
+      "files": [
+        "README.md",
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/REPOSITORY_MAP.md",
+        "docs/SOURCE_OF_TRUTH.md",
+        "docs/procedures/TESTING.md"
+      ]
+    },
+    "237-240": {
+      "count": 5,
+      "files": [
+        "README.md",
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/REPOSITORY_MAP.md",
+        "docs/SOURCE_OF_TRUTH.md",
+        "docs/procedures/TESTING.md"
+      ]
+    },
+    "237-242": {
+      "count": 2,
+      "files": [
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/procedures/TESTING.md"
+      ]
+    },
+    "238-239": {
+      "count": 12,
+      "files": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/REPOSITORY_MAP.md",
+        "docs/SOURCE_OF_TRUTH.md",
+        "docs/architecture/DSP_ALGORITHMS.md",
+        "docs/architecture/DSP_GRAPH_REFERENCE.md",
+        "docs/architecture/design-decisions/ADR-0004-clickfree-transition-strategy.md",
+        "docs/procedures/TESTING.md",
+        "src/dsp/AnamorphEngine.cpp",
+        "src/dsp/AnamorphEngine.h",
+        "tests/dsp_tests.cpp"
+      ]
+    },
+    "238-240": {
+      "count": 8,
+      "files": [
+        "README.md",
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/REPOSITORY_MAP.md",
+        "docs/SOURCE_OF_TRUTH.md",
+        "docs/architecture/DSP_GRAPH_REFERENCE.md",
+        "docs/procedures/TESTING.md",
+        "src/dsp/AnamorphEngine.cpp",
+        "tests/dsp_tests.cpp"
+      ]
+    },
+    "238-242": {
+      "count": 2,
+      "files": [
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/procedures/TESTING.md"
+      ]
+    },
+    "239-240": {
+      "count": 8,
+      "files": [
+        "README.md",
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/REPOSITORY_MAP.md",
+        "docs/SOURCE_OF_TRUTH.md",
+        "docs/architecture/DSP_GRAPH_REFERENCE.md",
+        "docs/procedures/TESTING.md",
+        "src/dsp/AnamorphEngine.cpp",
+        "tests/dsp_tests.cpp"
+      ]
+    },
+    "239-242": {
+      "count": 2,
+      "files": [
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/procedures/TESTING.md"
+      ]
+    },
+    "240-242": {
+      "count": 2,
+      "files": [
+        "docs/DOCUMENTATION_COVERAGE.md",
+        "docs/procedures/TESTING.md"
+      ]
+    }
+  }
+}
