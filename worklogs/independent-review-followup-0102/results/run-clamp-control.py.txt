@@ -1,0 +1,16 @@
+from pathlib import Path
+import subprocess,shlex
+root=Path('/workspace/anamorph-review-239');build=Path('/workspace/anamorph-review-build-239');out=Path('/workspace/anamorph-review-results/clamp-239');(out/'src/dsp').mkdir(parents=True,exist_ok=True)
+h=(root/'src/dsp/AnamorphEngine.h').read_text();a='if (std::abs (blend) <= 0.0f) return from;';b='if (std::abs (blend - 1.0f) <= 0.0f) return to;';assert h.count(a)==h.count(b)==1
+(out/'src/dsp/AnamorphEngine.h').write_text(h.replace(a,'if (blend <= 0.0f) return from;').replace(b,'if (blend >= 1.0f) return to;'))
+(out/'src/dsp/AnamorphEngine.cpp').write_bytes((root/'src/dsp/AnamorphEngine.cpp').read_bytes())
+cmds=subprocess.check_output(['ninja','-C',str(build),'-t','commands','AnamorphTests'],text=True).splitlines(); cmds=[shlex.split(x) for x in cmds]
+link=next(x for x in cmds if ' -o AnamorphTests_artefacts/Release/AnamorphTests ' in ' '.join(x))
+if link[:2]==[':','&&'] and link[-2:]==['&&',':']:link=link[2:-2]
+for ending,source,name in [('/tests/dsp_tests.cpp',root/'worklogs/n2-endpoints-0102/probe.cpp','probe'),('/src/dsp/AnamorphEngine.cpp',out/'src/dsp/AnamorphEngine.cpp','engine')]:
+ c=next(x for x in cmds if x[-1].endswith(ending) and '-c' in x);old=c[c.index('-o')+1];obj=out/(name+'.o');c=c.copy();c.insert(1,'-I'+str(out/'src'))
+ for f,v in [('-c',str(source)),('-o',str(obj)),('-MF',str(obj)+'.d'),('-MT',str(obj))]:
+  if f in c:c[c.index(f)+1]=v
+ subprocess.run(c,cwd=build,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);link=[str(obj) if x==old else x for x in link]
+binary=out/'clamp';link[link.index('-o')+1]=str(binary);subprocess.run(link,cwd=build,check=True)
+r=subprocess.run([str(binary)],capture_output=True,text=True);(out/'result.log').write_text(r.stdout+r.stderr);print('exit',r.returncode,r.stdout.splitlines()[-1]);print('\n'.join(x for x in r.stdout.splitlines() if 'FAIL' in x))
