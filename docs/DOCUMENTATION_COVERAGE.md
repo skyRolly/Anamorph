@@ -19332,3 +19332,7 @@ The existing ADR-0004 ownership contract now holds through ordinary fade-out/fad
 N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
 [the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
 exact stage endpoints independently of downstream Mix rounding.
+
+N2-01/V2-01: [the H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) maps the actual gate, independent low-frequency oracle, recovery and cost evidence to Proposed ADR-0074. Test 25 remains an aggregate RMS regression with unchanged assertion conditions; the new failing-on-main oracle remains nonshipping until an approved production correction.
+
+N2-02/N2-03 delivery and cross-finding validation are indexed in the [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md); per-PR records and immutable final source links distinguish independent corrections from H4 diagnostic candidates.

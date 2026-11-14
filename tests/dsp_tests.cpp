@@ -1546,14 +1546,14 @@ static void testAbActiveClampOnCorruptState()
 }
 
 // ---------------------------------------------------------------------------
-//  H4 (Wave 2) comb regression: with Multiband on and Mix parked at exactly 1
-//  (Match off, no crossfade in flight) the dry-align bank is gated off. A Mix
-//  dip must re-engage it phase-matched -- a dry bank that came back stale or
-//  unsynced would comb the mono sum exactly like pre-KI-#1. Same metric as
-//  Test 7: mono-sum RMS out/in (unaligned dry combs to <0.8).
+//  H4 (Wave 2) aggregate RMS regression: with Multiband on and Mix parked at 1
+//  (Match off, no crossfade) the dry-align bank is gated off. This default-
+//  crossover noise case measures ten-block transition and settled mono RMS.
+//  It does not prove sample-level or worst-frequency phase reconstruction;
+//  the independent low-frequency N2-01/V2-01 oracle lives in the H4 worklog.
 static void testDryAlignGateRecomb()
 {
-    std::printf ("Test 25: dry-align gate (H4) -- Mix re-engage after a gated stretch stays comb-free\n");
+    std::printf ("Test 25: dry-align gate (H4) -- aggregate mono RMS through Mix re-entry\n");
     juce::ScopedNoDenormals noDenormals;
     const double sr = 48000.0;
     const int block = 256;
@@ -1572,7 +1572,7 @@ static void testDryAlignGateRecomb()
     double inSqTr = 0.0, outSqTr = 0.0;
     for (int nb = 0; nb < 160; ++nb)
     {
-        if (nb == 80) p.mix = 0.5f; // dip: the gated bank must re-engage aligned
+        if (nb == 80) p.mix = 0.5f; // dip: observe the gated bank re-entry
         juce::AudioBuffer<float> buf (2, block);
         fillNoise (buf, (unsigned) (nb * 13 + 5));
         double blkIn = 0.0;
@@ -1598,8 +1598,8 @@ static void testDryAlignGateRecomb()
     const double ratio   = std::sqrt (outSq   / juce::jmax (1.0e-12, inSq));
     std::printf ("  transition mono-sum RMS out/in = %.3f, settled = %.3f (unaligned combs to <0.8)\n",
                  trRatio, ratio);
-    check (trRatio > 0.90, "mono sum survives the re-engage transition (bank re-warms masked)");
-    check (ratio   > 0.95, "mono sum intact once re-engaged (dry/wet phase-aligned again)");
+    check (trRatio > 0.90, "aggregate mono RMS exceeds 90% over the ten transition blocks");
+    check (ratio   > 0.95, "settled mono RMS exceeds 95% after re-entry");
 }
 
 // ---------------------------------------------------------------------------

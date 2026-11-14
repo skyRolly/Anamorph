@@ -1,0 +1,54 @@
+{
+  "anamorph-n2-h4-warm": {
+    "parent_sha": "6b55dfadcd89c23b7739c1fbb694adef707bed92",
+    "files": {
+      "src/dsp/AnamorphEngine.cpp": "56671414c0bb4979917d18d1073f42d54601dde6d48bbd5465c20a1b1b0ddbbd",
+      "src/dsp/AnamorphEngine.h": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+      "src/dsp/LR4Xover.h": "e1e26b9dc1505e4441a910f1a544539cc964c9407414c53d6f407c433b89ceff",
+      "src/dsp/MultibandWidth.cpp": "1274a734a1f99aeff3ba507b00c62b49cc69bd17e9acd9f7ff011c3cac0249ba",
+      "src/dsp/MultibandWidth.h": "90cb5b1968ef2b36ac613ce2794359c96d0d32e63a1c4b96837ec6f40c419482",
+      "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+      "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12"
+    },
+    "diff_sha256": "703bb6b29dd4894f6e6aee478c0cc7dccc4e52495e959b359a5029bf3be896c2"
+  },
+  "anamorph-n2-h4-state": {
+    "parent_sha": "6b55dfadcd89c23b7739c1fbb694adef707bed92",
+    "files": {
+      "src/dsp/AnamorphEngine.cpp": "56482e4fe8efc62640d4c1cfa10d5f1e55af8405c1758a326d373927f6e53b1d",
+      "src/dsp/AnamorphEngine.h": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+      "src/dsp/LR4Xover.h": "e1e26b9dc1505e4441a910f1a544539cc964c9407414c53d6f407c433b89ceff",
+      "src/dsp/MultibandWidth.cpp": "2b4504453558c84908eafe162abd3c5cb4da2a21ed4d5c6172720542fff2aef9",
+      "src/dsp/MultibandWidth.h": "627a0890806126bed3cd05e75d741a474b91eac55daa9a9bfc603876ceec3c85",
+      "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+      "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12"
+    },
+    "diff_sha256": "d4698635c7f1c28a7af81a1d635083b803e2291c1a372b52f4b7d0a51479f2d9"
+  },
+  "anamorph-n2-h4-guard": {
+    "parent_sha": "6b55dfadcd89c23b7739c1fbb694adef707bed92",
+    "files": {
+      "src/dsp/AnamorphEngine.cpp": "d6f298455a4f88fa471e3f9a8057e17c62aa46f58ef7c46a5c044669fdc08960",
+      "src/dsp/AnamorphEngine.h": "9c5aff978627fff2fef516f28c2950653146a0e265943fd902fdc902a4a13fa9",
+      "src/dsp/LR4Xover.h": "b5637f1b0eebdb5e7ff5170e81652749b1daf955c7a831128ad9313bfbcdb896",
+      "src/dsp/MultibandWidth.cpp": "1274a734a1f99aeff3ba507b00c62b49cc69bd17e9acd9f7ff011c3cac0249ba",
+      "src/dsp/MultibandWidth.h": "8ebb992c131c447957cbd6c833c2d0d3d132fd5a4c342d48a22acb88eb208581",
+      "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+      "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12"
+    },
+    "diff_sha256": "1a473c7ecc5e83060d627f793741faaac7cef3d4da0b53aa2a494f92f39b10f5"
+  },
+  "anamorph-n2-combined-final-h4": {
+    "parent_sha": "7764df5c2d02eee7a11c475fcca93097f9559dee",
+    "files": {
+      "src/dsp/AnamorphEngine.cpp": "a8693014c379cae341f884a84305353889e4930a08b37ee869af754e72475905",
+      "src/dsp/AnamorphEngine.h": "3ffa1881a52c0bac983c655c84c13423d2cd4e7f35f3c176b8ec0211b4202296",
+      "src/dsp/LR4Xover.h": "b5637f1b0eebdb5e7ff5170e81652749b1daf955c7a831128ad9313bfbcdb896",
+      "src/dsp/MultibandWidth.cpp": "1274a734a1f99aeff3ba507b00c62b49cc69bd17e9acd9f7ff011c3cac0249ba",
+      "src/dsp/MultibandWidth.h": "8ebb992c131c447957cbd6c833c2d0d3d132fd5a4c342d48a22acb88eb208581",
+      "src/dsp/MonoMaker.cpp": "b0aee8e25c793f076b1e3b572943841ddcbbb607a7e861b61c4ee3eee7f1454f",
+      "src/dsp/SoloMonitor.cpp": "5e563dd8b0e152f6d5db84ffbaa513c1490d5e6c68e8d4957e8a177bfbf1bc12"
+    },
+    "diff_sha256": "73d702dcda6f73e8d79b26da25fd9c32d36c586667661c198d8a86de409c0daf"
+  }
+}

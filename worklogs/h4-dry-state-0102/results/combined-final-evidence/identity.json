@@ -1,0 +1,24 @@
+{
+  "sha": "7764df5c2d02eee7a11c475fcca93097f9559dee",
+  "juce_sha": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "binaries": {
+    "AnamorphTests": {
+      "sha256": "1115063ef38a9670011485501fbc555ed169246c1a844c9cd4d797391dbd9e24"
+    },
+    "AnamorphStateTests": {
+      "sha256": "c2e4d0111ae3ed4167c6da1d21463b5cd25451d8b9d41800787c4b70938d0271"
+    }
+  },
+  "combined-final-build.log": {
+    "sha256": "9c7feb93d1559e1995ac067fcce54876c4483c2050b8948991c42c531c9c1fe2",
+    "bytes": 458588
+  },
+  "combined-final-dsp.log": {
+    "sha256": "9e97ef65a43a261056a1d92a52bb16f1eeec56bdf218589711825313f213c624",
+    "bytes": 165689
+  },
+  "combined-final-state.log": {
+    "sha256": "11feba95ff2442532faa47c98438e46cea299b0e2ce7605f51903c9decd9b5a5",
+    "bytes": 126589
+  }
+}

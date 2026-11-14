@@ -224,3 +224,7 @@ The [ordinary DSP correction record](../worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2
 The [N2-03 endpoint worklog](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) is supporting
 implementation evidence for the existing ADR-0004/0005 contract; it supplies no
 new H4, topology, numerical-interior or merge approval.
+
+The [H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) and `worklogs/h4-dry-state-0102/` are supporting measurements, optional failing oracles and diagnostic variants. ADR-0074 is Proposed; these files grant no production or merge approval.
+
+The [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md) records independent PR heads, combined-source checks and explicit H4 owner-decision limits. It is supporting execution evidence, not merge/release or architecture approval.

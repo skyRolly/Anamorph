@@ -1,0 +1,26 @@
+[
+  {
+    "sequence": 0,
+    "variant": "baseline",
+    "binary": "/workspace/n2-execution/h4-baseline/probe",
+    "output": "/workspace/n2-execution/h4-guard-bench/0-baseline.csv"
+  },
+  {
+    "sequence": 1,
+    "variant": "guard",
+    "binary": "/workspace/n2-execution/h4-bench-guard/probe",
+    "output": "/workspace/n2-execution/h4-guard-bench/1-guard.csv"
+  },
+  {
+    "sequence": 2,
+    "variant": "guard",
+    "binary": "/workspace/n2-execution/h4-bench-guard/probe",
+    "output": "/workspace/n2-execution/h4-guard-bench/2-guard.csv"
+  },
+  {
+    "sequence": 3,
+    "variant": "baseline",
+    "binary": "/workspace/n2-execution/h4-baseline/probe",
+    "output": "/workspace/n2-execution/h4-guard-bench/3-baseline.csv"
+  }
+]
