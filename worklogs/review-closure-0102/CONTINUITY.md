@@ -160,9 +160,9 @@ the prior review verified its CodeQL Action SHA against upstream v4.39.3.
   are exercised by the focused tests. Guarded combined N2-02-only mutation
   fails 316/720 engine and 12/20 processor assertions while N2-03 passes;
   premature forced adoption fails 8/720. Existing State tests 133 and 136
-  cover broader measurement/reset/re-prepare interactions, but these were not
-  isolated in a new N2-02-specific mutation. No unrelated product correction
-  was made.
+  cover broader measurement/reset/re-prepare interactions. The subsequent
+  dedicated Match/reset probe and its isolated N2-02 mutation are recorded
+  below. No unrelated product correction was made.
 
 ### H4 and remaining product findings
 
