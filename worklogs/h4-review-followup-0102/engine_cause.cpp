@@ -104,12 +104,25 @@ void run(const char* mode, float amplitude, bool dip)
     const double maximum = std::max({std::abs(yh), std::abs(yb), std::abs(newS1),
         std::abs(yl), std::abs(newS2), std::abs(yh2), std::abs(yb2), std::abs(newS3),
         std::abs(yl2), std::abs(newS4), std::abs(high)});
+    const float safeYh = static_cast<float>((double(firstDifference)-s2)*h);
+    const float safeYb = g*safeYh+s1, safeS1 = g*safeYh+safeYb;
+    const float safeYl = g*safeYb+s2, safeS2 = g*safeYb+safeYl;
+    const float safeYh2 = (safeYl-coefficient*s3-s4)*h;
+    const float safeYb2 = g*safeYh2+s3, safeS3 = g*safeYh2+safeYb2;
+    const float safeYl2 = g*safeYb2+s4, safeS4 = g*safeYb2+safeYl2;
+    const float safeHigh = safeYl-r2*safeYb+safeYh-safeYl2;
+    const bool safeFinite = std::isfinite(safeYh) && std::isfinite(safeYb)
+        && std::isfinite(safeS1) && std::isfinite(safeYl) && std::isfinite(safeS2)
+        && std::isfinite(safeYh2) && std::isfinite(safeYb2) && std::isfinite(safeS3)
+        && std::isfinite(safeYl2) && std::isfinite(safeS4) && std::isfinite(safeHigh);
     std::printf("wet-filter-arithmetic mode=%s coefficient=%g s1=%g s2=%g product=%g finite=%d "
                 "first_difference=%g finite=%d numerator=%g finite=%d "
                 "wide_low=%g wide_high=%g wide_max=%g representable=%d\n",
                 mode, coefficient, s1, s2, product, std::isfinite(product),
                 firstDifference, std::isfinite(firstDifference), numerator, std::isfinite(numerator),
                 yl2, high, maximum, std::isfinite(maximum) && maximum <= limit);
+    std::printf("wet-filter-one-wide-step mode=%s low=%g high=%g finite=%d\n",
+                mode, safeYl2, safeHigh, safeFinite);
     filter.processSample(0, inputL, loL, hiL);
     filter.processSample(1, inputR, loR, hiR);
     std::printf("wet-filter-copy mode=%s input=%g,%g low=%g,%g high=%g,%g finite=%d,%d,%d,%d\n",
