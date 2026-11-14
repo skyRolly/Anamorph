@@ -2498,7 +2498,11 @@ fixture harness adopts/reaps its own known orphan child and is restored; no
 host security/permission setting changes. Independent bounded finally cleanup
 protects against a broken tested implementation. Source-lint retains both
 inert and process reports as Anamorph-POSIX-cleanup-validation. These tests
-establish measured Linux same-group behavior, not complete macOS LLDB cleanup.
+establish measured Linux same-group behavior, not complete macOS LLDB cleanup. The fixture's
+child publishes readiness only after its parent has finished writing its identity.
+`tests/rosetta_cleanup_handshake_tests.py` delays the parent deliberately and
+requires the fixed handshake to pass while the old ordering is detected; it uses
+only its own process group and restores the process-local subreaper setting.
 
 Recorded native run 40285821331/job 121449104663 at de31f2c0 remains failed:
 direct focused completion, then a 120-second LLDB timeout. Its driver reported

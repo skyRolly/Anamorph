@@ -32,9 +32,15 @@ if sys.argv[2]=='leader_exit':
     child=os.fork()
     if child:
         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))
+        # Publish the child's identity before it can publish readiness. The
+        # observer must never read identity.json while its writer is still open.
+        (root/'identity-written').write_text('ready')
         until=time.monotonic()+1
         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)
         os._exit(0)
+    until=time.monotonic()+1
+    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)
+    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')
 else:
     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
