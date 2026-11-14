@@ -7766,3 +7766,14 @@ fresh baseline and archived diagnostic replay and its identities are recorded
 under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
 The shared reviewed-specification runner records newly built objects and results;
 unmigrated historical relinkers retain their stated provenance limitations.
+
+
+The guarded replay follow-up also rebuilt the archived baseline and recorded
+`live_toggle` variant against verified source and JUCE trees. Both produced
+byte-identical 16-row outputs compared with the preserved logs; the new receipt
+and build log are under `worklogs/dsp-numerical-audit-0102/replay-final-2026-11-14/`.
+A separate full diagnostic build checked the endpoint clamp mutation against
+combined source `f2686cb5`, preserving the N2-02 selector. The LR4 witness
+runner uses a committed minimal stub and is not a full JUCE or engine run.
+See the worklog inventory for the unverified historical H4 experiments and
+reproduction premises.

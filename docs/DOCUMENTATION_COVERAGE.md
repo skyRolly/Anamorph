@@ -19336,3 +19336,14 @@ unchanged. The guard fails closed on unsupported symlink/submodule trees and
 working-tree transformations; receipt-based relinking also rejects changes in
 the recorded compiler/include environment. It does not attest to the toolchain
 or host.
+
+
+## Review replay closure follow-up — 2026-11-14 UTC
+
+The documentation drift review found that the old per-PR replay instructions
+still accepted unverified reused objects, and that the baseline replay record
+predated the newest guard checks. The dependent PRs disable those entry points;
+the shared inventory and procedures identify which experiments have verified
+replacements and which remain open. Recorded a new full baseline and historical
+diagnostic replay, a fresh combined-source header-clamp control, and the separate
+committed-stub LR4 witness. Historical archived evidence remains unchanged.
