@@ -105,7 +105,7 @@ identities and original/P1 human attestations with their scope. The earlier
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **76 DSP self-tests** + the **142-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **77 DSP self-tests** + the **142-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -277,3 +277,5 @@ Native fixtures are in `scripts/fixtures/macos-receipts`;
 `scripts/test-macos-receipt-gates.py` checks the production scheduling contract.
 
 Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numerical-audit-0102/README.md), including N2-01–07/V2-01 reproduction and unresolved work.
+
+0.10.2 DSP correction evidence: [ordinary crossfade ownership](worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md).
