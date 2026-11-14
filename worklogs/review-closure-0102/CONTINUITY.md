@@ -398,3 +398,54 @@ not establish whether the first failure was a product, test or infrastructure
 problem. The retry metadata and annotations are in `pr240-hosted-rerun.json`
 and `pr240-hosted-rerun-annotations.json`. This retry validates `df89edb6`, not
 the later documentation-only `b49c1345` head.
+
+### Final reviewed heads and exact local integration evidence
+
+The later documentation-only #240 head `b49c1345d07396524618d6be517c21edfa4beb4f`
+and the isolated integration `3669cf716b27de56dd125f29d0b2672598aebdc2` are now
+pushed. The #240 description has been updated for that head, the complete
+`df89edb6` retry, the first failure's unresolved cause and the new evidence.
+The integration contains main `51e6250d`, #237 `738b7b23`, #238 `f08d4ebf`,
+#239 `30560d33`, #240 `b49c1345` and #242 `73c68f7a`. It changes only the six
+H4 documentation files listed above relative to `9e972572`; production `src/`
+is byte-identical to `f2686cb5`. The original audit `original/` files remain
+byte-identical to `6b55dfad`.
+
+Fresh local executions on exact source `3669cf71` completed:
+
+- The 16-outcome combined runner passed with full DSP **5,614/0**, N2-02
+  **720/0**, N2-03 **392/0**, and processor N2-02 State **20/0**. Isolated
+  N2-02 restoration caused **316/720** engine and **12/20** processor failures
+  while N2-03 stayed **392/0**; premature forced adoption caused **8/720**.
+  Restoring both endpoint expressions caused **88/392** and wet-only and
+  dry-only each caused **44/392** failures while N2-02 stayed **720/0**.
+- An independently fresh-built header clamp mutation at diagnostic tree
+  `308afe041ad9e6ebdad0fa3dd2de13c620278a33` produced its expected **1/392**
+  endpoint failure and **720/0** N2-02 result, runner exit 0. Its complete
+  selected patch, receipt, binary hash, commands, raw outputs, build log and
+  exit status are in `integration-3669-results/clamp/`.
+- Full State and its isolation driver passed **16,555 checks, zero failures**.
+  The source/receipt-bound execution record and raw logs are in
+  `integration-3669-results/state-suite/`. The 35-command local source,
+  documentation and fixture batch passed, as did the separate 28-case JUCE
+  cache and 17 synthetic provenance guard controls. Raw command and exit
+  records are under `integration-3669-results/`.
+
+The latest actual remote branch refs and PR diff overlaps are recorded in
+`pr-overlaps-final-2026-11-14.json`, using merge-base-to-head change sets. The
+#238/#239 overlap remains 12 files; #238/#240 and #239/#240 each remain 8;
+#242 overlaps each in two documentation files. Crucially, #237's merge base
+is `113b9189`, not current main `51e6250d`: main contains the merged #241
+CodeQL update which #237's branch predates. The intended integration includes
+both. Inspect the actual updated main and explicitly retarget/revalidate each
+child; a PR's cached base SHA or earlier green run does not substitute for the
+resulting merge identity.
+
+At this checkpoint #242, #237, #238 and #239 have exact-head completed hosted
+Build & Validate, CodeQL and Microsoft analysis successes as recorded above.
+The new exact integration and #240 hosted checks are still running; inspect
+`43649435367`, `43649442113`, `43649444689` and `43650397900`, `43650405161`,
+`43650408174` respectively. The #240 same-repository PR run `43650402605`
+executes merge-check while the branch push supplies the full matrix; skipped
+PR jobs must not be misreported as having run. No owner merge, ADR acceptance,
+H4 implementation or release authorization has been given.
