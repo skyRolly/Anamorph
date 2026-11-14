@@ -31,3 +31,13 @@ The State isolation control also reports success. `fresh-full/identity.json`
 records the commands, compiler and linked-object and binary hashes; compressed
 raw outputs and the build log preserve their original bytes. This is local
 Linux validation, not the exact-head hosted cross-platform or sanitizer matrix.
+
+
+A later H4 preservation build was stopped before linking (exit 137) after
+source review found that the historical trace defined its counter symbols only
+in the probe. A fresh target build needs those symbols before the probe is
+linked. The new nonshipping diagnostic defines counters in the traced engine
+and uses an explicitly copied support probe with extern declarations; the
+original diagnostic source is unchanged. The incomplete log is
+`h4-preservation-wiring-stopped.log.gz`. This stopped attempt produced no test
+result and is not a product failure.
