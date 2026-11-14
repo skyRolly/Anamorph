@@ -2,6 +2,7 @@
 """Build an archived probe from fresh baseline CMake objects; no fixed workspace paths."""
 import argparse,hashlib,shlex,subprocess
 from pathlib import Path
+from replay_provenance import fresh_build, verify_archive_file
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--checkout',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
 p.add_argument('--probe',choices=['probe','gate','overlap','processor','os','heal','drive'],required=True)
@@ -10,11 +11,14 @@ a=p.parse_args();a.checkout=a.checkout.resolve();a.build=a.build.resolve();a.out
 sha=subprocess.check_output(['git','-C',str(a.checkout),'rev-parse','HEAD'],text=True).strip()
 if sha!='113b9189f0ff4d3b6348c553c559c22ee8ade782':raise SystemExit('Archival replay requires the exact baseline SHA. Use a separate worktree.')
 root=Path(__file__).resolve().parent/'original';state=a.probe=='processor';target='AnamorphStateTests' if state else 'AnamorphTests';main='state_tests.cpp' if state else 'dsp_tests.cpp'
+names={'probe':'probe.cpp','gate':'gate-probe.cpp','overlap':'overlap-matrix.cpp','processor':'processor_probe.cpp','os':'os-probe.cpp','heal':'heal-probe.cpp','drive':'drive-probe.cpp'}
+verify_archive_file(root, root/names[a.probe], names[a.probe])
+if a.variant!='baseline': verify_archive_file(root, root/('engine-'+a.variant+'.cpp'), 'engine-'+a.variant+'.cpp')
+a.build=fresh_build(a.checkout,a.build,a.out/'fresh-build',target)
 commands=subprocess.check_output(['ninja','-C',str(a.build),'-t','commands',target],text=True).splitlines()
 cc=next(shlex.split(x) for x in commands if x.endswith('/tests/'+main) and ' -c ' in x)
 link=next(shlex.split(x) for x in commands if ' -o '+target+'_artefacts/Release/'+target+' ' in x)
 link=link[2:-2] if link[:2]==[':','&&'] and link[-2:]==['&&',':'] else link
-names={'probe':'probe.cpp','gate':'gate-probe.cpp','overlap':'overlap-matrix.cpp','processor':'processor_probe.cpp','os':'os-probe.cpp','heal':'heal-probe.cpp','drive':'drive-probe.cpp'}
 source=a.out/names[a.probe];source.write_text((root/source.name).read_text().replace('/workspace/anamorph-audit-113b9189/source/tests/',str(a.checkout/'tests')+'/'))
 obj=a.out/'probe.o';old_obj=cc[cc.index('-o')+1]
 def compile_as(cmd,src,obj):
