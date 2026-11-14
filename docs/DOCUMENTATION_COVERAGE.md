@@ -19340,3 +19340,13 @@ the first observed invalid signal at Multiband and the following existing
 self-heal. The later copied-state control identifies a distinct extreme-finite wet
 LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
 issues and TESTING. Existing H4 findings and historical measurements remain.
+
+## Numerical audit replay provenance follow-up (2026-11-14)
+
+The drift check found that the expanded synthetic replay tests and fresh-build
+procedure needed current testing and coverage entries. TESTING and the audit
+README now distinguish synthetic source guards from the newly executed product
+baseline/diagnostic replay and identify the relinkers still outside the shared
+mechanism. Historical reports, original logs and original manifests remain
+unchanged. The guard fails closed on unsupported symlink/submodule trees and
+working-tree transformations; it does not attest to the toolchain or host.

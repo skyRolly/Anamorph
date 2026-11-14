@@ -1,0 +1,6 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1049 +1049 @@
+-        if (! pendingForced)
++        if (true) // negative control: premature forced adoption

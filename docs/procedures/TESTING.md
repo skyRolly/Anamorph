@@ -7777,3 +7777,14 @@ numerator overflow and compares one diagnostic widened step. An active-Velvet
 reset does not prevent the observed block; the earlier Haas reset was inactive.
 The arithmetic control is scoped to the recorded first sample and does not
 validate a production correction or the complete subsequent tail.
+
+## Numerical audit replay provenance controls (2026-11-14)
+
+`python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
+synthetic source-tree, patch, dependency and fresh-build controls, including
+assume-unchanged, skip-worktree, staged edits, ignored inputs and type/mode
+mismatches. These checks do not themselves execute product DSP. The separate
+fresh baseline and archived diagnostic replay and its identities are recorded
+under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
+The shared reviewed-specification runner records newly built objects and results;
+unmigrated historical relinkers retain their stated provenance limitations.
