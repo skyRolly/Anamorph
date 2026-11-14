@@ -19328,3 +19328,13 @@ The worklog archive retains all original reports, diagnostics, reproduction sour
 ## N2-02 ordinary-duck crossfade targets
 
 The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
+
+## Numerical audit replay provenance follow-up (2026-11-14)
+
+The drift check found that the expanded synthetic replay tests and fresh-build
+procedure needed current testing and coverage entries. TESTING and the audit
+README now distinguish synthetic source guards from the newly executed product
+baseline/diagnostic replay and identify the relinkers still outside the shared
+mechanism. Historical reports, original logs and original manifests remain
+unchanged. The guard fails closed on unsupported symlink/submodule trees and
+working-tree transformations; it does not attest to the toolchain or host.
