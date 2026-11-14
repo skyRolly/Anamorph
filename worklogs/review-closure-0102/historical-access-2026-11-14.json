@@ -1,0 +1,11 @@
+{
+  "run": 43574998394,
+  "source": "d8627e554aadf77586a8079b33075656cc0b770a",
+  "artifact_id": 14106326303,
+  "artifact_name": "Anamorph-POSIX-cleanup-validation",
+  "artifact_metadata": "listed, not expired",
+  "artifact_download": "failed: artifact host returned Forbidden",
+  "failed_job_log": "gh run view --log-failed returned exit 0 with empty stdout and stderr",
+  "code_scanning_analyses": "HTTP 403: Resource not accessible by integration",
+  "conclusion": "Historical failed cleanup step remains unattributed; neither the local fixture race nor a later green run proves its cause. Raw SARIF and this artifact were not inspected."
+}
