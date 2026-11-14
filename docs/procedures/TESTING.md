@@ -7779,3 +7779,14 @@ existing transition coverage, as with the R-01 Test 76 extension).
 both terminal endpoints, subsequent samples within the terminal block, repeated
 and reversed transitions and non-neutral unequal stereo. Source identity,
 negative controls and replay commands: [worklog](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
+## Numerical audit replay provenance controls (2026-11-14)
+
+`python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
+synthetic source-tree, patch, dependency and fresh-build controls, including
+assume-unchanged, skip-worktree, staged edits, ignored inputs and type/mode
+mismatches. These checks do not themselves execute product DSP. The separate
+fresh baseline and archived diagnostic replay and its identities are recorded
+under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
+The shared reviewed-specification runner records newly built objects and results;
+unmigrated historical relinkers retain their stated provenance limitations.

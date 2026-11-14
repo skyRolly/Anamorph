@@ -1,0 +1,16 @@
+rate=44100 control=bypass initial=0 pulse=out duck_diffs=1264 peak=0.2411681 normal_diffs=1264 peak=0.21265125
+rate=44100 control=bypass initial=0 pulse=in duck_diffs=1904 peak=0.23751424 normal_diffs=1904 peak=0.3905265
+rate=44100 control=bypass initial=1 pulse=out duck_diffs=1264 peak=0.24117136 normal_diffs=1264 peak=0.21265412
+rate=44100 control=bypass initial=1 pulse=in duck_diffs=1904 peak=0.23751441 normal_diffs=1904 peak=0.3905267
+rate=44100 control=MB initial=0 pulse=out duck_diffs=1328 peak=0.077180177 normal_diffs=1440 peak=0.38674277
+rate=44100 control=MB initial=0 pulse=in duck_diffs=2080 peak=0.97782499 normal_diffs=2080 peak=1.1881583
+rate=44100 control=MB initial=1 pulse=out duck_diffs=1355 peak=0.09027417 normal_diffs=1470 peak=0.38231474
+rate=44100 control=MB initial=1 pulse=in duck_diffs=2119 peak=0.97786877 normal_diffs=2111 peak=1.1881658
+rate=48000 control=bypass initial=0 pulse=out duck_diffs=1342 peak=0.22327061 normal_diffs=1342 peak=0.14260769
+rate=48000 control=bypass initial=0 pulse=in duck_diffs=1982 peak=0.23300427 normal_diffs=1982 peak=0.46050239
+rate=48000 control=bypass initial=1 pulse=out duck_diffs=1342 peak=0.22327402 normal_diffs=1342 peak=0.14261014
+rate=48000 control=bypass initial=1 pulse=in duck_diffs=1982 peak=0.2330054 normal_diffs=1982 peak=0.46050394
+rate=48000 control=MB initial=0 pulse=out duck_diffs=1468 peak=0.066435456 normal_diffs=1534 peak=0.36377054
+rate=48000 control=MB initial=0 pulse=in duck_diffs=2174 peak=0.68535146 normal_diffs=2174 peak=0.90237039
+rate=48000 control=MB initial=1 pulse=out duck_diffs=1468 peak=0.072665483 normal_diffs=1534 peak=0.34904039
+rate=48000 control=MB initial=1 pulse=in duck_diffs=2175 peak=0.68541022 normal_diffs=2175 peak=0.90250571

@@ -1,0 +1,45 @@
+test_archived_diagnostic_exact_bytes (__main__.Provenance.test_archived_diagnostic_exact_bytes) ... ok
+test_build_from_another_checkout (__main__.Provenance.test_build_from_another_checkout) ... ok
+test_caller_git_routing_environment_cannot_replace_repository_or_index (__main__.Provenance.test_caller_git_routing_environment_cannot_replace_repository_or_index) ... ok
+test_diagnostic_exact_scope (__main__.Provenance.test_diagnostic_exact_scope) ... ok
+test_directory_symlink_is_rejected_even_with_matching_bytes (__main__.Provenance.test_directory_symlink_is_rejected_even_with_matching_bytes) ... ok
+test_dirty_tracked_untracked_and_ignored (__main__.Provenance.test_dirty_tracked_untracked_and_ignored) ... ok
+test_expected_dirty_patch_and_unintended_edit (__main__.Provenance.test_expected_dirty_patch_and_unintended_edit) ... ok
+test_file_mode_and_symlink_substitution_are_rejected (__main__.Provenance.test_file_mode_and_symlink_substitution_are_rejected) ... ok
+test_fresh_checkout_build_and_patch (__main__.Provenance.test_fresh_checkout_build_and_patch) ... -- Configuring done (0.1s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    ANAMORPH_BUILD_STANDALONE
+    ANAMORPH_JUCE_PATH
+    CMAKE_EXPORT_COMPILE_COMMANDS
+
+
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/tmpv50n1wk7/fresh-variant
+[1/1] cd /tmp/tmpv50n1wk7/fresh-variant && /usr/bin/cmake -E touch /tmp/tmpv50n1wk7/fresh-variant/object
+ok
+test_fresh_configure_and_build (__main__.Provenance.test_fresh_configure_and_build) ... -- Configuring done (0.0s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    ANAMORPH_BUILD_STANDALONE
+    ANAMORPH_JUCE_PATH
+    CMAKE_EXPORT_COMPILE_COMMANDS
+
+
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/tmpq_0p91dl/fresh
+[1/1] cd /tmp/tmpq_0p91dl/fresh && /usr/bin/cmake -E touch /tmp/tmpq_0p91dl/fresh/object
+ok
+test_hidden_index_flags_cannot_hide_actual_source_bytes (__main__.Provenance.test_hidden_index_flags_cannot_hide_actual_source_bytes) ... ok
+test_matching_checkout_and_build (__main__.Provenance.test_matching_checkout_and_build) ... ok
+test_packet_inputs_are_committed_blobs_not_dirty_or_redirected_files (__main__.Provenance.test_packet_inputs_are_committed_blobs_not_dirty_or_redirected_files) ... ok
+test_staged_change_is_rejected_even_if_working_bytes_match (__main__.Provenance.test_staged_change_is_rejected_even_if_working_bytes_match) ... ok
+test_unverifiable_build_is_never_reused (__main__.Provenance.test_unverifiable_build_is_never_reused) ... ok
+test_wrong_and_dirty_dependency (__main__.Provenance.test_wrong_and_dirty_dependency) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 5.670s
+
+OK

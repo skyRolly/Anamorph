@@ -38,11 +38,10 @@ git -C /tmp/anamorph-n2-juce checkout d60b7a78030661574a615b586d9325ba7a7fa7dd
 cmake -S /tmp/anamorph-n2-source -B /tmp/anamorph-n2-build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF \
   -DANAMORPH_JUCE_PATH=/tmp/anamorph-n2-juce
-cmake --build /tmp/anamorph-n2-build --target AnamorphTests AnamorphStateTests -j 2
 python3 worklogs/dsp-numerical-audit-0102/rebuild_probe.py \
   --checkout /tmp/anamorph-n2-source --build /tmp/anamorph-n2-build \
-  --out /tmp/anamorph-n2-probe --probe overlap --variant baseline
-/tmp/anamorph-n2-probe/overlap-baseline
+  --out /tmp/anamorph-n2-probe --probe overlap --variant baseline \
+  --also-variant live_toggle --run
 ```
 
 The helper derives compile/link commands from the freshly built baseline objects, validates
@@ -74,3 +73,46 @@ hardware behavior or architecture approval.
 This archive is supporting developer evidence under SOURCE_OF_TRUTH. Accepted ADRs and
 policies retain authority. Subsequent implementation and decision results belong in
 `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`; do not overwrite historical reports or logs.
+
+### Baseline replay provenance follow-up
+
+The historical measurements above are unchanged. `rebuild_probe.py` checks the
+exact baseline Git root/HEAD, compares tracked raw bytes, file types and
+executable bits with the expected Git tree, and rejects staged changes and all
+untracked or ignored inputs, including outside `src/`. The supported trees have
+no tracked symlinks or submodules; these are rejected rather than followed.
+Checkout filters or line-ending conversion that change Git blob bytes fail
+closed. Keep builds, bytecode, logs and other ignored files outside the source
+and JUCE checkouts. Index flags such as assume-unchanged and skip-worktree do
+not hide changed working-tree bytes. The helper checks the supplied CMake source
+and effective JUCE checkout, verifies archived source and patch bytes and their
+exact difference from baseline, then configures a new build; the supplied
+build's objects and generated rules are not reused. The output must not exist.
+Archived C++ is copied into the new isolated output before compiling so an
+unverified archive-neighbor header cannot shadow source headers. The identity
+records build rules, compiler/configuration, each linked object, executable and,
+with `--run`, execution and raw output hashes. Multiple selected variants share
+only objects produced by that fresh build. Arbitrary dirty baselines are refused.
+
+These checks assume trusted local tools, compiler, system headers/libraries, configuration environment and filesystem, and no concurrent modifications between checks and use. They do not attest to the compiler or environment, prove reproducibility of historical binaries, prove that an archived patch expresses the intended experiment, or authenticate a maliciously modified helper/Git object store. `HEAD` alone is not a content or object-provenance guarantee. Do not describe an unchecked relink or a recorded `source_sha` as proof that all linked objects came from that source.
+
+`test_replay_provenance.py` supplies synthetic controls for clean inputs, hidden
+index flags, staged/tracked/untracked/ignored edits, file modes, symlinks, another
+configured source directory, wrong or dirty JUCE, changed archived inputs, and
+refusal to reuse a pre-existing build. These tests are not product replays. A
+new fresh baseline and `live_toggle` diagnostic replay is recorded separately in
+`replay-followup-2026-11-14/`; each produced the same 16 output rows, byte for
+byte, as the corresponding preserved historical log. Its identity records the
+new source, dependency, objects, commands and executable, not the historical
+build. That execution used the immediately preceding guard and helper hashes
+recorded in its receipt; later Git-environment and helper-stability checks need
+their own real replay before being described as exercised on this input. The
+shared `replay_experiment.py` additionally accepts a committed,
+reviewed experiment specification and a clean or exactly patched source tree,
+then builds fresh targets and records executions. A patch hash identifies bytes;
+the specification's stated experimental purpose still requires human review.
+
+R-237-01 remains open across its full scope: the existing H4, N2-02, N2-03,
+combined-control, trace and benchmark relinkers have not yet been migrated to
+the shared fresh-build mechanism. Their earlier observations and premises remain
+historical; their HEAD fields alone do not establish linked-object provenance.

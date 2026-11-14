@@ -19328,3 +19328,13 @@ The worklog archive retains all original reports, diagnostics, reproduction sour
 N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
 [the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
 exact stage endpoints independently of downstream Mix rounding.
+
+## Numerical audit replay provenance follow-up (2026-11-14)
+
+The drift check found that the expanded synthetic replay tests and fresh-build
+procedure needed current testing and coverage entries. TESTING and the audit
+README now distinguish synthetic source guards from the newly executed product
+baseline/diagnostic replay and identify the relinkers still outside the shared
+mechanism. Historical reports, original logs and original manifests remain
+unchanged. The guard fails closed on unsupported symlink/submodule trees and
+working-tree transformations; it does not attest to the toolchain or host.
