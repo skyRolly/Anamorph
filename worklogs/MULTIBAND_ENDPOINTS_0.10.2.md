@@ -1,5 +1,10 @@
 # N2-03 — exact Multiband Enable stage endpoints
 
+**Current review status:** the revised selector has 392 assertions, including
+actual Match-on output. The 292-assertion section and measurements below are
+historical; see the independent Match-on follow-up at the end of this record and
+[the isolated combined-source controls](combined-isolated-controls-0102/README.md).
+
 Starting main `113b9189f0ff4d3b6348c553c559c22ee8ade782`, freshly fetched and
 unchanged. Product 0.10.1, target 0.10.2, JUCE 9.0.5 at
 `d60b7a78030661574a615b586d9325ba7a7fa7dd`. Mandatory original evidence was
@@ -25,7 +30,7 @@ arithmetic can hide differences. There is no data-layout, graph, latency,
 parameter, persistence, crossfade duration, reset or allocation change. The
 existing settled-block shortcuts and H4 behavior remain intact.
 
-## Production-path oracle
+## Historical 292-assertion production-path oracle
 
 The Test 23 extension has 292 assertions: four direct kernel assertions and six
 assertions in each of 48 engine legs. Rates 44.1/48/96 kHz; blocks 64/127/256;
@@ -66,22 +71,16 @@ new Test 77 can coexist. The assertions/configurations are unchanged.
 ## Replay and identities
 
 Build this branch's AnamorphTests from source with the pinned JUCE, then run
-`AnamorphTests --multiband-endpoints`. [Logs and source digests](n2-endpoints-0102/identity.json)
-are gzip-compressed without changing their original bytes. A portable probe
-entry and relinker are retained in that directory. Example:
+`AnamorphTests --multiband-endpoints`. Historical [logs and source digests](n2-endpoints-0102/identity.json)
+are gzip-compressed without changing their original bytes. The old probe builder
+and mutation relinker are disabled because they did not verify source or reused
+objects. The reviewed fresh-build and isolated mutation procedure is in
+[the combined controls](combined-isolated-controls-0102/README.md).
 
-```sh
-python3 worklogs/n2-endpoints-0102/build_probe.py --checkout /tmp/n2-endpoints \
- --base-source /tmp/n2-endpoints --build /tmp/n2-build \
- --source /tmp/n2-endpoints/worklogs/n2-endpoints-0102/probe.cpp --out /tmp/n2-probe
-/tmp/n2-probe/probe
-```
-
-The build must be fresh from the specified source/pin. The local incremental
+The historical local incremental
 measurement used GCC14.2, Release C++23, Haswell, contraction off and unchanged
 objects from a freshly built original baseline. The test/engine/Multiband objects
-were rebuilt. This is distinct from final-head hosted CI. Recreate negative
-call-site controls with the included script; do not alter the branch under review.
+were rebuilt. This is distinct from final-head hosted CI.
 The maximum output error is a numerical endpoint-contract violation, not an
 assertion of audibility. N2-04/05/06/07 remain confirmed and uncorrected.
 

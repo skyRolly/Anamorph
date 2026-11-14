@@ -19338,3 +19338,8 @@ baseline/diagnostic replay and identify the relinkers still outside the shared
 mechanism. Historical reports, original logs and original manifests remain
 unchanged. The guard fails closed on unsupported symlink/submodule trees and
 working-tree transformations; it does not attest to the toolchain or host.
+
+
+## N2-03 replay-entry and status audit — 2026-11-14 UTC
+
+The live summary still led with the historical 292-check oracle and offered unverified relinkers. Labeled the historical result, pointed to the current 392-check Match-on oracle and shared controlled mutations, and disabled the two legacy entry points. Original measurement logs are unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.

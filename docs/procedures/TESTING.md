@@ -7790,3 +7790,8 @@ fresh baseline and archived diagnostic replay and its identities are recorded
 under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
 The shared reviewed-specification runner records newly built objects and results;
 unmigrated historical relinkers retain their stated provenance limitations.
+
+
+## Retired review relinkers (2026-11-14)
+
+The old endpoint probe builder and mutation relinker are intentionally disabled before output creation. Normal and `python -O` rejection controls are recorded in `worklogs/n2-endpoints-0102/retired-relinker-controls.json`; use the shared reviewed endpoint mutations and fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
