@@ -391,3 +391,5 @@ its scope and unsupplied provenance fields; `worklogs/juce905-review/metadata-re
 source-classification, before/after/partial-fix tests and retained configuration-order evidence.
 
 The [post-integration record](../worklogs/engineering-review/post-b2-integration.json) and its compressed streams retain actual-main component/path evidence. They are supporting engineering data, not policy or native/release acceptance.
+
+The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/README.md) preserves N2-01–07/V2-01 reports, original probes, diagnostic controls and compressed raw evidence.

@@ -1,0 +1,154 @@
+{
+  "purpose": "Isolate N2-02, forced-adoption and N2-03 call-site mutations against the historical combined source while preserving the other production correction and registrations.",
+  "source_head": "f2686cb5b0b3687a3e343340f2494f59961aa83a",
+  "source_tree": "80c8c7670fb7e18ac7371dd8c0b7eb3dc07238b9",
+  "variants": [
+    {
+      "name": "n2-only",
+      "purpose": "Restore only ordinary bypass and multiband destination preservation in copyContinuous.",
+      "commit": "spec",
+      "path": "worklogs/combined-isolated-controls-0102/n2-only.patch",
+      "sha256": "b293dabc2bbf21a1f73b3edf32010337ca7fe9a80fd1bb16a62d1a546060f33d",
+      "source_tree": "ba63edcb63a2a4a9ce258185234f4b05184805f9"
+    },
+    {
+      "name": "forced-only",
+      "purpose": "Prematurely adopt continuous controls while the forced destination is deferred.",
+      "commit": "spec",
+      "path": "worklogs/combined-isolated-controls-0102/forced-only.patch",
+      "sha256": "e65d668434bc2a73e8134108e6adbe248a883949996ae84cbd6470375f994dba",
+      "source_tree": "449271457941cf8692612f242d2ad247c8db4b13"
+    },
+    {
+      "name": "endpoint-both",
+      "purpose": "Restore only the original wet and dry Multiband Enable call-site expressions.",
+      "commit": "spec",
+      "path": "worklogs/combined-isolated-controls-0102/endpoint-both.patch",
+      "sha256": "1fcb58b11a8341e85284237d762af11f1735719b7ef56078765b16330ea352a1",
+      "source_tree": "45a30ac9612c424643ae0369f655e765208bae47"
+    },
+    {
+      "name": "endpoint-wet",
+      "purpose": "Restore only the original wet Multiband Enable call-site expressions.",
+      "commit": "spec",
+      "path": "worklogs/combined-isolated-controls-0102/endpoint-wet.patch",
+      "sha256": "7a1405b16207627a156c8d242cdc865c34560024e045b2f4cb6ec2476aa6b46a",
+      "source_tree": "3be9e74e499a2edfac5a6fd35e08033286c24a99"
+    },
+    {
+      "name": "endpoint-dry",
+      "purpose": "Restore only the original dry Multiband Enable call-site expressions.",
+      "commit": "spec",
+      "path": "worklogs/combined-isolated-controls-0102/endpoint-dry.patch",
+      "sha256": "c8fe534ee60d1506c08d9d5257c31e1d593c81acc0a3c2fbbb264f05ae64f4b5",
+      "source_tree": "7abe7b05b82beefcfc34975d74dda2b3ac2165b0"
+    }
+  ],
+  "runs": [
+    {
+      "variant": "base",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "base",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 0
+    },
+    {
+      "variant": "base",
+      "target": "AnamorphStateTests",
+      "selector": "--n2-controls",
+      "checks": 20,
+      "failures": 0
+    },
+    {
+      "variant": "n2-only",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 316
+    },
+    {
+      "variant": "n2-only",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 0
+    },
+    {
+      "variant": "n2-only",
+      "target": "AnamorphStateTests",
+      "selector": "--n2-controls",
+      "checks": 20,
+      "failures": 12
+    },
+    {
+      "variant": "forced-only",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 8
+    },
+    {
+      "variant": "forced-only",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-both",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-both",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 88
+    },
+    {
+      "variant": "endpoint-both",
+      "target": "AnamorphStateTests",
+      "selector": "--n2-controls",
+      "checks": 20,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-wet",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-wet",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 44
+    },
+    {
+      "variant": "endpoint-dry",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-dry",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 44
+    }
+  ]
+}

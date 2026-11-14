@@ -19321,7 +19321,6 @@ Test 76 keeps its original assertions and adds `testBypassFiniteEndpointOverflow
 72 valid-result assertions). The numbered inventory stays 76. Endpoint bits,
 10 ms smoother progression and latency are unchanged. D-02 remains independent;
 no graph, thread, parameter, serialization, version or dependency change.
-
 ## POSIX cleanup fixture publication and finalization review (2026-11-14)
 
 The documentation drift check found that the new handshake control and changed
@@ -19334,3 +19333,17 @@ or unknown cleanup as failure. The existing three production-cleanup cases and
 their budget remain intact. These Linux fixture checks do not establish the cause
 of the earlier hosted failure or native Rosetta cleanup behavior. Earlier audit
 entries and the original historical failure records are retained.
+
+## 0.10.2 second DSP audit preservation
+
+The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
+
+## Numerical audit replay provenance follow-up (2026-11-14)
+
+The drift check found that the expanded synthetic replay tests and fresh-build
+procedure needed current testing and coverage entries. TESTING and the audit
+README now distinguish synthetic source guards from the newly executed product
+baseline/diagnostic replay and identify the relinkers still outside the shared
+mechanism. Historical reports, original logs and original manifests remain
+unchanged. The guard fails closed on unsupported symlink/submodule trees and
+working-tree transformations; it does not attest to the toolchain or host.

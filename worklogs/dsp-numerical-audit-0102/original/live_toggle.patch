@@ -1,0 +1,14 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-live_toggle/AnamorphEngine.cpp
+@@ -846,9 +846,9 @@
+     dst = src;
+ 
+     dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
+-    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
++    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm;
+     dst.mbBands = nb;
+-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;
++    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;
+ }
+ 
+ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
