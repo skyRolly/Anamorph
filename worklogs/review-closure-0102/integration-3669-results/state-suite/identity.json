@@ -1,0 +1,41 @@
+{
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "61c0fa72b2dd0ef59ff96a34b8068f3f7c06c0b3",
+  "juce_head": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "juce_tree": "f701683c0a1a6735b65d4456c7700f22a522fc5c",
+  "receipt_commit": "1b72e068fe1f1911e3b76881c13ab5094f4906f8",
+  "receipt_path": "worklogs/review-closure-0102/integration-3669-results/fresh-controls/identity.json",
+  "receipt_sha256": "7c819d757b33ff223e9e9f1516d291d2900d48955dacc2339fd68bfd93ad0a4c",
+  "script_commit": "c32577d86901610d4e5fabff632fd3710dff957e",
+  "tool_sha256": {
+    "/workspace/Anamorph/worklogs/review-closure-0102/record_state_suite.py": "7f7e393d26876ef6bd37928f5e02f12d59bbee85e699313fcf4024ba513c122e",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_provenance.py": "ce51b1a665349d025793ef35e1d144fd14b20f8499cb4196454553d7804a84da",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/rebuild_probe.py": "afe8f5445b03514e3821246a8ba0dd91ee56cc94b2f51780fcae978d6d356480",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_experiment.py": "9701aa5034ab6b528736376283d8de1790c5805dfaa07a9f2633d14187e48adb",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py": "e7ef4e4a51c5c41aad7e2155c6371946ac4930f1b741927a683c0c532da47e4a"
+  },
+  "build": "/workspace/review-closure-integration-3669-controls/fresh-build",
+  "command": [
+    "xvfb-run",
+    "-a",
+    "python3",
+    "/workspace/anamorph-integration-final-clean/tests/state_isolation_tests.py",
+    "--full-suite",
+    "--",
+    "/workspace/review-closure-integration-3669-controls/fresh-build/AnamorphStateTests_artefacts/Release/AnamorphStateTests"
+  ],
+  "cwd": "/workspace/review-closure-integration-3669-state",
+  "binary_sha256": "662d2e283bf2996dcb1ed70711fde8d034f646f9cf7d44e0d21ecb22a14a1a03",
+  "exit": 0,
+  "summary": [
+    16555,
+    0
+  ],
+  "environment": {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "CMAKE_BUILD_PARALLEL_LEVEL": "2"
+  },
+  "isolation_pass_line": true,
+  "stdout_sha256": "4f2424b0509df8edd6f99658ae6a4e7ce04a94a430c047bf7434d0246b456fe7",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
