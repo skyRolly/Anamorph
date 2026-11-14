@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace bank_access {
 struct Banks { friend auto member(Banks); };
@@ -32,7 +33,13 @@ static Samples process(M& m)
 static bool finite(const std::array<float,16>& a)
 { for(float x:a) if(!std::isfinite(x)) return false; return true; }
 static bool same(const Samples& a,const Samples& b)
-{ return std::memcmp(&a,&b,sizeof a)==0; }
+{
+    for(int i=0;i<16;++i)
+        for(auto pair:{std::pair{a.wl[i],b.wl[i]},std::pair{a.wr[i],b.wr[i]},
+                       std::pair{a.dl[i],b.dl[i]},std::pair{a.dr[i],b.dr[i]}})
+            if(std::memcmp(&pair.first,&pair.second,sizeof(float))!=0) return false;
+    return true;
+}
 int main()
 {
     using namespace bank_access;
