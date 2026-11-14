@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 183, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 94, in main
+    commands = verify_build()
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 65, in verify_build
+    verify_build_environment(receipt['environment'])
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 29, in verify_build_environment
+    raise ValueError('compiler/build environment differs from recorded fresh build')
+ValueError: compiler/build environment differs from recorded fresh build

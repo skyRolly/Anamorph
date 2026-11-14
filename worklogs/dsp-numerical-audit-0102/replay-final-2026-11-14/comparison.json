@@ -1,0 +1,16 @@
+{
+  "baseline": {
+    "historic_path": "worklogs/dsp-numerical-audit-0102/original/overlap-matrix.log.gz",
+    "historic_sha256": "44a2e19cdce94039136249313a9f6d6f82efa03a80f2e84d9260215197914274",
+    "replay_sha256": "44a2e19cdce94039136249313a9f6d6f82efa03a80f2e84d9260215197914274",
+    "byte_equal": true,
+    "rows": 16
+  },
+  "live_toggle": {
+    "historic_path": "worklogs/dsp-numerical-audit-0102/original/overlap-live-matrix.log.gz",
+    "historic_sha256": "f11b7e0fa5ebfc9d9603fc5a09038f7a163c5f7e67184d09401acf46ae5fbd22",
+    "replay_sha256": "f11b7e0fa5ebfc9d9603fc5a09038f7a163c5f7e67184d09401acf46ae5fbd22",
+    "byte_equal": true,
+    "rows": 16
+  }
+}

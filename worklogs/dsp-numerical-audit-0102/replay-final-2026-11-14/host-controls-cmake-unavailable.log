@@ -1,0 +1,57 @@
+test_archived_diagnostic_exact_bytes (__main__.Provenance.test_archived_diagnostic_exact_bytes) ... ok
+test_build_from_another_checkout (__main__.Provenance.test_build_from_another_checkout) ... ok
+test_caller_git_routing_environment_cannot_replace_repository_or_index (__main__.Provenance.test_caller_git_routing_environment_cannot_replace_repository_or_index) ... ok
+test_diagnostic_exact_scope (__main__.Provenance.test_diagnostic_exact_scope) ... ok
+test_directory_symlink_is_rejected_even_with_matching_bytes (__main__.Provenance.test_directory_symlink_is_rejected_even_with_matching_bytes) ... ok
+test_dirty_tracked_untracked_and_ignored (__main__.Provenance.test_dirty_tracked_untracked_and_ignored) ... ok
+test_expected_dirty_patch_and_unintended_edit (__main__.Provenance.test_expected_dirty_patch_and_unintended_edit) ... ok
+test_file_mode_and_symlink_substitution_are_rejected (__main__.Provenance.test_file_mode_and_symlink_substitution_are_rejected) ... ok
+test_fresh_checkout_build_and_patch (__main__.Provenance.test_fresh_checkout_build_and_patch) ... ERROR
+test_fresh_configure_and_build (__main__.Provenance.test_fresh_configure_and_build) ... ERROR
+test_hidden_index_flags_cannot_hide_actual_source_bytes (__main__.Provenance.test_hidden_index_flags_cannot_hide_actual_source_bytes) ... ok
+test_matching_checkout_and_build (__main__.Provenance.test_matching_checkout_and_build) ... ok
+test_packet_inputs_are_committed_blobs_not_dirty_or_redirected_files (__main__.Provenance.test_packet_inputs_are_committed_blobs_not_dirty_or_redirected_files) ... ok
+test_relink_rejects_changed_compiler_include_environment (__main__.Provenance.test_relink_rejects_changed_compiler_include_environment) ... ok
+test_staged_change_is_rejected_even_if_working_bytes_match (__main__.Provenance.test_staged_change_is_rejected_even_if_working_bytes_match) ... ok
+test_unverifiable_build_is_never_reused (__main__.Provenance.test_unverifiable_build_is_never_reused) ... ok
+test_wrong_and_dirty_dependency (__main__.Provenance.test_wrong_and_dirty_dependency) ... ok
+
+======================================================================
+ERROR: test_fresh_checkout_build_and_patch (__main__.Provenance.test_fresh_checkout_build_and_patch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/test_replay_provenance.py", line 192, in test_fresh_checkout_build_and_patch
+    result = prov.fresh_checkout_build(self.source, source_sha, self.juce, self.root/'fresh-variant',
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_provenance.py", line 190, in fresh_checkout_build
+    subprocess.run(['cmake', '-S', str(checkout), '-B', str(fresh), '-G', 'Ninja',
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1955, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'cmake'
+
+======================================================================
+ERROR: test_fresh_configure_and_build (__main__.Provenance.test_fresh_configure_and_build)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/test_replay_provenance.py", line 215, in test_fresh_configure_and_build
+    prov.fresh_build(self.source, self.build, fresh, 'AnamorphTests')
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_provenance.py", line 171, in fresh_build
+    subprocess.run(['cmake', '-S', str(checkout), '-B', str(fresh), '-G', 'Ninja',
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 1955, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'cmake'
+
+----------------------------------------------------------------------
+Ran 17 tests in 1.558s
+
+FAILED (errors=2)
