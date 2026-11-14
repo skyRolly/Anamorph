@@ -1,0 +1,43 @@
+{
+  "purpose": "Re-execute the recorded state-scan candidate gated-boundary witness and dry-reset/no-dip controls from a fresh full candidate build.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "8a3cde98d47852f31b3e73ee49cfc27e670fc9e7",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-review-followup-0102/candidate-state-scan-003c.patch",
+    "sha256": "60b8b9240ea34706d8e672d3e60a0615543e614bc84e81489dbae792decdd35b",
+    "purpose": "Reproduce the recorded state-scan nonshipping dry-bank recovery candidate."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "engine-controls",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-review-followup-0102/engine_controls.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "engine-controls",
+      "args": [],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-controls",
+      "args": [
+        "r"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-controls",
+      "args": [
+        "n"
+      ],
+      "expected_exit": 0
+    }
+  ]
+}

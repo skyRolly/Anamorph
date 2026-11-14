@@ -38,3 +38,17 @@ observer was renamed and needs a new fresh-build execution. These are input and
 diagnostic-tool failures, respectively, not product-test results. Replay-tool
 source was also being hardened during the failed build, so that attempt cannot
 serve as a final provenance-controlled observation.
+
+The additional `candidate-a2-003c.patch` and `candidate-state-scan-003c.patch`
+record the exact previously used dirty trees relative to `003c9a1a`, including
+their changed header bytes; the adjacent specifications bind those trees and
+select the original engine control probe. They are nonshipping reproductions,
+not new candidates or a substitute for verifying the source tree and fresh build.
+
+The first completed fresh production trace is retained under
+`execution-2026-11-14/preliminary-production/`. Its wet-bank reset controls
+suggested a role for large finite wet recursive state, but that version also
+read `dryAlignScratch` while H4 had not written it. That scratch value was not a
+valid observation, and the read can invalidate the experiment as a whole. The
+preliminary run is retained for audit, not used as causal proof; the observer no
+longer reads that scratch, and its corrected execution must be evaluated anew.

@@ -13,14 +13,12 @@ namespace h4_trace_access {
 struct MB { friend auto member(MB); };
 struct Banks { friend auto member(Banks); };
 struct Haas { friend auto member(Haas); };
-struct Aligned { friend auto member(Aligned); };
 struct S1 { friend auto member(S1); }; struct S2 { friend auto member(S2); };
 struct S3 { friend auto member(S3); }; struct S4 { friend auto member(S4); };
 template<class T, auto P> struct Get { friend auto member(T) { return P; } };
 template struct Get<MB, &E::multiband>;
 template struct Get<Banks, &anamorph::MultibandWidth::bank>;
 template struct Get<Haas, &E::haas>;
-template struct Get<Aligned, &E::dryAlignScratch>;
 template struct Get<S1, &anamorph::LR4Xover::s1>;
 template struct Get<S2, &anamorph::LR4Xover::s2>;
 template struct Get<S3, &anamorph::LR4Xover::s3>;
@@ -61,7 +59,6 @@ void run(const char* mode, float amplitude, bool dip)
     for (int block = 0; block < 8; ++block) { b.clear(); e->process(b); }
     b.clear(); b.setSample(0, n-1, std::numeric_limits<float>::max() * amplitude); e->process(b);
     const float wetL = b.getSample(0, n-1), wetR = b.getSample(1, n-1);
-    const float dryL = (e.get()->*member(Aligned{})).getSample(0, n-1);
     auto& banks = (e.get()->*member(MB{})).*member(Banks{});
     State wet[2], dry[2];
     for (auto& bank : banks) for (int ch = 0; ch < 2; ++ch) {
@@ -93,17 +90,22 @@ void run(const char* mode, float amplitude, bool dip)
         zeros[ch] += b.getSample(ch, i) == 0;
         invalid[ch] += !std::isfinite(b.getSample(ch, i));
     }
-    std::printf("mode=%s amplitude=%g dip=%d wet_last=%g,%g dry_last=%g "
+    std::printf("mode=%s amplitude=%g dip=%d wet_last=%g,%g "
                 "wet_bad=%d,%d wet_max=%g,%g dry_bad=%d,%d dry_max=%g,%g "
                 "next_zero=%d,%d next_nonfinite=%d,%d next_first=%g,%g\n",
-                mode, amplitude, dip, wetL, wetR, dryL, wet[0].invalid, wet[1].invalid,
+                mode, amplitude, dip, wetL, wetR, wet[0].invalid, wet[1].invalid,
                 wet[0].maxFinite, wet[1].maxFinite, dry[0].invalid, dry[1].invalid,
                 dry[0].maxFinite, dry[1].maxFinite, zeros[0], zeros[1], invalid[0], invalid[1],
                 b.getSample(0, 0), b.getSample(1, 0));
 }
-int main()
+int main(int argc, char** argv)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (argc > 1) {
+        const std::string mode(argv[1]);
+        run(mode.c_str(), mode == "small" ? .1f : .95f, mode != "no-dip");
+        return 0;
+    }
     run("none", .95f, true); run("none", .95f, false);
     run("dry-left", .95f, true); run("wet-left", .95f, true);
     run("wet-right", .95f, true); run("wet-both", .95f, true);
