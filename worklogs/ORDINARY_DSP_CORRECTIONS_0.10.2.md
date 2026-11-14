@@ -49,19 +49,15 @@ CI identities will be appended after execution, never inferred from history.
 
 GCC 14.2, Release, C++23, Haswell, contraction off; pinned JUCE source and unchanged
 production objects from a fresh build of the starting SHA. The test and engine
-objects were freshly compiled from the recorded files. This local incremental
-run is distinct from a fresh hosted build of the final branch. Portable replay:
-configure/build this checkout's `AnamorphTests` and `AnamorphStateTests` using the
-JUCE 9.0.5 pin, then run:
-
-```sh
-python3 worklogs/n2-controls-0102/run_controls.py --checkout . --build /tmp/n2-build \
-  --baseline /tmp/main-113b9189 --out /tmp/n2-controls
-```
-
-The baseline argument is a clean detached worktree at the starting main SHA.
-The script replaces only the engine object and selects the same regressions.
-Use Xvfb for the State executable on a headless machine if needed.
+objects were freshly compiled from the recorded files. This historical local
+incremental run is distinct from a fresh hosted build of the final branch. The
+old `n2-controls-0102/run_controls.py` is disabled: it accepted unverifiable
+objects and its complete-baseline engine replacement also reverts unrelated
+corrections in a later combined source. Use the reviewed, isolated mutations
+and fresh-build procedure in [the combined controls](combined-isolated-controls-0102/README.md).
+That record fixes the exact source and expected patch differences, and reports
+the limits of the re-execution. Use Xvfb for the State executable on a headless
+machine if needed. The original complete-baseline result below remains history.
 
 | Source/control | DSP Test 77 | State Test 159 | Discriminating result |
 |---|---:|---:|---|

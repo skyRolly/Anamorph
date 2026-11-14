@@ -19385,3 +19385,8 @@ the first observed invalid signal at Multiband and the following existing
 self-heal. The later copied-state control identifies a distinct extreme-finite wet
 LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
 issues and TESTING. Existing H4 findings and historical measurements remain.
+
+
+## N2-02 replay-entry audit — 2026-11-14 UTC
+
+The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
