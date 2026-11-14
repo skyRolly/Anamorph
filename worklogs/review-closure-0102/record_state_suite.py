@@ -96,6 +96,9 @@ def main():
         'receipt_sha256':hashlib.sha256(receipt_bytes).hexdigest(),'script_commit':args.script_commit,
         'tool_sha256':tool_hashes,'build':str(build),'command':command,'cwd':str(out),
         'binary_sha256':sha(binary),'exit':result.returncode,'summary':list(map(int,summary[-1])) if summary else None,
+        'environment':{key:os.environ[key] for key in ('PATH','CMAKE_BUILD_PARALLEL_LEVEL','CC','CXX',
+            'CFLAGS','CXXFLAGS','LDFLAGS','CPATH','CPLUS_INCLUDE_PATH','LIBRARY_PATH','LANG','LC_ALL')
+            if key in os.environ},
         'isolation_pass_line':bool(isolated),'stdout_sha256':sha(out/'stdout'),'stderr_sha256':sha(out/'stderr')}
     (out/'identity.json').write_text(json.dumps(identity,indent=2)+'\n')
     print('State suite:',identity['summary'],'isolation:',bool(isolated),'exit:',result.returncode)
