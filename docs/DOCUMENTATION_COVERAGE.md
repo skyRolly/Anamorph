@@ -19368,3 +19368,13 @@ committed-stub LR4 witness. Historical archived evidence remains unchanged.
 ## H4 replay-entry and state-lifetime audit — 2026-11-14 UTC
 
 Retired the three unverified legacy relinkers; retained their historical command bodies and measurements. Recorded the separately rebuilt isolated LR4 witness and source-based bank, fade, coefficient and aligned-history lifetimes, including the unvalidated recovery boundaries. H4 shipping behavior and Proposed ADR status remain unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+
+## H4 decision-package drift and recovery replay — 2026-11-14 UTC
+
+The drift check found that the dated roadmap still read as a current guarded
+candidate recommendation. It is now explicitly historical and the new follow-up
+records the hidden-state gap and N2-08. The decision packet, Proposed ADR-0074,
+follow-up worklog and TESTING also link the fresh source-bound repeated
+channel-recovery and reset-both control. They state its limited scope and the
+negative runner's unobserved outer status; original evidence remains unchanged.

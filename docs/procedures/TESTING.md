@@ -7804,3 +7804,11 @@ reproduction premises.
 ## Retired review relinkers (2026-11-14)
 
 The three old H4 probe/recovery/endpoint relink entry points are intentionally disabled before output creation; normal and `python -O` rejection controls are recorded in `worklogs/h4-review-followup-0102/retired-relinker-controls.json`. Committed specifications and shared fresh-build or receipt-checked runners cover the stated follow-up witnesses; other historical experiments remain separately scoped and are not automatically reproducible.
+
+
+A new source-bound nonshipping H4 recovery repeat exercises four left-channel
+guard activations and compares the untouched right dry integrators with an
+independent reference. A reset-both mutation changes 4/4 right-state matches to
+0/4. The [decision packet](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md)
+links the inputs and limits. This does not establish complete A2 recovery or
+make the failing-on-main low-frequency oracle mandatory.
