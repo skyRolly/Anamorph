@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+raise SystemExit('Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.')
 """Generate isolated N2-03 call-site controls and replay exactly the same oracle."""
 import argparse
 import json

@@ -19390,3 +19390,8 @@ issues and TESTING. Existing H4 findings and historical measurements remain.
 ## N2-02 replay-entry audit — 2026-11-14 UTC
 
 The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+
+## N2-03 replay-entry and status audit — 2026-11-14 UTC
+
+The live summary still led with the historical 292-check oracle and offered unverified relinkers. Labeled the historical result, pointed to the current 392-check Match-on oracle and shared controlled mutations, and disabled the two legacy entry points. Original measurement logs are unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
