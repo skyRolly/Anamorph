@@ -237,7 +237,8 @@ witnesses/follow-ups. Candidate review must preserve raw-history/self-heal
 ownership and existing D-01/T-01/D-02/R-01 protections. Final production validation
 must include recovery and actual execution premises, not output finiteness alone.
 
-Next: owner chooses the guarded A2 direction's measured CPU/recovery tradeoff,
+Historical next-step recommendation, superseded by the hidden-state evidence
+below: owner chooses the guarded A2 direction's measured CPU/recovery tradeoff,
 an explicit limitation, or deferral. If approved, implement bank + aligned-history
 maintenance and scoped recovery together, retain H4's wet/measurement policies,
 integrate the independent regression, then run all prescribed final-source checks.

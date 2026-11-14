@@ -1,12 +1,16 @@
 # Reproduce the H4 decision experiments
 
-**Replay provenance limitation:** the commands below describe the historical
-experiments. The original relinkers do not verify complete source, dependency,
-generated-rule or reused-object identity and must not be treated as current
-provenance-controlled replay. The shared follow-up and the exact status of each
-entry point are recorded in `../combined-isolated-controls-0102/INVENTORY.md`;
-that inventory belongs to the evidence prerequisite and may be absent until it
-is integrated. Historical measurements and manifests remain unchanged.
+**Historical command record:** the commands below describe the original
+experiments, not a current replay procedure. The old `build_probe.py`,
+`make_recovery_trace.py` and `relink-final-endpoint-controls.py` are disabled:
+they did not verify complete source, dependency, rules or reused objects. Their
+original bodies, measurements and manifests remain for historical review.
+For verified new work, use committed specifications with the fresh-build or
+receipt-checked runners in `../dsp-numerical-audit-0102/`, and see
+`../h4-review-followup-0102/` for executed examples. Some historical H4
+experiments still need reviewed specifications; the status is recorded in
+`../combined-isolated-controls-0102/INVENTORY.md`. Do not infer that disabling
+the old relinkers reproduces those experiments.
 
 Read [the decision report](../H4_DRY_RECONSTRUCTION_0.10.2.md) and
 [Proposed ADR-0074](../../docs/architecture/design-decisions/ADR-0074-h4-dry-state-reentry.md).
@@ -137,8 +141,8 @@ a fresh CMake build from each with the same JUCE pin. Run both full suites; use
 untracked engine variants and deriving compile/link commands from the combined
 build; its original root/build/out paths must be adjusted on another machine.
 The generated sources, exact commands, binary hashes and logs are retained.
-The portable per-PR `run_controls.py` / `make_controls.py` supply the equivalent
-fresh-build recipe on their respective review branches.
+The former per-PR `run_controls.py` / `make_controls.py` are also disabled;
+use the reviewed current combined-control procedure instead.
 
 `relink-final-endpoint-controls.py` reuses a fresh `build_probe.py` identity with
 actual `tests/dsp_tests.cpp` as its entry, then recompiles only the three isolated

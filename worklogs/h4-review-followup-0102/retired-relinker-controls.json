@@ -1,0 +1,72 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "base_head": "8bc8c12a6a2a7ecb487e0c9e44118583f4873455",
+  "cases": [
+    {
+      "script": "worklogs/h4-dry-state-0102/build_probe.py",
+      "flags": [],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Use the committed-specification runners in worklogs/dsp-numerical-audit-0102/.",
+      "output_created": false,
+      "original_sha256": "a5cb1e38c947f0d099e063c5dfd1b7d2ea8bd4a359b98879401a39aac048d08e",
+      "guarded_sha256": "18c24cbdb3ce0654077ee4835eeb9e006071b2b4915d2dcabeb3e78fbe22cfde",
+      "original_body_preserved": true
+    },
+    {
+      "script": "worklogs/h4-dry-state-0102/build_probe.py",
+      "flags": [
+        "-O"
+      ],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Use the committed-specification runners in worklogs/dsp-numerical-audit-0102/.",
+      "output_created": false,
+      "original_sha256": "a5cb1e38c947f0d099e063c5dfd1b7d2ea8bd4a359b98879401a39aac048d08e",
+      "guarded_sha256": "18c24cbdb3ce0654077ee4835eeb9e006071b2b4915d2dcabeb3e78fbe22cfde",
+      "original_body_preserved": true
+    },
+    {
+      "script": "worklogs/h4-dry-state-0102/make_recovery_trace.py",
+      "flags": [],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Create a reviewed committed patch and specification for the shared provenance runner.",
+      "output_created": false,
+      "original_sha256": "da79431137a131add902c44d6ba5a7f5cc380aba7480dc7ff749ce138a0e86a9",
+      "guarded_sha256": "149636092309137a2077c5d3f63f0f422fde58f8bffe02ed8dd5d4f6414629c9",
+      "original_body_preserved": true
+    },
+    {
+      "script": "worklogs/h4-dry-state-0102/make_recovery_trace.py",
+      "flags": [
+        "-O"
+      ],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Create a reviewed committed patch and specification for the shared provenance runner.",
+      "output_created": false,
+      "original_sha256": "da79431137a131add902c44d6ba5a7f5cc380aba7480dc7ff749ce138a0e86a9",
+      "guarded_sha256": "149636092309137a2077c5d3f63f0f422fde58f8bffe02ed8dd5d4f6414629c9",
+      "original_body_preserved": true
+    },
+    {
+      "script": "worklogs/h4-dry-state-0102/relink-final-endpoint-controls.py",
+      "flags": [],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.",
+      "output_created": false,
+      "original_sha256": "48668e1a246ccbe0f69f7ac2301053bbb23e06e710d00f2974776b793662fd0b",
+      "guarded_sha256": "2e204be5f06fb91e016ae0e4ebb67767f04b0c6f3284f30ac6ecdaef84efcc1a",
+      "original_body_preserved": true
+    },
+    {
+      "script": "worklogs/h4-dry-state-0102/relink-final-endpoint-controls.py",
+      "flags": [
+        "-O"
+      ],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.",
+      "output_created": false,
+      "original_sha256": "48668e1a246ccbe0f69f7ac2301053bbb23e06e710d00f2974776b793662fd0b",
+      "guarded_sha256": "2e204be5f06fb91e016ae0e4ebb67767f04b0c6f3284f30ac6ecdaef84efcc1a",
+      "original_body_preserved": true
+    }
+  ]
+}
