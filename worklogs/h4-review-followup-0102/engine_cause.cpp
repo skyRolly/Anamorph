@@ -1,5 +1,6 @@
 // Nonshipping diagnostic: isolate state families after the extreme H4 witness.
 #include "dsp/AnamorphEngine.h"
+#include "dsp/MidSide.h"
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
 #include <cmath>
@@ -12,12 +13,14 @@ using E = anamorph::AnamorphEngine;
 namespace h4_trace_access {
 struct MB { friend auto member(MB); };
 struct Banks { friend auto member(Banks); };
+struct Active { friend auto member(Active); };
 struct Haas { friend auto member(Haas); };
 struct S1 { friend auto member(S1); }; struct S2 { friend auto member(S2); };
 struct S3 { friend auto member(S3); }; struct S4 { friend auto member(S4); };
 template<class T, auto P> struct Get { friend auto member(T) { return P; } };
 template struct Get<MB, &E::multiband>;
 template struct Get<Banks, &anamorph::MultibandWidth::bank>;
+template struct Get<Active, &anamorph::MultibandWidth::active>;
 template struct Get<Haas, &E::haas>;
 template struct Get<S1, &anamorph::LR4Xover::s1>;
 template struct Get<S2, &anamorph::LR4Xover::s2>;
@@ -60,6 +63,7 @@ void run(const char* mode, float amplitude, bool dip)
     b.clear(); b.setSample(0, n-1, std::numeric_limits<float>::max() * amplitude); e->process(b);
     const float wetL = b.getSample(0, n-1), wetR = b.getSample(1, n-1);
     auto& banks = (e.get()->*member(MB{})).*member(Banks{});
+    const int active = (e.get()->*member(MB{})).*member(Active{});
     State wet[2], dry[2];
     for (auto& bank : banks) for (int ch = 0; ch < 2; ++ch) {
         for (auto& x : bank.x) inspect(wet[ch], x, ch);
@@ -67,6 +71,17 @@ void run(const char* mode, float amplitude, bool dip)
         for (auto& x : bank.dx) inspect(dry[ch], x, ch);
         for (auto& x : bank.dax) inspect(dry[ch], x, ch);
     }
+    // Observe the actual LR4 code on a copy of the live wet state. The next
+    // input is known here: Haas Amount is zero, then global Width is zero.
+    // The copy cannot change the engine's subsequent production processing.
+    auto filter = banks[active].x[0];
+    float inputL = .2f, inputR = .1f, loL, hiL, loR, hiR;
+    anamorph::applyWidth(inputL, inputR, p.width);
+    filter.processSample(0, inputL, loL, hiL);
+    filter.processSample(1, inputR, loR, hiR);
+    std::printf("wet-filter-copy mode=%s input=%g,%g low=%g,%g high=%g,%g finite=%d,%d,%d,%d\n",
+                mode, inputL, inputR, loL, loR, hiL, hiR,
+                std::isfinite(loL), std::isfinite(loR), std::isfinite(hiL), std::isfinite(hiR));
     const std::string control(mode);
     for (auto& bank : banks) for (int ch = 0; ch < 2; ++ch) {
         if (control == "wet-both" || (control == "wet-left" && ch == 0)

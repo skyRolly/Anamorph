@@ -59,3 +59,26 @@ boundaries and logs the existing final-output self-heal; it changes no intended
 signal arithmetic and is unsuitable for performance measurement. Its adjacent
 specification fixes the base, patch bytes and resulting tree and selects six
 separate controls. The trace does not establish a result merely by existing.
+
+The corrected production observer and stage trace have now executed against
+combined source `f2686cb5` using a fresh-build receipt whose source, JUCE,
+generated commands and linked objects were rechecked before reuse. Their raw
+outputs and identities are in `execution-2026-11-14/production-corrected/` and
+`production-stage-trace/`. After the .95 `FLT_MAX` last-sample stimulus, both
+wet banks' observed states are finite but reach approximately `1.81288e38`.
+On the following block the first observed non-finite samples appear at the
+Multiband output, in both channels from sample zero; the existing final-output
+guard then zeros those samples and fires its reset. This also occurs with no
+Mix dip, after a dry-only reset, or after a Haas reset. Resetting both wet-bank
+channels before that block prevents the zero block; resetting either one alone
+does not. At .1 `FLT_MAX` this zero block is not reproduced. These are
+interventions on diagnostic copies/state, not a proposed correction.
+
+The observations locate the involved wet state and processing stage; they do
+not yet identify the first overflowing expression inside Multiband or prove
+that the mathematically intended extreme-signal tail was representable. The
+zeroing is consistent with the existing guard once its input is non-finite.
+Whether the preceding arithmetic violates a separate finite-input contract,
+and its relationship to N2-04 through N2-07, remain open. Do not classify it
+as an A2-only or Mix-re-entry failure. The initial observer's unused-scratch
+read remains excluded from this conclusion.

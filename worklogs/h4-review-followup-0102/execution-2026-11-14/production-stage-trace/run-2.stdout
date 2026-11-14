@@ -1,0 +1,1 @@
+mode=dry-left amplitude=0.95 dip=1 wet_last=5.25017e+37,5.25017e+37 wet_bad=0,0 wet_max=1.81288e+38,1.81288e+38 dry_bad=0,0 dry_max=0,0 next_zero=128,128 next_nonfinite=0,0 next_first=0,0

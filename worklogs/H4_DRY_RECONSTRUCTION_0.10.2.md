@@ -422,3 +422,28 @@ A separate diagnostic adds per-channel state scans across both dry banks. It cat
 ## Replay provenance limit (2026-11-14)
 
 The archived `build_probe.py` records the checkout HEAD, selected replacement TU hashes, commands and binary hash. It does not establish that the checkout is clean, that the build was configured from the stated source, that reused objects or headers are fresh and compatible, or that the effective JUCE contents match the pin. A candidate checkout can be intentionally dirty, so its recorded HEAD alone is not its complete source identity. The historical observations remain evidence subject to their recorded fresh-build and dependency premises; their bytes and manifests are not rewritten. Future replay must bind the complete expected candidate patch and source contents, build configuration and dependency identity, and establish or eliminate reused-object provenance. This applies also to the related combined controls and benchmark relinkers. The historical helper does not yet enforce those properties; it must not be treated as a provenance verifier.
+
+## Extreme-input production trace follow-up (2026-11-14)
+
+The newly recorded fresh-build and controlled-relink executions reproduce the
+A2 hidden-state witness and distinguish the later zero block. On historical
+combined production `f2686cb5`, the extreme finite input leaves both wet-bank
+channels finite but with state magnitude near `1.81288e38`. The next block first
+shows non-finite signal at the Multiband output, in both channels from sample
+zero, after finite upstream stages. The existing final-output guard then zeros
+those samples and performs its normal reset. A dry-only reset, a Haas reset and
+keeping Mix fully wet do not prevent the observation; resetting both wet banks
+does, while resetting either channel alone does not. A smaller extreme input
+does not reproduce the zero block. These interventions locate the involved wet
+state and stage; they do not establish a suitable production recovery strategy,
+the first overflowing internal expression, or whether the ideal extreme-signal
+tail was representable. The final guard's reaction to its non-finite input is
+consistent with its existing contract. The underlying arithmetic's contract
+classification and relationship to N2-04–07 remain open.
+
+The A2 witness separately retains an invalid dry state with finite monitored
+outputs; its detector remains incomplete. No candidate is selected, no H4
+production code changes, and the measured historical A2 instruction ratios
+are not measurements of a later recovery candidate. The exact inputs, raw
+outputs, receipt, source trees, patch identities and diagnostic limitations are
+in `h4-review-followup-0102/`.

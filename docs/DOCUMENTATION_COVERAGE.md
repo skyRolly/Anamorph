@@ -19335,5 +19335,7 @@ The documentation drift check found that the candidate-only hidden-state witness
 and the later zero-block observation must remain separate. The new nonshipping
 engine causal probe and its planned production-source specification are indexed
 in TESTING and the H4 follow-up worklog. They add state-family controls without
-changing shipping source, accepting ADR-0074, or claiming a causal result before
-the recorded execution. Existing H4 findings and historical measurements remain.
+changing shipping source or accepting ADR-0074. The later recorded trace locates
+the first observed invalid signal at Multiband and the following existing
+self-heal; the precise internal arithmetic and contract classification remain
+open. Existing H4 findings and historical measurements remain.

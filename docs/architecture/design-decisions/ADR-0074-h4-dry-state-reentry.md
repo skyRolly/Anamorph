@@ -81,3 +81,17 @@ approval, main integration, native DAW behavior and listening.
 ## Independent recovery follow-up (2026-11-14)
 
 The [isolated LR4 witness](../../../worklogs/h4-review-followup-0102/README.md) produces finite filter output while an internal state overflows, followed by non-finite output on the next sample. It refutes output finiteness as a general proof of state finiteness. An A2 engine witness confirms hidden invalid dry state at a gated block boundary with finite monitored dry and wet output. Its subsequent zero block also occurs with no Mix dip and after a dry-only reset, so its cause is not isolated to re-entry. The full bank/fade/latency/recovery matrix remains untested. The earlier recommendation for A2 is therefore conditional on resolving this gap; the evidence-supported next step is targeted recovery investigation and cost measurement before selecting a production implementation. Accepting A2 now would mean explicitly accepting an unproven recovery boundary as well as the measured processing overhead. Other admissible decisions remain a supported modified candidate, continued investigation, retaining H4 with its known limitation, or deferral. **Status remains Proposed.**
+
+## Production extreme-input trace (2026-11-14)
+
+The separate subsequent zero block has now been traced on the historical
+combined production source: large finite wet-bank state is followed by
+non-finite Multiband output, after which the existing final-output guard zeros
+it and resets state. A diagnostic reset of both wet banks prevents this
+particular block; dry-only and Haas resets and keeping Mix fully wet do not.
+This does not attribute the block to A2 or establish the first overflowing
+expression or a distinct contract violation. The state-scan candidate still
+has not established a complete recovery contract or measured cost. See the
+decision packet and follow-up worklog for exact controls and limitations.
+The recommendation remains continued targeted investigation, and this ADR
+remains **Proposed**.

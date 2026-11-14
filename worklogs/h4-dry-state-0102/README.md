@@ -1,5 +1,13 @@
 # Reproduce the H4 decision experiments
 
+**Replay provenance limitation:** the commands below describe the historical
+experiments. The original relinkers do not verify complete source, dependency,
+generated-rule or reused-object identity and must not be treated as current
+provenance-controlled replay. The shared follow-up and the exact status of each
+entry point are recorded in `../combined-isolated-controls-0102/INVENTORY.md`;
+that inventory belongs to the evidence prerequisite and may be absent until it
+is integrated. Historical measurements and manifests remain unchanged.
+
 Read [the decision report](../H4_DRY_RECONSTRUCTION_0.10.2.md) and
 [Proposed ADR-0074](../../docs/architecture/design-decisions/ADR-0074-h4-dry-state-reentry.md).
 The production math in this branch is unchanged. Patch files are **nonshipping

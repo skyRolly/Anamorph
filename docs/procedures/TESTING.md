@@ -7765,6 +7765,10 @@ Test 25 retains both original RMS assertions and its default noise/crossover con
 The nonshipping `worklogs/h4-review-followup-0102/engine_cause.cpp` records wet
 and dry crossover-state observations and applies separately selected state-family
 reset controls after the recorded extreme-input stimulus. Its accompanying
-committed specification identifies the historical combined production source;
-it is an experimental causal probe, not a mandatory regression, an H4 fix, or
-evidence until an execution with recorded source/build identities is available.
+committed specification identifies the historical combined production source.
+The corrected execution and instrumented stage trace identify Multiband as the
+first observed invalid output stage in this stimulus, followed by existing
+self-heal; they do not yet isolate its precise arithmetic or establish a new
+contract violation. See the follow-up worklog for the fresh-build receipt,
+independent resets and the superseded preliminary observer. This is a
+nonshipping causal probe, not a mandatory regression or H4 fix.
