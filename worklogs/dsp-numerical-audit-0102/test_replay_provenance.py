@@ -70,6 +70,22 @@ class Provenance(unittest.TestCase):
         altered = self.root/source.name; altered.write_bytes(source.read_bytes()+b'\n')
         with self.assertRaises(ValueError): prov.verify_archive_file(archive, altered, source.name)
 
+    def test_diagnostic_exact_scope(self):
+        import difflib
+        engine = self.source/'src/dsp/AnamorphEngine.cpp'
+        engine.parent.mkdir(parents=True)
+        engine.write_text('line one\nline two\n')
+        archive = self.root/'archive'; archive.mkdir()
+        variant = archive/'engine-diagnostic.cpp'; variant.write_text('line one\nchanged\n')
+        patch = archive/'diagnostic.patch'
+        patch.write_text(''.join(difflib.unified_diff(engine.read_text().splitlines(keepends=True),
+            variant.read_text().splitlines(keepends=True), fromfile='baseline/AnamorphEngine.cpp',
+            tofile='diagnostic/AnamorphEngine.cpp')))
+        with mock.patch.object(prov, 'verify_archive_file'):
+            prov.verify_variant(self.source, archive, 'diagnostic')
+            variant.write_text(variant.read_text()+'unintended\n')
+            with self.assertRaises(ValueError): prov.verify_variant(self.source, archive, 'diagnostic')
+
     def test_unverifiable_build_is_never_reused(self):
         fresh = self.root/'fresh'
         fresh.mkdir()

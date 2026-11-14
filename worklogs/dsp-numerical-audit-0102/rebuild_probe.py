@@ -2,7 +2,7 @@
 """Build an archived probe from fresh baseline CMake objects; no fixed workspace paths."""
 import argparse,hashlib,shlex,subprocess
 from pathlib import Path
-from replay_provenance import fresh_build, verify_archive_file
+from replay_provenance import fresh_build, verify_archive_file, verify_variant
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--checkout',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
 p.add_argument('--probe',choices=['probe','gate','overlap','processor','os','heal','drive'],required=True)
@@ -13,7 +13,7 @@ if sha!='113b9189f0ff4d3b6348c553c559c22ee8ade782':raise SystemExit('Archival re
 root=Path(__file__).resolve().parent/'original';state=a.probe=='processor';target='AnamorphStateTests' if state else 'AnamorphTests';main='state_tests.cpp' if state else 'dsp_tests.cpp'
 names={'probe':'probe.cpp','gate':'gate-probe.cpp','overlap':'overlap-matrix.cpp','processor':'processor_probe.cpp','os':'os-probe.cpp','heal':'heal-probe.cpp','drive':'drive-probe.cpp'}
 verify_archive_file(root, root/names[a.probe], names[a.probe])
-if a.variant!='baseline': verify_archive_file(root, root/('engine-'+a.variant+'.cpp'), 'engine-'+a.variant+'.cpp')
+if a.variant!='baseline': verify_variant(a.checkout, root, a.variant)
 a.build=fresh_build(a.checkout,a.build,a.out/'fresh-build',target)
 commands=subprocess.check_output(['ninja','-C',str(a.build),'-t','commands',target],text=True).splitlines()
 cc=next(shlex.split(x) for x in commands if x.endswith('/tests/'+main) and ' -c ' in x)

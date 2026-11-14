@@ -5,6 +5,7 @@ concurrent writers, and unmodified toolchain/system dependencies. They do not
 attest to historical builds or to the compiler, operating system or libraries.
 """
 from pathlib import Path
+import difflib
 import subprocess
 
 BASE = '113b9189f0ff4d3b6348c553c559c22ee8ade782'
@@ -58,6 +59,24 @@ def verify_archive_file(repository, path, relative):
     expected = git(repository, 'show', f'{ARCHIVE}:worklogs/dsp-numerical-audit-0102/original/{relative}')
     if Path(path).read_bytes() != expected:
         raise ValueError(f'archived input differs from {ARCHIVE}: {relative}')
+
+
+def verify_variant(checkout, archive, name):
+    """Bind the archived engine copy to its separately recorded patch."""
+    archive = Path(archive)
+    source = archive / f'engine-{name}.cpp'
+    patch = archive / f'{name}.patch'
+    verify_archive_file(archive, source, source.name)
+    verify_archive_file(archive, patch, patch.name)
+    lines = patch.read_text().splitlines(keepends=True)
+    if len(lines) < 3 or not lines[0].startswith('--- ') or not lines[1].startswith('+++ '):
+        raise ValueError(f'invalid archived diagnostic patch: {patch}')
+    baseline = (Path(checkout) / 'src/dsp/AnamorphEngine.cpp').read_text().splitlines(keepends=True)
+    variant = source.read_text().splitlines(keepends=True)
+    difference = ''.join(difflib.unified_diff(baseline, variant,
+        fromfile=lines[0][4:].rstrip('\n'), tofile=lines[1][4:].rstrip('\n')))
+    if difference != ''.join(lines):
+        raise ValueError(f'diagnostic source does not match recorded patch: {name}')
 
 
 def fresh_build(checkout, supplied_build, fresh, target):
