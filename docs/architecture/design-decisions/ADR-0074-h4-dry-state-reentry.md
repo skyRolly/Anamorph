@@ -76,3 +76,7 @@ references, candidate-only recovery sequence, cost ledgers and controls.
 [Original preserved audit](../../../worklogs/dsp-numerical-audit-0102/README.md).
 N2-01/V2-01 are Confirmed P2. Candidate evidence is explicitly distinct from
 approval, main integration, native DAW behavior and listening.
+
+## Independent recovery follow-up (2026-11-14)
+
+The [isolated LR4 witness](../../../worklogs/h4-review-followup-0102/README.md) produces finite filter output while an internal state overflows, followed by non-finite output on the next sample. It refutes output finiteness as a general proof of state finiteness. End-to-end A2 reachability and the full bank/fade/re-entry matrix are not yet established. The earlier recommendation for A2 is therefore conditional on resolving this gap; the evidence-supported next step is targeted recovery investigation and cost measurement before selecting a production implementation. Accepting A2 now would mean explicitly accepting an unproven recovery boundary as well as the measured processing overhead. Other admissible decisions remain a supported modified candidate, continued investigation, retaining H4 with its known limitation, or deferral. **Status remains Proposed.**

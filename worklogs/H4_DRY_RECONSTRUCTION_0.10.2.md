@@ -408,3 +408,7 @@ scrubs only invalid derived samples and performs at most 48 integrator writes pe
 failed channel; it allocates no new buffer or history. Future production review
 must still validate all recovery/latency interactions and prescribed sanitizer
 and real-time gates on the approved implementation.
+
+## Independent follow-up — hidden invalid state (2026-11-14)
+
+An isolated call to the actual LR4 filter establishes that a finite output sum can coincide with an overflowed recursive state at the end of a sample; a zero next input then yields non-finite output. See [the reproducible witness and its precise limitations](h4-review-followup-0102/README.md). This invalidates the general inference that A2's finite unused-output scan proves all dry-filter state finite. It does **not** establish an end-to-end A2 failure: the complete engine's conditioning, wet guard, block-boundary placement, fades and re-entry remain to be exercised. The earlier observations and costs are unchanged for their recorded cases. Until that work is done A2's recovery completeness is unproven, and its previous recommendation is conditional on resolving this newly identified gap. Continue targeted investigation before recommending a production candidate; retaining H4 with its documented limitation or deferring remains available to the owner. A2 acceptance would explicitly accept both its measured costs and the unresolved recovery risk, not a proven recovery guarantee.
