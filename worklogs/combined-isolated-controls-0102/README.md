@@ -24,6 +24,17 @@ replacement is silently reinterpreted as an isolated N2-02 mutation.
 All checks assume trusted local Git, compiler, system dependencies and
 filesystem, and no concurrent source, build or tool modifications. A committed
 specification still needs review of the intended experimental difference. The
-results are not an attestation of the host or historical binaries. Until actual
-executions and their receipts are recorded, these controls are prepared tests,
-not evidence of their expected outcomes.
+results are not an attestation of the host or historical binaries.
+
+`results-f268/` records 15 expected selector outcomes from a new source- and
+dependency-checked build: baseline DSP 720/0, endpoint 392/0 and State 20/0;
+N2-02-only mutation 720/316 and State 20/12 while endpoint remains 392/0;
+premature forced adoption 720/8 while endpoint remains 392/0; and the combined,
+wet-only and dry-only N2-03 mutations 392/88, 392/44 and 392/44 while N2-02
+remains 720/0. The combined endpoint mutation also retains State 20/0. These
+failure counts are successful negative controls. Individual commands, binary,
+object, patch and raw output identities are retained. All 15 result records
+match expectations, but the original outer command session disappeared before
+its exit status could be retrieved; do not report that shell exit as observed.
+The captured build log ends early and is retained with that limitation. The
+separate header clamp mutation still needs its own fresh build and execution.
