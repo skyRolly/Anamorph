@@ -458,3 +458,22 @@ tracked separately as **N2-08, P3 review assessment**, a confirmed extreme-finit
 wet-path numerical defect. The guard's subsequent handling is expected; the
 one-sample experiment is not an approved correction or complete tail oracle.
 N2-01, V2-01 and N2-04–07 retain their independent dispositions.
+
+
+## Source-bound channel-recovery repeat (2026-11-14)
+
+A fresh, source- and dependency-checked nonshipping A2 trace reproduced the
+earlier opposite-channel recovery control: four repeated finite left-channel
+stimuli caused four left-only dry heals, zero right dry heals and zero final-wet
+heals, with finite wet output and **4/4** right dry-integrator comparisons
+matching an independent reference. A paired patch changing only the recovery
+call to reset both channels preserved those stated premises but produced
+**0/4** right-state matches. The source, patch, probe, full-build, binary and
+raw result identities are [committed in the review record](https://github.com/skyRolly/Anamorph/blob/6e4783d4ec8e6457448d86d754295b5ee6cb4660/worklogs/review-closure-0102/CONTINUITY.md). The
+negative probe exited 1 as expected; its enclosing command session was not
+retained after completion. This is a sensitive control for one repeated
+recovery workload, not proof of a complete recovery contract or preservation
+of every other state family. A2 still misses the separate hidden-invalid-state
+witness, and the state-scan candidate still lacks the required matrix and cost
+measurement. The recommendation remains targeted investigation; ADR-0074 is
+Proposed and production H4 is unchanged.

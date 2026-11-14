@@ -102,3 +102,16 @@ numerator and demonstrates representable first-sample results when only that
 step is widened. It is tracked independently as N2-08 (P3 review assessment),
 without prescribing a production numerical change. It does not establish A2
 recovery completeness or alter this Proposed decision.
+
+
+## Verified recovery ownership control (2026-11-14)
+
+A fresh, source-bound repetition of the documented A2 channel-local recovery
+exercise preserves the valid opposite-channel dry integrators in 4/4 repeated
+blocks; a reset-both mutation preserves 0/4 under the same stated execution
+premises. [The review record](https://github.com/skyRolly/Anamorph/blob/6e4783d4ec8e6457448d86d754295b5ee6cb4660/worklogs/review-closure-0102/CONTINUITY.md) retains the diagnostic patches,
+inputs, build and executable identities, raw outputs and the unobserved outer
+status of the negative run. This supports that specific ownership control; it
+does not cure A2's hidden-state detection gap or establish the recovery matrix
+and cost of a modified detector. Continue targeted investigation. **Status
+remains Proposed.**
