@@ -1,0 +1,12 @@
+{
+  "outer_exit": 0,
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "61c0fa72b2dd0ef59ff96a34b8068f3f7c06c0b3",
+  "fresh_build_environment_extra": {
+    "CMAKE_BUILD_PARALLEL_LEVEL": "2"
+  },
+  "toolchain": "codex-rolly-native:trixie-gcc14-v1",
+  "runs": 16,
+  "expected_outcomes": true,
+  "scope": "Fresh full DSP and isolated engine/processor mutation selectors; full State isolation and header clamp are separate."
+}
