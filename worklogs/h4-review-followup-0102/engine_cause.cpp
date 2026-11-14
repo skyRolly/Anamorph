@@ -9,7 +9,7 @@
 #include <string>
 
 using E = anamorph::AnamorphEngine;
-namespace access {
+namespace h4_trace_access {
 struct MB { friend auto member(MB); };
 struct Banks { friend auto member(Banks); };
 struct Haas { friend auto member(Haas); };
@@ -35,7 +35,7 @@ void sample(State& result, float value)
 }
 void inspect(State& result, anamorph::LR4Xover& filter, int channel)
 {
-    using namespace access;
+    using namespace h4_trace_access;
     sample(result, (filter.*member(S1{}))[channel]);
     sample(result, (filter.*member(S2{}))[channel]);
     sample(result, (filter.*member(S3{}))[channel]);
@@ -43,7 +43,7 @@ void inspect(State& result, anamorph::LR4Xover& filter, int channel)
 }
 void clear(anamorph::LR4Xover& filter, int channel)
 {
-    using namespace access;
+    using namespace h4_trace_access;
     (filter.*member(S1{}))[channel] = 0;
     (filter.*member(S2{}))[channel] = 0;
     (filter.*member(S3{}))[channel] = 0;
@@ -51,7 +51,7 @@ void clear(anamorph::LR4Xover& filter, int channel)
 }
 void run(const char* mode, float amplitude, bool dip)
 {
-    using namespace access;
+    using namespace h4_trace_access;
     constexpr int n = 128;
     anamorph::EngineParameters p;
     p.width = 0; p.mbEnable = true; p.mbBands = 2;

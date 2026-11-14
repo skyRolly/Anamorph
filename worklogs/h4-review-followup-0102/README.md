@@ -29,3 +29,12 @@ finite stimulus. Its source is a diagnostic observer and direct state mutation,
 not shipping instrumentation. The specification describes a planned execution;
 it is not itself a result or a causal conclusion. Results require a fresh build
 and independently recorded input, executable and output identities.
+
+The first guarded attempt rejected an abbreviated packet commit before building;
+the full SHA is required. The next attempt built the production test target but
+the new observer failed to compile because its namespace `access` collided with
+the POSIX function. Both logs are retained in `execution-2026-11-14/`; the
+observer was renamed and needs a new fresh-build execution. These are input and
+diagnostic-tool failures, respectively, not product-test results. Replay-tool
+source was also being hardened during the failed build, so that attempt cannot
+serve as a final provenance-controlled observation.
