@@ -1,0 +1,11 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-retain/AnamorphEngine.cpp
+@@ -2312,7 +2312,7 @@
+         haas.reset(); velvet.reset(); chorus.reset();
+         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+         loudness.reset();
+-        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
++        /* diagnostic: retain both dry rings */
+         // The oversampling latency stand-in is a delay line on the MAIN path and was
+         // written further up this very block, so a non-finite sample is already
+         // inside it and would be handed back `lat` samples later -- exactly the

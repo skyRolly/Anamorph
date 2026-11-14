@@ -1,0 +1,14 @@
+State test 159: independently crossfaded processor controls during an ordinary duck (N2-02)
+  [FAIL] N2-02 processor: every block adopts Bypass/Multiband independently during ordinary duck
+  [FAIL] N2-02 processor: crossfade progresses from the request block with one tick per sample
+  [FAIL] N2-02 processor: processed audio responds, not only readback
+  [FAIL] N2-02 processor: every block adopts Bypass/Multiband independently during ordinary duck
+  [FAIL] N2-02 processor: crossfade progresses from the request block with one tick per sample
+  [FAIL] N2-02 processor: processed audio responds, not only readback
+  [FAIL] N2-02 processor: every block adopts Bypass/Multiband independently during ordinary duck
+  [FAIL] N2-02 processor: crossfade progresses from the request block with one tick per sample
+  [FAIL] N2-02 processor: processed audio responds, not only readback
+  [FAIL] N2-02 processor: every block adopts Bypass/Multiband independently during ordinary duck
+  [FAIL] N2-02 processor: crossfade progresses from the request block with one tick per sample
+  [FAIL] N2-02 processor: processed audio responds, not only readback
+20 checks, 12 failures

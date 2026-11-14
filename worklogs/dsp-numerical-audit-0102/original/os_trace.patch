@@ -1,0 +1,24 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-os/AnamorphEngine.cpp
+@@ -2,6 +2,7 @@
+ #include "MidSide.h"
+ #include <cstdint>
+ #include <cstring>
++#include <cstdio>
+ 
+ namespace anamorph
+ {
+@@ -1856,9 +1857,13 @@
+         const float* wR = osPathScratch.getReadPointer (1);
+         for (int i = 0; i < n; ++i)
+         {
++            const bool auditWasSmoothing = osBlend.isSmoothing();
++            const float auditBaseL = L[i], auditBaseR = R[i];
+             const float b = osBlend.getNextValue();
+             L[i] += b * (wL[i] - L[i]);
+             R[i] += b * (wR[i] - R[i]);
++            if (auditWasSmoothing && ! osBlend.isSmoothing())
++                std::fprintf(stdout,"OS_END b=%g i=%d baseL=%a wrappedL=%a outL=%a baseR=%a wrappedR=%a outR=%a\n",b,i,auditBaseL,wL[i],L[i],auditBaseR,wR[i],R[i]);
+         }
+     }
+ 
