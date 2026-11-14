@@ -5,7 +5,7 @@
   "patch": {
     "commit": "spec",
     "path": "worklogs/review-closure-0102/h4-a2-preservation.patch",
-    "sha256": "e4d8ec98fae89cd377039462caeb250cad3aa959a84b7c44f1a7dbf13b7bb584",
+    "sha256": "9f72631d8559d9a7cd77e889a21fc53538ee8e04533e57ec92605bbbbd28b8ec",
     "purpose": "Nonshipping A2 recovery trace plus channel-local guard counters"
   },
   "targets": [

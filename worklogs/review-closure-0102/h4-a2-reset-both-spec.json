@@ -5,7 +5,7 @@
   "patch": {
     "commit": "spec",
     "path": "worklogs/review-closure-0102/h4-a2-reset-both.patch",
-    "sha256": "2181eaa8a2b51b88cb6bf4d5c861c5460455e8e4068f657f95c7289a9570180e",
+    "sha256": "837f5ec4dd6d2d55e702c6b457480bd25190f4945e5d7f7bc1bd143bdc906267",
     "purpose": "Nonshipping A2 recovery trace plus reset-both mutation"
   },
   "targets": [
