@@ -1,0 +1,17 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-endpoint/AnamorphEngine.cpp
+@@ -1991,10 +1991,10 @@
+             for (int i = 0; i < n; ++i)
+             {
+                 const float b = mbEnableBlend.getNextValue();
+-                L[i] = pmL[i] + b * (L[i] - pmL[i]);
+-                R[i] = pmR[i] + b * (R[i] - pmR[i]);
+-                aLw[i] = cdL[i] + b * (aLw[i] - cdL[i]);
+-                aRw[i] = cdR[i] + b * (aRw[i] - cdR[i]);
++                L[i] = b == 1.0f ? L[i] : b == 0.0f ? pmL[i] : pmL[i] + b * (L[i] - pmL[i]);
++                R[i] = b == 1.0f ? R[i] : b == 0.0f ? pmR[i] : pmR[i] + b * (R[i] - pmR[i]);
++                aLw[i] = b == 1.0f ? aLw[i] : b == 0.0f ? cdL[i] : cdL[i] + b * (aLw[i] - cdL[i]);
++                aRw[i] = b == 1.0f ? aRw[i] : b == 0.0f ? cdR[i] : cdR[i] + b * (aRw[i] - cdR[i]);
+             }
+         }
+     }
