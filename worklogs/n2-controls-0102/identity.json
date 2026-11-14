@@ -1,0 +1,59 @@
+{
+  "engine-fixed.log": {
+    "bytes": 8387,
+    "sha256": "a30798618f6ec3aa55774468287517ffe88f597dd3fd9f5a07fa1c38630e7da2"
+  },
+  "engine-original.log": {
+    "bytes": 34631,
+    "sha256": "bef9fe02b990597ca5f1c25471c66df3ff2e5becab0fe3b5c87909d714896649"
+  },
+  "engine-premature-forced.log": {
+    "bytes": 8971,
+    "sha256": "4464ca6a3d4be7b0cb12359f4beeef346afb2320efa3d38c9a72b13bc43e1170"
+  },
+  "processor-fixed.log": {
+    "bytes": 113,
+    "sha256": "b2a43f1f868498d9864842764b787fd63b9d7ea19e622ba30329440c4be635e2"
+  },
+  "processor-original.log": {
+    "bytes": 1114,
+    "sha256": "5baa6d04707f2f1c3423f769558a0627f794b786eacdf3a82b6b1f203458fc4b"
+  },
+  "archive-replay.log": {
+    "bytes": 1556,
+    "sha256": "44a2e19cdce94039136249313a9f6d6f82efa03a80f2e84d9260215197914274"
+  },
+  "state-lint-self.log": {
+    "bytes": 52,
+    "sha256": "40682bab49ef97ffface53657c4f7b394581d3ec2649ce3d4c2c17ac61c3812c"
+  },
+  "state-lint.log": {
+    "bytes": 126,
+    "sha256": "c10d5c0ccd5c3c344e85194ef8795c7186d1485bd11484c4bdb4c057d0896980"
+  },
+  "src/dsp/AnamorphEngine.cpp": {
+    "sha256": "42fc944d91109d918e195ca97ce54782e1f156ea460653d33f60483b1eda3c48"
+  },
+  "tests/dsp_tests.cpp": {
+    "sha256": "c3fa5263f1d5bdda885950854fbb1b4b7b783313f0355fec78db5d9fe4fa2a77"
+  },
+  "tests/state_tests.cpp": {
+    "sha256": "eeb1bf04cc1a1f0b033a551f4b5188a22db8ae916cd87d18eadb316ffcdd9ce5"
+  },
+  "tests/n2_control_tests.h": {
+    "sha256": "37edab16e0c2b0591c66c05f95dd8d8837de6ab9bf73737c7d1fb40a15f4d2eb"
+  },
+  "tests/n2_processor_control_tests.h": {
+    "sha256": "e7f25403a89e153fd51f4275921167d7c777eab5c90492c8a1cc6c6c8b451e1b"
+  },
+  "tests/n2_test_support.h": {
+    "sha256": "21a168314d4f55070505ff33d541af10d5a4f57d77a01f749d1ce67611dd1c9f"
+  },
+  "scripts/check-state-coverage.py": {
+    "sha256": "151581abf6cee1933d527c7a0b11e3b065f1302df83bd7470c4a6306595684eb"
+  },
+  "full-state.log": {
+    "bytes": 126588,
+    "sha256": "cce35a154857101d6f7c380be8c0aa93423ab55b86096abf2ac0a98025f37cf4"
+  }
+}

@@ -833,7 +833,7 @@ with broken metadata are refused. Archive tests reach a deliberate product-targe
 marker after the provenance check. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
-`tests/dsp_tests.cpp` has **76 DSP tests** (Test 1 to Test 76; Tests 3 and 4 run as one) and the A/B
+`tests/dsp_tests.cpp` has **77 DSP tests** (Test 1 to Test 77; Tests 3 and 4 run as one) and the A/B
 active-slot clamp guard, using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
@@ -7778,3 +7778,5 @@ fresh baseline and archived diagnostic replay and its identities are recorded
 under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
 The shared reviewed-specification runner records newly built objects and results;
 unmigrated historical relinkers retain their stated provenance limitations.
+
+DSP Test 77 and State Test 159 (`--n2-controls`) discriminate independently crossfaded Bypass/Multiband Enable adoption from ordinary and forced ducks. They assert next-block targets and smoother progression in addition to readback and audible differences. See `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`.
