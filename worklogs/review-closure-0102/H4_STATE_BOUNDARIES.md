@@ -30,3 +30,13 @@ single post-gated-block scan. Repeated recovery, actual oversampling, re-entry
 and preserving valid histories remain required discriminating experiments.
 No candidate recovery contract or representative performance claim follows from
 this state map alone.
+
+A later engine-level fault injection at exact source `3669cf71` confirms that
+an invalid active dry integrator can remain unobserved through the original
+full-wet gate and affect the first Mix re-entry block. The source-bound control
+also executes x4 oversampling with Drive and six samples of latency; it
+separates that dry-only failure from the extreme wet overflow, and restoring
+only the injected state restores the reference output. See the detailed
+execution and negative controls in `CONTINUITY.md` and
+`h4-reentry-injection-results/`. This deliberately injected fault models a
+missed hidden state; it is not itself a naturally generated A2 execution.

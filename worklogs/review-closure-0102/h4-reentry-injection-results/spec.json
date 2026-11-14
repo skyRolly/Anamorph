@@ -1,0 +1,13 @@
+{
+  "purpose": "Fault-inject an already-invalid active dry integrator at a full-wet boundary and independently observe actual subsequent Mix consumption, channel-local restoration, final healing, and real x4 Drive-wrapped latency; the no-fault cases are negative controls.",
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "61c0fa72b2dd0ef59ff96a34b8068f3f7c06c0b3",
+  "targets": ["AnamorphTests"],
+  "probes": [{"name": "h4-reentry-injection", "target": "AnamorphTests", "commit": "spec", "path": "worklogs/review-closure-0102/h4-reentry-injection-probe.cpp"}],
+  "runs": [
+    {"program": "h4-reentry-injection", "args": ["off", "inject"], "expected_exit": 0},
+    {"program": "h4-reentry-injection", "args": ["wrapped", "inject"], "expected_exit": 0},
+    {"program": "h4-reentry-injection", "args": ["off", "no-fault"], "expected_exit": 1},
+    {"program": "h4-reentry-injection", "args": ["wrapped", "no-fault"], "expected_exit": 1}
+  ]
+}

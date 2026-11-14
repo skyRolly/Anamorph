@@ -455,3 +455,42 @@ The source-level dry-state, bank, delay and consumption map in
 the overwrite-before-use premise for a dormant bank, the distinct aligned and
 clean histories, and the limits of a post-block detector. It supplements the
 injected-state evidence rather than claiming a complete recovery contract.
+
+### Dry-state re-entry fault injection with actual wrapped latency
+
+A new nonshipping, source-bound probe models an already-invalid dry state by
+injecting NaN directly into the active left dry crossover integrator. It uses
+unpatched production source `3669cf716b27de56dd125f29d0b2672598aebdc2`, the
+fresh-build receipt from `integration-3669-results/fresh-controls/`, committed
+probe/spec `7db4744bf0b7c314bfeeda0435f0177f284b9ff6`, and the controlled
+relinker. The selected binary SHA-256 is
+`62a674a3d9b93517508536742b9d2bf513a840c54aa6460eab4c007c57743fca`.
+There is no extreme wet stimulus and no candidate recovery patch in this
+experiment. The injected state explicitly models the boundary produced by a
+missed detector; this is not proof that the injection itself arose naturally.
+
+The original H4 gate leaves the injected dry state unconsumed and produces the
+same two-channel output as a clean engine. After Mix starts its real glide to
+0.5, the invalid dry state reaches the actual production output and the existing
+final guard zeros affected left samples. At zero oversampling latency all
+**128/128** left samples differ and are zero instead of the clean reference;
+with selected x4 and Drive 6 dB, the observed `osRunning` state and the
+production branch establish wrapped execution, latency is six samples, and
+**122/128** left samples differ and are zero. The other channel's current-block
+output remains bit-identical in both cases. Restoring only the injected dry
+integrator before re-entry restores both channels' full output bit-for-bit;
+the untreated case leaves the valid opposite wet integrator different after
+the existing broad final self-heal. All **10/10 checks** pass per injected
+case. No-fault negative controls produce zero differences and fail the three
+fault-sensitive assertions in each case as expected; runner exit is 0.
+
+This isolates a real consumption boundary from the separate extreme-finite
+wet overflow and complements, rather than replaces, the separately reproduced
+naturally generated A2 hidden-state witness and earlier A/C candidate-only
+Mix-consumption observation. It does not execute A2's guard, prove general
+candidate recovery or justify changing shipping H4. Complete identities,
+commands, outputs, expected negative exits and unsuccessful host, wrapper,
+probe-compilation and abbreviated-SHA attempts are retained in
+`h4-reentry-injection-results/`. The successful GCC 14 container run used the
+same image as the fresh build; a direct three-CPU Docker limit was needed
+because the standard four-CPU wrapper was rejected by the current daemon.

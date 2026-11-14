@@ -1,0 +1,53 @@
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:12:11: error: ‘namespace access { }’ redeclared as different kind of entity
+   12 | namespace access {
+      |           ^~~~~~
+In file included from /usr/include/c++/14/bits/atomic_wait.h:46,
+                 from /usr/include/c++/14/bits/atomic_base.h:42,
+                 from /usr/include/c++/14/atomic:50,
+                 from /workspace/.cloud-setup/deps/JUCE-905/modules/juce_core/system/juce_StandardHeader.h:68,
+                 from /workspace/.cloud-setup/deps/JUCE-905/modules/juce_core/juce_core.h:215,
+                 from /workspace/.cloud-setup/deps/JUCE-905/modules/juce_audio_basics/juce_audio_basics.h:66,
+                 from /workspace/.cloud-setup/deps/JUCE-905/modules/juce_dsp/juce_dsp.h:67,
+                 from /workspace/anamorph-integration-final-clean/src/dsp/AnamorphEngine.h:3,
+                 from /workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:3:
+/usr/include/unistd.h:287:12: note: previous declaration ‘int access(const char*, int)’
+  287 | extern int access (const char *__name, int __type) __THROW __nonnull ((1));
+      |            ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp: In function ‘float& dryState(E&)’:
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:25:21: error: ‘access’ is not a namespace-name
+   25 |     using namespace access; auto& mb=e.*member(MB{});
+      |                     ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp: In function ‘float wetRightState(E&)’:
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:29:21: error: ‘access’ is not a namespace-name
+   29 |     using namespace access; auto& mb=e.*member(MB{});
+      |                     ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp: In function ‘int main(int, char**)’:
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:60:29: error: ‘access’ is not a class, namespace, or enumeration
+   60 |     check((poisoned.get()->*access::member(access::OSRunning{}))==wrapped,"actual wrap engagement matches case");
+      |                             ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:60:44: error: ‘access’ is not a class, namespace, or enumeration
+   60 |     check((poisoned.get()->*access::member(access::OSRunning{}))==wrapped,"actual wrap engagement matches case");
+      |                                            ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:70:29: error: ‘access’ is not a class, namespace, or enumeration
+   70 |     check((poisoned.get()->*access::member(access::Mix{})).isSmoothing(),"Mix re-entry ramp actually starts");
+      |                             ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:70:44: error: ‘access’ is not a class, namespace, or enumeration
+   70 |     check((poisoned.get()->*access::member(access::Mix{})).isSmoothing(),"Mix re-entry ramp actually starts");
+      |                                            ^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:76:32: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+   76 |         zeroL+=b.getSample(0,i)==0.0f && a.getSample(0,i)!=0.0f;
+      |                ~~~~~~~~~~~~~~~~^~~~~~
+/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp:76:58: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+   76 |         zeroL+=b.getSample(0,i)==0.0f && a.getSample(0,i)!=0.0f;
+      |                                          ~~~~~~~~~~~~~~~~^~~~~~
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 183, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 122, in main
+    subprocess.run(cc, cwd=build, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/usr/bin/c++', '-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1', '-DJUCE_MODULE_AVAILABLE_juce_audio_basics=1', '-DJUCE_MODULE_AVAILABLE_juce_audio_formats=1', '-DJUCE_MODULE_AVAILABLE_juce_core=1', '-DJUCE_MODULE_AVAILABLE_juce_data_structures=1', '-DJUCE_MODULE_AVAILABLE_juce_dsp=1', '-DJUCE_MODULE_AVAILABLE_juce_events=1', '-DJUCE_OPENGL_ES=0', '-DJUCE_STANDALONE_APPLICATION=1', '-DJUCE_USE_CURL=0', '-DJUCE_USE_MP3AUDIOFORMAT=0', '-DJUCE_USE_OPUS=0', '-DJUCE_USE_WEBP=0', '-DJUCE_WEB_BROWSER=0', '-DLINUX=1', '-DNDEBUG=1', '-D_NDEBUG=1', '-I/workspace/review-closure-integration-3669-controls/fresh-build/AnamorphTests_artefacts/JuceLibraryCode', '-I/workspace/anamorph-integration-final-clean/src', '-I/workspace/anamorph-integration-final-clean/src/dsp', '-I/workspace/.cloud-setup/deps/JUCE-905/modules', '-O3', '-DNDEBUG', '-std=c++23', '-fstack-protector-strong', '-ffunction-sections', '-fdata-sections', '-g', '-march=haswell', '-ffp-contract=off', '-O3', '-Wall', '-Wextra', '-Wpedantic', '-Wstrict-aliasing', '-Wuninitialized', '-Wunused-parameter', '-Wsign-compare', '-Wsign-conversion', '-Wunreachable-code', '-Wcast-align', '-Wno-implicit-fallthrough', '-Wno-maybe-uninitialized', '-Wno-ignored-qualifiers', '-Wno-multichar', '-Wswitch-enum', '-Wredundant-decls', '-Wno-strict-overflow', '-Wshadow', '-Wfloat-equal', '-Wmissing-field-initializers', '-Woverloaded-virtual', '-Wreorder', '-Wzero-as-null-pointer-constant', '-MD', '-MT', '/workspace/review-closure-h4-reentry-injection/probe.o', '-MF', '/workspace/review-closure-h4-reentry-injection/probe.o.d', '-o', '/workspace/review-closure-h4-reentry-injection/probe.o', '-c', '/workspace/review-closure-h4-reentry-injection/packet/worklogs/review-closure-0102/h4-reentry-injection-probe.cpp']' returned non-zero exit status 1.
