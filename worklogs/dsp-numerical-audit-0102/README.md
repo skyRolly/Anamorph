@@ -104,15 +104,34 @@ new fresh baseline and `live_toggle` diagnostic replay is recorded separately in
 `replay-followup-2026-11-14/`; each produced the same 16 output rows, byte for
 byte, as the corresponding preserved historical log. Its identity records the
 new source, dependency, objects, commands and executable, not the historical
-build. That execution used the immediately preceding guard and helper hashes
-recorded in its receipt; later Git-environment and helper-stability checks need
-their own real replay before being described as exercised on this input. The
+build. A subsequent fresh baseline and `live_toggle` replay with the later
+Git-environment and helper-stability checks also produced the exact same 16
+rows per variant; its independently recorded commands, tool and executable
+identities and comparisons are in `replay-final-2026-11-14/`. The
 shared `replay_experiment.py` additionally accepts a committed,
 reviewed experiment specification and a clean or exactly patched source tree,
 then builds fresh targets and records executions. A patch hash identifies bytes;
 the specification's stated experimental purpose still requires human review.
 
-R-237-01 remains open across its full scope: the existing H4, N2-02, N2-03,
-combined-control, trace and benchmark relinkers have not yet been migrated to
-the shared fresh-build mechanism. Their earlier observations and premises remain
-historical; their HEAD fields alone do not establish linked-object provenance.
+R-237-01 remains open across its full scope: reviewed fresh-build, controlled
+relink and isolated combined-control procedures now cover the recorded cases,
+but not every H4 recovery, trajectory and benchmark experiment has a reviewed
+specification and verified rerun. Dependent PRs disable the unsafe old per-PR
+entry points; their earlier observations and premises remain historical. Their
+HEAD fields alone do not establish linked-object provenance. See the
+`combined-isolated-controls-0102/INVENTORY.md` for individual dispositions.
+The receipt-based relinker additionally compares the recorded compiler and
+include-related environment before reuse. Other environment and system-library
+properties remain explicit trusted execution premises rather than attestations.
+
+`replay_lr4_witness.py` rebuilds the committed isolated LR4 witness and its
+committed minimal JUCE stub against a verified historical source checkout. Its
+receipt identifies that stub, not a full JUCE build; the resulting filter-level
+observation is distinct from the fresh actual-engine candidate executions.
+
+
+The final 17 synthetic guard controls passed in the documented GCC/CMake
+container; a separate host attempt could not run two configure/build cases
+because `cmake` was absent. Both logs are retained in
+`replay-final-2026-11-14/`. The host attempt is an environment failure, not a
+product-test or negative-control result.

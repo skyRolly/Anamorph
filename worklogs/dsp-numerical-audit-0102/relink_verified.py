@@ -9,6 +9,7 @@ it is not a compiler, host or historical-execution attestation.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -16,6 +17,16 @@ import subprocess
 from replay_provenance import JUCE, cache_values, git, verify_source_tree
 from rebuild_probe import link_objects, sha, version
 from replay_experiment import blob
+
+
+BUILD_ENV_KEYS = ('PATH', 'CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'CPATH',
+                  'CPLUS_INCLUDE_PATH', 'LIBRARY_PATH', 'LANG', 'LC_ALL')
+
+
+def verify_build_environment(expected):
+    actual = {key: os.environ[key] for key in BUILD_ENV_KEYS if key in os.environ}
+    if actual != expected:
+        raise ValueError('compiler/build environment differs from recorded fresh build')
 
 
 def main():
@@ -51,6 +62,7 @@ def main():
         Path(__file__).with_name('replay_experiment.py'))}
 
     def verify_build():
+        verify_build_environment(receipt['environment'])
         if verify_source_tree(checkout, receipt['source_head']) != base_tree:
             raise ValueError('source differs from recorded fresh build')
         if verify_source_tree(juce, JUCE) != receipt['juce_tree']:

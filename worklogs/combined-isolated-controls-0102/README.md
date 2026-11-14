@@ -37,4 +37,9 @@ object, patch and raw output identities are retained. All 15 result records
 match expectations, but the original outer command session disappeared before
 its exit status could be retrieved; do not report that shell exit as observed.
 The captured build log ends early and is retained with that limitation. The
-separate header clamp mutation still needs its own fresh build and execution.
+separate header clamp mutation was then built from scratch against `f2686cb5`
+with its reviewed header-only patch and pinned JUCE: the endpoint selector
+failed 1 of 392 assertions as expected, while the N2-02 selector passed 720/0.
+The outer runner exited 0. Its exact tree, patch, commands, compiler, object and
+binary hashes, raw selector output and build log are in `results-clamp-f268/`.
+This diagnostic result is not a final-head integration test.
