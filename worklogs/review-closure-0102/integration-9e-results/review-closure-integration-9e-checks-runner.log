@@ -1,0 +1,71 @@
+start docs-self
+done docs-self 0
+start docs
+done docs 0
+start citations-self
+done citations-self 0
+start citations
+done citations 0
+start portability-self
+done portability-self 0
+start portability
+done portability 0
+start realtime-self
+done realtime-self 0
+start realtime
+done realtime 0
+start dispatch-self
+done dispatch-self 0
+start dispatch
+done dispatch 0
+start state-coverage-self
+done state-coverage-self 0
+start state-coverage
+done state-coverage 0
+start workflow-routing
+done workflow-routing 0
+start release-notes-self
+done release-notes-self 0
+start release-notes
+done release-notes 0
+start rosetta-inert
+done rosetta-inert 0
+start cleanup-handshake
+done cleanup-handshake 0
+start cleanup-fault
+done cleanup-fault 0
+start cleanup-process
+done cleanup-process 0
+start rosetta-launch
+done rosetta-launch 0
+start rosetta-trace
+done rosetta-trace 0
+start mac-review-fixture
+done mac-review-fixture 0
+start native-parser
+done native-parser 0
+start installer-plan
+done installer-plan 0
+start installer-shell
+done installer-shell 0
+start uninstaller-shell
+done uninstaller-shell 0
+start icons-self
+done icons-self 0
+start icons
+done icons 0
+start icon-preflight
+done icon-preflight 0
+start installer-icon-self
+done installer-icon-self 0
+start installer-icon
+done installer-icon 0
+start linux-package-self
+done linux-package-self 0
+start linux-package
+done linux-package 0
+start identity-self
+done identity-self 0
+start identity
+done identity 0
+failures []

@@ -1,0 +1,418 @@
+{
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "results": [
+    {
+      "name": "docs-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-docs.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 11.297,
+      "log_sha256": "aaed3768d7e516f98cf65d5bae0db72d6242f5637fb73535243326f1262cdb87"
+    },
+    {
+      "name": "docs",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-docs.py"
+      ],
+      "exit": 0,
+      "seconds": 2.361,
+      "log_sha256": "d990fbd06d5c86ea535d5e381575b6ff00d36c9b718d341d9fec4eeb7e9d0bc2"
+    },
+    {
+      "name": "citations-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-citations.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 1.339,
+      "log_sha256": "f3b66a0e78184776948a1f302c945c3286f4e05f7c496669563bc0f20b0467bc"
+    },
+    {
+      "name": "citations",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-citations.py",
+        "--check",
+        "--base",
+        "51e6250d34b44d838a51f9a5086105d39d6b0f29"
+      ],
+      "exit": 0,
+      "seconds": 6.52,
+      "log_sha256": "a3719e8b3faaba784690df58894b914b78817a1c4ced6da385dcb43c613b0651"
+    },
+    {
+      "name": "portability-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-portability.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.088,
+      "log_sha256": "fe7f09258c68a183bed7783ed21bb9fa02e1df1ad378ae665469924f1aeec17f"
+    },
+    {
+      "name": "portability",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-portability.py"
+      ],
+      "exit": 0,
+      "seconds": 1.621,
+      "log_sha256": "930ce8a71b5852d95ed4e1462ffb8850aee144524ad8b3db867caff3caf1a0e2"
+    },
+    {
+      "name": "realtime-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-realtime.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.083,
+      "log_sha256": "1ac695d29065b85b786f0f9834233b023a4d7f7365a5bc076c6f201cffa7555a"
+    },
+    {
+      "name": "realtime",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-realtime.py"
+      ],
+      "exit": 0,
+      "seconds": 0.686,
+      "log_sha256": "8a06c2749834519205ccbad24f3d3ae739591b0ece0e9d0e13721f65d22c04d0"
+    },
+    {
+      "name": "dispatch-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-dispatch.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.046,
+      "log_sha256": "ff84524cee5f7652539f1af76c9689256fcb13047938613f7f8121e050d144d8"
+    },
+    {
+      "name": "dispatch",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-dispatch.py"
+      ],
+      "exit": 0,
+      "seconds": 0.291,
+      "log_sha256": "839270eb6e41dbe280045c2ca87024c272f44e72824bbe2fe58925f28388a63d"
+    },
+    {
+      "name": "state-coverage-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-state-coverage.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 3.293,
+      "log_sha256": "40682bab49ef97ffface53657c4f7b394581d3ec2649ce3d4c2c17ac61c3812c"
+    },
+    {
+      "name": "state-coverage",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-state-coverage.py"
+      ],
+      "exit": 0,
+      "seconds": 1.268,
+      "log_sha256": "c10d5c0ccd5c3c344e85194ef8795c7186d1485bd11484c4bdb4c057d0896980"
+    },
+    {
+      "name": "workflow-routing",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/test-workflow-routing.py",
+        "--report",
+        "/workspace/review-closure-integration-9e-checks/workflow-routing.json"
+      ],
+      "exit": 0,
+      "seconds": 2.413,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "release-notes-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-release-notes.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.098,
+      "log_sha256": "2bd9a0bab9abd9dc311129ad21825f4aaeb76045398afb659e6e9a36da9f7362"
+    },
+    {
+      "name": "release-notes",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-release-notes.py"
+      ],
+      "exit": 0,
+      "seconds": 0.091,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "rosetta-inert",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/diagnose-rosetta-scope.py",
+        "--self-test",
+        "--self-test-report",
+        "/workspace/review-closure-integration-9e-checks/rosetta-inert.json"
+      ],
+      "exit": 0,
+      "seconds": 0.415,
+      "log_sha256": "b10bb9941ed91f5f3985a025cf48007cece6334523f0f9aa4046fe8a33e899f5"
+    },
+    {
+      "name": "cleanup-handshake",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "exit": 0,
+      "seconds": 5.733,
+      "log_sha256": "39ef4aa58d76c1090517914d558e2143530a158511b7d3f11368ef67083374ea"
+    },
+    {
+      "name": "cleanup-fault",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "exit": 0,
+      "seconds": 2.179,
+      "log_sha256": "5cabf35a3ec82ed01ee03067ac54bd30e00378074238637429078e58ba1d3985"
+    },
+    {
+      "name": "cleanup-process",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/workspace/review-closure-integration-9e-checks/rosetta-process.json"
+      ],
+      "exit": 0,
+      "seconds": 7.616,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "rosetta-launch",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/diagnose-rosetta-launch.py",
+        "--self-test",
+        "--report",
+        "/workspace/review-closure-integration-9e-checks/rosetta-launch.json"
+      ],
+      "exit": 0,
+      "seconds": 0.382,
+      "log_sha256": "80bc00562b99efce5fb0ac377e5ec38952b41dc0d45120f70f8a0c944510a524"
+    },
+    {
+      "name": "rosetta-trace",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/diagnose-rosetta-handshake.py",
+        "--self-test",
+        "--report",
+        "/workspace/review-closure-integration-9e-checks/rosetta-trace.json"
+      ],
+      "exit": 0,
+      "seconds": 1.575,
+      "log_sha256": "ea7c837a4de8b00f9bf015d74a85da2d7c275ce30aea97fc10ca663772c2e190"
+    },
+    {
+      "name": "mac-review-fixture",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/test-macos-integration-review.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.845,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "native-parser",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/native_validation_tests.py"
+      ],
+      "exit": 0,
+      "seconds": 5.123,
+      "log_sha256": "5f4de97c3d5904ad52707068ce9f8b6bf97b447fa10edc5e681e0b86e5273f83"
+    },
+    {
+      "name": "installer-plan",
+      "argv": [
+        "python3",
+        "-B",
+        "tests/linux_install_native_plan_tests.py"
+      ],
+      "exit": 0,
+      "seconds": 0.437,
+      "log_sha256": "7b86291b37cb634af5195202c0758a163d4a9c13965b0604b083e8d0d77f781a"
+    },
+    {
+      "name": "installer-shell",
+      "argv": [
+        "/bin/sh",
+        "-n",
+        "packaging/linux/install.sh"
+      ],
+      "exit": 0,
+      "seconds": 0.004,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "uninstaller-shell",
+      "argv": [
+        "/bin/sh",
+        "-n",
+        "packaging/linux/uninstall.sh"
+      ],
+      "exit": 0,
+      "seconds": 0.004,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "icons-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-icons.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 2.312,
+      "log_sha256": "5eac4f26a2879a4bd1bb4d0590e83bdf0d9aee7ca751d801fb13116202757f03"
+    },
+    {
+      "name": "icons",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-icons.py"
+      ],
+      "exit": 0,
+      "seconds": 0.472,
+      "log_sha256": "c4f571ac25732fc33331b98cf8d46e39f677af6d8463744592e8ba951e680d8d"
+    },
+    {
+      "name": "icon-preflight",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/test-icon-preflight.py"
+      ],
+      "exit": 0,
+      "seconds": 35.62,
+      "log_sha256": "d021e7f33d30e21e97ef8b7c5e610cf35be3fe2c03c8027a2ccc5891bc57f2df"
+    },
+    {
+      "name": "installer-icon-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-installer-icon.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.447,
+      "log_sha256": "dfc387c284a326cd9f633052bcb943dc56be10a4719b598469d79ddc92be9c3d"
+    },
+    {
+      "name": "installer-icon",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-installer-icon.py"
+      ],
+      "exit": 0,
+      "seconds": 0.549,
+      "log_sha256": "5c64210888efddc1f6c1742eb8ec33bb0f27d63aaa02e2d685826844f7fc8650"
+    },
+    {
+      "name": "linux-package-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-linux-package.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.18,
+      "log_sha256": "ec612ce1ed219976ecad94b7e8f7625a15d81e710b6d981d7b65d122740408f3"
+    },
+    {
+      "name": "linux-package",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-linux-package.py"
+      ],
+      "exit": 0,
+      "seconds": 0.122,
+      "log_sha256": "ef49f3edce0c69f8edfd8365e9a8e6cb8b9802e5762742426839a2bf5b530de3"
+    },
+    {
+      "name": "identity-self",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-product-identity.py",
+        "--self-test"
+      ],
+      "exit": 0,
+      "seconds": 0.572,
+      "log_sha256": "11e26b116c4cb1d36d30166898174d78b531c57619f3f70793b5c18c0b368c12"
+    },
+    {
+      "name": "identity",
+      "argv": [
+        "python3",
+        "-B",
+        "scripts/check-product-identity.py"
+      ],
+      "exit": 0,
+      "seconds": 0.2,
+      "log_sha256": "8c2ab5c024b2924f07cb5d08b4813db2dde0f82c372f8ae4459926ff0a84bc3c"
+    }
+  ]
+}
