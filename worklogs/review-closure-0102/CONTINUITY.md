@@ -315,3 +315,28 @@ cause cannot be established. The failed attempt metadata is retained in
 Do not erase or attribute the initial failure without evidence. An earlier
 intermediate integration `26b39ef2` hosted workflow also concluded cancelled;
 its partial successes do not validate the later combined source.
+
+### Superseding H4 documentation and integration checkpoint
+
+A subsequent drift review found that the dated `NEXT_RELEASE_DEVELOPMENT_ROADMAP`
+still read as a current A2 recommendation. Local #240 commit
+`b49c1345d07396524618d6be517c21edfa4beb4f` labels that recommendation
+historical and updates the H4 decision packet, follow-up, testing inventory and
+Proposed ADR-0074 with the source-bound repeated recovery control and its limits.
+The isolated integration commit
+`3669cf716b27de56dd125f29d0b2672598aebdc2` includes that local #240 commit.
+Its only differences from `9e972572` are those six documentation files; `src/`,
+`tests/`, scripts and workflows are byte-identical. The earlier exact `9e972572`
+green results are therefore useful historical evidence, but are not reported as
+hosted validation of the new identity. A new fresh-build mutation/full-DSP
+execution and local documentation/fixture checks have started for `3669cf71`.
+The separate full State/isolation and header-clamp checks remain to be run.
+
+At this checkpoint the remote #240 ref is still `df89edb6`: its rerun of the
+previously failed Rosetta step is in progress. The new documentation commit has
+not yet been pushed so that the existing rerun can finish without being
+cancelled by the workflow's per-ref concurrency policy. Once its outcome is
+recorded, push the new #240 and integration heads and request their exact-head
+Build & Validate, CodeQL and Microsoft analysis. Preserve the original failed
+attempt regardless of the rerun outcome. No merge or architecture acceptance
+is authorized.
