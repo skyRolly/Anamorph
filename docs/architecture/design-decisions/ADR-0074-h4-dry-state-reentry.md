@@ -39,8 +39,9 @@ Successful ordinary diagnostics alone must not be promoted into production.
 
 ## Decision
 
-**Pending the maintainer.** Recommend the guarded warm-state direction, conditional
-on the packet's recovery, unrelated-state, latency, cost and final-source validation.
+**Pending the maintainer.** Recommend continuing targeted recovery investigation
+before choosing a production candidate. Guarded warm-state variants remain under
+consideration, subject to recovery, unrelated-state, latency, cost and final-source validation.
 The maintainer must explicitly accept the additional per-block dry work before
 implementation. Guarded A2 measures +15.3/+27.4/+36.9% whole-engine instructions for 2/3/4 bands
 at 48 kHz/128; the guard itself adds .13–.27% over the warm-bank reference in
