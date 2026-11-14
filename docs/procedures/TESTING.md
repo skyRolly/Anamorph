@@ -7788,3 +7788,8 @@ fresh baseline and archived diagnostic replay and its identities are recorded
 under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
 The shared reviewed-specification runner records newly built objects and results;
 unmigrated historical relinkers retain their stated provenance limitations.
+
+
+## Retired review relinkers (2026-11-14)
+
+The three old H4 probe/recovery/endpoint relink entry points are intentionally disabled before output creation; normal and `python -O` rejection controls are recorded in `worklogs/h4-review-followup-0102/retired-relinker-controls.json`. Committed specifications and shared fresh-build or receipt-checked runners cover the stated follow-up witnesses; other historical experiments remain separately scoped and are not automatically reproducible.

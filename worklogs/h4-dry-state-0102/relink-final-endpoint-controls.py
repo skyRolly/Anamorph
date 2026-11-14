@@ -1,3 +1,4 @@
+raise SystemExit('Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.')
 from pathlib import Path
 import json, subprocess, hashlib, argparse
 p=argparse.ArgumentParser();p.add_argument('--identity',type=Path,required=True);p.add_argument('--checkout',type=Path,required=True);p.add_argument('--build',type=Path,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args();a.out.mkdir(exist_ok=True)

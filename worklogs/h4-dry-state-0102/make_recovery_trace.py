@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+raise SystemExit('Historical relinker disabled: reused objects are unverified. Create a reviewed committed patch and specification for the shared provenance runner.')
 """Nonshipping counter variant; never use its binary for performance evidence."""
 import argparse
 import subprocess

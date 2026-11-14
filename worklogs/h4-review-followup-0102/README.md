@@ -34,7 +34,7 @@ The first guarded attempt rejected an abbreviated packet commit before building;
 the full SHA is required. The next attempt built the production test target but
 the new observer failed to compile because its namespace `access` collided with
 the POSIX function. Both logs are retained in `execution-2026-11-14/`; the
-observer was renamed and needs a new fresh-build execution. These are input and
+observer was renamed for the later execution described below. These are input and
 diagnostic-tool failures, respectively, not product-test results. Replay-tool
 source was also being hardened during the failed build, so that attempt cannot
 serve as a final provenance-controlled observation.
@@ -51,7 +51,7 @@ suggested a role for large finite wet recursive state, but that version also
 read `dryAlignScratch` while H4 had not written it. That scratch value was not a
 valid observation, and the read can invalidate the experiment as a whole. The
 preliminary run is retained for audit, not used as causal proof; the observer no
-longer reads that scratch, and its corrected execution must be evaluated anew.
+longer reads that scratch; the corrected execution is evaluated below.
 
 `production-stage-trace.patch` is an additional nonshipping diagnostic against
 the combined production source. It reads the actual signal at named processing
@@ -113,3 +113,63 @@ impact claim. The full-wet/no-dip control and Drive-zero premise separate this w
 from N2-01, N2-05, N2-06 and N2-07; it does not close or otherwise resolve
 N2-04–07. The one-sample diagnostic is not a production fix, a complete tail
 oracle, or authorization to change the LR4 numerical/architecture contract.
+
+
+### Independently rebuilt LR4 witness and state-lifetime review
+
+A new execution of the isolated witness uses clean source
+`113b9189f0ff4d3b6348c553c559c22ee8ade782`, tree
+`d42a36c79ae930c2cc4454bf77bfaf57aad80b44`, with the committed probe and
+minimal JUCE MathConstants stub from packet commit
+`268aae0d6b21bdbe3c6a53af59e97aa8b26f1fc1`. Its
+[identity and raw output](execution-2026-11-14/lr4-verified/identity.json)
+record GCC 14.2, exact commands, input and tool hashes, executable
+`5a5f4672fac1515cf5d1b83e3cb8b75fdfd7c2e69334596dc0f587b1e957a1cb`,
+and exit 0. It reproduces a finite first output with hidden invalid state, a
+non-finite next output and a finite other channel. This is a filter arithmetic
+experiment using a stub, not an actual JUCE or whole-engine build. The earlier
+fresh candidate-engine executions separately establish their documented gates
+and input premises. Both trust the recorded local tools and filesystem and no
+concurrent writers; they are not host attestations.
+
+Source review of the production bank lifetimes gives these necessary recovery
+boundaries, not a complete validated recovery design:
+
+- With two to four bands, the active bank consumes `dx[0..bands-2]` using
+  all four LR4 integrators per channel. Its compensation `dax[1..bands-2]`
+  uses only the first two integrators through the allpass method; `dax[0]`
+  is not processed. One band has no crossover processing.
+- A new discrete fade copies the active bank's complete filter states into the
+  idle bank before processing either bank. Both banks then contribute during the
+  fade; after it ends the destination becomes active. Continuous cutoff glides
+  update active coefficients per sample, whereas fades hold their two sets.
+  An idle bank is not independently consumed before the next copy in this code.
+  Band-count changes take the structural duck/reset path; cold enable and
+  prepare/reset also reset the banks. Any restricted scan still needs tests
+  proving those premises across transition, reset and recovery timing.
+- During ordinary partial Mix, aligned samples and conditioned clean samples
+  enter separate latency rings. During baseline H4 the aligned input falls back
+  to clean dry; both rings advance and Measure uses clean delayed dry. A warm
+  candidate needs usable aligned history before re-entry while retaining that
+  clean Measure policy and the exact-wet shortcut. Actual oversampling latency
+  changes which earlier ring samples are consumed. A finite current dry output
+  alone cannot prove either recursive state or delayed history is safe.
+- The experimental state-scan checks both banks and all four states of every
+  `dx` and `dax`; it therefore checks some currently unconsumed state. It catches
+  one hidden-state witness, but no experiment yet proves that reducing its scan
+  to live states, checking at writes, or checking only at consumption provides
+  equivalent safety. In particular, a post-block check must not allow an
+  invalid derived sample into later history, and detection after a consuming
+  boundary cannot retroactively prevent a bad output. A recovery contract also
+  needs repeated failures and channel, wet, clean/raw and delay-history
+  preservation controls.
+
+These observations identify possible bounded-work reductions, not measured
+optimizations. Tracking only live integrators, detecting invalid arithmetic at
+updates, or replacing the unit-width cascade with a mathematical allpass each
+changes proof obligations; an allpass rewrite can change float rounding, bank
+state and transition behavior. A finite-history reconstruction moves work to
+re-entry and needs an error bound for low-frequency tails. The evidence does not
+yet establish a complete candidate, native deadline behavior or a new DSP
+topology. Continue the recovery matrix and a matched benchmark before choosing
+a mechanism. ADR-0074 remains Proposed.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+raise SystemExit('Historical relinker disabled: reused objects are unverified. Use the committed-specification runners in worklogs/dsp-numerical-audit-0102/.')
 """Relink a nonshipping probe with freshly compiled selected production TUs.
 
 First build AnamorphTests in --build from --checkout, with the repository JUCE pin.

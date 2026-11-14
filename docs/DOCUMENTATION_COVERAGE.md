@@ -19350,3 +19350,8 @@ baseline/diagnostic replay and identify the relinkers still outside the shared
 mechanism. Historical reports, original logs and original manifests remain
 unchanged. The guard fails closed on unsupported symlink/submodule trees and
 working-tree transformations; it does not attest to the toolchain or host.
+
+
+## H4 replay-entry and state-lifetime audit — 2026-11-14 UTC
+
+Retired the three unverified legacy relinkers; retained their historical command bodies and measurements. Recorded the separately rebuilt isolated LR4 witness and source-based bank, fade, coefficient and aligned-history lifetimes, including the unvalidated recovery boundaries. H4 shipping behavior and Proposed ADR status remain unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
