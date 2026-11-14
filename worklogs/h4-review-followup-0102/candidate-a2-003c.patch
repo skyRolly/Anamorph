@@ -1,0 +1,63 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index 044a63bb..4c35b56d 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1944 +1944,27 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
++        {
++            multiband.processBlock (L, R, n,
++                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
++                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
++            // Diagnostic A2: unused output still owns live recursive state. Detect
++            // exceptional values before any can enter aligned history, then reset
++            // only the failed dry channel. All prior ring writes are finite by
++            // this gate or the existing consuming-path self-heal.
++            for (int channel = 0; channel < 2; ++channel)
++            {
++                float* d = dryAlignScratch.getWritePointer (channel);
++                uint32_t worst = 0;
++                for (int i = 0; i < n; ++i)
++                {
++                    uint32_t bits; std::memcpy (&bits, d + i, sizeof (bits));
++                    bits &= 0x7f800000u;
++                    worst = worst > bits ? worst : bits;
++                }
++                if (worst == 0x7f800000u)
++                {
++                    for (int i = 0; i < n; ++i)
++                        if (! std::isfinite (d[i])) d[i] = 0.0f;
++                    multiband.resetDryChannel (channel);
++                }
++            }
++            dryAligned = true; // maintain filter AND finite aligned-delay history
++        }
+@@ -2038 +2064 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-            lrL[i] = adL[rp]; lrR[i] = adR[rp];
++            lrL[i] = ddL[rp]; lrR[i] = ddR[rp]; // retain H4 clean-dry measurement policy
+diff --git a/src/dsp/LR4Xover.h b/src/dsp/LR4Xover.h
+index 73a6ec2b..bc3958f3 100644
+--- a/src/dsp/LR4Xover.h
++++ b/src/dsp/LR4Xover.h
+@@ -43,0 +44,6 @@ public:
++    // Diagnostic A2: clear only the failed channel's recursive state.
++    void resetChannel (int channel) noexcept
++    {
++        s1[channel] = s2[channel] = s3[channel] = s4[channel] = 0.0f;
++    }
++
+diff --git a/src/dsp/MultibandWidth.h b/src/dsp/MultibandWidth.h
+index 3812a484..84d9e48c 100644
+--- a/src/dsp/MultibandWidth.h
++++ b/src/dsp/MultibandWidth.h
+@@ -52,0 +53,11 @@ public:
++    // Diagnostic A2: dry state only; leave wet, coefficients, widths and fades intact.
++    void resetDryChannel (int channel) noexcept
++    {
++        for (auto& b : bank)
++            for (int i = 0; i < 3; ++i)
++            {
++                b.dx[i].resetChannel (channel);
++                b.dax[i].resetChannel (channel);
++            }
++    }
++

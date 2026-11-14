@@ -840,8 +840,8 @@ round-trip (bit-exact), transparent default, true-bypass null + latency match, M
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
 solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
-Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric), the split-movement regression
+Wave 2 / H4: aggregate mono RMS through a Mix dip after a gated full-wet stretch;
+this default-crossover noise case does not establish worst-frequency/sample-level reconstruction), the split-movement regression
 (`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
 must stay < 18 cents (the accepted controlled-FM bound of the R(f) = 4·max(1, f/300) oct/s
 slew-limited smoother, ADR-0015 final + slow-drag fix) through drags and the whole catch-up —
@@ -7804,3 +7804,20 @@ existing transition coverage, as with the R-01 Test 76 extension).
 both terminal endpoints, subsequent samples within the terminal block, repeated
 and reversed transitions and non-neutral unequal stereo. Source identity,
 negative controls and replay commands: [worklog](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
+## H4 claim boundary (N2-01 / V2-01)
+
+Test 25 retains both original RMS assertions and its default noise/crossover configuration. It does not establish worst-frequency/sample-level phase reconstruction. The [optional low-frequency oracle and recovery/cost probes](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) are nonshipping evidence; the oracle intentionally fails current H4. Integrate it into mandatory CI with an approved production correction, not before.
+
+## H4 extreme-input diagnostic follow-up (2026-11-14)
+
+The nonshipping `worklogs/h4-review-followup-0102/engine_cause.cpp` records wet
+and dry crossover-state observations and applies separately selected state-family
+reset controls after the recorded extreme-input stimulus. Its accompanying
+committed specification identifies the historical combined production source.
+The corrected execution and instrumented stage trace identify Multiband as the
+first observed invalid output stage in this stimulus, followed by existing
+self-heal; they do not yet isolate its precise arithmetic or establish a new
+contract violation. See the follow-up worklog for the fresh-build receipt,
+independent resets and the superseded preliminary observer. This is a
+nonshipping causal probe, not a mandatory regression or H4 fix.

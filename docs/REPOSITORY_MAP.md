@@ -398,3 +398,8 @@ The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/READM
 
 - `tests/n2_endpoint_tests.h` — actual Multiband Enable kernel and engine endpoint coverage (Test 23 extension).
 - `worklogs/MULTIBAND_ENDPOINTS_0.10.2.md`, `worklogs/n2-endpoints-0102/` — N2-03 source identities, controls, logs and portable replay.
+
+- `worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md`, `worklogs/h4-dry-state-0102/` — N2-01/V2-01 owner decision, source/pin/binary identities, correctness/recovery/performance probes, diagnostic patches and raw gzip results.
+- `docs/architecture/design-decisions/ADR-0074-h4-dry-state-reentry.md` — Proposed H4 warm-state/recovery/CPU tradeoff, not Accepted.
+
+- `worklogs/0102_DSP_DELIVERY_2026-11-13.md` — N2-02/N2-03 independent review heads, combined validation, H4/V2-01 decision and preserved P3 queue.

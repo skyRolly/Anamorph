@@ -1,0 +1,11 @@
+H4TRACE input-conditioning bad=0,0 first=-1,-1 peak=3.40282e+37,0
+H4TRACE input-ms bad=0,0 first=-1,-1 peak=3.40282e+37,0
+H4TRACE nonlinear bad=0,0 first=-1,-1 peak=3.40282e+37,0
+H4TRACE widener bad=0,0 first=-1,-1 peak=3.40282e+37,0
+H4TRACE global-width bad=0,0 first=-1,-1 peak=1.70141e+37,1.70141e+37
+H4TRACE multiband bad=0,0 first=-1,-1 peak=1.05499e+37,1.05499e+37
+H4TRACE mix bad=0,0 first=-1,-1 peak=1.05444e+37,1.05444e+37
+H4TRACE mono-maker bad=0,0 first=-1,-1 peak=1.05444e+37,1.05444e+37
+H4TRACE output-gain bad=0,0 first=-1,-1 peak=1.05444e+37,1.05444e+37
+H4TRACE solo-monitor bad=0,0 first=-1,-1 peak=1.05444e+37,1.05444e+37
+H4TRACE after-heal bad=0,0 first=-1,-1 peak=1.05444e+37,1.05444e+37

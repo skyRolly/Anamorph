@@ -3212,3 +3212,18 @@ DSP comparison extension is the next headless engineering increment. NR-010 need
 identified hardware for actual budgets; NR-013 needs a pinned REAPER reproducer. NR-003
 remains Deferred; NR-004/005/007 retain recurrence triggers; NR-018/019 remain owner/
 legal/provisioning work. No merge or 0.10.0 release operation is included.
+
+
+### Ordinary DSP maintenance delivery — 2026-11-13 (UTC)
+
+[The source-bound delivery ledger](0102_DSP_DELIVERY_2026-11-13.md) supersedes no
+historical measurement. Mandatory N2 audit preservation was committed first in
+#237. N2-02 ordinary-duck automation correction #238 and N2-03 exact Multiband
+Enable endpoints #239 are independent open reviews, with a separate disposable
+combined validation branch. Nothing is merged; product remains 0.10.1 and JUCE
+remains 9.0.5. Proposed ADR-0074 recommends guarded dry-state continuity for
+N2-01, conditional on the owner's CPU/recovery tradeoff decision. Live V2-01
+claims are scoped to actual evidence; the failing mandatory H4 regression must
+accompany its eventual approved correction. N2-04–07 remain confirmed P3 and
+unimplemented. Next: review the independent fixes and decide H4; no release
+preparation is authorized by this execution.

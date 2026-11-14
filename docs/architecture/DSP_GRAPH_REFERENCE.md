@@ -16,7 +16,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2387 (`process`).
 | 2a | Drive + Chorus/Dimensional (in OS) | conditioned input | linear algorithm | Partial | Drive must precede the linear algorithm; OS wrap must enclose only nonlinear/mod. :868-883 |
 | 2b | Haas / Velvet (linear) | post-Drive | global Width | Partial | One algorithm active at a time; runs at base rate, outside OS. :885-887 |
 | 2c | Global Width (MS) | post-algorithm | Multiband | No | Width is MS side-gain on the full band before band-splitting. :889-903 |
-| 2d | Multiband Width | post-Width + dry (for A(dry)) | Mix | No | Produces wet + phase-matched A(dry); solo-agnostic. A(dry) is gated off while Mix sits at exactly 1 with Match off and no crossfade in flight (Wave 2 / H4); the dry delay rings stay warm so a Mix dip re-engages phase-matched. :905-994 |
+| 2d | Multiband Width | post-Width + dry (for A(dry)) | Mix | No | Produces wet + phase-matched A(dry); solo-agnostic. A(dry) is gated off while Mix sits at exactly 1 with Match off and no crossfade in flight (Wave 2 / H4); the delay rings advance, but recursive dry-bank re-entry has the confirmed N2-01 transient pending owner decision. :905-994 |
 | 3 | Dry/Wet Mix | dry (delay+phase aligned) + wet | Mono Maker | No | Must follow the full effect engine; consumes A(dry). :994-1106 |
 | 4 | Mono Maker | mixed signal | Output stage | No | Must be POST-Mix so lows are mono at any Mix amount (0.8.0). :1108 |
 | 5 | Output stage (Gain/Match/Balance + duck) | post-Mono-Maker | Band Solo | No | Level Match measures here; gain/balance are final trims. :1110-1253 |

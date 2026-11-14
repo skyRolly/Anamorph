@@ -1,0 +1,66 @@
+{
+  "purpose": "Trace the first invalid production signal stage and final-output self-heal in the extreme-input witness; instrumentation is nonshipping and excluded from timing.",
+  "source_head": "f2686cb5b0b3687a3e343340f2494f59961aa83a",
+  "source_tree": "bccea275dc7be7a533b802f53d5adcfe82529438",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-review-followup-0102/production-stage-trace.patch",
+    "sha256": "92eeb688296e1f1e77d96c7c23a4e2d6721bbe2d3e2888d0a8edea71e7ce048e",
+    "purpose": "Add read-only stage observations and self-heal logging to the production engine."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "engine-cause",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-review-followup-0102/engine_cause.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "engine-cause",
+      "args": [
+        "none"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-cause",
+      "args": [
+        "no-dip"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-cause",
+      "args": [
+        "dry-left"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-cause",
+      "args": [
+        "wet-both"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-cause",
+      "args": [
+        "haas"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-cause",
+      "args": [
+        "small"
+      ],
+      "expected_exit": 0
+    }
+  ]
+}
