@@ -19,3 +19,15 @@ JUCE configuration overlapped the full build and the container approached its
 8 GiB memory cap. Their incomplete logs are retained as `*-stopped.log.gz`;
 they are not test outcomes. Retries use distinct new output directories and
 limited build parallelism. An initial bounded H4 retry was also stopped with exit 137 while the large State translation unit was compiling and memory approached the cap; its log is retained. Run further fresh builds only after the integration build completes. No partial build or object is accepted as evidence.
+
+
+The clean-worktree retry completed with outer exit 0. The exact source tree
+`f4d268c17cd6619732f4f998928bcda7ddafc462` and JUCE tree
+`f701683c0a1a6735b65d4456c7700f22a522fc5c` were verified before and after
+the build and each execution. The focused N2-02 engine, N2-03 endpoint, full
+DSP, focused N2-02 processor and full State/isolation runs respectively report
+720/0, 392/0, 5614/0, 20/0 and 16555/0; all five executable exits are 0.
+The State isolation control also reports success. `fresh-full/identity.json`
+records the commands, compiler and linked-object and binary hashes; compressed
+raw outputs and the build log preserve their original bytes. This is local
+Linux validation, not the exact-head hosted cross-platform or sanitizer matrix.
