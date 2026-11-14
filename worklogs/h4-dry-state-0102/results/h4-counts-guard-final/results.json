@@ -1,0 +1,314 @@
+[
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      2,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 21718444,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-2-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "2",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      2,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 21873559,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-2-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "2",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      3,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 29885730,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-3-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "3",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      3,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 30040821,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-3-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "3",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 37265359,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 37420478,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      192000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10042380,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-192000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "192000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      192000,
+      32,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10160022,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-192000-32-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "192000",
+      "32",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10042811,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      192000,
+      256,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 73624708,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-192000-256-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "192000",
+      "256",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      1,
+      1
+    ],
+    "exit": 0,
+    "instructions": 76771326,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-4-0-1-1.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "1",
+      "1"
+    ]
+  },
+  {
+    "variant": "guard",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      0.5
+    ],
+    "exit": 0,
+    "instructions": 37734607,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts-guard-final/guard-48000-128-4-0-0-0.5.callgrind",
+      "/workspace/n2-execution/h4-count-guard-final/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "0.5"
+    ]
+  }
+]

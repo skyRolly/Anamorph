@@ -1,0 +1,96 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index dde2a12b..43cabbf1 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1941,7 +1941,16 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+         }
+ 
+         if (fullWetIdle)
+-            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
++        {
++            if (lat == 0)
++                multiband.processBlock (L, R, n, dryScratch.getReadPointer (0), dryScratch.getReadPointer (1), nullptr, nullptr, true);
++            else
++            {
++                multiband.processBlock (L, R, n, dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
++                    dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
++                dryAligned = true; // nonzero latency needs aligned history before re-entry
++            }
++        }
+         else
+         {
+             multiband.processBlock (L, R, n,
+@@ -2035,7 +2044,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+             adL[dryDelayWrite] = aL[i];
+             adR[dryDelayWrite] = aR[i];
+             int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
+-            lrL[i] = adL[rp]; lrR[i] = adR[rp];
++            lrL[i] = ddL[rp]; lrR[i] = ddR[rp]; // retain H4 clean-dry measurement policy
+             if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
+         }
+     }
+diff --git a/src/dsp/MultibandWidth.cpp b/src/dsp/MultibandWidth.cpp
+index 5e5f40fb..eadfa47d 100644
+--- a/src/dsp/MultibandWidth.cpp
++++ b/src/dsp/MultibandWidth.cpp
+@@ -117,9 +117,9 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
+ 
+ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
+                                    const float* dryInL, const float* dryInR,
+-                                   float* dryOutL, float* dryOutR) noexcept
++                                   float* dryOutL, float* dryOutR, bool discardDryOutput) noexcept
+ {
+-    const bool align = (dryOutL != nullptr && dryOutR != nullptr
++    const bool align = ((discardDryOutput || (dryOutL != nullptr && dryOutR != nullptr))
+                         && dryInL != nullptr && dryInR != nullptr);
+ 
+     // One band: a plain MS width on the whole signal, no crossovers. With no
+@@ -132,7 +132,7 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
+             currentW[0] = targetW[0] + (currentW[0] - targetW[0]) * wCoeff;
+             applyWidth (left[n], right[n], currentW[0]);
+         }
+-        if (align)
++        if (align && ! discardDryOutput)
+             for (int n = 0; n < numSamples; ++n) { dryOutL[n] = dryInL[n]; dryOutR[n] = dryInR[n]; }
+         return;
+     }
+@@ -363,8 +363,11 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
+                 float daL, daR, dbL, dbR;
+                 runDry (from, dryInL[n], dryInR[n], daL, daR);
+                 runDry (to,   dryInL[n], dryInR[n], dbL, dbR);
+-                dryOutL[n] = daL + w * (dbL - daL);
+-                dryOutR[n] = daR + w * (dbR - daR);
++                if (! discardDryOutput)
++                {
++                    dryOutL[n] = daL + w * (dbL - daL);
++                    dryOutR[n] = daR + w * (dbR - daR);
++                }
+             }
+ 
+             if (fadePos >= fadeLen)
+@@ -377,7 +380,11 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
+         {
+             runWet (bank[active], left[n], right[n], left[n], right[n]);
+             if (align)
+-                runDry (bank[active], dryInL[n], dryInR[n], dryOutL[n], dryOutR[n]);
++            {
++                float dl, dr;
++                runDry (bank[active], dryInL[n], dryInR[n], dl, dr);
++                if (! discardDryOutput) { dryOutL[n] = dl; dryOutR[n] = dr; }
++            }
+         }
+     }
+ }
+diff --git a/src/dsp/MultibandWidth.h b/src/dsp/MultibandWidth.h
+index 3812a484..4e6047f4 100644
+--- a/src/dsp/MultibandWidth.h
++++ b/src/dsp/MultibandWidth.h
+@@ -75,7 +75,7 @@ public:
+     // dryOut pointers are null the dry bank is skipped (Known Issue #1).
+     void processBlock (float* left, float* right, int numSamples,
+                        const float* dryInL = nullptr, const float* dryInR = nullptr,
+-                       float* dryOutL = nullptr, float* dryOutR = nullptr) noexcept;
++                       float* dryOutL = nullptr, float* dryOutR = nullptr, bool discardDryOutput = false) noexcept;
+ 
+     // Test-only introspection (dsp_tests): the live (glided) cutoff of split i
+     // on the active bank -- equals the setCrossovers target exactly once the

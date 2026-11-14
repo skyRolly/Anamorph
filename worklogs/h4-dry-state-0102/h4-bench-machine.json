@@ -1,0 +1,36 @@
+{
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "cpu": "model name\t: INTEL(R) XEON(R) PLATINUM 8573C",
+  "order": [
+    {
+      "variant": "baseline",
+      "run": 0,
+      "output": "/workspace/n2-execution/h4-baseline/bench-0.csv"
+    },
+    {
+      "variant": "warm",
+      "run": 1,
+      "output": "/workspace/n2-execution/h4-warm/bench-1.csv"
+    },
+    {
+      "variant": "state",
+      "run": 2,
+      "output": "/workspace/n2-execution/h4-state/bench-2.csv"
+    },
+    {
+      "variant": "state",
+      "run": 3,
+      "output": "/workspace/n2-execution/h4-state/bench-3.csv"
+    },
+    {
+      "variant": "warm",
+      "run": 4,
+      "output": "/workspace/n2-execution/h4-warm/bench-4.csv"
+    },
+    {
+      "variant": "baseline",
+      "run": 5,
+      "output": "/workspace/n2-execution/h4-baseline/bench-5.csv"
+    }
+  ]
+}

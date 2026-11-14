@@ -1,0 +1,13 @@
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1941,7 +1941,9 @@
+         }
+ 
+         if (fullWetIdle)
+-            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
++            multiband.processBlock (L, R, n,
++                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
++                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1)); // diagnostic A: keep filters warm; retain H4 consumers
+         else
+         {
+             multiband.processBlock (L, R, n,

@@ -1,0 +1,12 @@
+{
+  "purpose": "Investigate the extreme-input zero block on the historical combined production source by inspecting dry and wet crossover state and applying one-family nonshipping reset controls.",
+  "source_head": "f2686cb5b0b3687a3e343340f2494f59961aa83a",
+  "source_tree": "80c8c7670fb7e18ac7371dd8c0b7eb3dc07238b9",
+  "targets": ["AnamorphTests"],
+  "probes": [
+    {"name": "engine-cause", "target": "AnamorphTests", "commit": "spec", "path": "worklogs/h4-review-followup-0102/engine_cause.cpp"}
+  ],
+  "runs": [
+    {"program": "engine-cause", "args": [], "expected_exit": 0}
+  ]
+}

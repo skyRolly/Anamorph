@@ -1,0 +1,3 @@
+wet-filter-arithmetic mode=haas coefficient=3.76347 s1=7.71683e+37 s2=1.81288e+38 product=2.9042e+38 finite=1 first_difference=-2.9042e+38 finite=1 numerator=-inf finite=0 wide_low=1.09965e+38 wide_high=-9.74081e+36 wide_max=1.48037e+38 representable=1
+wet-filter-copy mode=haas input=0.15,0.15 low=-inf,-inf high=-nan,-nan finite=0,0,0,0
+mode=haas amplitude=0.95 dip=1 wet_last=5.25017e+37,5.25017e+37 wet_bad=0,0 wet_max=1.81288e+38,1.81288e+38 dry_bad=0,0 dry_max=0,0 next_zero=128,128 next_nonfinite=0,0 next_first=0,0

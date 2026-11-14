@@ -1,0 +1,104 @@
+# ADR-0074 — H4 dry-state continuity and guarded warm-bank tradeoff
+
+**Status:** Proposed — owner decision pending. No production H4 correction is authorized here.
+
+## Context
+
+Main `113b9189f0ff4d3b6348c553c559c22ee8ade782`, product 0.10.1, pins JUCE 9.0.5
+at `d60b7a78030661574a615b586d9325ba7a7fa7dd`. ADR-0005 requires the existing
+phase-matched allpass reconstruction at partial Mix; ADR-0004 owns transition
+timing and ADR-0009 recovery. Historical H4 commit `36e69f9b` skips recursive
+dry-bank work during qualifying full-wet periods, while maintaining delay rings.
+
+## Problem
+
+The delay rings and synchronized coefficients do not maintain recursive filter
+state. N2-01 reproduces a .1361084 peak / -2.5659 dB first-window error at a
+20 Hz Mix re-entry. V2-01 shows why Test 25's aggregate noise RMS assertion did
+not establish worst-frequency or sample-level phase reconstruction.
+
+Simple always-warm diagnostics remove the ordinary transient, but a later
+candidate-only extreme-input experiment retains invalid unused dry state through
+1.28 s of valid wet audio, then loses a 512-frame block when Mix consumes it.
+Successful ordinary diagnostics alone must not be promoted into production.
+
+## Options
+
+- **A2, guarded existing warm bank:** continuously maintain the existing dry
+  filters and aligned history during H4, preserve its exact-wet shortcut and
+  clean-dry Measure reference, and recover only failed unused dry-channel state.
+- **A/C, unguarded warm state:** useful correctness/cost references, insufficient
+  recovery for the demonstrated extreme finite sequence. C discards unused
+  zero-latency output but adds interface/branch complexity for <.6% instruction saving.
+- **Finite replay:** fixed short retained input/coefficients fail at low cutoffs
+  and high rates; general state equivalence and bounded real-time replay are not established.
+- **Restricted gate:** safe at one band; affected multiband configurations reduce
+  to warm processing. Masking/delaying Mix changes the existing transition contract.
+- **Retain a documented limitation or defer:** keep N2-01 open and H4 unchanged;
+  historical H4 approval does not accept this newly measured error.
+
+## Decision
+
+**Pending the maintainer.** Recommend continuing targeted recovery investigation
+before choosing a production candidate. Guarded warm-state variants remain under
+consideration, subject to recovery, unrelated-state, latency, cost and final-source validation.
+The maintainer must explicitly accept the additional per-block dry work before
+implementation. Guarded A2 measures +15.3/+27.4/+36.9% whole-engine instructions for 2/3/4 bands
+at 48 kHz/128; the guard itself adds .13–.27% over the warm-bank reference in
+selected OS-off rows. Clock measurements remain variable.
+Shared-machine clock data are not universal native CPU/instance-count promises.
+
+This proposal preserves DSP topology/order, latency, parameter/persistence and
+threading. A changed filter representation, Mix timing, latency or state/thread
+model would require its applicable Architecture Review Gate. This assignment
+also explicitly reserves the H4 performance tradeoff to the owner even where
+the existing graph can be retained. No decision is marked Accepted by an agent.
+
+## Consequences
+
+An approved correction must maintain aligned-delay history as well as filter
+state, preserve H4's clean measurement reference, and avoid clearing valid wet,
+other-channel or raw histories during unused-dry recovery. The independent
+low-frequency regression must accompany the production correction; it currently
+fails main and remains optional nonshipping evidence. Existing Test 25 assertions
+stay intact with corrected claim text. N2-04–07 are not silently included.
+
+## Related code
+
+`AnamorphEngine::process`, `fullWetIdle`, `MultibandWidth::processBlock`,
+`LR4Xover`, `testDryAlignGateRecomb`; optional experiments and diagnostic patches
+under `worklogs/h4-dry-state-0102/`.
+
+## Evidence and confidence
+
+[Decision packet](../../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md): reproduced
+ordinary transient, actual gate/state observations, independent production
+references, candidate-only recovery sequence, cost ledgers and controls.
+[Original preserved audit](../../../worklogs/dsp-numerical-audit-0102/README.md).
+N2-01/V2-01 are Confirmed P2. Candidate evidence is explicitly distinct from
+approval, main integration, native DAW behavior and listening.
+
+## Independent recovery follow-up (2026-11-14)
+
+The [isolated LR4 witness](../../../worklogs/h4-review-followup-0102/README.md) produces finite filter output while an internal state overflows, followed by non-finite output on the next sample. It refutes output finiteness as a general proof of state finiteness. An A2 engine witness confirms hidden invalid dry state at a gated block boundary with finite monitored dry and wet output. Its subsequent zero block also occurs with no Mix dip and after a dry-only reset, so its cause is not isolated to re-entry. The full bank/fade/latency/recovery matrix remains untested. The earlier recommendation for A2 is therefore conditional on resolving this gap; the evidence-supported next step is targeted recovery investigation and cost measurement before selecting a production implementation. Accepting A2 now would mean explicitly accepting an unproven recovery boundary as well as the measured processing overhead. Other admissible decisions remain a supported modified candidate, continued investigation, retaining H4 with its known limitation, or deferral. **Status remains Proposed.**
+
+## Production extreme-input trace (2026-11-14)
+
+The separate subsequent zero block has now been traced on the historical
+combined production source: large finite wet-bank state is followed by
+non-finite Multiband output, after which the existing final-output guard zeros
+it and resets state. A diagnostic reset of both wet banks prevents this
+particular block; a dry-only reset and keeping Mix fully wet do not. A reset of
+inactive Haas is not a discriminating control in this Velvet setup.
+This stage trace does not attribute the block to A2; the subsequent narrower
+arithmetic result is recorded below. The state-scan candidate still
+has not established a complete recovery contract or measured cost. See the
+decision packet and follow-up worklog for exact controls and limitations.
+The recommendation remains continued targeted investigation, and this ADR
+remains **Proposed**.
+
+The later copied-state control isolates finite-input overflow in the wet LR4
+numerator and demonstrates representable first-sample results when only that
+step is widened. It is tracked independently as N2-08 (P3 review assessment),
+without prescribing a production numerical change. It does not establish A2
+recovery completeness or alter this Proposed decision.

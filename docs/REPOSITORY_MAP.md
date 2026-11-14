@@ -393,3 +393,8 @@ source-classification, before/after/partial-fix tests and retained configuration
 The [post-integration record](../worklogs/engineering-review/post-b2-integration.json) and its compressed streams retain actual-main component/path evidence. They are supporting engineering data, not policy or native/release acceptance.
 
 The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/README.md) preserves N2-01–07/V2-01 reports, original probes, diagnostic controls and compressed raw evidence.
+
+- `worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md`, `worklogs/h4-dry-state-0102/` — N2-01/V2-01 owner decision, source/pin/binary identities, correctness/recovery/performance probes, diagnostic patches and raw gzip results.
+- `docs/architecture/design-decisions/ADR-0074-h4-dry-state-reentry.md` — Proposed H4 warm-state/recovery/CPU tradeoff, not Accepted.
+
+- `worklogs/0102_DSP_DELIVERY_2026-11-13.md` — N2-02/N2-03 independent review heads, combined validation, H4/V2-01 decision and preserved P3 queue.

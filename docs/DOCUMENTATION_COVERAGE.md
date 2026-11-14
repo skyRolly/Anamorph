@@ -19325,6 +19325,22 @@ no graph, thread, parameter, serialization, version or dependency change.
 
 The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
 
+N2-01/V2-01: [the H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) maps the actual gate, independent low-frequency oracle, recovery and cost evidence to Proposed ADR-0074. Test 25 remains an aggregate RMS regression with unchanged assertion conditions; the new failing-on-main oracle remains nonshipping until an approved production correction.
+
+N2-02/N2-03 delivery and cross-finding validation are indexed in the [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md); per-PR records and immutable final source links distinguish independent corrections from H4 diagnostic candidates.
+
+## H4 extreme-input causal probe (2026-11-14)
+
+The documentation drift check found that the candidate-only hidden-state witness
+and the later zero-block observation must remain separate. The new nonshipping
+engine causal probe and its planned production-source specification are indexed
+in TESTING and the H4 follow-up worklog. They add state-family controls without
+changing shipping source or accepting ADR-0074. The later recorded trace locates
+the first observed invalid signal at Multiband and the following existing
+self-heal. The later copied-state control identifies a distinct extreme-finite wet
+LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
+issues and TESTING. Existing H4 findings and historical measurements remain.
+
 ## Numerical audit replay provenance follow-up (2026-11-14)
 
 The drift check found that the expanded synthetic replay tests and fresh-build
