@@ -7760,8 +7760,8 @@ Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP
 
 `python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
 synthetic source-tree, patch, dependency and fresh-build controls, including
-assume-unchanged, skip-worktree, staged edits, ignored inputs and type/mode
-mismatches. These checks do not themselves execute product DSP. The separate
+assume-unchanged, skip-worktree, staged edits, ignored inputs, type/mode and
+recorded compiler-environment mismatches. These checks do not themselves execute product DSP. The separate
 fresh baseline and archived diagnostic replay and its identities are recorded
 under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
 The shared reviewed-specification runner records newly built objects and results;

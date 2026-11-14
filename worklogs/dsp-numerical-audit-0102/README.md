@@ -116,3 +116,6 @@ R-237-01 remains open across its full scope: the existing H4, N2-02, N2-03,
 combined-control, trace and benchmark relinkers have not yet been migrated to
 the shared fresh-build mechanism. Their earlier observations and premises remain
 historical; their HEAD fields alone do not establish linked-object provenance.
+The receipt-based relinker additionally compares the recorded compiler and
+include-related environment before reuse. Other environment and system-library
+properties remain explicit trusted execution premises rather than attestations.

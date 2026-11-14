@@ -19333,4 +19333,6 @@ README now distinguish synthetic source guards from the newly executed product
 baseline/diagnostic replay and identify the relinkers still outside the shared
 mechanism. Historical reports, original logs and original manifests remain
 unchanged. The guard fails closed on unsupported symlink/submodule trees and
-working-tree transformations; it does not attest to the toolchain or host.
+working-tree transformations; receipt-based relinking also rejects changes in
+the recorded compiler/include environment. It does not attest to the toolchain
+or host.
