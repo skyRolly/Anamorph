@@ -19321,3 +19321,11 @@ Test 76 keeps its original assertions and adds `testBypassFiniteEndpointOverflow
 72 valid-result assertions). The numbered inventory stays 76. Endpoint bits,
 10 ms smoother progression and latency are unchanged. D-02 remains independent;
 no graph, thread, parameter, serialization, version or dependency change.
+
+## Review-record benchmark procedure — 2026-11-14 UTC
+
+The continuity worklog now contains an owner-executable, source-identity-aware
+benchmark procedure and committed specifications for the historical A2
+comparison. This is a proposed procedure, not a new measurement or a complete
+recovery validation. Its remaining workload gaps and trust premises are stated
+in the worklog; the Proposed architecture decision is unchanged.
