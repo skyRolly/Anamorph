@@ -7768,3 +7768,9 @@ Receipt-checked exact combined-source N2 DSP mutations and fresh H4
 channel-local recovery / reset-both controls are recorded in
 `worklogs/review-closure-0102/CONTINUITY.md`; the processor and header-clamp
 mutations retain their separately identified historical combined-source scope.
+
+
+The nonshipping H4 bank-lifetime probe in `worklogs/review-closure-0102/`
+uses direct invalid-state injection to distinguish dormant, copied and actively
+fading dry banks in the real Multiband module. Its 13 checks and source-bound
+receipt do not establish full-engine recovery or finite-input reachability.

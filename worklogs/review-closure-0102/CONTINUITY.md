@@ -340,3 +340,28 @@ recorded, push the new #240 and integration heads and request their exact-head
 Build & Validate, CodeQL and Microsoft analysis. Preserve the original failed
 attempt regardless of the rerun outcome. No merge or architecture acceptance
 is authorized.
+
+### Dry-bank lifetime fault-injection control (2026-11-14)
+
+A nonshipping 13-check probe executed the real `MultibandWidth` module from
+verified combined source `9e972572`, relinked against its receipt-checked fresh
+build. It injected a NaN directly into selected private recursive states; this
+is a deliberate state fault, not proof that each injected state arises under
+ordinary input. With three bands, an invalid idle-bank dry state was neither
+consumed nor erased during settled processing; a discrete crossover jump then
+copied the active bank over it before an actual fade and produced bit-identical
+outputs to a clean reference. Injecting the invalid state in the active bank
+before the jump propagated it to both fade banks and contaminated only the
+observed dry channel, while wet and the other dry channel remained finite.
+Separate injections into the source and destination during an active fade each
+reached the corresponding dry output. An injected second-section `dax` state,
+unused by the allpass method, did not affect the observed output even through
+the fade. All **13 checks passed**, with outer and probe exits 0.
+
+This supports the specific bank-copy, active/fade consumption and unused-state
+premises behind a possible restricted detector. It does not prove which states
+are reachable after finite stimuli, recovery completeness, aligned-history or
+oversampling behavior, repeated failures, or Mix re-entry safety. The source,
+packet, receipt, executable and raw outputs are in `h4-bank-lifetime-results/`;
+`MultibandWidth` source is byte-identical in the newer documentation-only
+integration `3669cf71`. No shipping instrumentation was added.

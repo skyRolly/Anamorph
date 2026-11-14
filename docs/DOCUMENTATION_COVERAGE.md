@@ -19345,3 +19345,11 @@ The continuity record and TESTING now distinguish exact combined-source DSP
 mutation sensitivity, separately scoped processor/clamp controls, and a fresh
 H4 opposite-channel recovery comparison with a reset-both negative control.
 The recorded hosted #240 Rosetta failure remains unattributed pending evidence.
+
+
+## Dry-bank lifetime control — 2026-11-14 UTC
+
+The review continuity record and TESTING describe a nonshipping state-fault
+probe of actual dormant, copied, active and fading Multiband dry banks. Its
+13 passing checks are scoped to injected states and do not claim a complete
+H4 recovery contract or production change.
