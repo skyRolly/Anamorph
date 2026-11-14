@@ -1,0 +1,180 @@
+{
+  "purpose": "Owner-executable H4 historical baseline versus A2 measurement protocol; do not infer recovery completeness or native results from this specification.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "1ccf6b17cd47f2a9de06b9e971dc54c9cf7e112b",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "wall",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/h4_probe_bench_v1.cpp"
+    },
+    {
+      "name": "thread",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/thread_bench.cpp"
+    },
+    {
+      "name": "count",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/h4_count.cpp"
+    },
+    {
+      "name": "glide",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/glide_count.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "wall",
+      "args": [
+        "--bench"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "thread",
+      "args": [],
+      "expected_exit": 0
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-1"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "1",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-2"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "2",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-3"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "3",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-x4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "1",
+        "1"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-partial"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "0",
+        "0.5"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "glide",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-glide"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "1",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0
+    }
+  ],
+  "patch": {
+    "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+    "path": "worklogs/h4-review-followup-0102/candidate-a2-003c.patch",
+    "sha256": "42770fa61429031bfcf214f82779affdcdd925adcc5c79e3f35453f4d34a4d79",
+    "purpose": "Historical A2 output-guard warm-bank candidate, not a production correction."
+  }
+}
