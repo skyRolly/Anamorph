@@ -41,3 +41,11 @@ and uses an explicitly copied support probe with extern declarations; the
 original diagnostic source is unchanged. The incomplete log is
 `h4-preservation-wiring-stopped.log.gz`. This stopped attempt produced no test
 result and is not a product failure.
+
+
+A later full 9e mutation rebuild was stopped with exit 137 after a live H4
+roadmap drift required a documentation-only #240 update and a new integration
+identity. Its incomplete log is `mutations-superseded.log.gz`; no partial
+objects are accepted. The verified `9e972572` DSP mutation and full suite
+results already completed remain historical evidence. A new fresh build and
+mutation specification target the updated integration source.
