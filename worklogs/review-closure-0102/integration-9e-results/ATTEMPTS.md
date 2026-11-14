@@ -18,4 +18,4 @@ isolated mutation run) were deliberately stopped with exit 137 while their
 JUCE configuration overlapped the full build and the container approached its
 8 GiB memory cap. Their incomplete logs are retained as `*-stopped.log.gz`;
 they are not test outcomes. Retries use distinct new output directories and
-limited build parallelism. No partial build or object is accepted as evidence.
+limited build parallelism. An initial bounded H4 retry was also stopped with exit 137 while the large State translation unit was compiling and memory approached the cap; its log is retained. Run further fresh builds only after the integration build completes. No partial build or object is accepted as evidence.
