@@ -633,7 +633,7 @@ preset completion point; the A/B completion point after the Bypass / view write-
   `src/PresetManager.cpp:867`, `src/PresetManager.cpp:895`, `src/PresetManager.cpp:912`, `src/PresetManager.cpp:1035-1037` (each loader's guard and its explicit completion points: `loadAdopted`'s factory and user-file branches, `applyParsedFile`'s one);
   `src/PresetManager.h:326-331` (`onSoundApplied`).
 - `src/dsp/AnamorphEngine.h:130-172` (the prime, `setParameters`, `setParametersFrom`, `prepareFrom`),
-  `src/dsp/AnamorphEngine.h:228-246` (`completeBulkApply`, the observers), `src/dsp/AnamorphEngine.h:439-486` (the word
+  `src/dsp/AnamorphEngine.h:228-246` (`completeBulkApply`, the observers), `src/dsp/AnamorphEngine.h:450-497` (the word
   and the handshake state).
 - `src/dsp/AnamorphEngine.cpp:611-631` (`requestAbSwitch`), `src/dsp/AnamorphEngine.cpp:633-658` (`requestDuck`,
   `completeBulkApply`), `src/dsp/AnamorphEngine.cpp:672-727` (`takeRequestWord`), `src/dsp/AnamorphEngine.cpp:729-790`

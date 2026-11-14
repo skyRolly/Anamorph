@@ -364,3 +364,7 @@ It separates endpoints/interiors and both directions, checks normalized curve an
 step error, and exercises selected latency plus actual engaged OS at normal levels.
 Extreme cases use the linear latency stand-in to keep their wet endpoints finite;
 D-02's raw-history retention correction remains independent of this arithmetic fix.
+N2-03: the Multiband Enable kernel selects its wet and phase-aligned dry endpoints
+exactly at 0/1, including a terminal sample inside a block. Its interior remains
+`from + blend * (to - from)`; this does not change the separate Mix interpolation
+or H4 gate. Evidence: Test 23 endpoint extension; ADR-0004/0005 implementation notes.

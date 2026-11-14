@@ -1991,10 +1991,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             for (int i = 0; i < n; ++i)
             {
                 const float b = mbEnableBlend.getNextValue();
-                L[i] = pmL[i] + b * (L[i] - pmL[i]);
-                R[i] = pmR[i] + b * (R[i] - pmR[i]);
-                aLw[i] = cdL[i] + b * (aLw[i] - cdL[i]);
-                aRw[i] = cdR[i] + b * (aRw[i] - cdR[i]);
+                L[i] = blendMultibandEnableSample (pmL[i], L[i], b);
+                R[i] = blendMultibandEnableSample (pmR[i], R[i], b);
+                aLw[i] = blendMultibandEnableSample (cdL[i], aLw[i], b);
+                aRw[i] = blendMultibandEnableSample (cdR[i], aRw[i], b);
             }
         }
     }

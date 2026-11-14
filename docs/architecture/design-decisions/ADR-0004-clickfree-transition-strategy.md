@@ -217,3 +217,16 @@ and zero after. The independent D-02 extension still fails 252/1,512 assertions
 with R-01 alone. The oracle measures ordinary float-bit identity, exceptional
 wide-reference error and the switch boundary; it is not universal floating-point
 or native-DAW acceptance evidence. Earlier notes retain their historical scope.
+
+## N2-03 implementation correction — exact Multiband Enable endpoints
+
+The existing bit-exact endpoint decision also applies when the smoother finishes
+inside a block. The settled-block shortcut did not establish that condition:
+`from + 1*(to-from)` can round away destination bits. The private
+`blendMultibandEnableSample` kernel selects the original source/destination at
+0/1 and keeps the original float expression strictly inside the ramp. The wet
+and clean-dry/A(dry) contributions use the same one tick per sample. This restores
+the Accepted decision; no duration, curve, topology, latency or H4 decision changes.
+[Test 23 extension and controls](../../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md)
+exercise independent production-bank destinations, downstream rounding and
+separate wet-only/dry-only negative controls. No audibility claim follows.

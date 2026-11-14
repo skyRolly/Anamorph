@@ -14787,6 +14787,8 @@ static void testBypassExactEndpoints()
                     }
 }
 
+#include "n2_endpoint_tests.h"
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -14798,6 +14800,13 @@ int main (int argc, char* argv[])
     // point it happened, on every platform, without a `stdbuf` wrapper the Windows job
     // cannot use anyway.
     std::setvbuf (stdout, nullptr, _IONBF, 0);
+
+    if (argc > 1 && std::strcmp (argv[1], "--multiband-endpoints") == 0)
+    {
+        n2_endpoint_tests::test();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
 
     if (argc > 1 && std::strcmp (argv[1], "--bypass-endpoint-probe") == 0)
     {
@@ -14928,6 +14937,7 @@ int main (int argc, char* argv[])
     testAbRecordCarriesThePostChangeEvidence();
     testANonFiniteVelvetDensityIsTheHeldDensity();
     testABulkSwapIsAdoptedOnlyWhenComplete();
+    n2_endpoint_tests::test();
     testBypassExactEndpoints();
     testBypassFiniteEndpointOverflow();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
