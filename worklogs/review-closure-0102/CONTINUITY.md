@@ -222,3 +222,23 @@ refused ignored Python caches; the retry uses a clean checkout. Raw CodeQL
 SARIF remained unavailable (HTTP 403). Native/manual acceptance and current
 hosted platform, sanitizer, fuzz, ABI, pluginval and analyzer results must not
 be inferred from earlier heads.
+
+
+### Additional N2-02 Match/reset control (2026-11-14)
+
+A new nonshipping probe uses a verified receipt for the fresh `9e972572`
+combined build and rechecks its source, pinned JUCE, generated rules, compiler
+environment, executable and every reused link object before and after relinking.
+Across Bypass and Multiband Enable, both initial directions, and host reset or
+same-rate re-prepare with a changed sound, it establishes a real ordinary duck,
+nonzero published Level-Match gain, live target adoption, an independent 64-tick
+smoother clock, settled targets and finite post-reset output. Host reset keeps
+the published gain; the changed-sound re-prepare flushes it. The corrected source
+passes **56/0**. Restoring only the N2-02 preservation defect, with N2-03 still
+correct, produces **16/56 failures** in the eight live-adoption and eight clock
+assertions; the reset, gain-policy and finiteness assertions remain passing.
+The probe is not a complete independent Level-Match algorithm oracle or a
+replacement for processor automation and the full State suite. Exact probe,
+patch, receipt, binary, commands, outputs and exit statuses are in
+`n2-match-reset-results/`; the negative executable's exit 1 is expected, and
+both outer relink runners exited 0.

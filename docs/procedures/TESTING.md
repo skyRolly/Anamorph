@@ -7755,3 +7755,10 @@ No repeat acceptance is requested. Source-bound automated CI remains independent
 
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
+
+
+The nonshipping N2-02 Match/reset probe in `worklogs/review-closure-0102/`
+adds eight engine lanes with Match on, live independent crossfade adoption and
+clock checks through host reset and changed-sound re-prepare. Its receipt-checked
+combined-source result and isolated original-defect mutation are recorded in
+the continuity worklog; it does not replace the full processor suite.

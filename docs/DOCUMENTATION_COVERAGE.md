@@ -19329,3 +19329,11 @@ benchmark procedure and committed specifications for the historical A2
 comparison. This is a proposed procedure, not a new measurement or a complete
 recovery validation. Its remaining workload gaps and trust premises are stated
 in the worklog; the Proposed architecture decision is unchanged.
+
+
+## N2-02 Match/reset follow-up — 2026-11-14 UTC
+
+Added a nonshipping source- and object-verified combined-source control for
+ordinary duck, Bypass/Multiband target clocks and Level Match across host reset
+and re-prepare, with an isolated original-defect negative control. TESTING and
+the review continuity record distinguish this from a full measurement oracle.
