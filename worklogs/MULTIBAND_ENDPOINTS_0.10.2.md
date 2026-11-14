@@ -107,3 +107,23 @@ inferred from an unobserved out-of-range coefficient. The initial `391d3f0a`
 measurements/CI remain historical; final-source validation is recorded separately.
 
 The engine oracle classifies endpoint coefficients by their float bits, independently of the production comparison, while retaining all 292 assertions.
+
+## Independent Match-on verification follow-up
+
+The original 292-check observations above are historical. The previous wet-stage
+assertion called the production kernel directly, while actual output was compared
+only with Match off. The revised oracle also compares actual output in Match-on
+lanes. It copies the pre-block Match gain smoother and applies the actual post-
+measurement target, checks its resulting state, then models gain and downstream
+Mix rounding. This exercises production output with non-unity Match gain but
+is not an independent Level-Match measurement oracle and cannot observe a wet
+stage bit that later arithmetic masks. It adds explicit visible and masked legacy
+wet counterfactual witnesses; separate direct kernel, aligned dry and reference
+assertions remain. No production code or shipping instrumentation is added.
+
+On the local GCC14 Release build the 392-check selector passes. Across the matrix,
+750 / 524 legacy wet stage differences are visible / masked after downstream
+arithmetic with Match off, and 747 / 527 with Match on. These are numerical
+observations, not audibility claims. Negative controls and full/exact-head CI
+must be recorded separately; the earlier historical controls do not validate
+this changed test source.
