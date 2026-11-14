@@ -86,3 +86,139 @@ rows, but are unexecuted. Before an owner selects a candidate, add reviewed,
 sensitive workloads for those missing cases and the chosen recovery mechanism,
 then repeat correctness, allocation and real-time gates. Do not extrapolate
 historical shared-host timings or A2 instruction counts to a modified candidate.
+
+## Review closure execution — 2026-11-14 UTC
+
+This section records the new review work; the starting snapshot above remains
+historical. The latest directly resolved refs at this checkpoint were main
+`51e6250d34b44d838a51f9a5086105d39d6b0f29`, #237
+`738b7b23211bb4c26258b3f8912efdad03ea4556`, #238
+`f08d4ebfdc3710f3d3cae961a8d2c43a74c85fec`, #239
+`30560d330a707f6087f14baacace78ffeac9b4df`, #240
+`df89edb67eb0ea36508d85f4842b67ea99c5c10a`, and draft #242
+`73c68f7af90fe0d437ea2087d3cb48f9153b7b89`. #237/#242 target main;
+#238–#240 target the actual #237 branch. All five were open, mergeable,
+auto-merge disabled, with no review submissions or unresolved review threads
+returned by the API. A successful pull-request workflow containing only
+`merge-check` is not full exact-head validation. #241 had already been merged;
+the prior review verified its CodeQL Action SHA against upstream v4.39.3.
+
+### Findings and correction boundaries
+
+- **R-242-01, documentation lifecycle:** confirmed and corrected in #242. The
+  live testing and coverage inventories now record the fixture and its tests;
+  the pre-edit drift and documentation/citation checks are preserved there.
+- **R-242-02, scheduling-dependent negative control:** confirmed and corrected
+  in #242. Parent publication is held until observer acknowledgement, and a
+  separate child gate proves whether readiness preceded publication. Paused
+  observer, missing acknowledgement and timeout controls use deadlines as
+  bounds, not as the ordering premise. The old ordering is detected before the
+  parent is released, while the corrected ordering produces a complete
+  parseable identity before readiness. Normal and concurrent-load repeats are
+  retained in #242's `worklogs/cleanup-fixture-race-0102/`.
+- **R-242-03, identity-unavailable cleanup:** confirmed as a test-harness
+  weakness, not a production Rosetta defect. Cleanup now obtains ownership from
+  its direct new-session child and, after leader reaping, only its process-local
+  subreaper's group-specific child wait. It uses bounded group termination,
+  reaping and observation; it does not discover or signal processes by name.
+  Publication, parse/read, timeout, leader-exit and cleanup/reaping fault
+  injections include a sensitive control for the old false-success predicate.
+  The old hosted failure `d8627e55` remains unattributed: its retained cleanup
+  artifact was still forbidden on the 2026-11-14 retry, and `--log-failed`
+  returned an empty stream. The confirmed local race is not proof of that
+  hosted failure's cause.
+- **R-237-01, P2 verification/provenance:** confirmed and partially corrected,
+  **still open across the complete requested scope**. A real Git
+  assume-unchanged counterexample was reproduced; its details are in
+  `assume-unchanged-counterexample.json`. The prototype was adopted and
+  strengthened in #237 into a shared raw-byte/tree, diagnostic-patch, pinned
+  JUCE, fresh-build and receipt-checked relink mechanism. Seventeen synthetic
+  controls pass in the documented container, and real baseline/diagnostic,
+  combined mutation, A2 and state-scan executions have separate receipts.
+  The old per-PR N2 and H4 relinkers are disabled before output creation, with
+  normal and optimized-Python refusal controls. Historical code bodies and
+  archived measurements remain preserved. Several H4 historical recovery,
+  trajectory and benchmark workloads still need verified specifications and
+  actual reruns; the owner benchmark specifications above are unexecuted. The
+  complete helper classifications and trust premises are in #237's
+  `worklogs/combined-isolated-controls-0102/INVENTORY.md`. Trusted tools,
+  system dependencies, filesystem and no concurrent writers remain premises;
+  this is not a general compiler/host attestation.
+- **R-239-01, P2 verification:** the Match-on production-output gap was
+  confirmed and corrected in #239's existing 392-assertion test. A correct
+  standalone kernel cannot conceal an incorrect wet call site: on historical
+  combined `f2686cb5`, guarded isolated both/wet/dry mutations fail 88/44/44
+  assertions while N2-02 remains 720/0. A separately fresh-built clamp mutation
+  fails 1/392 and leaves N2-02 720/0. Some wet endpoint bit differences survive
+  later rounding (750 Match off, 747 Match on); others are masked. The Match
+  oracle uses the actual post-measure target and is not an independent test of
+  the entire measurement algorithm. R-239-01 is resolved at the assertion
+  level; the broader evidence-provenance dependency remains R-237-01.
+- **N2-02, #238:** no new production defect was established. Ordinary entry,
+  fade-out/bottom/fade-in, retargeting, structural/factor transitions, forced
+  completion and deferral, independent sample clocks and processor response
+  are exercised by the focused tests. Guarded combined N2-02-only mutation
+  fails 316/720 engine and 12/20 processor assertions while N2-03 passes;
+  premature forced adoption fails 8/720. Existing State tests 133 and 136
+  cover broader measurement/reset/re-prepare interactions, but these were not
+  isolated in a new N2-02-specific mutation. No unrelated product correction
+  was made.
+
+### H4 and remaining product findings
+
+N2-01 and V2-01 remain P2 production and verification findings. Test 25's
+original .90/.95 aggregate-RMS assertions remain intact; the independent
+failing-on-main low-frequency oracle remains nonshipping. A2's output-only
+recovery is incomplete: actual engine and separate LR4 witnesses show finite
+monitored output with hidden invalid dry state. A state-scan experiment catches
+that case only; its complete bank/fade/latency/repeated-recovery matrix and
+cost are unproved. The later zero block is distinct: on `f2686cb5`, full-wet
+and dry-reset controls plus a stage trace locate an extreme-finite wet LR4
+numerator overflow followed by existing final-output healing. The copied-state
+one-step widening shows representable first-sample arithmetic. Track this as
+**N2-08, P3 review assessment**, without an audible-impact or production-fix
+claim. The earlier A/C candidate-only Mix-consumption failure remains a
+separate observation. N2-04–07 remain open and are not silently closed.
+
+The historical A2 48 kHz/128 whole-engine instruction increases are about
+15.3%, 27.4% and 36.9% at two, three and four bands. They do not measure a
+state-scan candidate, CPU percentage, deadlines or plugin-instance capacity.
+The prior candidate comparison rejects an unbounded re-entry replay, finds a
+small state-only saving and identifies the architecture gate for changing the
+filter representation or transition contract. No representative native
+hardware, listening, DAW or Level-5 acceptance was established. ADR-0074
+remains Proposed. Recommend continued targeted recovery and matched native
+measurement before selecting a production candidate; the owner may also retain
+the documented limitation or defer correction.
+
+### Integration boundaries
+
+The isolated intended integration `9e9725726b31c39b8de0379c12c324b2e858e503`
+contains all five current PR heads and current main; production `src/` bytes
+match historical combined `f2686cb5` exactly. Against `7764df5c`, the
+meaningful executable/test changes are the expanded Match-on endpoint test,
+merged #241 workflow pins and #242 fixture controls; H4 source changes are
+comments only. Original audit files under `original/` compare byte-for-byte to
+`6b55dfad`. Conflict resolution retained both production corrections, test
+registrations, state lint, ADR amendments, current N2-08 documentation and
+both sides of the coverage/testing records. Current pairwise PR file overlaps
+are in `pr-overlaps-2026-11-14.json`: #238/#239 12, #238/#240 8, #239/#240 8;
+#242 overlaps each of those three in two documentation files.
+
+Proposed order remains #242, #237, #238, #239, #240, subject to exact-head
+checks and the owner's authorization. Keep #237's branch until all three
+children have been explicitly retargeted. After each authorized merge, retarget
+the next child to the actual current main, inspect its resulting diff and
+conflicts, preserve both tests and all documentation amendments, and rerun
+required checks on the resulting exact identity. #240 documentation can be
+reviewed independently of an H4 production decision; merging it does not
+accept ADR-0074. No PR was merged, auto-merge enabled or branch deleted.
+
+The exact combined local and hosted checks in flight are tracked separately in
+`integration-9e-results/`; prior green checks on `f2686cb5` are historical.
+The local source/documentation/fixture batch has 35 passes and the separate JUCE
+cache suite has 28 passes. The first guarded full-build attempt correctly
+refused ignored Python caches; the retry uses a clean checkout. Raw CodeQL
+SARIF remained unavailable (HTTP 403). Native/manual acceptance and current
+hosted platform, sanitizer, fuzz, ABI, pluginval and analyzer results must not
+be inferred from earlier heads.
