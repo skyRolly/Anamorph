@@ -58,6 +58,13 @@
     {
       "program": "engine-cause",
       "args": [
+        "velvet"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-cause",
+      "args": [
         "small"
       ],
       "expected_exit": 0

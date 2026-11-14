@@ -69,22 +69,47 @@ wet banks' observed states are finite but reach approximately `1.81288e38`.
 On the following block the first observed non-finite samples appear at the
 Multiband output, in both channels from sample zero; the existing final-output
 guard then zeros those samples and fires its reset. This also occurs with no
-Mix dip, after a dry-only reset, or after a Haas reset. Resetting both wet-bank
+Mix dip or after a dry-only reset. A Haas reset also did not change the result,
+but Haas was inactive (the setup selects Velvet), so it is not a discriminating
+upstream control. Resetting both wet-bank
 channels before that block prevents the zero block; resetting either one alone
 does not. At .1 `FLT_MAX` this zero block is not reproduced. These are
 interventions on diagnostic copies/state, not a proposed correction.
 
-The observations locate the involved wet state and processing stage; they do
-not yet identify the first overflowing expression inside Multiband or prove
-that the mathematically intended extreme-signal tail was representable. The
-zeroing is consistent with the existing guard once its input is non-finite.
-Whether the preceding arithmetic violates a separate finite-input contract,
-and its relationship to N2-04 through N2-07, remain open. Do not classify it
-as an A2-only or Mix-re-entry failure. The initial observer's unused-scratch
-read remains excluded from this conclusion.
+The copied active wet LR4 state and the next finite input also reproduce
+non-finite low/high outputs. A widened calculation on the same copied state has
+representable low/high outputs and state values for that sample. The subsequent
+numerator trace and active-Velvet reset control are recorded below. The final guard's
+zeroing is consistent with its existing non-finite-input contract. Do not
+classify this as an A2-only or Mix-re-entry failure. The initial observer's
+unused-scratch read remains excluded from this conclusion.
 
 The separately fresh-built experimental state-scan candidate reproduces zero
 invalid dry states at this one boundary, while the same subsequent 128-zero
 block remains. Its exact patched tree, JUCE identity, build and three controls
 are recorded in `execution-2026-11-14/state-scan-fresh/`. This adds sensitivity
 for one witness; it does not establish recovery completeness or its cost.
+
+### N2-08: finite wet-filter numerator overflow
+
+The active-Velvet reset also leaves the zero block unchanged. In a copy of the
+actual active wet LR4 state, the next channel input is `0.15`: the coefficient,
+state values, product (`2.9042e38`) and first subtraction (`-2.9042e38`) are
+finite, but subtracting the second state (`1.81288e38`) overflows the float
+numerator to `-inf` before multiplication by `h`. The actual LR4 copy then
+produces `-inf` low and NaN high. Widening only that overflowing subtraction
+and its scale in this diagnostic copy, while using the remaining float
+expressions, produces finite low/high values near `1.09965e38` and `-9.74081e36`
+and finite next state for this first sample. The separate all-double calculation
+also keeps its recorded intermediate values below float maximum. See
+`execution-2026-11-14/active-velvet-trace/` and `one-wide-step/` for source,
+object, executable and raw-output identities.
+
+This confirms an avoidable finite-intermediate overflow in the wet crossover
+for the stated extreme stimulus; the resulting guard response to non-finite
+output is expected. We track the production numerical defect as **N2-08,
+P3 (review assessment)** given this highly extreme input, without an audible
+impact claim. The full-wet/no-dip control and Drive-zero premise separate this witness
+from N2-01, N2-05, N2-06 and N2-07; it does not close or otherwise resolve
+N2-04–07. The one-sample diagnostic is not a production fix, a complete tail
+oracle, or authorization to change the LR4 numerical/architecture contract.

@@ -14,6 +14,15 @@ The original audit's N2-04–07 remain confirmed P3 findings, outside this round
 implementation scope; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
 are retained. Open correction PRs do not establish integration on main.
 
+N2-08 (P3 review assessment): after an extreme but finite input at a high
+crossover frequency, a finite wet LR4 state can overflow an intermediate
+subtraction on the next finite sample. In the measured two-channel full-wet
+case this produces non-finite Multiband output and the existing self-heal zeros
+the affected block. A diagnostic widening of that one copied-state step yields
+finite, representable results for its first sample. This is a separate wet-path
+numerical defect, not the H4 dry-state transient; no production correction is
+included. [Reproduction and limits](../worklogs/h4-review-followup-0102/README.md).
+
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
