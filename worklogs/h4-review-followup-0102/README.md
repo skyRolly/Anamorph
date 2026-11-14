@@ -52,3 +52,10 @@ read `dryAlignScratch` while H4 had not written it. That scratch value was not a
 valid observation, and the read can invalidate the experiment as a whole. The
 preliminary run is retained for audit, not used as causal proof; the observer no
 longer reads that scratch, and its corrected execution must be evaluated anew.
+
+`production-stage-trace.patch` is an additional nonshipping diagnostic against
+the combined production source. It reads the actual signal at named processing
+boundaries and logs the existing final-output self-heal; it changes no intended
+signal arithmetic and is unsuitable for performance measurement. Its adjacent
+specification fixes the base, patch bytes and resulting tree and selects six
+separate controls. The trace does not establish a result merely by existing.

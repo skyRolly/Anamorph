@@ -1,0 +1,57 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index acd809e2..d5bca1e3 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1,0 +2 @@
++#include <cstdio>
+@@ -1416,0 +1418,17 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    // Nonshipping, synchronous causal trace; never use this build for timing.
++    auto h4Trace = [L, R, n] (const char* stage) noexcept
++    {
++        int badL = 0, badR = 0, firstL = -1, firstR = -1;
++        float peakL = 0.0f, peakR = 0.0f;
++        for (int i = 0; i < n; ++i)
++        {
++            if (! std::isfinite (L[i])) { ++badL; if (firstL < 0) firstL = i; }
++            else peakL = std::max (peakL, std::abs (L[i]));
++            if (! std::isfinite (R[i])) { ++badR; if (firstR < 0) firstR = i; }
++            else peakR = std::max (peakR, std::abs (R[i]));
++        }
++        if (badL || badR || peakL > 1.0e37f || peakR > 1.0e37f)
++            std::fprintf (stderr, "H4TRACE %s bad=%d,%d first=%d,%d peak=%g,%g\n",
++                          stage, badL, badR, firstL, firstR, peakL, peakR);
++    };
++
+@@ -1687,0 +1706 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("input-conditioning");
+@@ -1702,0 +1722 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("input-ms");
+@@ -1864,0 +1885,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("nonlinear");
++
+@@ -1868,0 +1891,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("widener");
++
+@@ -1884,0 +1909,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("global-width");
++
+@@ -2005,0 +2032,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("multiband");
++
+@@ -2115,0 +2144,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("mix");
++
+@@ -2122,0 +2153,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("mono-maker");
++
+@@ -2256,0 +2289,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("output-gain");
++
+@@ -2274,0 +2309,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("solo-monitor");
++
+@@ -2310,0 +2347 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++        std::fprintf (stderr, "H4TRACE final-output self-heal fired\n");
+@@ -2328,0 +2366,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    h4Trace ("after-heal");
++
