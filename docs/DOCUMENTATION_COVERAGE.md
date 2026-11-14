@@ -19338,3 +19338,8 @@ baseline/diagnostic replay and identify the relinkers still outside the shared
 mechanism. Historical reports, original logs and original manifests remain
 unchanged. The guard fails closed on unsupported symlink/submodule trees and
 working-tree transformations; it does not attest to the toolchain or host.
+
+
+## N2-02 replay-entry audit — 2026-11-14 UTC
+
+The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.

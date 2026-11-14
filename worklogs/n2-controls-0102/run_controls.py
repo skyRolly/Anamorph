@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+raise SystemExit('Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.')
 """Replay N2-02 controls using a fresh corrected CMake build (JUCE 9.0.5).
 
 Build both test targets first. Recompile ONLY the engine for negative controls;
