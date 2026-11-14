@@ -365,3 +365,12 @@ oversampling behavior, repeated failures, or Mix re-entry safety. The source,
 packet, receipt, executable and raw outputs are in `h4-bank-lifetime-results/`;
 `MultibandWidth` source is byte-identical in the newer documentation-only
 integration `3669cf71`. No shipping instrumentation was added.
+
+The `3669cf71` integration has since been pushed to the isolated validation
+branch. Exact-head hosted runs are Build & Validate `43649435367`, CodeQL
+`43649442113` and Microsoft C++ Code Analysis `43649444689`; their outcomes
+must be read from those runs, not from `9e972572`. The local #240 documentation
+head remains unpushed while the earlier failed-run retry completes. The new
+integration's 35 local source/documentation/fixture commands all passed; the
+fresh full build, mutations, State isolation and clamp replay are separate
+pending executions at this checkpoint.
