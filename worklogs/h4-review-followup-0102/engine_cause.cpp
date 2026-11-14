@@ -86,6 +86,8 @@ void run(const char* mode, float amplitude, bool dip)
     const float s3 = (filter.*member(S3{}))[0], s4 = (filter.*member(S4{}))[0];
     const float coefficient = r2 + g;
     const float product = coefficient * s1;
+    const float firstDifference = inputL - product;
+    const float numerator = firstDifference - s2;
     // Widen only this copied-state calculation to test whether the reference
     // values are representable; it is not a candidate production algorithm.
     const double yh = (double(inputL) - double(coefficient)*s1 - s2)*h;
@@ -100,9 +102,11 @@ void run(const char* mode, float amplitude, bool dip)
         std::abs(yl), std::abs(newS2), std::abs(yh2), std::abs(yb2), std::abs(newS3),
         std::abs(yl2), std::abs(newS4), std::abs(high)});
     std::printf("wet-filter-arithmetic mode=%s coefficient=%g s1=%g s2=%g product=%g finite=%d "
+                "first_difference=%g finite=%d numerator=%g finite=%d "
                 "wide_low=%g wide_high=%g wide_max=%g representable=%d\n",
-                mode, coefficient, s1, s2, product, std::isfinite(product), yl2, high,
-                maximum, std::isfinite(maximum) && maximum <= limit);
+                mode, coefficient, s1, s2, product, std::isfinite(product),
+                firstDifference, std::isfinite(firstDifference), numerator, std::isfinite(numerator),
+                yl2, high, maximum, std::isfinite(maximum) && maximum <= limit);
     filter.processSample(0, inputL, loL, hiL);
     filter.processSample(1, inputR, loR, hiR);
     std::printf("wet-filter-copy mode=%s input=%g,%g low=%g,%g high=%g,%g finite=%d,%d,%d,%d\n",
