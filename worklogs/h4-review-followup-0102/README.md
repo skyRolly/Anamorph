@@ -82,3 +82,9 @@ Whether the preceding arithmetic violates a separate finite-input contract,
 and its relationship to N2-04 through N2-07, remain open. Do not classify it
 as an A2-only or Mix-re-entry failure. The initial observer's unused-scratch
 read remains excluded from this conclusion.
+
+The separately fresh-built experimental state-scan candidate reproduces zero
+invalid dry states at this one boundary, while the same subsequent 128-zero
+block remains. Its exact patched tree, JUCE identity, build and three controls
+are recorded in `execution-2026-11-14/state-scan-fresh/`. This adds sensitivity
+for one witness; it does not establish recovery completeness or its cost.

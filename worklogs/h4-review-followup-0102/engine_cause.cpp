@@ -17,6 +17,7 @@ struct Active { friend auto member(Active); };
 struct Haas { friend auto member(Haas); };
 struct S1 { friend auto member(S1); }; struct S2 { friend auto member(S2); };
 struct S3 { friend auto member(S3); }; struct S4 { friend auto member(S4); };
+struct G { friend auto member(G); }; struct R2 { friend auto member(R2); }; struct H { friend auto member(H); };
 template<class T, auto P> struct Get { friend auto member(T) { return P; } };
 template struct Get<MB, &E::multiband>;
 template struct Get<Banks, &anamorph::MultibandWidth::bank>;
@@ -26,6 +27,9 @@ template struct Get<S1, &anamorph::LR4Xover::s1>;
 template struct Get<S2, &anamorph::LR4Xover::s2>;
 template struct Get<S3, &anamorph::LR4Xover::s3>;
 template struct Get<S4, &anamorph::LR4Xover::s4>;
+template struct Get<G, &anamorph::LR4Xover::g>;
+template struct Get<R2, &anamorph::LR4Xover::R2>;
+template struct Get<H, &anamorph::LR4Xover::h>;
 }
 
 struct State { int invalid = 0; float maxFinite = 0; };
@@ -77,6 +81,28 @@ void run(const char* mode, float amplitude, bool dip)
     auto filter = banks[active].x[0];
     float inputL = .2f, inputR = .1f, loL, hiL, loR, hiR;
     anamorph::applyWidth(inputL, inputR, p.width);
+    const float g = filter.*member(G{}), r2 = filter.*member(R2{}), h = filter.*member(H{});
+    const float s1 = (filter.*member(S1{}))[0], s2 = (filter.*member(S2{}))[0];
+    const float s3 = (filter.*member(S3{}))[0], s4 = (filter.*member(S4{}))[0];
+    const float coefficient = r2 + g;
+    const float product = coefficient * s1;
+    // Widen only this copied-state calculation to test whether the reference
+    // values are representable; it is not a candidate production algorithm.
+    const double yh = (double(inputL) - double(coefficient)*s1 - s2)*h;
+    const double yb = double(g)*yh+s1, newS1 = double(g)*yh+yb;
+    const double yl = double(g)*yb+s2, newS2 = double(g)*yb+yl;
+    const double yh2 = (yl-double(coefficient)*s3-s4)*h;
+    const double yb2 = double(g)*yh2+s3, newS3 = double(g)*yh2+yb2;
+    const double yl2 = double(g)*yb2+s4, newS4 = double(g)*yb2+yl2;
+    const double high = yl-double(r2)*yb+yh-yl2;
+    const double limit = std::numeric_limits<float>::max();
+    const double maximum = std::max({std::abs(yh), std::abs(yb), std::abs(newS1),
+        std::abs(yl), std::abs(newS2), std::abs(yh2), std::abs(yb2), std::abs(newS3),
+        std::abs(yl2), std::abs(newS4), std::abs(high)});
+    std::printf("wet-filter-arithmetic mode=%s coefficient=%g s1=%g s2=%g product=%g finite=%d "
+                "wide_low=%g wide_high=%g wide_max=%g representable=%d\n",
+                mode, coefficient, s1, s2, product, std::isfinite(product), yl2, high,
+                maximum, std::isfinite(maximum) && maximum <= limit);
     filter.processSample(0, inputL, loL, hiL);
     filter.processSample(1, inputR, loR, hiR);
     std::printf("wet-filter-copy mode=%s input=%g,%g low=%g,%g high=%g,%g finite=%d,%d,%d,%d\n",
