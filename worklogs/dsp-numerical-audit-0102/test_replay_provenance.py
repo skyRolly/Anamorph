@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 import replay_provenance as prov
 import replay_experiment as experiments
+import relink_verified as relink
 
 
 def git(path, *args):
@@ -101,6 +102,13 @@ class Provenance(unittest.TestCase):
                                          (commit, '../probe.cpp'), (commit, 'src/not-present')]:
                 with self.assertRaises((ValueError, subprocess.CalledProcessError)):
                     experiments.blob(bad_commit, bad_path)
+
+    def test_relink_rejects_changed_compiler_include_environment(self):
+        with mock.patch.dict(os.environ, {'PATH': '/trusted/tools'}, clear=True):
+            relink.verify_build_environment({'PATH': '/trusted/tools'})
+            os.environ['CPATH'] = '/unexpected/include'
+            with self.assertRaises(ValueError):
+                relink.verify_build_environment({'PATH': '/trusted/tools'})
 
     def test_file_mode_and_symlink_substitution_are_rejected(self):
         target = self.source/'src/source.cpp'
