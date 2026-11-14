@@ -78,10 +78,8 @@ interventions on diagnostic copies/state, not a proposed correction.
 
 The copied active wet LR4 state and the next finite input also reproduce
 non-finite low/high outputs. A widened calculation on the same copied state has
-representable low/high outputs and state values for that sample. A further
-numerator trace and an active-Velvet reset control are being evaluated; until
-their results are recorded, the exact first overflowing expression and the
-full-engine finite-input contract classification remain open. The final guard's
+representable low/high outputs and state values for that sample. The subsequent
+numerator trace and active-Velvet reset control are recorded below. The final guard's
 zeroing is consistent with its existing non-finite-input contract. Do not
 classify this as an A2-only or Mix-re-entry failure. The initial observer's
 unused-scratch read remains excluded from this conclusion.
@@ -91,3 +89,27 @@ invalid dry states at this one boundary, while the same subsequent 128-zero
 block remains. Its exact patched tree, JUCE identity, build and three controls
 are recorded in `execution-2026-11-14/state-scan-fresh/`. This adds sensitivity
 for one witness; it does not establish recovery completeness or its cost.
+
+### N2-08: finite wet-filter numerator overflow
+
+The active-Velvet reset also leaves the zero block unchanged. In a copy of the
+actual active wet LR4 state, the next channel input is `0.15`: the coefficient,
+state values, product (`2.9042e38`) and first subtraction (`-2.9042e38`) are
+finite, but subtracting the second state (`1.81288e38`) overflows the float
+numerator to `-inf` before multiplication by `h`. The actual LR4 copy then
+produces `-inf` low and NaN high. Widening only that overflowing subtraction
+and its scale in this diagnostic copy, while using the remaining float
+expressions, produces finite low/high values near `1.09965e38` and `-9.74081e36`
+and finite next state for this first sample. The separate all-double calculation
+also keeps its recorded intermediate values below float maximum. See
+`execution-2026-11-14/active-velvet-trace/` and `one-wide-step/` for source,
+object, executable and raw-output identities.
+
+This confirms an avoidable finite-intermediate overflow in the wet crossover
+for the stated extreme stimulus; the resulting guard response to non-finite
+output is expected. We track the production numerical defect as **N2-08,
+P3 (review assessment)** given this highly extreme input, without an audible
+impact claim. The full-wet/no-dip control and Drive-zero premise separate this witness
+from N2-01, N2-05, N2-06 and N2-07; it does not close or otherwise resolve
+N2-04–07. The one-sample diagnostic is not a production fix, a complete tail
+oracle, or authorization to change the LR4 numerical/architecture contract.

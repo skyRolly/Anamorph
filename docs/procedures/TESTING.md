@@ -7768,7 +7768,12 @@ reset controls after the recorded extreme-input stimulus. Its accompanying
 committed specification identifies the historical combined production source.
 The corrected execution and instrumented stage trace identify Multiband as the
 first observed invalid output stage in this stimulus, followed by existing
-self-heal; they do not yet isolate its precise arithmetic or establish a new
-contract violation. See the follow-up worklog for the fresh-build receipt,
+self-heal. See the follow-up worklog for the fresh-build receipt,
 independent resets and the superseded preliminary observer. This is a
 nonshipping causal probe, not a mandatory regression or H4 fix.
+
+The later copied-state LR4 control localizes N2-08 to an extreme-finite wet
+numerator overflow and compares one diagnostic widened step. An active-Velvet
+reset does not prevent the observed block; the earlier Haas reset was inactive.
+The arithmetic control is scoped to the recorded first sample and does not
+validate a production correction or the complete subsequent tail.

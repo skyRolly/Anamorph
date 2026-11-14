@@ -19337,5 +19337,6 @@ engine causal probe and its planned production-source specification are indexed
 in TESTING and the H4 follow-up worklog. They add state-family controls without
 changing shipping source or accepting ADR-0074. The later recorded trace locates
 the first observed invalid signal at Multiband and the following existing
-self-heal; the precise internal arithmetic and contract classification remain
-open. Existing H4 findings and historical measurements remain.
+self-heal. The later copied-state control identifies a distinct extreme-finite wet
+LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
+issues and TESTING. Existing H4 findings and historical measurements remain.

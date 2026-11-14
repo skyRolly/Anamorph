@@ -90,9 +90,15 @@ non-finite Multiband output, after which the existing final-output guard zeros
 it and resets state. A diagnostic reset of both wet banks prevents this
 particular block; a dry-only reset and keeping Mix fully wet do not. A reset of
 inactive Haas is not a discriminating control in this Velvet setup.
-This does not attribute the block to A2 or establish the first overflowing
-expression or a distinct contract violation. The state-scan candidate still
+This stage trace does not attribute the block to A2; the subsequent narrower
+arithmetic result is recorded below. The state-scan candidate still
 has not established a complete recovery contract or measured cost. See the
 decision packet and follow-up worklog for exact controls and limitations.
 The recommendation remains continued targeted investigation, and this ADR
 remains **Proposed**.
+
+The later copied-state control isolates finite-input overflow in the wet LR4
+numerator and demonstrates representable first-sample results when only that
+step is widened. It is tracked independently as N2-08 (P3 review assessment),
+without prescribing a production numerical change. It does not establish A2
+recovery completeness or alter this Proposed decision.
