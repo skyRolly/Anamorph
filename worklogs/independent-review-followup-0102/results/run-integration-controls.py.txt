@@ -1,0 +1,21 @@
+from pathlib import Path
+import subprocess,shlex,hashlib,json
+root=Path('/workspace/anamorph-review-integration');build=Path('/workspace/anamorph-review-build-integration');out=Path('/workspace/anamorph-review-results/controls-integration');out.mkdir(exist_ok=True)
+cmds=subprocess.check_output(['ninja','-C',str(build),'-t','commands','AnamorphTests'],text=True).splitlines();cc=next(shlex.split(c) for c in cmds if c.endswith('/src/dsp/AnamorphEngine.cpp') and ' -c ' in c);link=next(shlex.split(c) for c in cmds if ' -o AnamorphTests_artefacts/Release/AnamorphTests ' in c)
+if link[:2]==[':','&&'] and link[-2:]==['&&',':']:link=link[2:-2]
+old=cc[cc.index('-o')+1];src=(root/'src/dsp/AnamorphEngine.cpp').read_text()
+def sub(s,a,b):
+ assert s.count(a)==1,(a,s.count(a));return s.replace(a,b)
+lost=sub(src,'    const auto nb = dst.mbBands;','    const auto nb = dst.mbBands;\n    const auto lostMb = dst.mbEnable; const auto lostBypass = dst.bypass;')
+lost=sub(lost,'    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;','    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;\n    dst.mbEnable = lostMb; dst.bypass = lostBypass;')
+forced=sub(src,'        if (! pendingForced)\n        {','        if (true) // premature forced adoption control\n        {')
+wet=src
+for a,b in [('L[i] = blendMultibandEnableSample (pmL[i], L[i], b);','L[i] = pmL[i] + b * (L[i] - pmL[i]);'),('R[i] = blendMultibandEnableSample (pmR[i], R[i], b);','R[i] = pmR[i] + b * (R[i] - pmR[i]);')]:wet=sub(wet,a,b)
+record={}
+for name,text,selector in [('lost-controls',lost,'--n2-controls'),('premature-forced',forced,'--n2-controls'),('wet-only',wet,'--multiband-endpoints')]:
+ path=out/(name+'.cpp');path.write_text(text);obj=out/(name+'.o');c=cc.copy()
+ for f,v in [('-c',str(path)),('-o',str(obj)),('-MF',str(obj)+'.d'),('-MT',str(obj))]:
+  if f in c:c[c.index(f)+1]=v
+ subprocess.run(c,cwd=build,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);binary=out/name;l=[str(obj) if x==old else x for x in link];l[l.index('-o')+1]=str(binary);subprocess.run(l,cwd=build,check=True)
+ r=subprocess.run([str(binary),selector],capture_output=True,text=True);(out/(name+'.log')).write_text(r.stdout+r.stderr);record[name]={'exit':r.returncode,'last':r.stdout.splitlines()[-1],'source_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'compile':c,'link':l};print(name,record[name]['exit'],record[name]['last'],flush=True)
+(out/'identity.json').write_text(json.dumps(record,indent=2)+'\n')

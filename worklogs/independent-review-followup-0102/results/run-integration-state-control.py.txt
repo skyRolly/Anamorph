@@ -1,0 +1,11 @@
+from pathlib import Path
+import subprocess,shlex,json,hashlib
+root=Path('/workspace/anamorph-review-integration');build=Path('/workspace/anamorph-review-build-integration');out=Path('/workspace/anamorph-review-results/controls-integration-state');out.mkdir(exist_ok=True)
+commands=subprocess.check_output(['ninja','-C',str(build),'-t','commands','AnamorphStateTests'],text=True).splitlines();cc=next(shlex.split(c) for c in commands if c.endswith('/src/dsp/AnamorphEngine.cpp') and ' -c ' in c);link=next(shlex.split(c) for c in commands if ' -o AnamorphStateTests_artefacts/Release/AnamorphStateTests ' in c)
+if link[:2]==[':','&&'] and link[-2:]==['&&',':']:link=link[2:-2]
+s=(root/'src/dsp/AnamorphEngine.cpp').read_text();a='    const auto nb = dst.mbBands;';b='    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;';assert s.count(a)==s.count(b)==1
+s=s.replace(a,a+'\n    const auto lostMb = dst.mbEnable; const auto lostBypass = dst.bypass;').replace(b,b+'\n    dst.mbEnable = lostMb; dst.bypass = lostBypass;');src=out/'lost-controls.cpp';src.write_text(s);obj=out/'lost-controls.o';old=cc[cc.index('-o')+1];cc=cc.copy()
+for f,v in [('-c',str(src)),('-o',str(obj)),('-MF',str(obj)+'.d'),('-MT',str(obj))]:
+ if f in cc:cc[cc.index(f)+1]=v
+subprocess.run(cc,cwd=build,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);binary=out/'lost-controls';link=[str(obj) if x==old else x for x in link];link[link.index('-o')+1]=str(binary);subprocess.run(link,cwd=build,check=True)
+r=subprocess.run([str(binary),'--n2-controls'],capture_output=True,text=True);(out/'result.log').write_text(r.stdout+r.stderr);record={'exit':r.returncode,'last':r.stdout.splitlines()[-1],'source_sha256':hashlib.sha256(src.read_bytes()).hexdigest(),'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'compile':cc,'link':link};(out/'identity.json').write_text(json.dumps(record,indent=2)+'\n');print(record['exit'],record['last'])

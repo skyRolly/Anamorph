@@ -1,0 +1,1 @@
+{"conclusion":"success","databaseId":43484257900,"event":"workflow_dispatch","headSha":"61e82e51be1c6b35771e8fe9c9f12128216187d6","jobs":[{"conclusion":"success","name":"Analyze","status":"completed"}],"status":"completed","url":"https://github.com/skyRolly/Anamorph/actions/runs/43484257900","workflowName":"Microsoft C++ Code Analysis"}
