@@ -20,3 +20,12 @@ Do not attribute that next zero block to dry re-entry on this evidence: `engine_
 `candidate-state-scan.patch` is a **nonshipping experiment** based on N2-03 `003c9a1a` plus A2, with an extra per-block check of all four stored states of every dx/dax in both banks for each channel. In this single case it reports zero invalid dry states after the extreme sample; the subsequent zero block still occurs. This only demonstrates sensitivity to this hidden-state witness. It has no full correctness/recovery matrix, no cost measurement, no proof of channel preservation across all paths and no owner approval. Checking dormant/unused state may also change recovery frequency. Do not treat it as a selected solution.
 
 Build environment: Debian trixie container, GCC 14.2, x86-64 `-march=haswell -ffp-contract=off`, Release, JUCE `d60b7a78030661574a615b586d9325ba7a7fa7dd`. The A2 and experimental variants were applied to isolated `003c9a1a` worktrees; selected test/engine/Multiband/MonoMaker/SoloMonitor translation units were rebuilt and linked with remaining objects from a freshly configured/built `383353c0` tree (its production source matches `003c9a1a`). The identities record those commands and binary hashes, but their `source_sha` is **only the underlying Git HEAD**, not a representation of the dirty candidate tree, all headers, reused objects, compiler or environment. The patches and witness source are retained for reproduction; the object provenance is a locally established execution premise, not a cryptographic attestation. A fresh full build and independent execution should precede any decision.
+
+`engine_cause.cpp` and `production-cause-spec.json` add a nonshipping follow-up
+experiment for the extreme-input zero block. The witness observes wet and dry
+recursive state at the block boundary, then compares dry-only, individual-channel
+wet-only, both-channel wet, and Haas reset controls, a no-dip control and a lower
+finite stimulus. Its source is a diagnostic observer and direct state mutation,
+not shipping instrumentation. The specification describes a planned execution;
+it is not itself a result or a causal conclusion. Results require a fresh build
+and independently recorded input, executable and output identities.

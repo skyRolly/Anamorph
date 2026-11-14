@@ -7759,3 +7759,12 @@ Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP
 ## H4 claim boundary (N2-01 / V2-01)
 
 Test 25 retains both original RMS assertions and its default noise/crossover configuration. It does not establish worst-frequency/sample-level phase reconstruction. The [optional low-frequency oracle and recovery/cost probes](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) are nonshipping evidence; the oracle intentionally fails current H4. Integrate it into mandatory CI with an approved production correction, not before.
+
+## H4 extreme-input diagnostic follow-up (2026-11-14)
+
+The nonshipping `worklogs/h4-review-followup-0102/engine_cause.cpp` records wet
+and dry crossover-state observations and applies separately selected state-family
+reset controls after the recorded extreme-input stimulus. Its accompanying
+committed specification identifies the historical combined production source;
+it is an experimental causal probe, not a mandatory regression, an H4 fix, or
+evidence until an execution with recorded source/build identities is available.

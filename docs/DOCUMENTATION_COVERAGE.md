@@ -19328,3 +19328,12 @@ The worklog archive retains all original reports, diagnostics, reproduction sour
 N2-01/V2-01: [the H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) maps the actual gate, independent low-frequency oracle, recovery and cost evidence to Proposed ADR-0074. Test 25 remains an aggregate RMS regression with unchanged assertion conditions; the new failing-on-main oracle remains nonshipping until an approved production correction.
 
 N2-02/N2-03 delivery and cross-finding validation are indexed in the [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md); per-PR records and immutable final source links distinguish independent corrections from H4 diagnostic candidates.
+
+## H4 extreme-input causal probe (2026-11-14)
+
+The documentation drift check found that the candidate-only hidden-state witness
+and the later zero-block observation must remain separate. The new nonshipping
+engine causal probe and its planned production-source specification are indexed
+in TESTING and the H4 follow-up worklog. They add state-family controls without
+changing shipping source, accepting ADR-0074, or claiming a causal result before
+the recorded execution. Existing H4 findings and historical measurements remain.
