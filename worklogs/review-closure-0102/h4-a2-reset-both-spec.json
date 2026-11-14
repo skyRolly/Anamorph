@@ -1,11 +1,11 @@
 {
   "purpose": "Negative control: reset both dry channels when only the left detector fires; verify the right-state comparison detects the excess reset.",
   "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
-  "source_tree": "4d7f3c2e66cca18c9de03040b05bb6b7f14d34de",
+  "source_tree": "975c71c3cbfe212242eb2404ce6430baa9d562c7",
   "patch": {
     "commit": "spec",
     "path": "worklogs/review-closure-0102/h4-a2-reset-both.patch",
-    "sha256": "837f5ec4dd6d2d55e702c6b457480bd25190f4945e5d7f7bc1bd143bdc906267",
+    "sha256": "f3509f5e0c01b63f4a1fe5280e82df0af1d0309cd89e98789f6ee8c4543ea1e8",
     "purpose": "Nonshipping A2 recovery trace plus reset-both mutation"
   },
   "targets": [
@@ -15,10 +15,10 @@
     {
       "name": "unrelated-state",
       "target": "AnamorphTests",
-      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
-      "path": "worklogs/h4-dry-state-0102/unrelated_state_probe.cpp",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/h4-unrelated-state-probe.cpp",
       "support": [
-        "worklogs/h4-dry-state-0102/recovery_probe.cpp"
+        "worklogs/review-closure-0102/h4-recovery-support.cpp"
       ]
     }
   ],

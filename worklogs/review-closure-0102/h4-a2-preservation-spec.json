@@ -1,11 +1,11 @@
 {
   "purpose": "Reproduce A2 channel-local recovery on repeated extreme finite inputs and observe valid opposite-channel recursive state.",
   "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
-  "source_tree": "ea29b039415704a25a4dc1b4a794773cce8f8415",
+  "source_tree": "97002c93f0b485c42ebcac2cf4777bc08b71e60f",
   "patch": {
     "commit": "spec",
     "path": "worklogs/review-closure-0102/h4-a2-preservation.patch",
-    "sha256": "9f72631d8559d9a7cd77e889a21fc53538ee8e04533e57ec92605bbbbd28b8ec",
+    "sha256": "1f8295f131637585c6cb19a288fea3de88ad6b3541f80ab182571370d3bb0fec",
     "purpose": "Nonshipping A2 recovery trace plus channel-local guard counters"
   },
   "targets": [
@@ -15,10 +15,10 @@
     {
       "name": "unrelated-state",
       "target": "AnamorphTests",
-      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
-      "path": "worklogs/h4-dry-state-0102/unrelated_state_probe.cpp",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/h4-unrelated-state-probe.cpp",
       "support": [
-        "worklogs/h4-dry-state-0102/recovery_probe.cpp"
+        "worklogs/review-closure-0102/h4-recovery-support.cpp"
       ]
     }
   ],
