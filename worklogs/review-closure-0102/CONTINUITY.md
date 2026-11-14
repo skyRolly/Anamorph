@@ -307,8 +307,8 @@ Exact-head Build & Validate, CodeQL and Microsoft analysis also passed for
 #237 `738b7b23`, #238 `f08d4ebf`, #239 `30560d33`, and #242 `73c68f7a`.
 #240 `df89edb6` passed CodeQL and Microsoft analysis, but its first Build &
 Validate attempt `43623171585` failed in the macOS `DSP + state self-tests,
-x86_64 slice under Rosetta` step. The job's other applicable steps and all
-other applicable jobs succeeded. The raw job log was empty and the macOS debug
+x86_64 slice under Rosetta` step. The job's other executed steps and all other applicable jobs succeeded; the
+plugin and installer upload steps and the post-cache step were skipped. The raw job log was empty and the macOS debug
 artifact download was forbidden, so the failing assertion or infrastructure
 cause cannot be established. The failed attempt metadata is retained in
 `pr240-hosted-failed-attempt.json`; a failed-job exact-head rerun was requested.
