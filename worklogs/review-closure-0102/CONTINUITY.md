@@ -449,3 +449,9 @@ The new exact integration and #240 hosted checks are still running; inspect
 executes merge-check while the branch push supplies the full matrix; skipped
 PR jobs must not be misreported as having run. No owner merge, ADR acceptance,
 H4 implementation or release authorization has been given.
+
+The source-level dry-state, bank, delay and consumption map in
+`H4_STATE_BOUNDARIES.md` identifies the presently consumed LR4 state families,
+the overwrite-before-use premise for a dormant bank, the distinct aligned and
+clean histories, and the limits of a post-block detector. It supplements the
+injected-state evidence rather than claiming a complete recovery contract.
