@@ -13,9 +13,11 @@ nonshipping experiments; it leaves H4's executable implementation unchanged.
 
 ## Decision requested
 
-Recommend the **guarded A2 direction: keep the existing dry crossover bank and
-aligned-delay history warm whenever H4 qualifies, and recover invalid unused
-dry state without resetting valid wet/other-channel state**. Keep H4's exact wet
+Recommend **continued targeted recovery investigation** before choosing a production
+candidate. A guarded warm bank remains a direction to assess: keep the existing
+dry crossover bank and aligned-delay history warm whenever H4 qualifies, and
+recover invalid unused dry state without resetting valid wet/other-channel state.
+The current A2 output-only detector misses the engine witness documented below. Keep H4's exact wet
 output shortcut and clean-dry Level Match reference. This fits the existing
 allpass architecture, signal order, latency and parameter/persistence contracts.
 It is not equivalent to globally disabling fullWetIdle. The simpler A/C diagnostics
@@ -110,7 +112,7 @@ x4 Drive case; a selected factor alone is not the premise.
 | Candidate | Correctness / normal behavior | Cost / worst work | State, memory and complexity | Approval / disposition |
 |---|---|---|---|---|
 | A: existing bank + aligned history always warm during H4 | Resolves measured re-entry errors; retains exact-wet shortcut and clean Match reference | +15/27/37% Ir in 2/3/4-band reference rows; ordinary existing dry processing every block, no replay spike | Existing filters/buffers only; two local consumer choices; no new allocation, locks or thread path | Ordinary cost/correctness reference only; unguarded recovery is rejected below |
-| A2: A plus exceptional-only dry-channel recovery | Ordinary matrix matches A; state stress clears invalid unused state before re-entry | +15.3/27.4/36.9% Ir, only .13–.27% more than A in measured OS-off rows; bounded per-block scan, exceptional fixed state resets | Existing buffers; new dry/channel-only reset helpers, no wet/raw/other-channel reset | Recommended direction, Proposed owner CPU/recovery decision; production unchanged |
+| A2: A plus exceptional-only dry-channel recovery | Ordinary matrix matches A; earlier stress clears observed invalid state, but a new engine witness leaves hidden invalid state | +15.3/27.4/36.9% Ir, only .13–.27% more than A in measured OS-off rows; bounded per-block scan, exceptional fixed state resets | Existing buffers; new dry/channel-only reset helpers, no wet/raw/other-channel reset | Not recovery-complete; continue investigation, Proposed owner decision; production unchanged |
 | C: same state updates, discard unused dry output at latency zero; A at nonzero latency | Same recorded sample outputs/state behavior as A; OS needs history output | Saves <.6% whole-engine instructions against A; +.1% versus A on measured OS row | Adds discard mode/default parameter/branches to MultibandWidth; no new buffers | Same unused-state recovery risk until guarded; small saving does not justify the extra interface |
 | B: finite input/coeff replay on re-entry | No general exact state equivalence established; 4096 samples fail at low cutoffs/high rates | Potentially hundreds of normal-block equivalents on one unannounced Mix block | History must include coefficient trajectories and topology/fades, not input alone | Reject fixed-short-history correction; larger bounded approximation requires separate proof and RT assessment |
 | C shortcut: substitute dedicated allpasses / copy wet state | Does not preserve existing dx s3/s4 state or non-neutral wet/dry history | A different representation could save work, but no general equivalence follows | LR4Xover explicitly forbids mixing full and first-section-only processing on one instance; wet can have Drive/Width/delay information loss | Not a viable local correction; core-maths replacement needs ADR/architecture review |
