@@ -1,0 +1,43 @@
+{
+  "purpose": "Restore only ordinary bypass and multiband destination preservation in copyContinuous.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "75d8becf9c03fb531cf49818accd01e217db88f9",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "selectors",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/isolated-selector-support/probe.cpp",
+      "support": [
+        "worklogs/review-closure-0102/isolated-selector-support/n2_control_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_endpoint_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "selectors",
+      "args": [
+        "--n2-controls"
+      ],
+      "expected_exit": 1
+    },
+    {
+      "program": "selectors",
+      "args": [
+        "--multiband-endpoints"
+      ],
+      "expected_exit": 0
+    }
+  ],
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/n2-only.patch",
+    "sha256": "b293dabc2bbf21a1f73b3edf32010337ca7fe9a80fd1bb16a62d1a546060f33d",
+    "purpose": "Restore only ordinary bypass and multiband destination preservation in copyContinuous."
+  }
+}

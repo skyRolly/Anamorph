@@ -1,0 +1,37 @@
+{
+  "purpose": "Exercise the exact committed N2-02 and N2-03 DSP selector headers on the verified combined build.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "f4d268c17cd6619732f4f998928bcda7ddafc462",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "selectors",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/isolated-selector-support/probe.cpp",
+      "support": [
+        "worklogs/review-closure-0102/isolated-selector-support/n2_control_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_endpoint_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "selectors",
+      "args": [
+        "--n2-controls"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "selectors",
+      "args": [
+        "--multiband-endpoints"
+      ],
+      "expected_exit": 0
+    }
+  ]
+}

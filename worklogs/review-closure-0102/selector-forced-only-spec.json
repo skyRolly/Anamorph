@@ -1,0 +1,43 @@
+{
+  "purpose": "Prematurely adopt continuous controls while the forced destination is deferred.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "4b4f5f358899fd5364bc70ba332e02912ffaadb9",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "selectors",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/isolated-selector-support/probe.cpp",
+      "support": [
+        "worklogs/review-closure-0102/isolated-selector-support/n2_control_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_endpoint_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "selectors",
+      "args": [
+        "--n2-controls"
+      ],
+      "expected_exit": 1
+    },
+    {
+      "program": "selectors",
+      "args": [
+        "--multiband-endpoints"
+      ],
+      "expected_exit": 0
+    }
+  ],
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/forced-only.patch",
+    "sha256": "e65d668434bc2a73e8134108e6adbe248a883949996ae84cbd6470375f994dba",
+    "purpose": "Prematurely adopt continuous controls while the forced destination is deferred."
+  }
+}

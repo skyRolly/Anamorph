@@ -1,0 +1,43 @@
+{
+  "purpose": "Restore only the original wet and dry Multiband Enable call-site expressions.",
+  "source_head": "9e9725726b31c39b8de0379c12c324b2e858e503",
+  "source_tree": "eae45cc58f516950ac8cba0ca559e02069116caf",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "selectors",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/isolated-selector-support/probe.cpp",
+      "support": [
+        "worklogs/review-closure-0102/isolated-selector-support/n2_control_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_endpoint_tests.h",
+        "worklogs/review-closure-0102/isolated-selector-support/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "selectors",
+      "args": [
+        "--n2-controls"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "selectors",
+      "args": [
+        "--multiband-endpoints"
+      ],
+      "expected_exit": 1
+    }
+  ],
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/endpoint-both.patch",
+    "sha256": "1fcb58b11a8341e85284237d762af11f1735719b7ef56078765b16330ea352a1",
+    "purpose": "Restore only the original wet and dry Multiband Enable call-site expressions."
+  }
+}
