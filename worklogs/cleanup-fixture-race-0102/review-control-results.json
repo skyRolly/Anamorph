@@ -1,0 +1,2009 @@
+{
+  "started_utc": "2026-11-14T14:29:36.758720+00:00",
+  "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "uid": 1000,
+  "affinity": [
+    0,
+    1,
+    2
+  ],
+  "cpu_max": "200000 100000",
+  "scope": "ordinary-user shared container; idle means no synthetic load, not exclusive hardware",
+  "source_sha256": {
+    "tests/rosetta_cleanup_handshake_tests.py": "f8defb050f7d70b6802f8a01a435925c028f611c8a271897a1ab5123f3f014f1",
+    "tests/rosetta_cleanup_fault_tests.py": "5dbcb38127d94295bcd72707322ece0efb454b8aedae916ad4bbb25b240f5ec3",
+    "tests/rosetta_cleanup_process_tests.py": "cbbdf31ae005700e8c8729892b179a4c64c2d9067a0f90d5e06aeaccff73b855"
+  },
+  "runs": [
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 1,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "elapsed_seconds": 5.449133,
+      "returncode": 0,
+      "stdout": "cleanup fixture handshake: legacy defect observed; complete identity observed; legacy defect observed; complete identity observed; missing acknowledgement bounded; observer timeout bounded\n",
+      "stderr": ""
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 1,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "elapsed_seconds": 1.296909,
+      "returncode": 0,
+      "stdout": "cleanup fixture fault controls: missing, malformed, unreadable, publication_failure, leader_exit, held, child_timeout, held:signal, held:reap, held:observation\n",
+      "stderr": ""
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 1,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/tmp/anamorph-242-no_synthetic_load-0.json"
+      ],
+      "elapsed_seconds": 7.136657,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "process_report": {
+        "kind": "real ordinary-user Linux POSIX cleanup, not native macOS debugging",
+        "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "uid": 1000,
+        "consumer_head": null,
+        "suite_budget_seconds": 20,
+        "maximum_cases": 3,
+        "cases": [
+          {
+            "case": "initial_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-35btxs3g",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33641,
+              "child": 33641,
+              "pgid": 33641
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33641,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33641,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33641,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "RuntimeError: injected initial ps nonzero exit"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33641   33641 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-35btxs3g single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.057261,
+              "cleanup_error": "initial: RuntimeError: injected initial ps nonzero exit"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.113039
+          },
+          {
+            "case": "escalation_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-bw74i5u9",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33665,
+              "child": 33665,
+              "pgid": 33665
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33665,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33665,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33665,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33665   33665 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-bw74i5u9 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.041076,
+              "cleanup_error": "after_term: TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.154554
+          },
+          {
+            "case": "leader_exit",
+            "fixture_processes_created": 2,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-jxg490uy",
+              "leader_exit"
+            ],
+            "owned_identities": {
+              "leader": 33670,
+              "child": 33671,
+              "pgid": 33670
+            },
+            "leader_exit_before_cleanup": 0,
+            "cleanup": {
+              "invocation_pgid": 33670,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33670,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33670,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33671   33670 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-jxg490uy leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33671   33670 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-jxg490uy leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": true,
+              "exit_code": 0,
+              "signal": null,
+              "cleanup_elapsed_seconds": 2.660184
+            },
+            "fixture_adopted_child_exit": -9,
+            "elapsed_seconds": 2.729042
+          }
+        ],
+        "source_sha256": "93fcb80ad79ac36daa11d3cfb6b8fc38ca9c319182653d59f047889cb1c9d9c8",
+        "fixture_sha256": "3df9e24350f637fc3143453790c7c366b489e5beab80b9d6cb5a841a7bb25a2b",
+        "host_security_settings_changed": false,
+        "status": "verified",
+        "fixture_process_local_subreaper": {
+          "pid": 33639,
+          "original": 0,
+          "scope": "this harness only; reaps adopted children only in the owned fixture group",
+          "restored": true
+        },
+        "elapsed_seconds": 7.001007
+      }
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 2,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "elapsed_seconds": 5.309607,
+      "returncode": 0,
+      "stdout": "cleanup fixture handshake: legacy defect observed; complete identity observed; legacy defect observed; complete identity observed; missing acknowledgement bounded; observer timeout bounded\n",
+      "stderr": ""
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 2,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "elapsed_seconds": 1.174382,
+      "returncode": 0,
+      "stdout": "cleanup fixture fault controls: missing, malformed, unreadable, publication_failure, leader_exit, held, child_timeout, held:signal, held:reap, held:observation\n",
+      "stderr": ""
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 2,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/tmp/anamorph-242-no_synthetic_load-1.json"
+      ],
+      "elapsed_seconds": 7.052275,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "process_report": {
+        "kind": "real ordinary-user Linux POSIX cleanup, not native macOS debugging",
+        "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "uid": 1000,
+        "consumer_head": null,
+        "suite_budget_seconds": 20,
+        "maximum_cases": 3,
+        "cases": [
+          {
+            "case": "initial_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-ny25k593",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33753,
+              "child": 33753,
+              "pgid": 33753
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33753,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33753,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33753,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "RuntimeError: injected initial ps nonzero exit"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33753   33753 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-ny25k593 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.050041,
+              "cleanup_error": "initial: RuntimeError: injected initial ps nonzero exit"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.107307
+          },
+          {
+            "case": "escalation_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-23igc7n0",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33757,
+              "child": 33757,
+              "pgid": 33757
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33757,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33757,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33757,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33757   33757 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-23igc7n0 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.040753,
+              "cleanup_error": "after_term: TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.087088
+          },
+          {
+            "case": "leader_exit",
+            "fixture_processes_created": 2,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-mycxyp9r",
+              "leader_exit"
+            ],
+            "owned_identities": {
+              "leader": 33761,
+              "child": 33762,
+              "pgid": 33761
+            },
+            "leader_exit_before_cleanup": 0,
+            "cleanup": {
+              "invocation_pgid": 33761,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33761,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33761,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33762   33761 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-mycxyp9r leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33762   33761 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-mycxyp9r leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": true,
+              "exit_code": 0,
+              "signal": null,
+              "cleanup_elapsed_seconds": 2.657079
+            },
+            "fixture_adopted_child_exit": -9,
+            "elapsed_seconds": 2.721712
+          }
+        ],
+        "source_sha256": "93fcb80ad79ac36daa11d3cfb6b8fc38ca9c319182653d59f047889cb1c9d9c8",
+        "fixture_sha256": "3df9e24350f637fc3143453790c7c366b489e5beab80b9d6cb5a841a7bb25a2b",
+        "host_security_settings_changed": false,
+        "status": "verified",
+        "fixture_process_local_subreaper": {
+          "pid": 33751,
+          "original": 0,
+          "scope": "this harness only; reaps adopted children only in the owned fixture group",
+          "restored": true
+        },
+        "elapsed_seconds": 6.922013
+      }
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 3,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "elapsed_seconds": 5.257465,
+      "returncode": 0,
+      "stdout": "cleanup fixture handshake: legacy defect observed; complete identity observed; legacy defect observed; complete identity observed; missing acknowledgement bounded; observer timeout bounded\n",
+      "stderr": ""
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 3,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "elapsed_seconds": 1.165031,
+      "returncode": 0,
+      "stdout": "cleanup fixture fault controls: missing, malformed, unreadable, publication_failure, leader_exit, held, child_timeout, held:signal, held:reap, held:observation\n",
+      "stderr": ""
+    },
+    {
+      "phase": "no_synthetic_load",
+      "iteration": 3,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/tmp/anamorph-242-no_synthetic_load-2.json"
+      ],
+      "elapsed_seconds": 7.002909,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "process_report": {
+        "kind": "real ordinary-user Linux POSIX cleanup, not native macOS debugging",
+        "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "uid": 1000,
+        "consumer_head": null,
+        "suite_budget_seconds": 20,
+        "maximum_cases": 3,
+        "cases": [
+          {
+            "case": "initial_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-px1ognp5",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33851,
+              "child": 33851,
+              "pgid": 33851
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33851,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33851,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33851,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "RuntimeError: injected initial ps nonzero exit"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33851   33851 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-px1ognp5 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.034027,
+              "cleanup_error": "initial: RuntimeError: injected initial ps nonzero exit"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.078665
+          },
+          {
+            "case": "escalation_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-s7gk8j__",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33890,
+              "child": 33890,
+              "pgid": 33890
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33890,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33890,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33890,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33890   33890 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-s7gk8j__ single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.034991,
+              "cleanup_error": "after_term: TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.10768
+          },
+          {
+            "case": "leader_exit",
+            "fixture_processes_created": 2,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-xs9226c1",
+              "leader_exit"
+            ],
+            "owned_identities": {
+              "leader": 33894,
+              "child": 33895,
+              "pgid": 33894
+            },
+            "leader_exit_before_cleanup": 0,
+            "cleanup": {
+              "invocation_pgid": 33894,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33894,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33894,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33895   33894 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-xs9226c1 leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33895   33894 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-xs9226c1 leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": true,
+              "exit_code": 0,
+              "signal": null,
+              "cleanup_elapsed_seconds": 2.656108
+            },
+            "fixture_adopted_child_exit": -9,
+            "elapsed_seconds": 2.710815
+          }
+        ],
+        "source_sha256": "93fcb80ad79ac36daa11d3cfb6b8fc38ca9c319182653d59f047889cb1c9d9c8",
+        "fixture_sha256": "3df9e24350f637fc3143453790c7c366b489e5beab80b9d6cb5a841a7bb25a2b",
+        "host_security_settings_changed": false,
+        "status": "verified",
+        "fixture_process_local_subreaper": {
+          "pid": 33849,
+          "original": 0,
+          "scope": "this harness only; reaps adopted children only in the owned fixture group",
+          "restored": true
+        },
+        "elapsed_seconds": 6.901424
+      }
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 1,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "elapsed_seconds": 5.629167,
+      "returncode": 0,
+      "stdout": "cleanup fixture handshake: legacy defect observed; complete identity observed; legacy defect observed; complete identity observed; missing acknowledgement bounded; observer timeout bounded\n",
+      "stderr": ""
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 1,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "elapsed_seconds": 1.996324,
+      "returncode": 0,
+      "stdout": "cleanup fixture fault controls: missing, malformed, unreadable, publication_failure, leader_exit, held, child_timeout, held:signal, held:reap, held:observation\n",
+      "stderr": ""
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 1,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/tmp/anamorph-242-two_cpu_load_processes-0.json"
+      ],
+      "elapsed_seconds": 7.443591,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "process_report": {
+        "kind": "real ordinary-user Linux POSIX cleanup, not native macOS debugging",
+        "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "uid": 1000,
+        "consumer_head": null,
+        "suite_budget_seconds": 20,
+        "maximum_cases": 3,
+        "cases": [
+          {
+            "case": "initial_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-tw4v1gep",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33960,
+              "child": 33960,
+              "pgid": 33960
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33960,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33960,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33960,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "RuntimeError: injected initial ps nonzero exit"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33960   33960 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-tw4v1gep single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.043097,
+              "cleanup_error": "initial: RuntimeError: injected initial ps nonzero exit"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.154124
+          },
+          {
+            "case": "escalation_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-57tn5cu2",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 33964,
+              "child": 33964,
+              "pgid": 33964
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 33964,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33964,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33964,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33964   33964 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-57tn5cu2 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.054145,
+              "cleanup_error": "after_term: TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.149762
+          },
+          {
+            "case": "leader_exit",
+            "fixture_processes_created": 2,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-8vy3p2w0",
+              "leader_exit"
+            ],
+            "owned_identities": {
+              "leader": 33968,
+              "child": 33969,
+              "pgid": 33968
+            },
+            "leader_exit_before_cleanup": 0,
+            "cleanup": {
+              "invocation_pgid": 33968,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 33968,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 33968,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33969   33968 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-8vy3p2w0 leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "33969   33968 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-8vy3p2w0 leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": true,
+              "exit_code": 0,
+              "signal": null,
+              "cleanup_elapsed_seconds": 2.706087
+            },
+            "fixture_adopted_child_exit": -9,
+            "elapsed_seconds": 2.818322
+          }
+        ],
+        "source_sha256": "93fcb80ad79ac36daa11d3cfb6b8fc38ca9c319182653d59f047889cb1c9d9c8",
+        "fixture_sha256": "3df9e24350f637fc3143453790c7c366b489e5beab80b9d6cb5a841a7bb25a2b",
+        "host_security_settings_changed": false,
+        "status": "verified",
+        "fixture_process_local_subreaper": {
+          "pid": 33958,
+          "original": 0,
+          "scope": "this harness only; reaps adopted children only in the owned fixture group",
+          "restored": true
+        },
+        "elapsed_seconds": 7.130758
+      }
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 2,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "elapsed_seconds": 5.634297,
+      "returncode": 0,
+      "stdout": "cleanup fixture handshake: legacy defect observed; complete identity observed; legacy defect observed; complete identity observed; missing acknowledgement bounded; observer timeout bounded\n",
+      "stderr": ""
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 2,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "elapsed_seconds": 1.873503,
+      "returncode": 0,
+      "stdout": "cleanup fixture fault controls: missing, malformed, unreadable, publication_failure, leader_exit, held, child_timeout, held:signal, held:reap, held:observation\n",
+      "stderr": ""
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 2,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/tmp/anamorph-242-two_cpu_load_processes-1.json"
+      ],
+      "elapsed_seconds": 7.471539,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "process_report": {
+        "kind": "real ordinary-user Linux POSIX cleanup, not native macOS debugging",
+        "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "uid": 1000,
+        "consumer_head": null,
+        "suite_budget_seconds": 20,
+        "maximum_cases": 3,
+        "cases": [
+          {
+            "case": "initial_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-dc_xqwq6",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 34032,
+              "child": 34032,
+              "pgid": 34032
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 34032,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 34032,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 34032,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "RuntimeError: injected initial ps nonzero exit"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34032   34032 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-dc_xqwq6 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.072381,
+              "cleanup_error": "initial: RuntimeError: injected initial ps nonzero exit"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.179531
+          },
+          {
+            "case": "escalation_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-s3rfg9tg",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 34036,
+              "child": 34036,
+              "pgid": 34036
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 34036,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 34036,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 34036,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34036   34036 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-s3rfg9tg single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.082065,
+              "cleanup_error": "after_term: TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.191968
+          },
+          {
+            "case": "leader_exit",
+            "fixture_processes_created": 2,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-kg4dba1n",
+              "leader_exit"
+            ],
+            "owned_identities": {
+              "leader": 34040,
+              "child": 34041,
+              "pgid": 34040
+            },
+            "leader_exit_before_cleanup": 0,
+            "cleanup": {
+              "invocation_pgid": 34040,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 34040,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 34040,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34041   34040 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-kg4dba1n leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34041   34040 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-kg4dba1n leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": true,
+              "exit_code": 0,
+              "signal": null,
+              "cleanup_elapsed_seconds": 2.696491
+            },
+            "fixture_adopted_child_exit": -9,
+            "elapsed_seconds": 2.818214
+          }
+        ],
+        "source_sha256": "93fcb80ad79ac36daa11d3cfb6b8fc38ca9c319182653d59f047889cb1c9d9c8",
+        "fixture_sha256": "3df9e24350f637fc3143453790c7c366b489e5beab80b9d6cb5a841a7bb25a2b",
+        "host_security_settings_changed": false,
+        "status": "verified",
+        "fixture_process_local_subreaper": {
+          "pid": 34030,
+          "original": 0,
+          "scope": "this harness only; reaps adopted children only in the owned fixture group",
+          "restored": true
+        },
+        "elapsed_seconds": 7.198296
+      }
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 3,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_handshake_tests.py"
+      ],
+      "elapsed_seconds": 5.628646,
+      "returncode": 0,
+      "stdout": "cleanup fixture handshake: legacy defect observed; complete identity observed; legacy defect observed; complete identity observed; missing acknowledgement bounded; observer timeout bounded\n",
+      "stderr": ""
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 3,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_fault_tests.py"
+      ],
+      "elapsed_seconds": 1.620863,
+      "returncode": 0,
+      "stdout": "cleanup fixture fault controls: missing, malformed, unreadable, publication_failure, leader_exit, held, child_timeout, held:signal, held:reap, held:observation\n",
+      "stderr": ""
+    },
+    {
+      "phase": "two_cpu_load_processes",
+      "iteration": 3,
+      "argv": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "tests/rosetta_cleanup_process_tests.py",
+        "--report",
+        "/tmp/anamorph-242-two_cpu_load_processes-2.json"
+      ],
+      "elapsed_seconds": 7.275044,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "process_report": {
+        "kind": "real ordinary-user Linux POSIX cleanup, not native macOS debugging",
+        "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "uid": 1000,
+        "consumer_head": null,
+        "suite_budget_seconds": 20,
+        "maximum_cases": 3,
+        "cases": [
+          {
+            "case": "initial_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-glw69i63",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 34104,
+              "child": 34104,
+              "pgid": 34104
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 34104,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 34104,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 34104,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "RuntimeError: injected initial ps nonzero exit"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34104   34104 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-glw69i63 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.047096,
+              "cleanup_error": "initial: RuntimeError: injected initial ps nonzero exit"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.15629
+          },
+          {
+            "case": "escalation_observation_failure",
+            "fixture_processes_created": 1,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-t10p5zm4",
+              "single"
+            ],
+            "owned_identities": {
+              "leader": 34108,
+              "child": 34108,
+              "pgid": 34108
+            },
+            "leader_exit_before_cleanup": null,
+            "cleanup": {
+              "invocation_pgid": 34108,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 34108,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 34108,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "timeout"
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": -9
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34108   34108 Ss   /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-t10p5zm4 single"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": null,
+                  "status": "error",
+                  "error": "TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": false,
+              "exit_code": -9,
+              "signal": 9,
+              "cleanup_elapsed_seconds": 2.05983,
+              "cleanup_error": "after_term: TimeoutExpired: Command '['ps']' timed out after 1 seconds"
+            },
+            "fixture_adopted_child_exit": null,
+            "elapsed_seconds": 2.124
+          },
+          {
+            "case": "leader_exit",
+            "fixture_processes_created": 2,
+            "independent_finally_cleanup": {
+              "leader_reaped": true,
+              "owned_children_reaped": true,
+              "surviving_group_members": [],
+              "reaped": [],
+              "errors": [],
+              "group_KILL": "not needed or ownership unconfirmed",
+              "complete": true
+            },
+            "status": "verified",
+            "fixture_argv": [
+              "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+              "-c",
+              "\nimport json, os, signal, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp()\nif sys.argv[2]=='leader_exit':\n    child=os.fork()\n    if child:\n        (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))\n        # Publish the child's identity before it can publish readiness. The\n        # observer must never read identity.json while its writer is still open.\n        (root/'identity-written').write_text('ready')\n        until=time.monotonic()+1\n        while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)\n        os._exit(0)\n    until=time.monotonic()+1\n    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)\n    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')\nelse:\n    (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n(root/'ready').write_text('ready')\nwhile True: time.sleep(1)\n",
+              "/tmp/rosetta-cleanup-process-kxscba_g",
+              "leader_exit"
+            ],
+            "owned_identities": {
+              "leader": 34112,
+              "child": 34113,
+              "pgid": 34112
+            },
+            "leader_exit_before_cleanup": 0,
+            "cleanup": {
+              "invocation_pgid": 34112,
+              "signal_attempts": [
+                {
+                  "target": "invocation_group",
+                  "pgid": 34112,
+                  "signal": "SIGTERM",
+                  "outcome": "sent"
+                },
+                {
+                  "target": "invocation_group",
+                  "pgid": 34112,
+                  "signal": "SIGKILL",
+                  "outcome": "sent"
+                }
+              ],
+              "reaping": [
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 2,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                },
+                {
+                  "stage": "after_kill",
+                  "timeout_seconds": 1,
+                  "outcome": "reaped",
+                  "exit_code": 0
+                }
+              ],
+              "observations": [
+                {
+                  "stage": "initial",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34113   34112 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-kxscba_g leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "after_term",
+                  "timeout_seconds": 1,
+                  "members": [
+                    "34113   34112 S    /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3 -c  import json, os, signal, sys, time from pathlib import Path root=Path(sys.argv[1]); leader=os.getpid(); group=os.getpgrp() if sys.argv[2]=='leader_exit':     child=os.fork()     if child:         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))         # Publish the child's identity before it can publish readiness. The         # observer must never read identity.json while its writer is still open.         (root/'identity-written').write_text('ready')         until=time.monotonic()+1         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)         os._exit(0)     until=time.monotonic()+1     while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)     if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out') else:     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group})) signal.signal(signal.SIGTERM, signal.SIG_IGN) (root/'ready').write_text('ready') while True: time.sleep(1)  /tmp/rosetta-cleanup-process-kxscba_g leader_exit"
+                  ],
+                  "status": "observed"
+                },
+                {
+                  "stage": "final",
+                  "timeout_seconds": 1,
+                  "members": [],
+                  "status": "observed"
+                }
+              ],
+              "surviving_processes": [],
+              "group_state": "empty",
+              "child_reaped": true,
+              "cleanup_complete": true,
+              "exit_code": 0,
+              "signal": null,
+              "cleanup_elapsed_seconds": 2.685052
+            },
+            "fixture_adopted_child_exit": -9,
+            "elapsed_seconds": 2.791713
+          }
+        ],
+        "source_sha256": "93fcb80ad79ac36daa11d3cfb6b8fc38ca9c319182653d59f047889cb1c9d9c8",
+        "fixture_sha256": "3df9e24350f637fc3143453790c7c366b489e5beab80b9d6cb5a841a7bb25a2b",
+        "host_security_settings_changed": false,
+        "status": "verified",
+        "fixture_process_local_subreaper": {
+          "pid": 34102,
+          "original": 0,
+          "scope": "this harness only; reaps adopted children only in the owned fixture group",
+          "restored": true
+        },
+        "elapsed_seconds": 7.077564
+      }
+    }
+  ],
+  "load_workers_reaped": true,
+  "finished_utc": "2026-11-14T14:31:02.231022+00:00"
+}
