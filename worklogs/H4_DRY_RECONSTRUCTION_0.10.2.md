@@ -347,7 +347,7 @@ A dependency-consistent five-TU rebuild repeats all **12 A2 Callgrind counts
 identically**, avoiding reliance on a header-stale object. The first three-TU
 measurements remain historical records. Current replay recompiles Engine,
 MultibandWidth, MonoMaker, SoloMonitor and the probe to cover the added LR4
-channel reset declaration consistently. JUCE objects retain their exact pin.
+channel reset declaration consistently. JUCE objects were reported from the pinned fresh build; the historical relinker does not independently verify their source or freshness (see the provenance note below).
 
 A second balanced wall-clock comparison (baseline-A2-A2-baseline; ten samples per
 cell) reports A2/baseline full-wet OS-off ratios **.859–1.700**, median **1.123**.
@@ -417,3 +417,8 @@ An isolated call to the actual LR4 filter establishes that a finite output sum c
 
 
 A separate diagnostic adds per-channel state scans across both dry banks. It catches the hidden-state witness, but the next zero block still occurs and the candidate has neither a full oracle nor measured cost. See the [engine witness, controls and experimental patch](h4-review-followup-0102/README.md). It is not an approved implementation or a demonstrated complete recovery design.
+
+
+## Replay provenance limit (2026-11-14)
+
+The archived `build_probe.py` records the checkout HEAD, selected replacement TU hashes, commands and binary hash. It does not establish that the checkout is clean, that the build was configured from the stated source, that reused objects or headers are fresh and compatible, or that the effective JUCE contents match the pin. A candidate checkout can be intentionally dirty, so its recorded HEAD alone is not its complete source identity. The historical observations remain evidence subject to their recorded fresh-build and dependency premises; their bytes and manifests are not rewritten. Future replay must bind the complete expected candidate patch and source contents, build configuration and dependency identity, and establish or eliminate reused-object provenance. This applies also to the related combined controls and benchmark relinkers. The historical helper does not yet enforce those properties; it must not be treated as a provenance verifier.
