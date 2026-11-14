@@ -9,7 +9,7 @@
 #include <memory>
 #include <string>
 using E = anamorph::AnamorphEngine;
-namespace access {
+namespace reentry_access {
 struct MB { friend auto member(MB); }; struct Banks { friend auto member(Banks); };
 struct Active { friend auto member(Active); }; struct S1 { friend auto member(S1); };
 struct OSRunning { friend auto member(OSRunning); }; struct Mix { friend auto member(Mix); };
@@ -22,11 +22,11 @@ template struct Get<OSRunning,&E::osRunning>;
 template struct Get<Mix,&E::mixSmooth>;
 }
 static float& dryState(E& e) {
-    using namespace access; auto& mb=e.*member(MB{});
+    using namespace reentry_access; auto& mb=e.*member(MB{});
     return (((mb.*member(Banks{}))[mb.*member(Active{})].dx[0]).*member(S1{}))[0];
 }
 static float wetRightState(E& e) {
-    using namespace access; auto& mb=e.*member(MB{});
+    using namespace reentry_access; auto& mb=e.*member(MB{});
     return (((mb.*member(Banks{}))[mb.*member(Active{})].x[0]).*member(S1{}))[1];
 }
 static bool same(float a,float b) { return std::memcmp(&a,&b,sizeof a)==0; }
@@ -57,7 +57,7 @@ int main(int argc,char** argv) {
     auto check=[&](bool ok,const char* what){++checks;if(!ok){++failures;std::printf("FAIL %s\n",what);}};
     const float original=dryState(*poisoned);
     check(std::isfinite(original)&&same(original,dryState(*clean)),"initial dry states match and are finite");
-    check((poisoned.get()->*access::member(access::OSRunning{}))==wrapped,"actual wrap engagement matches case");
+    check((poisoned.get()->*member(reentry_access::OSRunning{}))==wrapped,"actual wrap engagement matches case");
     check(wrapped ? poisoned->getLatencySamples()>0 : poisoned->getLatencySamples()==0,"selected latency matches case");
     if(inject) {dryState(*poisoned)=std::numeric_limits<float>::quiet_NaN();dryState(*restored)=std::numeric_limits<float>::quiet_NaN();}
     fill(a,12);fill(b,12);fill(c,12);clean->process(a);poisoned->process(b);restored->process(c);
@@ -67,13 +67,13 @@ int main(int argc,char** argv) {
     dryState(*restored)=original;
     p.mix=0.5f;
     for(E* e:{clean.get(),poisoned.get(),restored.get()})e->setParameters(p);
-    check((poisoned.get()->*access::member(access::Mix{})).isSmoothing(),"Mix re-entry ramp actually starts");
+    check((poisoned.get()->*member(reentry_access::Mix{})).isSmoothing(),"Mix re-entry ramp actually starts");
     fill(a,13);fill(b,13);fill(c,13);clean->process(a);poisoned->process(b);restored->process(c);
     int diffL=0,diffR=0,zeroL=0,restoreDiff=0;
     for(int i=0;i<n;++i) {
         diffL+=!same(a.getSample(0,i),b.getSample(0,i));
         diffR+=!same(a.getSample(1,i),b.getSample(1,i));
-        zeroL+=b.getSample(0,i)==0.0f && a.getSample(0,i)!=0.0f;
+        zeroL+=same(b.getSample(0,i),0.0f) && !same(a.getSample(0,i),0.0f);
         for(int ch=0;ch<2;++ch)restoreDiff+=!same(a.getSample(ch,i),c.getSample(ch,i));
     }
     check(diffL>0&&zeroL>0,"invalid dry state reaches actual Mix output and final guard");
