@@ -1,0 +1,21 @@
+{
+  "run": 43623171585,
+  "source": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+  "original_attempt": 1,
+  "original_job": 132533171799,
+  "original_result": "failure",
+  "original_job_api_log": "Forbidden; 0 bytes",
+  "gh_cli_requested_original_job_returned": "latest attempt 2 log, not original",
+  "retry_attempt": 2,
+  "retry_job": 132609474893,
+  "retry_result": "success",
+  "retry_log_sha256": "aea238923cd291eb5df6626e6a4884c0921a88b0df047a0c8ff1604b08a2738f",
+  "retry_rosetta_step_sha256": "c7cbc5116d5570b77792d8d9cae0629e48e8fb20ef42a8d387570270b727bdd6",
+  "retry_rosetta_test_counts": [
+    "macos\tDSP + state self-tests, x86_64 slice under Rosetta\t2026-11-14T22:33:24.6811650Z 4498 checks, 0 failures",
+    "macos\tDSP + state self-tests, x86_64 slice under Rosetta\t2026-11-14T22:37:30.5135500Z 16380 checks, 0 failure(s)"
+  ],
+  "historical_d8627e55_source_lint_job": 132387323170,
+  "historical_d8627e55_job_log": "gh run view returned exit 0 and 0 bytes",
+  "interpretation": "The original 240 failure and historical d862 cleanup failure remain unattributed. The later retry is not evidence of their causes."
+}

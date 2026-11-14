@@ -1,0 +1,34 @@
+{
+  "run": 43649435367,
+  "head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "macos_job_log_exit": 0,
+  "macos_job_log_bytes": 2660671,
+  "code_scanning_api_exit": 1,
+  "code_scanning_error": "HTTP 403 or Resource not accessible",
+  "artifact_downloads": [
+    {
+      "name": "Anamorph-POSIX-cleanup-validation",
+      "outcome": "Forbidden"
+    },
+    {
+      "name": "Anamorph-memcheck-results",
+      "outcome": "Forbidden"
+    },
+    {
+      "name": "Anamorph-TSan-host",
+      "outcome": "Forbidden"
+    }
+  ],
+  "note": "Artifact listing succeeded; download redirects were forbidden. Signed redirect URLs are intentionally omitted.",
+  "macos_job_log_sha256": "bac12c496940fa11167aa3857446de4d40c3f39883d27db4398aa48f8e27106a",
+  "rosetta_step_extract_sha256": "ccc558d6a05ad6fe441a7a989c1d427d8df13f69833e9690c69d2d5dc849061e",
+  "rosetta_step_extract_lines": 2660,
+  "rosetta_non_echoed_lines": 2646,
+  "rosetta_test_counts": [
+    "macos\tDSP + state self-tests, x86_64 slice under Rosetta\t2026-11-14T22:57:19.3707160Z 5610 checks, 0 failures",
+    "macos\tDSP + state self-tests, x86_64 slice under Rosetta\t2026-11-14T23:01:24.1057790Z 16400 checks, 0 failure(s)"
+  ],
+  "rosetta_runtime_skip_warnings": [],
+  "rosetta_executed": true,
+  "rosetta_extract": "integration-3669-rosetta-step.log.gz"
+}

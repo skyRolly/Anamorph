@@ -494,3 +494,49 @@ probe-compilation and abbreviated-SHA attempts are retained in
 `h4-reentry-injection-results/`. The successful GCC 14 container run used the
 same image as the fresh build; a direct three-CPU Docker limit was needed
 because the standard four-CPU wrapper was rejected by the current daemon.
+
+### Final integration hosted result and attempt-specific log access
+
+On `3669cf716b27de56dd125f29d0b2672598aebdc2`, hosted Build & Validate
+`43649435367` completed **success**: 16 jobs passed and the PR-only merge check
+and two optional macOS selection/co-installation jobs were skipped. The fuzz
+findings upload step was skipped because there were no findings. Completed jobs
+include Linux, Windows, native Intel macOS and universal macOS builds/tests;
+pluginval and applicable packaging/ABI gates; source, documentation and state
+coverage lints; fuzz; ASan/UBSan/vptr and Valgrind memcheck; and TSan/RTSan
+with their liveness controls. Exact-head CodeQL `43649442113` and Microsoft
+analysis `43649444689` also succeeded. Their job/step metadata is committed as
+`ci-final-integration-*.json`.
+
+Unlike an earlier unavailable-log checkpoint, the exact integration macOS job
+log could now be read. Its selected Rosetta step ran and reports **5,610 DSP
+checks and 16,400 State checks, zero failures**, followed by a passing State
+filesystem-isolation driver. The raw selected step is preserved in
+`integration-3669-rosetta-step.log.gz`, with its digest and access observations
+in `integration-3669-artifact-access.json`. The native Intel gate passed
+separately. The exact-run POSIX cleanup, memcheck and TSan artifact listings
+were visible but downloads returned Forbidden; Code Scanning's raw SARIF API
+also returned HTTP 403. The successful job conclusions are retained without
+claiming inspection of those inaccessible artifacts.
+
+For #240 head `b49c1345`, the same-repository merge-check `43650402605`,
+CodeQL `43650405161`, and Microsoft analysis `43650408174` have succeeded; its
+separate full branch-push matrix `43650397900` remains in progress at this
+checkpoint. Its PR event skips the duplicate full matrix, so the merge-check is
+not a substitute for that push run. The earlier `df89edb6` failed first attempt
+remains unattributed. A new access check established that `gh run view --job`
+returned the later retry's log even when given the original failed job ID; the
+job-specific REST log for that original job was Forbidden. The successful
+retry's actual Rosetta log is preserved in `pr240-rerun-rosetta-step.log.gz`;
+`pr240-original-log-access.json` records attempt IDs and the distinction.
+The historical `d8627e55` cleanup job log still returned zero bytes and its
+artifact remains inaccessible; it is not attributed to the local race.
+
+A fresh GraphQL query found no submitted reviews or unresolved review threads
+on the five open PRs. All remain open and mergeable, with auto-merge off; #242
+remains Draft. Current main's two CodeQL action uses and the MSVC SARIF upload
+pin `33d7b85da1a04171e211befe2c739303b9a4c066`; the upstream annotated
+`v4.39.3` tag resolves to that commit. The previously merged #241 is already
+included in the integration. The review record's documentation check passed
+200 files and its citation check preserved 603 anchors at record commit
+`dd960a3c28cca5b2f0d0ef387b115b872cb11597`.
