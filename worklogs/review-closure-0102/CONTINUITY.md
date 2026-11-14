@@ -390,3 +390,11 @@ benchmark specifications describe a planned shared-runner execution, not a
 measurement. Original `original/*.sh`, comparison scripts and archived data
 remain historical. This supplement does not close R-237-01: several historical
 H4 recovery/trajectory/benchmark scenarios still lack verified actual reruns.
+
+The #240 `df89edb6` failed-job rerun has since completed successfully, including
+the Rosetta step and remaining macOS gates. The original attempt's exit-1
+annotation and inaccessible detailed log remain recorded; a passing retry does
+not establish whether the first failure was a product, test or infrastructure
+problem. The retry metadata and annotations are in `pr240-hosted-rerun.json`
+and `pr240-hosted-rerun-annotations.json`. This retry validates `df89edb6`, not
+the later documentation-only `b49c1345` head.
