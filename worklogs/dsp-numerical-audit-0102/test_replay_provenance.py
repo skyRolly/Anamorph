@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Local input guards and disposable Ninja rebuild controls; no audio evidence."""
 import os
+import hashlib
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 from unittest import mock
 import replay_provenance as prov
+import replay_experiment as experiments
 
 
 def git(path, *args):
@@ -20,7 +22,7 @@ def repo(path):
     git(path, 'config', 'user.name', 'Replay test')
     (path/'src').mkdir()
     (path/'src/source.cpp').write_text('known source\n')
-    (path/'.gitignore').write_text('src/ignored.h\n')
+    (path/'.gitignore').write_text('src/ignored.h\nignored-anywhere.h\n')
     git(path, 'add', '.')
     git(path, 'commit', '-qm', 'fixture')
     return git(path, 'rev-parse', 'HEAD')
@@ -45,13 +47,77 @@ class Provenance(unittest.TestCase):
         self.assertEqual(prov.verify_inputs(self.source, self.build), self.juce)
 
     def test_dirty_tracked_untracked_and_ignored(self):
-        for name in ('src/source.cpp', 'src/new.h', 'src/ignored.h'):
+        for name in ('src/source.cpp', 'src/new.h', 'src/ignored.h', 'ignored-anywhere.h'):
             path = self.source/name
             original = path.read_bytes() if path.exists() else None
             path.write_text('unexpected\n')
             with self.assertRaises(ValueError): prov.verify_inputs(self.source, self.build)
             if original is None: path.unlink()
             else: path.write_bytes(original)
+
+    def test_hidden_index_flags_cannot_hide_actual_source_bytes(self):
+        target = self.source/'src/source.cpp'
+        original = target.read_bytes()
+        for flag, undo in (('--assume-unchanged', '--no-assume-unchanged'),
+                           ('--skip-worktree', '--no-skip-worktree')):
+            with self.subTest(flag=flag):
+                git(self.source, 'update-index', flag, 'src/source.cpp')
+                try:
+                    target.write_bytes(original+b'changed despite index flag\n')
+                    self.assertEqual(git(self.source, 'status', '--porcelain=v1'), '')
+                    with self.assertRaises(ValueError): prov.verify_source_tree(self.source, prov.BASE)
+                finally:
+                    git(self.source, 'update-index', undo, 'src/source.cpp')
+                    target.write_bytes(original)
+
+    def test_staged_change_is_rejected_even_if_working_bytes_match(self):
+        target = self.source/'src/source.cpp'
+        original = target.read_bytes()
+        target.write_text('staged edit\n')
+        git(self.source, 'add', 'src/source.cpp')
+        target.write_bytes(original)
+        with self.assertRaisesRegex(ValueError, 'staged changes'):
+            prov.verify_source_tree(self.source, prov.BASE)
+
+    def test_caller_git_routing_environment_cannot_replace_repository_or_index(self):
+        with mock.patch.dict(os.environ, {'GIT_DIR': str(self.juce/'.git'),
+                                        'GIT_WORK_TREE': str(self.juce),
+                                        'GIT_INDEX_FILE': str(self.root/'wrong-index')}):
+            self.assertTrue(prov.verify_source_tree(self.source, prov.BASE))
+            (self.source/'src/source.cpp').write_text('hidden by redirected environment\n')
+            with self.assertRaises(ValueError): prov.verify_source_tree(self.source, prov.BASE)
+
+    def test_packet_inputs_are_committed_blobs_not_dirty_or_redirected_files(self):
+        packet = self.source/'src/probe.cpp'; packet.write_text('reviewed probe\n')
+        support = self.source/'src/support.h'; support.write_text('reviewed support\n')
+        git(self.source, 'add', 'src/probe.cpp', 'src/support.h')
+        git(self.source, 'commit', '-qm', 'reviewed packet')
+        commit = git(self.source, 'rev-parse', 'HEAD')
+        packet.write_text('unreviewed probe\n'); support.write_text('unreviewed support\n')
+        with mock.patch.object(experiments, 'REPO', self.source):
+            self.assertEqual(experiments.blob(commit, 'src/probe.cpp'), b'reviewed probe\n')
+            self.assertEqual(experiments.blob(commit, 'src/support.h'), b'reviewed support\n')
+            for bad_commit, bad_path in [(commit[:8], 'src/probe.cpp'),
+                                         (commit, '../probe.cpp'), (commit, 'src/not-present')]:
+                with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                    experiments.blob(bad_commit, bad_path)
+
+    def test_file_mode_and_symlink_substitution_are_rejected(self):
+        target = self.source/'src/source.cpp'
+        original = target.read_bytes()
+        target.chmod(0o755)
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, prov.BASE)
+        target.chmod(0o644)
+        outside = self.root/'same-bytes.cpp'; outside.write_bytes(original)
+        target.unlink(); target.symlink_to(outside)
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, prov.BASE)
+
+    def test_directory_symlink_is_rejected_even_with_matching_bytes(self):
+        src = self.source/'src'
+        outside = self.root/'outside'; outside.mkdir()
+        (outside/'source.cpp').write_bytes((src/'source.cpp').read_bytes())
+        (src/'source.cpp').unlink(); src.rmdir(); src.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, prov.BASE)
 
     def test_build_from_another_checkout(self):
         self.cache(self.root/'elsewhere', self.juce)
@@ -85,6 +151,44 @@ class Provenance(unittest.TestCase):
             prov.verify_variant(self.source, archive, 'diagnostic')
             variant.write_text(variant.read_text()+'unintended\n')
             with self.assertRaises(ValueError): prov.verify_variant(self.source, archive, 'diagnostic')
+
+    def test_expected_dirty_patch_and_unintended_edit(self):
+        expected = git(self.source, 'rev-parse', 'HEAD')
+        self.assertTrue(prov.verify_source_tree(self.source, expected))
+        target = self.source/'src/source.cpp'
+        target.write_text('intended diagnostic\n')
+        patch = self.root/'variant.patch'
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        self.assertTrue(prov.verify_source_tree(self.source, expected, patch, digest))
+        contents = patch.read_bytes(); patch.write_bytes(contents+b'\n')
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, digest)
+        patch.write_bytes(contents)
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected)
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, '0'*64)
+        target.write_text(target.read_text()+'unintended\n')
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, digest)
+        target.write_text('intended diagnostic\n')
+        (self.source/'src/new.h').write_text('untracked')
+        with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, digest)
+
+    def test_fresh_checkout_build_and_patch(self):
+        cmake = self.source/'CMakeLists.txt'
+        cmake.write_text('cmake_minimum_required(VERSION 3.22)\nproject(replay NONE)\nadd_custom_target(AnamorphTests COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/object)\n')
+        git(self.source, 'add', 'CMakeLists.txt'); git(self.source, 'commit', '-qm', 'cmake fixture')
+        source_sha = git(self.source, 'rev-parse', 'HEAD')
+        (self.source/'src/source.cpp').write_text('intended diagnostic\n')
+        patch = self.root/'build.patch'
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        result = prov.fresh_checkout_build(self.source, source_sha, self.juce, self.root/'fresh-variant',
+                                           ['AnamorphTests'], patch, digest)
+        self.assertEqual(result['source_head'], source_sha)
+        self.assertEqual(result['patch_sha256'], digest)
+        self.assertTrue((self.root/'fresh-variant/object').exists())
+        with self.assertRaises(ValueError):
+            prov.fresh_checkout_build(self.source, source_sha, self.juce, self.root/'fresh-variant',
+                                      ['AnamorphTests'], patch, digest)
 
     def test_unverifiable_build_is_never_reused(self):
         fresh = self.root/'fresh'

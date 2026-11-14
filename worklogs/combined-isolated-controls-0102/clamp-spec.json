@@ -1,0 +1,30 @@
+{
+  "purpose": "Restore the out-of-range clamp mutation against the historical combined source while preserving both production call-site corrections.",
+  "source_head": "f2686cb5b0b3687a3e343340f2494f59961aa83a",
+  "source_tree": "cf0135149b44076e951fb266c642a0886d6456d5",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/combined-isolated-controls-0102/endpoint-clamp.patch",
+    "sha256": "2755f6d94357a4ee1c822f1f542f5aa2f72064c44768b6b38c99c4caddd61893",
+    "purpose": "Change only the private endpoint kernel comparisons."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "runs": [
+    {
+      "program": "AnamorphTests",
+      "args": [
+        "--multiband-endpoints"
+      ],
+      "expected_exit": 1
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [
+        "--n2-controls"
+      ],
+      "expected_exit": 0
+    }
+  ]
+}

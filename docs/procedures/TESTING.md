@@ -7755,3 +7755,14 @@ No repeat acceptance is requested. Source-bound automated CI remains independent
 
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
+
+## Numerical audit replay provenance controls (2026-11-14)
+
+`python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
+synthetic source-tree, patch, dependency and fresh-build controls, including
+assume-unchanged, skip-worktree, staged edits, ignored inputs and type/mode
+mismatches. These checks do not themselves execute product DSP. The separate
+fresh baseline and archived diagnostic replay and its identities are recorded
+under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
+The shared reviewed-specification runner records newly built objects and results;
+unmigrated historical relinkers retain their stated provenance limitations.
