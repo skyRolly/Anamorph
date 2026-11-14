@@ -1,0 +1,402 @@
+Test 77: independently crossfaded controls remain live during ordinary ducks (N2-02)
+  44100/64 Bypass initial0 script0: live=0 target=0 ticks=0 audio=0 control=0.24081 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial0 script1: live=0 target=0 ticks=0 audio=0 control=0.11092 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial0 script2: live=0 target=0 ticks=0 audio=0.47346 control=0.31338 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 Bypass initial0 script3: live=0 target=0 ticks=0 audio=0.53692 control=0.54209 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 Bypass initial0 script4: live=0 target=0 ticks=0 audio=0 control=0.15938 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial0 script5: live=0 target=0 ticks=0 audio=0 control=0.17418 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial0 script6: live=0 target=0 ticks=0 audio=0.68141 control=0.25071 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 Bypass initial1 script0: live=0 target=0 ticks=0 audio=0 control=0.24081 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial1 script1: live=0 target=0 ticks=0 audio=0 control=0.11092 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial1 script2: live=0 target=0 ticks=0 audio=0.47346 control=0.31338 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 Bypass initial1 script3: live=0 target=0 ticks=0 audio=0.53692 control=0.54209 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 Bypass initial1 script4: live=0 target=0 ticks=0 audio=0 control=0.15938 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial1 script5: live=0 target=0 ticks=0 audio=0 control=0.17418 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 Bypass initial1 script6: live=0 target=0 ticks=0 audio=0.68141 control=0.25071 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 MB initial0 script0: live=0 target=0 ticks=0 audio=0 control=0.60959 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial0 script1: live=0 target=0 ticks=0 audio=0 control=0.29869 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial0 script2: live=0 target=0 ticks=0 audio=1.4751 control=0.73983 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 MB initial0 script3: live=0 target=0 ticks=0 audio=1.6418 control=1.4461 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 MB initial0 script4: live=0 target=0 ticks=0 audio=0 control=0.43961 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial0 script5: live=0 target=0 ticks=0 audio=0 control=0.47962 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial0 script6: live=0 target=0 ticks=0 audio=0.99389 control=0.5868 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 MB initial1 script0: live=0 target=0 ticks=0 audio=0 control=0.60765 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial1 script1: live=0 target=0 ticks=0 audio=0 control=0.29521 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial1 script2: live=0 target=0 ticks=0 audio=1.4751 control=0.73802 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 MB initial1 script3: live=0 target=0 ticks=0 audio=1.6418 control=1.4461 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  44100/64 MB initial1 script4: live=0 target=0 ticks=0 audio=0 control=0.43886 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial1 script5: live=0 target=0 ticks=0 audio=0 control=0.47973 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  44100/64 MB initial1 script6: live=0 target=0 ticks=0 audio=1.0041 control=0.58346 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 Bypass initial0 script0: live=0 target=0 ticks=0 audio=0 control=0.22526 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial0 script1: live=0 target=0 ticks=0 audio=0 control=0.18941 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial0 script2: live=0 target=0 ticks=0 audio=0.50886 control=0.55483 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 Bypass initial0 script3: live=0 target=0 ticks=0 audio=0.55333 control=0.59508 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 Bypass initial0 script4: live=0 target=0 ticks=0 audio=0 control=0.25996 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial0 script5: live=0 target=0 ticks=0 audio=0 control=0.26327 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial0 script6: live=0 target=0 ticks=0 audio=0.57695 control=0.54336 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 Bypass initial1 script0: live=0 target=0 ticks=0 audio=0 control=0.22526 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial1 script1: live=0 target=0 ticks=0 audio=0 control=0.18941 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial1 script2: live=0 target=0 ticks=0 audio=0.50886 control=0.55483 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 Bypass initial1 script3: live=0 target=0 ticks=0 audio=0.55333 control=0.59508 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 Bypass initial1 script4: live=0 target=0 ticks=0 audio=0 control=0.25996 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial1 script5: live=0 target=0 ticks=0 audio=0 control=0.26327 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 Bypass initial1 script6: live=0 target=0 ticks=0 audio=0.57695 control=0.54336 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 MB initial0 script0: live=0 target=0 ticks=0 audio=0 control=0.44673 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial0 script1: live=0 target=0 ticks=0 audio=0 control=0.52937 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial0 script2: live=0 target=0 ticks=0 audio=1.3708 control=1.2016 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 MB initial0 script3: live=0 target=0 ticks=0 audio=1.5066 control=1.2656 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 MB initial0 script4: live=0 target=0 ticks=0 audio=0 control=0.54148 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial0 script5: live=0 target=0 ticks=0 audio=0 control=0.47504 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial0 script6: live=0 target=0 ticks=0 audio=1.2384 control=0.91037 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 MB initial1 script0: live=0 target=0 ticks=0 audio=0 control=0.44081 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial1 script1: live=0 target=0 ticks=0 audio=0 control=0.52984 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial1 script2: live=0 target=0 ticks=0 audio=1.3708 control=1.2015 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 MB initial1 script3: live=0 target=0 ticks=0 audio=1.5066 control=1.2656 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  48000/127 MB initial1 script4: live=0 target=0 ticks=0 audio=0 control=0.54148 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial1 script5: live=0 target=0 ticks=0 audio=0 control=0.47504 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  48000/127 MB initial1 script6: live=0 target=0 ticks=0 audio=1.2384 control=0.91041 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 Bypass initial0 script0: live=0 target=0 ticks=0 audio=0 control=0.28921 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial0 script1: live=0 target=0 ticks=0 audio=0 control=0.31325 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial0 script2: live=0 target=0 ticks=0 audio=0.41999 control=0.58733 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 Bypass initial0 script3: live=0 target=0 ticks=0 audio=0.55691 control=0.63414 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 Bypass initial0 script4: live=0 target=0 ticks=0 audio=0 control=0.38259 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial0 script5: live=0 target=0 ticks=0 audio=0 control=0.29644 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial0 script6: live=0 target=0 ticks=0 audio=0.55437 control=0.52757 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 Bypass initial1 script0: live=0 target=0 ticks=0 audio=0 control=0.28921 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial1 script1: live=0 target=0 ticks=0 audio=0 control=0.31324 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial1 script2: live=0 target=0 ticks=0 audio=0.41999 control=0.58733 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 Bypass initial1 script3: live=0 target=0 ticks=0 audio=0.55691 control=0.63414 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 Bypass initial1 script4: live=0 target=0 ticks=0 audio=0 control=0.38259 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial1 script5: live=0 target=0 ticks=0 audio=0 control=0.29644 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 Bypass initial1 script6: live=0 target=0 ticks=0 audio=0.55437 control=0.52757 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 MB initial0 script0: live=0 target=0 ticks=0 audio=0 control=0.40166 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial0 script1: live=0 target=0 ticks=0 audio=0 control=0.4128 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial0 script2: live=0 target=0 ticks=0 audio=0.98822 control=0.92738 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 MB initial0 script3: live=0 target=0 ticks=0 audio=1.0031 control=0.95549 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 MB initial0 script4: live=0 target=0 ticks=0 audio=0 control=0.53691 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial0 script5: live=0 target=0 ticks=0 audio=0 control=0.42767 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial0 script6: live=0 target=0 ticks=0 audio=0.94307 control=0.79359 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 MB initial1 script0: live=0 target=0 ticks=0 audio=0 control=0.39911 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial1 script1: live=0 target=0 ticks=0 audio=0 control=0.41219 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial1 script2: live=0 target=0 ticks=0 audio=0.98822 control=0.9274 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 MB initial1 script3: live=0 target=0 ticks=0 audio=1.0031 control=0.95549 edges=1/0
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  96000/256 MB initial1 script4: live=0 target=0 ticks=0 audio=0 control=0.53692 edges=2/2
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial1 script5: live=0 target=0 ticks=0 audio=0 control=0.42767 edges=4/4
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02: the actual processed output responds during the duck
+  96000/256 MB initial1 script6: live=0 target=0 ticks=0 audio=0.94307 control=0.79359 edges=1/1
+  [FAIL] N2-02: ordinary snapshots adopt the independently crossfaded control at the next block
+  [FAIL] N2-02: smoother target follows every live request, including before/after bottom
+  [FAIL] N2-02: exactly one crossfade tick per sample, no bottom restart or delayed pulse
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 structural/factor duck: entry pulse remains live with the same sample clock
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+  [FAIL] N2-02 forced-to-ordinary: fresh request is live during re-entry
+720 checks, 316 failures
