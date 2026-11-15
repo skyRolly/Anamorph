@@ -145,6 +145,71 @@ static void testN204ConditionedHistoryRecovery()
                 check (unaffectedHistory, "N2-04: conditioned history survives recovery with actual oversampling");
             }
 
+    // A second finite spike at the end of the fault block has not reached the
+    // latency-aligned output when the first spike triggers self-heal. Preserving
+    // that valid pending sample may cause a second legitimate overflow later;
+    // the guard must heal again without losing the opposite channel's history.
+    for (bool wrapped : { false, true })
+    {
+        anamorph::EngineParameters p;
+        p.algorithm = wrapped ? anamorph::Algorithm::Chorus : anamorph::Algorithm::Haas;
+        p.algoAmount = 0.0f; p.driveDb = 0.0f; p.mix = 0.0f; p.outputGainDb = 24.0f;
+        p.oversample = anamorph::OversampleFactor::x4;
+        auto faulty = std::make_unique<Engine>(), reference = std::make_unique<Engine>();
+        for (auto* e : { faulty.get(), reference.get() }) { e->primeParameters (p); e->prepare (rate, block); }
+        const int latency = faulty->getLatencySamples();
+        juce::AudioBuffer<float> a (2, block), b (2, block);
+        for (int k = 0; k < 12; ++k)
+        {
+            for (int i = 0; i < block; ++i) { a.setSample (0, i, .125f); a.setSample (1, i, .25f); }
+            b.makeCopyOf (a); faulty->process (a); reference->process (b);
+        }
+        auto& ring = faulty.get()->*member (Conditioned{});
+        const int pending = ((faulty.get()->*member (Write{})) + block - 1) % ring.getNumSamples();
+        const bool actualWrap = faulty.get()->*member (OversamplingRunning{});
+        for (int i = 0; i < block; ++i)
+        {
+            a.setSample (0, i, i == 7 || i == block - 1 ? 1.0e38f : .125f);
+            a.setSample (1, i, .25f); b.setSample (0, i, .125f); b.setSample (1, i, .25f);
+        }
+        anamorph::testing::resetCounts();
+        { anamorph::testing::Armed armed; faulty->process (a); }
+        const long firstNew = anamorph::testing::newCount.load();
+        const long firstMalloc = anamorph::testing::mallocCount.load();
+        reference->process (b);
+        check (actualWrap == wrapped && latency > 0 && latency + 7 < block,
+               "N2-04 repeated-heal premise: selected latency and actual wrap state");
+        check (juce::exactlyEqual (a.getSample (0, latency + 7), 0.0f),
+               "N2-04 repeated-heal premise: first finite spike triggers self-heal");
+        check (bits (ring.getSample (0, pending), 1.0e38f),
+               "N2-04: finite pending conditioned sample survives first self-heal");
+        for (int i = 0; i < block; ++i) { a.setSample (0, i, .125f); a.setSample (1, i, .25f); b.setSample (0, i, .125f); b.setSample (1, i, .25f); }
+        anamorph::testing::resetCounts();
+        { anamorph::testing::Armed armed; faulty->process (a); }
+        const long secondNew = anamorph::testing::newCount.load();
+        const long secondMalloc = anamorph::testing::mallocCount.load();
+        reference->process (b);
+        bool opposite = true, finite = true;
+        for (int i = 0; i < block; ++i)
+        {
+            opposite &= bits (a.getSample (1, i), b.getSample (1, i));
+            finite &= std::isfinite (a.getSample (0, i)) && std::isfinite (a.getSample (1, i));
+        }
+        check (latency > 0 && juce::exactlyEqual (a.getSample (0, latency - 1), 0.0f),
+               "N2-04: pending finite spike reaches and is healed at its latency offset");
+        check (opposite && finite, "N2-04: repeated self-heal preserves valid opposite-channel output");
+        if (allocationLive.newLive)
+            check (firstNew == 0 && secondNew == 0, "N2-04: repeated exceptional recovery does not allocate via new");
+        if (allocationLive.mallocLive)
+            check (firstMalloc == 0 && secondMalloc == 0, "N2-04: repeated exceptional recovery does not allocate via malloc");
+        for (int i = 0; i < block; ++i) { a.setSample (0, i, .125f); a.setSample (1, i, .25f); b.setSample (0, i, .125f); b.setSample (1, i, .25f); }
+        faulty->process (a); reference->process (b);
+        bool later = true;
+        for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < block; ++i)
+            later &= std::isfinite (a.getSample (ch, i)) && bits (a.getSample (ch, i), b.getSample (ch, i));
+        check (later, "N2-04: normal output resumes after repeated recovery");
+    }
+
     // With no selected latency, there is no delayed suffix to lose. This
     // control must still heal the bad sample and preserve the following block.
     {

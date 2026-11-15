@@ -47,3 +47,13 @@ The anchors were re-derived and the historical sign-off range retained in its
 audit note. The documentation and citation checks passed against rehearsal
 base `ca5c6fc2`. These were documentation/environment findings, not DSP test
 failures; final-base checks remain required.
+
+The expanded v6 development selector adds a finite spike pending at the end of
+a fault block. Its later latency-aligned consumption triggers a second
+self-heal while valid opposite-channel output and the following normal block
+remain intact, both for the stand-in and observed wrapped path. This selector
+passed **125/0** locally; restoring the original clear failed **28/125** and
+unsafe unconditional retention failed **6/125**. These v6 runs are local
+development controls; the fresh `623d3c33` replay above used the earlier v5
+selector and must not be relabeled as a v6 execution. Full final-head and
+receipt-controlled v6 validation remain separate.
