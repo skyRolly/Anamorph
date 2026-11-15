@@ -1,0 +1,34 @@
+{
+  "purpose": "Nonshipping engine trace of actual finite-endpoint Enable overflow, aligned-ring write/read, Mix and final self-heal; an exceptional-only widening switch is a comparison control, not a shipping proposal.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "c5223d6cfb52c7f0df74491290f0ff91b24ef933",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-post-enable-trace-70bb.patch",
+    "sha256": "e86ad1bca5b519b046d4e2094a7a4bc509a8c65611d11371813fc256d957b5dd",
+    "purpose": "Candidate plus nonshipping stage-observation callback and test-only exceptional widening switch."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "post-enable-trace",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-post-enable-trace-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "post-enable-trace",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off widen=0",
+        "case=x4 widen=1",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}
