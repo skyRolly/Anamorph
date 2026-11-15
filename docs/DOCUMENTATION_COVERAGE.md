@@ -19425,3 +19425,7 @@ is not a numerical oracle. Historical reports, logs and manifests remain intact.
 ## H4 candidate checkpoint documentation audit (2026-11-15)
 
 Before editing, the current H4 packet, ADR-0074, README and TESTING were checked for drift: the README still said all work was unmerged after #242, and the ADR contained an earlier causal checkpoint preceding the separately identified N2-08 evidence. Scoped the former to the remaining DSP documentation/correction PRs and dated the latter. Added a nonshipping consumption-aware candidate record, explicitly limited positive controls and unresolved recovery/performance conditions; updated TESTING and the Proposed ADR. Archived historical measurements and reports remain unchanged.
+
+## Link later H4 evidence from dated checkpoint (2026-11-15)
+
+The initial candidate checkpoint, ADR, TESTING and coverage entries were reviewed before this update. The initial unmeasured-cost statement is now explicitly dated, and the later separate nonshipping recovery and instruction evidence is linked without treating it as an accepted architecture decision. Historical measurements and production source are unchanged.

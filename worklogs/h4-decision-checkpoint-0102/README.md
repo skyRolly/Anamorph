@@ -1,5 +1,7 @@
 # H4 recovery candidate checkpoint — 2026-11-15 UTC
 
+**Dated initial checkpoint:** a [separate later follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a4a50f25a80a8bb57b2a92cf8fe16e4adb8/worklogs/h4-decision-checkpoint-0102/followup) contains the expanded recovery controls, finite-operand arithmetic witness and matched candidate instruction results. Its candidate remains nonshipping and incomplete.
+
 This is nonshipping investigation. ADR-0074 remains Proposed, and the H4 gate
 in shipping source is unchanged. A candidate has **not** yet established the
 recovery contract needed for selection. The current recommendation is a
