@@ -1,5 +1,7 @@
 # Corrected final integration — 2026-11-15
 
+**Historical checkpoint:** superseded by `70bbdc22acdfd6286d13b1a15cb445367525c5e5` after #240 linked the later H4 evidence. Only five documentation files changed; production, tests and provenance tools are byte-identical.
+
 Validation branch head `a24b4efdfad4d267a63560079b0451c2c7487596`, tree
 `687c1edbe015ddd1c69dcb33a461ce98296ef230`, merges the State-summary runner
 correction from #237 `e64e11fbf54b910aa6a32acafbeb4c3f64815f20` into the

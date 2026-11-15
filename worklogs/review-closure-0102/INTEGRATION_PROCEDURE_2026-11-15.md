@@ -54,7 +54,7 @@ against the actual main, verify that prerequisite files do not appear as new
 review scope, repeat conflict and semantic checks, and obtain review on the new
 identities. Do not assume an API's cached base SHA is the branch tip.
 
-The prepared validation identity is `a24b4efdfad4d267a63560079b0451c2c7487596`.
-Its [integration record](final-integration-a24b4efd/README.md) describes
+The prepared validation identity is `70bbdc22acdfd6286d13b1a15cb445367525c5e5`.
+Its [integration record](final-integration-70bbdc22/README.md) describes
 retained files and conflicts. Hosted checks are tied to that exact source;
 future retarget or merge commits require their own applicable validation.
