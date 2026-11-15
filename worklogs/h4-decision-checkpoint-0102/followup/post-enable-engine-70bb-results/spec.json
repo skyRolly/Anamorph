@@ -1,0 +1,34 @@
+{
+  "purpose": "Provisional actual-engine search for post-Multiband-Enable nonfinite aligned samples under finite extreme inputs, with observed transition ticks and actual wrapped-path cases.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "bd96b406db5de5b85d3c72d9db55165a36860bb9",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-candidate-integration-70bb.patch",
+    "sha256": "332c230af9dd82298c79f77db1087d37dc7112ad48ce9c91d15aac72d0927284",
+    "purpose": "Same nonshipping consumption-aware dry maintenance and channel-local guard, rebased onto the reviewed N2-02 and N2-03 integration tree."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "post-enable-engine",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-post-enable-engine-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "post-enable-engine",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "cases=",
+        "post_enable_nonfinite=",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}
