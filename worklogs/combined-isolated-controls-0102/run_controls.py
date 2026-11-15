@@ -25,6 +25,12 @@ from compiler_inputs import (generated_include_manifest, relevant_compile_comman
                              verify_compile_dependencies, verify_generated_inputs, verify_relocated_source)
 
 
+def parse_summary(output):
+    """Accept the actual DSP/selector and full-State summary spellings."""
+    summaries = re.findall(rb'(?m)^[ \t]*(\d+) checks, (\d+) failure(?:s|\(s\))?[ \t]*\r?$', output)
+    return tuple(map(int, summaries[-1])) if summaries else None
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--checkout', type=Path, required=True)
@@ -156,8 +162,7 @@ def main():
         result = subprocess.run(command, cwd=out, capture_output=True)
         stdout, stderr = out/(f'run-{i}.stdout'), out/(f'run-{i}.stderr')
         stdout.write_bytes(result.stdout); stderr.write_bytes(result.stderr)
-        summaries = re.findall(rb'(?m)^\s*(\d+) checks, (\d+) failures?\s*$', result.stdout)
-        observed = tuple(map(int, summaries[-1])) if summaries else None
+        observed = parse_summary(result.stdout)
         expected = (run['checks'], run['failures'])
         expected_exit = 0 if run['failures'] == 0 else 1
         correct = observed == expected and result.returncode == expected_exit

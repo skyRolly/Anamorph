@@ -19365,7 +19365,10 @@ entries and the original historical failure records are retained.
 
 Drift review confirmed that the previous replay description did not rule out
 retained paths deleted by a diagnostic patch or newly shadowing generated
-headers during controlled relinking. The maintained helper now restricts patch
+headers during controlled relinking. A full-State replay also exposed a parser
+omission for `failure(s)` after the State suite itself passed; TESTING and the
+lightweight positive/negative controls now describe and check both formats.
+The failed runner result remains historical. The maintained helper restricts patch
 path/mode changes, records generated include trees and compiler dependencies,
 and checks copied probe inputs. TESTING and CI_CD describe the synthetic
 source-lint gate and the separate need for actual product replay controls.

@@ -7796,6 +7796,10 @@ The synthetic replay guard suite additionally rejects diagnostic path/mode
 changes, altered or newly shadowing generated include files, changed packet
 inputs and missing required result artifacts. It inspects compiler dependency
 files and deliberately rejects unsupported forced-include/response-file forms.
+The combined-control parser also accepts the actual `failure(s)` full-State
+summary and DSP/selector `failure` and `failures`; malformed summaries fail.
+A real integrated run exposed the old omission after State itself passed; its
+failed runner result and raw stream are preserved in the independent record.
 The `source-lint` job executes these lightweight Git/CMake controls; it does
 not build the product or replay historical H4 benchmarks. Controlled relinking
 requires a fresh receipt with the generated-input manifest. Actual Anamorph
