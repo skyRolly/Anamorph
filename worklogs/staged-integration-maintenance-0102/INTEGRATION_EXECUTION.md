@@ -110,3 +110,40 @@ boundary. The first natural-input test incorrectly expected same-block healing,
 failed 6/56, and was corrected after observing the selected-factor latency.
 The host-independent results are provisional until their source/patch/build and
 logs are committed and the final actual-main correction is reviewed and tested.
+
+## Later evidence and current staged checks
+
+The unpatched-production comparison at reviewed integration `70bbdc22` now
+establishes **N2-09** (P3 review assessment), separate from N2-03: an extreme
+finite input during an actual Disable fade caused the historical interior
+aligned-dry Enable interpolation to overflow between finite operands. The
+receipt-controlled engine trace observed invalid aligned writes and reads and
+final self-heal with OS off and actual x4 wrapping. The reviewed N2-03 change
+intentionally preserves this interior expression and did not introduce the
+issue. No ordinary-audio incidence or audibility is established. The #239 and
+#240 PR descriptions were updated before further integration. A separate later
+dry-source interpolation overflow occurs with a diagnostic widening fallback;
+a bounded 216-case unpatched search found none and does not prove it unreachable.
+The evidence, source and policy comparison are committed on the preserved
+`codex/0102-h4-recovery-followup` branch, including `18433b92`, `d8bf82b6`,
+and `6982e81b`. ADR-0074 remains Proposed, and no production H4 policy was
+selected. The prior candidate history experiment shows finite local recovery
+can still differ from a clean affected-channel trajectory; an exceptional-output
+and history policy remains unapproved.
+
+The N2-04 provisional v5 development build against `70bbdc22` passed 109 focused
+checks and 5723 full DSP checks. Restoring only the prior conditioned ring clear
+failed 24/109, while unconditional retention without sanitation failed 6/109.
+These include actual wrapped x2/x4/x8 controls and the poison/valid-history
+boundary. Source/test bytes, raw logs and qualifications are on preserved
+`codex/0102-n2-04-research` at `a32f9727`; these are ordinary local development
+builds and not exact-final-main or receipt-controlled evidence. No new
+maintenance PR or shipping correction has been integrated.
+
+At this checkpoint #238 main `b4bf18f7` Microsoft analysis `43766535834` and
+CodeQL `43766535738` passed; Build & Validate `43766535759` remains running.
+#239 head `fe2affc1` PR merge-source Build, CodeQL, Microsoft analysis and
+dependency review passed, and its head Microsoft analysis passed; the full head
+Build `43766678200` and head CodeQL `43766685820` remain running. Do not present
+these in-progress runs as successful. #239 remains open pending all required
+results and a fresh base/head check. Automatic branch deletion remains false.
