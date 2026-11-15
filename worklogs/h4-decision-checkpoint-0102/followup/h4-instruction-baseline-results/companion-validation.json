@@ -1,0 +1,63 @@
+{
+  "per_run_and_artifact_identities_match": true,
+  "recorded_runs": 8,
+  "outer_runner_exit": "host shell status unavailable; Docker die event reports container exit 0",
+  "cases": [
+    {
+      "case": "callgrind-band1",
+      "instructions": 14264004,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.183678",
+      "sha256": "238856b93a5ba306abb1b33ce27c7f2994e1bd2c0dfb726d2d275930809164b0"
+    },
+    {
+      "case": "callgrind-band2",
+      "instructions": 18832810,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.104891",
+      "sha256": "4d18068049056a6a171012d84c5b6d0e7c69b1323546b59a2ff2bc194bb472ec"
+    },
+    {
+      "case": "callgrind-band3",
+      "instructions": 23457570,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.116617",
+      "sha256": "97482a0298585431d8573f58913607b2beb084eaff96eade044a746d69b0f59d"
+    },
+    {
+      "case": "callgrind-band4",
+      "instructions": 27229414,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445",
+      "sha256": "c85a5802c3027c6b1e1092f552a0b37431c4bb58f3c859ee213248d5ac361ef0"
+    },
+    {
+      "case": "callgrind-wrapped4",
+      "instructions": 66736019,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073",
+      "sha256": "26d7e08ce178a7e28874bd4fcc1c8c36700a30581cdfec5bef6d1bfa51af60f9"
+    },
+    {
+      "case": "callgrind-partial4",
+      "instructions": 37732614,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445",
+      "sha256": "3bef947f5d152af2eaef05bcc27e4ee7679a383e76b4768675a15fff77576195"
+    },
+    {
+      "case": "callgrind-fade4",
+      "instructions": 33178397,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=160; checksum=-0.306974",
+      "sha256": "8fe2a6fd113d752af9a9eff6b0654555faf73b7c6536cc732552565ce1e65b37"
+    },
+    {
+      "case": "callgrind-glide4",
+      "instructions": 30730089,
+      "blocks": 256,
+      "observation": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688",
+      "sha256": "dd75b996ba0c9e9133259836f488eeb0707e525de83123648e5f8de837546cfa"
+    }
+  ]
+}

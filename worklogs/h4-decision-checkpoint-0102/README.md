@@ -1,10 +1,12 @@
 # H4 recovery candidate checkpoint — 2026-11-15 UTC
 
+The [subsequent follow-up](followup/README.md) records additional correctness, recovery and matched instruction evidence; this initial checkpoint remains dated.
+
 This is nonshipping investigation. ADR-0074 remains Proposed, and the H4 gate
 in shipping source is unchanged. A candidate has **not** yet established the
 recovery contract needed for selection. The current recommendation is a
-bounded follow-up on first-consumption/history correctness, followed by matched
-cost measurements only if that contract is established. The owner may instead
+bounded follow-up on first-consumption/history correctness, followed by
+representative performance measurement once the contract is supported. The owner may instead
 retain the documented H4 limitation or defer the correction.
 
 ## Observed behavior and independent findings
@@ -77,9 +79,8 @@ actual fading banks and nonzero latency. It must establish the policy for
 already-written history and distinguish a finite but incorrect sample from a
 valid one. Then extend repeated recovery, glides, Match, enable and reset cases
 and measure the best candidate. A post-block scan alone is not proof of that
-contract. A deliberately active-bank-only detector is specified separately as
-a fade-boundary negative control; its result must be recorded before calling it
-executed.
+contract. The subsequently executed active-bank-only negative control fails
+both live-fade and retired-source checks; see the follow-up record.
 
 ## Alternatives and cost limits
 
@@ -88,8 +89,9 @@ ordinary numerical reference but does not establish exceptional recovery. A2's
 output guard misses hidden state. A full stored-state scan catches the recorded
 witness but scans states whose current topology does not consume them and has
 no established full contract or matched cost. The new consumption-aware scan
-reduces the inspected state set, but neither its complete correctness nor its
-cost has been established. State-at-write tracking or a combined boundary and
+reduces the inspected state set; complete correctness, exceptional recovery
+cost and native performance remain unestablished. Its measured instruction
+cost is in the follow-up record. State-at-write tracking or a combined boundary and
 output strategy could reduce the window at a different per-sample cost. A new
 filter representation, delay/latency behavior or Mix timing requires its own
 architecture/contract review.

@@ -1,0 +1,253 @@
+{
+  "purpose": "Matched nonshipping whole-engine instruction comparison, with explicit observed fade and oversampling premises, under Callgrind on a shared virtual host. Not native timing or deadline evidence.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "1ccf6b17cd47f2a9de06b9e971dc54c9cf7e112b",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "count",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/h4-instruction-probe.cpp"
+    },
+    {
+      "name": "glide",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/glide_count.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-band1"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "1",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-band1"
+        }
+      ]
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-band2"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "2",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-band2"
+        }
+      ]
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-band3"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "3",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-band3"
+        }
+      ]
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-band4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-band4"
+        }
+      ]
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-wrapped4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "1",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-wrapped4"
+        }
+      ]
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-partial4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "0",
+        "0.5"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-partial4"
+        }
+      ]
+    },
+    {
+      "program": "count",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-fade4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "2",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "wrapped_blocks=",
+        "fade_blocks="
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-fade4"
+        }
+      ]
+    },
+    {
+      "program": "glide",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-glide4"
+      ],
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "1",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "proved sustained-glide samples"
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-glide4"
+        }
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+    "path": "worklogs/h4-review-followup-0102/candidate-a2-003c.patch",
+    "sha256": "42770fa61429031bfcf214f82779affdcdd925adcc5c79e3f35453f4d34a4d79",
+    "purpose": "Historical A2 output-guard warm-bank candidate, not a production correction."
+  }
+}

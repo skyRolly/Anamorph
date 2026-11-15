@@ -481,3 +481,7 @@ Proposed and production H4 is unchanged.
 ## Current candidate checkpoint — 2026-11-15
 
 A fresh nonshipping consumption-aware scan, its exact identities, 40 focused passing checks, state-lifetime contract, unresolved first-consumption/history boundary and bounded next experiment are recorded in the [current checkpoint](h4-decision-checkpoint-0102/README.md). The historical A2 instruction counts above are not measurements of this candidate. No candidate has established the complete recovery contract, no H4 production change is authorized, and ADR-0074 remains Proposed.
+
+## Subsequent nonshipping checkpoint — 2026-11-15
+
+The [follow-up record](h4-decision-checkpoint-0102/followup/README.md) adds an eight-assertion low-frequency oracle, 48 focused checks, an actual fade-bank negative control and unrelated-state preservation checks, affected-output/reference differences under injected invalid state, and [matched candidate instruction counts](h4-decision-checkpoint-0102/followup/H4_INSTRUCTION_METHOD_2026-11-15.md). Its scope and native-hardware limits are explicit. The exceptional recovery/history contract is still unestablished; ADR-0074 remains Proposed.

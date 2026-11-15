@@ -1,0 +1,79 @@
+# H4 consumption-aware candidate: follow-up controls — 2026-11-15
+
+The isolated, nonshipping consumption-aware candidate and its first 40-check
+positive run are committed in PR #240 at `c84ee8028eb12ee147e1c3b51d543696a26ef263`.
+The engineering decision remains Proposed; this record is separate follow-up
+work, not shipping source.
+
+A freshly rebuilt negative candidate changes only the detector's selection so
+that it scans the active bank even when the recorded block also processed the
+other bank. The exact patch, resulting tree and original probe are in
+`h4-consumption-active-only-spec.json`; its new [receipt and raw output](h4-consumption-active-only-results/identity.json)
+record base `003c9a1a2558da6bd89e2624421a6e205eb8acdf`, diagnostic tree
+`2ebae9d2c9be067a0e788f37e0d5cc8a6c24864b`, patch SHA-256
+`76af9a06cb63039ebd162c3253c2514a84dbe3fd19f9992f2f3e947ee0c44784`, and
+pinned JUCE. The runner exited zero because the selected negative executable
+exited one as expected. It reported **40 checks, two failures**, specifically
+that one live fade bank and the source retiring during the block were missed.
+The unmutated candidate passed those same checks. This demonstrates sensitivity
+to the named detector boundary; it does not establish natural occurrence of the
+injected invalid states or the complete recovery contract.
+
+## Expanded fresh candidate execution
+
+A second fresh build of the same candidate tree executed the expanded probe,
+the independent H4 matrix, and the candidate source's full DSP suite. Its
+[receipt](h4-consumption-v2-results/identity.json) records source, patch,
+JUCE, build, binaries, run commands, streams and the original uncompressed
+sample-CSV digest. The raw CSV is retained losslessly as
+`h4-samples.csv.gz`; it is a new result, not a rewritten historical artifact.
+The separate committed `df89edb67eb0ea36508d85f4842b67ea99c5c10a` validator
+`worklogs/h4-dry-state-0102/verify_oracle.py` was run over the recorded matrix
+stream and wrote `oracle.json`; its script, input and output hashes are in
+`oracle-inputs.sha256` and its exit was zero.
+
+- The 20 Hz and 50 Hz oracle's eight actual-gate, wet-bank, re-entry,
+  first-window and tail assertions passed. Peak and tail error were zero for
+  these cases against its warm production-module/full-wet-twin reference.
+- The source's full DSP suite passed 4,794 checks. This diagnostic source is
+  historical base `003c9a1a` plus the candidate patch, not the final combined
+  integration source.
+- The expanded targeted probe passed **48 checks**. It checked both-channel
+  wet recursive-state equality, opposite output, raw and conditioned histories,
+  opposite aligned history, preservation of previously unwritten affected
+  history, finite newly written aligned history, and two subsequent injected
+  recoveries in the zero-latency and actual x4 wrapped/six-sample cases.
+- In the first injected-invalid-state consuming block, finite affected output
+  differed from the clean reference for **128/128 samples** at zero latency
+  (maximum absolute difference about `0.00921214`) and **122/128** with the
+  actual x4 wrapped path (maximum about `0.00838126`); all 128 newly written
+  affected-channel aligned-history slots differed in each case. These are
+  diagnostic differences under deliberately injected invalid state, not an
+  audibility or natural-reachability claim. They establish that finite output
+  and finite written history are insufficient to claim clean-reference
+  reconstruction after the fault. The acceptable exceptional output and how
+  previously written or newly sanitized history is recovered remain a contract
+  and design question. The independently checked opposite output and valid
+  unrelated histories remained equal in these cases.
+
+The candidate remains incomplete: ordinary reconstruction and a subset of
+channel-local recovery are evidenced, but a policy and independent oracle for
+finite affected-channel data after invalid state, including natural exceptional
+arithmetic, fading, glides, Match and repeated latency interactions, are not
+established. Measurements of this exact modified candidate must not borrow the
+historical A2 instruction ratios.
+
+## Matched instruction checkpoint
+
+The [matched instruction record](H4_INSTRUCTION_METHOD_2026-11-15.md) now
+compares shipping H4, historical A2 and this candidate on the same shared host,
+including actual wrapped, fade and sustained-glide premises. At 48 kHz / 128,
+the candidate is approximately +1.68%, +15.41%, +27.53% and +37.01% whole-engine
+instructions for one through four bands at full wet. The actual four-band fade
+workload is +47.70%; x4 Drive is +15.10%; partial Mix is +0.27%; sustained
+glide is +33.86%. Relative to A2 the complete candidate adds 16–386 instructions
+per block in these measured cells. These are not CPU percentages, native
+deadline results, allocation measurements or plugin-capacity estimates. The
+unresolved exceptional-output/history contract still prevents selecting the
+candidate as complete; these cost results inform that decision without accepting
+ADR-0074.

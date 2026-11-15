@@ -1,0 +1,63 @@
+{
+  "per_run_and_artifact_identities_match": true,
+  "recorded_runs": 8,
+  "outer_runner_exit": 0,
+  "cases": [
+    {
+      "case": "callgrind-band1",
+      "instructions": 14503878,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.183678",
+      "sha256": "85a4dac8d1e119c2a77a7990b42d3d9c57f868a687171e3bd0fbadefbcd2ec8a"
+    },
+    {
+      "case": "callgrind-band2",
+      "instructions": 21735084,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.104891",
+      "sha256": "8753558573a94794c83af9e2ad5fd136b0e15e598cefd28dda962bea67f5b6cf"
+    },
+    {
+      "case": "callgrind-band3",
+      "instructions": 29915684,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.116617",
+      "sha256": "79f46eec53a216a844ec0d4eec41e5b2881447084a96a95cb0d0cd5bcf4340bb"
+    },
+    {
+      "case": "callgrind-band4",
+      "instructions": 37307624,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445",
+      "sha256": "b05240639549ee36c946694b47a91d9db8b5ff1472a97a733f8d3b4711b82aa9"
+    },
+    {
+      "case": "callgrind-wrapped4",
+      "instructions": 76814229,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073",
+      "sha256": "33939100e0856f71aff215821fa15b3e24c55c38bf634a9723fe88dc5074d695"
+    },
+    {
+      "case": "callgrind-partial4",
+      "instructions": 37834758,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445",
+      "sha256": "fd74d2dc72c50dcc998850065a8749b34097716997c8bbc6c791404d0a461174"
+    },
+    {
+      "case": "callgrind-fade4",
+      "instructions": 49004959,
+      "blocks": 256,
+      "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=160; checksum=-0.306974",
+      "sha256": "cebf1914ec47ea08b034b7155abf6479fdd3208222f97701a9135c245a14352d"
+    },
+    {
+      "case": "callgrind-glide4",
+      "instructions": 41135979,
+      "blocks": 256,
+      "observation": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688",
+      "sha256": "de3f2a3bc9c879b6b9b18e7eddd4c76cf72d26d3af37d71c604e8508fa90b80e"
+    }
+  ]
+}

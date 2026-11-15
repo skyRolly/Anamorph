@@ -1,0 +1,9 @@
+bands=1 relevant_states=0
+bands=2 relevant_states=4
+bands=3 relevant_states=10
+bands=4 relevant_states=16
+FAIL each live fade bank checked
+FAIL retired source state checked after fade
+engine=off latency=0 retained_aligned=7 finite=1 right_equal=1
+engine=x4-drive latency=6 retained_aligned=7 finite=1 right_equal=1
+40 checks, 2 failures

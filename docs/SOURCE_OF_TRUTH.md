@@ -221,4 +221,6 @@ The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/READM
 
 The [H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) and `worklogs/h4-dry-state-0102/` are supporting measurements, optional failing oracles and diagnostic variants. ADR-0074 is Proposed; these files grant no production or merge approval.
 
+The [subsequent H4 follow-up](../worklogs/h4-decision-checkpoint-0102/followup/README.md) is supporting evidence for the still-Proposed decision; its instruction counts do not establish native deadline behavior or authorize production changes.
+
 The [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md) records independent PR heads, combined-source checks and explicit H4 owner-decision limits. It is supporting execution evidence, not merge/release or architecture approval.
