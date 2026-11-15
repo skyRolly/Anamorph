@@ -5,17 +5,20 @@ index acd809e..f6273ec 100644
 @@ -6,6 +6,9 @@
  namespace anamorph
  {
- 
+-
++
 +// Nonshipping diagnostic switch, never part of the production candidate.
 +bool h4DiagnosticUseConditionedFallback = false;
 +
  using juce::dsp::Oversampling;
- 
+-
++
  // ---------------------------------------------------------------------------
 @@ -1940,15 +1943,36 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
              juce::FloatVectorOperations::copy (preMbScratch.getWritePointer (1), R, n);
          }
- 
+-
++
 -        if (fullWetIdle)
 -            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
 -        else
@@ -53,7 +56,8 @@ index acd809e..f6273ec 100644
 +            }
          }
 +        dryAligned = true;
- 
+-
++
          // Fade the multiband contribution in/out. At blend 1 the output is exactly the
          // multiband result; at 0 it is exactly the pre-multiband signal -- so a settled
 @@ -2035,7 +2059,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
@@ -72,7 +76,8 @@ index 73a6ec2..b97a567 100644
 @@ -41,12 +41,31 @@ public:
          s3[0] = s3[1] = s4[0] = s4[1] = 0.0f;
      }
- 
+-
++
 +    // Diagnostic A2: clear only the failed channel's recursive state.
 +    void resetChannel (int channel) noexcept
 +    {
@@ -84,7 +89,8 @@ index 73a6ec2..b97a567 100644
          cutoffFrequency = newCutoffFrequencyHz;
          update();
      }
- 
+-
++
 +    // Diagnostic only: inspect all recursive state in this channel.
 +    bool stateFinite (int channel) const noexcept
 +    {
@@ -110,13 +116,15 @@ index 5e5f40f..fc2ecf4 100644
      const bool align = (dryOutL != nullptr && dryOutR != nullptr
                          && dryInL != nullptr && dryInR != nullptr);
 +    lastDryBankMask = 0;
- 
+-
++
      // One band: a plain MS width on the whole signal, no crossovers. With no
      // crossover the reconstruction is identity (A == 1), so the dry is already
 @@ -271,6 +272,9 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
          outR = accR + curR;
      };
- 
+-
++
 +    if (align)
 +        lastDryBankMask = (1 << active) | (fading ? (1 << (1 - active)) : 0);
 +
@@ -130,7 +138,8 @@ index 3812a48..3bbae18 100644
 @@ -50,6 +50,31 @@ public:
      void prepare (double sampleRate, int maxBlock);
      void reset();
- 
+-
++
 +    // Diagnostic A2: dry state only; leave wet, coefficients, widths and fades intact.
 +    void resetDryChannel (int channel) noexcept
 +    {

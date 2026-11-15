@@ -157,3 +157,9 @@ tests a temporary affected-channel policy at an injected first-consumption
 boundary, with a switch-off negative control. The specification is not a result
 or production policy; its runner outcome and limitations must be recorded
 separately before drawing a conclusion.
+The first specification commit's raw patch included blank context lines that
+`git diff --check` reported as trailing whitespace. Before execution those
+context lines were represented as equivalent delete/add pairs; an independent
+temporary-index application confirmed the identical diagnostic tree. Both
+specification revisions remain in Git history; the later digest is the one to
+execute.
